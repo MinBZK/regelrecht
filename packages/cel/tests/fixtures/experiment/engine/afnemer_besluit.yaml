@@ -22,42 +22,42 @@ articles:
         parameters:
           - {name: wortel, type: string, required: true}
         input:
-          - name: grammen
+          - name: grams
             type: array
             source: {}
         output:
-          - {name: laatste_vastgesteld_bedrag, type: number, nullable: true}
+          - {name: latest_vastgesteld_bedrag, type: number, nullable: true}
           - {name: vastgesteld_bedrag, type: number, nullable: true}
           - {name: betaald_bedrag, type: number}
-          - {name: laatste_datum_bekendmaking, type: number, nullable: true}
+          - {name: latest_datum_bekendmaking, type: number, nullable: true}
           - {name: datum_bekendmaking, type: date, nullable: true}
-          - {name: laatste_aanvang_bezwaartermijn, type: number, nullable: true}
+          - {name: latest_aanvang_bezwaartermijn, type: number, nullable: true}
           - {name: aanvang_bezwaartermijn, type: date, nullable: true}
-          - {name: laatste_einde_bezwaartermijn, type: number, nullable: true}
+          - {name: latest_einde_bezwaartermijn, type: number, nullable: true}
           - {name: einde_bezwaartermijn, type: date, nullable: true}
         actions:
-          - output: laatste_vastgesteld_bedrag
+          - output: latest_vastgesteld_bedrag
             value:
               operation: FOREACH
-              collection: $grammen
+              collection: $grams
               as: g
               filter:
                 operation: AND
                 conditions:
-                  - {operation: EQUALS, subject: $g.wortel, value: $wortel}
+                  - {operation: EQUALS, subject: $g.root, value: $root}
                   - {operation: EQUALS, subject: $g.stage, value: BESLUIT}
-              body: $g.volgorde
+              body: $g.sequence
               combine: MAX
           - output: vastgesteld_bedrag
             legal_basis: {law: Testregeling, article: '3', paragraph: '1'}
             value:
               operation: FOREACH
-              collection: $grammen
+              collection: $grams
               as: g
               filter:
                 operation: AND
                 conditions:
-                  - {operation: EQUALS, subject: $g.volgorde, value: $laatste_vastgesteld_bedrag}
+                  - {operation: EQUALS, subject: $g.sequence, value: $latest_vastgesteld_bedrag}
                   - operation: NOT
                     value: {operation: EQUALS, subject: $g.fields.vastgesteld_bedrag, value: null}
               body: $g.fields.vastgesteld_bedrag
@@ -66,28 +66,28 @@ articles:
             legal_basis: {law: Testregeling, article: '3', paragraph: '1'}
             value:
               operation: FOREACH
-              collection: $grammen
+              collection: $grams
               as: g
               filter:
                 operation: AND
                 conditions:
                   - {operation: EQUALS, subject: $g.name, value: betaling_verricht}
-                  - {operation: EQUALS, subject: $g.wortel, value: $wortel}
+                  - {operation: EQUALS, subject: $g.root, value: $root}
                   - operation: NOT
                     value: {operation: EQUALS, subject: $g.fields.bedrag, value: null}
               body: $g.fields.bedrag
               combine: ADD
-          - output: laatste_datum_bekendmaking
+          - output: latest_datum_bekendmaking
             value:
               operation: FOREACH
-              collection: $grammen
+              collection: $grams
               as: g
               filter:
                 operation: AND
                 conditions:
-                  - {operation: EQUALS, subject: $g.wortel, value: $wortel}
+                  - {operation: EQUALS, subject: $g.root, value: $root}
                   - {operation: EQUALS, subject: $g.stage, value: BEKENDMAKING}
-              body: $g.volgorde
+              body: $g.sequence
               combine: MAX
           - output: datum_bekendmaking
             legal_basis: {law: Testregeling, article: '2'}
@@ -96,12 +96,12 @@ articles:
               cases:
                 - when:
                     operation: FOREACH
-                    collection: $grammen
+                    collection: $grams
                     as: g
                     filter:
                       operation: AND
                       conditions:
-                        - {operation: EQUALS, subject: $g.volgorde, value: $laatste_datum_bekendmaking}
+                        - {operation: EQUALS, subject: $g.sequence, value: $latest_datum_bekendmaking}
                         - operation: NOT
                           value: {operation: EQUALS, subject: $g.fields.datum_bekendmaking, value: null}
                         - operation: NOT
@@ -110,29 +110,29 @@ articles:
                     combine: OR
                   then:
                     operation: FOREACH
-                    collection: $grammen
+                    collection: $grams
                     as: g
                     filter:
                       operation: AND
                       conditions:
-                        - {operation: EQUALS, subject: $g.volgorde, value: $laatste_datum_bekendmaking}
+                        - {operation: EQUALS, subject: $g.sequence, value: $latest_datum_bekendmaking}
                         - operation: NOT
                           value: {operation: EQUALS, subject: $g.fields.datum_bekendmaking, value: null}
                         - operation: NOT
                           value: {operation: EQUALS, subject: $g.fields.datum_bekendmaking, value: ''}
                     body: $g.fields.datum_bekendmaking
                     combine: ADD
-          - output: laatste_aanvang_bezwaartermijn
+          - output: latest_aanvang_bezwaartermijn
             value:
               operation: FOREACH
-              collection: $grammen
+              collection: $grams
               as: g
               filter:
                 operation: AND
                 conditions:
-                  - {operation: EQUALS, subject: $g.wortel, value: $wortel}
+                  - {operation: EQUALS, subject: $g.root, value: $root}
                   - {operation: EQUALS, subject: $g.stage, value: BEKENDMAKING}
-              body: $g.volgorde
+              body: $g.sequence
               combine: MAX
           - output: aanvang_bezwaartermijn
             value:
@@ -140,14 +140,14 @@ articles:
               cases:
                 - when:
                     operation: FOREACH
-                    collection: $grammen
+                    collection: $grams
                     as: g
                     filter:
                       operation: AND
                       conditions:
                         - operation: EQUALS
-                          subject: $g.volgorde
-                          value: $laatste_aanvang_bezwaartermijn
+                          subject: $g.sequence
+                          value: $latest_aanvang_bezwaartermijn
                         - operation: NOT
                           value: {operation: EQUALS, subject: $g.fields.aanvang_bezwaartermijn, value: null}
                         - operation: NOT
@@ -156,31 +156,31 @@ articles:
                     combine: OR
                   then:
                     operation: FOREACH
-                    collection: $grammen
+                    collection: $grams
                     as: g
                     filter:
                       operation: AND
                       conditions:
                         - operation: EQUALS
-                          subject: $g.volgorde
-                          value: $laatste_aanvang_bezwaartermijn
+                          subject: $g.sequence
+                          value: $latest_aanvang_bezwaartermijn
                         - operation: NOT
                           value: {operation: EQUALS, subject: $g.fields.aanvang_bezwaartermijn, value: null}
                         - operation: NOT
                           value: {operation: EQUALS, subject: $g.fields.aanvang_bezwaartermijn, value: ''}
                     body: $g.fields.aanvang_bezwaartermijn
                     combine: ADD
-          - output: laatste_einde_bezwaartermijn
+          - output: latest_einde_bezwaartermijn
             value:
               operation: FOREACH
-              collection: $grammen
+              collection: $grams
               as: g
               filter:
                 operation: AND
                 conditions:
-                  - {operation: EQUALS, subject: $g.wortel, value: $wortel}
+                  - {operation: EQUALS, subject: $g.root, value: $root}
                   - {operation: EQUALS, subject: $g.stage, value: BEKENDMAKING}
-              body: $g.volgorde
+              body: $g.sequence
               combine: MAX
           - output: einde_bezwaartermijn
             value:
@@ -188,14 +188,14 @@ articles:
               cases:
                 - when:
                     operation: FOREACH
-                    collection: $grammen
+                    collection: $grams
                     as: g
                     filter:
                       operation: AND
                       conditions:
                         - operation: EQUALS
-                          subject: $g.volgorde
-                          value: $laatste_einde_bezwaartermijn
+                          subject: $g.sequence
+                          value: $latest_einde_bezwaartermijn
                         - operation: NOT
                           value: {operation: EQUALS, subject: $g.fields.einde_bezwaartermijn, value: null}
                         - operation: NOT
@@ -204,14 +204,14 @@ articles:
                     combine: OR
                   then:
                     operation: FOREACH
-                    collection: $grammen
+                    collection: $grams
                     as: g
                     filter:
                       operation: AND
                       conditions:
                         - operation: EQUALS
-                          subject: $g.volgorde
-                          value: $laatste_einde_bezwaartermijn
+                          subject: $g.sequence
+                          value: $latest_einde_bezwaartermijn
                         - operation: NOT
                           value: {operation: EQUALS, subject: $g.fields.einde_bezwaartermijn, value: null}
                         - operation: NOT

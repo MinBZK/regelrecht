@@ -9,8 +9,8 @@ use serde_json::Value;
 const STREAM: &str = include_str!("../../../schema/chronolex/v0.2.0/stream.json");
 const LEXOSTATUS: &str = include_str!("../../../schema/chronolex/v0.2.0/lexostatus.json");
 const GRAM: &str = include_str!("../../../schema/chronolex/v0.2.0/gram.json");
-const CEL: &str = include_str!("../../../schema/chronolex/v0.2.0/cel.json");
-const PROCES: &str = include_str!("../../../schema/chronolex/v0.2.0/proces.json");
+const CEL: &str = include_str!("../../../schema/chronolex/v0.2.0/cell.json");
+const PROCES: &str = include_str!("../../../schema/chronolex/v0.2.0/process.json");
 
 /// Welk van de schema's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -20,17 +20,17 @@ pub enum Soort {
     /// De lexostatus-definities van een cel (`lexostatus.json`).
     Lexostatus,
     /// Een celdefinitie, `cel.yaml` (`cel.json`).
-    Cel,
+    Cell,
     /// Een procesdefinitie, `proces.yaml` (`proces.json`).
     Proces,
     /// Een vastgelegd gram (`gram.json`).
     Gram,
 }
 
-fn compileer(bron: &str, naam: &str) -> Result<Validator, String> {
-    let schema: Value = serde_json::from_str(bron)
-        .map_err(|e| format!("ingebakken schema {naam} is geen geldige JSON: {e}"))?;
-    Validator::new(&schema).map_err(|e| format!("ingebakken schema {naam} compileert niet: {e}"))
+fn compileer(source: &str, name: &str) -> Result<Validator, String> {
+    let schema: Value = serde_json::from_str(source)
+        .map_err(|e| format!("ingebakken schema {name} is geen geldige JSON: {e}"))?;
+    Validator::new(&schema).map_err(|e| format!("ingebakken schema {name} compileert niet: {e}"))
 }
 
 static STREAM_V: LazyLock<Result<Validator, String>> =
@@ -38,9 +38,9 @@ static STREAM_V: LazyLock<Result<Validator, String>> =
 static LEXOSTATUS_V: LazyLock<Result<Validator, String>> =
     LazyLock::new(|| compileer(LEXOSTATUS, "lexostatus.json"));
 static GRAM_V: LazyLock<Result<Validator, String>> = LazyLock::new(|| compileer(GRAM, "gram.json"));
-static CEL_V: LazyLock<Result<Validator, String>> = LazyLock::new(|| compileer(CEL, "cel.json"));
+static CEL_V: LazyLock<Result<Validator, String>> = LazyLock::new(|| compileer(CEL, "cell.json"));
 static PROCES_V: LazyLock<Result<Validator, String>> =
-    LazyLock::new(|| compileer(PROCES, "proces.json"));
+    LazyLock::new(|| compileer(PROCES, "process.json"));
 
 /// Valideer een document tegen een van de schema's. Bij een fout: elke
 /// schending als `<pad>: <melding>`.
@@ -49,7 +49,7 @@ pub fn valideer(soort: Soort, doc: &Value) -> Result<(), Vec<String>> {
         Soort::Stroom => &*STREAM_V,
         Soort::Lexostatus => &*LEXOSTATUS_V,
         Soort::Gram => &*GRAM_V,
-        Soort::Cel => &*CEL_V,
+        Soort::Cell => &*CEL_V,
         Soort::Proces => &*PROCES_V,
     }
     .as_ref()
@@ -57,11 +57,11 @@ pub fn valideer(soort: Soort, doc: &Value) -> Result<(), Vec<String>> {
     let fouten: Vec<String> = validator
         .iter_errors(doc)
         .map(|e| {
-            let pad = e.instance_path().to_string();
-            if pad.is_empty() {
+            let path = e.instance_path().to_string();
+            if path.is_empty() {
                 e.to_string()
             } else {
-                format!("{pad}: {e}")
+                format!("{path}: {e}")
             }
         })
         .collect();
@@ -79,14 +79,14 @@ mod tests {
 
     #[test]
     fn alle_schemas_compileren() {
-        for (naam, v) in [
+        for (name, v) in [
             ("stream", &*STREAM_V),
             ("lexostatus", &*LEXOSTATUS_V),
             ("gram", &*GRAM_V),
             ("cel", &*CEL_V),
             ("proces", &*PROCES_V),
         ] {
-            assert!(v.is_ok(), "{naam}: {:?}", v.as_ref().err());
+            assert!(v.is_ok(), "{name}: {:?}", v.as_ref().err());
         }
     }
 
@@ -104,10 +104,10 @@ mod tests {
         serde_json::json!({
             "kind": "chronolexogram", "id": "01900000-0000-7000-8000-000000000001",
             "type": "decretogram", "name": "x",
-            "chronicle": "k", "recording_actor": "a", "grondslag": ["r#1"],
-            "op_moment": "2025-03-12T10:14:03+01:00",
-            "vastgelegd_op": "2025-03-12T10:14:03+01:00",
-            "stroom": {"id": "s", "sha256": "0".repeat(64)}, "fields": {}
+            "chronicle": "k", "recording_actor": "a", "legal_basis": ["r#1"],
+            "effective_at": "2025-03-12T10:14:03+01:00",
+            "recorded_at": "2025-03-12T10:14:03+01:00",
+            "stream": {"id": "s", "sha256": "0".repeat(64)}, "fields": {}
         })
     }
 
@@ -117,9 +117,10 @@ mod tests {
     fn gram_id_en_verwijzingen() {
         let mut g = gram();
         valideer(Soort::Gram, &g).unwrap();
-        g["verwijst"] = serde_json::json!({"op_aanvraag": "00000000-0000-4000-8000-000000000001"});
+        g["refers_to"] =
+            serde_json::json!({"on_application": "00000000-0000-4000-8000-000000000001"});
         valideer(Soort::Gram, &g).unwrap();
-        g["verwijst"] = serde_json::json!({"op_aanvraag": "g-001"});
+        g["refers_to"] = serde_json::json!({"on_application": "g-001"});
         assert!(valideer(Soort::Gram, &g).is_err());
         let mut z = gram();
         z["zaakkenmerk"] = "00000000-0000-4000-8000-000000000001".into();
@@ -132,8 +133,8 @@ mod tests {
     #[test]
     fn stage_op_een_decretogram_indiening_of_handeling() {
         let mut g = gram();
-        g["type"] = "indiening".into();
-        g["soort"] = "melding".into();
+        g["type"] = "submission".into();
+        g["subtype"] = "melding".into();
         g["stage"] = "AANVRAAG".into();
         valideer(Soort::Gram, &g).unwrap();
         g["type"] = "decretogram".into();
@@ -146,31 +147,31 @@ mod tests {
 
     #[test]
     fn stroom_verwijst_met_naam_en_naar() {
-        let stroom = |verwijst: Value| {
+        let stream = |refers_to: Value| {
             serde_json::json!({"$id": "s", "recording_actor": "a", "chronicle": "k", "events": [{
-                "name": "x", "intake": "besluit", "grondslag": ["r#1"],
-                "type": "decretogram", "verwijst": verwijst, "fields": {"a": "$external.a"}
+                "name": "x", "intake": "besluit", "legal_basis": ["r#1"],
+                "type": "decretogram", "refers_to": refers_to, "fields": {"a": "$external.a"}
             }]})
         };
-        for naar in [
+        for to in [
             serde_json::json!("algemene_wet_bestuursrecht#4:1"),
             serde_json::json!("aanvraag_ontvangen"),
             serde_json::json!({"stage": "BESLUIT"}),
         ] {
             valideer(
                 Soort::Stroom,
-                &stroom(serde_json::json!({"op_aanvraag": {"naar": naar, "verplicht": true}})),
+                &stream(serde_json::json!({"on_application": {"to": to, "required": true}})),
             )
             .unwrap();
         }
         assert!(valideer(
             Soort::Stroom,
-            &stroom(serde_json::json!({"op_aanvraag": {}}))
+            &stream(serde_json::json!({"on_application": {}}))
         )
         .is_err());
-        let mut z = stroom(serde_json::json!({"besluit": {"naar": {"stage": "BESLUIT"}}}));
-        z["events"][0]["zaak"] = "volgt".into();
+        let mut z = stream(serde_json::json!({"decision": {"to": {"stage": "BESLUIT"}}}));
+        z["events"][0]["case"] = "volgt".into();
         let fouten = valideer(Soort::Stroom, &z).unwrap_err();
-        assert!(fouten.iter().any(|f| f.contains("zaak")), "{fouten:?}");
+        assert!(fouten.iter().any(|f| f.contains("case")), "{fouten:?}");
     }
 }

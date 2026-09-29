@@ -8,26 +8,26 @@ chronicle: test_afnemer
 events:
   - name: aanvraag_ontvangen
     intake: portaal
-    grondslag:
+    legal_basis:
       - testregeling_afnemer#1
-    type: indiening
-    soort: aanvraag
+    type: submission
+    subtype: aanvraag
     stage: AANVRAAG                # RFC-008: de aanvraag opent de zaak
     fields:
-      kern:
+      core:
         aanvrager:
           naam: $external.naam
           adres: $external.adres
         dagtekening: $external.dagtekening
         gevraagde_beschikking: testbeschikking, testregeling afnemer artikel 1
-        ondertekend_via:
-          kanaal: $intake.kanaal
+        signed_via:
+          kanaal: $intake.channel
           kvk_nummer: $intake.eherkenning.kvk
           gemachtigde: $intake.eherkenning.persoon
-      inhoud:
+      content:
         aanduiding: $external.aanduiding
         gebieden:                      # de regels van de gebiedstabel (artikel 3)
-          tabel: $external.gebieden
-          kolommen: [gebied, zetels]
-    niet_gereduceerd:
-      - {veld: kern, reden: de vaste kern van een aanvraag; geen artikel van de testregeling leest haar}
+          table: $external.gebieden
+          columns: [gebied, zetels]
+    not_reduced:
+      - {field: core, reason: de vaste kern van een aanvraag; geen artikel van de testregeling leest haar}

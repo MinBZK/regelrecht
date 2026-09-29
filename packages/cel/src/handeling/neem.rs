@@ -9,8 +9,8 @@ use super::*;
 pub struct Genomen {
     pub gram: Gram,
     pub yaml: String,
-    pub proef: Proefhandeling,
-    pub waarschuwingen: Vec<String>,
+    pub trial: Proefhandeling,
+    pub warnings: Vec<String>,
 }
 
 /// Neem een handeling in een zaak en laat de cel haar vastleggen.
@@ -34,117 +34,117 @@ pub struct Genomen {
 pub async fn neem(
     om: &Omgeving<'_>,
     h: &HandelingDefinitie,
-    wortel: &str,
-    zaak: &Zaakstand,
+    root: &str,
+    case: &Zaakstand,
     opgave: &Opgave,
     handelend: &Sessie,
 ) -> Result<Genomen, Weigering> {
-    let (formulier, gebeurd) = (&opgave.formulier, opgave.gebeurd);
+    let (form, happened) = (&opgave.form, opgave.happened);
     let proces = om.proces;
     let service = proces.service.as_ref();
     let actor = &proces.definitie.actor;
-    if gebeurd && h.soort == Handelingsoort::Besluit {
+    if happened && h.soort == Handelingsoort::Decision {
         return Err(Weigering::Ongeldig(format!(
-            "handeling '{}' is een besluit: dat neemt het proces zelf, het wordt niet als gebeurd gemeld",
-            h.naam
+            "handeling '{}' is een decision: dat neemt het proces zelf, het wordt niet als gebeurd gemeld",
+            h.name
         )));
     }
-    let proef = proef(om, h, wortel, zaak, opgave).await?;
-    let mut waarschuwingen = Vec::new();
-    if !proef.te_nemen {
-        let reden = proef
-            .reden
+    let trial = trial(om, h, root, case, opgave).await?;
+    let mut warnings = Vec::new();
+    if !trial.takeable {
+        let reason = trial
+            .reason
             .clone()
             .unwrap_or_else(|| "niet te nemen".to_string());
-        if !(gebeurd && proef.te_melden) {
-            return Err(Weigering::NietTeNemen(if proef.te_melden {
-                format!("{reden}; is het toch gebeurd, meld het dan als gebeurd (gebeurd: true)")
+        if !(happened && trial.reportable) {
+            return Err(Weigering::NietTeNemen(if trial.reportable {
+                format!("{reason}; is het toch gebeurd, meld het dan als gebeurd (gebeurd: true)")
             } else {
-                reden
+                reason
             }));
         }
-        waarschuwingen.push(format!(
-            "gemeld als gebeurd, tegen de conclusie van het proces in: {reden}"
+        warnings.push(format!(
+            "gemeld als gebeurd, tegen de conclusie van het proces in: {reason}"
         ));
     }
-    let (stroom, event) = proces
-        .cel
-        .event(&h.vastleggen.stroom, &h.vastleggen.event)
-        .ok_or_else(|| Weigering::Cel(format!("handeling '{}': geen vastleg-event", h.naam)))?;
+    let (stream, event) = proces
+        .cell
+        .event(&h.record.stream, &h.record.event)
+        .ok_or_else(|| Weigering::Cell(format!("handeling '{}': geen vastleg-event", h.name)))?;
 
-    let eigen = proces.gezag.as_deref();
-    let mut gezag = None;
-    let (mut namens, mut mandaat) = (None, None);
-    if !matches!(h.soort, Handelingsoort::Feit) {
-        let nummer = regelingen::ontleed(&h.artikel)
-            .map_err(Weigering::Cel)?
-            .artikel;
-        gezag = gezag::gezag_van(service, &h.regeling, nummer);
-        match &gezag {
-            Some(g) => match gezag::toets(eigen, &proces.definitie.mandaten, g) {
-                Ok(Bevoegdheid::Eigen) => namens = Some(g.clone()),
+    let eigen = proces.authority.as_deref();
+    let mut authority = None;
+    let (mut on_behalf_of, mut mandate) = (None, None);
+    if !matches!(h.soort, Handelingsoort::Fact) {
+        let nummer = regelingen::ontleed(&h.article)
+            .map_err(Weigering::Cell)?
+            .article;
+        authority = gezag::gezag_van(service, &h.regulation, nummer);
+        match &authority {
+            Some(g) => match gezag::assessment(eigen, &proces.definitie.mandates, g) {
+                Ok(Bevoegdheid::Own) => on_behalf_of = Some(g.clone()),
                 Ok(Bevoegdheid::Mandaat(m)) => {
-                    namens = Some(g.clone());
-                    mandaat = Some(m.grondslag.clone());
+                    on_behalf_of = Some(g.clone());
+                    mandate = Some(m.legal_basis.clone());
                 }
-                Err(reden) => {
-                    return Err(Weigering::Onbevoegd(format!("{}: {reden}", h.artikel)));
+                Err(reason) => {
+                    return Err(Weigering::Onbevoegd(format!("{}: {reason}", h.article)));
                 }
             },
             None => {
-                waarschuwingen.push(format!(
+                warnings.push(format!(
                     "regeling '{}' noemt geen bevoegd gezag bij {}; vastgelegd zonder competent_authority",
-                    h.regeling, h.artikel
+                    h.regulation, h.article
                 ));
-                namens = eigen.map(str::to_string);
+                on_behalf_of = eigen.map(str::to_string);
             }
         }
     }
-    let handelende_actor = HandelendeActor {
-        rol: handelend.rol.clone(),
-        kanaal: handelend.kanaal.clone(),
-        identiteit: handelend.velden.clone(),
-        grondslag: proces
+    let acting_actor = HandelendeActor {
+        role: handelend.role.clone(),
+        channel: handelend.channel.clone(),
+        identity: handelend.fields.clone(),
+        legal_basis: proces
             .definitie
-            .rollen
-            .get(&handelend.rol)
-            .and_then(|r| r.grondslag.clone()),
-        namens,
-        mandaat,
+            .roles
+            .get(&handelend.role)
+            .and_then(|r| r.legal_basis.clone()),
+        on_behalf_of,
+        mandate,
     };
 
-    let external = event_velden(event, &h.uitkomsten, formulier, &proef.uitkomsten);
+    let external = event_velden(event, &h.outputs, form, &trial.outputs);
     // Elke parameter die meedeed gaat mee, met zijn herkomst.
     let mut inputs: BTreeMap<String, Invoer> = BTreeMap::new();
-    for (naam, waarde) in &proef.parameters {
-        let herkomst = proef
-            .herkomst
-            .get(naam)
-            .ok_or_else(|| Weigering::Cel(format!("parameter '{naam}' heeft geen herkomst")))?;
+    for (name, value) in &trial.parameters {
+        let provenance = trial
+            .provenance
+            .get(name)
+            .ok_or_else(|| Weigering::Cell(format!("parameter '{name}' heeft geen herkomst")))?;
         inputs.insert(
-            naam.clone(),
+            name.clone(),
             Invoer {
-                waarde: waarde.clone(),
-                herkomst: herkomst.clone(),
+                value: value.clone(),
+                provenance: provenance.clone(),
             },
         );
     }
-    let mut stromen: Vec<StroomVerwijzing> = proces
-        .cel
-        .strommen
+    let mut streams: Vec<StroomVerwijzing> = proces
+        .cell
+        .streams
         .iter()
         .map(|s| StroomVerwijzing {
             id: s.id.clone(),
             sha256: s.sha256.clone(),
         })
         .collect();
-    stromen.sort_by(|a, b| a.id.cmp(&b.id));
+    streams.sort_by(|a, b| a.id.cmp(&b.id));
     // Het rechtskarakter en de regeling horen bij een besluit (een
     // decretogram); invoer en receipt bij elke handeling die de engine
     // uitrekende.
     let decretogram = event.type_ == "decretogram";
-    let artikel = regelingen::artikel(service, &h.artikel).map_err(Weigering::Cel)?;
-    let produces = artikel
+    let article = regelingen::article(service, &h.article).map_err(Weigering::Cell)?;
+    let produces = article
         .get_execution_spec()
         .and_then(|e| e.produces.as_ref())
         .filter(|_| decretogram);
@@ -153,16 +153,15 @@ pub async fn neem(
     // aanname.
     let mut regulation_valid_from = None;
     if decretogram {
-        let law = service
-            .resolver()
-            .get_law(&h.regeling)
-            .ok_or_else(|| Weigering::Cel(format!("regeling '{}' is niet geladen", h.regeling)))?;
+        let law = service.resolver().get_law(&h.regulation).ok_or_else(|| {
+            Weigering::Cell(format!("regeling '{}' is niet geladen", h.regulation))
+        })?;
         regulation_valid_from = Some(match &law.valid_from {
             Some(v) => v.clone(),
             None => {
-                waarschuwingen.push(format!(
+                warnings.push(format!(
                     "regeling '{}' noemt geen valid_from; regulation_valid_from is haar publicatiedatum ({})",
-                    h.regeling, law.publication_date
+                    h.regulation, law.publication_date
                 ));
                 law.publication_date.clone()
             }
@@ -170,47 +169,47 @@ pub async fn neem(
     }
     let verzoek = Vastlegverzoek {
         actor: actor.clone(),
-        stroom: stroom.id.clone(),
+        stream: stream.id.clone(),
         event: event.name.clone(),
         intake: Value::Null,
         external,
         // Een besluit verwijst naar de aanvraag (de wortel); een gram dat een
         // besluit volgt of wijzigt, naar dat besluit. Het id geeft de cel.
-        verwijst: super::verwijzingen(
-            &proces.cel,
+        refers_to: super::verwijzingen(
+            &proces.cell,
             event,
-            wortel,
-            match h.besluitrol {
-                Some(Besluit::Volgt | Besluit::Wijzigt) => {
-                    proef.besluit.as_ref().map(|b| b.id.as_str())
+            root,
+            match h.decision_role {
+                Some(Decision::Follows | Decision::Amends) => {
+                    trial.decision.as_ref().map(|b| b.id.as_str())
                 }
                 _ => None,
             },
         ),
-        besluit: Some(Besluitvelden {
+        decision: Some(Besluitvelden {
             legal_character: produces.and_then(|p| p.legal_character.clone()),
             decision_type: produces.and_then(|p| p.decision_type.clone()),
-            regulation: decretogram.then(|| h.regeling.clone()),
+            regulation: decretogram.then(|| h.regulation.clone()),
             regulation_valid_from,
-            competent_authority: gezag.filter(|_| decretogram),
-            handelende_actor: Some(handelende_actor),
+            competent_authority: authority.filter(|_| decretogram),
+            acting_actor: Some(acting_actor),
             inputs,
-            receipt: Some(Receipt::nieuw(om.regelingen.to_vec(), stromen)),
+            receipt: Some(Receipt::nieuw(om.regulations.to_vec(), streams)),
         }),
-        wortel_grammen: Some(zaak.grammen),
+        root_grams: Some(case.grams),
     };
-    let MetYaml { gram, yaml } = celclient::leg_vast(om.cel, &h.vastleggen.cel, &verzoek)
+    let MetYaml { gram, yaml } = celclient::leg_vast(om.cell, &h.record.cell, &verzoek)
         .await
         .map_err(|f| match f {
             // De vorm (de stage, de zaak, het moment) toetst de cel, onder haar slot.
-            TransportFout::Antwoord { status: 409, fout } => Weigering::Conflict(fout),
-            TransportFout::Antwoord { status: 400, fout } => Weigering::Ongeldig(fout),
-            f => Weigering::Cel(format!("de handeling is niet vastgelegd: {f}")),
+            TransportFout::Antwoord { status: 409, error } => Weigering::Conflict(error),
+            TransportFout::Antwoord { status: 400, error } => Weigering::Ongeldig(error),
+            f => Weigering::Cell(format!("de handeling is niet vastgelegd: {f}")),
         })?;
     Ok(Genomen {
         gram,
         yaml,
-        proef,
-        waarschuwingen,
+        trial,
+        warnings,
     })
 }

@@ -45,11 +45,11 @@ export function external(waarden) {
   return uit;
 }
 
-// Opties uit een formulier zijn teksten of {waarde, label}.
+// Opties uit een formulier zijn teksten of {value, label}.
 export function opties(lijst) {
   return (lijst ?? []).map((o) =>
     typeof o === 'object' && o !== null
-      ? { waarde: o.waarde ?? o.value, label: o.label ?? String(o.waarde ?? o.value) }
+      ? { waarde: o.value, label: o.label ?? String(o.value) }
       : { waarde: o, label: String(o) },
   );
 }
@@ -61,25 +61,25 @@ export function veldTekst(e) {
 }
 
 // Een bedrag vraagt het formulier in euro als de regeling het in eurocent of
-// in euro rekent (`eenheid`, uit `type_spec.unit`); de wet krijgt het in haar
+// in euro rekent (`unit`, uit `type_spec.unit`); de wet krijgt het in haar
 // eigen eenheid terug. Een bedrag in een andere eenheid, of zonder, vraagt het
 // formulier zoals het is.
 export function inEuro(v) {
-  return v.type === 'bedrag' && (v.eenheid === 'eurocent' || v.eenheid === 'euro');
+  return v.type === 'amount' && (v.unit === 'eurocent' || v.unit === 'euro');
 }
 
 // Een ingevulde waarde in de eenheid van de wet.
 export function naarWet(v, w) {
-  return v.type === 'bedrag' && v.eenheid === 'eurocent' && typeof w === 'number' ? eurosToCents(w) : w;
+  return v.type === 'amount' && v.unit === 'eurocent' && typeof w === 'number' ? eurosToCents(w) : w;
 }
 
 // Een waarde van de wet in de eenheid van het formulier.
 export function naarFormulier(v, w) {
-  return v.type === 'bedrag' && v.eenheid === 'eurocent' && typeof w === 'number' ? centsToEuros(w) : w;
+  return v.type === 'amount' && v.unit === 'eurocent' && typeof w === 'number' ? centsToEuros(w) : w;
 }
 
 // Het label van een veld, met de eenheid waarin het formulier vraagt.
 export function veldLabel(v) {
   if (inEuro(v)) return `${v.label} (euro)`;
-  return v.type === 'bedrag' && v.eenheid ? `${v.label} (${v.eenheid})` : v.label;
+  return v.type === 'amount' && v.unit ? `${v.label} (${v.unit})` : v.label;
 }

@@ -16,7 +16,7 @@ use axum::http::HeaderMap;
 pub use crate::kanaal::Sessie as Gebruiker;
 
 /// Naam van de sessiecookie.
-pub const COOKIE: &str = "cel_sessie";
+pub const COOKIE: &str = "cell_session";
 
 /// Hoe lang een sessie zonder gebruik geldig blijft.
 pub const VERVAL: Duration = Duration::from_secs(8 * 60 * 60);
@@ -122,8 +122,8 @@ fn token(headers: &HeaderMap) -> Option<String> {
         .filter_map(|v| v.to_str().ok())
         .flat_map(|v| v.split(';'))
         .find_map(|deel| {
-            let (naam, waarde) = deel.trim().split_once('=')?;
-            (naam == COOKIE).then(|| waarde.to_string())
+            let (name, value) = deel.trim().split_once('=')?;
+            (name == COOKIE).then(|| value.to_string())
         })
 }
 
@@ -132,16 +132,16 @@ fn token(headers: &HeaderMap) -> Option<String> {
 mod tests {
     use super::*;
 
-    fn gebruiker(rol: &str, naam: &str) -> Gebruiker {
+    fn gebruiker(role: &str, name: &str) -> Gebruiker {
         Gebruiker {
-            rol: rol.into(),
-            kanaal: "medewerker".into(),
-            velden: [("naam".to_string(), naam.to_string())].into(),
+            role: role.into(),
+            channel: "medewerker".into(),
+            fields: [("naam".to_string(), name.to_string())].into(),
         }
     }
 
-    fn medewerker(naam: &str) -> Gebruiker {
-        gebruiker("behandelaar", naam)
+    fn medewerker(name: &str) -> Gebruiker {
+        gebruiker("behandelaar", name)
     }
 
     #[test]
@@ -153,8 +153,8 @@ mod tests {
             axum::http::header::COOKIE,
             format!("ander=1; {COOKIE}={token}").parse().unwrap(),
         );
-        assert_eq!(sessies.zoek(&h).unwrap().rol, "aanvrager");
-        assert_eq!(sessies.zoek(&h).unwrap().velden["naam"], "A");
+        assert_eq!(sessies.zoek(&h).unwrap().role, "aanvrager");
+        assert_eq!(sessies.zoek(&h).unwrap().fields["naam"], "A");
         sessies.verwijder(&h);
         assert!(sessies.zoek(&h).is_none());
         assert!(sessies.zoek(&HeaderMap::new()).is_none());

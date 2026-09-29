@@ -11,7 +11,7 @@ import LexostatusView from './LexostatusView.vue';
 
 const props = defineProps({
   cel: { type: Object, required: true },
-  // De processen die deze cel lezen (`inzage` in GET /api/processen).
+  // De processen die deze cel lezen (`inspection` in GET /api/processes).
   processen: { type: Array, default: () => [] },
 });
 const emit = defineEmits(['open']);
@@ -30,7 +30,7 @@ onMounted(async () => {
     const s = await procesApi(p.id)
       .sessie()
       .catch(() => null);
-    if (s && p.rollen?.[s.rol]?.routes?.includes('behandeling')) {
+    if (s && p.roles?.[s.role]?.routes?.includes('handling')) {
       via.value = p.id;
       break;
     }
@@ -49,7 +49,7 @@ function tab(e) {
     <nldd-tab-bar size="md" accessible-label="Scherm" @tabchange="tab">
       <nldd-tab-bar-item data-scherm="kroniek" text="Kroniek" :current="scherm === 'kroniek' || undefined"></nldd-tab-bar-item>
       <nldd-tab-bar-item
-        v-if="cel.lexostatussen.length"
+        v-if="cel.lexostatuses.length"
         data-scherm="lexostatus"
         text="Lexostatus"
         :current="scherm === 'lexostatus' || undefined"
@@ -57,7 +57,7 @@ function tab(e) {
     </nldd-tab-bar>
     <nldd-spacer size="24"></nldd-spacer>
     <KroniekView v-if="scherm === 'kroniek'" />
-    <LexostatusView v-else :lexostatussen="cel.lexostatussen" />
+    <LexostatusView v-else :lexostatussen="cel.lexostatuses" />
   </template>
   <template v-else-if="geladen">
     <nldd-inline-dialog

@@ -58,7 +58,7 @@ use regelrecht_engine::{
 };
 use regelrecht_law_model::{ParameterType, ProcedureDefinition};
 
-use crate::cel::Cel;
+use crate::cel::Cell;
 use crate::celclient::{self, Besluitvelden, MetYaml, Vastlegverzoek};
 use crate::config::{HandelingDefinitie, Handelingsoort, NogNiet, ProcesDefinitie};
 use crate::datum::{self, Tijdpunt};
@@ -70,7 +70,7 @@ use crate::proces::Proces;
 use crate::reductie::{Besluitstand, Lexostatus, Peil, Zaakstand};
 use crate::regelingen::{self, Benodigd, Waardetype};
 use crate::rijen::{self, Rijen};
-use crate::stroom::{Besluit, Binding, Event, Zaak};
+use crate::stroom::{Binding, Decision, Event, Zaak};
 use crate::synthese::{self, Bron, BronUitslag, Herkomst};
 use crate::toets;
 use crate::transport::{Transport, TransportFout};
@@ -88,10 +88,10 @@ use stand::al_genomen;
 
 pub use controle::{bronnen_voor, controleer};
 pub use laden::{
-    benodigd, bereid_voor, haken_op, nog_niet, procedure_van, toetsen, veldsoort, zet_formulier,
+    assessments, benodigd, bereid_voor, haken_op, not_yet, procedure_van, veldsoort, zet_formulier,
 };
 pub use neem::{neem, Genomen};
-pub use proef::{doel, proef};
+pub use proef::{doel, trial};
 pub use stand::{
     besluiten_in_zaak, procedure_van_de_zaak, stand, BesluitInZaak, ProcedureStand,
     Rechtsbescherming, StageStand, Stand,
@@ -100,57 +100,57 @@ pub use stand::{
 /// Het antwoord op een handeling op proef.
 #[derive(Debug, Clone, Serialize)]
 pub struct Proefhandeling {
-    pub handeling: String,
+    pub action: String,
     #[serde(flatten)]
     pub soort: Handelingsoort,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stage: Option<String>,
-    pub regeling: String,
+    pub regulation: String,
     /// `<regeling>#<artikel>` van de uitkomsten.
-    pub artikel: String,
+    pub article: String,
     /// De dag waarop de engine de regeling leest en de cellen peilen.
-    pub peildatum: String,
+    pub reference_date: String,
     /// Waar de peildatum vandaan komt: het `op_moment` van het event, met
     /// zijn grondslag, of vandaag.
-    pub peildatum_uit: String,
+    pub reference_date_from: String,
     /// Of het proces de handeling uit zichzelf neemt: elke uitkomst heeft een
     /// waarde, elke toets is waar en elk feit is ingevuld.
-    pub te_nemen: bool,
+    pub takeable: bool,
     /// Niet te nemen om de inhoud, niet om de vorm: meldt de behandelaar dat
     /// het feit toch gebeurde (`gebeurd: true`), dan legt de cel het vast.
     /// Nooit bij een besluit.
-    pub te_melden: bool,
+    pub reportable: bool,
     /// De uitkomsten met een waarde, ook als de handeling niet te nemen is.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub uitkomsten: BTreeMap<String, Value>,
+    pub outputs: BTreeMap<String, Value>,
     /// De toetsen van het artikel (zie [`toetsen`]) met hun waarde.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub toetsen: BTreeMap<String, Value>,
+    pub assessments: BTreeMap<String, Value>,
     /// Het type en de eenheid van elke uitkomst en toets, uit de regeling:
     /// een bedrag in eurocent toont de frontend in euro.
-    pub typen: BTreeMap<String, Waardetype>,
+    pub types: BTreeMap<String, Waardetype>,
     /// Wat de engine miste.
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub mist: Vec<String>,
+    pub missing: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub reden: Option<String>,
+    pub reason: Option<String>,
     /// Wat naar de engine ging, en per parameter waar het vandaan kwam.
     pub parameters: BTreeMap<String, Value>,
-    pub herkomst: BTreeMap<String, Herkomst>,
-    pub bronnen: Vec<BronUitslag>,
+    pub provenance: BTreeMap<String, Herkomst>,
+    pub sources: Vec<BronUitslag>,
     /// Parameters die de aanroeper van het artikel moet leveren, zonder
     /// waarde uit een bron.
-    pub niet_geleverd: Vec<Benodigd>,
+    pub not_delivered: Vec<Benodigd>,
     /// De lexostatussen van de zaak, bij een feit met het concept erbij.
-    pub lexostatussen: Vec<Lexostatus>,
+    pub lexostatuses: Vec<Lexostatus>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub rijen: Vec<rijen::Uitslag>,
+    pub rows: Vec<rijen::Uitslag>,
     /// Het vastgelegde besluit waarop de handeling handelt: bij een vervolg
     /// het besluit waarop de stage verdergaat, bij een feit het besluit dat
     /// het volgt (zoals de betaling die het uitvoert), bij een wijziging het
     /// besluit dat zij wijzigt.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub besluit: Option<BesluitVerwijzing>,
+    pub decision: Option<BesluitVerwijzing>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trace_text: Option<String>,
 }
@@ -164,8 +164,8 @@ pub struct BesluitVerwijzing {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stage: Option<String>,
-    pub op_moment: String,
-    pub vastgelegd_op: String,
+    pub effective_at: String,
+    pub recorded_at: String,
 }
 
 /// Een fout in de vraag of een stand die de handeling niet toelaat.
@@ -184,7 +184,7 @@ pub enum Weigering {
     Onbevoegd(String),
     /// De configuratie, of de cel: haar kroniek, een reductie of het
     /// vastleggen.
-    Cel(String),
+    Cell(String),
 }
 
 /// Wat de behandelaar bij een handeling opgeeft: het formulier, zo nodig
@@ -194,11 +194,11 @@ pub enum Weigering {
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct Opgave {
     #[serde(default)]
-    pub formulier: Map<String, Value>,
+    pub form: Map<String, Value>,
     #[serde(default)]
-    pub besluit: Option<String>,
+    pub decision: Option<String>,
     #[serde(default)]
-    pub gebeurd: bool,
+    pub happened: bool,
 }
 
 /// De verwijzingen van een gram van `event` dat een proces vastlegt: een
@@ -207,27 +207,27 @@ pub struct Opgave {
 /// groep (zoals de aanvraag). Zonder besluit blijft een besluitverwijzing
 /// weg; is zij verplicht, dan weigert de cel.
 pub fn verwijzingen(
-    cel: &Cel,
+    cell: &Cell,
     event: &Event,
-    wortel: &str,
-    besluit: Option<&str>,
+    root: &str,
+    decision: Option<&str>,
 ) -> BTreeMap<String, String> {
-    let events: Vec<&Event> = cel.strommen.iter().flat_map(|s| s.events.iter()).collect();
+    let events: Vec<&Event> = cell.streams.iter().flat_map(|s| s.events.iter()).collect();
     event
-        .verwijst
+        .refers_to
         .iter()
-        .filter_map(|(naam, v)| {
-            let doelen: Vec<&&Event> = events.iter().filter(|d| v.naar.past_event(d)).collect();
+        .filter_map(|(name, v)| {
+            let doelen: Vec<&&Event> = events.iter().filter(|d| v.to.past_event(d)).collect();
             let naar_besluit = !doelen.is_empty()
                 && doelen
                     .iter()
                     .all(|d| d.stage.as_deref() == Some(crate::stroom::BESLUIT));
             let id = if naar_besluit {
-                besluit?.to_string()
+                decision?.to_string()
             } else {
-                wortel.to_string()
+                root.to_string()
             };
-            Some((naam.clone(), id))
+            Some((name.clone(), id))
         })
         .collect()
 }
@@ -237,9 +237,9 @@ pub fn verwijzingen(
 /// receipt) en het moment van nu.
 pub struct Omgeving<'a> {
     pub proces: &'a Proces,
-    pub cel: &'a dyn Transport,
-    pub bronnen: &'a [Bron],
-    pub rijen: &'a [Rijen],
-    pub regelingen: &'a [GeladenRegeling],
+    pub cell: &'a dyn Transport,
+    pub sources: &'a [Bron],
+    pub rows: &'a [Rijen],
+    pub regulations: &'a [GeladenRegeling],
     pub nu: DateTime<FixedOffset>,
 }

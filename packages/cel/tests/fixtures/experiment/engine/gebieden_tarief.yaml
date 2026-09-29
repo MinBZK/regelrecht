@@ -23,17 +23,17 @@ articles:
           - {name: gebied, type: string, required: true}
           - {name: peildatum, type: date, required: true}
         input:
-          - name: grammen
+          - name: grams
             type: array
             source: {}
         output:
-          - {name: laatste_tarief, type: number, nullable: true}
+          - {name: latest_tarief, type: number, nullable: true}
           - {name: tarief, type: number, nullable: true}
         actions:
-          - output: laatste_tarief
+          - output: latest_tarief
             value:
               operation: FOREACH
-              collection: $grammen
+              collection: $grams
               as: g
               filter:
                 operation: AND
@@ -41,17 +41,17 @@ articles:
                   - {operation: EQUALS, subject: $g.name, value: tarief_vastgesteld}
                   - {operation: EQUALS, subject: $g.fields.gebied, value: $gebied}
                   - {operation: EQUALS, subject: $g.fields.peildatum, value: $peildatum}
-              body: $g.volgorde
+              body: $g.sequence
               combine: MAX
           - output: tarief
             value:
               operation: FOREACH
-              collection: $grammen
+              collection: $grams
               as: g
               filter:
                 operation: AND
                 conditions:
-                  - {operation: EQUALS, subject: $g.volgorde, value: $laatste_tarief}
+                  - {operation: EQUALS, subject: $g.sequence, value: $latest_tarief}
                   - operation: NOT
                     value: {operation: EQUALS, subject: $g.fields.tarief, value: null}
               body: $g.fields.tarief

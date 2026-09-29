@@ -4,6 +4,6 @@
 # startstand.
 id: test_register
 recording_actor: test_register
-stromen: [../../chronicles/test_registers.yaml]
-lexostatussen: lexostatussen.yaml
-startstand: startstand.jsonl
+streams: [../../chronicles/test_registers.yaml]
+lexostatuses: lexostatuses.yaml
+initial_state: initial_state.jsonl

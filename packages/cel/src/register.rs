@@ -53,7 +53,7 @@ thread_local! {
 /// en alleen tijdens `f` (een engine-run is synchroon).
 /// Ook na een panic in `f` gaat de overlay eraf: de draad dient daarna een
 /// ander verzoek.
-pub fn met_proef<T>(grammen: Vec<Gram>, f: impl FnOnce() -> T) -> T {
+pub fn met_proef<T>(grams: Vec<Gram>, f: impl FnOnce() -> T) -> T {
     struct Terug(Option<Vec<Gram>>);
     impl Drop for Terug {
         fn drop(&mut self) {
@@ -62,7 +62,7 @@ pub fn met_proef<T>(grammen: Vec<Gram>, f: impl FnOnce() -> T) -> T {
         }
     }
     let _terug = Terug(Some(
-        PROEF.with(|p| std::mem::replace(&mut *p.borrow_mut(), grammen)),
+        PROEF.with(|p| std::mem::replace(&mut *p.borrow_mut(), grams)),
     ));
     f()
 }
@@ -71,8 +71,8 @@ pub fn met_proef<T>(grammen: Vec<Gram>, f: impl FnOnce() -> T) -> T {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Koppeling {
-    pub cel: String,
-    pub kroniek: String,
+    pub cell: String,
+    pub chronicle: String,
 }
 
 #[derive(Deserialize)]
@@ -84,16 +84,16 @@ struct Bestand {
 /// Een register als databron: de kroniek van een cel, voor de invoer zonder
 /// bron van een beleid.
 pub struct Registerbron {
-    naam: String,
+    name: String,
     beleid: String,
-    veld: String,
-    kroniek: String,
-    bron: Arc<OnceLock<Arc<Kroniek>>>,
+    field: String,
+    chronicle: String,
+    source: Arc<OnceLock<Arc<Kroniek>>>,
 }
 
 impl DataSource for Registerbron {
     fn name(&self) -> &str {
-        &self.naam
+        &self.name
     }
     fn priority(&self) -> i32 {
         10
@@ -102,24 +102,24 @@ impl DataSource for Registerbron {
         "register"
     }
     fn has_field(&self, field: &str) -> bool {
-        field == self.veld
+        field == self.field
     }
     fn get(&self, field: &str, _criteria: &BTreeMap<String, EngineValue>) -> Option<EngineValue> {
-        if field != self.veld {
+        if field != self.field {
             return None;
         }
-        let kroniek = self.bron.get()?;
-        let vast = kroniek.lees(&self.kroniek).ok()?;
-        let proef: Vec<Gram> = PROEF.with(|p| p.borrow().clone());
-        let grammen = vast
+        let chronicle = self.source.get()?;
+        let vast = chronicle.lees(&self.chronicle).ok()?;
+        let trial: Vec<Gram> = PROEF.with(|p| p.borrow().clone());
+        let grams = vast
             .iter()
             .map(|v| &v.gram)
-            .chain(proef.iter().filter(|g| g.chronicle == self.kroniek));
-        let lijst = lexostatus_engine::als_kroniek(grammen, &self.kroniek).ok()?;
-        Some(EngineValue::from(&lijst))
+            .chain(trial.iter().filter(|g| g.chronicle == self.chronicle));
+        let list = lexostatus_engine::als_kroniek(grams, &self.chronicle).ok()?;
+        Some(EngineValue::from(&list))
     }
     fn fields(&self) -> Vec<&str> {
-        vec![self.veld.as_str()]
+        vec![self.field.as_str()]
     }
     fn law_scope(&self) -> Option<&str> {
         Some(&self.beleid)
@@ -141,8 +141,8 @@ pub struct Registers {
 }
 
 /// De invoer zonder bron (`source: {}`) van een regeling: de namen.
-fn registerinvoer(service: &LawExecutionService, regeling: &str) -> Vec<String> {
-    let Some(law) = service.resolver().get_law(regeling) else {
+fn registerinvoer(service: &LawExecutionService, regulation: &str) -> Vec<String> {
+    let Some(law) = service.resolver().get_law(regulation) else {
         return Vec::new();
     };
     let mut uit: Vec<String> = law
@@ -178,45 +178,45 @@ fn beleid_met_register(service: &LawExecutionService) -> Vec<String> {
 /// corpus, en controleer het tegen het corpus. `datum` is de dag waarop de
 /// naam van het register uit het beleid gelezen wordt.
 pub fn laad(
-    pad: Option<&Path>,
+    path: Option<&Path>,
     service: &mut LawExecutionService,
-    datum: &str,
+    date: &str,
 ) -> Result<Registers, Vec<String>> {
-    let bestand = match pad {
+    let bestand = match path {
         Some(p) => laden::laad(p, laden::yaml::<Bestand>)?,
         None => Bestand {
             registers: BTreeMap::new(),
         },
     };
-    let bron = pad.map_or("CEL_REGISTERS".to_string(), |p| p.display().to_string());
+    let source = path.map_or("CELL_REGISTERS".to_string(), |p| p.display().to_string());
     let mut fouten = Vec::new();
     let mut registers = Registers::default();
     let mut gekoppeld: Vec<String> = Vec::new();
     for (sleutel, k) in bestand.registers {
-        let Some((beleid, naam)) = sleutel.split_once('#') else {
+        let Some((beleid, name)) = sleutel.split_once('#') else {
             fouten.push(format!(
-                "{bron}: register '{sleutel}' is niet <beleid>#<naam>"
+                "{source}: register '{sleutel}' is niet <beleid>#<naam>"
             ));
             continue;
         };
         if service.resolver().get_law(beleid).is_none() {
             fouten.push(format!(
-                "{bron}: register '{sleutel}': geen regeling '{beleid}' in het corpus"
+                "{source}: register '{sleutel}': geen regeling '{beleid}' in het corpus"
             ));
             continue;
         }
-        let invoer = registerinvoer(service, beleid);
-        let veld = match &invoer[..] {
+        let input = registerinvoer(service, beleid);
+        let field = match &input[..] {
             [v] => v.clone(),
             [] => {
                 fouten.push(format!(
-                    "{bron}: register '{sleutel}': '{beleid}' heeft geen invoer zonder bron (source: {{}}); het bevraagt geen register"
+                    "{source}: register '{sleutel}': '{beleid}' heeft geen invoer zonder bron (source: {{}}); het bevraagt geen register"
                 ));
                 continue;
             }
             meer => {
                 fouten.push(format!(
-                    "{bron}: register '{sleutel}': '{beleid}' heeft meer invoer zonder bron ({}); een beleid bevraagt hier een register",
+                    "{source}: register '{sleutel}': '{beleid}' heeft meer invoer zonder bron ({}); een beleid bevraagt hier een register",
                     meer.join(", ")
                 ));
                 continue;
@@ -228,37 +228,37 @@ pub fn laad(
             .is_some_and(|i| i.outputs.iter().any(|o| o == NAAM_REGISTER))
         {
             let e =
-                crate::toets::evalueer(service, beleid, &[NAAM_REGISTER], &BTreeMap::new(), datum);
+                crate::toets::evalueer(service, beleid, &[NAAM_REGISTER], &BTreeMap::new(), date);
             match e.waarden.get(NAAM_REGISTER).and_then(serde_json::Value::as_str) {
-                Some(n) if n == naam => {}
+                Some(n) if n == name => {}
                 Some(n) => fouten.push(format!(
-                    "{bron}: register '{sleutel}': het beleid noemt het register '{n}', niet '{naam}'"
+                    "{source}: register '{sleutel}': het beleid noemt het register '{n}', niet '{name}'"
                 )),
                 None => fouten.push(format!(
-                    "{bron}: register '{sleutel}': de naam van het register is uit '{beleid}' niet te lezen ({})",
-                    e.reden("geen naam")
+                    "{source}: register '{sleutel}': de naam van het register is uit '{beleid}' niet te lezen ({})",
+                    e.reason("geen naam")
                 )),
             }
         }
         if gekoppeld.contains(&beleid.to_string()) {
-            fouten.push(format!("{bron}: '{beleid}' heeft meer dan een register"));
+            fouten.push(format!("{source}: '{beleid}' heeft meer dan een register"));
             continue;
         }
         gekoppeld.push(beleid.to_string());
         let slot = Arc::new(OnceLock::new());
         service.add_data_source(Box::new(Registerbron {
-            naam: format!("register:{sleutel}"),
+            name: format!("register:{sleutel}"),
             beleid: beleid.to_string(),
-            veld,
-            kroniek: k.kroniek.clone(),
-            bron: slot.clone(),
+            field,
+            chronicle: k.chronicle.clone(),
+            source: slot.clone(),
         }));
         registers.koppelingen.push((sleutel, k, slot));
     }
     for beleid in beleid_met_register(service) {
         if !gekoppeld.contains(&beleid) {
             fouten.push(format!(
-                "{bron}: '{beleid}' bevraagt een register (een invoer zonder bron), maar geen register koppelt het aan een cel of adapter"
+                "{source}: '{beleid}' bevraagt een register (een invoer zonder bron), maar geen register koppelt het aan een cel of adapter"
             ));
         }
     }
@@ -272,20 +272,19 @@ pub fn laad(
 impl Registers {
     /// Controleer de cellen en kronieken van de koppelingen, voor de
     /// kronieken open zijn.
-    pub fn controleer(&self, cellen: &[(&str, Vec<&str>)]) -> Vec<String> {
+    pub fn controleer(&self, cells: &[(&str, Vec<&str>)]) -> Vec<String> {
         let mut fouten = Vec::new();
         for (sleutel, k, _) in &self.koppelingen {
-            match cellen.iter().find(|(id, _)| *id == k.cel) {
+            match cells.iter().find(|(id, _)| *id == k.cell) {
                 None => fouten.push(format!(
                     "register '{sleutel}': cel '{}' draait niet in deze runtime",
-                    k.cel
+                    k.cell
                 )),
-                Some((_, kronieken)) if !kronieken.contains(&k.kroniek.as_str()) => {
-                    fouten.push(format!(
+                Some((_, chronicles)) if !chronicles.contains(&k.chronicle.as_str()) => fouten
+                    .push(format!(
                         "register '{sleutel}': cel '{}' heeft geen kroniek '{}'",
-                        k.cel, k.kroniek
-                    ))
-                }
+                        k.cell, k.chronicle
+                    )),
                 Some(_) => {}
             }
         }
@@ -293,10 +292,10 @@ impl Registers {
     }
 
     /// Geef elke bron de kroniek van haar cel.
-    pub fn open(&self, cel: &str, kroniek: &Arc<Kroniek>) {
+    pub fn open(&self, cell: &str, chronicle: &Arc<Kroniek>) {
         for (_, k, slot) in &self.koppelingen {
-            if k.cel == cel {
-                let _ = slot.set(kroniek.clone());
+            if k.cell == cell {
+                let _ = slot.set(chronicle.clone());
             }
         }
     }
@@ -306,7 +305,7 @@ impl Registers {
 mod tests {
     use super::*;
 
-    fn proef() -> usize {
+    fn trial() -> usize {
         PROEF.with(|p| p.borrow().len())
     }
 
@@ -315,10 +314,10 @@ mod tests {
     #[test]
     fn een_proef_gaat_eraf_ook_na_een_panic() {
         let g = crate::gram::testgram("00000000-0000-4000-8000-000000000001");
-        assert_eq!(met_proef(vec![g.clone()], proef), 1);
-        assert_eq!(proef(), 0);
+        assert_eq!(met_proef(vec![g.clone()], trial), 1);
+        assert_eq!(trial(), 0);
         let uit = std::panic::catch_unwind(|| met_proef(vec![g], || panic!("engine")));
         assert!(uit.is_err());
-        assert_eq!(proef(), 0);
+        assert_eq!(trial(), 0);
     }
 }

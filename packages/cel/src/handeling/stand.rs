@@ -12,29 +12,29 @@ use super::*;
 /// doet, zegt de proef).
 #[derive(Debug, Clone, Serialize)]
 pub struct Stand {
-    pub beschikbaar: bool,
+    pub available: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub reden: Option<String>,
+    pub reason: Option<String>,
     /// De grammen die de handeling in deze zaak al vastlegde.
-    pub vastgelegd: usize,
+    pub recorded: usize,
     /// Het besluit waarop de handeling nu zou handelen (zie [`doel`]).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub besluit: Option<String>,
+    pub decision: Option<String>,
 }
 
 /// De stand van een handeling in een zaak, uit de [`Zaakstand`] die de cel
 /// afleidt: welke besluiten er liggen, welke stages elk doorliep en hoe vaak
 /// het event van de handeling.
-pub fn stand(proces: &Proces, h: &HandelingDefinitie, zaak: &Zaakstand) -> Stand {
-    let vastgelegd = zaak.aantal(&h.vastleggen.stroom, &h.vastleggen.event);
-    let mut besluit = None;
-    let reden = match doel(proces, h, zaak, None) {
+pub fn stand(proces: &Proces, h: &HandelingDefinitie, case: &Zaakstand) -> Stand {
+    let recorded = case.aantal(&h.record.stream, &h.record.event);
+    let mut decision = None;
+    let reason = match doel(proces, h, case, None) {
         Err(r) => Some(r),
         Ok(b) => {
-            besluit = b.map(|b| b.id.clone());
+            decision = b.map(|b| b.id.clone());
             match (&h.soort, b) {
-                (Handelingsoort::Besluit, _) => al_genomen(proces, h, zaak),
-                (Handelingsoort::Vervolg { .. }, Some(b)) => h
+                (Handelingsoort::Decision, _) => al_genomen(proces, h, case),
+                (Handelingsoort::FollowUp { .. }, Some(b)) => h
                     .stage
                     .as_ref()
                     .filter(|s| b.stages.contains_key(*s))
@@ -44,10 +44,10 @@ pub fn stand(proces: &Proces, h: &HandelingDefinitie, zaak: &Zaakstand) -> Stand
         }
     };
     Stand {
-        beschikbaar: reden.is_none(),
-        reden,
-        vastgelegd,
-        besluit,
+        available: reason.is_none(),
+        reason,
+        recorded,
+        decision,
     }
 }
 
@@ -57,12 +57,12 @@ pub fn stand(proces: &Proces, h: &HandelingDefinitie, zaak: &Zaakstand) -> Stand
 pub(super) fn al_genomen(
     proces: &Proces,
     h: &HandelingDefinitie,
-    zaak: &Zaakstand,
+    case: &Zaakstand,
 ) -> Option<String> {
-    if h.besluitrol != Some(Besluit::Opent) {
+    if h.decision_role != Some(Decision::Opens) {
         return None;
     }
-    eigen(proces, &h.naam, zaak).first().map(|b| {
+    eigen(proces, &h.name, case).first().map(|b| {
         format!(
             "besluit {} ligt al in de zaak; een ander besluit hierover vraagt een eigen grondslag (een wijziging)",
             b.id
@@ -83,9 +83,9 @@ pub struct StageStand {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    pub vastgelegd: bool,
+    pub recorded: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub handeling: Option<String>,
+    pub action: Option<String>,
 }
 
 /// De rechtsbescherming na de laatste stage van een besluit, afgeleid uit de
@@ -98,15 +98,15 @@ pub struct StageStand {
 pub struct Rechtsbescherming {
     pub procedure: String,
     /// De stage waarna de route loopt.
-    pub na: String,
+    pub after: String,
     /// De stage die nu loopt.
     pub stage: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     /// De haken die de route uitrekenden, als `<regeling>#<artikel>`.
-    pub grondslag: Vec<String>,
+    pub legal_basis: Vec<String>,
     /// Hun uitkomsten, zoals het gram van de laatste stage ze vastlegde.
-    pub uitkomsten: BTreeMap<String, Value>,
+    pub outputs: BTreeMap<String, Value>,
 }
 
 /// Een besluit in de zaak, voor het zaakscherm: welke handeling het nam, de
@@ -118,20 +118,20 @@ pub struct BesluitInZaak {
     /// Het id van het gram dat het besluit is.
     pub id: String,
     /// De handeling die het besluit vastlegde, en haar artikel.
-    pub handeling: String,
+    pub action: String,
     pub label: String,
-    pub artikel: String,
+    pub article: String,
     pub event: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub op_moment: Option<String>,
+    pub effective_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub wijzigt: Option<String>,
+    pub amends: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub procedure: Option<ProcedureStand>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub rechtsbescherming: Option<Rechtsbescherming>,
+    pub legal_protection: Option<Rechtsbescherming>,
     /// De handelingen die nu op dit besluit handelen.
-    pub handelingen: Vec<String>,
+    pub actions: Vec<String>,
 }
 
 /// De besluiten in een zaak, elk met zijn procedure en rechtsbescherming.
@@ -139,41 +139,40 @@ pub struct BesluitInZaak {
 /// vastlegden, zegt de [`Zaakstand`] van de cel; de procedure en de haken
 /// komen uit de wet. Een stage die bij geen besluit hoort (de aanvraag),
 /// telt voor elk besluit van de zaak.
-pub fn besluiten_in_zaak(proces: &Proces, zaak: &Zaakstand) -> Vec<BesluitInZaak> {
-    let Some(behandeling) = &proces.definitie.behandeling else {
+pub fn besluiten_in_zaak(proces: &Proces, case: &Zaakstand) -> Vec<BesluitInZaak> {
+    let Some(handling) = &proces.definitie.handling else {
         return Vec::new();
     };
-    zaak.besluiten
+    case.decisions
         .iter()
         .filter_map(|b| {
-            let h = behandeling.handelingen.iter().find(|h| {
-                h.soort == Handelingsoort::Besluit
-                    && b.van(&h.vastleggen.stroom, &h.vastleggen.event)
+            let h = handling.actions.iter().find(|h| {
+                h.soort == Handelingsoort::Decision && b.van(&h.record.stream, &h.record.event)
             })?;
-            let (procedure, rechtsbescherming) = procedure_en_route(proces, h, b, zaak);
-            let handelingen = behandeling
-                .handelingen
+            let (procedure, legal_protection) = procedure_en_route(proces, h, b, case);
+            let actions = handling
+                .actions
                 .iter()
-                .filter(|x| x.naam != h.naam)
+                .filter(|x| x.name != h.name)
                 .filter(|x| {
-                    doel(proces, x, zaak, None)
+                    doel(proces, x, case, None)
                         .ok()
                         .flatten()
                         .is_some_and(|d| d.id == b.id)
                 })
-                .map(|x| x.naam.clone())
+                .map(|x| x.name.clone())
                 .collect();
             Some(BesluitInZaak {
                 id: b.id.clone(),
-                handeling: h.naam.clone(),
+                action: h.name.clone(),
                 label: h.label().to_string(),
-                artikel: h.artikel.clone(),
+                article: h.article.clone(),
                 event: b.event.clone(),
-                op_moment: b.genomen().map(|(_, g)| g.op_moment.clone()),
-                wijzigt: b.wijzigt.clone(),
+                effective_at: b.genomen().map(|(_, g)| g.effective_at.clone()),
+                amends: b.amends.clone(),
                 procedure,
-                rechtsbescherming,
-                handelingen,
+                legal_protection,
+                actions,
             })
         })
         .collect()
@@ -182,58 +181,58 @@ pub fn besluiten_in_zaak(proces: &Proces, zaak: &Zaakstand) -> Vec<BesluitInZaak
 /// De procedure en de rechtsbescherming van een besluit in de zaak.
 fn procedure_en_route(
     proces: &Proces,
-    besluit: &HandelingDefinitie,
+    decision: &HandelingDefinitie,
     stand: &Besluitstand,
-    zaak: &Zaakstand,
+    case: &Zaakstand,
 ) -> (Option<ProcedureStand>, Option<Rechtsbescherming>) {
     let service = proces.service.as_ref();
-    let Some(behandeling) = &proces.definitie.behandeling else {
+    let Some(handling) = &proces.definitie.handling else {
         return (None, None);
     };
-    let Some(p) = procedure_van(service, &besluit.artikel) else {
+    let Some(p) = procedure_van(service, &decision.article) else {
         return (None, None);
     };
     let door = |stage: &str| {
-        behandeling
-            .handelingen
+        handling
+            .actions
             .iter()
-            .find(|h| h.stage.as_deref() == Some(stage) && h.artikel == besluit.artikel)
+            .find(|h| h.stage.as_deref() == Some(stage) && h.article == decision.article)
     };
-    let gram = |stage: &str| stand.stages.get(stage).or_else(|| zaak.stages.get(stage));
+    let gram = |stage: &str| stand.stages.get(stage).or_else(|| case.stages.get(stage));
     let stages: Vec<StageStand> = p
         .stages
         .iter()
         .map(|s| StageStand {
             name: s.name.clone(),
             description: s.description.clone(),
-            vastgelegd: gram(&s.name).is_some(),
-            handeling: door(&s.name).map(|h| h.naam.clone()),
+            recorded: gram(&s.name).is_some(),
+            action: door(&s.name).map(|h| h.name.clone()),
         })
         .collect();
-    let route = stages.iter().rposition(|s| s.vastgelegd).and_then(|i| {
-        let na = &p.stages[i];
+    let route = stages.iter().rposition(|s| s.recorded).and_then(|i| {
+        let after = &p.stages[i];
         let volgende = p.stages.get(i + 1)?;
         if door(&volgende.name).is_some() {
             return None;
         }
-        let h = door(&na.name)?;
-        if h.haken.is_empty() {
+        let h = door(&after.name)?;
+        if h.hooks.is_empty() {
             return None;
         }
-        let gram = gram(&na.name)?;
-        let uitkomsten = h
-            .haken
+        let gram = gram(&after.name)?;
+        let outputs = h
+            .hooks
             .iter()
             .flat_map(|a| uitkomsten_van(service, a))
-            .filter_map(|u| gram.velden.get(&u).map(|w| (u, w.clone())))
+            .filter_map(|u| gram.fields.get(&u).map(|w| (u, w.clone())))
             .collect();
         Some(Rechtsbescherming {
             procedure: p.id.clone(),
-            na: na.name.clone(),
+            after: after.name.clone(),
             stage: volgende.name.clone(),
             description: volgende.description.clone(),
-            grondslag: h.haken.clone(),
-            uitkomsten,
+            legal_basis: h.hooks.clone(),
+            outputs,
         })
     });
     (
@@ -248,15 +247,17 @@ fn procedure_en_route(
 /// De procedure van de zaak voor er een besluit ligt: de procedure van het
 /// eerste besluit dat het proces kent, met de stages die bij geen besluit
 /// horen (zoals de aanvraag).
-pub fn procedure_van_de_zaak(proces: &Proces, zaak: &Zaakstand) -> Option<ProcedureStand> {
+pub fn procedure_van_de_zaak(proces: &Proces, case: &Zaakstand) -> Option<ProcedureStand> {
     let b = proces
         .definitie
-        .behandeling
+        .handling
         .as_ref()?
-        .handelingen
+        .actions
         .iter()
-        .find(|h| h.soort == Handelingsoort::Besluit && h.besluitrol == Some(Besluit::Opent))?;
-    let p = procedure_van(proces.service.as_ref(), &b.artikel)?;
+        .find(|h| {
+            h.soort == Handelingsoort::Decision && h.decision_role == Some(Decision::Opens)
+        })?;
+    let p = procedure_van(proces.service.as_ref(), &b.article)?;
     Some(ProcedureStand {
         id: p.id.clone(),
         stages: p
@@ -265,8 +266,8 @@ pub fn procedure_van_de_zaak(proces: &Proces, zaak: &Zaakstand) -> Option<Proced
             .map(|s| StageStand {
                 name: s.name.clone(),
                 description: s.description.clone(),
-                vastgelegd: zaak.stages.contains_key(&s.name),
-                handeling: None,
+                recorded: case.stages.contains_key(&s.name),
+                action: None,
             })
             .collect(),
     })

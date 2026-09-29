@@ -25,22 +25,22 @@ use crate::toets::{self, Evaluatie};
 #[serde(rename_all = "snake_case")]
 pub enum Oordeel {
     /// De uitkomst is waar (of positief): het portaal biedt de aanvraag aan.
-    Mogelijk,
+    Possible,
     /// De uitkomst is definitief nul of onwaar: geen aanbod.
-    Uitgesloten,
+    Excluded,
     /// Geen oordeel: de uitkomst is leeg, er mist een feit, of de engine gaf
     /// een fout.
-    NietTeBepalen,
+    Undeterminable,
 }
 
 /// Een gekozen tijdvak: de parameter, het veld van het concept dat het
 /// portaal vooraf invult, en de waarde.
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct Keuze {
+pub struct Choice {
     pub parameter: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub veld: Option<String>,
-    pub waarde: Value,
+    pub field: Option<String>,
+    pub value: Value,
 }
 
 /// Het aanbod voor een tijdvak (of zonder tijdvak), met de trace van de ene
@@ -48,19 +48,19 @@ pub struct Keuze {
 #[derive(Debug, Clone, Serialize)]
 pub struct Mogelijkheid {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tijdvak: Option<Keuze>,
-    pub oordeel: Oordeel,
-    pub regeling: String,
-    pub uitkomst: String,
+    pub window: Option<Choice>,
+    pub verdict: Oordeel,
+    pub regulation: String,
+    pub output: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub waarde: Option<Value>,
+    pub value: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub termijn: Option<Value>,
+    pub deadline: Option<Value>,
     /// Wat de uitkomst van het aanbod mist (niet wat de termijn mist).
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub mist: Vec<String>,
+    pub missing: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub reden: Option<String>,
+    pub reason: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trace_text: Option<String>,
 }
@@ -78,11 +78,11 @@ fn is_nee(w: &Value) -> bool {
 /// onwaar is uitgesloten, en al het andere is niet te bepalen. Leeg is geen
 /// nee, en onbekend is geen ja: een uitkomst die een feit mist, zegt niets
 /// over het aanbod.
-pub fn oordeel(e: &Evaluatie, uitkomst: &str) -> Oordeel {
-    match e.waarden.get(uitkomst) {
-        Some(Value::Null) | None => Oordeel::NietTeBepalen,
-        Some(w) if is_nee(w) => Oordeel::Uitgesloten,
-        Some(_) => Oordeel::Mogelijk,
+pub fn verdict(e: &Evaluatie, output: &str) -> Oordeel {
+    match e.waarden.get(output) {
+        Some(Value::Null) | None => Oordeel::Undeterminable,
+        Some(w) if is_nee(w) => Oordeel::Excluded,
+        Some(_) => Oordeel::Possible,
     }
 }
 
@@ -90,20 +90,20 @@ pub fn oordeel(e: &Evaluatie, uitkomst: &str) -> Oordeel {
 /// regeling van het aanbod, in een run zonder parameters op `datum`. Welke
 /// tijdvakken er zijn, is beleid (de ruimte die Awb 4:2 lid 1 de actor laat),
 /// geen configuratie. Geen lijst is een fout: dan valt er niets aan te bieden.
-pub fn tijdvakken(
+pub fn windows(
     service: &LawExecutionService,
-    regeling: &str,
-    tijdvakken: &str,
-    datum: &str,
+    regulation: &str,
+    windows: &str,
+    date: &str,
 ) -> Result<Vec<Value>, String> {
-    let e = toets::evalueer(service, regeling, &[tijdvakken], &BTreeMap::new(), datum);
-    match e.waarden.get(tijdvakken) {
-        Some(Value::Array(lijst)) => Ok(lijst.clone()),
+    let e = toets::evalueer(service, regulation, &[windows], &BTreeMap::new(), date);
+    match e.waarden.get(windows) {
+        Some(Value::Array(list)) => Ok(list.clone()),
         Some(ander) => Err(format!(
-            "{regeling}: tijdvakken '{tijdvakken}' is geen lijst ({ander})"
+            "{regulation}: tijdvakken '{windows}' is geen lijst ({ander})"
         )),
-        None => Err(e.reden(&format!(
-            "{regeling}: tijdvakken '{tijdvakken}' niet te bepalen"
+        None => Err(e.reason(&format!(
+            "{regulation}: tijdvakken '{windows}' niet te bepalen"
         ))),
     }
 }
@@ -112,65 +112,65 @@ pub fn tijdvakken(
 /// regeling van het aanbod, met alleen het gekozen tijdvak als parameter. Het
 /// aanbod voor een tijdvak dat nog moet beginnen, peilt de registers op die
 /// dag. Geen datum is een fout.
-pub fn begin(
+pub fn start(
     service: &LawExecutionService,
-    regeling: &str,
-    begin: &str,
-    keuze: &Keuze,
-    datum: &str,
+    regulation: &str,
+    start: &str,
+    keuze: &Choice,
+    date: &str,
 ) -> Result<chrono::NaiveDate, String> {
     let mut p = BTreeMap::new();
-    p.insert(keuze.parameter.clone(), keuze.waarde.clone());
-    let e = toets::evalueer(service, regeling, &[begin], &p, datum);
-    match e.waarden.get(begin) {
+    p.insert(keuze.parameter.clone(), keuze.value.clone());
+    let e = toets::evalueer(service, regulation, &[start], &p, date);
+    match e.waarden.get(start) {
         Some(Value::String(d)) => chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d")
-            .map_err(|_| format!("{regeling}: begin '{begin}' is geen datum ({d})")),
+            .map_err(|_| format!("{regulation}: begin '{start}' is geen datum ({d})")),
         Some(ander) => Err(format!(
-            "{regeling}: begin '{begin}' is geen datum ({ander})"
+            "{regulation}: begin '{start}' is geen datum ({ander})"
         )),
-        None => Err(e.reden(&format!("{regeling}: begin '{begin}' niet te bepalen"))),
+        None => Err(e.reason(&format!("{regulation}: begin '{start}' niet te bepalen"))),
     }
 }
 
 /// Voer het aanbod uit voor een tijdvak: uitkomst en termijn in een run.
 pub fn bepaal(
     service: &LawExecutionService,
-    tijdvak: Option<Keuze>,
-    aanbod: &Aanbod,
+    window: Option<Choice>,
+    offer: &Aanbod,
     parameters: &BTreeMap<String, Value>,
-    datum: &str,
+    date: &str,
 ) -> Mogelijkheid {
-    let mut uitkomsten = vec![aanbod.uitkomst.as_str()];
-    uitkomsten.extend(aanbod.termijn.as_deref());
-    let e = toets::evalueer_met_trace(service, &aanbod.regeling, &uitkomsten, parameters, datum);
-    let oordeel = oordeel(&e, &aanbod.uitkomst);
-    let waarde = e.waarden.get(&aanbod.uitkomst).cloned();
-    let mist = e.mist_van(&aanbod.uitkomst).to_vec();
-    let reden = match oordeel {
-        Oordeel::Mogelijk => None,
-        Oordeel::Uitgesloten => Some(format!(
+    let mut outputs = vec![offer.output.as_str()];
+    outputs.extend(offer.deadline.as_deref());
+    let e = toets::evalueer_met_trace(service, &offer.regulation, &outputs, parameters, date);
+    let verdict = verdict(&e, &offer.output);
+    let value = e.waarden.get(&offer.output).cloned();
+    let missing = e.mist_van(&offer.output).to_vec();
+    let reason = match verdict {
+        Oordeel::Possible => None,
+        Oordeel::Excluded => Some(format!(
             "{}: '{}' is {}",
-            aanbod.regeling,
-            aanbod.uitkomst,
-            waarde.as_ref().map(Value::to_string).unwrap_or_default()
+            offer.regulation,
+            offer.output,
+            value.as_ref().map(Value::to_string).unwrap_or_default()
         )),
-        Oordeel::NietTeBepalen if !mist.is_empty() => {
-            Some(format!("niet te bepalen: mist {}", mist.join(", ")))
+        Oordeel::Undeterminable if !missing.is_empty() => {
+            Some(format!("niet te bepalen: mist {}", missing.join(", ")))
         }
-        Oordeel::NietTeBepalen => Some(e.reden("niet te bepalen")),
+        Oordeel::Undeterminable => Some(e.reason("niet te bepalen")),
     };
     Mogelijkheid {
-        tijdvak,
-        oordeel,
-        regeling: aanbod.regeling.clone(),
-        uitkomst: aanbod.uitkomst.clone(),
-        waarde,
-        termijn: aanbod
-            .termijn
+        window,
+        verdict,
+        regulation: offer.regulation.clone(),
+        output: offer.output.clone(),
+        value,
+        deadline: offer
+            .deadline
             .as_ref()
             .and_then(|t| e.waarden.get(t).cloned()),
-        mist,
-        reden,
+        missing,
+        reason,
         trace_text: e.trace_text,
     }
 }
@@ -181,14 +181,14 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    fn ev(waarde: Option<Value>, mist: &[&str]) -> Evaluatie {
+    fn ev(value: Option<Value>, missing: &[&str]) -> Evaluatie {
         let mut e = Evaluatie::default();
-        if let Some(w) = waarde {
+        if let Some(w) = value {
             e.waarden.insert("u".into(), w);
         }
-        e.mist = mist.iter().map(|s| s.to_string()).collect();
-        if !mist.is_empty() {
-            e.mist_per.insert("u".into(), e.mist.clone());
+        e.missing = missing.iter().map(|s| s.to_string()).collect();
+        if !missing.is_empty() {
+            e.mist_per.insert("u".into(), e.missing.clone());
         }
         e
     }
@@ -196,39 +196,39 @@ mod tests {
     #[test]
     fn onwaar_sluit_uit() {
         assert_eq!(
-            oordeel(&ev(Some(json!(false)), &[]), "u"),
-            Oordeel::Uitgesloten
+            verdict(&ev(Some(json!(false)), &[]), "u"),
+            Oordeel::Excluded
         );
     }
 
     #[test]
     fn nul_sluit_uit() {
-        assert_eq!(oordeel(&ev(Some(json!(0)), &[]), "u"), Oordeel::Uitgesloten);
+        assert_eq!(verdict(&ev(Some(json!(0)), &[]), "u"), Oordeel::Excluded);
     }
 
     #[test]
     fn waar_is_mogelijk() {
-        assert_eq!(oordeel(&ev(Some(json!(true)), &[]), "u"), Oordeel::Mogelijk);
+        assert_eq!(verdict(&ev(Some(json!(true)), &[]), "u"), Oordeel::Possible);
     }
 
     #[test]
     fn positief_is_mogelijk() {
-        assert_eq!(oordeel(&ev(Some(json!(1200)), &[]), "u"), Oordeel::Mogelijk);
+        assert_eq!(verdict(&ev(Some(json!(1200)), &[]), "u"), Oordeel::Possible);
     }
 
     #[test]
     fn leeg_is_niet_te_bepalen() {
         assert_eq!(
-            oordeel(&ev(Some(Value::Null), &[]), "u"),
-            Oordeel::NietTeBepalen
+            verdict(&ev(Some(Value::Null), &[]), "u"),
+            Oordeel::Undeterminable
         );
     }
 
     #[test]
     fn fout_zonder_ontbrekend_feit_is_niet_te_bepalen() {
         let mut e = ev(None, &[]);
-        e.fout = Some("kapot".into());
-        assert_eq!(oordeel(&e, "u"), Oordeel::NietTeBepalen);
+        e.error = Some("kapot".into());
+        assert_eq!(verdict(&e, "u"), Oordeel::Undeterminable);
     }
 
     /// Onbekend is geen ja: mist de uitkomst een feit, uit de aanvraag of uit
@@ -236,12 +236,12 @@ mod tests {
     #[test]
     fn onbekend_is_niet_te_bepalen() {
         assert_eq!(
-            oordeel(&ev(None, &["feit_uit_de_aanvraag"]), "u"),
-            Oordeel::NietTeBepalen
+            verdict(&ev(None, &["feit_uit_de_aanvraag"]), "u"),
+            Oordeel::Undeterminable
         );
         assert_eq!(
-            oordeel(&ev(None, &["registerfeit"]), "u"),
-            Oordeel::NietTeBepalen
+            verdict(&ev(None, &["registerfeit"]), "u"),
+            Oordeel::Undeterminable
         );
     }
 
@@ -288,14 +288,14 @@ articles:
         s
     }
 
-    fn aanbod(termijn: bool) -> Aanbod {
+    fn offer(deadline: bool) -> Aanbod {
         Aanbod {
-            regeling: "testregeling_aanbod".into(),
-            uitkomst: "aangeboden".into(),
-            termijn: termijn.then(|| "termijn".into()),
-            tijdvakken: None,
-            begin: None,
-            openstelling: None,
+            regulation: "testregeling_aanbod".into(),
+            output: "aangeboden".into(),
+            deadline: deadline.then(|| "termijn".into()),
+            windows: None,
+            start: None,
+            opening: None,
         }
     }
 
@@ -303,16 +303,16 @@ articles:
         serde_json::from_value(v).unwrap()
     }
 
-    fn bepaal_met(termijn: bool, p: Value) -> Mogelijkheid {
-        let keuze = Keuze {
+    fn bepaal_met(deadline: bool, p: Value) -> Mogelijkheid {
+        let keuze = Choice {
             parameter: "jaar".into(),
-            veld: None,
-            waarde: json!(2026),
+            field: None,
+            value: json!(2026),
         };
         bepaal(
             &service(),
             Some(keuze),
-            &aanbod(termijn),
+            &offer(deadline),
             &params(p),
             "2026-02-01",
         )
@@ -324,11 +324,11 @@ articles:
             true,
             json!({"bevoegd": false, "jaar": 2026, "registerdatum": "2026-01-01"}),
         );
-        assert_eq!(m.oordeel, Oordeel::Uitgesloten, "{m:?}");
-        assert_eq!(m.waarde, Some(json!(false)));
-        assert_eq!(m.termijn.as_ref().and_then(Value::as_f64), Some(2026.0));
+        assert_eq!(m.verdict, Oordeel::Excluded, "{m:?}");
+        assert_eq!(m.value, Some(json!(false)));
+        assert_eq!(m.deadline.as_ref().and_then(Value::as_f64), Some(2026.0));
         assert_eq!(
-            m.reden.as_deref(),
+            m.reason.as_deref(),
             Some("testregeling_aanbod: 'aangeboden' is false")
         );
         assert!(m.trace_text.is_some());
@@ -340,9 +340,9 @@ articles:
             true,
             json!({"bevoegd": true, "aanvraagfeit": true, "jaar": 2026, "registerdatum": "2026-01-01"}),
         );
-        assert_eq!(m.oordeel, Oordeel::Mogelijk, "{m:?}");
-        assert_eq!(m.waarde, Some(json!(true)));
-        assert_eq!(m.reden, None);
+        assert_eq!(m.verdict, Oordeel::Possible, "{m:?}");
+        assert_eq!(m.value, Some(json!(true)));
+        assert_eq!(m.reason, None);
     }
 
     /// Een voorwaarde die een feit mist, maakt het aanbod niet te bepalen, ook
@@ -354,16 +354,16 @@ articles:
             true,
             json!({"bevoegd": true, "jaar": 2026, "registerdatum": "2026-01-01"}),
         );
-        assert_eq!(m.oordeel, Oordeel::NietTeBepalen, "{m:?}");
-        assert_eq!(m.waarde, None);
-        assert_eq!(m.mist, ["aanvraagfeit"]);
+        assert_eq!(m.verdict, Oordeel::Undeterminable, "{m:?}");
+        assert_eq!(m.value, None);
+        assert_eq!(m.missing, ["aanvraagfeit"]);
         assert_eq!(
-            m.reden.as_deref(),
+            m.reason.as_deref(),
             Some("niet te bepalen: mist aanvraagfeit")
         );
         let m = bepaal_met(true, json!({"jaar": 2026, "registerdatum": "2026-01-01"}));
-        assert_eq!(m.oordeel, Oordeel::NietTeBepalen, "{m:?}");
-        assert!(m.reden.as_deref().unwrap().contains("bevoegd"), "{m:?}");
+        assert_eq!(m.verdict, Oordeel::Undeterminable, "{m:?}");
+        assert!(m.reason.as_deref().unwrap().contains("bevoegd"), "{m:?}");
     }
 
     /// De tijdvakken uit het beleid: een lijst uit een run zonder parameters;
@@ -395,11 +395,11 @@ articles:
         let mut s = LawExecutionService::new();
         s.load_law(BELEID).unwrap();
         assert_eq!(
-            tijdvakken(&s, "testbeleid_tijdvakken", "jaren", "2026-09-25").unwrap(),
+            windows(&s, "testbeleid_tijdvakken", "jaren", "2026-09-25").unwrap(),
             [json!(2026), json!(2027)]
         );
-        let fout = tijdvakken(&s, "testbeleid_tijdvakken", "een_jaar", "2026-09-25").unwrap_err();
-        assert!(fout.contains("is geen lijst"), "{fout}");
+        let error = windows(&s, "testbeleid_tijdvakken", "een_jaar", "2026-09-25").unwrap_err();
+        assert!(error.contains("is geen lijst"), "{error}");
     }
 
     #[test]
@@ -408,8 +408,8 @@ articles:
             false,
             json!({"bevoegd": true, "aanvraagfeit": true, "jaar": 2026}),
         );
-        assert_eq!(m.termijn, None);
-        assert_eq!(m.oordeel, Oordeel::Mogelijk, "{m:?}");
+        assert_eq!(m.deadline, None);
+        assert_eq!(m.verdict, Oordeel::Possible, "{m:?}");
     }
 
     /// Wat de termijn mist, telt niet voor het oordeel over de uitkomst.
@@ -419,8 +419,8 @@ articles:
             true,
             json!({"bevoegd": false, "aanvraagfeit": true, "jaar": 2026}),
         );
-        assert_eq!(m.oordeel, Oordeel::Uitgesloten, "{m:?}");
-        assert_eq!(m.termijn, None);
-        assert!(m.mist.is_empty());
+        assert_eq!(m.verdict, Oordeel::Excluded, "{m:?}");
+        assert_eq!(m.deadline, None);
+        assert!(m.missing.is_empty());
     }
 }

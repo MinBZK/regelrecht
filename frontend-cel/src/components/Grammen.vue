@@ -2,8 +2,8 @@
 // Grammen als tabel, met de ruwe YAML eronder. Elk gram heeft een eigen id,
 // en verwijst met een naam uit de wet naar het gram waar het bij hoort (een
 // besluit op_aanvraag, een betaling naar het besluit). Elk gram heeft twee
-// tijden: op_moment, wanneer het feit rechtens geldt (bij een aanvraag van
-// het loket de dag van ontvangst), en vastgelegd_op, wanneer de cel het
+// tijden: effective_at, wanneer het feit rechtens geldt (bij een aanvraag van
+// het loket de dag van ontvangst), en recorded_at, wanneer de cel het
 // vastlegde.
 const props = defineProps({
   // [{gram, yaml}], in de volgorde waarin ze getoond worden.
@@ -16,7 +16,7 @@ const props = defineProps({
 // Het id van de cel wijst het gram aan.
 const sleutel = (g) => g.id;
 const verwijzingen = (g) =>
-  Object.entries(g.verwijst ?? {})
+  Object.entries(g.refers_to ?? {})
     .map(([naam, id]) => `${naam}: ${id}`)
     .join(', ') || undefined;
 const isNieuw = (g) => props.nieuw !== null && sleutel(g) === sleutel(props.nieuw);
@@ -39,16 +39,16 @@ const isNieuw = (g) => props.nieuw !== null && sleutel(g) === sleutel(props.nieu
       <nldd-text-cell text="Herkomst"></nldd-text-cell>
     </nldd-table-row>
     <nldd-table-row v-for="(i, n) in items" :key="n + sleutel(i.gram)" :selected="isNieuw(i.gram) || undefined">
-      <nldd-text-cell :text="i.gram.op_moment"></nldd-text-cell>
-      <nldd-text-cell :text="i.gram.vastgelegd_op || i.gram.op_moment"></nldd-text-cell>
+      <nldd-text-cell :text="i.gram.effective_at"></nldd-text-cell>
+      <nldd-text-cell :text="i.gram.recorded_at || i.gram.effective_at"></nldd-text-cell>
       <nldd-text-cell :text="i.gram.chronicle"></nldd-text-cell>
       <nldd-text-cell :text="i.gram.name"></nldd-text-cell>
-      <nldd-text-cell :text="[i.gram.type, i.gram.soort, i.gram.stage].filter(Boolean).join(' / ')"></nldd-text-cell>
+      <nldd-text-cell :text="[i.gram.type, i.gram.subtype, i.gram.stage].filter(Boolean).join(' / ')"></nldd-text-cell>
       <nldd-text-cell
         :text="i.gram.id"
         :supporting-text="verwijzingen(i.gram)"
       ></nldd-text-cell>
-      <nldd-text-cell :text="i.gram.herkomst ?? 'vastgesteld'"></nldd-text-cell>
+      <nldd-text-cell :text="i.gram.provenance ?? 'vastgesteld'"></nldd-text-cell>
     </nldd-table-row>
   </nldd-table>
   <template v-for="(i, n) in items" :key="'yaml-' + n + sleutel(i.gram)">

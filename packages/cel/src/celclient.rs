@@ -24,7 +24,7 @@ pub struct Vastlegverzoek {
     /// Wie laat vastleggen. De cel weigert als dat niet de `recording_actor`
     /// van de stroom is.
     pub actor: String,
-    pub stroom: String,
+    pub stream: String,
     pub event: String,
     /// Het ontvangstkanaal (`$intake.*`): wie indiende en langs welke weg.
     #[serde(default)]
@@ -36,17 +36,17 @@ pub struct Vastlegverzoek {
     /// gram verwijst (de aanvraag, het besluit). Het id van het nieuwe gram
     /// geeft de cel.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub verwijst: BTreeMap<String, String>,
+    pub refers_to: BTreeMap<String, String>,
     /// Alleen bij een handeling die het proces uitrekende: de invoer met
     /// herkomst en het receipt, en bij een besluit wat het tot besluit maakt.
     /// Het proces draait de engine, dus het proces stelt dit samen.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub besluit: Option<Besluitvelden>,
+    pub decision: Option<Besluitvelden>,
     /// Hoeveel grammen de groep van de wortel had toen het proces haar las.
     /// De cel legt alleen vast als dat onder haar slot nog zo is: wat het
     /// proces uitrekende, gold voor de groep zoals die toen was.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub wortel_grammen: Option<usize>,
+    pub root_grams: Option<usize>,
 }
 
 /// De velden van een handeling op een gram, naast de stroomvorm (zie
@@ -64,7 +64,7 @@ pub struct Besluitvelden {
     #[serde(default)]
     pub competent_authority: Option<String>,
     #[serde(default)]
-    pub handelende_actor: Option<crate::gram::HandelendeActor>,
+    pub acting_actor: Option<crate::gram::HandelendeActor>,
     #[serde(default)]
     pub inputs: BTreeMap<String, Invoer>,
     #[serde(default)]
@@ -87,8 +87,8 @@ pub struct Proefreductie {
 }
 
 /// Een route van een cel.
-pub fn celpad(cel: &str, route: &str) -> String {
-    format!("/cellen/{cel}/api/{route}")
+pub fn celpad(cell: &str, route: &str) -> String {
+    format!("/cells/{cell}/api/{route}")
 }
 
 fn lees<T: DeserializeOwned>(v: Value, wat: &str) -> Result<T, TransportFout> {
@@ -104,14 +104,14 @@ fn schrijf<T: Serialize>(v: &T) -> Result<Value, TransportFout> {
 /// (`GET zaken/{wortel}`). Een proces leest nooit de hele kroniek: het
 /// filteren is werk van de cel. Een 404: de cel kent de wortel niet.
 pub async fn lees_zaak(
-    cel: &dyn Transport,
+    cell: &dyn Transport,
     id: &str,
-    wortel: &str,
+    root: &str,
 ) -> Result<Vec<MetYaml>, TransportFout> {
-    let v = cel.haal(&celpad(id, &format!("zaken/{wortel}"))).await?;
+    let v = cell.haal(&celpad(id, &format!("cases/{root}"))).await?;
     lees(
         v,
-        &format!("de cel gaf geen lijst grammen voor wortel {wortel}"),
+        &format!("de cel gaf geen lijst grammen voor wortel {root}"),
     )
 }
 
@@ -120,19 +120,19 @@ pub async fn lees_zaak(
 /// `$intake`-pad zonder `$intake.` en een waarde) zegt de cel ook of iemand
 /// met die waarde de groep kent. Een 404: de cel kent de wortel niet.
 pub async fn zaakstand(
-    cel: &dyn Transport,
+    cell: &dyn Transport,
     id: &str,
-    wortel: &str,
-    eigenaar: Option<(&str, &str)>,
+    root: &str,
+    owner: Option<(&str, &str)>,
 ) -> Result<Zaakstand, TransportFout> {
-    let mut query = vec![("wortel", wortel)];
-    if let Some((pad, waarde)) = eigenaar {
-        query.push((EIGENAAR_PAD, pad));
-        query.push((EIGENAAR, waarde));
+    let mut query = vec![("root", root)];
+    if let Some((path, value)) = owner {
+        query.push((EIGENAAR_PAD, path));
+        query.push((EIGENAAR, value));
     }
     let query = serde_urlencoded::to_string(&query)
         .map_err(|e| TransportFout::Json(format!("de vraag is niet te schrijven: {e}")))?;
-    let v = cel
+    let v = cell
         .haal(&celpad(id, &format!("lexostatus/{ZAAKSTAND}?{query}")))
         .await?;
     let l: Lexostatus = lees(v, "de cel gaf geen lexostatus voor de wortel")?;
@@ -142,30 +142,28 @@ pub async fn zaakstand(
 /// Laat de cel een gram vastleggen (`POST grammen`). Antwoord: het
 /// vastgelegde gram met zijn YAML.
 pub async fn leg_vast(
-    cel: &dyn Transport,
+    cell: &dyn Transport,
     id: &str,
     verzoek: &Vastlegverzoek,
 ) -> Result<MetYaml, TransportFout> {
-    let v = cel
-        .stuur(&celpad(id, "grammen"), &schrijf(verzoek)?)
-        .await?;
+    let v = cell.stuur(&celpad(id, "grams"), &schrijf(verzoek)?).await?;
     lees(v, "het vastgelegde gram is onleesbaar")
 }
 
 /// Laat de cel een concept op proef reduceren tot `lexostatus`
 /// (`POST lexostatus/<naam>/proef`), met `inputs` (en zo nodig het peil); er
 /// wordt niets vastgelegd.
-pub async fn proef(
-    cel: &dyn Transport,
+pub async fn trial(
+    cell: &dyn Transport,
     id: &str,
     lexostatus: &str,
     concept: &Vastlegverzoek,
     inputs: &Map<String, Value>,
 ) -> Result<Proefreductie, TransportFout> {
-    let body = json!({"concept": schrijf(concept)?, "inputs": inputs});
-    let v = cel
+    let body = json!({"draft": schrijf(concept)?, "inputs": inputs});
+    let v = cell
         .stuur(
-            &celpad(id, &format!("lexostatus/{}/proef", url_segment(lexostatus))),
+            &celpad(id, &format!("lexostatus/{}/trial", url_segment(lexostatus))),
             &body,
         )
         .await?;
@@ -200,11 +198,11 @@ mod tests {
     async fn verkeerde_cel() -> Http {
         let router = Router::new()
             .route(
-                "/cellen/c/api/zaken/{z}",
+                "/cells/c/api/cases/{z}",
                 get(|| async { Json(json!({"niet": "een lijst"})) }),
             )
             .route(
-                "/cellen/c/api/grammen",
+                "/cells/c/api/grams",
                 axum::routing::post(|| async { Json(json!([1, 2])) }),
             );
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -216,17 +214,17 @@ mod tests {
     #[tokio::test]
     async fn een_onleesbaar_antwoord_over_http_is_een_fout() {
         let t = verkeerde_cel().await;
-        let fout = lees_zaak(&t, "c", "z").await.unwrap_err();
+        let error = lees_zaak(&t, "c", "z").await.unwrap_err();
         assert!(
-            matches!(&fout, TransportFout::Json(r) if r.contains("geen lijst grammen")),
-            "{fout:?}"
+            matches!(&error, TransportFout::Json(r) if r.contains("geen lijst grammen")),
+            "{error:?}"
         );
-        let fout = leg_vast(&t, "c", &Vastlegverzoek::default())
+        let error = leg_vast(&t, "c", &Vastlegverzoek::default())
             .await
             .unwrap_err();
         assert!(
-            matches!(&fout, TransportFout::Json(r) if r.contains("onleesbaar")),
-            "{fout:?}"
+            matches!(&error, TransportFout::Json(r) if r.contains("onleesbaar")),
+            "{error:?}"
         );
     }
 }

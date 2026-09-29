@@ -7,7 +7,7 @@
 //! doen. Het zijn gewone invoer, geen feiten: de runtime legt ze niet vast en
 //! de handeling toetst ze zoals elke andere invoer.
 //!
-//! Een waarde `"$vandaag"` in een formulier wordt bij het opvragen de datum
+//! Een waarde `"$today"` in een formulier wordt bij het opvragen de datum
 //! van vandaag ([`Voorbeelden::op`]). Een besluit, een bekendmaking of een
 //! betaling in de toekomst is geen feit (de cel weigert een `op_moment` na
 //! het vastleggen), en een voorbeeld met een vaste datum veroudert.
@@ -24,22 +24,22 @@ use crate::kanaal::Routes;
 /// De geladen voorbeelden van een proces. Zonder blok `voorbeelden`: leeg.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct Voorbeelden {
-    pub inloggen: Vec<InlogVoorbeeld>,
+    pub logins: Vec<InlogVoorbeeld>,
     /// De `external` van een aanvraag.
-    pub aanvraag: Option<Map<String, Value>>,
+    pub application: Option<Map<String, Value>>,
     /// Per handeling het `formulier`.
-    pub handelingen: BTreeMap<String, Map<String, Value>>,
+    pub actions: BTreeMap<String, Map<String, Value>>,
 }
 
 /// De waarde die in een voorbeeld de datum van vandaag wordt.
-pub const VANDAAG: &str = "$vandaag";
+pub const VANDAAG: &str = "$today";
 
 impl Voorbeelden {
-    /// De voorbeelden zoals de frontend ze krijgt: `"$vandaag"` wordt
+    /// De voorbeelden zoals de frontend ze krijgt: `"$today"` wordt
     /// `vandaag` (JJJJ-MM-DD).
     pub fn op(&self, vandaag: &str) -> Self {
         let mut uit = self.clone();
-        for f in uit.handelingen.values_mut() {
+        for f in uit.actions.values_mut() {
             for w in f.values_mut() {
                 if w.as_str() == Some(VANDAAG) {
                     *w = Value::String(vandaag.to_string());
@@ -55,10 +55,10 @@ impl Voorbeelden {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct InlogVoorbeeld {
     pub label: String,
-    pub kanaal: String,
+    pub channel: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub rol: Option<String>,
-    pub velden: BTreeMap<String, String>,
+    pub role: Option<String>,
+    pub fields: BTreeMap<String, String>,
 }
 
 /// Lees de voorbeelden; paden zijn relatief aan de map van het proces. Elke fout
@@ -72,30 +72,30 @@ pub fn laad(
     let mut uit = Voorbeelden::default();
     // Het label is de sleutel waarmee de frontend een login kiest: uniek.
     let mut labels: Vec<(String, &str)> = Vec::new();
-    for pad in &definitie.inloggen {
-        match inlog(map, pad, proces) {
+    for path in &definitie.logins {
+        match inlog(map, path, proces) {
             Ok(v) => {
                 if let Some((_, eerder)) = labels.iter().find(|(l, _)| *l == v.label) {
                     fouten.push(format!(
-                        "voorbeelden {eerder} en {pad} hebben hetzelfde label '{}'",
+                        "voorbeelden {eerder} en {path} hebben hetzelfde label '{}'",
                         v.label
                     ));
                     continue;
                 }
-                labels.push((v.label.clone(), pad));
-                uit.inloggen.push(v);
+                labels.push((v.label.clone(), path));
+                uit.logins.push(v);
             }
             Err(f) => fouten.push(f),
         }
     }
-    if let Some(pad) = &definitie.aanvraag {
-        uit.aanvraag = object_onder(map, pad, "external")
+    if let Some(path) = &definitie.application {
+        uit.application = object_onder(map, path, "external")
             .map_err(|f| fouten.push(f))
             .ok();
     }
-    for (naam, pad) in &definitie.handelingen {
-        if let Ok(f) = object_onder(map, pad, "formulier").map_err(|f| fouten.push(f)) {
-            uit.handelingen.insert(naam.clone(), f);
+    for (name, path) in &definitie.actions {
+        if let Ok(f) = object_onder(map, path, "form").map_err(|f| fouten.push(f)) {
+            uit.actions.insert(name.clone(), f);
         }
     }
     if fouten.is_empty() {
@@ -105,74 +105,74 @@ pub fn laad(
     }
 }
 
-fn lees(map: &Path, pad: &str) -> Result<Value, String> {
+fn lees(map: &Path, path: &str) -> Result<Value, String> {
     let tekst =
-        std::fs::read_to_string(map.join(pad)).map_err(|e| format!("voorbeeld {pad}: {e}"))?;
-    serde_json::from_str(&tekst).map_err(|e| format!("voorbeeld {pad}: geen geldige JSON: {e}"))
+        std::fs::read_to_string(map.join(path)).map_err(|e| format!("voorbeeld {path}: {e}"))?;
+    serde_json::from_str(&tekst).map_err(|e| format!("voorbeeld {path}: geen geldige JSON: {e}"))
 }
 
 /// Een login zoals een kanaal haar aanneemt, en geldig. Het kanaal staat in
 /// het bestand (`kanaal`), of is het enige kanaal van het portaal.
-fn inlog(map: &Path, pad: &str, proces: &ProcesDefinitie) -> Result<InlogVoorbeeld, String> {
-    let Value::Object(invoer) = lees(map, pad)? else {
+fn inlog(map: &Path, path: &str, proces: &ProcesDefinitie) -> Result<InlogVoorbeeld, String> {
+    let Value::Object(input) = lees(map, path)? else {
         return Err(format!(
-            "voorbeeld {pad}: verwacht een object met de velden van een kanaal"
+            "voorbeeld {path}: verwacht een object met de velden van een kanaal"
         ));
     };
-    let portaal = proces.kanalen_met(Routes::Portaal);
-    let kanaal = match invoer.get("kanaal").and_then(Value::as_str) {
+    let portal = proces.kanalen_met(Routes::Portal);
+    let channel = match input.get("channel").and_then(Value::as_str) {
         Some(k) => k.to_string(),
-        None => match portaal.as_slice() {
+        None => match portal.as_slice() {
             [(id, _)] => id.to_string(),
             _ => {
                 return Err(format!(
-                    "voorbeeld {pad}: noem het kanaal; het portaal heeft er {}",
-                    portaal.len()
+                    "voorbeeld {path}: noem het kanaal; het portaal heeft er {}",
+                    portal.len()
                 ))
             }
         },
     };
     let k = proces
-        .kanalen
-        .get(&kanaal)
-        .ok_or_else(|| format!("voorbeeld {pad}: kanaal '{kanaal}' staat niet onder kanalen"))?;
-    let velden = k
-        .valideer(&invoer)
-        .map_err(|e| format!("voorbeeld {pad}: {e}"))?;
-    let rol = invoer
-        .get("rol")
+        .channels
+        .get(&channel)
+        .ok_or_else(|| format!("voorbeeld {path}: kanaal '{channel}' staat niet onder kanalen"))?;
+    let fields = k
+        .valideer(&input)
+        .map_err(|e| format!("voorbeeld {path}: {e}"))?;
+    let role = input
+        .get("role")
         .and_then(Value::as_str)
         .map(str::to_string);
-    if let Some(r) = &rol {
-        if proces.rollen.get(r).is_none_or(|d| d.kanaal != kanaal) {
+    if let Some(r) = &role {
+        if proces.roles.get(r).is_none_or(|d| d.channel != channel) {
             return Err(format!(
-                "voorbeeld {pad}: rol '{r}' logt niet in langs kanaal '{kanaal}'"
+                "voorbeeld {path}: rol '{r}' logt niet in langs kanaal '{channel}'"
             ));
         }
     }
-    let label = Path::new(pad)
+    let label = Path::new(path)
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_else(|| pad.to_string());
+        .unwrap_or_else(|| path.to_string());
     Ok(InlogVoorbeeld {
         label,
-        kanaal,
-        rol,
-        velden,
+        channel,
+        role,
+        fields,
     })
 }
 
 /// Het object onder `sleutel` in een JSON-object.
-fn object_onder(map: &Path, pad: &str, sleutel: &str) -> Result<Map<String, Value>, String> {
-    match lees(map, pad)? {
+fn object_onder(map: &Path, path: &str, sleutel: &str) -> Result<Map<String, Value>, String> {
+    match lees(map, path)? {
         Value::Object(mut o) => match o.remove(sleutel) {
-            Some(Value::Object(inhoud)) => Ok(inhoud),
+            Some(Value::Object(content)) => Ok(content),
             _ => Err(format!(
-                "voorbeeld {pad}: verwacht een object met '{sleutel}' als object"
+                "voorbeeld {path}: verwacht een object met '{sleutel}' als object"
             )),
         },
         _ => Err(format!(
-            "voorbeeld {pad}: verwacht een object met '{sleutel}' als object"
+            "voorbeeld {path}: verwacht een object met '{sleutel}' als object"
         )),
     }
 }
@@ -184,8 +184,8 @@ mod tests {
 
     fn map_met(bestanden: &[(&str, &str)]) -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
-        for (naam, inhoud) in bestanden {
-            std::fs::write(dir.path().join(naam), inhoud).unwrap();
+        for (name, content) in bestanden {
+            std::fs::write(dir.path().join(name), content).unwrap();
         }
         dir
     }
@@ -194,21 +194,21 @@ mod tests {
     /// cijfers en een naam.
     fn proces() -> ProcesDefinitie {
         ProcesDefinitie::parse(
-            "id: p\nactor: a\nkanalen:\n  org:\n    label: Organisatie\n    velden:\n      - {naam: kvk, label: Nummer, patroon: '[0-9]{8}', melding: een nummer heeft acht cijfers}\n      - {naam: persoon, label: Naam}\nrollen:\n  aanvrager: {kanaal: org, routes: [portaal]}\n",
+            "id: p\nactor: a\nchannels:\n  org:\n    label: Organisatie\n    fields:\n      - {name: kvk, label: Nummer, pattern: '[0-9]{8}', message: een nummer heeft acht cijfers}\n      - {name: persoon, label: Naam}\nroles:\n  aanvrager: {channel: org, routes: [portal]}\n",
             "t",
         )
         .unwrap()
     }
 
     fn definitie(
-        inloggen: &[&str],
-        aanvraag: Option<&str>,
-        besluit: Option<&str>,
+        logins: &[&str],
+        application: Option<&str>,
+        decision: Option<&str>,
     ) -> VoorbeeldenDefinitie {
         VoorbeeldenDefinitie {
-            inloggen: inloggen.iter().map(|s| s.to_string()).collect(),
-            aanvraag: aanvraag.map(str::to_string),
-            handelingen: besluit
+            logins: logins.iter().map(|s| s.to_string()).collect(),
+            application: application.map(str::to_string),
+            actions: decision
                 .map(|b| BTreeMap::from([("besluit".to_string(), b.to_string())]))
                 .unwrap_or_default(),
         }
@@ -224,7 +224,7 @@ mod tests {
             ("aanvraag.json", r#"{"external": {"naam": "Voorbeeld"}}"#),
             (
                 "besluit.json",
-                r#"{"formulier": {"feiten_vergaard": true, "besluitdatum": "$vandaag"}}"#,
+                r#"{"form": {"feiten_vergaard": true, "besluitdatum": "$today"}}"#,
             ),
         ]);
         let v = laad(
@@ -238,24 +238,24 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            v.inloggen,
+            v.logins,
             [InlogVoorbeeld {
                 label: "login-een".into(),
-                kanaal: "org".into(),
-                rol: None,
-                velden: [
+                channel: "org".into(),
+                role: None,
+                fields: [
                     ("kvk".to_string(), "12345678".to_string()),
                     ("persoon".to_string(), "A. Tester".to_string())
                 ]
                 .into(),
             }]
         );
-        assert_eq!(v.aanvraag.as_ref().unwrap()["naam"], "Voorbeeld");
-        assert_eq!(v.handelingen["besluit"]["feiten_vergaard"], true);
-        // "$vandaag" wordt bij het opvragen de datum van vandaag.
-        assert_eq!(v.handelingen["besluit"]["besluitdatum"], "$vandaag");
+        assert_eq!(v.application.as_ref().unwrap()["naam"], "Voorbeeld");
+        assert_eq!(v.actions["besluit"]["feiten_vergaard"], true);
+        // "$today" wordt bij het opvragen de datum van vandaag.
+        assert_eq!(v.actions["besluit"]["besluitdatum"], "$today");
         assert_eq!(
-            v.op("2025-03-20").handelingen["besluit"]["besluitdatum"],
+            v.op("2025-03-20").actions["besluit"]["besluitdatum"],
             "2025-03-20"
         );
     }
@@ -264,7 +264,7 @@ mod tests {
     fn zonder_voorbeelden_is_alles_leeg() {
         let dir = map_met(&[]);
         let v = laad(dir.path(), &VoorbeeldenDefinitie::default(), &proces()).unwrap();
-        assert!(v.inloggen.is_empty() && v.aanvraag.is_none() && v.handelingen.is_empty());
+        assert!(v.logins.is_empty() && v.application.is_none() && v.actions.is_empty());
     }
 
     #[test]
@@ -287,8 +287,8 @@ mod tests {
             ("geen-json.json", "{"),
             ("zonder-persoon.json", r#"{"kvk": "12345678"}"#),
             ("korte-kvk.json", r#"{"kvk": "123", "persoon": "A"}"#),
-            ("aanvraag.json", r#"{"formulier": {}}"#),
-            ("besluit.json", r#"[{"formulier": {}}]"#),
+            ("aanvraag.json", r#"{"form": {}}"#),
+            ("besluit.json", r#"[{"form": {}}]"#),
         ]);
         let fouten = laad(
             dir.path(),
@@ -318,7 +318,7 @@ mod tests {
             "{fouten:?}"
         );
         assert!(
-            fouten[4].contains("besluit.json: verwacht een object met 'formulier'"),
+            fouten[4].contains("besluit.json: verwacht een object met 'form'"),
             "{fouten:?}"
         );
     }

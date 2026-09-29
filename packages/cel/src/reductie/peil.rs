@@ -35,18 +35,18 @@ use crate::gram::Gram;
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Peil {
     /// Geldigheidstijd: alleen grammen met `op_moment` op of voor dit punt.
-    pub peilmoment: Option<Tijdpunt>,
+    pub as_of: Option<Tijdpunt>,
     /// Registratietijd: alleen grammen met `vastgelegd_op` op of voor dit
     /// punt.
-    pub bekend_op: Option<Tijdpunt>,
+    pub known_at: Option<Tijdpunt>,
 }
 
 impl Peil {
     /// De stand zoals die rechtens gold op `t`, met wat nu bekend is.
     pub fn op(t: Tijdpunt) -> Self {
         Self {
-            peilmoment: Some(t),
-            bekend_op: None,
+            as_of: Some(t),
+            known_at: None,
         }
     }
 
@@ -61,33 +61,30 @@ impl Peil {
             }
         };
         Ok(Self {
-            peilmoment: lees("peilmoment")?,
-            bekend_op: lees("bekend_op")?,
+            as_of: lees("as_of")?,
+            known_at: lees("known_at")?,
         })
     }
 
     /// Het peil als query-parameters: `peilmoment`, dan `bekend_op`. Het
     /// schema van `lexostatus.json` weert die namen als input.
     pub fn query(&self) -> Vec<(&'static str, String)> {
-        [
-            ("peilmoment", self.peilmoment),
-            ("bekend_op", self.bekend_op),
-        ]
-        .into_iter()
-        .filter_map(|(k, t)| t.map(|t| (k, t.to_string())))
-        .collect()
+        [("as_of", self.as_of), ("known_at", self.known_at)]
+            .into_iter()
+            .filter_map(|(k, t)| t.map(|t| (k, t.to_string())))
+            .collect()
     }
 
     /// Of een gram bij dit peil telt. Een ongeldig moment is een fout, geen
     /// stille uitsluiting.
     pub fn laat_door(&self, gram: &Gram) -> Result<bool, String> {
-        if let Some(t) = &self.peilmoment {
+        if let Some(t) = &self.as_of {
             if !t.omvat(&gram.moment()?) {
                 return Ok(false);
             }
         }
-        if let Some(t) = &self.bekend_op {
-            if !t.omvat(&gram.vastgelegd()?) {
+        if let Some(t) = &self.known_at {
+            if !t.omvat(&gram.recorded()?) {
                 return Ok(false);
             }
         }

@@ -8,23 +8,23 @@ chronicle: test_toeslag
 events:
   - name: aanvraag_ontvangen
     intake: portaal
-    grondslag:
+    legal_basis:
       - testregeling_toeslag#1
-    type: indiening
-    soort: aanvraag
+    type: submission
+    subtype: aanvraag
     stage: AANVRAAG
     fields:
-      kern:
+      core:
         aanvrager:
           naam: $external.naam
           adres: $external.adres
         dagtekening: $external.dagtekening
         gevraagde_beschikking: maandtoeslag, testregeling maandtoeslag artikel 2 en 3
-        ondertekend_via:
-          kanaal: $intake.kanaal
+        signed_via:
+          kanaal: $intake.channel
           persoonsnummer: $intake.persoon.nummer
-      inhoud:
+      content:
         maand: $external.maand
         geschat_inkomen: $external.geschat_inkomen
-    niet_gereduceerd:
-      - {veld: kern, reden: de vaste kern van een aanvraag; geen artikel van de testregeling leest haar}
+    not_reduced:
+      - {field: core, reason: de vaste kern van een aanvraag; geen artikel van de testregeling leest haar}

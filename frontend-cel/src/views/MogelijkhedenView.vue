@@ -1,7 +1,7 @@
 <script setup>
 // Wat kan de ingelogde persoon hier aanvragen? Niemand somt dat op: het
 // proces voert het dienstverleningsbeleid uit voor deze persoon en organisatie, met
-// alleen wat de inlog en de andere cellen al weten (GET /api/mogelijkheden):
+// alleen wat de inlog en de andere cellen al weten (GET /api/possibilities):
 // alleen voorwaarden die vooraf vaststaan; onbekend is geen aanbod.
 // Per tijdvak geeft het beleid één aanbod: mogelijk, uitgesloten of niet te
 // bepalen, met de uiterste indieningsdatum. Het tijdvak is de parameter die de
@@ -23,53 +23,53 @@ const fout = ref('');
 onMounted(async () => {
   try {
     data.value = await api.mogelijkheden();
-    emit('geladen', data.value.mogelijkheden.map((m) => m.mogelijkheid));
+    emit('geladen', data.value.possibilities.map((m) => m.possibility));
   } catch (e) {
     fout.value = e.message;
   }
 });
 
-const mogelijkheden = computed(() => (data.value?.mogelijkheden ?? []).map((m) => m.mogelijkheid));
+const mogelijkheden = computed(() => (data.value?.possibilities ?? []).map((m) => m.possibility));
 
 // De datum van de runtime, niet van de browser: "verstreken" hoort bij dezelfde
 // klok als het aanbod.
-const vandaag = computed(() => data.value?.datum ?? '');
+const vandaag = computed(() => data.value?.date ?? '');
 
 function antwoord(m) {
-  if (m.oordeel === 'uitgesloten') return 'Nee';
-  if (m.oordeel === 'niet_te_bepalen') return 'Niet te bepalen';
+  if (m.verdict === 'excluded') return 'Nee';
+  if (m.verdict === 'undeterminable') return 'Niet te bepalen';
   return 'Ja';
 }
 
 function termijnTekst(m) {
-  if (m.termijn == null) return 'Onbekend';
-  return vandaag.value && m.termijn < vandaag.value ? `${m.termijn} (verstreken)` : m.termijn;
+  if (m.deadline == null) return 'Onbekend';
+  return vandaag.value && m.deadline < vandaag.value ? `${m.deadline} (verstreken)` : m.deadline;
 }
 
 // Het gekozen tijdvak in woorden, of niets zonder tijdvak.
 function tijdvak(m) {
-  return m.tijdvak ? `${m.tijdvak.waarde}` : '';
+  return m.window ? `${m.window.value}` : '';
 }
 
 function titel(m) {
-  return m.tijdvak ? `Aanvraag voor ${tijdvak(m)}` : 'Aanvraag';
+  return m.window ? `Aanvraag voor ${tijdvak(m)}` : 'Aanvraag';
 }
 
 // Wat het aanvraagformulier vooraf invult: het veld van het tijdvak.
 function vooraf(m) {
-  return m.tijdvak?.veld ? { [m.tijdvak.veld]: m.tijdvak.waarde } : {};
+  return m.window?.field ? { [m.window.field]: m.window.value } : {};
 }
 
 function grond(m) {
-  if (m.reden) return m.reden;
-  return `${m.regeling}: ${m.uitkomst}`;
+  if (m.reason) return m.reason;
+  return `${m.regulation}: ${m.output}`;
 }
 </script>
 
 <template>
   <nldd-title size="2">
     <h1>Wat kunt u aanvragen?</h1>
-    <span slot="subtitle" v-if="data">Ingelogd als {{ sessieTekst(proces, data.sessie) }}</span>
+    <span slot="subtitle" v-if="data">Ingelogd als {{ sessieTekst(proces, data.session) }}</span>
   </nldd-title>
   <nldd-spacer size="8"></nldd-spacer>
   <nldd-rich-text>
@@ -83,8 +83,8 @@ function grond(m) {
     <nldd-container layout="row" gap="8" vertical-alignment="center">
       <nldd-button
         variant="primary"
-        :text="m.tijdvak ? `Aanvraag doen voor ${tijdvak(m)}` : 'Aanvraag doen'"
-        :disabled="m.oordeel !== 'mogelijk' || undefined"
+        :text="m.window ? `Aanvraag doen voor ${tijdvak(m)}` : 'Aanvraag doen'"
+        :disabled="m.verdict !== 'possible' || undefined"
         @click="emit('aanvragen', vooraf(m))"
       ></nldd-button>
       <TraceKnop
@@ -105,7 +105,7 @@ function grond(m) {
           </nldd-table-row>
           <nldd-table-row>
             <nldd-text-cell text="Indienen vóór"></nldd-text-cell>
-            <nldd-text-cell :text="termijnTekst(m)" :supporting-text="m.regeling"></nldd-text-cell>
+            <nldd-text-cell :text="termijnTekst(m)" :supporting-text="m.regulation"></nldd-text-cell>
           </nldd-table-row>
         </nldd-table>
       </TraceKnop>

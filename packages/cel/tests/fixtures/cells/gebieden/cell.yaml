@@ -4,6 +4,6 @@
 # gebiedstabel (synthese per regel).
 id: test_gebieden
 recording_actor: test_gebieden
-stromen: [../../chronicles/test_gebieden.yaml]
-lexostatussen: lexostatussen.yaml
-startstand: startstand.jsonl
+streams: [../../chronicles/test_gebieden.yaml]
+lexostatuses: lexostatuses.yaml
+initial_state: initial_state.jsonl

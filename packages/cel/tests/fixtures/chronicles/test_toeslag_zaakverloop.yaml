@@ -15,100 +15,101 @@ chronicle: test_toeslag
 events:
   - name: voorschot_verleend
     intake: behandelaar
-    grondslag:
+    legal_basis:
       - testregeling_toeslag#2 lid 1
     type: decretogram
-    soort: voorschot
+    subtype: voorschot
     stage: BESLUIT
-    verwijst: {op_aanvraag: {naar: aanvraag_ontvangen, verplicht: true}}
-    op_moment:
-      bron: $external.voorschotdatum
-      grondslag: [testregeling_toeslag#2 lid 1]
+    refers_to: {on_application: {to: aanvraag_ontvangen, required: true}}
+    effective_at:
+      source: $external.voorschotdatum
+      legal_basis: [testregeling_toeslag#2 lid 1]
     fields:
       voorschot: $external.voorschot
   - name: toeslag_vastgesteld
     intake: behandelaar
-    grondslag:
+    legal_basis:
       - testregeling_toeslag#3 lid 1
     type: decretogram
-    soort: vaststelling
+    subtype: vaststelling
     stage: BESLUIT
-    verwijst: {op_aanvraag: {naar: aanvraag_ontvangen, verplicht: true}}
-    op_moment:
-      bron: $external.vaststellingsdatum
-      grondslag: [testregeling_toeslag#3 lid 1]
+    refers_to: {on_application: {to: aanvraag_ontvangen, required: true}}
+    effective_at:
+      source: $external.vaststellingsdatum
+      legal_basis: [testregeling_toeslag#3 lid 1]
     fields:
       vastgestelde_toeslag: $external.vastgestelde_toeslag
   - name: vaststelling_gewijzigd
     intake: behandelaar
-    grondslag:
+    legal_basis:
       - testregeling_toeslag#4 lid 1
       - testregeling_awb#7 lid 1
     type: decretogram
-    soort: vaststelling
+    subtype: vaststelling
     stage: BESLUIT
-    verwijst: {wijzigt: {naar: {stage: BESLUIT}, verplicht: true}}
-    op_moment:
-      bron: $external.wijzigingsdatum
-      grondslag: [testregeling_toeslag#4 lid 1]
+    refers_to: {amends: {to: {stage: BESLUIT}, required: true}}
+    effective_at:
+      source: $external.wijzigingsdatum
+      legal_basis: [testregeling_toeslag#4 lid 1]
     fields:
       vastgestelde_toeslag: $external.gewijzigde_toeslag   # de toeslag zoals zij nu is vastgesteld
   - name: terugvordering_vastgesteld
     intake: behandelaar
-    grondslag:
+    legal_basis:
       - testregeling_toeslag#5 lid 1
       - testregeling_awb#6 lid 1
     type: decretogram
-    soort: terugvordering
+    subtype: terugvordering
     stage: BESLUIT
-    verwijst: {op_aanvraag: {naar: aanvraag_ontvangen, verplicht: true}}
-    op_moment:
-      bron: $external.terugvorderingsdatum
-      grondslag: [testregeling_toeslag#5 lid 1]
+    refers_to: {on_application: {to: aanvraag_ontvangen, required: true}}
+    effective_at:
+      source: $external.terugvorderingsdatum
+      legal_basis: [testregeling_toeslag#5 lid 1]
     fields:
       terug_te_vorderen: $external.terug_te_vorderen
   - name: besluit_bekendgemaakt
     intake: behandelaar
-    grondslag:
+    legal_basis:
       - testregeling_awb#2
-    type: handeling
-    soort: bekendmaking
+    type: act
+    subtype: bekendmaking
     stage: BEKENDMAKING
-    verwijst: {besluit: {naar: {stage: BESLUIT}, verplicht: true}}
-    op_moment:
-      bron: $external.datum_bekendmaking
-      grondslag: [testregeling_awb#2]
+    refers_to: {decision: {to: {stage: BESLUIT}, required: true}}
+    effective_at:
+      source: $external.datum_bekendmaking
+      legal_basis: [testregeling_awb#2]
     fields:
       datum_bekendmaking: $external.datum_bekendmaking
       bekendgemaakt: $external.bekendgemaakt
       aanvang_bezwaartermijn: $external.aanvang_bezwaartermijn
       einde_bezwaartermijn: $external.einde_bezwaartermijn
-    niet_gereduceerd:
-      - {veld: datum_bekendmaking, reden: feit van de bekendmaking; het vervolg leest het uit het formulier}
-      - {veld: bekendgemaakt, reden: feit van de bekendmaking; het vervolg leest het uit het formulier}
-      - {veld: aanvang_bezwaartermijn, reden: uitkomst van de haak op de bekendmaking; het zaakscherm leest haar per besluit}
-      - {veld: einde_bezwaartermijn, reden: uitkomst van de haak op de bekendmaking; het zaakscherm leest haar per besluit}
+    not_reduced:
+      - {field: datum_bekendmaking, reason: feit van de bekendmaking; het vervolg leest het uit het formulier}
+      - {field: bekendgemaakt, reason: feit van de bekendmaking; het vervolg leest het uit het formulier}
+      - {field: aanvang_bezwaartermijn,
+         reason: uitkomst van de haak op de bekendmaking; het zaakscherm leest haar per besluit}
+      - {field: einde_bezwaartermijn, reason: uitkomst van de haak op de bekendmaking; het zaakscherm leest haar per besluit}
   - name: voorschot_betaald
     intake: behandelaar
-    grondslag:
+    legal_basis:
       - testregeling_toeslag#8 lid 1
     type: executogram
-    soort: betaling
-    verwijst: {besluit: {naar: {stage: BESLUIT}, verplicht: true}}
-    op_moment:
-      bron: $external.datum_betaling
-      grondslag: [testregeling_toeslag#8 lid 2]
+    subtype: betaling
+    refers_to: {decision: {to: {stage: BESLUIT}, required: true}}
+    effective_at:
+      source: $external.datum_betaling
+      legal_basis: [testregeling_toeslag#8 lid 2]
     fields:
       bedrag: $external.bedrag
   - name: terugbetaling_ontvangen
     intake: behandelaar
-    grondslag:
+    legal_basis:
       - testregeling_awb#6 lid 2
     type: executogram
-    soort: terugbetaling
-    verwijst: {besluit: {naar: {stage: BESLUIT}, verplicht: true}}
-    op_moment:
-      bron: $external.datum_terugbetaling
-      grondslag: [testregeling_awb#6 lid 3]
+    subtype: terugbetaling
+    refers_to: {decision: {to: {stage: BESLUIT}, required: true}}
+    effective_at:
+      source: $external.datum_terugbetaling
+      legal_basis: [testregeling_awb#6 lid 3]
     fields:
       bedrag: $external.bedrag

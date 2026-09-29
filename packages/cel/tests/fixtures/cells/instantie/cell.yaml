@@ -4,5 +4,5 @@
 # processes/instantie/proces.yaml.
 id: test_instantie
 recording_actor: test_instantie
-stromen: [../../chronicles/test_aanvragen.yaml]
-lexostatussen: lexostatussen.yaml
+streams: [../../chronicles/test_aanvragen.yaml]
+lexostatuses: lexostatuses.yaml

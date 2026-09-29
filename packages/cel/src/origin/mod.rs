@@ -40,7 +40,7 @@ use regelrecht_law_model::{
     ArticleBasedLaw, Declared, Origin, OriginOverride, OriginRole, OriginValue, Parameter,
 };
 
-use crate::cel::Cel;
+use crate::cel::Cell;
 use crate::config::{
     HandelingDefinitie, Handelingsoort, Herkomstcontrole, Oordeel, ProcesDefinitie, RijenDefinitie,
 };
@@ -56,7 +56,7 @@ mod vorm;
 #[cfg(test)]
 mod tests;
 
-pub use controle::{controleer, label_uit, oordelen};
+pub use controle::{controleer, label_uit, verdicts};
 pub use levering::Uitvoering;
 
 // Wat de controle van de levering gebruikt.
@@ -65,7 +65,7 @@ pub use vorm::{overschrijvingen, parameter, valideer, Overschrijvingen};
 
 /// Het type van een gram dat een belanghebbende indient (RFC-022 par. 1,
 /// `schema/chronolex/v0.2.0/stream.json`): wat de aanvrager aanlevert.
-const INDIENING: &str = "indiening";
+const INDIENING: &str = "submission";
 
 /// De herkomst die voor een parameter geldt, en waar ze staat.
 #[derive(Debug, Clone, PartialEq)]
@@ -105,12 +105,12 @@ impl Geldend {
 #[derive(Debug, Default)]
 pub struct Controle {
     pub fouten: Vec<String>,
-    pub waarschuwingen: Vec<String>,
+    pub warnings: Vec<String>,
     /// Per uitvoering de parameters met hun geldende herkomst, in de volgorde
     /// van declaratie; bij een handeling over alle uitkomsten samen,
     /// onder de naam van de handeling.
     pub parameters: BTreeMap<String, Vec<(Benodigd, Option<Geldend>)>>,
     /// De parameter van het aanbod-artikel die het tijdvak is: `rol:
     /// TIJDVAK`.
-    pub tijdvak: Option<String>,
+    pub window: Option<String>,
 }

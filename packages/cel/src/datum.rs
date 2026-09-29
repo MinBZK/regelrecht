@@ -12,13 +12,13 @@ use chrono::{DateTime, Datelike, FixedOffset, NaiveDate, SecondsFormat};
 /// Een `op_moment` gelezen. Een moment zonder tijdzone of in een andere vorm
 /// is een fout, met het moment erbij.
 pub fn moment(tekst: &str) -> Result<DateTime<FixedOffset>, String> {
-    moment_van("op_moment", tekst)
+    moment_van("effective_at", tekst)
 }
 
 /// Een moment gelezen; een fout noemt het veld (`op_moment`,
 /// `vastgelegd_op`, `peilmoment`) en het moment.
-pub fn moment_van(veld: &str, tekst: &str) -> Result<DateTime<FixedOffset>, String> {
-    DateTime::parse_from_rfc3339(tekst).map_err(|e| format!("ongeldig {veld} '{tekst}': {e}"))
+pub fn moment_van(field: &str, tekst: &str) -> Result<DateTime<FixedOffset>, String> {
+    DateTime::parse_from_rfc3339(tekst).map_err(|e| format!("ongeldig {field} '{tekst}': {e}"))
 }
 
 /// Een punt op de tijdas: een datum (`JJJJ-MM-DD`) of een moment met
@@ -33,13 +33,13 @@ pub enum Tijdpunt {
 
 impl Tijdpunt {
     /// Lees een datum of een moment; `veld` noemt wat het is in de fout.
-    pub fn lees(veld: &str, tekst: &str) -> Result<Self, String> {
+    pub fn lees(field: &str, tekst: &str) -> Result<Self, String> {
         match NaiveDate::parse_from_str(tekst, "%Y-%m-%d") {
             Ok(d) => Ok(Self::Datum(d)),
             Err(_) => DateTime::parse_from_rfc3339(tekst)
                 .map(Self::Moment)
                 .map_err(|_| {
-                    format!("ongeldig {veld} '{tekst}': geen datum (JJJJ-MM-DD) en geen moment met tijdzone (RFC 3339)")
+                    format!("ongeldig {field} '{tekst}': geen datum (JJJJ-MM-DD) en geen moment met tijdzone (RFC 3339)")
                 }),
         }
     }
@@ -82,13 +82,13 @@ pub fn als_op_moment(m: &DateTime<FixedOffset>) -> String {
 }
 
 /// De peildatum (`JJJJ-MM-DD`) van een moment, in zijn eigen tijdzone.
-pub fn peildatum(m: &DateTime<FixedOffset>) -> String {
+pub fn reference_date(m: &DateTime<FixedOffset>) -> String {
     m.date_naive().format("%Y-%m-%d").to_string()
 }
 
 /// De peildatum van een `op_moment`.
-pub fn peildatum_van(op_moment: &str) -> Result<String, String> {
-    moment(op_moment).map(|m| peildatum(&m))
+pub fn peildatum_van(effective_at: &str) -> Result<String, String> {
+    moment(effective_at).map(|m| reference_date(&m))
 }
 
 /// Het jaartal van een moment.
@@ -112,7 +112,7 @@ mod tests {
     #[test]
     fn peildatum_in_de_eigen_tijdzone() {
         let m = moment("2025-03-12T00:30:00+01:00").unwrap();
-        assert_eq!(peildatum(&m), "2025-03-12");
+        assert_eq!(reference_date(&m), "2025-03-12");
         assert_eq!(
             peildatum_van("2024-12-31T23:59:59-05:00").unwrap(),
             "2024-12-31"
@@ -123,7 +123,7 @@ mod tests {
     #[test]
     fn een_ongeldig_moment_is_een_fout() {
         let f = moment("12 maart 2025").unwrap_err();
-        assert!(f.contains("ongeldig op_moment '12 maart 2025'"), "{f}");
+        assert!(f.contains("ongeldig effective_at '12 maart 2025'"), "{f}");
         // Een datum zonder tijd is geen moment.
         assert!(moment("2025-03-12").is_err());
     }

@@ -24,7 +24,7 @@ use crate::gram::GeladenRegeling;
 /// de inventaris ervan voor het receipt van een besluit (RFC-013).
 pub struct Corpus {
     pub service: LawExecutionService,
-    pub regelingen: Vec<GeladenRegeling>,
+    pub regulations: Vec<GeladenRegeling>,
 }
 
 /// Laad elke regeling (een YAML-bestand met `$id` en `articles`) onder een
@@ -52,11 +52,11 @@ pub fn laad(map: &Path) -> Result<Corpus, Vec<String>> {
     }
     bestanden.retain(|p| p.extension().is_some_and(|x| x == "yaml" || x == "yml"));
     bestanden.sort();
-    for pad in bestanden {
-        let tekst = match std::fs::read_to_string(&pad) {
+    for path in bestanden {
+        let tekst = match std::fs::read_to_string(&path) {
             Ok(t) => t,
             Err(e) => {
-                fouten.push(format!("{}: {e}", pad.display()));
+                fouten.push(format!("{}: {e}", path.display()));
                 continue;
             }
         };
@@ -64,7 +64,7 @@ pub fn laad(map: &Path) -> Result<Corpus, Vec<String>> {
             Ok(d) => d,
             Err(e) => {
                 // Geen YAML, dus geen regeling; wel het melden waard.
-                tracing::warn!(pad = %pad.display(), "geen geldige YAML, overgeslagen: {e}");
+                tracing::warn!(path = %path.display(), "geen geldige YAML, overgeslagen: {e}");
                 continue;
             }
         };
@@ -80,19 +80,19 @@ pub fn laad(map: &Path) -> Result<Corpus, Vec<String>> {
                     fouten.extend(
                         crate::origin::valideer(law)
                             .into_iter()
-                            .map(|f| format!("{}: {f}", pad.display())),
+                            .map(|f| format!("{}: {f}", path.display())),
                     );
                 }
-                geladen.push(inventariseer(&pad, &tekst, &doc, id));
+                geladen.push(inventariseer(&path, &tekst, &doc, id));
             }
-            Err(e) => fouten.push(format!("{}: {e}", pad.display())),
+            Err(e) => fouten.push(format!("{}: {e}", path.display())),
         }
     }
     geladen.sort();
     if fouten.is_empty() {
         Ok(Corpus {
             service,
-            regelingen: geladen,
+            regulations: geladen,
         })
     } else {
         Err(fouten)
@@ -104,7 +104,7 @@ pub fn laad(map: &Path) -> Result<Corpus, Vec<String>> {
 /// in het corpus de ingangsdatum; staat die er niet, dan telt `valid_from` of
 /// `publication_date` uit het bestand zelf.
 fn inventariseer(
-    pad: &Path,
+    path: &Path,
     tekst: &str,
     doc: &serde_yaml_ng::Value,
     id: String,
@@ -114,7 +114,7 @@ fn inventariseer(
             .and_then(serde_yaml_ng::Value::as_str)
             .map(str::to_string)
     };
-    let stam = pad
+    let stam = path
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
         .filter(|s| s.len() == 10 && s.split('-').count() == 3);
@@ -122,7 +122,7 @@ fn inventariseer(
         .or_else(|| lees("valid_from"))
         .or_else(|| lees("publication_date"));
     if valid_from.is_none() {
-        tracing::warn!(regeling = %id, bestand = %pad.display(), "regeling zonder datum in bestandsnaam, valid_from of publication_date: het receipt noemt geen versie");
+        tracing::warn!(regulation = %id, bestand = %path.display(), "regeling zonder datum in bestandsnaam, valid_from of publication_date: het receipt noemt geen versie");
     }
     GeladenRegeling {
         id,
@@ -135,9 +135,9 @@ fn inventariseer(
 /// `<regeling>#<artikel> lid <n>`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Grondslag<'g> {
-    pub regeling: &'g str,
-    pub artikel: &'g str,
-    pub lid: Option<&'g str>,
+    pub regulation: &'g str,
+    pub article: &'g str,
+    pub paragraph: Option<&'g str>,
 }
 
 /// Of een tekst een lidnummer is: cijfers, eventueel met een letter.
@@ -151,28 +151,28 @@ fn is_lidnummer(tekst: &str) -> bool {
 /// Ontleed een grondslag. Een artikelnummer kan een spatie hebben
 /// (`kieswet#G 1`), dus het lid staat achter de laatste ` lid `, en alleen als
 /// daar een lidnummer staat.
-pub fn ontleed(grondslag: &str) -> Result<Grondslag<'_>, String> {
-    let (regeling, rest) = grondslag.split_once('#').ok_or_else(|| {
-        format!("grondslag '{grondslag}' heeft niet de vorm <regeling>#<artikel>")
+pub fn ontleed(legal_basis: &str) -> Result<Grondslag<'_>, String> {
+    let (regulation, rest) = legal_basis.split_once('#').ok_or_else(|| {
+        format!("grondslag '{legal_basis}' heeft niet de vorm <regeling>#<artikel>")
     })?;
-    let (artikel, lid) = match rest.rsplit_once(" lid ") {
-        Some((artikel, lid)) if is_lidnummer(lid) => (artikel, Some(lid)),
+    let (article, paragraph) = match rest.rsplit_once(" lid ") {
+        Some((article, paragraph)) if is_lidnummer(paragraph) => (article, Some(paragraph)),
         _ => (rest, None),
     };
     Ok(Grondslag {
-        regeling,
-        artikel,
-        lid,
+        regulation,
+        article,
+        paragraph,
     })
 }
 
 /// Of een artikeltekst een lid heeft: een regel die met `<n>.` of `<n> `
 /// begint.
-pub fn heeft_lid(artikel: &Article, lid: &str) -> bool {
-    artikel.text.lines().any(|regel| {
+pub fn heeft_lid(article: &Article, paragraph: &str) -> bool {
+    article.text.lines().any(|regel| {
         regel
             .trim_start()
-            .strip_prefix(lid)
+            .strip_prefix(paragraph)
             .is_some_and(|rest| rest.starts_with('.') || rest.starts_with(' '))
     })
 }
@@ -180,21 +180,20 @@ pub fn heeft_lid(artikel: &Article, lid: &str) -> bool {
 /// Het artikel achter een grondslag `<regeling>#<artikel>`, ook als de
 /// grondslag een lid noemt: een lid heeft geen eigen parameters. Of het lid
 /// bestaat, controleert [`heeft_lid`].
-pub fn artikel<'s>(
+pub fn article<'s>(
     service: &'s LawExecutionService,
-    grondslag: &str,
+    legal_basis: &str,
 ) -> Result<&'s Article, String> {
     let Grondslag {
-        regeling,
-        artikel: nummer,
+        regulation,
+        article: nummer,
         ..
-    } = ontleed(grondslag)?;
-    let law = service
-        .resolver()
-        .get_law(regeling)
-        .ok_or_else(|| format!("grondslag '{grondslag}': regeling '{regeling}' is niet geladen"))?;
+    } = ontleed(legal_basis)?;
+    let law = service.resolver().get_law(regulation).ok_or_else(|| {
+        format!("grondslag '{legal_basis}': regeling '{regulation}' is niet geladen")
+    })?;
     law.find_article_by_number(nummer).ok_or_else(|| {
-        format!("grondslag '{grondslag}': regeling '{regeling}' heeft geen artikel {nummer}")
+        format!("grondslag '{legal_basis}': regeling '{regulation}' heeft geen artikel {nummer}")
     })
 }
 
@@ -203,12 +202,12 @@ pub fn artikel<'s>(
 /// grondslag van een event, van een afleiding en van een formulierveld.
 pub fn geldig<'s>(
     service: &'s LawExecutionService,
-    grondslag: &str,
+    legal_basis: &str,
 ) -> Result<&'s Article, String> {
-    let a = artikel(service, grondslag)?;
-    if let Some(lid) = ontleed(grondslag)?.lid.filter(|l| !heeft_lid(a, l)) {
+    let a = article(service, legal_basis)?;
+    if let Some(paragraph) = ontleed(legal_basis)?.paragraph.filter(|l| !heeft_lid(a, l)) {
         return Err(format!(
-            "grondslag '{grondslag}': artikel {} heeft geen lid {lid} (geen regel die met '{lid}.' of '{lid} ' begint)",
+            "grondslag '{legal_basis}': artikel {} heeft geen lid {paragraph} (geen regel die met '{paragraph}.' of '{paragraph} ' begint)",
             a.number
         ));
     }
@@ -222,21 +221,25 @@ pub fn geldig<'s>(
 /// engine geeft hem door als de invoer geen eigen `parameters` meegeeft.
 pub fn transitieve_parameters(
     service: &LawExecutionService,
-    regeling: &str,
-    artikel: &Article,
+    regulation: &str,
+    article: &Article,
 ) -> BTreeSet<String> {
     let mut parameters = BTreeSet::new();
     let mut gezien: BTreeSet<(String, String)> = BTreeSet::new();
-    let mut te_doen: Vec<(String, &Article)> = vec![(regeling.to_string(), artikel)];
+    let mut te_doen: Vec<(String, &Article)> = vec![(regulation.to_string(), article)];
     while let Some((law, a)) = te_doen.pop() {
         if !gezien.insert((law.clone(), a.number.clone())) {
             continue;
         }
         parameters.extend(a.get_parameters().iter().map(|p| p.name.clone()));
-        for invoer in a.get_inputs() {
-            let Some(bron) = &invoer.source else { continue };
-            let Some(output) = &bron.output else { continue };
-            let doel = bron.regulation.clone().unwrap_or_else(|| law.clone());
+        for input in a.get_inputs() {
+            let Some(source) = &input.source else {
+                continue;
+            };
+            let Some(output) = &source.output else {
+                continue;
+            };
+            let doel = source.regulation.clone().unwrap_or_else(|| law.clone());
             if let Some(volgend) = service
                 .resolver()
                 .get_article_by_output(&doel, output, None)
@@ -256,21 +259,21 @@ pub struct Waardetype {
     #[serde(rename = "type")]
     pub soort: ParameterType,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub eenheid: Option<String>,
+    pub unit: Option<String>,
 }
 
 impl Waardetype {
     pub fn nieuw(soort: ParameterType, type_spec: Option<&TypeSpec>) -> Self {
         Self {
             soort,
-            eenheid: type_spec.and_then(|t| t.unit.clone()),
+            unit: type_spec.and_then(|t| t.unit.clone()),
         }
     }
 }
 
 /// De typen van de uitkomsten van een artikel, per naam.
-pub fn uitkomsttypen(service: &LawExecutionService, artikel: &str) -> BTreeMap<String, Waardetype> {
-    self::artikel(service, artikel)
+pub fn uitkomsttypen(service: &LawExecutionService, article: &str) -> BTreeMap<String, Waardetype> {
+    self::article(service, article)
         .ok()
         .and_then(|a| a.get_execution_spec())
         .and_then(|e| e.output.as_ref())
@@ -291,15 +294,15 @@ pub fn uitkomsttypen(service: &LawExecutionService, artikel: &str) -> BTreeMap<S
 /// artikel dat hem declareert.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Benodigd {
-    pub naam: String,
+    pub name: String,
     /// `<regeling>#<artikel>`.
-    pub artikel: String,
+    pub article: String,
     #[serde(flatten)]
-    pub typering: Waardetype,
+    pub typing: Waardetype,
     pub nullable: bool,
     /// De omschrijving uit de regeling, met de herkomst volgens het model.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub omschrijving: Option<String>,
+    pub description: Option<String>,
 }
 
 /// De parameters die de aanroeper van een artikel moet leveren: die van het
@@ -311,30 +314,34 @@ pub struct Benodigd {
 /// het eerste artikel dat hem declareert.
 pub fn benodigde_parameters(
     service: &LawExecutionService,
-    regeling: &str,
-    artikel: &Article,
+    regulation: &str,
+    article: &Article,
 ) -> BTreeMap<String, Benodigd> {
     let mut uit: BTreeMap<String, Benodigd> = BTreeMap::new();
     let mut gezien: BTreeSet<(String, String)> = BTreeSet::new();
-    let mut te_doen: Vec<(String, &Article)> = vec![(regeling.to_string(), artikel)];
+    let mut te_doen: Vec<(String, &Article)> = vec![(regulation.to_string(), article)];
     while let Some((law, a)) = te_doen.pop() {
         if !gezien.insert((law.clone(), a.number.clone())) {
             continue;
         }
         for p in a.get_parameters() {
             uit.entry(p.name.clone()).or_insert_with(|| Benodigd {
-                naam: p.name.clone(),
-                artikel: format!("{law}#{}", a.number),
-                typering: Waardetype::nieuw(p.param_type, p.type_spec.as_ref()),
+                name: p.name.clone(),
+                article: format!("{law}#{}", a.number),
+                typing: Waardetype::nieuw(p.param_type, p.type_spec.as_ref()),
                 nullable: p.is_nullable(),
-                omschrijving: p.description.clone(),
+                description: p.description.clone(),
             });
         }
-        for invoer in a.get_inputs() {
-            let Some(bron) = &invoer.source else { continue };
-            let Some(output) = &bron.output else { continue };
-            let doel = bron.regulation.clone().unwrap_or_else(|| law.clone());
-            if doel != law || bron.parameters.as_ref().is_some_and(|p| !p.is_empty()) {
+        for input in a.get_inputs() {
+            let Some(source) = &input.source else {
+                continue;
+            };
+            let Some(output) = &source.output else {
+                continue;
+            };
+            let doel = source.regulation.clone().unwrap_or_else(|| law.clone());
+            if doel != law || source.parameters.as_ref().is_some_and(|p| !p.is_empty()) {
                 continue;
             }
             if let Some(volgend) = service
@@ -363,7 +370,7 @@ mod tests {
         assert!(c.service.has_law("testregeling_aanvraag"));
         assert!(c.service.has_law("testregeling_awb"));
         // De inventaris voor het receipt: elke regeling met haar hash.
-        assert!(c.regelingen.iter().any(|r| r.id == "testregeling_aanvraag"
+        assert!(c.regulations.iter().any(|r| r.id == "testregeling_aanvraag"
             && r.valid_from == "2025-01-01"
             && r.sha256.len() == 64));
     }
@@ -371,15 +378,15 @@ mod tests {
     #[test]
     fn grondslag_naar_artikel() {
         let s = laad(&fixtures()).unwrap().service;
-        let a = artikel(&s, "testregeling_aanvraag#1").unwrap();
+        let a = article(&s, "testregeling_aanvraag#1").unwrap();
         assert!(a.get_parameters().iter().any(|p| p.name == "bevat_naam"));
-        assert!(artikel(&s, "testregeling_aanvraag#9")
+        assert!(article(&s, "testregeling_aanvraag#9")
             .unwrap_err()
             .contains("geen artikel 9"));
-        assert!(artikel(&s, "onbekend#1")
+        assert!(article(&s, "onbekend#1")
             .unwrap_err()
             .contains("niet geladen"));
-        assert!(artikel(&s, "zonder_hekje").is_err());
+        assert!(article(&s, "zonder_hekje").is_err());
     }
 
     #[test]
@@ -387,28 +394,28 @@ mod tests {
         assert_eq!(
             ontleed("een_wet#102 lid 1").unwrap(),
             Grondslag {
-                regeling: "een_wet",
-                artikel: "102",
-                lid: Some("1")
+                regulation: "een_wet",
+                article: "102",
+                paragraph: Some("1")
             }
         );
-        assert_eq!(ontleed("een_wet#4:2 lid 2a").unwrap().lid, Some("2a"));
+        assert_eq!(ontleed("een_wet#4:2 lid 2a").unwrap().paragraph, Some("2a"));
         // Een artikelnummer met een spatie, met en zonder lid.
         assert_eq!(
             ontleed("kieswet#G 1 lid 3").unwrap(),
             Grondslag {
-                regeling: "kieswet",
-                artikel: "G 1",
-                lid: Some("3")
+                regulation: "kieswet",
+                article: "G 1",
+                paragraph: Some("3")
             }
         );
-        assert_eq!(ontleed("kieswet#G 1").unwrap().artikel, "G 1");
+        assert_eq!(ontleed("kieswet#G 1").unwrap().article, "G 1");
         // Geen lidnummer: dan hoort het bij het artikelnummer.
-        assert_eq!(ontleed("een_wet#A lid B").unwrap().artikel, "A lid B");
-        assert_eq!(ontleed("een_wet#1 lid 12ab").unwrap().lid, None);
+        assert_eq!(ontleed("een_wet#A lid B").unwrap().article, "A lid B");
+        assert_eq!(ontleed("een_wet#1 lid 12ab").unwrap().paragraph, None);
 
         let s = laad(&fixtures()).unwrap().service;
-        let a = artikel(&s, "testregeling_aanvraag#1 lid 1").unwrap();
+        let a = article(&s, "testregeling_aanvraag#1 lid 1").unwrap();
         assert_eq!(a.number, "1");
         assert!(heeft_lid(a, "1"), "{}", a.text);
         assert!(!heeft_lid(a, "9"));
@@ -417,16 +424,16 @@ mod tests {
     #[test]
     fn transitieve_parameters_volgen_de_invoer() {
         let s = laad(&fixtures()).unwrap().service;
-        let a = artikel(&s, "testregeling_afnemer#1").unwrap();
+        let a = article(&s, "testregeling_afnemer#1").unwrap();
         let p = transitieve_parameters(&s, "testregeling_afnemer", a);
         // Eigen parameters, die van artikel 2 (zelfde regeling, geen binding)
         // en die van de testregeling register (andere regeling).
-        for naam in [
+        for name in [
             "bevat_aanduiding",
             "zetels_op_lijst",
             "is_ingeschreven_in_register",
         ] {
-            assert!(p.contains(naam), "{naam} ontbreekt in {p:?}");
+            assert!(p.contains(name), "{name} ontbreekt in {p:?}");
         }
         assert!(!p.contains("datum_vaststelling"));
     }
@@ -434,11 +441,11 @@ mod tests {
     #[test]
     fn benodigde_parameters_zonder_wat_een_invoer_bindt() {
         let s = laad(&fixtures()).unwrap().service;
-        let a = artikel(&s, "testregeling_afnemer#1").unwrap();
+        let a = article(&s, "testregeling_afnemer#1").unwrap();
         let p = benodigde_parameters(&s, "testregeling_afnemer", a);
         // Artikel 2 wordt zonder parameters aangeroepen: zijn parameter telt.
-        assert_eq!(p["zetels_op_lijst"].artikel, "testregeling_afnemer#2");
-        assert_eq!(p["datum_mededeling"].typering.soort, ParameterType::Date);
+        assert_eq!(p["zetels_op_lijst"].article, "testregeling_afnemer#2");
+        assert_eq!(p["datum_mededeling"].typing.soort, ParameterType::Date);
         // De testregeling register krijgt haar parameters van artikel 1.
         assert!(!p.contains_key("is_ingeschreven_in_register"));
     }

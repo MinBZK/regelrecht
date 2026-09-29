@@ -1,11 +1,11 @@
 <script setup>
-// Het formulier, opgebouwd uit GET /api/formulier van het proces: de velden
+// Het formulier, opgebouwd uit GET /api/form van het proces: de velden
 // van het event in de stroom van de cel. Labels, soorten en volgorde komen
 // uit het formulierbestand dat het proces meelevert; zonder dat bestand is
 // het label de veldnaam en elk veld tekst.
 import { computed, inject, onMounted, ref } from 'vue';
 import { external, leesPad, zetPad } from '../formulier.js';
-import { herkomstRijen, routesUit } from '../tekst.js';
+import { bronStatusTekst, herkomstRijen, routesUit } from '../tekst.js';
 import Invoer from '../components/Invoer.vue';
 import TabelInvoer from '../components/TabelInvoer.vue';
 import TraceKnop from '@regelrecht/frontend-shared/components/TraceKnop.vue';
@@ -13,14 +13,14 @@ import TraceKnop from '@regelrecht/frontend-shared/components/TraceKnop.vue';
 const api = inject('api');
 // Het aanvraagvoorbeeld van het proces (`external`), of null.
 const voorbeelden = inject('voorbeelden');
-const voorbeeld = computed(() => voorbeelden.value.aanvraag);
+const voorbeeld = computed(() => voorbeelden.value.application);
 
 // Waarden die al vaststaan, bijvoorbeeld het tijdvak van de gekozen
 // aanvraagmogelijkheid.
 const props = defineProps({
   vooraf: { type: Object, default: () => ({}) },
   // Hoe het formulier wordt ingediend: standaard door de ingelogde aanvrager
-  // (POST /api/aanvraag); het loket geeft zijn eigen route mee.
+  // (POST /api/application); het loket geeft zijn eigen route mee.
   verstuur: { type: Function, default: null },
   // Of de toets voor het indienen er is: die toetst het concept van de
   // ingelogde aanvrager, dus niet aan het loket.
@@ -39,8 +39,8 @@ const bezig = ref('');
 onMounted(async () => {
   try {
     stroom.value = await api.formulier();
-    for (const v of stroom.value.velden) {
-      waarden.value[v.naam] = props.vooraf[v.naam] ?? (v.type === 'tabel' ? [{}] : null);
+    for (const v of stroom.value.fields) {
+      waarden.value[v.name] = props.vooraf[v.name] ?? (v.type === 'table' ? [{}] : null);
     }
   } catch (e) {
     fout.value = e.message;
@@ -50,8 +50,8 @@ onMounted(async () => {
 // Velden per groep, in de volgorde van het formulier.
 const groepen = computed(() => {
   const uit = [];
-  for (const v of stroom.value?.velden ?? []) {
-    const titel = v.groep ?? '';
+  for (const v of stroom.value?.fields ?? []) {
+    const titel = v.group ?? '';
     let g = uit.find((x) => x.titel === titel);
     if (!g) uit.push((g = { titel, velden: [] }));
     g.velden.push(v);
@@ -85,9 +85,9 @@ const versie = ref(0);
 // tijdvak) wint.
 function voorbeeldInvullen() {
   const uit = {};
-  for (const v of stroom.value.velden) {
-    const w = props.vooraf[v.naam] ?? leesPad(voorbeeld.value, v.naam);
-    uit[v.naam] = w ?? (v.type === 'tabel' ? [{}] : null);
+  for (const v of stroom.value.fields) {
+    const w = props.vooraf[v.name] ?? leesPad(voorbeeld.value, v.name);
+    uit[v.name] = w ?? (v.type === 'table' ? [{}] : null);
   }
   waarden.value = uit;
   toets.value = null;
@@ -116,29 +116,29 @@ async function indienen(metVoorbeeld = false) {
   }
 }
 
-const uitslag = computed(() => toets.value?.uitslag ?? null);
+const uitslag = computed(() => toets.value?.result ?? null);
 
 // Per parameter die naar de engine ging: de waarde en waar hij vandaan kwam,
 // de eigen lexostatus of een andere cel.
 const herkomst = computed(() =>
-  herkomstRijen(toets.value?.parameters, toets.value?.herkomst, routesUit(toets.value)),
+  herkomstRijen(toets.value?.parameters, toets.value?.provenance, routesUit(toets.value)),
 );
 
-const bronnen = computed(() => toets.value?.bronnen ?? []);
+const bronnen = computed(() => toets.value?.sources ?? []);
 
 const uitslagTekst = computed(() => {
   const u = uitslag.value;
   if (!u) return '';
-  if (!u.te_beoordelen) return 'Niet te beoordelen';
-  return `${u.uitkomst}: ${u.waarde === true ? 'ja' : u.waarde === false ? 'nee' : JSON.stringify(u.waarde)}`;
+  if (!u.to_assess) return 'Niet te beoordelen';
+  return `${u.output}: ${u.value === true ? 'ja' : u.value === false ? 'nee' : JSON.stringify(u.value)}`;
 });
 const uitslagToelichting = computed(() => {
   const u = uitslag.value;
   if (!u) return '';
   const delen = [];
-  if (u.reden) delen.push(u.reden);
-  if (u.ontbreekt?.length) delen.push(`Ontbreekt: ${u.ontbreekt.join(', ')}`);
-  const niet = toets.value?.lexostatus?.niet_afgeleid ?? [];
+  if (u.reason) delen.push(u.reason);
+  if (u.absent?.length) delen.push(`Ontbreekt: ${u.absent.join(', ')}`);
+  const niet = toets.value?.lexostatus?.not_derived ?? [];
   if (niet.length) delen.push(`Niet af te leiden uit het concept: ${niet.join(', ')}`);
   return delen.join('. ');
 });
@@ -146,8 +146,8 @@ const uitslagToelichting = computed(() => {
 
 <template>
   <nldd-title size="2">
-    <h1>{{ titel ?? stroom?.titel ?? 'Indienen' }}</h1>
-    <span slot="subtitle" v-if="stroom">{{ stroom.event }} in stroom {{ stroom.stroom?.$id }}</span>
+    <h1>{{ titel ?? stroom?.title ?? 'Indienen' }}</h1>
+    <span slot="subtitle" v-if="stroom">{{ stroom.event }} in stroom {{ stroom.stream?.$id }}</span>
   </nldd-title>
   <nldd-spacer size="16"></nldd-spacer>
   <template v-if="stroom && voorbeeld">
@@ -167,25 +167,25 @@ const uitslagToelichting = computed(() => {
       <slot name="voor"></slot>
       <template v-for="g in groepen" :key="g.titel">
         <nldd-form-section v-if="g.titel" :text="g.titel"></nldd-form-section>
-        <template v-for="v in g.velden" :key="v.naam">
-          <nldd-form-field v-if="v.type === 'vink'" label="">
-            <Invoer :soort="v.type" :label="v.label" :model-value="waarden[v.naam]" @update:model-value="zet(v.naam, $event)" />
+        <template v-for="v in g.velden" :key="v.name">
+          <nldd-form-field v-if="v.type === 'checkbox'" label="">
+            <Invoer :soort="v.type" :label="v.label" :model-value="waarden[v.name]" @update:model-value="zet(v.name, $event)" />
           </nldd-form-field>
-          <nldd-form-field v-else :label="v.label" :supporting-label="v.naam !== v.label ? v.naam : undefined">
+          <nldd-form-field v-else :label="v.label" :supporting-label="v.name !== v.label ? v.name : undefined">
             <TabelInvoer
-              v-if="v.type === 'tabel'"
+              v-if="v.type === 'table'"
               :label="v.label"
-              :kolommen="v.kolommen ?? []"
-              :model-value="waarden[v.naam] ?? []"
-              @update:model-value="zet(v.naam, $event)"
+              :kolommen="v.columns ?? []"
+              :model-value="waarden[v.name] ?? []"
+              @update:model-value="zet(v.name, $event)"
             />
             <Invoer
               v-else
               :soort="v.type"
               :label="v.label"
-              :keuzes="v.opties"
-              :model-value="waarden[v.naam]"
-              @update:model-value="zet(v.naam, $event)"
+              :keuzes="v.options"
+              :model-value="waarden[v.name]"
+              @update:model-value="zet(v.name, $event)"
             />
           </nldd-form-field>
         </template>
@@ -193,11 +193,11 @@ const uitslagToelichting = computed(() => {
       <template v-if="uitslag">
         <nldd-container layout="row" gap="8" vertical-alignment="center">
           <nldd-inline-dialog
-            :variant="uitslag.te_beoordelen && uitslag.waarde === true ? 'success' : 'alert'"
+            :variant="uitslag.to_assess && uitslag.value === true ? 'success' : 'alert'"
             :text="uitslagTekst"
             :supporting-text="uitslagToelichting"
           ></nldd-inline-dialog>
-          <TraceKnop v-if="uitslag.trace_text" :trace-text="uitslag.trace_text" :titel="uitslag.uitkomst" />
+          <TraceKnop v-if="uitslag.trace_text" :trace-text="uitslag.trace_text" :titel="uitslag.output" />
         </nldd-container>
       </template>
       <template v-if="herkomst.length">
@@ -213,12 +213,12 @@ const uitslagToelichting = computed(() => {
             <nldd-text-cell :text="h.bron"></nldd-text-cell>
           </nldd-table-row>
         </nldd-table>
-        <template v-for="b in bronnen" :key="b.cel + b.lexostatus">
+        <template v-for="b in bronnen" :key="b.cell + b.lexostatus">
           <nldd-inline-dialog
-            v-if="b.status !== 'bevraagd'"
+            v-if="b.status !== 'queried'"
             variant="alert"
-            :text="`Bron ${b.cel}: ${b.status.replace('_', ' ')}`"
-            :supporting-text="b.fout"
+            :text="`Bron ${b.cell}: ${bronStatusTekst(b.status)}`"
+            :supporting-text="b.error"
           ></nldd-inline-dialog>
         </template>
       </template>

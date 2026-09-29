@@ -36,33 +36,33 @@ fn fixtures() -> PathBuf {
 /// vaste laadtijd als `vastgelegd_op`).
 fn grammen_van(cel_map: &Path, extra: &[Value]) -> (CelDefinitie, Vec<Gram>) {
     let def = CelDefinitie::laad(cel_map).unwrap();
-    let mut strommen = Vec::new();
-    for s in &def.stromen {
-        strommen.extend(stroom::laad(&cel_map.join(s)).unwrap());
+    let mut streams = Vec::new();
+    for s in &def.streams {
+        streams.extend(stroom::laad(&cel_map.join(s)).unwrap());
     }
     // Een stroom met `vestigt` krijgt zijn vorm uit de wet: met
     // `EXP_REGULATION` het corpus waarin die wet staat.
-    if let Ok(pad) = std::env::var("EXP_REGULATION") {
-        let corpus = regelrecht_cel::regelingen::laad(Path::new(&pad)).unwrap();
-        let fouten = regelrecht_cel::wet::vestig(&mut strommen, &corpus.service);
+    if let Ok(path) = std::env::var("EXP_REGULATION") {
+        let corpus = regelrecht_cel::regelingen::laad(Path::new(&path)).unwrap();
+        let fouten = regelrecht_cel::wet::vestig(&mut streams, &corpus.service);
         assert!(fouten.is_empty(), "{fouten:?}");
     }
-    stroom::leid_rollen_af(&mut strommen);
+    stroom::leid_rollen_af(&mut streams);
     let mut tekst =
-        std::fs::read_to_string(cel_map.join(def.startstand.as_ref().unwrap())).unwrap();
+        std::fs::read_to_string(cel_map.join(def.initial_state.as_ref().unwrap())).unwrap();
     for e in extra {
         tekst.push('\n');
         tekst.push_str(&e.to_string());
     }
-    let grammen = startstand::parse(&tekst, "startstand", &strommen).unwrap();
+    let grams = startstand::parse(&tekst, "startstand", &streams).unwrap();
     let laadtijd = chrono::DateTime::parse_from_rfc3339(LAADTIJD).unwrap();
-    (def, startstand::geplaatst(&grammen, &laadtijd).unwrap())
+    (def, startstand::geplaatst(&grams, &laadtijd).unwrap())
 }
 
-fn service_met(artikel: &Path) -> (Arc<LawExecutionService>, String) {
+fn service_met(article: &Path) -> (Arc<LawExecutionService>, String) {
     let mut s = LawExecutionService::new();
     let id = s
-        .load_law(&std::fs::read_to_string(artikel).unwrap())
+        .load_law(&std::fs::read_to_string(article).unwrap())
         .unwrap();
     (Arc::new(s), id)
 }
@@ -74,8 +74,8 @@ fn service_met(artikel: &Path) -> (Arc<LawExecutionService>, String) {
 fn vergelijk(
     def: &reductie::LexostatusDefinitie,
     service: &Arc<LawExecutionService>,
-    regeling: &str,
-    grammen: &[Gram],
+    regulation: &str,
+    grams: &[Gram],
     inputs: &[Map<String, Value>],
 ) -> Vec<String> {
     let route = CelRoute {
@@ -83,8 +83,8 @@ fn vergelijk(
         wijzen: BTreeMap::from([(
             def.name.clone(),
             Wijze::Engine {
-                regeling: regeling.to_string(),
-                artikel: None,
+                regulation: regulation.to_string(),
+                article: None,
             },
         )]),
         vergelijk: true,
@@ -96,7 +96,7 @@ fn vergelijk(
                 &route,
                 def,
                 i,
-                grammen,
+                grams,
                 &Peil::default(),
                 DATUM,
                 false,
@@ -108,21 +108,21 @@ fn vergelijk(
 }
 
 fn register() -> (reductie::LexostatusDefinitie, Vec<Gram>) {
-    let map = fixtures().join("cellen/register");
+    let map = fixtures().join("cells/register");
     // Meer dan de startstand: een schrapping, een tweede uitslag, en twee
     // mededelingen waarvan de laatste in een andere tijdzone staat (08:30Z is
     // later dan 09:00+01:00). Zo telt `kies: laatste` op het moment, niet op
     // de tekst of de volgorde van toevoegen.
     let extra = [
-        json!({"stroom": "test_registers", "name": "aanduiding_ingeschreven", "op_moment": "2024-01-11T09:00:00+01:00", "herkomst": "startstand", "fields": {"aanduiding": "ANDERS", "orgaan": "raad", "gebied": "Buurdorp"}}),
-        json!({"stroom": "test_registers", "name": "aanduiding_geschrapt", "op_moment": "2024-06-01T09:00:00+01:00", "herkomst": "startstand", "fields": {"aanduiding": "ANDERS", "orgaan": "raad"}}),
-        json!({"stroom": "test_registers", "name": "uitslag_vastgesteld", "op_moment": "2024-03-21T09:00:00+01:00", "herkomst": "startstand", "fields": {"orgaan": "raad", "gebied": "Buurdorp", "lijst": "ANDERS", "zetels": 7}}),
-        json!({"stroom": "test_registers", "name": "mededeling_gedaan", "op_moment": "2024-12-02T08:30:00+00:00", "herkomst": "startstand", "fields": {"aanduiding": "VOORBEELD", "datum": "2024-12-02", "geblokkeerd_voor": ["raad"]}}),
-        json!({"stroom": "test_registers", "name": "mededeling_gedaan", "op_moment": "2024-12-02T09:00:00+01:00", "herkomst": "startstand", "fields": {"aanduiding": "VOORBEELD", "datum": "2024-12-01", "geblokkeerd_voor": []}}),
+        json!({"stream": "test_registers", "name": "aanduiding_ingeschreven", "effective_at": "2024-01-11T09:00:00+01:00", "provenance": "initial_state", "fields": {"aanduiding": "ANDERS", "orgaan": "raad", "gebied": "Buurdorp"}}),
+        json!({"stream": "test_registers", "name": "aanduiding_geschrapt", "effective_at": "2024-06-01T09:00:00+01:00", "provenance": "initial_state", "fields": {"aanduiding": "ANDERS", "orgaan": "raad"}}),
+        json!({"stream": "test_registers", "name": "uitslag_vastgesteld", "effective_at": "2024-03-21T09:00:00+01:00", "provenance": "initial_state", "fields": {"orgaan": "raad", "gebied": "Buurdorp", "lijst": "ANDERS", "zetels": 7}}),
+        json!({"stream": "test_registers", "name": "mededeling_gedaan", "effective_at": "2024-12-02T08:30:00+00:00", "provenance": "initial_state", "fields": {"aanduiding": "VOORBEELD", "datum": "2024-12-02", "geblokkeerd_voor": ["raad"]}}),
+        json!({"stream": "test_registers", "name": "mededeling_gedaan", "effective_at": "2024-12-02T09:00:00+01:00", "provenance": "initial_state", "fields": {"aanduiding": "VOORBEELD", "datum": "2024-12-01", "geblokkeerd_voor": []}}),
     ];
-    let (def, grammen) = grammen_van(&map, &extra);
-    let lexo = reductie::laad(&map.join(&def.lexostatussen)).unwrap();
-    (lexo.lexostatus("registerstatus").unwrap().clone(), grammen)
+    let (def, grams) = grammen_van(&map, &extra);
+    let lexo = reductie::laad(&map.join(&def.lexostatuses)).unwrap();
+    (lexo.lexostatus("registerstatus").unwrap().clone(), grams)
 }
 
 /// Notitie "bron en gram-id", stap 4: de bevraging van een register staat in
@@ -136,13 +136,13 @@ fn register() -> (reductie::LexostatusDefinitie, Vec<Gram>) {
 fn een_register_uit_de_kroniek_en_uit_een_legacy_adapter_geeft_hetzelfde() {
     use regelrecht_engine::DictDataSource;
     const BELEID: &str = "testbeleid_registerhouder";
-    let (_, grammen) = register();
+    let (_, grams) = register();
     let tekst =
         std::fs::read_to_string(fixtures().join("beleid/testbeleid_registerhouder.yaml")).unwrap();
-    let mut kroniek = LawExecutionService::new();
-    kroniek.load_law(&tekst).unwrap();
-    kroniek.add_data_source(Box::new(
-        lexostatus_engine::KroniekBron::new(BELEID, &grammen, "test_register").unwrap(),
+    let mut chronicle = LawExecutionService::new();
+    chronicle.load_law(&tekst).unwrap();
+    chronicle.add_data_source(Box::new(
+        lexostatus_engine::KroniekBron::new(BELEID, &grams, "test_register").unwrap(),
     ));
     // De oude API: per aanduiding de records van die aanduiding, in de vorm
     // die het beleid leest.
@@ -150,20 +150,17 @@ fn een_register_uit_de_kroniek_en_uit_een_legacy_adapter_geeft_hetzelfde() {
     let records: Vec<BTreeMap<String, regelrecht_engine::Value>> = aanduidingen
         .iter()
         .map(|a| {
-            let eigen: Vec<&Gram> = grammen
+            let eigen: Vec<&Gram> = grams
                 .iter()
                 .filter(|g| g.fields.get("aanduiding").and_then(Value::as_str) == Some(*a))
                 .collect();
-            let lijst = lexostatus_engine::als_kroniek(eigen, "test_register").unwrap();
+            let list = lexostatus_engine::als_kroniek(eigen, "test_register").unwrap();
             BTreeMap::from([
                 (
                     "aanduiding".to_string(),
                     regelrecht_engine::Value::from(&json!(a)),
                 ),
-                (
-                    "grammen".to_string(),
-                    regelrecht_engine::Value::from(&lijst),
-                ),
+                ("grams".to_string(), regelrecht_engine::Value::from(&list)),
             ])
         })
         .collect();
@@ -174,7 +171,7 @@ fn een_register_uit_de_kroniek_en_uit_een_legacy_adapter_geeft_hetzelfde() {
             .unwrap()
             .with_law_scope(BELEID),
     ));
-    let uitkomsten = ["is_ingeschreven_in_register", "is_geschrapt"];
+    let outputs = ["is_ingeschreven_in_register", "is_geschrapt"];
     let mut gezien = 0;
     for a in aanduidingen {
         for orgaan in ["raad", "staten"] {
@@ -182,9 +179,9 @@ fn een_register_uit_de_kroniek_en_uit_een_legacy_adapter_geeft_hetzelfde() {
                 ("aanduiding".into(), json!(a)),
                 ("orgaan".into(), json!(orgaan)),
             ]);
-            let k = regelrecht_cel::toets::evalueer(&kroniek, BELEID, &uitkomsten, &p, DATUM);
-            let d = regelrecht_cel::toets::evalueer(&api, BELEID, &uitkomsten, &p, DATUM);
-            assert!(k.volledig(&uitkomsten), "{a} {orgaan}: {k:?}");
+            let k = regelrecht_cel::toets::evalueer(&chronicle, BELEID, &outputs, &p, DATUM);
+            let d = regelrecht_cel::toets::evalueer(&api, BELEID, &outputs, &p, DATUM);
+            assert!(k.volledig(&outputs), "{a} {orgaan}: {k:?}");
             assert_eq!(k.waarden, d.waarden, "{a} {orgaan}");
             gezien += usize::from(k.waarden["is_ingeschreven_in_register"] == json!(true));
         }
@@ -204,13 +201,13 @@ fn inputs(aanduidingen: &[&str]) -> Vec<Map<String, Value>> {
 
 #[test]
 fn registerstatus_via_engine_gelijk_aan_reductie() {
-    let (def, grammen) = register();
+    let (def, grams) = register();
     let (service, id) = service_met(&fixtures().join("experiment/lexostatus_registerstatus.yaml"));
     let v = vergelijk(
         &def,
         &service,
         &id,
-        &grammen,
+        &grams,
         &inputs(&["VOORBEELD", "ANDERS", "ONBEKEND"]),
     );
     assert!(v.is_empty(), "{v:#?}");
@@ -218,7 +215,7 @@ fn registerstatus_via_engine_gelijk_aan_reductie() {
 
 #[test]
 fn laatste_is_op_moment_niet_op_toevoegen() {
-    let (def, grammen) = register();
+    let (def, grams) = register();
     let (service, id) = service_met(&fixtures().join("experiment/lexostatus_registerstatus.yaml"));
     let i = &inputs(&["VOORBEELD"])[0];
     let uit = lexostatus_engine::reduceer(
@@ -226,8 +223,8 @@ fn laatste_is_op_moment_niet_op_toevoegen() {
         &id,
         &["datum_mededeling", "geblokkeerd", "jaar_van_mededeling"],
         i,
-        &grammen,
-        &def.reduction.kroniek,
+        &grams,
+        &def.reduction.chronicle,
         DATUM,
     )
     .unwrap();
@@ -238,17 +235,17 @@ fn laatste_is_op_moment_niet_op_toevoegen() {
 
 #[test]
 fn geen_gram_is_nee_nul_of_weg() {
-    let (def, grammen) = register();
+    let (def, grams) = register();
     let (service, id) = service_met(&fixtures().join("experiment/lexostatus_registerstatus.yaml"));
     let namen = uitkomsten_van(&def);
-    let uitkomsten: Vec<&str> = namen.iter().map(String::as_str).collect();
+    let outputs: Vec<&str> = namen.iter().map(String::as_str).collect();
     let uit = lexostatus_engine::reduceer(
         &service,
         &id,
-        &uitkomsten,
+        &outputs,
         &inputs(&["ONBEKEND"])[0],
-        &grammen,
-        &def.reduction.kroniek,
+        &grams,
+        &def.reduction.chronicle,
         DATUM,
     )
     .unwrap();
@@ -267,14 +264,14 @@ fn meet_tijd() {
     let (def, basis) = register();
     let (service, id) = service_met(&fixtures().join("experiment/lexostatus_registerstatus.yaml"));
     for extra in [0usize, 100, 990] {
-        let mut grammen = basis.clone();
+        let mut grams = basis.clone();
         for i in 0..extra {
             let mut g = basis[0].clone();
             g.fields
                 .insert("aanduiding".into(), json!(format!("ANDER{i}")));
-            grammen.push(g);
+            grams.push(g);
         }
-        meet(&def, &service, &id, &grammen, &inputs(&["VOORBEELD"])[0]);
+        meet(&def, &service, &id, &grams, &inputs(&["VOORBEELD"])[0]);
     }
 }
 
@@ -282,15 +279,15 @@ fn meet(
     def: &reductie::LexostatusDefinitie,
     service: &LawExecutionService,
     id: &str,
-    grammen: &[Gram],
+    grams: &[Gram],
     i: &Map<String, Value>,
 ) {
     let n = 200;
     let namen = uitkomsten_van(def);
-    let uitkomsten: Vec<&str> = namen.iter().map(String::as_str).collect();
+    let outputs: Vec<&str> = namen.iter().map(String::as_str).collect();
     let t = Instant::now();
     for _ in 0..n {
-        reductie::reduceer(def, i, grammen).unwrap();
+        reductie::reduceer(def, i, grams).unwrap();
     }
     let dsl = t.elapsed();
     let t = Instant::now();
@@ -298,10 +295,10 @@ fn meet(
         lexostatus_engine::reduceer(
             service,
             id,
-            &uitkomsten,
+            &outputs,
             i,
-            grammen,
-            &def.reduction.kroniek,
+            grams,
+            &def.reduction.chronicle,
             DATUM,
         )
         .unwrap();
@@ -310,7 +307,7 @@ fn meet(
     println!(
         "{}: {} grammen, {n}x: dsl {:?}/run, engine {:?}/run",
         def.name,
-        grammen.len(),
+        grams.len(),
         dsl / n,
         engine / n
     );
@@ -329,18 +326,18 @@ fn meet(
 ///
 /// Zonder die variabele slaat de test over.
 #[test]
-fn vergelijk_uit_omgeving() {
-    let Ok(invoer) = std::env::var("EXP_VERGELIJK") else {
+fn compare_from_env() {
+    let Ok(input) = std::env::var("EXP_COMPARE") else {
         eprintln!("EXP_VERGELIJK niet gezet: overgeslagen");
         return;
     };
-    let lijst: Vec<Value> = serde_json::from_str(&invoer).unwrap();
+    let list: Vec<Value> = serde_json::from_str(&input).unwrap();
     let (mut gevallen, mut waarden) = (0, 0);
     let mut verschillen = Vec::new();
-    for v in &lijst {
-        let map = PathBuf::from(v["cel_map"].as_str().unwrap());
+    for v in &list {
+        let map = PathBuf::from(v["cell_dir"].as_str().unwrap());
         let extra: Vec<Value> = match v.get("extra").and_then(Value::as_str) {
-            Some(pad) => std::fs::read_to_string(pad)
+            Some(path) => std::fs::read_to_string(path)
                 .unwrap()
                 .lines()
                 .filter(|r| !r.trim().is_empty())
@@ -348,46 +345,46 @@ fn vergelijk_uit_omgeving() {
                 .collect(),
             None => Vec::new(),
         };
-        let (def, grammen) = grammen_van(&map, &extra);
-        let lexo = reductie::laad(&map.join(&def.lexostatussen)).unwrap();
-        let naam = v["lexostatus"].as_str().unwrap();
-        let def = lexo.lexostatus(naam).unwrap().clone();
-        let (service, id) = service_met(Path::new(v["artikel"].as_str().unwrap()));
+        let (def, grams) = grammen_van(&map, &extra);
+        let lexo = reductie::laad(&map.join(&def.lexostatuses)).unwrap();
+        let name = v["lexostatus"].as_str().unwrap();
+        let def = lexo.lexostatus(name).unwrap().clone();
+        let (service, id) = service_met(Path::new(v["article"].as_str().unwrap()));
         let inputs: Vec<Map<String, Value>> = serde_json::from_value(v["inputs"].clone()).unwrap();
         let namen = uitkomsten_van(&def);
-        let uitkomsten: Vec<&str> = namen.iter().map(String::as_str).collect();
+        let outputs: Vec<&str> = namen.iter().map(String::as_str).collect();
         println!(
-            "{naam} ({} grammen, {} extra): {} gevallen x {} uitkomsten {uitkomsten:?}",
-            grammen.len(),
+            "{name} ({} grammen, {} extra): {} gevallen x {} uitkomsten {outputs:?}",
+            grams.len(),
             extra.len(),
             inputs.len(),
-            uitkomsten.len()
+            outputs.len()
         );
         for i in &inputs {
             let uit = lexostatus_engine::reduceer(
                 &service,
                 &id,
-                &uitkomsten,
+                &outputs,
                 i,
-                &grammen,
-                &def.reduction.kroniek,
+                &grams,
+                &def.reduction.chronicle,
                 DATUM,
             )
             .unwrap();
             println!("  {i:?}: {uit:?}");
         }
         verschillen.extend(
-            vergelijk(&def, &service, &id, &grammen, &inputs)
+            vergelijk(&def, &service, &id, &grams, &inputs)
                 .into_iter()
-                .map(|f| format!("{naam}: {f}")),
+                .map(|f| format!("{name}: {f}")),
         );
         gevallen += inputs.len();
-        waarden += inputs.len() * uitkomsten.len();
-        meet(&def, &service, &id, &grammen, &inputs[0]);
+        waarden += inputs.len() * outputs.len();
+        meet(&def, &service, &id, &grams, &inputs[0]);
     }
     println!(
         "vergeleken: {} lexostatus-runs, {gevallen} gevallen, {waarden} waarden",
-        lijst.len()
+        list.len()
     );
     assert!(verschillen.is_empty(), "{verschillen:#?}");
 }
@@ -409,13 +406,13 @@ fn vergelijk_uit_omgeving() {
 /// - `EXP_AFNEMER`: json `{regeling, uitkomst, tabel, jaar, verwacht}`: de
 ///   afnemer krijgt de tabel als parameter `tabel` en het jaar als `jaar`.
 #[test]
-fn synthese_uit_omgeving() {
-    let (Ok(corpus), Ok(map), Ok(koppeling), Ok(synthese), Ok(afnemer)) = (
+fn synthesis_from_env() {
+    let (Ok(corpus), Ok(map), Ok(koppeling), Ok(synthesis), Ok(afnemer)) = (
         std::env::var("EXP_REGULATION"),
-        std::env::var("EXP_SYNTHESE_MAP"),
-        std::env::var("EXP_KOPPELING"),
-        std::env::var("EXP_SYNTHESE"),
-        std::env::var("EXP_AFNEMER"),
+        std::env::var("EXP_SYNTHESIS_DIR"),
+        std::env::var("EXP_BINDING"),
+        std::env::var("EXP_SYNTHESIS"),
+        std::env::var("EXP_CONSUMER"),
     ) else {
         eprintln!("EXP_* niet gezet: overgeslagen");
         return;
@@ -438,43 +435,43 @@ fn synthese_uit_omgeving() {
     }
     let koppeling: Vec<Value> = serde_json::from_str(&koppeling).unwrap();
     for k in &koppeling {
-        let (_, grammen) = grammen_van(Path::new(k["cel_map"].as_str().unwrap()), &[]);
+        let (_, grams) = grammen_van(Path::new(k["cell_dir"].as_str().unwrap()), &[]);
         service.add_data_source(Box::new(
             lexostatus_engine::KroniekBron::new(
-                k["regeling"].as_str().unwrap(),
-                &grammen,
-                k["kroniek"].as_str().unwrap(),
+                k["regulation"].as_str().unwrap(),
+                &grams,
+                k["chronicle"].as_str().unwrap(),
             )
             .unwrap(),
         ));
     }
     println!("laden: {:?}", t.elapsed());
-    let s: Value = serde_json::from_str(&synthese).unwrap();
+    let s: Value = serde_json::from_str(&synthesis).unwrap();
     let a: Value = serde_json::from_str(&afnemer).unwrap();
-    let invoer: BTreeMap<String, Value> = serde_json::from_value(s["inputs"].clone()).unwrap();
+    let input: BTreeMap<String, Value> = serde_json::from_value(s["inputs"].clone()).unwrap();
     let verwacht: Map<String, Value> = s
-        .get("verwacht")
+        .get("expected")
         .and_then(Value::as_object)
         .cloned()
         .unwrap_or_default();
-    let mut uitkomsten = vec![s["uitkomst"].as_str().unwrap(), s["jaar"].as_str().unwrap()];
-    uitkomsten.extend(verwacht.keys().map(String::as_str));
-    uitkomsten.sort_unstable();
-    uitkomsten.dedup();
+    let mut outputs = vec![s["output"].as_str().unwrap(), s["year"].as_str().unwrap()];
+    outputs.extend(verwacht.keys().map(String::as_str));
+    outputs.sort_unstable();
+    outputs.dedup();
     let t = Instant::now();
     let e = regelrecht_cel::toets::evalueer_met_trace(
         &service,
-        s["regeling"].as_str().unwrap(),
-        &uitkomsten,
-        &invoer,
+        s["regulation"].as_str().unwrap(),
+        &outputs,
+        &input,
         DATUM,
     );
-    println!("synthese: {:?}", t.elapsed());
+    println!("synthesis: {:?}", t.elapsed());
     assert!(
-        e.fout.is_none() && e.mist.is_empty(),
+        e.error.is_none() && e.missing.is_empty(),
         "{:?} {:?}\n{}",
-        e.fout,
-        e.mist,
+        e.error,
+        e.missing,
         e.trace_text.unwrap_or_default()
     );
     let verschillen: Vec<String> = verwacht
@@ -483,33 +480,33 @@ fn synthese_uit_omgeving() {
         .map(|(u, w)| format!("{u}: runtime {w}, engine {:?}", e.waarden.get(u)))
         .collect();
     println!(
-        "synthese: {} van {} uitkomsten gelijk aan de runtime",
+        "synthesis: {} van {} uitkomsten gelijk aan de runtime",
         verwacht.len() - verschillen.len(),
         verwacht.len()
     );
     assert!(verschillen.is_empty(), "{verschillen:#?}");
-    let tabel = e.waarden[s["uitkomst"].as_str().unwrap()].clone();
-    let jaar = e.waarden[s["jaar"].as_str().unwrap()].clone();
-    println!("tabel: {tabel}\njaar: {jaar}");
+    let table = e.waarden[s["output"].as_str().unwrap()].clone();
+    let jaar = e.waarden[s["year"].as_str().unwrap()].clone();
+    println!("table: {table}\njaar: {jaar}");
     let mut p = BTreeMap::new();
-    p.insert(a["tabel"].as_str().unwrap().to_string(), tabel);
-    p.insert(a["jaar"].as_str().unwrap().to_string(), jaar);
+    p.insert(a["table"].as_str().unwrap().to_string(), table);
+    p.insert(a["year"].as_str().unwrap().to_string(), jaar);
     let r = regelrecht_cel::toets::evalueer(
         &service,
-        a["regeling"].as_str().unwrap(),
-        &[a["uitkomst"].as_str().unwrap()],
+        a["regulation"].as_str().unwrap(),
+        &[a["output"].as_str().unwrap()],
         &p,
         DATUM,
     );
     assert!(
-        r.fout.is_none() && r.mist.is_empty(),
+        r.error.is_none() && r.missing.is_empty(),
         "{:?} {:?}",
-        r.fout,
-        r.mist
+        r.error,
+        r.missing
     );
-    let bedrag = &r.waarden[a["uitkomst"].as_str().unwrap()];
-    println!("{}: {bedrag}", a["uitkomst"]);
-    assert_eq!(bedrag, &a["verwacht"]);
+    let bedrag = &r.waarden[a["output"].as_str().unwrap()];
+    println!("{}: {bedrag}", a["output"]);
+    assert_eq!(bedrag, &a["expected"]);
 }
 
 /// Een gram voor de toets van stap 8, zoals een cel het vastlegde.
@@ -518,16 +515,16 @@ fn stap8_gram(
     name: &str,
     soort: &str,
     stage: Option<&str>,
-    verwijst: Value,
+    refers_to: Value,
     fields: Value,
     dag: &str,
 ) -> Gram {
     let mut g = json!({
         "kind": "chronolexogram", "id": id, "type": if stage.is_some() { "decretogram" } else { "executogram" },
-        "soort": soort, "name": name, "chronicle": "test_toeslag", "recording_actor": "test_toeslagdienst",
-        "grondslag": ["testregeling_toeslag#1"], "op_moment": format!("{dag}T10:00:00+01:00"),
-        "vastgelegd_op": format!("{dag}T10:00:00+01:00"), "verwijst": verwijst,
-        "stroom": {"id": "test_toeslag_zaakverloop", "sha256": "0".repeat(64)}, "fields": fields,
+        "subtype": soort, "name": name, "chronicle": "test_toeslag", "recording_actor": "test_toeslagdienst",
+        "legal_basis": ["testregeling_toeslag#1"], "effective_at": format!("{dag}T10:00:00+01:00"),
+        "recorded_at": format!("{dag}T10:00:00+01:00"), "refers_to": refers_to,
+        "stream": {"id": "test_toeslag_zaakverloop", "sha256": "0".repeat(64)}, "fields": fields,
     });
     if let Some(s) = stage {
         g["stage"] = json!(s);
@@ -551,7 +548,7 @@ fn voorschot_en_vaststelling_per_besluit_met_verrekening() {
     let id = |n: u32| format!("00000000-0000-4000-8000-{n:012}");
     let (g101, g110, g111, g120, g130, g131) =
         (id(101), id(110), id(111), id(120), id(130), id(131));
-    let grammen = vec![
+    let grams = vec![
         stap8_gram(
             &g101,
             "aanvraag_ontvangen",
@@ -566,7 +563,7 @@ fn voorschot_en_vaststelling_per_besluit_met_verrekening() {
             "voorschot_verleend",
             "voorschot",
             Some("BESLUIT"),
-            json!({"op_aanvraag": g101}),
+            json!({"on_application": g101}),
             json!({"voorschot": 500}),
             "2025-03-02",
         ),
@@ -575,7 +572,7 @@ fn voorschot_en_vaststelling_per_besluit_met_verrekening() {
             "voorschot_betaald",
             "betaling",
             None,
-            json!({"besluit": g110}),
+            json!({"decision": g110}),
             json!({"bedrag": 500}),
             "2025-03-03",
         ),
@@ -584,23 +581,26 @@ fn voorschot_en_vaststelling_per_besluit_met_verrekening() {
             "toeslag_vastgesteld",
             "vaststelling",
             Some("BESLUIT"),
-            json!({"op_aanvraag": g101}),
+            json!({"on_application": g101}),
             json!({"vastgestelde_toeslag": 300}),
             "2025-03-10",
         ),
     ];
     // De kroniek: de vaststelling hoort via haar verwijzing bij de aanvraag.
     let dir = tempfile::tempdir().unwrap();
-    let kroniek = regelrecht_cel::kroniek::Kroniek::open(dir.path(), &["test_toeslag"]).unwrap();
-    for g in &grammen {
-        kroniek.voeg_toe(g).unwrap();
+    let chronicle = regelrecht_cel::kroniek::Kroniek::open(dir.path(), &["test_toeslag"]).unwrap();
+    for g in &grams {
+        chronicle.voeg_toe(g).unwrap();
     }
     assert_eq!(
-        kroniek.lees_wortel(&["test_toeslag"], &g101).unwrap().len(),
+        chronicle
+            .lees_wortel(&["test_toeslag"], &g101)
+            .unwrap()
+            .len(),
         4
     );
 
-    let evalueer = |grammen: &[Gram], regeling: &str, uitkomsten: &[&str], p: Value| {
+    let evalueer = |grams: &[Gram], regulation: &str, outputs: &[&str], p: Value| {
         let mut corpus = regelrecht_cel::regelingen::laad(&fixtures().join("regulation")).unwrap();
         corpus
             .service
@@ -610,16 +610,16 @@ fn voorschot_en_vaststelling_per_besluit_met_verrekening() {
             )
             .unwrap();
         corpus.service.add_data_source(Box::new(
-            lexostatus_engine::KroniekBron::new(BELEID, grammen, "test_toeslag").unwrap(),
+            lexostatus_engine::KroniekBron::new(BELEID, grams, "test_toeslag").unwrap(),
         ));
         let p: BTreeMap<String, Value> = serde_json::from_value(p).unwrap();
-        let e = regelrecht_cel::toets::evalueer(&corpus.service, regeling, uitkomsten, &p, DATUM);
-        assert!(e.volledig(uitkomsten), "{e:?}");
+        let e = regelrecht_cel::toets::evalueer(&corpus.service, regulation, outputs, &p, DATUM);
+        assert!(e.volledig(outputs), "{e:?}");
         e.waarden
     };
     // De administratie: per besluit, en de voorschotten op dezelfde aanvraag.
     let a = evalueer(
-        &grammen,
+        &grams,
         BELEID,
         &["betaald_bij_besluit", "betaalde_voorschotten"],
         json!({"besluit": g120}),
@@ -638,7 +638,7 @@ fn voorschot_en_vaststelling_per_besluit_met_verrekening() {
     let vaststelling =
         json!({"besluit": g120, "vastgesteld_bedrag": 300, "datum_bekendmaking": "2025-03-11"});
     let v = evalueer(
-        &grammen,
+        &grams,
         BELEID,
         &[
             "nog_te_betalen_verstrekker",
@@ -651,7 +651,7 @@ fn voorschot_en_vaststelling_per_besluit_met_verrekening() {
     // Alleen 4:52 per besluit, zonder verrekening, zou 300 te betalen geven:
     // de dienst zou dan dubbel betalen.
     let alleen = evalueer(
-        &grammen,
+        &grams,
         "testregeling_awb",
         &["nog_te_betalen"],
         json!({"vastgesteld_bedrag": 300, "betaald_bedrag": 0, "datum_bekendmaking": "2025-03-11"}),
@@ -663,13 +663,13 @@ fn voorschot_en_vaststelling_per_besluit_met_verrekening() {
     // hoort; zij vordert terug wat onverschuldigd is. De terugbetaling
     // verwijst naar de terugvordering en telt niet als betaling op de
     // vaststelling.
-    let mut verder = grammen.clone();
+    let mut verder = grams.clone();
     verder.push(stap8_gram(
         &g130,
         "terugvordering_vastgesteld",
         "terugvordering",
         Some("BESLUIT"),
-        json!({"betreft": g120}),
+        json!({"concerns": g120}),
         json!({"terug_te_vorderen": v["onverschuldigd_betaald_verstrekker"].clone()}),
         "2025-03-12",
     ));
@@ -683,26 +683,26 @@ fn voorschot_en_vaststelling_per_besluit_met_verrekening() {
         "2025-03-12",
     ));
     for g in &verder[4..] {
-        kroniek.voeg_toe(g).unwrap();
+        chronicle.voeg_toe(g).unwrap();
     }
-    let groep = kroniek.lees_wortel(&["test_toeslag"], &g101).unwrap();
+    let group = chronicle.lees_wortel(&["test_toeslag"], &g101).unwrap();
     assert_eq!(
-        groep.len(),
+        group.len(),
         6,
         "de terugvordering hoort via betreft bij de aanvraag"
     );
-    assert_eq!(groep[4].gram.wortel.as_deref(), Some(g101.as_str()));
-    let na = evalueer(
+    assert_eq!(group[4].gram.root.as_deref(), Some(g101.as_str()));
+    let after = evalueer(
         &verder,
         BELEID,
         &["betaald_bij_besluit", "betaalde_voorschotten"],
         json!({"besluit": g120}),
     );
-    assert_eq!(na["betaald_bij_besluit"], json!(0));
-    assert_eq!(na["betaalde_voorschotten"], json!(500));
+    assert_eq!(after["betaald_bij_besluit"], json!(0));
+    assert_eq!(after["betaalde_voorschotten"], json!(500));
     // Een ambtshalve besluit zonder voorganger is zijn eigen wortel.
     let g300 = id(300);
-    kroniek
+    chronicle
         .voeg_toe(&stap8_gram(
             &g300,
             "terugvordering_vastgesteld",
@@ -714,7 +714,10 @@ fn voorschot_en_vaststelling_per_besluit_met_verrekening() {
         ))
         .unwrap();
     assert_eq!(
-        kroniek.lees_wortel(&["test_toeslag"], &g300).unwrap().len(),
+        chronicle
+            .lees_wortel(&["test_toeslag"], &g300)
+            .unwrap()
+            .len(),
         1
     );
 }
@@ -726,15 +729,15 @@ fn voorschot_en_vaststelling_per_besluit_met_verrekening() {
 /// verwacht}]}`: het beleid krijgt de grammen als bron van zijn register, en
 /// elk geval moet zijn verwachte uitkomsten geven.
 #[test]
-fn betaling_uit_omgeving() {
-    let Ok(invoer) = std::env::var("EXP_BETALING") else {
+fn payment_from_env() {
+    let Ok(input) = std::env::var("EXP_PAYMENT") else {
         eprintln!("EXP_BETALING niet gezet: overgeslagen");
         return;
     };
-    let v: Value = serde_json::from_str(&invoer).unwrap();
+    let v: Value = serde_json::from_str(&input).unwrap();
     let mut corpus =
         regelrecht_cel::regelingen::laad(Path::new(v["regulation"].as_str().unwrap())).unwrap();
-    let grammen: Vec<Gram> = std::fs::read_to_string(v["grammen"].as_str().unwrap())
+    let grams: Vec<Gram> = std::fs::read_to_string(v["grams"].as_str().unwrap())
         .unwrap()
         .lines()
         .filter(|r| !r.trim().is_empty())
@@ -742,14 +745,14 @@ fn betaling_uit_omgeving() {
         .collect();
     corpus.service.add_data_source(Box::new(
         lexostatus_engine::KroniekBron::new(
-            v["beleid"].as_str().unwrap(),
-            &grammen,
-            v["kroniek"].as_str().unwrap(),
+            v["policy"].as_str().unwrap(),
+            &grams,
+            v["chronicle"].as_str().unwrap(),
         )
         .unwrap(),
     ));
-    for g in v["gevallen"].as_array().unwrap() {
-        let uitkomsten: Vec<&str> = g["uitkomsten"]
+    for g in v["cases"].as_array().unwrap() {
+        let outputs: Vec<&str> = g["outputs"]
             .as_array()
             .unwrap()
             .iter()
@@ -758,14 +761,14 @@ fn betaling_uit_omgeving() {
         let p: BTreeMap<String, Value> = serde_json::from_value(g["parameters"].clone()).unwrap();
         let e = regelrecht_cel::toets::evalueer(
             &corpus.service,
-            g["regeling"].as_str().unwrap(),
-            &uitkomsten,
+            g["regulation"].as_str().unwrap(),
+            &outputs,
             &p,
-            g["datum"].as_str().unwrap(),
+            g["date"].as_str().unwrap(),
         );
-        println!("{} {:?}: {:?}", g["regeling"], uitkomsten, e.waarden);
-        assert!(e.volledig(&uitkomsten), "{e:?}");
-        for (k, w) in g["verwacht"].as_object().unwrap() {
+        println!("{} {:?}: {:?}", g["regulation"], outputs, e.waarden);
+        assert!(e.volledig(&outputs), "{e:?}");
+        for (k, w) in g["expected"].as_object().unwrap() {
             assert_eq!(&e.waarden[k], w, "{k}");
         }
     }

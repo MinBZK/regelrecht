@@ -1,0 +1,46 @@
+---
+# Fictieve lexostatussen van de toeslagdienst. De aanvraag levert de maand
+# (het tijdvak): periode_van zonder periode, dus de maand die de regeling
+# noemt (temporal.period_type: month), als de eerste dag ervan. De besluiten
+# leveren wat de betaling, de terugvordering en de terugbetaling vragen. De
+# werkvoorraad noemt elke zaak.
+cell: test_toeslag
+lexostatus_definitions:
+  - name: aanvraag
+    inputs: [{name: root, type: string}]
+    reduction:
+      chronicle: test_toeslag
+      filter: {type: submission, subtype: aanvraag, root: $root}
+      pick: latest
+      derivations:
+        maand: {period_of: content.maand}
+        geschat_inkomen: {field: content.geschat_inkomen}
+  - name: werkvoorraad
+    inputs: []
+    reduction:
+      chronicle: test_toeslag
+      filter: {type: submission, subtype: aanvraag}
+      group_by: root
+      pick: latest
+      derivations:
+        ontvangen_op: {moment: effective_at}
+        aanvrager: {field: core.aanvrager.naam}
+        maand: {period_of: content.maand, period: month}
+  - name: besluiten
+    inputs: [{name: root, type: string}]
+    reduction:
+      chronicle: test_toeslag
+      filter: {root: $root}
+      derivations:
+        voorschot:
+          {filter: {subtype: voorschot}, pick: latest, field: voorschot, legal_basis: [testregeling_toeslag#8 lid 1]}
+        betaald_voorschot: {filter: {name: voorschot_betaald}, sum: bedrag, legal_basis: [testregeling_toeslag#5 lid 1]}
+        vastgestelde_toeslag:
+          filter: {subtype: vaststelling}
+          pick: latest
+          field: vastgestelde_toeslag
+          legal_basis: [testregeling_toeslag#5 lid 1]
+        terug_te_betalen:
+          {filter: {subtype: terugvordering}, pick: latest, field: terug_te_vorderen,
+           legal_basis: [testregeling_awb#6 lid 2]}
+        terugbetaald: {filter: {name: terugbetaling_ontvangen}, sum: bedrag, legal_basis: [testregeling_awb#6 lid 2]}

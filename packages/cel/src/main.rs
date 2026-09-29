@@ -31,28 +31,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .into());
         }
     };
-    for s in &runtime.cellen {
+    for s in &runtime.cells {
         tracing::info!(
-            cel = %s.cel.id(),
-            strommen = s.cel.strommen.len(),
-            lexostatussen = s.cel.lexostatussen.lexostatus_definitions.len(),
+            cell = %s.cell.id(),
+            streams = s.cell.streams.len(),
+            lexostatuses = s.cell.lexostatuses.lexostatus_definitions.len(),
             "cel gecontroleerd",
         );
     }
     for s in &runtime.processen {
         tracing::info!(
             proces = %s.proces.id(),
-            cel = %s.proces.cel.id(),
-            portaal = s.proces.portaal().is_some(),
-            behandeling = s.proces.definitie.behandeling.is_some(),
-            synthese = s.proces.definitie.synthese.len(),
+            cell = %s.proces.cell.id(),
+            portal = s.proces.portal().is_some(),
+            handling = s.proces.definitie.handling.is_some(),
+            synthesis = s.proces.definitie.synthesis.len(),
             "proces gecontroleerd",
         );
     }
     tracing::info!(
-        cellen = runtime.cellen.len(),
+        cells = runtime.cells.len(),
         processen = runtime.processen.len(),
-        regelingen = runtime.cellen.first().map_or(0, |s| s.cel.service.law_count()),
+        regulations = runtime.cells.first().map_or(0, |s| s.cell.service.law_count()),
         data_dir = %config.data_dir.display(),
         "runtime gecontroleerd",
     );
@@ -62,7 +62,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let router = runtime.router.clone();
     let server = tokio::spawn(async move { axum::serve(listener, router).await });
     // Na het starten, zodat een bron in dezelfde runtime al antwoordt.
-    for w in runtime.waarschuwingen().await {
+    for w in runtime.warnings().await {
         tracing::warn!("{w}");
     }
     server.await??;

@@ -15,11 +15,11 @@ pub enum Uitvoering<'a> {
 }
 
 impl Uitvoering<'_> {
-    pub(super) fn naam(self) -> String {
+    pub(super) fn name(self) -> String {
         match self {
-            Uitvoering::Toets => "toets".into(),
-            Uitvoering::Aanbod => "aanbod".into(),
-            Uitvoering::Handeling(h) => h.naam.clone(),
+            Uitvoering::Toets => "assessment".into(),
+            Uitvoering::Aanbod => "offer".into(),
+            Uitvoering::Handeling(h) => h.name.clone(),
         }
     }
 
@@ -60,7 +60,7 @@ impl Gelezen {
 /// Een synthese-bron die een parameter levert.
 #[derive(Debug, Clone)]
 pub(super) struct BronLevering {
-    cel: String,
+    cell: String,
     lexostatus: String,
     /// De url van een bron buiten deze runtime; `None`: intern.
     url: Option<String>,
@@ -71,30 +71,30 @@ pub(super) struct BronLevering {
 pub(super) enum Levering {
     /// Een afleiding van een eigen lexostatus, of een tabel per regel uit een
     /// eigen extra veld.
-    Eigen {
+    Own {
         lexostatus: String,
         gelezen: Gelezen,
     },
     /// De stand bij besluit.
     Stand,
     /// De keuze van het tijdvak in het portaal.
-    Keuze,
+    Choice,
     /// Het id van het besluit waarop de handeling handelt.
-    Besluit,
+    Decision,
     Bron(BronLevering),
 }
 
 impl Levering {
     pub(super) fn woorden(&self) -> String {
         match self {
-            Levering::Eigen {
+            Levering::Own {
                 lexostatus,
                 gelezen,
             } => format!("eigen lexostatus {lexostatus} ({})", gelezen.woorden()),
             Levering::Stand => "de stand bij besluit".into(),
-            Levering::Keuze => "de keuze in het portaal".into(),
-            Levering::Besluit => "het besluit waarop de handeling handelt".into(),
-            Levering::Bron(b) => format!("synthese-bron {}/{}", b.cel, b.lexostatus),
+            Levering::Choice => "de keuze in het portaal".into(),
+            Levering::Decision => "het besluit waarop de handeling handelt".into(),
+            Levering::Bron(b) => format!("synthese-bron {}/{}", b.cell, b.lexostatus),
         }
     }
 
@@ -103,31 +103,31 @@ impl Levering {
     pub(super) fn past(&self, g: &Geldend, uitvoering: Uitvoering<'_>) -> bool {
         match (self, g.origin.waarde) {
             (
-                Levering::Eigen {
+                Levering::Own {
                     gelezen: Gelezen::Kanaal,
                     ..
                 },
                 OriginValue::Kanaal | OriginValue::Belanghebbende,
             )
             | (
-                Levering::Eigen {
+                Levering::Own {
                     gelezen: Gelezen::Indiening,
                     ..
                 },
                 OriginValue::Belanghebbende,
             )
             | (
-                Levering::Eigen {
+                Levering::Own {
                     gelezen: Gelezen::Verloop,
                     ..
                 },
                 OriginValue::Dossier,
             )
             | (Levering::Bron(_), OriginValue::Register) => true,
-            (Levering::Stand | Levering::Besluit, OriginValue::Dossier) => {
+            (Levering::Stand | Levering::Decision, OriginValue::Dossier) => {
                 uitvoering.is_handeling()
             }
-            (Levering::Keuze, OriginValue::Belanghebbende) => {
+            (Levering::Choice, OriginValue::Belanghebbende) => {
                 uitvoering.is_aanbod() && g.is_tijdvak()
             }
             _ => false,
@@ -144,36 +144,36 @@ pub(super) struct Leveranciers {
 }
 
 /// De keuze van het tijdvak, als leverancier.
-pub(super) static KEUZE: Levering = Levering::Keuze;
+pub(super) static KEUZE: Levering = Levering::Choice;
 
 impl Leveranciers {
-    pub(super) fn voeg_toe(&mut self, naam: &str, l: Levering) {
+    pub(super) fn voeg_toe(&mut self, name: &str, l: Levering) {
         self.per_parameter
-            .entry(naam.to_string())
+            .entry(name.to_string())
             .or_default()
             .push(l);
     }
 
-    pub(super) fn van(d: &ProcesDefinitie, cel: &Cel, uitvoering: Uitvoering<'_>) -> Self {
+    pub(super) fn van(d: &ProcesDefinitie, cell: &Cell, uitvoering: Uitvoering<'_>) -> Self {
         let mut l = Leveranciers::default();
         let mut eigen: Vec<&str> = d.zaakbronnen().map(|b| b.lexostatus.as_str()).collect();
-        if let Some(p) = &d.portaal {
+        if let Some(p) = &d.portal {
             l.keuze =
-                uitvoering.is_aanbod() && p.aanbod.as_ref().is_some_and(|a| a.tijdvakken.is_some());
-            eigen.push(&p.toets.lexostatus);
+                uitvoering.is_aanbod() && p.offer.as_ref().is_some_and(|a| a.windows.is_some());
+            eigen.push(&p.assessment.lexostatus);
         }
         eigen.sort_unstable();
         eigen.dedup();
-        for naam in eigen {
-            let Some(def) = cel.lexostatussen.lexostatus(naam) else {
+        for name in eigen {
+            let Some(def) = cell.lexostatuses.lexostatus(name) else {
                 continue;
             };
-            for (param, afleiding) in &def.reduction.afleidingen {
+            for (param, derivation) in &def.reduction.derivations {
                 l.voeg_toe(
                     param,
-                    Levering::Eigen {
-                        lexostatus: naam.to_string(),
-                        gelezen: gelezen(cel, &d.actor, def, afleiding),
+                    Levering::Own {
+                        lexostatus: name.to_string(),
+                        gelezen: gelezen(cell, &d.actor, def, derivation),
                     },
                 );
             }
@@ -183,7 +183,7 @@ impl Leveranciers {
                 l.voeg_toe(
                     p,
                     Levering::Bron(BronLevering {
-                        cel: b.cel.clone(),
+                        cell: b.cell.clone(),
                         lexostatus: b.lexostatus.clone(),
                         url: b.url.clone(),
                     }),
@@ -191,23 +191,23 @@ impl Leveranciers {
             }
         }
         if let Uitvoering::Handeling(h) = uitvoering {
-            for naam in h.nog_niet.keys() {
-                l.voeg_toe(naam, Levering::Stand);
+            for name in h.not_yet.keys() {
+                l.voeg_toe(name, Levering::Stand);
             }
-            if let Some(p) = &h.besluitparameter {
-                l.voeg_toe(p, Levering::Besluit);
+            if let Some(p) = &h.decision_parameter {
+                l.voeg_toe(p, Levering::Decision);
             }
         }
         // De synthese per regel levert alleen aan de uitvoering die haar
         // uitvoert: de toets of het besluit.
-        let rijen: &[RijenDefinitie] = match uitvoering {
-            Uitvoering::Toets => d.portaal.as_ref().map(|p| p.toets.rijen.as_slice()),
-            Uitvoering::Handeling(h) => Some(h.rijen.as_slice()),
+        let rows: &[RijenDefinitie] = match uitvoering {
+            Uitvoering::Toets => d.portal.as_ref().map(|p| p.assessment.rows.as_slice()),
+            Uitvoering::Handeling(h) => Some(h.rows.as_slice()),
             Uitvoering::Aanbod => None,
         }
         .unwrap_or_default();
-        for r in rijen {
-            l.rijen(d, cel, r);
+        for r in rows {
+            l.rows(d, cell, r);
         }
         l
     }
@@ -215,28 +215,28 @@ impl Leveranciers {
     /// De synthese per regel: uit een extra veld van een bron een levering
     /// van die bron, uit een eigen tabel een eigen levering, naar wat het
     /// extra veld leest.
-    pub(super) fn rijen(&mut self, d: &ProcesDefinitie, cel: &Cel, r: &RijenDefinitie) {
-        let bron = d
-            .andere_bronnen()
-            .find(|b| b.lexostatus == r.tabel.lexostatus && b.extra_velden.contains(&r.tabel.veld));
-        let levering = match bron {
+    pub(super) fn rows(&mut self, d: &ProcesDefinitie, cell: &Cell, r: &RijenDefinitie) {
+        let source = d.andere_bronnen().find(|b| {
+            b.lexostatus == r.table.lexostatus && b.extra_fields.contains(&r.table.field)
+        });
+        let levering = match source {
             Some(b) => Levering::Bron(BronLevering {
-                cel: b.cel.clone(),
+                cell: b.cell.clone(),
                 lexostatus: b.lexostatus.clone(),
                 url: b.url.clone(),
             }),
             None => {
-                let gelezen = cel
-                    .lexostatussen
-                    .lexostatus(&r.tabel.lexostatus)
+                let gelezen = cell
+                    .lexostatuses
+                    .lexostatus(&r.table.lexostatus)
                     .and_then(|def| {
                         def.alle_afleidingen()
-                            .find(|(naam, _)| **naam == r.tabel.veld)
-                            .map(|(_, a)| gelezen(cel, &d.actor, def, a))
+                            .find(|(name, _)| **name == r.table.field)
+                            .map(|(_, a)| gelezen(cell, &d.actor, def, a))
                     })
                     .unwrap_or(Gelezen::Onbepaald);
-                Levering::Eigen {
-                    lexostatus: r.tabel.lexostatus.clone(),
+                Levering::Own {
+                    lexostatus: r.table.lexostatus.clone(),
                     gelezen,
                 }
             }
@@ -246,9 +246,9 @@ impl Leveranciers {
 
     /// Wie een parameter levert. De keuze in het portaal levert alleen het
     /// tijdvak.
-    pub(super) fn van_parameter(&self, naam: &str, tijdvak: bool) -> Vec<&Levering> {
-        let mut uit: Vec<&Levering> = self.per_parameter.get(naam).into_iter().flatten().collect();
-        if self.keuze && tijdvak {
+    pub(super) fn van_parameter(&self, name: &str, window: bool) -> Vec<&Levering> {
+        let mut uit: Vec<&Levering> = self.per_parameter.get(name).into_iter().flatten().collect();
+        if self.keuze && window {
             uit.push(&KEUZE);
         }
         uit
@@ -258,16 +258,16 @@ impl Leveranciers {
 /// Of een gram van dit event door een filter kan komen, voor zover dat
 /// zonder de invoer vaststaat: een `$`-waarde past altijd, een veldpad als
 /// het event het veld heeft.
-pub(super) fn kan_passen(filter: &Filter, stroom: &Stroom, event: &Event) -> bool {
-    filter.iter().all(|(sleutel, waarde)| {
-        let invoer = waarde.starts_with('$');
-        match event.kenmerk(stroom, sleutel) {
+pub(super) fn kan_passen(filter: &Filter, stream: &Stroom, event: &Event) -> bool {
+    filter.iter().all(|(sleutel, value)| {
+        let input = value.starts_with('$');
+        match event.kenmerk(stream, sleutel) {
             None => event.heeft_pad(sleutel),
             Some(Eventkenmerk::Vast(w)) => {
-                if invoer {
+                if input {
                     w.is_some()
                 } else {
-                    w == Some(waarde.as_str())
+                    w == Some(value.as_str())
                 }
             }
             Some(Eventkenmerk::Vrij) => true,
@@ -279,11 +279,16 @@ pub(super) fn kan_passen(filter: &Filter, stroom: &Stroom, event: &Event) -> boo
 /// Wat een afleiding leest: de events van de kroniek van de lexostatus die
 /// door het filter van de lexostatus en dat van de afleiding kunnen komen.
 /// Leest ze alleen `$intake` van een indiening, dan is het de login.
-pub(super) fn gelezen(cel: &Cel, actor: &str, def: &LexostatusDefinitie, a: &Afleiding) -> Gelezen {
-    let events: Vec<(&Stroom, &Event)> = cel
-        .strommen
+pub(super) fn gelezen(
+    cell: &Cell,
+    actor: &str,
+    def: &LexostatusDefinitie,
+    a: &Afleiding,
+) -> Gelezen {
+    let events: Vec<(&Stroom, &Event)> = cell
+        .streams
         .iter()
-        .filter(|s| s.chronicle == def.reduction.kroniek)
+        .filter(|s| s.chronicle == def.reduction.chronicle)
         .flat_map(|s| s.events.iter().map(move |e| (s, e)))
         .filter(|(s, e)| {
             kan_passen(&def.reduction.filter, s, e)
@@ -301,7 +306,7 @@ pub(super) fn gelezen(cel: &Cel, actor: &str, def: &LexostatusDefinitie, a: &Afl
                     .bladeren()
                     .into_iter()
                     .filter(|b| matches!(b.binding, Binding::Intake(_)))
-                    .map(|b| b.pad)
+                    .map(|b| b.path)
                     .collect();
                 paden.iter().all(|p| intake.contains(*p))
             });
@@ -334,24 +339,24 @@ pub(super) fn vooraf_bekend(g: Option<&Geldend>) -> bool {
 #[derive(Debug)]
 pub(super) enum Uitslag {
     /// Een leverancier past, eventueel met wat niet na te gaan is.
-    Past { waarschuwingen: Vec<String> },
+    Past { warnings: Vec<String> },
     /// Een leverancier past niet bij de herkomst, ook als een andere wel
     /// past.
     Verkeerd(String),
     /// Geen leverancier; de tekst begint met `: ` of is leeg.
-    Geen(String),
+    Standalone(String),
 }
 
 /// Of een parameter een leverancier heeft die bij zijn herkomst past, en
 /// geen die er niet bij past.
 pub(super) fn leverancier(
     uitvoering: Uitvoering<'_>,
-    naam: &str,
+    name: &str,
     g: &Geldend,
     l: &Leveranciers,
-    cellen: &BTreeMap<String, Arc<Cel>>,
+    cells: &BTreeMap<String, Arc<Cell>>,
 ) -> Uitslag {
-    let leveringen = l.van_parameter(naam, g.is_tijdvak());
+    let leveringen = l.van_parameter(name, g.is_tijdvak());
     if g.origin.waarde == OriginValue::Oordeel {
         if !leveringen.is_empty() {
             let wie: Vec<String> = leveringen.iter().map(|lv| lv.woorden()).collect();
@@ -362,27 +367,27 @@ pub(super) fn leverancier(
         }
         return if uitvoering.is_handeling() {
             Uitslag::Past {
-                waarschuwingen: Vec::new(),
+                warnings: Vec::new(),
             }
         } else {
-            Uitslag::Geen(
+            Uitslag::Standalone(
                 ": een oordeel geeft de behandelaar pas bij een handeling in de zaak".into(),
             )
         };
     }
     let mut verkeerd = Vec::new();
     let mut past = false;
-    let mut waarschuwingen = Vec::new();
+    let mut warnings = Vec::new();
     for lv in leveringen {
         if !lv.past(g, uitvoering) {
             verkeerd.push(format!("hij komt uit {}", lv.woorden()));
             continue;
         }
         match lv {
-            Levering::Bron(bron) => match register_bron(bron, g, cellen) {
+            Levering::Bron(source) => match register_bron(source, g, cells) {
                 Ok(w) => {
                     past = true;
-                    waarschuwingen.extend(w);
+                    warnings.extend(w);
                 }
                 Err(r) => verkeerd.push(r),
             },
@@ -392,9 +397,9 @@ pub(super) fn leverancier(
     if !verkeerd.is_empty() {
         Uitslag::Verkeerd(verkeerd.join("; "))
     } else if past {
-        Uitslag::Past { waarschuwingen }
+        Uitslag::Past { warnings }
     } else {
-        Uitslag::Geen(String::new())
+        Uitslag::Standalone(String::new())
     }
 }
 
@@ -405,34 +410,34 @@ pub(super) fn leverancier(
 /// een waarschuwing als dat niet na te gaan is: een bron met een url, of een
 /// interne cel die niet in deze runtime draait.
 pub(super) fn register_bron(
-    bron: &BronLevering,
+    source: &BronLevering,
     g: &Geldend,
-    cellen: &BTreeMap<String, Arc<Cel>>,
+    cells: &BTreeMap<String, Arc<Cell>>,
 ) -> Result<Option<String>, String> {
-    let wie = format!("synthese-bron {}/{}", bron.cel, bron.lexostatus);
+    let wie = format!("synthese-bron {}/{}", source.cell, source.lexostatus);
     let register = g.origin.register.as_deref().unwrap_or_default();
-    if let Some(url) = &bron.url {
+    if let Some(url) = &source.url {
         return Ok(Some(format!(
             "{wie} draait buiten deze runtime ({url}); of haar lexostatus een kroniek bijhoudt met een grondslag in '{register}', is bij het opstarten niet te zien"
         )));
     }
-    let Some(cel) = cellen.get(&bron.cel) else {
+    let Some(cell) = cells.get(&source.cell) else {
         return Ok(Some(format!(
             "{wie} heeft geen url en draait niet in deze runtime; of haar lexostatus een kroniek bijhoudt met een grondslag in '{register}', is niet te zien"
         )));
     };
-    let Some(def) = cel.lexostatussen.lexostatus(&bron.lexostatus) else {
+    let Some(def) = cell.lexostatuses.lexostatus(&source.lexostatus) else {
         return Err(format!("{wie} bestaat niet"));
     };
     // `vorm` houdt een REGISTER zonder register al tegen.
     if let Some(register) = &g.origin.register {
-        let houdt_bij = cel
-            .strommen
+        let houdt_bij = cell
+            .streams
             .iter()
-            .filter(|s| s.chronicle == def.reduction.kroniek)
+            .filter(|s| s.chronicle == def.reduction.chronicle)
             .flat_map(|s| s.events.iter())
-            .flat_map(|e| e.grondslag.iter())
-            .any(|gr| regelingen::ontleed(gr).is_ok_and(|gr| gr.regeling == register));
+            .flat_map(|e| e.legal_basis.iter())
+            .any(|gr| regelingen::ontleed(gr).is_ok_and(|gr| gr.regulation == register));
         if !houdt_bij {
             return Err(format!(
                 "{wie} houdt geen kroniek bij met een grondslag in '{register}'"

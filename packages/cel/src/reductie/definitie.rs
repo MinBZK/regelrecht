@@ -14,11 +14,11 @@ use crate::schema::Soort;
 /// De lexostatus-definities van een cel (`schema/chronolex/v0.2.0/lexostatus.json`).
 #[derive(Debug, Clone, Deserialize)]
 pub struct Lexostatussen {
-    pub cel: String,
+    pub cell: String,
     /// Aanvullingen op de lexostatussen die de wet in deze cel leest (zie
     /// [`crate::wet`]): extra velden voor de synthese, geen parameters.
     #[serde(default)]
-    pub wet: Vec<WetAanvulling>,
+    pub law: Vec<WetAanvulling>,
     pub lexostatus_definitions: Vec<LexostatusDefinitie>,
 }
 
@@ -29,8 +29,8 @@ pub struct Lexostatussen {
 #[derive(Debug, Clone, Deserialize)]
 pub struct WetAanvulling {
     /// `<regeling>#<artikel>`: het lezende artikel.
-    pub artikel: String,
-    pub extra_velden: BTreeMap<String, Afgeleid>,
+    pub article: String,
+    pub extra_fields: BTreeMap<String, Afgeleid>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -41,7 +41,7 @@ pub struct LexostatusDefinitie {
     /// Uit de wet (`produces.extensions.chronolex.leest`, zie
     /// [`crate::wet`]): het lezende artikel. Zonder: uit `lexostatussen.yaml`.
     #[serde(skip)]
-    pub wet: Option<crate::wet::Wetlezing>,
+    pub law: Option<crate::wet::Wetlezing>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -63,10 +63,10 @@ pub type Filter = BTreeMap<String, String>;
 /// filtert een lexostatus per besluit.
 pub const GRAM_SLEUTELS: &[&str] = &[
     "id",
-    "wortel",
+    "root",
     "name",
     "type",
-    "soort",
+    "subtype",
     "stage",
     "recording_actor",
     "chronicle",
@@ -78,20 +78,20 @@ pub const GRAM_SLEUTELS: &[&str] = &[
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Reductie {
-    pub kroniek: String,
+    pub chronicle: String,
     #[serde(default, skip_serializing_if = "Filter::is_empty")]
     pub filter: Filter,
     /// Maakt van de lexostatus een lijst met een regel per zaak.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub groepeer: Option<Groepeer>,
+    pub group_by: Option<Groepeer>,
     /// Alleen met `groepeer`: een zaak met een gram door dit filter valt af.
     #[serde(default, skip_serializing_if = "Filter::is_empty")]
-    pub zonder: Filter,
+    pub without: Filter,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub kies: Option<Kies>,
-    pub afleidingen: BTreeMap<String, Afgeleid>,
+    pub pick: Option<Kies>,
+    pub derivations: BTreeMap<String, Afgeleid>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub extra_velden: BTreeMap<String, Afgeleid>,
+    pub extra_fields: BTreeMap<String, Afgeleid>,
 }
 
 /// Een afleiding met haar grondslag: de artikelen (`<regeling>#<artikel>`,
@@ -104,23 +104,23 @@ pub struct Reductie {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Afgeleid {
     #[serde(flatten)]
-    pub afleiding: Afleiding,
+    pub derivation: Afleiding,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub grondslag: Vec<String>,
+    pub legal_basis: Vec<String>,
 }
 
 impl std::ops::Deref for Afgeleid {
     type Target = Afleiding;
     fn deref(&self) -> &Afleiding {
-        &self.afleiding
+        &self.derivation
     }
 }
 
 impl From<Afleiding> for Afgeleid {
-    fn from(afleiding: Afleiding) -> Self {
+    fn from(derivation: Afleiding) -> Self {
         Self {
-            afleiding,
-            grondslag: Vec::new(),
+            derivation,
+            legal_basis: Vec::new(),
         }
     }
 }
@@ -131,14 +131,14 @@ impl<'de> Deserialize<'de> for Afgeleid {
     /// onbekende sleutels niet betrouwbaar).
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let mut v = Value::deserialize(d)?;
-        let grondslag = match v.as_object_mut().and_then(|o| o.remove("grondslag")) {
+        let legal_basis = match v.as_object_mut().and_then(|o| o.remove("legal_basis")) {
             Some(g) => serde_json::from_value(g).map_err(serde::de::Error::custom)?,
             None => Vec::new(),
         };
-        let afleiding = Afleiding::deserialize(v).map_err(serde::de::Error::custom)?;
+        let derivation = Afleiding::deserialize(v).map_err(serde::de::Error::custom)?;
         Ok(Self {
-            afleiding,
-            grondslag,
+            derivation,
+            legal_basis,
         })
     }
 }
@@ -150,7 +150,7 @@ pub enum Groepeer {
     /// Een regel per wortel: de grammen die via hun verwijzingen bij
     /// hetzelfde gram zonder verwijzing uitkomen (zoals een aanvraag en wat
     /// erop volgt).
-    Wortel,
+    Root,
 }
 
 /// Welk gram telt als er meer zijn.
@@ -159,7 +159,7 @@ pub enum Groepeer {
 pub enum Kies {
     /// Het laatste gram in de tijd: het laatste `op_moment`, bij gelijk
     /// moment het laatste `vastgelegd_op`. Een herstel is een nieuw gram.
-    Laatste,
+    Latest,
 }
 
 /// Een afleiding: hoe een parameter uit de kroniek volgt.
@@ -177,42 +177,42 @@ pub enum Afleiding {
     LaatsteMoment {
         #[serde(default, skip_serializing_if = "Filter::is_empty")]
         filter: Filter,
-        kies: Kies,
+        pick: Kies,
         moment: Moment,
         #[serde(
             default,
             deserialize_with = "aanwezig",
             skip_serializing_if = "Option::is_none"
         )]
-        geen_gram: Option<Value>,
+        no_gram: Option<Value>,
     },
     /// Over de grammen door `filter`: de waarde van `veld` in het laatste.
     /// Komt geen gram door het filter, dan `geen_gram`, als dat er is.
     LaatsteVeld {
         #[serde(default, skip_serializing_if = "Filter::is_empty")]
         filter: Filter,
-        kies: Kies,
-        veld: String,
+        pick: Kies,
+        field: String,
         #[serde(
             default,
             deserialize_with = "aanwezig",
             skip_serializing_if = "Option::is_none"
         )]
-        geen_gram: Option<Value>,
+        no_gram: Option<Value>,
     },
     /// Over de grammen door `filter`: het jaartal van de datum in `jaar_van`
     /// in het laatste gram. Geen gram: `geen_gram`, als dat er is.
     LaatsteJaarVan {
         #[serde(default, skip_serializing_if = "Filter::is_empty")]
         filter: Filter,
-        kies: Kies,
-        jaar_van: String,
+        pick: Kies,
+        year_of: String,
         #[serde(
             default,
             deserialize_with = "aanwezig",
             skip_serializing_if = "Option::is_none"
         )]
-        geen_gram: Option<Value>,
+        no_gram: Option<Value>,
     },
     /// Over de grammen door `filter`: de periode waarin de datum in
     /// `periode_van` in het laatste gram valt (zie [`Afleiding::PeriodeVan`]).
@@ -220,24 +220,24 @@ pub enum Afleiding {
     LaatstePeriodeVan {
         #[serde(default, skip_serializing_if = "Filter::is_empty")]
         filter: Filter,
-        kies: Kies,
-        periode_van: String,
+        pick: Kies,
+        period_of: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        periode: Option<Periode>,
+        period: Option<Periode>,
         #[serde(
             default,
             deserialize_with = "aanwezig",
             skip_serializing_if = "Option::is_none"
         )]
-        geen_gram: Option<Value>,
+        no_gram: Option<Value>,
     },
     /// Over de grammen door `filter`: of het lijstveld in het laatste de
     /// waarde bevat.
     LaatsteBevat {
         #[serde(default, skip_serializing_if = "Filter::is_empty")]
         filter: Filter,
-        kies: Kies,
-        bevat: Bevat,
+        pick: Kies,
+        contains: Bevat,
     },
     /// Over de grammen door `filter`: of er ten minste een is. Met `gevuld`
     /// telt alleen een gram waarin dat veld gevuld is (zie
@@ -246,15 +246,15 @@ pub enum Afleiding {
     Bestaat {
         #[serde(default, skip_serializing_if = "Filter::is_empty")]
         filter: Filter,
-        bestaat: bool,
+        exists: bool,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        gevuld: Option<String>,
+        filled: Option<String>,
     },
     /// Over de grammen door `filter`: de som van een getalveld.
     Som {
         #[serde(default, skip_serializing_if = "Filter::is_empty")]
         filter: Filter,
-        som: String,
+        sum: String,
     },
     /// Over de grammen door `filter`: per gram een regel met deze velden, in
     /// de volgorde van de kroniek. Een lijst voor een tabel, bijvoorbeeld de
@@ -262,39 +262,39 @@ pub enum Afleiding {
     Verzamel {
         #[serde(default, skip_serializing_if = "Filter::is_empty")]
         filter: Filter,
-        verzamel: Vec<String>,
+        collect: Vec<String>,
     },
     Veld {
-        veld: String,
+        field: String,
     },
     /// Het jaartal van een datumveld van het gekozen gram.
     JaarVan {
-        jaar_van: String,
+        year_of: String,
     },
     /// De periode (jaar, kwartaal of maand) waarin een datumveld van het
     /// gekozen gram valt, als de eerste dag ervan: een tijdvak als datum die
     /// de engine kan lezen. Zonder `periode` zet de runtime bij het laden de
     /// periode die de regeling noemt (zie [`Periode`]).
     PeriodeVan {
-        periode_van: String,
+        period_of: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        periode: Option<Periode>,
+        period: Option<Periode>,
     },
     Gevuld {
-        gevuld: String,
+        filled: String,
     },
     Gelijk {
-        gelijk: Gelijk,
+        equals: Gelijk,
     },
     ElkeRegel {
-        tabel: String,
-        elke_regel: String,
+        table: String,
+        each_row: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        alleen_waar: Option<String>,
+        only_where: Option<String>,
     },
     EenRegel {
-        tabel: String,
-        een_regel: String,
+        table: String,
+        one_row: String,
     },
     Moment {
         moment: Moment,
@@ -308,14 +308,14 @@ fn aanwezig<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Value>, D::
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Gelijk {
-    pub veld: String,
-    pub aan: Value,
+    pub field: String,
+    pub value: Value,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Bevat {
-    pub veld: String,
-    pub waarde: Value,
+    pub field: String,
+    pub value: Value,
 }
 
 /// Een periode van de kalender. Een tijdvak (de periode waarvoor een
@@ -325,31 +325,31 @@ pub struct Bevat {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Periode {
-    Jaar,
-    Kwartaal,
-    Maand,
+    Year,
+    Quarter,
+    Month,
 }
 
 impl Periode {
     /// De periode die een regeling met `temporal.period_type` noemt.
     pub fn uit_period_type(t: &str) -> Option<Self> {
         match t {
-            "year" => Some(Periode::Jaar),
-            "quarter" => Some(Periode::Kwartaal),
-            "month" => Some(Periode::Maand),
+            "year" => Some(Periode::Year),
+            "quarter" => Some(Periode::Quarter),
+            "month" => Some(Periode::Month),
             _ => None,
         }
     }
 
     /// De eerste dag van de periode waarin een datum valt.
-    pub fn begin(self, d: chrono::NaiveDate) -> Option<chrono::NaiveDate> {
+    pub fn start(self, d: chrono::NaiveDate) -> Option<chrono::NaiveDate> {
         use chrono::Datelike;
-        let maand = match self {
-            Periode::Jaar => 1,
-            Periode::Kwartaal => (d.month0() / 3) * 3 + 1,
-            Periode::Maand => d.month(),
+        let month = match self {
+            Periode::Year => 1,
+            Periode::Quarter => (d.month0() / 3) * 3 + 1,
+            Periode::Month => d.month(),
         };
-        chrono::NaiveDate::from_ymd_opt(d.year(), maand, 1)
+        chrono::NaiveDate::from_ymd_opt(d.year(), month, 1)
     }
 }
 
@@ -357,24 +357,24 @@ impl Periode {
 #[serde(rename_all = "snake_case")]
 pub enum Moment {
     /// Wanneer het feit rechtens geldt of plaatsvond.
-    OpMoment,
+    EffectiveAt,
     /// Wanneer de cel het vastlegde.
-    VastgelegdOp,
+    RecordedAt,
 }
 
 /// Lees lexostatus-definities uit tekst en valideer ze tegen het schema.
-pub fn parse(tekst: &str, bron: &str) -> Result<Lexostatussen, Vec<String>> {
-    laden::definitie(tekst, bron, Soort::Lexostatus)
+pub fn parse(tekst: &str, source: &str) -> Result<Lexostatussen, Vec<String>> {
+    laden::definitie(tekst, source, Soort::Lexostatus)
 }
 
 /// Laad de lexostatus-definities uit een bestand.
-pub fn laad(pad: &Path) -> Result<Lexostatussen, Vec<String>> {
-    laden::laad(pad, parse)
+pub fn laad(path: &Path) -> Result<Lexostatussen, Vec<String>> {
+    laden::laad(path, parse)
 }
 
 impl Lexostatussen {
-    pub fn lexostatus(&self, naam: &str) -> Option<&LexostatusDefinitie> {
-        self.lexostatus_definitions.iter().find(|d| d.name == naam)
+    pub fn lexostatus(&self, name: &str) -> Option<&LexostatusDefinitie> {
+        self.lexostatus_definitions.iter().find(|d| d.name == name)
     }
 }
 
@@ -382,21 +382,21 @@ impl LexostatusDefinitie {
     /// Alle afleidingen: de parameters en de extra velden.
     pub fn alle_afleidingen(&self) -> impl Iterator<Item = (&String, &Afgeleid)> {
         self.reduction
-            .afleidingen
+            .derivations
             .iter()
-            .chain(self.reduction.extra_velden.iter())
+            .chain(self.reduction.extra_fields.iter())
     }
 
     /// Of de lexostatus een lijst is (`groepeer`): geen parameters, en nooit
     /// naar de engine.
     pub fn is_lijst(&self) -> bool {
-        self.reduction.groepeer.is_some()
+        self.reduction.group_by.is_some()
     }
 
     /// De namen die deze lexostatus levert: parameters en extra velden.
-    pub fn levert(&self, naam: &str) -> bool {
-        self.reduction.afleidingen.contains_key(naam)
-            || self.reduction.extra_velden.contains_key(naam)
+    pub fn levert(&self, name: &str) -> bool {
+        self.reduction.derivations.contains_key(name)
+            || self.reduction.extra_fields.contains_key(name)
     }
 }
 
@@ -439,21 +439,23 @@ impl Afleiding {
     /// De veldpaden die deze afleiding leest, ook die van haar filter.
     pub fn gelezen_paden(&self) -> Vec<&str> {
         let mut paden = match self {
-            Afleiding::Veld { veld } | Afleiding::LaatsteVeld { veld, .. } => vec![veld.as_str()],
-            Afleiding::JaarVan { jaar_van } | Afleiding::LaatsteJaarVan { jaar_van, .. } => {
-                vec![jaar_van.as_str()]
+            Afleiding::Veld { field } | Afleiding::LaatsteVeld { field, .. } => {
+                vec![field.as_str()]
             }
-            Afleiding::PeriodeVan { periode_van, .. }
-            | Afleiding::LaatstePeriodeVan { periode_van, .. } => vec![periode_van.as_str()],
-            Afleiding::Gevuld { gevuld } => vec![gevuld.as_str()],
-            Afleiding::Gelijk { gelijk } => vec![gelijk.veld.as_str()],
-            Afleiding::ElkeRegel { tabel, .. } | Afleiding::EenRegel { tabel, .. } => {
-                vec![tabel.as_str()]
+            Afleiding::JaarVan { year_of } | Afleiding::LaatsteJaarVan { year_of, .. } => {
+                vec![year_of.as_str()]
             }
-            Afleiding::Som { som, .. } => vec![som.as_str()],
-            Afleiding::Verzamel { verzamel, .. } => verzamel.iter().map(String::as_str).collect(),
-            Afleiding::LaatsteBevat { bevat, .. } => vec![bevat.veld.as_str()],
-            Afleiding::Bestaat { gevuld, .. } => gevuld.iter().map(String::as_str).collect(),
+            Afleiding::PeriodeVan { period_of, .. }
+            | Afleiding::LaatstePeriodeVan { period_of, .. } => vec![period_of.as_str()],
+            Afleiding::Gevuld { filled } => vec![filled.as_str()],
+            Afleiding::Gelijk { equals } => vec![equals.field.as_str()],
+            Afleiding::ElkeRegel { table, .. } | Afleiding::EenRegel { table, .. } => {
+                vec![table.as_str()]
+            }
+            Afleiding::Som { sum, .. } => vec![sum.as_str()],
+            Afleiding::Verzamel { collect, .. } => collect.iter().map(String::as_str).collect(),
+            Afleiding::LaatsteBevat { contains, .. } => vec![contains.field.as_str()],
+            Afleiding::Bestaat { filled, .. } => filled.iter().map(String::as_str).collect(),
             Afleiding::Moment { .. } | Afleiding::LaatsteMoment { .. } => vec![],
         };
         if let Some(f) = self.filter() {
@@ -466,8 +468,9 @@ impl Afleiding {
     /// het laden uit de regeling zet.
     pub fn periode_mut(&mut self) -> Option<&mut Option<Periode>> {
         match self {
-            Afleiding::PeriodeVan { periode, .. }
-            | Afleiding::LaatstePeriodeVan { periode, .. } => Some(periode),
+            Afleiding::PeriodeVan { period, .. } | Afleiding::LaatstePeriodeVan { period, .. } => {
+                Some(period)
+            }
             _ => None,
         }
     }
@@ -477,15 +480,15 @@ impl Afleiding {
     pub fn tabel_kolommen(&self) -> Option<(&str, Vec<&str>)> {
         match self {
             Afleiding::ElkeRegel {
-                tabel,
-                elke_regel,
-                alleen_waar,
+                table,
+                each_row,
+                only_where,
             } => {
-                let mut k = vec![elke_regel.as_str()];
-                k.extend(alleen_waar.as_deref());
-                Some((tabel, k))
+                let mut k = vec![each_row.as_str()];
+                k.extend(only_where.as_deref());
+                Some((table, k))
             }
-            Afleiding::EenRegel { tabel, een_regel } => Some((tabel, vec![een_regel])),
+            Afleiding::EenRegel { table, one_row } => Some((table, vec![one_row])),
             _ => None,
         }
     }
@@ -498,12 +501,12 @@ impl Afleiding {
     }
 
     /// Hoe de afleiding afwezigheid leest (`geen_gram`), als zij dat zegt.
-    pub fn geen_gram(&self) -> Option<&Value> {
+    pub fn no_gram(&self) -> Option<&Value> {
         match self {
-            Afleiding::LaatsteMoment { geen_gram, .. }
-            | Afleiding::LaatsteVeld { geen_gram, .. }
-            | Afleiding::LaatsteJaarVan { geen_gram, .. }
-            | Afleiding::LaatstePeriodeVan { geen_gram, .. } => geen_gram.as_ref(),
+            Afleiding::LaatsteMoment { no_gram, .. }
+            | Afleiding::LaatsteVeld { no_gram, .. }
+            | Afleiding::LaatsteJaarVan { no_gram, .. }
+            | Afleiding::LaatstePeriodeVan { no_gram, .. } => no_gram.as_ref(),
             _ => None,
         }
     }

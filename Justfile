@@ -926,32 +926,32 @@ docs-a11y:
 # een startstand, een afnemer en een gebiedencel) en de processen (een portaal
 # bij de instantie, en een portaal met synthese en behandeling bij de
 # afnemer). Andere cellen en processen: zet CELLS_PATH (een map met per cel een
-# submap met cel.yaml), PROCESSES_PATH (een map met per proces een submap met
-# proces.yaml) en REGULATION_PATH voor de recipe-naam. Met CELLS_PATH en zonder
+# submap met cell.yaml), PROCESSES_PATH (een map met per proces een submap met
+# process.yaml) en REGULATION_PATH voor de recipe-naam. Met CELLS_PATH en zonder
 # PROCESSES_PATH draaien alleen de cellen. De kronieken komen in .cel/<cel-id>/
 # (DATA_DIR), en blijven staan tussen twee runs. De controles bij het
 # opstarten falen luid; lees dan de regels boven "de runtime start niet".
-# Experiment A: met CEL_REDUCTIE=engine (of vergelijk) en CEL_ENGINE_KOPPELING
+# Experiment A: met CELL_REDUCTION=engine (of compare) en CELL_ENGINE_BINDING
 # (een koppelbestand, zie packages/cel/src/lexostatus_engine.rs) reduceren de
 # cellen als engine-run; de frontend toont de route. Op de fixtures:
-# CEL_REDUCTIE=engine CEL_ENGINE_KOPPELING=packages/cel/tests/fixtures/experiment/engine/koppeling.yaml just cel
+# CELL_REDUCTION=engine CELL_ENGINE_BINDING=packages/cel/tests/fixtures/experiment/engine/koppeling.yaml just cel
 [doc("Start de cel-runtime en de frontend lokaal")]
 cel:
     #!/usr/bin/env bash
     set -euo pipefail
     fx="$(pwd)/packages/cel/tests/fixtures"
     if [ -z "${CELLS_PATH:-}" ]; then
-        export CELLS_PATH="$fx/cellen"
+        export CELLS_PATH="$fx/cells"
         export PROCESSES_PATH="${PROCESSES_PATH:-$fx/processes}"
     fi
     export REGULATION_PATH="${REGULATION_PATH:-$fx/regulation}"
     export DATA_DIR="${DATA_DIR:-$(pwd)/.cel}"
-    export CEL_PORT="${CEL_PORT:-7170}"
+    export CELL_PORT="${CELL_PORT:-7170}"
     cargo build --manifest-path packages/Cargo.toml --package regelrecht-cel
     cargo run --quiet --manifest-path packages/Cargo.toml --package regelrecht-cel &
     runtime=$!
     trap 'kill "$runtime" 2>/dev/null || true' EXIT
-    echo "cellen en processen → http://localhost:${CEL_FRONTEND_PORT:-7171}"
+    echo "cellen en processen → http://localhost:${CELL_FRONTEND_PORT:-7171}"
     npm run dev -w cel
 
 # --- PoC-portaal ---

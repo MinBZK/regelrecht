@@ -44,9 +44,9 @@ pub const NAMESPACE: &str = "chronolex";
 #[serde(deny_unknown_fields)]
 pub struct Chronolex {
     #[serde(default)]
-    pub vestigt: Vec<Vestiging>,
+    pub establishes: Vec<Vestiging>,
     #[serde(default)]
-    pub leest: Option<Leest>,
+    pub reads: Option<Leest>,
 }
 
 /// Een lezing, of meer: een artikel kan per lid anders lezen (lid 2 leest
@@ -78,52 +78,52 @@ pub struct Vestiging {
     pub event: Option<String>,
     /// Het event dat een ander artikel vestigt en dat dit artikel uitbreidt.
     #[serde(default)]
-    pub breidt_uit: Option<String>,
+    pub extends: Option<String>,
     #[serde(default, rename = "type")]
     pub type_: Option<String>,
     #[serde(default)]
-    pub soort: Option<String>,
+    pub subtype: Option<String>,
     #[serde(default)]
     pub stage: Option<String>,
     /// Naar welk gram een gram van dit event verwijst, per naam uit de
     /// wettekst (Wpp 107 "besluit op de aanvraag": `op_aanvraag`; Awb 3:41
     /// "bekendmaking van besluiten": `besluit`), en wat dat gram moet zijn.
     #[serde(default)]
-    pub verwijst: BTreeMap<String, Verwijzing>,
+    pub refers_to: BTreeMap<String, Verwijzing>,
     /// De grondslag die het gram draagt. Zonder: het artikel zelf bij een
     /// event, niets bij een uitbreiding.
     #[serde(default)]
-    pub grondslag: Option<Vec<String>>,
+    pub legal_basis: Option<Vec<String>>,
     #[serde(default)]
-    pub op_moment: Option<OpMomentWet>,
+    pub effective_at: Option<OpMomentWet>,
     #[serde(default)]
-    pub velden: Option<Velden>,
+    pub fields: Option<Velden>,
     /// Naamsbrug: onder welke naam een ander artikel een veld van dit gram
     /// leest (`<naam bij de lezer>: <veld van het gram>`). Zo leest Awb 4:52
     /// "het vastgestelde bedrag" zonder de naam van de uitkomst van de
     /// bijzondere wet te kennen.
     #[serde(default)]
-    pub als: BTreeMap<String, String>,
+    pub aliases: BTreeMap<String, String>,
 }
 
 impl Vestiging {
     /// De verwijzingen zoals de stroom ze zou noemen, voor het document van
     /// de stroom (`GET /api/stroom`); `None` zonder verwijzing.
     fn verwijst_als_json(&self) -> Option<Value> {
-        if self.verwijst.is_empty() {
+        if self.refers_to.is_empty() {
             return None;
         }
         let mut uit = Map::new();
-        for (naam, v) in &self.verwijst {
-            let naar = match &v.naar {
+        for (name, v) in &self.refers_to {
+            let to = match &v.to {
                 crate::stroom::Naar::Artikel(a) | crate::stroom::Naar::Event(a) => {
                     Value::String(a.clone())
                 }
                 crate::stroom::Naar::Stage(s) => serde_json::json!({"stage": s}),
             };
             uit.insert(
-                naam.clone(),
-                serde_json::json!({"naar": naar, "verplicht": v.verplicht}),
+                name.clone(),
+                serde_json::json!({"to": to, "required": v.required}),
             );
         }
         Some(Value::Object(uit))
@@ -141,8 +141,8 @@ pub struct OpMomentWet {
     pub parameter: Option<String>,
     /// Het veld van het gram dat het moment is (zoals de dag van betaling).
     #[serde(default)]
-    pub veld: Option<String>,
-    pub grondslag: Vec<String>,
+    pub field: Option<String>,
+    pub legal_basis: Vec<String>,
 }
 
 /// De velden van een gram: een lijst veldpaden, of een trefwoord.
@@ -180,18 +180,18 @@ pub struct Lezing {
     /// Het lid dat deze lezing draagt, als een artikel meer lezingen heeft;
     /// de lexostatus heet dan `<regeling>#<artikel> lid <n>`.
     #[serde(default)]
-    pub lid: Option<Value>,
+    pub paragraph: Option<Value>,
     /// Welk gram het artikel leest, als het er een kiest (met `kies`).
     #[serde(default)]
-    pub uit: Option<Map<String, Value>>,
+    pub from: Option<Map<String, Value>>,
     #[serde(default)]
-    pub kies: Option<Kies>,
+    pub pick: Option<Kies>,
     /// `dit`: het artikel leest de grammen van het besluit waarvoor het
     /// gevraagd wordt. De runtime geeft een bron van de groep alleen de
     /// wortel; zij leest dus per wortel (een wortel met een besluit geeft
     /// hetzelfde).
     #[serde(default)]
-    pub besluit: Option<String>,
+    pub decision: Option<String>,
     /// Per parameter van dit artikel de afleiding, met optioneel `uit` (welke
     /// grammen) en `grondslag` (zonder: dit artikel).
     pub parameters: BTreeMap<String, Value>,
@@ -201,8 +201,8 @@ pub struct Lezing {
 /// parameters zoals dat artikel ze declareert (voor de engine-route).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Wetlezing {
-    pub artikel: String,
-    pub typen: BTreeMap<String, String>,
+    pub article: String,
+    pub types: BTreeMap<String, String>,
     /// Het artikel leest per besluit (`besluit: dit`).
     pub besluit_dit: bool,
 }
@@ -211,13 +211,13 @@ pub struct Wetlezing {
 pub struct Wetartikel<'s> {
     /// `<regeling>#<artikel>`.
     pub verwijzing: String,
-    pub artikel: &'s Article,
+    pub article: &'s Article,
     pub chronolex: Chronolex,
 }
 
 /// Het chronolex-blok van een artikel, als het er een heeft.
-fn blok(artikel: &Article) -> Option<&Value> {
-    artikel
+fn blok(article: &Article) -> Option<&Value> {
+    article
         .get_execution_spec()?
         .produces
         .as_ref()?
@@ -238,16 +238,16 @@ pub fn artikelen(
         let Some(law) = resolver.get_law(id) else {
             continue;
         };
-        for artikel in &law.articles {
-            let Some(b) = blok(artikel) else { continue };
-            let verwijzing = format!("{id}#{}", artikel.number);
+        for article in &law.articles {
+            let Some(b) = blok(article) else { continue };
+            let verwijzing = format!("{id}#{}", article.number);
             match serde_json::from_value::<Chronolex>(b.clone()) {
                 Ok(chronolex) => {
                     uit.insert(
                         verwijzing.clone(),
                         Wetartikel {
                             verwijzing,
-                            artikel,
+                            article,
                             chronolex,
                         },
                     );
@@ -266,8 +266,8 @@ pub fn artikelen(
 }
 
 /// De uitkomsten van een artikel.
-fn uitkomsten(artikel: &Article) -> Vec<String> {
-    artikel
+fn outputs(article: &Article) -> Vec<String> {
+    article
         .get_execution_spec()
         .and_then(|e| e.output.as_ref())
         .into_iter()
@@ -277,8 +277,8 @@ fn uitkomsten(artikel: &Article) -> Vec<String> {
 }
 
 /// De parameters van een artikel met hun type (`date`, `number`, ...).
-fn parametertypen(artikel: &Article) -> BTreeMap<String, String> {
-    artikel
+fn parametertypen(article: &Article) -> BTreeMap<String, String> {
+    article
         .get_execution_spec()
         .and_then(|e| e.parameters.as_ref())
         .into_iter()
@@ -319,8 +319,8 @@ fn stagevelden(service: &LawExecutionService, stage: &str) -> Vec<String> {
         let Some(law) = resolver.get_law(id) else {
             continue;
         };
-        for artikel in &law.articles {
-            let haakt = artikel
+        for article in &law.articles {
+            let haakt = article
                 .machine_readable
                 .as_ref()
                 .and_then(|m| m.hooks.as_ref())
@@ -329,7 +329,7 @@ fn stagevelden(service: &LawExecutionService, stage: &str) -> Vec<String> {
                         .any(|h| h.applies_to.stage.as_deref() == Some(stage))
                 });
             if haakt {
-                for o in uitkomsten(artikel) {
+                for o in outputs(article) {
                     voeg(o);
                 }
             }
@@ -345,16 +345,16 @@ fn veldpaden(
     v: &Vestiging,
     stage: Option<&str>,
 ) -> Result<Vec<String>, String> {
-    Ok(match &v.velden {
+    Ok(match &v.fields {
         None => Vec::new(),
         Some(Velden::Lijst(l)) => l.clone(),
         Some(Velden::Getypeerd(m)) => m.keys().cloned().collect(),
-        Some(Velden::Trefwoord(t)) if t == "uitkomsten" => uitkomsten(wa.artikel),
+        Some(Velden::Trefwoord(t)) if t == "outputs" => outputs(wa.article),
         Some(Velden::Trefwoord(t)) if t == "stage" => match stage {
             Some(s) => stagevelden(service, s),
             None => {
                 return Err(format!(
-                    "{}: velden: stage, maar het event heeft geen stage",
+                    "{}: fields: stage, maar het event heeft geen stage",
                     wa.verwijzing
                 ))
             }
@@ -370,25 +370,25 @@ fn veldpaden(
 
 /// Vul de events met `vestigt` in uit de wet, en controleer ze. Een fout
 /// noemt de stroom, het event en het artikel.
-pub fn vestig(strommen: &mut [Stroom], service: &LawExecutionService) -> Vec<String> {
-    if !strommen
+pub fn vestig(streams: &mut [Stroom], service: &LawExecutionService) -> Vec<String> {
+    if !streams
         .iter()
-        .any(|s| s.events.iter().any(|e| !e.vestigt.is_empty()))
+        .any(|s| s.events.iter().any(|e| !e.establishes.is_empty()))
     {
         return Vec::new();
     }
-    let wet = match artikelen(service) {
+    let law = match artikelen(service) {
         Ok(w) => w,
         Err(f) => return f,
     };
     let mut fouten = Vec::new();
-    for stroom in strommen.iter_mut() {
-        for i in 0..stroom.events.len() {
-            if stroom.events[i].vestigt.is_empty() {
+    for stream in streams.iter_mut() {
+        for i in 0..stream.events.len() {
+            if stream.events[i].establishes.is_empty() {
                 continue;
             }
-            let waar = format!("stroom '{}', event '{}'", stroom.id, stroom.events[i].name);
-            match vestig_event(stroom, i, &wet, service) {
+            let waar = format!("stroom '{}', event '{}'", stream.id, stream.events[i].name);
+            match vestig_event(stream, i, &law, service) {
                 Ok(()) => {}
                 Err(f) => fouten.extend(f.into_iter().map(|f| format!("{waar}: {f}"))),
             }
@@ -396,18 +396,18 @@ pub fn vestig(strommen: &mut [Stroom], service: &LawExecutionService) -> Vec<Str
         if fouten.is_empty() {
             // Het ingevulde document hoort het schema te halen zoals een
             // stroom zonder `vestigt`.
-            let mut kopie = stroom.document.clone();
+            let mut kopie = stream.document.clone();
             if let Some(events) = kopie.get_mut("events").and_then(Value::as_array_mut) {
                 for e in events {
                     if let Some(o) = e.as_object_mut() {
-                        o.remove("vestigt");
+                        o.remove("establishes");
                     }
                 }
             }
             if let Err(f) = schema::valideer(Soort::Stroom, &kopie) {
                 fouten.extend(
                     f.into_iter()
-                        .map(|f| format!("stroom '{}', ingevuld uit de wet: {f}", stroom.id)),
+                        .map(|f| format!("stroom '{}', ingevuld uit de law: {f}", stream.id)),
                 );
             }
         }
@@ -416,35 +416,35 @@ pub fn vestig(strommen: &mut [Stroom], service: &LawExecutionService) -> Vec<Str
 }
 
 fn vestig_event(
-    stroom: &mut Stroom,
+    stream: &mut Stroom,
     i: usize,
-    wet: &BTreeMap<String, Wetartikel<'_>>,
+    law: &BTreeMap<String, Wetartikel<'_>>,
     service: &LawExecutionService,
 ) -> Result<(), Vec<String>> {
-    let naam = stroom.events[i].name.clone();
+    let name = stream.events[i].name.clone();
     let mut fouten = Vec::new();
     // Per artikel in de volgorde van de stroom: de vestiging of uitbreiding.
     let mut delen: Vec<(&Wetartikel<'_>, &Vestiging, bool)> = Vec::new();
-    for r in &stroom.events[i].vestigt {
-        let Some(wa) = wet.get(r) else {
+    for r in &stream.events[i].establishes {
+        let Some(wa) = law.get(r) else {
             fouten.push(format!(
                 "artikel '{r}' is niet geladen of heeft geen produces.extensions.{NAMESPACE}"
             ));
             continue;
         };
         let mut gevonden = false;
-        for v in &wa.chronolex.vestigt {
-            if v.event.as_deref() == Some(naam.as_str()) {
+        for v in &wa.chronolex.establishes {
+            if v.event.as_deref() == Some(name.as_str()) {
                 delen.push((wa, v, true));
                 gevonden = true;
-            } else if v.breidt_uit.as_deref() == Some(naam.as_str()) {
+            } else if v.extends.as_deref() == Some(name.as_str()) {
                 delen.push((wa, v, false));
                 gevonden = true;
             }
         }
         if !gevonden {
             fouten.push(format!(
-                "artikel '{r}' vestigt '{naam}' niet en breidt het niet uit"
+                "artikel '{r}' vestigt '{name}' niet en breidt het niet uit"
             ));
         }
     }
@@ -453,32 +453,32 @@ fn vestig_event(
         [b] => b,
         [] => {
             fouten.push(format!(
-                "geen van de artikelen in vestigt vestigt '{naam}' zelf (event: {naam})"
+                "geen van de artikelen in vestigt vestigt '{name}' zelf (event: {name})"
             ));
             return Err(fouten);
         }
         _ => {
-            fouten.push(format!("meer dan een artikel vestigt '{naam}'"));
+            fouten.push(format!("meer dan een artikel vestigt '{name}'"));
             return Err(fouten);
         }
     };
     for (wa, v, is_basis) in &delen {
-        if v.event.is_some() && v.breidt_uit.is_some() {
+        if v.event.is_some() && v.extends.is_some() {
             fouten.push(format!("{}: event en breidt_uit tegelijk", wa.verwijzing));
         }
         if !is_basis
             && (v.type_.is_some()
-                || v.soort.is_some()
+                || v.subtype.is_some()
                 || v.stage.is_some()
-                || !v.verwijst.is_empty())
+                || !v.refers_to.is_empty())
         {
             fouten.push(format!(
-                "{}: een uitbreiding zet geen type, soort, stage of verwijzing; dat doet het artikel dat '{naam}' vestigt",
+                "{}: een uitbreiding zet geen type, soort, stage of verwijzing; dat doet het artikel dat '{name}' vestigt",
                 wa.verwijzing
             ));
         }
-        if let Some(p) = v.op_moment.as_ref().and_then(|o| o.parameter.as_ref()) {
-            if !parametertypen(wa.artikel).contains_key(p) {
+        if let Some(p) = v.effective_at.as_ref().and_then(|o| o.parameter.as_ref()) {
+            if !parametertypen(wa.article).contains_key(p) {
                 fouten.push(format!(
                     "{}: op_moment.parameter '{p}' is geen parameter van dit artikel",
                     wa.verwijzing
@@ -488,25 +488,25 @@ fn vestig_event(
     }
     let (bwa, bv, _) = basis;
     let Some(type_) = bv.type_.clone() else {
-        fouten.push(format!("{}: vestigt '{naam}' zonder type", bwa.verwijzing));
+        fouten.push(format!("{}: vestigt '{name}' zonder type", bwa.verwijzing));
         return Err(fouten);
     };
-    let mut grondslag: Vec<String> = Vec::new();
+    let mut legal_basis: Vec<String> = Vec::new();
     let mut moment_grondslag: Vec<String> = Vec::new();
     let mut paden: Vec<(String, String)> = Vec::new();
     let mut als = BTreeMap::new();
     for (wa, v, is_basis) in &delen {
-        let g = match &v.grondslag {
+        let g = match &v.legal_basis {
             Some(g) => g.clone(),
             None if *is_basis => vec![wa.verwijzing.clone()],
             None => Vec::new(),
         };
         for x in g {
-            if !grondslag.contains(&x) {
-                grondslag.push(x);
+            if !legal_basis.contains(&x) {
+                legal_basis.push(x);
             }
         }
-        for x in v.op_moment.iter().flat_map(|o| o.grondslag.iter()) {
+        for x in v.effective_at.iter().flat_map(|o| o.legal_basis.iter()) {
             if !moment_grondslag.contains(x) {
                 moment_grondslag.push(x.clone());
             }
@@ -515,25 +515,25 @@ fn vestig_event(
             Ok(p) => paden.extend(p.into_iter().map(|p| (p, wa.verwijzing.clone()))),
             Err(f) => fouten.push(f),
         }
-        als.extend(v.als.clone());
+        als.extend(v.aliases.clone());
     }
-    for x in grondslag.iter().chain(&moment_grondslag) {
+    for x in legal_basis.iter().chain(&moment_grondslag) {
         if let Err(f) = crate::regelingen::geldig(service, x) {
             fouten.push(f);
         }
     }
 
-    let event = &mut stroom.events[i];
-    if !event.verwijst.is_empty() {
+    let event = &mut stream.events[i];
+    if !event.refers_to.is_empty() {
         fouten.push(
-            "de stroom noemt verwijst, maar het event heeft vestigt: de verwijzingen komen uit de wet"
+            "de stroom noemt verwijst, maar het event heeft establishes: de verwijzingen komen uit de wet"
                 .into(),
         );
     }
     // De velden: elk blad van de stroom valt onder een pad van de wet, en
     // elk pad van de wet heeft een blad in de stroom.
-    let bladeren: Vec<String> = event.bladeren().into_iter().map(|b| b.pad).collect();
-    let onder = |blad: &str, pad: &str| blad == pad || blad.starts_with(&format!("{pad}."));
+    let bladeren: Vec<String> = event.bladeren().into_iter().map(|b| b.path).collect();
+    let onder = |blad: &str, path: &str| blad == path || blad.starts_with(&format!("{path}."));
     for b in &bladeren {
         if !paden.iter().any(|(p, _)| onder(b, p)) {
             fouten.push(format!(
@@ -548,8 +548,8 @@ fn vestig_event(
             ));
         }
     }
-    match (&mut event.op_moment, moment_grondslag.is_empty()) {
-        (Some(o), false) => o.grondslag = moment_grondslag.clone(),
+    match (&mut event.effective_at, moment_grondslag.is_empty()) {
+        (Some(o), false) => o.legal_basis = moment_grondslag.clone(),
         (Some(_), true) => fouten.push(
             "de stroom bindt op_moment, maar de wet zegt niet waarom dat moment rechtens telt (op_moment.grondslag)"
                 .into(),
@@ -563,41 +563,41 @@ fn vestig_event(
         return Err(fouten);
     }
     event.type_ = type_;
-    event.soort = bv.soort.clone();
+    event.subtype = bv.subtype.clone();
     event.stage = bv.stage.clone();
-    event.verwijst = bv.verwijst.clone();
-    event.veldtypen = delen
+    event.refers_to = bv.refers_to.clone();
+    event.field_types = delen
         .iter()
-        .filter_map(|(_, v, _)| match &v.velden {
+        .filter_map(|(_, v, _)| match &v.fields {
             Some(Velden::Getypeerd(m)) => Some(m.clone()),
             _ => None,
         })
         .flatten()
         .collect();
-    event.grondslag = grondslag;
-    event.als = als;
+    event.legal_basis = legal_basis;
+    event.aliases = als;
 
     // Het document (`GET /api/stroom`) toont het event zoals het geldt.
-    if let Some(e) = stroom
+    if let Some(e) = stream
         .document
         .get_mut("events")
         .and_then(|e| e.get_mut(i))
         .and_then(Value::as_object_mut)
     {
-        let event = &stroom.events[i];
+        let event = &stream.events[i];
         e.insert("type".into(), Value::String(event.type_.clone()));
-        if let Some(s) = &event.soort {
-            e.insert("soort".into(), Value::String(s.clone()));
+        if let Some(s) = &event.subtype {
+            e.insert("subtype".into(), Value::String(s.clone()));
         }
         if let Some(s) = &event.stage {
             e.insert("stage".into(), Value::String(s.clone()));
         }
         if let Some(v) = bv.verwijst_als_json() {
-            e.insert("verwijst".into(), v);
+            e.insert("refers_to".into(), v);
         }
-        e.insert("grondslag".into(), serde_json::json!(event.grondslag));
-        if let Some(o) = e.get_mut("op_moment").and_then(Value::as_object_mut) {
-            o.insert("grondslag".into(), serde_json::json!(moment_grondslag));
+        e.insert("legal_basis".into(), serde_json::json!(event.legal_basis));
+        if let Some(o) = e.get_mut("effective_at").and_then(Value::as_object_mut) {
+            o.insert("legal_basis".into(), serde_json::json!(moment_grondslag));
         }
     }
     Ok(())
@@ -609,8 +609,8 @@ struct Celevent<'a> {
     event: &'a crate::stroom::Event,
 }
 
-fn celevents(strommen: &[Stroom]) -> Vec<Celevent<'_>> {
-    strommen
+fn celevents(streams: &[Stroom]) -> Vec<Celevent<'_>> {
+    streams
         .iter()
         .flat_map(|s| {
             s.events.iter().map(|e| Celevent {
@@ -631,7 +631,7 @@ fn raakt(e: &crate::stroom::Event, filter: &Filter) -> bool {
         match k.as_str() {
             "name" => e.name == *v,
             "type" => e.type_ == *v,
-            "soort" => e.soort.as_deref() == Some(v),
+            "subtype" => e.subtype.as_deref() == Some(v),
             "stage" => e.stage.as_deref() == Some(v),
             _ => true,
         }
@@ -661,10 +661,10 @@ fn filter_uit(
                 }
                 f.insert("name".into(), tekst);
             }
-            "gevestigd_door" => {
+            "established_by" => {
                 let namen: Vec<&str> = events
                     .iter()
-                    .filter(|e| e.event.vestigt.contains(&tekst))
+                    .filter(|e| e.event.establishes.contains(&tekst))
                     .map(|e| e.event.name.as_str())
                     .collect();
                 match namen[..] {
@@ -680,8 +680,8 @@ fn filter_uit(
                     }
                 }
             }
-            "besluit" if tekst == "dit" => {}
-            "besluit" => return Err(format!("{waar}: uit.besluit kent alleen 'dit'")),
+            "decision" if tekst == "this" => {}
+            "decision" => return Err(format!("{waar}: from.decision kent alleen 'this'")),
             "stage" => {
                 if !events
                     .iter()
@@ -705,38 +705,38 @@ fn filter_uit(
 /// maar een deel hier ligt, is een fout. `aanvullingen` (uit
 /// `lexostatussen.yaml`) zetten extra velden bij een lexostatus uit de wet:
 /// wat de cel meegeeft voor de synthese, geen parameter.
-pub fn lexostatussen(
-    strommen: &[Stroom],
+pub fn lexostatuses(
+    streams: &[Stroom],
     service: &LawExecutionService,
     aanvullingen: &[WetAanvulling],
 ) -> Result<Vec<LexostatusDefinitie>, Vec<String>> {
-    let events = celevents(strommen);
+    let events = celevents(streams);
     let heeft_leest = || {
         service.resolver().list_laws().into_iter().any(|id| {
             service.resolver().get_law(id).is_some_and(|l| {
                 l.articles
                     .iter()
-                    .any(|a| blok(a).is_some_and(|b| b.get("leest").is_some()))
+                    .any(|a| blok(a).is_some_and(|b| b.get("reads").is_some()))
             })
         })
     };
-    if !events.iter().any(|e| e.event.zaak.heeft_kenmerk()) || !heeft_leest() {
+    if !events.iter().any(|e| e.event.case.heeft_kenmerk()) || !heeft_leest() {
         return match aanvullingen.first() {
             Some(a) => Err(vec![format!(
-                "wet: '{}' is geen lexostatus uit de wet in deze cel",
-                a.artikel
+                "law: '{}' is geen lexostatus uit de wet in deze cel",
+                a.article
             )]),
             None => Ok(Vec::new()),
         };
     }
-    let wet = artikelen(service)?;
+    let law = artikelen(service)?;
     // Het type van een parameter die een lezing levert: uit het lezende
     // artikel, en anders uit het artikel in het corpus dat haar declareert.
     // Een lezing in beleid (notitie bron en gram-id) levert parameters van een
     // wetsartikel dat ze zelf niet declareert.
     let mut alle_typen: BTreeMap<String, String> = BTreeMap::new();
-    for wa in wet.values() {
-        for (n, t) in parametertypen(wa.artikel) {
+    for wa in law.values() {
+        for (n, t) in parametertypen(wa.article) {
             alle_typen.entry(n).or_insert(t);
         }
     }
@@ -753,18 +753,18 @@ pub fn lexostatussen(
     let mut uit = Vec::new();
     let mut fouten = Vec::new();
     let mut geleverd: BTreeMap<String, String> = BTreeMap::new();
-    for wa in wet.values() {
-        let Some(leest) = &wa.chronolex.leest else {
+    for wa in law.values() {
+        let Some(reads) = &wa.chronolex.reads else {
             continue;
         };
-        for lezing in leest.lezingen() {
+        for lezing in reads.lezingen() {
             match definitie(wa, lezing, &events, aanvullingen, &alle_typen) {
                 Ok(None) => {}
                 Ok(Some(d)) => {
-                    for p in d.reduction.afleidingen.keys() {
+                    for p in d.reduction.derivations.keys() {
                         if let Some(ander) = geleverd.insert(p.clone(), d.name.clone()) {
                             fouten.push(format!(
-                                "parameter '{p}' komt uit twee lexostatussen uit de wet: {ander} en {}",
+                                "parameter '{p}' komt uit twee lexostatussen uit de law: {ander} en {}",
                                 d.name
                             ));
                         }
@@ -782,10 +782,10 @@ pub fn lexostatussen(
         }
     }
     for a in aanvullingen {
-        if !uit.iter().any(|d| d.name == a.artikel) {
+        if !uit.iter().any(|d| d.name == a.article) {
             fouten.push(format!(
-                "wet: '{}' is geen lexostatus uit de wet in deze cel",
-                a.artikel
+                "law: '{}' is geen lexostatus uit de wet in deze cel",
+                a.article
             ));
         }
     }
@@ -804,25 +804,25 @@ fn definitie(
     alle_typen: &BTreeMap<String, String>,
 ) -> Result<Option<LexostatusDefinitie>, Vec<String>> {
     // De naam: het artikel, of het lid als de lezing er een noemt.
-    let lexonaam = match &lezing.lid {
+    let lexonaam = match &lezing.paragraph {
         None => wa.verwijzing.clone(),
         Some(Value::String(l)) => format!("{} lid {l}", wa.verwijzing),
         Some(l) => format!("{} lid {l}", wa.verwijzing),
     };
     let waar = format!("{lexonaam} (leest)");
     let mut fouten = Vec::new();
-    let mut typen = parametertypen(wa.artikel);
+    let mut types = parametertypen(wa.article);
     for p in lezing.parameters.keys() {
-        if let (false, Some(t)) = (typen.contains_key(p), alle_typen.get(p)) {
-            typen.insert(p.clone(), t.clone());
+        if let (false, Some(t)) = (types.contains_key(p), alle_typen.get(p)) {
+            types.insert(p.clone(), t.clone());
         }
     }
     // Per filter: waar het in de cel landt. Geen: niet deze cel.
     let mut hier = 0usize;
     let mut elders = 0usize;
     let mut top = Filter::new();
-    top.insert("wortel".into(), "$wortel".into());
-    if let Some(u) = &lezing.uit {
+    top.insert("root".into(), "$root".into());
+    if let Some(u) = &lezing.from {
         match filter_uit(u, events, &waar) {
             Ok(Some(f)) => {
                 hier += 1;
@@ -832,10 +832,10 @@ fn definitie(
             Err(f) => fouten.push(f),
         }
     }
-    let mut afleidingen = BTreeMap::new();
-    for (naam, v) in &lezing.parameters {
-        let waar = format!("{waar}, parameter '{naam}'");
-        if !typen.contains_key(naam) {
+    let mut derivations = BTreeMap::new();
+    for (name, v) in &lezing.parameters {
+        let waar = format!("{waar}, parameter '{name}'");
+        if !types.contains_key(name) {
             fouten.push(format!("{waar}: geen parameter van dit artikel"));
         }
         let Some(o) = v.as_object() else {
@@ -844,7 +844,7 @@ fn definitie(
         };
         let mut o = o.clone();
         let mut eigen: Option<Filter> = None;
-        if let Some(u) = o.remove("uit") {
+        if let Some(u) = o.remove("from") {
             let Some(u) = u.as_object() else {
                 fouten.push(format!("{waar}: uit is een object"));
                 continue;
@@ -867,14 +867,14 @@ fn definitie(
         // De naamsbrug: leest de afleiding een veld dat de gelezen events
         // onder een andere naam dragen, dan dat veld.
         let gelezen = eigen.as_ref().unwrap_or(&top);
-        if let Some(Value::String(veld)) = o.get("veld").cloned() {
+        if let Some(Value::String(field)) = o.get("field").cloned() {
             let doelen: BTreeSet<Option<&String>> = events
                 .iter()
                 .filter(|e| raakt(e.event, gelezen))
-                .map(|e| e.event.als.get(&veld))
+                .map(|e| e.event.aliases.get(&field))
                 .collect();
             if let [Some(ander)] = doelen.into_iter().collect::<Vec<_>>()[..] {
-                o.insert("veld".into(), Value::String(ander.clone()));
+                o.insert("field".into(), Value::String(ander.clone()));
             }
         }
         if let Some(f) = eigen {
@@ -884,12 +884,12 @@ fn definitie(
             }
             o.insert("filter".into(), Value::Object(filter));
         }
-        if !o.contains_key("grondslag") {
-            o.insert("grondslag".into(), serde_json::json!([lexonaam]));
+        if !o.contains_key("legal_basis") {
+            o.insert("legal_basis".into(), serde_json::json!([lexonaam]));
         }
         match serde_json::from_value::<Afgeleid>(Value::Object(o)) {
             Ok(a) => {
-                afleidingen.insert(naam.clone(), a);
+                derivations.insert(name.clone(), a);
             }
             Err(e) => fouten.push(format!("{waar}: geen afleiding: {e}")),
         }
@@ -908,10 +908,10 @@ fn definitie(
         ));
     }
     // De kroniek: die van de events die de filters raken.
-    let mut kronieken: BTreeSet<&str> = BTreeSet::new();
+    let mut chronicles: BTreeSet<&str> = BTreeSet::new();
     let filters: Vec<Filter> = std::iter::once(top.clone())
         .chain(
-            afleidingen
+            derivations
                 .values()
                 .filter_map(|a: &Afgeleid| a.filter().cloned()),
         )
@@ -920,10 +920,10 @@ fn definitie(
         let mut volledig = top.clone();
         volledig.extend(f.clone());
         for e in events.iter().filter(|e| raakt(e.event, &volledig)) {
-            kronieken.insert(e.chronicle);
+            chronicles.insert(e.chronicle);
         }
     }
-    let kroniek = match kronieken.into_iter().collect::<Vec<_>>()[..] {
+    let chronicle = match chronicles.into_iter().collect::<Vec<_>>()[..] {
         [k] => k.to_string(),
         [] => {
             fouten.push(format!(
@@ -939,36 +939,36 @@ fn definitie(
             String::new()
         }
     };
-    if lezing.besluit.as_deref().is_some_and(|b| b != "dit") {
+    if lezing.decision.as_deref().is_some_and(|b| b != "this") {
         fouten.push(format!("{waar}: besluit kent alleen 'dit'"));
     }
     if !fouten.is_empty() {
         return Err(fouten);
     }
-    let extra_velden = aanvullingen
+    let extra_fields = aanvullingen
         .iter()
-        .filter(|a| a.artikel == lexonaam)
-        .flat_map(|a| a.extra_velden.clone())
+        .filter(|a| a.article == lexonaam)
+        .flat_map(|a| a.extra_fields.clone())
         .collect();
     Ok(Some(LexostatusDefinitie {
         name: lexonaam.clone(),
         inputs: vec![InputDefinitie {
-            name: "wortel".into(),
+            name: "root".into(),
             soort: "string".into(),
         }],
         reduction: Reductie {
-            kroniek,
+            chronicle,
             filter: top,
-            groepeer: None,
-            zonder: Filter::new(),
-            kies: lezing.kies,
-            afleidingen,
-            extra_velden,
+            group_by: None,
+            without: Filter::new(),
+            pick: lezing.pick,
+            derivations,
+            extra_fields,
         },
-        wet: Some(Wetlezing {
-            artikel: lexonaam,
-            typen,
-            besluit_dit: lezing.besluit.as_deref() == Some("dit"),
+        law: Some(Wetlezing {
+            article: lexonaam,
+            types,
+            besluit_dit: lezing.decision.as_deref() == Some("this"),
         }),
     }))
 }
@@ -1003,13 +1003,13 @@ articles:
           decision_type: TOEKENNING
           extensions:
             chronolex:
-              vestigt:
+              establishes:
                 - event: besloten
                   type: decretogram
                   stage: BESLUIT
-                  op_moment: {parameter: besluitdatum, grondslag: ['testwet_lezing#1']}
-                  velden: uitkomsten
-                  als: {vastgesteld_bedrag: bedrag_art1}
+                  effective_at: {parameter: besluitdatum, legal_basis: ['testwet_lezing#1']}
+                  fields: outputs
+                  aliases: {vastgesteld_bedrag: bedrag_art1}
         parameters:
           - {name: besluitdatum, type: date}
         output:
@@ -1026,17 +1026,17 @@ articles:
           decision_type: GEEN_BESLUIT
           extensions:
             chronolex:
-              vestigt:
+              establishes:
                 - event: betaald
                   type: executogram
-                  soort: betaling
-                  verwijst: {besluit: {naar: {stage: BESLUIT}, verplicht: true}}
-                  velden: [bedrag]
-              leest:
-                besluit: dit
+                  subtype: betaling
+                  refers_to: {decision: {to: {stage: BESLUIT}, required: true}}
+                  fields: [bedrag]
+              reads:
+                decision: this
                 parameters:
-                  vastgesteld_bedrag: {uit: {stage: BESLUIT}, kies: laatste, veld: vastgesteld_bedrag}
-                  betaald_bedrag: {uit: {gevestigd_door: 'testwet_lezing#2'}, som: bedrag}
+                  vastgesteld_bedrag: {from: {stage: BESLUIT}, pick: latest, field: vastgesteld_bedrag}
+                  betaald_bedrag: {from: {established_by: 'testwet_lezing#2'}, sum: bedrag}
         parameters:
           - {name: vastgesteld_bedrag, type: number}
           - {name: betaald_bedrag, type: number}
@@ -1047,7 +1047,7 @@ articles:
             value: {operation: SUBTRACT, values: [$vastgesteld_bedrag, $betaald_bedrag]}
 "#;
 
-    fn stroom(velden_besluit: &str) -> Stroom {
+    fn stream(velden_besluit: &str) -> Stroom {
         let tekst = format!(
             r#"
 $id: test_verloop
@@ -1055,12 +1055,12 @@ recording_actor: test_instantie
 chronicle: test_kroniek
 events:
   - name: besloten
-    vestigt: ['testwet_lezing#1']
+    establishes: ['testwet_lezing#1']
     intake: behandelaar
-    op_moment: {{bron: $external.besluitdatum}}
+    effective_at: {{source: $external.besluitdatum}}
     fields: {{{velden_besluit}}}
   - name: betaald
-    vestigt: ['testwet_lezing#2']
+    establishes: ['testwet_lezing#2']
     intake: behandelaar
     fields: {{bedrag: $external.bedrag}}
 "#
@@ -1074,91 +1074,91 @@ events:
         s
     }
 
-    fn gram(naam: &str, stage: Option<&str>, fields: Value, moment: &str) -> Gram {
+    fn gram(name: &str, stage: Option<&str>, fields: Value, moment: &str) -> Gram {
         let mut g = testgram("Z1");
-        g.name = naam.into();
+        g.name = name.into();
         g.stage = stage.map(str::to_string);
         g.chronicle = "test_kroniek".into();
         g.fields = fields.as_object().cloned().unwrap();
-        g.op_moment = moment.into();
-        g.vastgelegd_op = moment.into();
+        g.effective_at = moment.into();
+        g.recorded_at = moment.into();
         g
     }
 
     #[test]
     fn de_wet_vult_het_event_in() {
         let s = service();
-        let mut strommen = vec![stroom("bedrag_art1: $external.bedrag_art1")];
-        assert_eq!(vestig(&mut strommen, &s), Vec::<String>::new());
-        crate::stroom::leid_rollen_af(&mut strommen);
-        let e = &strommen[0].events[0];
+        let mut streams = vec![stream("bedrag_art1: $external.bedrag_art1")];
+        assert_eq!(vestig(&mut streams, &s), Vec::<String>::new());
+        crate::stroom::leid_rollen_af(&mut streams);
+        let e = &streams[0].events[0];
         assert_eq!(e.type_, "decretogram");
         assert_eq!(e.stage.as_deref(), Some("BESLUIT"));
-        assert_eq!(e.besluit, Some(crate::stroom::Besluit::Opent));
+        assert_eq!(e.decision, Some(crate::stroom::Decision::Opens));
         assert_eq!(
-            strommen[0].events[1].verwijst["besluit"].naar,
+            streams[0].events[1].refers_to["decision"].to,
             crate::stroom::Naar::Stage("BESLUIT".into())
         );
         assert_eq!(
-            strommen[0].events[1].besluit,
-            Some(crate::stroom::Besluit::Volgt)
+            streams[0].events[1].decision,
+            Some(crate::stroom::Decision::Follows)
         );
-        assert_eq!(e.grondslag, ["testwet_lezing#1"]);
+        assert_eq!(e.legal_basis, ["testwet_lezing#1"]);
         assert_eq!(
-            e.op_moment.as_ref().unwrap().grondslag,
+            e.effective_at.as_ref().unwrap().legal_basis,
             ["testwet_lezing#1"]
         );
-        assert_eq!(e.als["vastgesteld_bedrag"], "bedrag_art1");
+        assert_eq!(e.aliases["vastgesteld_bedrag"], "bedrag_art1");
         // Het document van de stroom toont het event zoals het geldt.
-        assert_eq!(strommen[0].document["events"][0]["type"], "decretogram");
+        assert_eq!(streams[0].document["events"][0]["type"], "decretogram");
     }
 
     #[test]
     fn een_veld_dat_de_wet_niet_noemt_is_een_fout() {
         let s = service();
-        let mut strommen = vec![stroom(
+        let mut streams = vec![stream(
             "bedrag_art1: $external.bedrag_art1, notitie: $external.notitie",
         )];
-        let f = vestig(&mut strommen, &s);
+        let f = vestig(&mut streams, &s);
         assert!(f.iter().any(|f| f.contains("veld 'notitie'")), "{f:?}");
         // En andersom: een uitkomst die de stroom niet bindt.
-        let mut strommen = vec![stroom("notitie: $external.notitie")];
-        let f = vestig(&mut strommen, &s);
+        let mut streams = vec![stream("notitie: $external.notitie")];
+        let f = vestig(&mut streams, &s);
         assert!(f.iter().any(|f| f.contains("'bedrag_art1'")), "{f:?}");
     }
 
     #[test]
     fn het_lezende_artikel_wordt_een_lexostatus_die_de_engine_ook_zo_leest() {
         let s = service();
-        let mut strommen = vec![stroom("bedrag_art1: $external.bedrag_art1")];
-        assert!(vestig(&mut strommen, &s).is_empty());
-        crate::stroom::leid_rollen_af(&mut strommen);
-        let defs = lexostatussen(&strommen, &s, &[]).unwrap();
+        let mut streams = vec![stream("bedrag_art1: $external.bedrag_art1")];
+        assert!(vestig(&mut streams, &s).is_empty());
+        crate::stroom::leid_rollen_af(&mut streams);
+        let defs = lexostatuses(&streams, &s, &[]).unwrap();
         assert_eq!(defs.len(), 1);
         let d = &defs[0];
         assert_eq!(d.name, "testwet_lezing#2");
-        assert_eq!(d.reduction.kroniek, "test_kroniek");
+        assert_eq!(d.reduction.chronicle, "test_kroniek");
         // De naamsbrug van art. 1: art. 2 leest zijn eigen naam, het gram
         // draagt die van art. 1.
-        match &d.reduction.afleidingen["vastgesteld_bedrag"].afleiding {
-            Afleiding::LaatsteVeld { veld, filter, .. } => {
-                assert_eq!(veld, "bedrag_art1");
+        match &d.reduction.derivations["vastgesteld_bedrag"].derivation {
+            Afleiding::LaatsteVeld { field, filter, .. } => {
+                assert_eq!(field, "bedrag_art1");
                 assert_eq!(filter["stage"], "BESLUIT");
             }
             a => panic!("{a:?}"),
         }
-        match &d.reduction.afleidingen["betaald_bedrag"].afleiding {
+        match &d.reduction.derivations["betaald_bedrag"].derivation {
             Afleiding::Som { filter, .. } => assert_eq!(filter["name"], "betaald"),
             a => panic!("{a:?}"),
         }
-        assert!(d.wet.as_ref().unwrap().besluit_dit);
+        assert!(d.law.as_ref().unwrap().besluit_dit);
         // Zonder eigen grondslag rust een afleiding op het lezende artikel.
         assert_eq!(
-            d.reduction.afleidingen["betaald_bedrag"].grondslag,
+            d.reduction.derivations["betaald_bedrag"].legal_basis,
             ["testwet_lezing#2"]
         );
 
-        let grammen = vec![
+        let grams = vec![
             gram(
                 "besloten",
                 Some("BESLUIT"),
@@ -1178,8 +1178,8 @@ events:
                 "2025-03-03T10:00:00+01:00",
             ),
         ];
-        let inputs = json!({"wortel": "Z1"}).as_object().cloned().unwrap();
-        let l = reductie::reduceer(d, &inputs, &grammen).unwrap().unwrap();
+        let inputs = json!({"root": "Z1"}).as_object().cloned().unwrap();
+        let l = reductie::reduceer(d, &inputs, &grams).unwrap().unwrap();
         assert_eq!(l.parameters["vastgesteld_bedrag"], json!(100));
         assert_eq!(l.parameters["betaald_bedrag"], json!(50));
 
@@ -1187,20 +1187,20 @@ events:
         // (een verschil is een fout).
         let mut lexo = LawExecutionService::new();
         let tekst =
-            crate::engine_regeling::regeling(d, "lexostatus_test", &BTreeMap::new()).unwrap();
+            crate::engine_regeling::regulation(d, "lexostatus_test", &BTreeMap::new()).unwrap();
         let id = lexo.load_law(&tekst).unwrap();
         let route = CelRoute {
             service: Arc::new(lexo),
             wijzen: BTreeMap::from([(
                 d.name.clone(),
                 Wijze::Engine {
-                    regeling: id,
-                    artikel: Some(d.name.clone()),
+                    regulation: id,
+                    article: Some(d.name.clone()),
                 },
             )]),
             vergelijk: true,
         };
-        for g in [&grammen[..1], &grammen[..], &[]] {
+        for g in [&grams[..1], &grams[..], &[]] {
             let r = lexostatus_engine::reduceer_lexostatus(
                 &route,
                 d,
@@ -1212,7 +1212,7 @@ events:
             );
             let l = r.unwrap().unwrap();
             assert_eq!(
-                l.reductie.unwrap().regeling.as_deref(),
+                l.reduction.unwrap().regulation.as_deref(),
                 Some("testwet_lezing#2")
             );
         }
@@ -1220,17 +1220,17 @@ events:
 
     #[test]
     fn een_lezing_per_lid_is_een_eigen_lexostatus() {
-        let wet = WET.replace(
-            "              leest:\n                besluit: dit\n                parameters:\n                  vastgesteld_bedrag: {uit: {stage: BESLUIT}, kies: laatste, veld: vastgesteld_bedrag}\n                  betaald_bedrag: {uit: {gevestigd_door: 'testwet_lezing#2'}, som: bedrag}\n",
-            "              leest:\n                - parameters:\n                    vastgesteld_bedrag: {uit: {stage: BESLUIT}, kies: laatste, veld: vastgesteld_bedrag}\n                - lid: 2\n                  parameters:\n                    betaald_bedrag: {uit: {gevestigd_door: 'testwet_lezing#2'}, som: bedrag}\n",
+        let law = WET.replace(
+            "              reads:\n                decision: this\n                parameters:\n                  vastgesteld_bedrag: {from: {stage: BESLUIT}, pick: latest, field: vastgesteld_bedrag}\n                  betaald_bedrag: {from: {established_by: 'testwet_lezing#2'}, sum: bedrag}\n",
+            "              reads:\n                - parameters:\n                    vastgesteld_bedrag: {from: {stage: BESLUIT}, pick: latest, field: vastgesteld_bedrag}\n                - paragraph: 2\n                  parameters:\n                    betaald_bedrag: {from: {established_by: 'testwet_lezing#2'}, sum: bedrag}\n",
         );
-        assert_ne!(wet, WET, "de vervanging raakte niets");
+        assert_ne!(law, WET, "de vervanging raakte niets");
         let mut s = LawExecutionService::new();
-        s.load_law(&wet).unwrap();
-        let mut strommen = vec![stroom("bedrag_art1: $external.bedrag_art1")];
-        assert!(vestig(&mut strommen, &s).is_empty());
-        crate::stroom::leid_rollen_af(&mut strommen);
-        let namen: Vec<String> = lexostatussen(&strommen, &s, &[])
+        s.load_law(&law).unwrap();
+        let mut streams = vec![stream("bedrag_art1: $external.bedrag_art1")];
+        assert!(vestig(&mut streams, &s).is_empty());
+        crate::stroom::leid_rollen_af(&mut streams);
+        let namen: Vec<String> = lexostatuses(&streams, &s, &[])
             .unwrap()
             .into_iter()
             .map(|d| d.name)
@@ -1241,15 +1241,15 @@ events:
     #[test]
     fn een_aanvulling_op_een_onbekend_artikel_is_een_fout() {
         let s = service();
-        let mut strommen = vec![stroom("bedrag_art1: $external.bedrag_art1")];
-        assert!(vestig(&mut strommen, &s).is_empty());
-        crate::stroom::leid_rollen_af(&mut strommen);
+        let mut streams = vec![stream("bedrag_art1: $external.bedrag_art1")];
+        assert!(vestig(&mut streams, &s).is_empty());
+        crate::stroom::leid_rollen_af(&mut streams);
         let a: WetAanvulling = serde_json::from_value(json!({
-            "artikel": "testwet_lezing#1",
-            "extra_velden": {"x": {"veld": "bedrag_art1"}}
+            "article": "testwet_lezing#1",
+            "extra_fields": {"x": {"field": "bedrag_art1"}}
         }))
         .unwrap();
-        let f = lexostatussen(&strommen, &s, &[a]).unwrap_err();
+        let f = lexostatuses(&streams, &s, &[a]).unwrap_err();
         assert!(f[0].contains("testwet_lezing#1"), "{f:?}");
     }
 }

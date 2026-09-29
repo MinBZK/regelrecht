@@ -30,7 +30,7 @@ async function opvragen() {
   bezig.value = true;
   try {
     // Via de engine (experiment A): vraag de trace van de engine-run mee.
-    const trace = definitie.value?.reductie?.route === 'engine' ? { engine_trace: '1' } : {};
+    const trace = definitie.value?.reduction?.route === 'engine' ? { engine_trace: '1' } : {};
     uitkomst.value = await api.lexostatus(naam.value, { ...invoer.value, ...trace });
   } catch (e) {
     uitkomst.value = null;
@@ -41,18 +41,18 @@ async function opvragen() {
 }
 
 // Langs welke route de cel reduceerde, als de runtime dat zegt.
-const route = computed(() => routeTekst(uitkomst.value?.reductie ?? definitie.value?.reductie));
+const route = computed(() => routeTekst(uitkomst.value?.reduction ?? definitie.value?.reduction));
 
 // Een lijst-lexostatus: een regel per zaak, met de kolommen als velden.
-const lijst = computed(() => uitkomst.value?.lijst ?? null);
-const kolommen = computed(() => definitie.value?.kolommen ?? []);
+const lijst = computed(() => uitkomst.value?.list ?? null);
+const kolommen = computed(() => definitie.value?.columns ?? []);
 
 const rijen = computed(() => {
   const u = uitkomst.value;
   if (!u) return [];
   const uit = Object.entries(u.parameters ?? {}).map(([n, w]) => ({ naam: n, waarde: waarde(w), soort: 'parameter' }));
-  for (const [n, w] of Object.entries(u.extra_velden ?? {})) uit.push({ naam: n, waarde: waarde(w), soort: 'extra veld (niet naar de engine)' });
-  for (const n of u.niet_afgeleid ?? []) uit.push({ naam: n, waarde: '', soort: 'niet af te leiden' });
+  for (const [n, w] of Object.entries(u.extra_fields ?? {})) uit.push({ naam: n, waarde: waarde(w), soort: 'extra veld (niet naar de engine)' });
+  for (const n of u.not_derived ?? []) uit.push({ naam: n, waarde: '', soort: 'niet af te leiden' });
   return uit;
 });
 </script>
@@ -98,16 +98,16 @@ const rijen = computed(() => {
         <nldd-text-cell text="Zaakkenmerk"></nldd-text-cell>
         <nldd-text-cell v-for="k in kolommen" :key="k" :text="k"></nldd-text-cell>
       </nldd-table-row>
-      <nldd-table-row v-for="r in lijst" :key="r.wortel">
-        <nldd-text-cell :text="r.wortel"></nldd-text-cell>
-        <nldd-text-cell v-for="k in kolommen" :key="k" :text="waarde(r.velden[k])"></nldd-text-cell>
+      <nldd-table-row v-for="r in lijst" :key="r.root">
+        <nldd-text-cell :text="r.root"></nldd-text-cell>
+        <nldd-text-cell v-for="k in kolommen" :key="k" :text="waarde(r.fields[k])"></nldd-text-cell>
       </nldd-table-row>
     </nldd-table>
   </template>
   <template v-else-if="uitkomst">
     <nldd-spacer size="24"></nldd-spacer>
-    <template v-if="uitkomst.reductie?.trace_text">
-      <TraceKnop :trace-text="uitkomst.reductie.trace_text" :titel="`${naam} (${uitkomst.reductie.regeling})`" />
+    <template v-if="uitkomst.reduction?.trace_text">
+      <TraceKnop :trace-text="uitkomst.reduction.trace_text" :titel="`${naam} (${uitkomst.reduction.regulation})`" />
       <nldd-spacer size="16"></nldd-spacer>
     </template>
     <nldd-table columns="minmax(200px,1fr) minmax(160px,1fr) minmax(200px,1fr)" accessible-label="Parameters van de lexostatus">

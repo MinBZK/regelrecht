@@ -24,8 +24,8 @@ use crate::stroom::{Event, Vorm};
 /// Een scherm uit een formulierbestand.
 #[derive(Debug, Clone, Default)]
 pub struct Formulier {
-    pub titel: Option<String>,
-    pub velden: Vec<Veld>,
+    pub title: Option<String>,
+    pub fields: Vec<Veld>,
 }
 
 impl Formulier {
@@ -33,14 +33,14 @@ impl Formulier {
     /// `veld 'x', kolom 'y'`.
     pub fn grondslagen(&self) -> Vec<(String, String)> {
         let mut uit = Vec::new();
-        for v in &self.velden {
-            for g in &v.grondslag {
-                uit.push((format!("veld '{}'", v.naam), g.clone()));
+        for v in &self.fields {
+            for g in &v.legal_basis {
+                uit.push((format!("veld '{}'", v.name), g.clone()));
             }
-            for k in v.kolommen.iter().filter_map(Value::as_array).flatten() {
+            for k in v.columns.iter().filter_map(Value::as_array).flatten() {
                 let id = k.get("id").and_then(Value::as_str).unwrap_or_default();
-                for g in grondslag_uit(k.get("grondslag")) {
-                    uit.push((format!("veld '{}', kolom '{id}'", v.naam), g));
+                for g in grondslag_uit(k.get("legal_basis")) {
+                    uit.push((format!("veld '{}', kolom '{id}'", v.name), g));
                 }
             }
         }
@@ -65,31 +65,31 @@ fn grondslag_uit(v: Option<&Value>) -> Vec<String> {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Veld {
     /// De naam onder `external` bij het indienen.
-    pub naam: String,
+    pub name: String,
     pub label: String,
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     pub soort: Option<String>,
     /// De eenheid uit de regeling (`type_spec.unit`), zoals `eurocent` bij
     /// een bedrag: de frontend rekent een invoer in euro ermee om.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub eenheid: Option<String>,
+    pub unit: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub opties: Option<Value>,
+    pub options: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub kolommen: Option<Value>,
+    pub columns: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub uitleg: Option<String>,
+    pub explanation: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub groep: Option<String>,
+    pub group: Option<String>,
     /// Waarop het veld rust, als `<regeling>#<artikel>` (optioneel met lid).
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub grondslag: Vec<String>,
+    pub legal_basis: Vec<String>,
 }
 
 /// Een naam leesbaar, als label van een veld zonder label of een regeling
 /// zonder naam: `datum_betaling` wordt "Datum betaling".
-pub fn leesbaar(naam: &str) -> String {
-    let tekst = naam.replace('_', " ");
+pub fn leesbaar(name: &str) -> String {
+    let tekst = name.replace('_', " ");
     let mut tekens = tekst.chars();
     match tekens.next() {
         Some(eerste) => eerste.to_uppercase().chain(tekens).collect(),
@@ -100,27 +100,27 @@ pub fn leesbaar(naam: &str) -> String {
 /// Een formulierbestand zoals de runtime het leest.
 #[derive(Deserialize)]
 struct Bestand {
-    #[serde(default)]
-    schermen: Vec<SchermDoc>,
+    #[serde(default, rename = "schermen")]
+    screens: Vec<SchermDoc>,
 }
 
 #[derive(Deserialize)]
 struct SchermDoc {
     id: String,
-    #[serde(default)]
-    titel: Option<String>,
-    #[serde(default)]
-    velden: Vec<VeldDoc>,
-    #[serde(default)]
-    groepen: Vec<GroepDoc>,
+    #[serde(default, rename = "titel")]
+    title: Option<String>,
+    #[serde(default, rename = "velden")]
+    fields: Vec<VeldDoc>,
+    #[serde(default, rename = "groepen")]
+    groups: Vec<GroepDoc>,
 }
 
 #[derive(Deserialize)]
 struct GroepDoc {
-    #[serde(default)]
-    titel: Option<String>,
-    #[serde(default)]
-    velden: Vec<VeldDoc>,
+    #[serde(default, rename = "titel")]
+    title: Option<String>,
+    #[serde(default, rename = "velden")]
+    fields: Vec<VeldDoc>,
 }
 
 #[derive(Deserialize)]
@@ -130,29 +130,103 @@ struct VeldDoc {
     label: Option<String>,
     #[serde(default, rename = "type")]
     soort: Option<String>,
-    #[serde(default)]
-    opties: Option<Value>,
-    #[serde(default)]
-    kolommen: Option<Value>,
-    #[serde(default)]
-    uitleg: Option<String>,
-    #[serde(default)]
-    grondslag: Option<Value>,
+    #[serde(default, rename = "opties")]
+    options: Option<Value>,
+    #[serde(default, rename = "kolommen")]
+    columns: Option<Value>,
+    #[serde(default, rename = "uitleg")]
+    explanation: Option<String>,
+    #[serde(default, rename = "grondslag")]
+    legal_basis: Option<Value>,
 }
 
 impl VeldDoc {
-    fn veld(self, groep: Option<&String>) -> Veld {
+    fn field(self, group: Option<&String>) -> Veld {
         Veld {
             label: self.label.unwrap_or_else(|| self.id.clone()),
-            naam: self.id,
-            soort: self.soort,
-            eenheid: None,
-            opties: self.opties,
-            kolommen: self.kolommen,
-            uitleg: self.uitleg,
-            groep: groep.cloned(),
-            grondslag: grondslag_uit(self.grondslag.as_ref()),
+            name: self.id,
+            soort: self.soort.as_deref().map(document_type),
+            unit: None,
+            options: self.options.map(document_options),
+            columns: self.columns.map(document_columns),
+            explanation: self.explanation,
+            group: group.cloned(),
+            legal_basis: grondslag_uit(self.legal_basis.as_ref()),
         }
+    }
+}
+
+/// The form document is written in Dutch (it is a dossier document that other
+/// tools read as well); the runtime translates its vocabulary at the edge, so
+/// that the API speaks English. Field types:
+fn document_type(t: &str) -> String {
+    match t {
+        "tekst" => "text",
+        "getal" => "number",
+        "datum" => "date",
+        "keuze" => "choice",
+        "janee" => "yes_no",
+        "vink" => "checkbox",
+        "bestand" => "file",
+        "tabel" => "table",
+        "bedrag" => "amount",
+        other => other,
+    }
+    .to_string()
+}
+
+/// The options of a choice: `{waarde, label}` becomes `{value, label}`.
+fn document_options(v: Value) -> Value {
+    match v {
+        Value::Array(l) => Value::Array(
+            l.into_iter()
+                .map(|o| match o {
+                    Value::Object(m) => Value::Object(
+                        m.into_iter()
+                            .map(|(k, w)| {
+                                (
+                                    if k == "waarde" {
+                                        "value".to_string()
+                                    } else {
+                                        k
+                                    },
+                                    w,
+                                )
+                            })
+                            .collect(),
+                    ),
+                    other => other,
+                })
+                .collect(),
+        ),
+        other => other,
+    }
+}
+
+/// The columns of a table field, with the keys and types of the API.
+fn document_columns(v: Value) -> Value {
+    match v {
+        Value::Array(l) => Value::Array(
+            l.into_iter()
+                .map(|k| match k {
+                    Value::Object(m) => Value::Object(
+                        m.into_iter()
+                            .map(|(k, w)| match k.as_str() {
+                                "type" => {
+                                    (k, w.as_str().map(document_type).map_or(w, Value::String))
+                                }
+                                "opties" => ("options".to_string(), document_options(w)),
+                                "uitleg" => ("explanation".to_string(), w),
+                                "grondslag" => ("legal_basis".to_string(), w),
+                                _ => (k, w),
+                            })
+                            .collect(),
+                    ),
+                    other => other,
+                })
+                .collect(),
+        ),
+        other => other,
     }
 }
 
@@ -160,72 +234,74 @@ impl VeldDoc {
 /// sleutel met een andere vorm dan hier, is een fout: het formulier wordt niet
 /// half gelezen. Andere sleutels (een formulierbestand kan meer dienen dan
 /// de runtime) blijven buiten beschouwing.
-pub fn parse(tekst: &str, scherm: &str, bron: &str) -> Result<Formulier, String> {
-    let bestand: Bestand = laden::yaml(tekst, bron).map_err(|f| f.join("; "))?;
+pub fn parse(tekst: &str, screen: &str, source: &str) -> Result<Formulier, String> {
+    let bestand: Bestand = laden::yaml(tekst, source).map_err(|f| f.join("; "))?;
     let s = bestand
-        .schermen
+        .screens
         .into_iter()
-        .find(|s| s.id == scherm)
-        .ok_or_else(|| format!("{bron}: geen scherm '{scherm}'"))?;
-    let mut velden: Vec<Veld> = s.velden.into_iter().map(|v| v.veld(None)).collect();
-    for groep in s.groepen {
-        let titel = groep.titel;
-        velden.extend(groep.velden.into_iter().map(|v| v.veld(titel.as_ref())));
+        .find(|s| s.id == screen)
+        .ok_or_else(|| format!("{source}: geen scherm '{screen}'"))?;
+    let mut fields: Vec<Veld> = s.fields.into_iter().map(|v| v.field(None)).collect();
+    for group in s.groups {
+        let title = group.title;
+        fields.extend(group.fields.into_iter().map(|v| v.field(title.as_ref())));
     }
     Ok(Formulier {
-        titel: s.titel,
-        velden,
+        title: s.title,
+        fields,
     })
 }
 
 /// Laad een scherm uit een formulierbestand.
-pub fn laad(pad: &Path, scherm: &str) -> Result<Formulier, String> {
-    laden::laad(pad, |t, bron| parse(t, scherm, bron).map_err(|f| vec![f]))
-        .map_err(|f| f.join("; "))
+pub fn laad(path: &Path, screen: &str) -> Result<Formulier, String> {
+    laden::laad(path, |t, source| {
+        parse(t, screen, source).map_err(|f| vec![f])
+    })
+    .map_err(|f| f.join("; "))
 }
 
 /// De velden die een indiening voor dit event meegeeft: in de volgorde van
 /// het formulier, daarna wat het formulier niet kent in de volgorde van de
 /// stroom. Voor een tabelveld geldt hetzelfde per kolom: de kolommen van
 /// de stroom, met label en volgorde uit het formulier.
-pub fn velden(event: &Event, formulier: Option<&Formulier>) -> Result<Vec<Veld>, String> {
+pub fn fields(event: &Event, form: Option<&Formulier>) -> Result<Vec<Veld>, String> {
     let sleutels = event.external_sleutels();
     let vorm = event.external_vorm().map_err(|f| f.join("; "))?;
-    let mut uit: Vec<Veld> = formulier
+    let mut uit: Vec<Veld> = form
         .map(|f| {
-            f.velden
+            f.fields
                 .iter()
-                .filter(|v| sleutels.contains(&v.naam))
+                .filter(|v| sleutels.contains(&v.name))
                 .cloned()
                 .collect()
         })
         .unwrap_or_default();
     for sleutel in sleutels {
-        if !uit.iter().any(|v| v.naam == sleutel) {
+        if !uit.iter().any(|v| v.name == sleutel) {
             uit.push(Veld {
                 label: sleutel.clone(),
-                naam: sleutel,
+                name: sleutel,
                 soort: None,
-                eenheid: None,
-                opties: None,
-                kolommen: None,
-                uitleg: None,
-                groep: None,
-                grondslag: Vec::new(),
+                unit: None,
+                options: None,
+                columns: None,
+                explanation: None,
+                group: None,
+                legal_basis: Vec::new(),
             });
         }
     }
     // Of een veld een tabel is, bepaalt de stroom: anders toont het scherm
     // een invoer die de cel bij het indienen weigert.
-    for veld in &mut uit {
-        if let Some(Vorm::Tabel(kolommen)) = vorm.get(&veld.naam) {
-            veld.soort = Some("tabel".to_string());
-            veld.kolommen = Some(tabelkolommen(kolommen, veld.kolommen.as_ref()));
+    for field in &mut uit {
+        if let Some(Vorm::Tabel(columns)) = vorm.get(&field.name) {
+            field.soort = Some("table".to_string());
+            field.columns = Some(tabelkolommen(columns, field.columns.as_ref()));
         } else {
-            if veld.soort.as_deref() == Some("tabel") {
-                veld.soort = None;
+            if field.soort.as_deref() == Some("table") {
+                field.soort = None;
             }
-            veld.kolommen = None;
+            field.columns = None;
         }
     }
     Ok(uit)
@@ -234,24 +310,24 @@ pub fn velden(event: &Event, formulier: Option<&Formulier>) -> Result<Vec<Veld>,
 /// De kolommen van een tabelveld: de kolommen van het formulier die de
 /// stroom kent, daarna de kolommen van de stroom die het formulier niet
 /// kent, met hun naam als label.
-fn tabelkolommen(stroom: &[String], formulier: Option<&Value>) -> Value {
-    let mut uit: Vec<Value> = formulier
+fn tabelkolommen(stream: &[String], form: Option<&Value>) -> Value {
+    let mut uit: Vec<Value> = form
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
         .filter(|k| {
             k.get("id")
                 .and_then(Value::as_str)
-                .is_some_and(|id| stroom.iter().any(|s| s == id))
+                .is_some_and(|id| stream.iter().any(|s| s == id))
         })
         .cloned()
         .collect();
-    for kolom in stroom {
+    for column in stream {
         if !uit
             .iter()
-            .any(|k| k.get("id").and_then(Value::as_str) == Some(kolom))
+            .any(|k| k.get("id").and_then(Value::as_str) == Some(column))
         {
-            uit.push(serde_json::json!({"id": kolom, "label": kolom}));
+            uit.push(serde_json::json!({"id": column, "label": column}));
         }
     }
     Value::Array(uit)
@@ -270,8 +346,8 @@ mod tests {
     fn volgorde_en_labels_uit_het_formulier() {
         let s = stroom::parse(STROOM, "fixture").unwrap();
         let f = parse(FORMULIER, "aanvraag", "fixture").unwrap();
-        let v = velden(&s.events[0], Some(&f)).unwrap();
-        let namen: Vec<&str> = v.iter().map(|v| v.naam.as_str()).collect();
+        let v = fields(&s.events[0], Some(&f)).unwrap();
+        let namen: Vec<&str> = v.iter().map(|v| v.name.as_str()).collect();
         // `telefoon` kent de stroom niet; `rekeningnummer` kent het formulier niet.
         assert_eq!(
             namen,
@@ -287,12 +363,12 @@ mod tests {
             ]
         );
         assert_eq!(v[0].label, "Naam van de aanvrager");
-        assert_eq!(v[0].groep.as_deref(), Some("De aanvrager"));
+        assert_eq!(v[0].group.as_deref(), Some("De aanvrager"));
         assert_eq!(v[7].label, "rekeningnummer");
         // Kolommen: die van de stroom, met label en volgorde uit het
         // formulier; `opmerking` kent de stroom niet.
-        let kolommen: Vec<&str> = v[6]
-            .kolommen
+        let columns: Vec<&str> = v[6]
+            .columns
             .as_ref()
             .unwrap()
             .as_array()
@@ -301,10 +377,10 @@ mod tests {
             .map(|k| k["id"].as_str().unwrap())
             .collect();
         assert_eq!(
-            kolommen,
+            columns,
             vec!["orgaan", "zetels", "samengevoegd", "aantal_aanduidingen"]
         );
-        assert_eq!(v[6].kolommen.as_ref().unwrap()[0]["label"], "Orgaan");
+        assert_eq!(v[6].columns.as_ref().unwrap()[0]["label"], "Orgaan");
     }
 
     #[test]
@@ -314,28 +390,28 @@ mod tests {
         let f = parse(
             &FORMULIER.replace("type: tabel", "type: tekst").replace(
                 "{id: naam, label: Naam van de aanvrager, type: tekst}",
-                "{id: naam, label: Naam van de aanvrager, type: tabel, kolommen: [{id: x}]}",
+                "{id: naam, label: Naam van de aanvrager, type: tabel, columns: [{id: x}]}",
             ),
             "aanvraag",
             "fixture",
         )
         .unwrap();
-        let v = velden(&s.events[0], Some(&f)).unwrap();
-        let veld = |naam: &str| v.iter().find(|v| v.naam == naam).unwrap();
-        assert_eq!(veld("organen").soort.as_deref(), Some("tabel"));
-        assert!(veld("organen").kolommen.is_some());
-        assert_eq!(veld("naam").soort, None);
-        assert_eq!(veld("naam").kolommen, None);
+        let v = fields(&s.events[0], Some(&f)).unwrap();
+        let field = |name: &str| v.iter().find(|v| v.name == name).unwrap();
+        assert_eq!(field("organen").soort.as_deref(), Some("table"));
+        assert!(field("organen").columns.is_some());
+        assert_eq!(field("naam").soort, None);
+        assert_eq!(field("naam").columns, None);
     }
 
     #[test]
     fn tabelkolommen_zonder_formulier() {
         let s = stroom::parse(STROOM, "fixture").unwrap();
-        let v = velden(&s.events[0], None).unwrap();
-        let organen = v.iter().find(|v| v.naam == "organen").unwrap();
-        assert_eq!(organen.soort.as_deref(), Some("tabel"));
+        let v = fields(&s.events[0], None).unwrap();
+        let organen = v.iter().find(|v| v.name == "organen").unwrap();
+        assert_eq!(organen.soort.as_deref(), Some("table"));
         assert_eq!(
-            organen.kolommen.as_ref().unwrap()[1],
+            organen.columns.as_ref().unwrap()[1],
             serde_json::json!({"id": "zetels", "label": "zetels"})
         );
     }
@@ -343,8 +419,8 @@ mod tests {
     #[test]
     fn zonder_formulier_de_veldnaam() {
         let s = stroom::parse(STROOM, "fixture").unwrap();
-        let v = velden(&s.events[0], None).unwrap();
-        assert_eq!(v[0].naam, "naam");
+        let v = fields(&s.events[0], None).unwrap();
+        assert_eq!(v[0].name, "naam");
         assert_eq!(v[0].label, "naam");
     }
 
@@ -369,9 +445,9 @@ mod tests {
             "{g:?}"
         );
         let s = stroom::parse(STROOM, "fixture").unwrap();
-        let v = velden(&s.events[0], Some(&f)).unwrap();
-        let jaar = v.iter().find(|v| v.naam == "aanvraagjaar").unwrap();
-        assert_eq!(jaar.grondslag, ["testregeling_aanvraag#1 lid 1"]);
+        let v = fields(&s.events[0], Some(&f)).unwrap();
+        let jaar = v.iter().find(|v| v.name == "aanvraagjaar").unwrap();
+        assert_eq!(jaar.legal_basis, ["testregeling_aanvraag#1 lid 1"]);
     }
 
     #[test]

@@ -45,15 +45,15 @@ async function laad() {
 
 onMounted(laad);
 
-const handeling = computed(() => zaak.value?.handelingen.find((h) => h.naam === gekozen.value) ?? null);
+const handeling = computed(() => zaak.value?.actions.find((h) => h.name === gekozen.value) ?? null);
 const delen = computed(() => indeling(zaak.value));
 
 function routeTekst(r) {
-  return `Stage ${r.stage} loopt na ${r.na}: ${r.description ?? ''} Afgeleid uit de procedure en ${r.grondslag.join(', ')}.`;
+  return `Stage ${r.stage} loopt na ${r.after}: ${r.description ?? ''} Afgeleid uit de procedure en ${r.legal_basis.join(', ')}.`;
 }
 
 function routeUitkomsten(r) {
-  return Object.entries(r?.uitkomsten ?? {}).map(([naam, w]) => ({ naam, waarde: waardeTekst(w) }));
+  return Object.entries(r?.outputs ?? {}).map(([naam, w]) => ({ naam, waarde: waardeTekst(w) }));
 }
 
 async function vastgelegd() {
@@ -78,7 +78,7 @@ async function vastgelegd() {
     <template v-for="b in delen.besluiten" :key="b.id">
       <nldd-title size="3">
         <h2>Besluit {{ b.nummer }}: {{ b.label }}</h2>
-        <span slot="subtitle">{{ besluitKop(b) }} ({{ b.artikel }})</span>
+        <span slot="subtitle">{{ besluitKop(b) }} ({{ b.article }})</span>
       </nldd-title>
       <nldd-spacer size="8"></nldd-spacer>
       <template v-if="b.procedure">
@@ -92,21 +92,21 @@ async function vastgelegd() {
           <nldd-table-row v-for="s in b.procedure.stages" :key="s.name">
             <nldd-text-cell :text="s.name"></nldd-text-cell>
             <nldd-text-cell :text="s.description ?? ''"></nldd-text-cell>
-            <nldd-text-cell :text="s.vastgelegd ? 'vastgelegd' : ''"></nldd-text-cell>
-            <nldd-text-cell :text="s.handeling ?? ''"></nldd-text-cell>
+            <nldd-text-cell :text="s.recorded ? 'vastgelegd' : ''"></nldd-text-cell>
+            <nldd-text-cell :text="s.action ?? ''"></nldd-text-cell>
           </nldd-table-row>
         </nldd-table>
         <nldd-spacer size="8"></nldd-spacer>
       </template>
-      <template v-if="b.rechtsbescherming">
-        <nldd-inline-dialog text="Rechtsbescherming" :supporting-text="routeTekst(b.rechtsbescherming)"></nldd-inline-dialog>
+      <template v-if="b.legal_protection">
+        <nldd-inline-dialog text="Rechtsbescherming" :supporting-text="routeTekst(b.legal_protection)"></nldd-inline-dialog>
         <nldd-spacer size="8"></nldd-spacer>
         <nldd-table columns="minmax(240px,1fr) minmax(160px,1fr)" :accessible-label="`Rechtsbescherming bij besluit ${b.nummer}`">
           <nldd-table-row slot="header">
             <nldd-text-cell text="Uitkomst"></nldd-text-cell>
             <nldd-text-cell text="Waarde"></nldd-text-cell>
           </nldd-table-row>
-          <nldd-table-row v-for="u in routeUitkomsten(b.rechtsbescherming)" :key="u.naam">
+          <nldd-table-row v-for="u in routeUitkomsten(b.legal_protection)" :key="u.naam">
             <nldd-text-cell :text="u.naam"></nldd-text-cell>
             <nldd-text-cell :text="u.waarde"></nldd-text-cell>
           </nldd-table-row>
@@ -135,7 +135,7 @@ async function vastgelegd() {
           <nldd-text-cell text="Omschrijving"></nldd-text-cell>
           <nldd-text-cell text="In de zaak"></nldd-text-cell>
         </nldd-table-row>
-        <nldd-table-row v-for="s in zaak.procedure.stages.filter((s) => s.vastgelegd)" :key="s.name">
+        <nldd-table-row v-for="s in zaak.procedure.stages.filter((s) => s.recorded)" :key="s.name">
           <nldd-text-cell :text="s.name"></nldd-text-cell>
           <nldd-text-cell :text="s.description ?? ''"></nldd-text-cell>
           <nldd-text-cell text="vastgelegd"></nldd-text-cell>
@@ -152,12 +152,12 @@ async function vastgelegd() {
     <template v-if="handeling">
       <nldd-spacer size="24"></nldd-spacer>
       <div ref="handelingEl"></div>
-      <Handeling :key="`${handeling.naam}-${versie}`" :wortel="wortel" :handeling="handeling" @vastgelegd="vastgelegd" />
+      <Handeling :key="`${handeling.name}-${versie}`" :wortel="wortel" :handeling="handeling" @vastgelegd="vastgelegd" />
     </template>
 
     <nldd-spacer size="24"></nldd-spacer>
     <nldd-title size="3"><h2>Grammen van de zaak</h2></nldd-title>
     <nldd-spacer size="8"></nldd-spacer>
-    <Grammen :items="zaak.grammen" />
+    <Grammen :items="zaak.grams" />
   </template>
 </template>

@@ -81,7 +81,7 @@ fn en(voorwaarden: impl IntoIterator<Item = Value>) -> Value {
 
 /// Niet null, en bij tekst ook niet leeg. EQUALS is structureel: een getal
 /// is nooit gelijk aan "", dus dit is voor elk type veilig.
-fn gevuld(subject: &str) -> Value {
+fn filled(subject: &str) -> Value {
     en([
         niet_null(subject),
         json!({"operation": "NOT", "value": eq(subject, json!(""))}),
@@ -109,8 +109,8 @@ fn foreach(
     Value::Object(o)
 }
 
-fn grammen(body: Value, filter: Value, combine: &str) -> Value {
-    foreach("$grammen", "g", body, Some(filter), Some(combine))
+fn grams(body: Value, filter: Value, combine: &str) -> Value {
+    foreach("$grams", "g", body, Some(filter), Some(combine))
 }
 
 fn als_dan(wanneer: Value, dan: Value) -> Value {
@@ -118,8 +118,8 @@ fn als_dan(wanneer: Value, dan: Value) -> Value {
 }
 
 /// Het pad van een sleutel of veld van het gram `g` in de engine.
-fn pad(p: &str) -> String {
-    if is_gram_sleutel(p) || matches!(p, "op_datum" | "vastgelegd_datum" | "volgorde") {
+fn path(p: &str) -> String {
+    if is_gram_sleutel(p) || matches!(p, "effective_date" | "recorded_date" | "sequence") {
         format!("$g.{p}")
     } else {
         format!("$g.fields.{p}")
@@ -133,31 +133,31 @@ fn filter_van(f: &Filter) -> Vec<Value> {
     sleutels.sort_by_key(|k| (k.as_str() != "name", !is_gram_sleutel(k)));
     sleutels
         .into_iter()
-        .map(|k| eq(&pad(k), Value::String(f[k].clone())))
+        .map(|k| eq(&path(k), Value::String(f[k].clone())))
         .collect()
 }
 
 fn gekozen(hulp: &str, extra: Option<Value>) -> Value {
-    en(std::iter::once(eq("$g.volgorde", json!(format!("${hulp}")))).chain(extra))
+    en(std::iter::once(eq("$g.sequence", json!(format!("${hulp}")))).chain(extra))
 }
 
 /// Een veld van het gekozen gram.
-fn veld(hulp: &str, p: &str, soort: Soort) -> Value {
-    let f = pad(p);
+fn field(hulp: &str, p: &str, soort: Soort) -> Value {
+    let f = path(p);
     if soort == Soort::Getal {
-        return grammen(json!(f), gekozen(hulp, Some(niet_null(&f))), "MAX");
+        return grams(json!(f), gekozen(hulp, Some(niet_null(&f))), "MAX");
     }
     let cond = gekozen(
         hulp,
         Some(if matches!(soort, Soort::Tekst | Soort::Datum) {
-            gevuld(&f)
+            filled(&f)
         } else {
             niet_null(&f)
         }),
     );
     als_dan(
-        grammen(json!(true), cond.clone(), "OR"),
-        grammen(
+        grams(json!(true), cond.clone(), "OR"),
+        grams(
             json!(f),
             cond,
             if soort == Soort::JaNee { "OR" } else { "ADD" },
@@ -167,17 +167,17 @@ fn veld(hulp: &str, p: &str, soort: Soort) -> Value {
 
 fn moment_pad(m: Moment) -> &'static str {
     match m {
-        Moment::OpMoment => "op_datum",
-        Moment::VastgelegdOp => "vastgelegd_datum",
+        Moment::EffectiveAt => "effective_date",
+        Moment::RecordedAt => "recorded_date",
     }
 }
 
-fn jaar_van(hulp: &str, p: &str) -> Value {
-    let f = pad(p);
+fn year_of(hulp: &str, p: &str) -> Value {
+    let f = path(p);
     let cond = gekozen(hulp, Some(niet_null(&f)));
     als_dan(
-        grammen(json!(true), cond.clone(), "OR"),
-        grammen(
+        grams(json!(true), cond.clone(), "OR"),
+        grams(
             json!({"operation": "DATE_PART", "date": f, "in": "year"}),
             cond,
             "ADD",
@@ -186,18 +186,18 @@ fn jaar_van(hulp: &str, p: &str) -> Value {
 }
 
 /// Een grondslag als `legal_basis` van een actie.
-fn legal_basis(grondslag: &str, namen: &BTreeMap<String, String>) -> Option<Value> {
-    let g = crate::regelingen::ontleed(grondslag).ok()?;
+fn legal_basis(legal_basis: &str, namen: &BTreeMap<String, String>) -> Option<Value> {
+    let g = crate::regelingen::ontleed(legal_basis).ok()?;
     let mut o = Map::new();
     o.insert(
         "law".into(),
         json!(namen
-            .get(g.regeling)
+            .get(g.regulation)
             .cloned()
-            .unwrap_or_else(|| g.regeling.to_string())),
+            .unwrap_or_else(|| g.regulation.to_string())),
     );
-    o.insert("article".into(), json!(g.artikel));
-    if let Some(l) = g.lid {
+    o.insert("article".into(), json!(g.article));
+    if let Some(l) = g.paragraph {
         o.insert("paragraph".into(), json!(l));
     }
     Some(Value::Object(o))
@@ -207,23 +207,23 @@ fn legal_basis(grondslag: &str, namen: &BTreeMap<String, String>) -> Option<Valu
 /// `$id` `id`. `namen` geeft per regeling-id de naam voor `legal_basis`. Een
 /// afleiding die de engine-route niet kent (`periode_van`, `bevat`,
 /// `verzamel`, een lijst) is een fout.
-pub fn regeling(
+pub fn regulation(
     def: &LexostatusDefinitie,
     id: &str,
     namen: &BTreeMap<String, String>,
 ) -> Result<String, String> {
     let r = &def.reduction;
-    let typen = def.wet.as_ref().map(|w| &w.typen);
+    let types = def.law.as_ref().map(|w| &w.types);
     let mut outputs: Vec<Value> = Vec::new();
     let mut actions: Vec<Value> = Vec::new();
-    if r.kies.is_some() {
+    if r.pick.is_some() {
         outputs.push(json!({"name": LAATSTE, "type": "number", "nullable": true}));
         actions.push(json!({"output": LAATSTE, "value":
-            grammen(json!("$g.volgorde"), en(filter_van(&r.filter)), "MAX")}));
+            grams(json!("$g.sequence"), en(filter_van(&r.filter)), "MAX")}));
     }
-    for (naam, a) in r.afleidingen.iter().chain(&r.extra_velden) {
-        let soort = typen
-            .and_then(|t| t.get(naam))
+    for (name, a) in r.derivations.iter().chain(&r.extra_fields) {
+        let soort = types
+            .and_then(|t| t.get(name))
             .map(|t| Soort::uit_type(t))
             .unwrap_or(Soort::Tekst);
         let filter_eigen = || -> Filter {
@@ -234,60 +234,60 @@ pub fn regeling(
         // Een afleiding met een eigen filter en `kies`: haar eigen gram.
         let mut hulp = LAATSTE.to_string();
         if matches!(
-            &a.afleiding,
+            &a.derivation,
             Afleiding::LaatsteVeld { .. }
                 | Afleiding::LaatsteMoment { .. }
                 | Afleiding::LaatsteJaarVan { .. }
         ) {
-            hulp = hulp_van(naam);
+            hulp = hulp_van(name);
             outputs.push(json!({"name": hulp, "type": "number", "nullable": true}));
             actions.push(json!({"output": hulp, "value":
-                grammen(json!("$g.volgorde"), en(filter_van(&filter_eigen())), "MAX")}));
+                grams(json!("$g.sequence"), en(filter_van(&filter_eigen())), "MAX")}));
         }
-        let (waarde, nullable, soort) = match &a.afleiding {
-            Afleiding::Veld { veld: v } | Afleiding::LaatsteVeld { veld: v, .. } => {
-                (veld(&hulp, v, soort), true, soort)
+        let (value, nullable, soort) = match &a.derivation {
+            Afleiding::Veld { field: v } | Afleiding::LaatsteVeld { field: v, .. } => {
+                (field(&hulp, v, soort), true, soort)
             }
             Afleiding::Moment { moment } | Afleiding::LaatsteMoment { moment, .. } => (
-                veld(&hulp, moment_pad(*moment), Soort::Datum),
+                field(&hulp, moment_pad(*moment), Soort::Datum),
                 true,
                 Soort::Datum,
             ),
-            Afleiding::JaarVan { jaar_van: p } | Afleiding::LaatsteJaarVan { jaar_van: p, .. } => {
-                (jaar_van(&hulp, p), true, Soort::Getal)
+            Afleiding::JaarVan { year_of: p } | Afleiding::LaatsteJaarVan { year_of: p, .. } => {
+                (year_of(&hulp, p), true, Soort::Getal)
             }
-            Afleiding::Gevuld { gevuld: p } => (
-                grammen(json!(true), gekozen(&hulp, Some(gevuld(&pad(p)))), "OR"),
+            Afleiding::Gevuld { filled: p } => (
+                grams(json!(true), gekozen(&hulp, Some(filled(&path(p)))), "OR"),
                 false,
                 Soort::JaNee,
             ),
-            Afleiding::Gelijk { gelijk } => {
-                let f = pad(&gelijk.veld);
+            Afleiding::Gelijk { equals } => {
+                let f = path(&equals.field);
                 let cond = gekozen(&hulp, Some(niet_null(&f)));
                 (
                     als_dan(
-                        grammen(json!(true), cond.clone(), "OR"),
-                        grammen(eq(&f, gelijk.aan.clone()), cond, "OR"),
+                        grams(json!(true), cond.clone(), "OR"),
+                        grams(eq(&f, equals.value.clone()), cond, "OR"),
                     ),
                     true,
                     Soort::JaNee,
                 )
             }
             Afleiding::ElkeRegel {
-                tabel,
-                elke_regel,
-                alleen_waar,
+                table,
+                each_row,
+                only_where,
             } => {
-                let t = pad(tabel);
-                let kol = format!("$r.{elke_regel}");
-                let rf = alleen_waar
+                let t = path(table);
+                let kol = format!("$r.{each_row}");
+                let rf = only_where
                     .as_ref()
                     .map(|w| eq(&format!("$r.{w}"), json!(true)));
                 (
-                    grammen(
+                    grams(
                         en([
                             foreach(&t, "r", json!(true), None, Some("OR")),
-                            foreach(&t, "r", gevuld(&kol), rf, Some("AND")),
+                            foreach(&t, "r", filled(&kol), rf, Some("AND")),
                         ]),
                         gekozen(&hulp, None),
                         "OR",
@@ -296,12 +296,12 @@ pub fn regeling(
                     Soort::JaNee,
                 )
             }
-            Afleiding::EenRegel { tabel, een_regel } => (
-                grammen(
+            Afleiding::EenRegel { table, one_row } => (
+                grams(
                     foreach(
-                        &pad(tabel),
+                        &path(table),
                         "r",
-                        eq(&format!("$r.{een_regel}"), json!(true)),
+                        eq(&format!("$r.{one_row}"), json!(true)),
                         None,
                         Some("OR"),
                     ),
@@ -312,40 +312,40 @@ pub fn regeling(
                 Soort::JaNee,
             ),
             Afleiding::Bestaat {
-                bestaat: true,
-                gevuld: g,
+                exists: true,
+                filled: g,
                 ..
             } => {
                 let mut c = filter_van(&filter_eigen());
                 if let Some(g) = g {
-                    c.push(gevuld(&pad(g)));
+                    c.push(filled(&path(g)));
                 }
-                (grammen(json!(true), en(c), "OR"), false, Soort::JaNee)
+                (grams(json!(true), en(c), "OR"), false, Soort::JaNee)
             }
-            Afleiding::Som { som, .. } => {
-                let f = pad(som);
+            Afleiding::Som { sum, .. } => {
+                let f = path(sum);
                 let mut c = filter_van(&filter_eigen());
                 c.push(niet_null(&f));
-                (grammen(json!(f), en(c), "ADD"), false, Soort::Getal)
+                (grams(json!(f), en(c), "ADD"), false, Soort::Getal)
             }
             ander => {
                 return Err(format!(
-                    "afleiding '{naam}' ({}) heeft geen engine-patroon",
+                    "afleiding '{name}' ({}) heeft geen engine-patroon",
                     serde_json::to_string(ander).unwrap_or_default()
                 ))
             }
         };
-        let mut o = json!({"name": naam, "type": soort.engine_type()});
+        let mut o = json!({"name": name, "type": soort.engine_type()});
         if nullable {
             o["nullable"] = json!(true);
         }
         outputs.push(o);
         let mut act = Map::new();
-        act.insert("output".into(), json!(naam));
-        if let Some(lb) = a.grondslag.first().and_then(|g| legal_basis(g, namen)) {
+        act.insert("output".into(), json!(name));
+        if let Some(lb) = a.legal_basis.first().and_then(|g| legal_basis(g, namen)) {
             act.insert("legal_basis".into(), lb);
         }
-        act.insert("value".into(), waarde);
+        act.insert("value".into(), value);
         actions.push(Value::Object(act));
     }
     let parameters: Vec<Value> = def
@@ -353,8 +353,8 @@ pub fn regeling(
         .iter()
         .map(|i| json!({"name": i.name, "type": i.soort, "required": true}))
         .collect();
-    let tekst = match &def.wet {
-        Some(w) => format!("Hoe {} zijn parameters uit de kroniek leest (produces.extensions.chronolex.leest), vertaald naar de engine.", w.artikel),
+    let tekst = match &def.law {
+        Some(w) => format!("Hoe {} zijn parameters uit de kroniek leest (produces.extensions.chronolex.leest), vertaald naar de engine.", w.article),
         None => format!("De lexostatus {} van de cel, vertaald naar de engine.", def.name),
     };
     let doc = json!({
@@ -370,7 +370,7 @@ pub fn regeling(
             "url": format!("urn:regelrecht:cel:lexostatus:{}:1", def.name),
             "machine_readable": {"execution": {
                 "parameters": parameters,
-                "input": [{"name": "grammen", "type": "array", "source": {}}],
+                "input": [{"name": "grams", "type": "array", "source": {}}],
                 "output": outputs,
                 "actions": actions,
             }},

@@ -6,16 +6,20 @@ use super::*;
 /// De parameters die de aanroeper van een uitkomst moet leveren, in de
 /// volgorde waarin het artikel (en daarna elk aangeroepen artikel) ze
 /// declareert.
-fn in_volgorde(service: &LawExecutionService, regeling: &str, artikel: &Article) -> Vec<Benodigd> {
-    let benodigd = regelingen::benodigde_parameters(service, regeling, artikel);
+fn in_volgorde(
+    service: &LawExecutionService,
+    regulation: &str,
+    article: &Article,
+) -> Vec<Benodigd> {
+    let benodigd = regelingen::benodigde_parameters(service, regulation, article);
     let mut uit: Vec<Benodigd> = Vec::new();
-    for p in artikel.get_parameters() {
+    for p in article.get_parameters() {
         if let Some(b) = benodigd.get(&p.name) {
             uit.push(b.clone());
         }
     }
     for b in benodigd.values() {
-        if !uit.iter().any(|u| u.naam == b.naam) {
+        if !uit.iter().any(|u| u.name == b.name) {
             uit.push(b.clone());
         }
     }
@@ -26,18 +30,22 @@ fn in_volgorde(service: &LawExecutionService, regeling: &str, artikel: &Article)
 /// uitkomst van het besluit (RFC-043: "every outcome").
 fn uitvoeringen(d: &ProcesDefinitie) -> Vec<(Uitvoering<'_>, &str, &str)> {
     let mut uit: Vec<(Uitvoering<'_>, &str, &str)> = Vec::new();
-    if let Some(p) = &d.portaal {
-        uit.push((Uitvoering::Toets, &p.toets.regeling, &p.toets.uitkomst));
-        if let Some(a) = &p.aanbod {
-            uit.push((Uitvoering::Aanbod, &a.regeling, &a.uitkomst));
+    if let Some(p) = &d.portal {
+        uit.push((
+            Uitvoering::Toets,
+            &p.assessment.regulation,
+            &p.assessment.output,
+        ));
+        if let Some(a) = &p.offer {
+            uit.push((Uitvoering::Aanbod, &a.regulation, &a.output));
         }
     }
-    for h in d.behandeling.iter().flat_map(|b| b.handelingen.iter()) {
-        if matches!(h.soort, Handelingsoort::Vervolg { .. }) {
+    for h in d.handling.iter().flat_map(|b| b.actions.iter()) {
+        if matches!(h.soort, Handelingsoort::FollowUp { .. }) {
             continue;
         }
-        for u in h.uitkomsten.iter().chain(h.toetsen.iter()) {
-            uit.push((Uitvoering::Handeling(h), &h.regeling, u));
+        for u in h.outputs.iter().chain(h.assessments.iter()) {
+            uit.push((Uitvoering::Handeling(h), &h.regulation, u));
         }
     }
     uit
@@ -48,13 +56,13 @@ fn uitvoeringen(d: &ProcesDefinitie) -> Vec<(Uitvoering<'_>, &str, &str)> {
 /// register-bronnen.
 pub fn controleer(
     d: &ProcesDefinitie,
-    cel: &Cel,
-    cellen: &BTreeMap<String, Arc<Cel>>,
+    cell: &Cell,
+    cells: &BTreeMap<String, Arc<Cell>>,
     service: &LawExecutionService,
 ) -> Controle {
     let mut c = Controle::default();
-    let gezag = gezag::eigen(d, service);
-    let overschrijvingen = match overschrijvingen(service, gezag.as_deref()) {
+    let authority = gezag::eigen(d, service);
+    let overschrijvingen = match overschrijvingen(service, authority.as_deref()) {
         Ok(o) => o,
         Err(f) => {
             c.fouten.extend(f);
@@ -66,40 +74,40 @@ pub fn controleer(
     let mut gemeld: BTreeSet<(String, String, &'static str)> = BTreeSet::new();
     // Wat niet na te gaan is, per bron en reden: de parameters erbij.
     let mut niet_na_te_gaan: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-    for (uitvoering, regeling, uitkomst) in uitvoeringen(d) {
+    for (uitvoering, regulation, output) in uitvoeringen(d) {
         // Een uitkomst die niet bestaat, meldt de controle op portaal of
         // besluit.
-        let Some(artikel) = service
+        let Some(article) = service
             .resolver()
-            .get_article_by_output(regeling, uitkomst, None)
+            .get_article_by_output(regulation, output, None)
         else {
             continue;
         };
-        let leveranciers = Leveranciers::van(d, cel, uitvoering);
-        let lijst = c.parameters.entry(uitvoering.naam()).or_default();
+        let leveranciers = Leveranciers::van(d, cell, uitvoering);
+        let list = c.parameters.entry(uitvoering.name()).or_default();
         let mut nieuw = Vec::new();
-        for b in in_volgorde(service, regeling, artikel) {
-            if lijst.iter().any(|(eerder, _)| *eerder == b) {
+        for b in in_volgorde(service, regulation, article) {
+            if list.iter().any(|(eerder, _)| *eerder == b) {
                 continue;
             }
             let Some(p) = parameter(service, &b) else {
                 continue;
             };
             let law = b
-                .artikel
+                .article
                 .split_once('#')
                 .map(|(r, _)| r)
-                .unwrap_or(regeling);
+                .unwrap_or(regulation);
             let g = overschrijvingen.geldend(law, p);
             nieuw.push((b, p, g));
         }
         for (b, p, g) in nieuw {
-            let mut meld = |soort: &'static str, tekst: String, fout: bool| {
-                if gemeld.insert((b.artikel.clone(), b.naam.clone(), soort)) {
-                    if fout {
+            let mut meld = |soort: &'static str, tekst: String, error: bool| {
+                if gemeld.insert((b.article.clone(), b.name.clone(), soort)) {
+                    if error {
                         c.fouten.push(tekst);
                     } else {
-                        c.waarschuwingen.push(tekst);
+                        c.warnings.push(tekst);
                     }
                 }
             };
@@ -112,25 +120,25 @@ pub fn controleer(
                     g: g.as_ref(),
                 },
                 &leveranciers,
-                cellen,
+                cells,
                 service,
                 &mut meld,
                 &mut niet_na_te_gaan,
             );
             c.parameters
-                .entry(uitvoering.naam())
+                .entry(uitvoering.name())
                 .or_default()
                 .push((b, g));
         }
     }
-    for (reden, namen) in niet_na_te_gaan {
+    for (reason, namen) in niet_na_te_gaan {
         let namen: Vec<String> = namen.into_iter().map(|n| format!("'{n}'")).collect();
-        c.waarschuwingen.push(format!(
-            "herkomst van {} niet na te gaan: {reden}",
+        c.warnings.push(format!(
+            "herkomst van {} niet na te gaan: {reason}",
             namen.join(", ")
         ));
     }
-    tijdvak(d, &mut c);
+    window(d, &mut c);
     c
 }
 
@@ -149,7 +157,7 @@ struct Parameterplek<'a> {
 fn controleer_parameter(
     plek: Parameterplek<'_>,
     l: &Leveranciers,
-    cellen: &BTreeMap<String, Arc<Cel>>,
+    cells: &BTreeMap<String, Arc<Cell>>,
     service: &LawExecutionService,
     meld: &mut impl FnMut(&'static str, String, bool),
     niet_na_te_gaan: &mut BTreeMap<String, BTreeSet<String>>,
@@ -162,26 +170,26 @@ fn controleer_parameter(
         g,
     } = plek;
     if uitvoering.is_aanbod() && !vooraf_bekend(g) {
-        let herkomst = g
+        let provenance = g
             .map(Geldend::beschrijving)
             .unwrap_or_else(|| "geen origin".into());
         meld(
             "aanbod-regel",
             format!(
-                "aanbod: voorwaarde leunt op '{}' ({herkomst}), dat vooraf niet bekend is",
-                b.naam
+                "offer: voorwaarde leunt op '{}' ({provenance}), dat vooraf niet bekend is",
+                b.name
             ),
             true,
         );
     }
     let Some(g) = g else {
-        let streng = d.herkomst == Herkomstcontrole::Streng;
+        let streng = d.origin_check == Herkomstcontrole::Strict;
         meld(
             "zonder",
             format!(
-                "herkomst: parameter '{}' van {} heeft geen origin; wie hem levert is niet na te gaan{}",
-                b.naam,
-                b.artikel,
+                "provenance: parameter '{}' van {} heeft geen origin; wie hem levert is niet na te gaan{}",
+                b.name,
+                b.article,
                 if streng { " (herkomst: streng)" } else { "" }
             ),
             streng,
@@ -190,16 +198,16 @@ fn controleer_parameter(
     };
     let waar = format!(
         "parameter '{}' van {} ({})",
-        b.naam,
-        b.artikel,
+        b.name,
+        b.article,
         g.beschrijving()
     );
     // Een grondslag in een regeling die niet geladen is, kan kloppen; de
     // runtime kan het alleen niet nagaan.
-    if let Err(f) = regelingen::artikel(service, &g.origin.grondslag) {
+    if let Err(f) = regelingen::article(service, &g.origin.grondslag) {
         meld(
             "grondslag",
-            format!("herkomst: {waar}: {f}; niet na te gaan"),
+            format!("provenance: {waar}: {f}; niet na te gaan"),
             false,
         );
     }
@@ -207,7 +215,7 @@ fn controleer_parameter(
         if service.resolver().get_law(r).is_none() {
             meld(
                 "register",
-                format!("herkomst: {waar}: register '{r}' is geen geladen regeling"),
+                format!("provenance: {waar}: register '{r}' is geen geladen regeling"),
                 true,
             );
         }
@@ -219,25 +227,31 @@ fn controleer_parameter(
         meld(
             "required",
             format!(
-                "herkomst: parameter '{}' van {} komt van de belanghebbende, maar heeft geen required: false (RFC-036)",
-                b.naam, b.artikel
+                "provenance: parameter '{}' van {} komt van de belanghebbende, maar heeft geen required: false (RFC-036)",
+                b.name, b.article
             ),
             false,
         );
     }
-    match leverancier(uitvoering, &b.naam, g, l, cellen) {
-        Uitslag::Past { waarschuwingen } => {
-            for w in waarschuwingen {
-                niet_na_te_gaan.entry(w).or_default().insert(b.naam.clone());
+    match leverancier(uitvoering, &b.name, g, l, cells) {
+        Uitslag::Past { warnings } => {
+            for w in warnings {
+                niet_na_te_gaan.entry(w).or_default().insert(b.name.clone());
             }
         }
-        Uitslag::Verkeerd(reden) => meld(
+        Uitslag::Verkeerd(reason) => meld(
             "leverancier",
-            format!("{}: verkeerde bron voor {waar}: {reden}", uitvoering.naam()),
+            format!(
+                "{}: verkeerde bron voor {waar}: {reason}",
+                uitvoering.name()
+            ),
             true,
         ),
-        Uitslag::Geen(reden) => {
-            let tekst = format!("{}: geen leverancier voor {waar}{reden}", uitvoering.naam());
+        Uitslag::Standalone(reason) => {
+            let tekst = format!(
+                "{}: geen leverancier voor {waar}{reason}",
+                uitvoering.name()
+            );
             if p.required == Some(false) {
                 meld(
                     "leverancier",
@@ -256,30 +270,30 @@ fn controleer_parameter(
 /// Het tijdvak van het aanbod: hoogstens een parameter met `rol: TIJDVAK`,
 /// en die vraagt `aanbod.tijdvakken`; tijdvakken zonder zo'n parameter zijn
 /// ook een fout.
-fn tijdvak(d: &ProcesDefinitie, c: &mut Controle) {
-    let Some(aanbod) = d.portaal.as_ref().and_then(|p| p.aanbod.as_ref()) else {
+fn window(d: &ProcesDefinitie, c: &mut Controle) {
+    let Some(offer) = d.portal.as_ref().and_then(|p| p.offer.as_ref()) else {
         return;
     };
     let namen: Vec<String> = c
         .parameters
-        .get(&Uitvoering::Aanbod.naam())
+        .get(&Uitvoering::Aanbod.name())
         .into_iter()
         .flatten()
         .filter(|(_, g)| g.as_ref().is_some_and(Geldend::is_tijdvak))
-        .map(|(b, _)| b.naam.clone())
+        .map(|(b, _)| b.name.clone())
         .collect();
-    match (namen.as_slice(), aanbod.tijdvakken.is_some()) {
+    match (namen.as_slice(), offer.windows.is_some()) {
         ([], false) => {}
         ([], true) => c.fouten.push(format!(
-            "aanbod: tijdvakken, maar {} vraagt geen tijdvak (een parameter met origin BELANGHEBBENDE en rol TIJDVAK)",
-            aanbod.regeling
+            "offer: tijdvakken, maar {} vraagt geen tijdvak (een parameter met origin BELANGHEBBENDE en rol TIJDVAK)",
+            offer.regulation
         )),
-        ([naam], true) => c.tijdvak = Some(naam.clone()),
-        ([naam], false) => c.fouten.push(format!(
-            "aanbod: het tijdvak '{naam}' (rol TIJDVAK) vraagt aanbod.tijdvakken: de uitkomst van het beleid met de tijdvakken die het portaal aanbiedt"
+        ([name], true) => c.window = Some(name.clone()),
+        ([name], false) => c.fouten.push(format!(
+            "offer: het tijdvak '{name}' (rol TIJDVAK) vraagt aanbod.tijdvakken: de uitkomst van het beleid met de tijdvakken die het portaal aanbiedt"
         )),
         (meer, _) => c.fouten.push(format!(
-            "aanbod: meer dan een tijdvak ({}); het portaal biedt er een aan",
+            "offer: meer dan een tijdvak ({}); het portaal biedt er een aan",
             meer.join(", ")
         )),
     }
@@ -289,9 +303,9 @@ fn tijdvak(d: &ProcesDefinitie, c: &mut Controle) {
 /// `OORDEEL`, in de volgorde van declaratie. Het label is de omschrijving van
 /// de parameter, of het deel na "Naam:" als dat er staat, en anders de naam;
 /// de groep is het artikel van de grondslag.
-pub fn oordelen(c: &Controle, service: &LawExecutionService, handeling: &str) -> Vec<Oordeel> {
+pub fn verdicts(c: &Controle, service: &LawExecutionService, action: &str) -> Vec<Oordeel> {
     c.parameters
-        .get(handeling)
+        .get(action)
         .into_iter()
         .flatten()
         .filter_map(|(b, g)| {
@@ -300,10 +314,10 @@ pub fn oordelen(c: &Controle, service: &LawExecutionService, handeling: &str) ->
                 .filter(|g| g.origin.waarde == OriginValue::Oordeel)?;
             let p = parameter(service, b)?;
             Some(Oordeel {
-                parameter: b.naam.clone(),
+                parameter: b.name.clone(),
                 label: label(p),
-                groep: groep(service, &g.origin.grondslag),
-                uitleg: None,
+                group: group(service, &g.origin.grondslag),
+                explanation: None,
             })
         })
         .collect()
@@ -322,10 +336,10 @@ fn label(p: &Parameter) -> String {
 
 /// Het label uit een omschrijving: het deel na "Naam:", anders de hele
 /// omschrijving, zonder punt aan het eind.
-pub fn label_uit(omschrijving: &str) -> String {
-    let tekst = omschrijving.trim();
+pub fn label_uit(description: &str) -> String {
+    let tekst = description.trim();
     let tekst = match tekst.rsplit_once("Naam:") {
-        Some((_, naam)) => naam.trim(),
+        Some((_, name)) => name.trim(),
         None => tekst,
     };
     let tekst = tekst.strip_suffix('.').unwrap_or(tekst).trim();
@@ -333,12 +347,12 @@ pub fn label_uit(omschrijving: &str) -> String {
 }
 
 /// De groep van een oordeel: de regeling en het artikel van zijn grondslag.
-fn groep(service: &LawExecutionService, grondslag: &str) -> Option<String> {
-    let g = regelingen::ontleed(grondslag).ok()?;
-    let naam = service
+fn group(service: &LawExecutionService, legal_basis: &str) -> Option<String> {
+    let g = regelingen::ontleed(legal_basis).ok()?;
+    let name = service
         .resolver()
-        .get_law(g.regeling)
+        .get_law(g.regulation)
         .and_then(|l| l.name.clone())
-        .unwrap_or_else(|| crate::formulier::leesbaar(g.regeling));
-    Some(format!("{naam}, artikel {}", g.artikel))
+        .unwrap_or_else(|| crate::formulier::leesbaar(g.regulation));
+    Some(format!("{name}, artikel {}", g.article))
 }

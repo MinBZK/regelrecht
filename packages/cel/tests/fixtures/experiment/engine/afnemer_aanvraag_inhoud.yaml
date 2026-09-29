@@ -22,28 +22,28 @@ articles:
         parameters:
           - {name: wortel, type: string, required: true}
         input:
-          - name: grammen
+          - name: grams
             type: array
             source: {}
         output:
-          - {name: laatste, type: number, nullable: true}
+          - {name: latest, type: number, nullable: true}
           - {name: aanvraagdatum, type: date, nullable: true}
           - {name: bevat_aanduiding, type: boolean}
           - {name: aanduiding, type: string, nullable: true}
           - {name: gebieden, type: array, nullable: true}
         actions:
-          - output: laatste
+          - output: latest
             value:
               operation: FOREACH
-              collection: $grammen
+              collection: $grams
               as: g
               filter:
                 operation: AND
                 conditions:
-                  - {operation: EQUALS, subject: $g.type, value: indiening}
-                  - {operation: EQUALS, subject: $g.soort, value: aanvraag}
-                  - {operation: EQUALS, subject: $g.wortel, value: $wortel}
-              body: $g.volgorde
+                  - {operation: EQUALS, subject: $g.type, value: submission}
+                  - {operation: EQUALS, subject: $g.subtype, value: aanvraag}
+                  - {operation: EQUALS, subject: $g.root, value: $root}
+              body: $g.sequence
               combine: MAX
           - output: aanvraagdatum
             value:
@@ -51,45 +51,45 @@ articles:
               cases:
                 - when:
                     operation: FOREACH
-                    collection: $grammen
+                    collection: $grams
                     as: g
                     filter:
                       operation: AND
                       conditions:
-                        - {operation: EQUALS, subject: $g.volgorde, value: $laatste}
+                        - {operation: EQUALS, subject: $g.sequence, value: $latest}
                         - operation: NOT
-                          value: {operation: EQUALS, subject: $g.op_datum, value: null}
+                          value: {operation: EQUALS, subject: $g.effective_date, value: null}
                         - operation: NOT
-                          value: {operation: EQUALS, subject: $g.op_datum, value: ''}
+                          value: {operation: EQUALS, subject: $g.effective_date, value: ''}
                     body: true
                     combine: OR
                   then:
                     operation: FOREACH
-                    collection: $grammen
+                    collection: $grams
                     as: g
                     filter:
                       operation: AND
                       conditions:
-                        - {operation: EQUALS, subject: $g.volgorde, value: $laatste}
+                        - {operation: EQUALS, subject: $g.sequence, value: $latest}
                         - operation: NOT
-                          value: {operation: EQUALS, subject: $g.op_datum, value: null}
+                          value: {operation: EQUALS, subject: $g.effective_date, value: null}
                         - operation: NOT
-                          value: {operation: EQUALS, subject: $g.op_datum, value: ''}
-                    body: $g.op_datum
+                          value: {operation: EQUALS, subject: $g.effective_date, value: ''}
+                    body: $g.effective_date
                     combine: ADD
           - output: bevat_aanduiding
             value:
               operation: FOREACH
-              collection: $grammen
+              collection: $grams
               as: g
               filter:
                 operation: AND
                 conditions:
-                  - {operation: EQUALS, subject: $g.volgorde, value: $laatste}
+                  - {operation: EQUALS, subject: $g.sequence, value: $latest}
                   - operation: NOT
-                    value: {operation: EQUALS, subject: $g.fields.inhoud.aanduiding, value: null}
+                    value: {operation: EQUALS, subject: $g.fields.content.aanduiding, value: null}
                   - operation: NOT
-                    value: {operation: EQUALS, subject: $g.fields.inhoud.aanduiding, value: ''}
+                    value: {operation: EQUALS, subject: $g.fields.content.aanduiding, value: ''}
               body: true
               combine: OR
           - output: aanduiding
@@ -98,31 +98,31 @@ articles:
               cases:
                 - when:
                     operation: FOREACH
-                    collection: $grammen
+                    collection: $grams
                     as: g
                     filter:
                       operation: AND
                       conditions:
-                        - {operation: EQUALS, subject: $g.volgorde, value: $laatste}
+                        - {operation: EQUALS, subject: $g.sequence, value: $latest}
                         - operation: NOT
-                          value: {operation: EQUALS, subject: $g.fields.inhoud.aanduiding, value: null}
+                          value: {operation: EQUALS, subject: $g.fields.content.aanduiding, value: null}
                         - operation: NOT
-                          value: {operation: EQUALS, subject: $g.fields.inhoud.aanduiding, value: ''}
+                          value: {operation: EQUALS, subject: $g.fields.content.aanduiding, value: ''}
                     body: true
                     combine: OR
                   then:
                     operation: FOREACH
-                    collection: $grammen
+                    collection: $grams
                     as: g
                     filter:
                       operation: AND
                       conditions:
-                        - {operation: EQUALS, subject: $g.volgorde, value: $laatste}
+                        - {operation: EQUALS, subject: $g.sequence, value: $latest}
                         - operation: NOT
-                          value: {operation: EQUALS, subject: $g.fields.inhoud.aanduiding, value: null}
+                          value: {operation: EQUALS, subject: $g.fields.content.aanduiding, value: null}
                         - operation: NOT
-                          value: {operation: EQUALS, subject: $g.fields.inhoud.aanduiding, value: ''}
-                    body: $g.fields.inhoud.aanduiding
+                          value: {operation: EQUALS, subject: $g.fields.content.aanduiding, value: ''}
+                    body: $g.fields.content.aanduiding
                     combine: ADD
           - output: gebieden
             value:
@@ -130,29 +130,29 @@ articles:
               cases:
                 - when:
                     operation: FOREACH
-                    collection: $grammen
+                    collection: $grams
                     as: g
                     filter:
                       operation: AND
                       conditions:
-                        - {operation: EQUALS, subject: $g.volgorde, value: $laatste}
+                        - {operation: EQUALS, subject: $g.sequence, value: $latest}
                         - operation: NOT
-                          value: {operation: EQUALS, subject: $g.fields.inhoud.gebieden, value: null}
+                          value: {operation: EQUALS, subject: $g.fields.content.gebieden, value: null}
                         - operation: NOT
-                          value: {operation: EQUALS, subject: $g.fields.inhoud.gebieden, value: ''}
+                          value: {operation: EQUALS, subject: $g.fields.content.gebieden, value: ''}
                     body: true
                     combine: OR
                   then:
                     operation: FOREACH
-                    collection: $grammen
+                    collection: $grams
                     as: g
                     filter:
                       operation: AND
                       conditions:
-                        - {operation: EQUALS, subject: $g.volgorde, value: $laatste}
+                        - {operation: EQUALS, subject: $g.sequence, value: $latest}
                         - operation: NOT
-                          value: {operation: EQUALS, subject: $g.fields.inhoud.gebieden, value: null}
+                          value: {operation: EQUALS, subject: $g.fields.content.gebieden, value: null}
                         - operation: NOT
-                          value: {operation: EQUALS, subject: $g.fields.inhoud.gebieden, value: ''}
-                    body: $g.fields.inhoud.gebieden
+                          value: {operation: EQUALS, subject: $g.fields.content.gebieden, value: ''}
+                    body: $g.fields.content.gebieden
                     combine: ADD

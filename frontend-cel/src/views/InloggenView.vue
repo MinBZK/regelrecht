@@ -1,6 +1,6 @@
 <script setup>
-// Inloggen langs een kanaal uit de configuratie van het proces (`kanalen` in
-// proces.yaml): het label, de uitleg en de velden komen uit het kanaal. Elk
+// Inloggen langs een kanaal uit de configuratie van het proces (`channels` in
+// process.yaml): het label, de uitleg en de velden komen uit het kanaal. Elk
 // kanaal is nagebootst: het proces controleert alleen de vorm van wat u
 // invult, niet wie u bent. Logt er langs het kanaal meer dan een rol in, dan
 // gaat de gekozen rol mee. Levert het proces inlogvoorbeelden voor dit
@@ -11,7 +11,7 @@ import { veldTekst } from '../formulier.js';
 import { lege } from '../kanaal.js';
 
 const props = defineProps({
-  // De id van het kanaal en zijn beschrijving uit GET /api/processen.
+  // De id van het kanaal en zijn beschrijving uit GET /api/processes.
   kanaalId: { type: String, required: true },
   kanaal: { type: Object, required: true },
   // De rol waarin wordt ingelogd; mee als het kanaal er meer heeft.
@@ -29,14 +29,14 @@ const fout = ref('');
 const bezig = ref(false);
 
 // De voorbeelden van dit kanaal, met hun velden in de volgorde van het kanaal.
-const eigen = computed(() => voorbeelden.value.inloggen.filter((v) => v.kanaal === props.kanaalId));
+const eigen = computed(() => voorbeelden.value.logins.filter((v) => v.channel === props.kanaalId));
 
 function omschrijving(v) {
-  return props.kanaal.velden.map((veld) => v.velden[veld.naam]).filter(Boolean).join(', ');
+  return props.kanaal.fields.map((veld) => v.fields[veld.name]).filter(Boolean).join(', ');
 }
 
 function invullen(v) {
-  waarden.value = lege(props.kanaal, v.velden);
+  waarden.value = lege(props.kanaal, v.fields);
 }
 
 async function inloggen() {
@@ -45,7 +45,7 @@ async function inloggen() {
   bezig.value = true;
   try {
     const invoer = { ...waarden.value };
-    if (props.rolMeesturen && props.rol) invoer.rol = props.rol;
+    if (props.rolMeesturen && props.rol) invoer.role = props.rol;
     emit('ingelogd', await api.inloggen(props.kanaalId, invoer));
   } catch (e) {
     fout.value = e.message;
@@ -60,16 +60,16 @@ async function inloggen() {
   <nldd-spacer size="8"></nldd-spacer>
   <nldd-rich-text>
     <p>Dit is een nagebootste inlog: het proces controleert alleen de vorm van wat u invult, niet wie u bent.</p>
-    <p v-if="kanaal.uitleg">{{ kanaal.uitleg }}</p>
+    <p v-if="kanaal.explanation">{{ kanaal.explanation }}</p>
   </nldd-rich-text>
   <nldd-spacer size="16"></nldd-spacer>
   <nldd-form novalidate @submit.prevent="inloggen">
-    <nldd-form-field v-for="v in kanaal.velden" :key="v.naam" :label="v.label">
+    <nldd-form-field v-for="v in kanaal.fields" :key="v.name" :label="v.label">
       <nldd-text-field
-        :value="waarden[v.naam]"
-        :name="v.naam"
-        :keyboard="v.numeriek ? 'numeric' : undefined"
-        @input="waarden = { ...waarden, [v.naam]: veldTekst($event) }"
+        :value="waarden[v.name]"
+        :name="v.name"
+        :keyboard="v.numeric ? 'numeric' : undefined"
+        @input="waarden = { ...waarden, [v.name]: veldTekst($event) }"
       ></nldd-text-field>
     </nldd-form-field>
     <template v-if="fout">

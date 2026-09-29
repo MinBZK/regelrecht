@@ -34,13 +34,13 @@ use super::{Lexostatus, Peil};
 use crate::gram::Gram;
 
 /// De naam van de lexostatus. Gereserveerd: geen cel definieert haar zelf.
-pub const ZAAKSTAND: &str = "zaakstand";
+pub const ZAAKSTAND: &str = "case_state";
 
 /// De optionele inputs voor de vraag of iemand de zaak kent: het
 /// `$intake`-pad van het eigenaarveld van een kanaal, en de waarde van wie
 /// het vraagt.
-pub const EIGENAAR_PAD: &str = "eigenaar_pad";
-pub const EIGENAAR: &str = "eigenaar";
+pub const EIGENAAR_PAD: &str = "owner_path";
+pub const EIGENAAR: &str = "owner";
 
 /// Wat de cel over een zaak afleidt. Staat in de lexostatus als extra
 /// velden.
@@ -49,13 +49,13 @@ pub struct Zaakstand {
     /// Hoeveel grammen de groep heeft. Een proces stuurt dit mee als
     /// `wortel_grammen` bij het vastleggen: wat het uitrekende, gold voor de
     /// zaak zoals die toen was.
-    pub grammen: usize,
+    pub grams: usize,
     /// Per event (`<stroom>/<event>`) hoeveel grammen er in de zaak liggen.
     pub events: BTreeMap<String, usize>,
     /// Het laatste `op_moment` in de zaak: een feit dat de zaak volgt, ligt
     /// rechtens niet op een eerdere dag.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub laatste_op_moment: Option<String>,
+    pub latest_effective_at: Option<String>,
     /// Per stage (RFC-008) het gram dat haar vastlegde, voor de stages die
     /// bij geen besluit horen (zoals de aanvraag). Elk ligt een keer in de
     /// zaak; de cel dwingt dat af.
@@ -63,11 +63,11 @@ pub struct Zaakstand {
     /// De besluiten in de zaak, in de volgorde waarin de cel ze vastlegde:
     /// per besluit zijn stages en de grammen die het volgen.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub besluiten: Vec<Besluitstand>,
+    pub decisions: Vec<Besluitstand>,
     /// Alleen als erom gevraagd is: of er een gram in de zaak ligt waarvan
     /// het veld dat aan het eigenaarpad bindt, de gevraagde waarde heeft.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub eigenaar: Option<bool>,
+    pub owner: Option<bool>,
 }
 
 /// Een stage in de zaak: wat het gram van die stage vastlegde. Bij een
@@ -75,18 +75,18 @@ pub struct Zaakstand {
 /// het besluit is de state container).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Stagestand {
-    pub stroom: String,
+    pub stream: String,
     pub event: String,
-    pub op_moment: String,
-    pub vastgelegd_op: String,
+    pub effective_at: String,
+    pub recorded_at: String,
     /// De regeling waarop een besluit rust, als het gram haar noemt.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub regulation: Option<String>,
     /// De velden van het gram: bij een besluit zijn uitkomsten.
-    pub velden: Map<String, Value>,
+    pub fields: Map<String, Value>,
     /// De waarden van de invoer waarmee de engine het uitrekende.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub invoer: BTreeMap<String, Value>,
+    pub input: BTreeMap<String, Value>,
 }
 
 /// Een besluit in de zaak (RFC-008: het besluit is de state container): het
@@ -97,11 +97,11 @@ pub struct Besluitstand {
     /// Het id van het gram dat het besluit is.
     pub id: String,
     /// Het event dat het besluit vastlegde.
-    pub stroom: String,
+    pub stream: String,
     pub event: String,
     /// Het besluit dat dit besluit wijzigt, als het een wijziging is.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub wijzigt: Option<String>,
+    pub amends: Option<String>,
     /// Per stage het gram dat haar voor dit besluit vastlegde; de stage van
     /// het besluit zelf (zoals BESLUIT) draagt zijn uitkomsten en invoer.
     pub stages: BTreeMap<String, Stagestand>,
@@ -116,52 +116,52 @@ impl Besluitstand {
     pub fn genomen(&self) -> Option<(&String, &Stagestand)> {
         self.stages
             .iter()
-            .find(|(_, s)| s.event == self.event && s.stroom == self.stroom)
+            .find(|(_, s)| s.event == self.event && s.stream == self.stream)
     }
 
     /// Of het besluit door dit event werd vastgelegd.
-    pub fn van(&self, stroom: &str, event: &str) -> bool {
-        self.stroom == stroom && self.event == event
+    pub fn van(&self, stream: &str, event: &str) -> bool {
+        self.stream == stream && self.event == event
     }
 }
 
 impl Zaakstand {
     /// Het besluit met dit id.
-    pub fn besluit(&self, id: &str) -> Option<&Besluitstand> {
-        self.besluiten.iter().find(|b| b.id == id)
+    pub fn decision(&self, id: &str) -> Option<&Besluitstand> {
+        self.decisions.iter().find(|b| b.id == id)
     }
 
     /// De sleutel van een event in [`Zaakstand::events`].
-    pub fn sleutel(stroom: &str, event: &str) -> String {
-        format!("{stroom}/{event}")
+    pub fn sleutel(stream: &str, event: &str) -> String {
+        format!("{stream}/{event}")
     }
 
     /// Hoeveel grammen van dit event in de zaak liggen.
-    pub fn aantal(&self, stroom: &str, event: &str) -> usize {
+    pub fn aantal(&self, stream: &str, event: &str) -> usize {
         self.events
-            .get(&Self::sleutel(stroom, event))
+            .get(&Self::sleutel(stream, event))
             .copied()
             .unwrap_or(0)
     }
 
     /// De stand als lexostatus: alles als extra veld.
-    pub fn als_lexostatus(&self, wortel: &str, peil: &Peil) -> Result<Lexostatus, String> {
-        let Value::Object(velden) = serde_json::to_value(self).map_err(|e| e.to_string())? else {
+    pub fn als_lexostatus(&self, root: &str, peil: &Peil) -> Result<Lexostatus, String> {
+        let Value::Object(fields) = serde_json::to_value(self).map_err(|e| e.to_string())? else {
             return Err("de zaakstand is geen object".into());
         };
         Ok(Lexostatus {
-            wortel: Some(wortel.to_string()),
-            peilmoment: peil.peilmoment.map(|t| t.to_string()),
-            bekend_op: peil.bekend_op.map(|t| t.to_string()),
-            extra_velden: velden.into_iter().collect(),
+            root: Some(root.to_string()),
+            as_of: peil.as_of.map(|t| t.to_string()),
+            known_at: peil.known_at.map(|t| t.to_string()),
+            extra_fields: fields.into_iter().collect(),
             ..Lexostatus::leeg(ZAAKSTAND)
         })
     }
 
     /// De stand uit de lexostatus die de cel gaf.
     pub fn uit(l: &Lexostatus) -> Result<Self, String> {
-        let velden: Map<String, Value> = l.extra_velden.clone().into_iter().collect();
-        serde_json::from_value(Value::Object(velden))
+        let fields: Map<String, Value> = l.extra_fields.clone().into_iter().collect();
+        serde_json::from_value(Value::Object(fields))
             .map_err(|e| format!("de cel gaf geen zaakstand: {e}"))
     }
 }
@@ -171,53 +171,53 @@ impl Zaakstand {
 /// cel); `eigenaar` is het pad en de waarde waarnaar gevraagd wordt. `None`:
 /// geen gram van de zaak telt bij dit peil.
 pub fn reduceer_zaak<'g>(
-    grammen: impl IntoIterator<Item = &'g Gram>,
+    grams: impl IntoIterator<Item = &'g Gram>,
     peil: &Peil,
-    eigenaar: Option<(&str, &str)>,
+    owner: Option<(&str, &str)>,
     bindt: impl Fn(&Gram, &str) -> Vec<String>,
 ) -> Result<Option<Zaakstand>, String> {
     let mut stand = Zaakstand::default();
     let mut laatste: Option<(chrono::DateTime<chrono::FixedOffset>, String)> = None;
     let mut is_eigenaar = false;
-    for g in grammen {
+    for g in grams {
         if !peil.laat_door(g)? {
             continue;
         }
-        stand.grammen += 1;
+        stand.grams += 1;
         *stand
             .events
-            .entry(Zaakstand::sleutel(&g.stroom.id, &g.name))
+            .entry(Zaakstand::sleutel(&g.stream.id, &g.name))
             .or_default() += 1;
         let m = g.moment()?;
         if laatste.as_ref().is_none_or(|(l, _)| m > *l) {
-            laatste = Some((m, g.op_moment.clone()));
+            laatste = Some((m, g.effective_at.clone()));
         }
         // Een gram met stage BESLUIT is een besluit (met `wijzigt` een
         // wijziging); een gram dat naar een besluit in de groep verwijst, volgt
         // het. De rest hoort bij de groep zelf (zoals de aanvraag).
         let is_besluit = g.stage.as_deref() == Some(crate::stroom::BESLUIT);
         let gevolgd = stand
-            .besluiten
+            .decisions
             .iter()
-            .position(|b| g.verwijst.values().any(|d| *d == b.id));
+            .position(|b| g.refers_to.values().any(|d| *d == b.id));
         let stages = if is_besluit {
-            stand.besluiten.push(Besluitstand {
+            stand.decisions.push(Besluitstand {
                 id: g.id.clone(),
-                stroom: g.stroom.id.clone(),
+                stream: g.stream.id.clone(),
                 event: g.name.clone(),
-                wijzigt: g.verwijst.get(crate::stroom::WIJZIGT).cloned(),
+                amends: g.refers_to.get(crate::stroom::WIJZIGT).cloned(),
                 ..Besluitstand::default()
             });
-            stand.besluiten.last_mut().map(|b| {
+            stand.decisions.last_mut().map(|b| {
                 *b.events
-                    .entry(Zaakstand::sleutel(&g.stroom.id, &g.name))
+                    .entry(Zaakstand::sleutel(&g.stream.id, &g.name))
                     .or_default() += 1;
                 &mut b.stages
             })
         } else if let Some(i) = gevolgd {
-            stand.besluiten.get_mut(i).map(|b| {
+            stand.decisions.get_mut(i).map(|b| {
                 *b.events
-                    .entry(Zaakstand::sleutel(&g.stroom.id, &g.name))
+                    .entry(Zaakstand::sleutel(&g.stream.id, &g.name))
                     .or_default() += 1;
                 &mut b.stages
             })
@@ -231,7 +231,7 @@ pub fn reduceer_zaak<'g>(
             let later = match stages.get(s) {
                 None => true,
                 Some(eerder) => {
-                    let e = crate::datum::moment(&eerder.op_moment)?;
+                    let e = crate::datum::moment(&eerder.effective_at)?;
                     m >= e
                 }
             };
@@ -239,32 +239,32 @@ pub fn reduceer_zaak<'g>(
                 stages.insert(
                     s.clone(),
                     Stagestand {
-                        stroom: g.stroom.id.clone(),
+                        stream: g.stream.id.clone(),
                         event: g.name.clone(),
-                        op_moment: g.op_moment.clone(),
-                        vastgelegd_op: g.vastgelegd_op.clone(),
+                        effective_at: g.effective_at.clone(),
+                        recorded_at: g.recorded_at.clone(),
                         regulation: g.regulation.clone(),
-                        velden: g.fields.clone(),
-                        invoer: g
+                        fields: g.fields.clone(),
+                        input: g
                             .inputs
                             .iter()
-                            .map(|(k, i)| (k.clone(), i.waarde.clone()))
+                            .map(|(k, i)| (k.clone(), i.value.clone()))
                             .collect(),
                     },
                 );
             }
         }
-        if let Some((pad, waarde)) = eigenaar {
-            is_eigenaar |= bindt(g, pad)
+        if let Some((path, value)) = owner {
+            is_eigenaar |= bindt(g, path)
                 .iter()
-                .any(|veld| g.veld(veld).and_then(Value::as_str) == Some(waarde));
+                .any(|field| g.field(field).and_then(Value::as_str) == Some(value));
         }
     }
-    if stand.grammen == 0 {
+    if stand.grams == 0 {
         return Ok(None);
     }
-    stand.laatste_op_moment = laatste.map(|(_, t)| t);
-    stand.eigenaar = eigenaar.map(|_| is_eigenaar);
+    stand.latest_effective_at = laatste.map(|(_, t)| t);
+    stand.owner = owner.map(|_| is_eigenaar);
     Ok(Some(stand))
 }
 
@@ -276,53 +276,53 @@ mod tests {
     use crate::synthese::Herkomst;
     use serde_json::json;
 
-    fn gram(name: &str, stage: Option<&str>, op_moment: &str, fields: Value) -> Gram {
+    fn gram(name: &str, stage: Option<&str>, effective_at: &str, fields: Value) -> Gram {
         Gram {
             kind: "chronolexogram".into(),
             id: uuid::Uuid::now_v7().to_string(),
-            type_: "handeling".into(),
-            soort: None,
+            type_: "act".into(),
+            subtype: None,
             stage: stage.map(str::to_string),
             name: name.into(),
             chronicle: "voorbeeld".into(),
             recording_actor: "voorbeeld_actor".into(),
-            grondslag: vec!["voorbeeldregeling#1".into()],
+            legal_basis: vec!["voorbeeldregeling#1".into()],
             legal_character: None,
             decision_type: None,
             regulation: None,
             regulation_valid_from: None,
             competent_authority: None,
-            handelende_actor: None,
-            op_moment: op_moment.into(),
-            op_moment_grondslag: None,
-            vastgelegd_op: "2025-03-12T10:00:00+01:00".into(),
-            verwijst: BTreeMap::new(),
-            stroom: StroomVerwijzing {
+            acting_actor: None,
+            effective_at: effective_at.into(),
+            effective_at_legal_basis: None,
+            recorded_at: "2025-03-12T10:00:00+01:00".into(),
+            refers_to: BTreeMap::new(),
+            stream: StroomVerwijzing {
                 id: "voorbeeldstroom".into(),
                 sha256: "0".repeat(64),
             },
-            herkomst: None,
+            provenance: None,
             fields: fields.as_object().unwrap().clone(),
             inputs: BTreeMap::new(),
             receipt: None,
             tijden: Default::default(),
-            wortel: Some("z1".into()),
+            root: Some("z1".into()),
         }
     }
 
-    fn zaak() -> Vec<Gram> {
-        let mut besluit = gram(
+    fn case() -> Vec<Gram> {
+        let mut decision = gram(
             "besluit_genomen",
             Some("BESLUIT"),
             "2025-03-10T00:00:00+01:00",
             json!({"bedrag": 100}),
         );
-        besluit.regulation = Some("voorbeeldregeling".into());
-        besluit.inputs.insert(
+        decision.regulation = Some("voorbeeldregeling".into());
+        decision.inputs.insert(
             "x".into(),
             Invoer {
-                waarde: json!(4),
-                herkomst: Herkomst::Behandelaar,
+                value: json!(4),
+                provenance: Herkomst::Handler,
             },
         );
         let betaald = |bedrag: i64| {
@@ -332,7 +332,7 @@ mod tests {
                 "2025-03-11T00:00:00+01:00",
                 json!({"bedrag": bedrag}),
             );
-            g.verwijst.insert("besluit".into(), besluit.id.clone());
+            g.refers_to.insert("decision".into(), decision.id.clone());
             g
         };
         let (b40, b60) = (betaald(40), betaald(60));
@@ -343,14 +343,14 @@ mod tests {
                 "2025-03-01T09:00:00+01:00",
                 json!({"nummer": "12345678"}),
             ),
-            besluit,
+            decision,
             b40,
             b60,
         ]
     }
 
-    fn bindt(g: &Gram, pad: &str) -> Vec<String> {
-        if g.name == "aanvraag_ontvangen" && pad == "kanaal.nummer" {
+    fn bindt(g: &Gram, path: &str) -> Vec<String> {
+        if g.name == "aanvraag_ontvangen" && path == "kanaal.nummer" {
             vec!["nummer".into()]
         } else {
             Vec::new()
@@ -361,29 +361,29 @@ mod tests {
     /// wat hun gram vastlegde, het aantal per event, het laatste moment.
     #[test]
     fn de_stand_van_een_zaak() {
-        let z = zaak();
+        let z = case();
         let s = reduceer_zaak(&z, &Peil::default(), None, bindt)
             .unwrap()
             .unwrap();
-        assert_eq!(s.grammen, 4);
+        assert_eq!(s.grams, 4);
         assert_eq!(s.aantal("voorbeeldstroom", "betaald"), 2);
         assert_eq!(s.aantal("voorbeeldstroom", "bestaat_niet"), 0);
         assert_eq!(s.stages.keys().collect::<Vec<_>>(), ["AANVRAAG"]);
         // Het besluit is een eigen besluit in de groep; de betalingen die
         // ernaar verwijzen, volgen het.
-        assert_eq!(s.besluiten.len(), 1);
-        assert_eq!(s.besluiten[0].id, z[1].id);
-        assert_eq!(s.besluiten[0].events["voorbeeldstroom/betaald"], 2);
-        let b = &s.besluiten[0].stages["BESLUIT"];
+        assert_eq!(s.decisions.len(), 1);
+        assert_eq!(s.decisions[0].id, z[1].id);
+        assert_eq!(s.decisions[0].events["voorbeeldstroom/betaald"], 2);
+        let b = &s.decisions[0].stages["BESLUIT"];
         assert_eq!(b.event, "besluit_genomen");
-        assert_eq!(b.velden["bedrag"], json!(100));
-        assert_eq!(b.invoer["x"], json!(4));
+        assert_eq!(b.fields["bedrag"], json!(100));
+        assert_eq!(b.input["x"], json!(4));
         assert_eq!(b.regulation.as_deref(), Some("voorbeeldregeling"));
         assert_eq!(
-            s.laatste_op_moment.as_deref(),
+            s.latest_effective_at.as_deref(),
             Some("2025-03-11T00:00:00+01:00")
         );
-        assert_eq!(s.eigenaar, None);
+        assert_eq!(s.owner, None);
         // Heen en terug door de lexostatus.
         let l = s.als_lexostatus("z1", &Peil::default()).unwrap();
         assert!(l.parameters.is_empty(), "gaat nooit naar de engine");
@@ -394,7 +394,7 @@ mod tests {
     /// aan het eigenaarpad bindt, de waarde heeft.
     #[test]
     fn de_eigenaar_van_een_zaak() {
-        let z = zaak();
+        let z = case();
         let ja = reduceer_zaak(
             &z,
             &Peil::default(),
@@ -403,7 +403,7 @@ mod tests {
         )
         .unwrap()
         .unwrap();
-        assert_eq!(ja.eigenaar, Some(true));
+        assert_eq!(ja.owner, Some(true));
         let nee = reduceer_zaak(
             &z,
             &Peil::default(),
@@ -412,17 +412,17 @@ mod tests {
         )
         .unwrap()
         .unwrap();
-        assert_eq!(nee.eigenaar, Some(false));
+        assert_eq!(nee.owner, Some(false));
     }
 
     /// Op een peil telt alleen wat toen gold; een zaak zonder gram bij het
     /// peil heeft geen stand.
     #[test]
     fn de_stand_op_een_peil() {
-        let z = zaak();
+        let z = case();
         let peil = Peil::op(crate::datum::Tijdpunt::lees("p", "2025-03-05").unwrap());
         let s = reduceer_zaak(&z, &peil, None, bindt).unwrap().unwrap();
-        assert_eq!(s.grammen, 1);
+        assert_eq!(s.grams, 1);
         assert!(!s.stages.contains_key("BESLUIT"));
         let vroeg = Peil::op(crate::datum::Tijdpunt::lees("p", "2025-02-01").unwrap());
         assert!(reduceer_zaak(&z, &vroeg, None, bindt).unwrap().is_none());

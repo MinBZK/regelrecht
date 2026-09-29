@@ -4,7 +4,7 @@
 # lexostatus de engine-regeling (een pad relatief aan dit bestand), of bewust
 # de reductie-DSL met een reden. Een lexostatus zonder koppeling houdt de
 # runtime tegen.
-cellen:
+cells:
   test_afnemer:
     aanvraag_inhoud: afnemer_aanvraag_inhoud.yaml
     zaakverloop: afnemer_zaakverloop.yaml

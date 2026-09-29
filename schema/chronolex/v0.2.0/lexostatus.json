@@ -5,7 +5,7 @@
   "description": "De lexostatussen die een cel aanbiedt en hoe elk uit de eigen kroniek wordt gereduceerd (RFC-022 par. 4.1, daar voorlopig). reduction kiest met filter en kies zo nodig een gram en leidt met afleidingen de parameters van een artikel af: een afleiding op het gekozen gram (veld, jaar_van, periode_van, gevuld, gelijk, tabel, moment), of een afleiding over de grammen die door haar eigen filter komen (bestaat, som, kies met veld, jaar_van, periode_van of bevat). Met groepeer: zaakkenmerk (en zo nodig zonder) is de lexostatus een lijst met een regel per zaak. extra_velden levert waarden die geen parameter zijn en niet naar de engine gaan.",
   "type": "object",
   "required": [
-    "cel",
+    "cell",
     "lexostatus_definitions"
   ],
   "additionalProperties": false,
@@ -13,35 +13,35 @@
     "$schema": {
       "type": "string"
     },
-    "cel": {
+    "cell": {
       "$ref": "#/definitions/identifier"
     },
     "description": {
       "type": "string"
     },
-    "wet": {
+    "law": {
       "type": "array",
       "description": "Aanvullingen op de lexostatussen die de wet in deze cel leest (produces.extensions.chronolex.leest van een artikel; de lexostatus heet naar het artikel). Alleen extra velden: wat de cel meegeeft als invoer voor een latere bron, geen parameter. De parameters staan in de wet.",
       "items": {
         "type": "object",
         "required": [
-          "artikel",
-          "extra_velden"
+          "article",
+          "extra_fields"
         ],
         "additionalProperties": false,
         "properties": {
-          "artikel": {
-            "$ref": "#/definitions/grondslag",
+          "article": {
+            "$ref": "#/definitions/legal_basis",
             "description": "Het lezende artikel, <regeling>#<artikel>."
           },
-          "extra_velden": {
+          "extra_fields": {
             "type": "object",
             "description": "Waarden die geen parameter zijn, zoals een invoer voor een synthese-bron. Ze staan apart in de lexostatus en gaan nooit naar de engine.",
             "propertyNames": {
               "pattern": "^[a-z_][a-z0-9_]*$"
             },
             "additionalProperties": {
-              "$ref": "#/definitions/afleiding"
+              "$ref": "#/definitions/derivation"
             }
           }
         }
@@ -60,12 +60,12 @@
       "type": "string",
       "pattern": "^[a-z][a-z0-9_]*$"
     },
-    "veldpad": {
+    "field_path": {
       "type": "string",
       "description": "Pad naar een veld onder fields van het gram, met punten tussen de niveaus.",
       "pattern": "^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)*$"
     },
-    "kolom": {
+    "column": {
       "type": "string",
       "pattern": "^[a-z_][a-z0-9_]*$"
     },
@@ -103,8 +103,8 @@
                   {
                     "not": {
                       "enum": [
-                        "peilmoment",
-                        "bekend_op"
+                        "as_of",
+                        "known_at"
                       ]
                     }
                   }
@@ -122,87 +122,87 @@
           }
         },
         "reduction": {
-          "$ref": "#/definitions/reductie"
+          "$ref": "#/definitions/reduction"
         }
       }
     },
-    "reductie": {
+    "reduction": {
       "type": "object",
       "required": [
-        "kroniek",
-        "afleidingen"
+        "chronicle",
+        "derivations"
       ],
       "additionalProperties": false,
       "properties": {
-        "kroniek": {
+        "chronicle": {
           "$ref": "#/definitions/identifier"
         },
         "filter": {
           "$ref": "#/definitions/filter"
         },
-        "groepeer": {
+        "group_by": {
           "enum": [
-            "wortel"
+            "root"
           ],
           "description": "Maakt van de lexostatus een lijst: een regel per wortel (het gram zonder verwijzing waar de andere via verwijst naar toe leiden, zoals de aanvraag). Een wortel telt als ten minste een van haar grammen door filter komt; kies en de afleidingen werken dan per wortel, over haar grammen. Een lijst is voor de afnemer en gaat nooit naar de engine; de afleidingen zijn dan kolommen, geen parameters."
         },
-        "zonder": {
+        "without": {
           "$ref": "#/definitions/filter",
           "description": "Alleen met groepeer: een wortel blijft alleen in de lijst als geen van haar grammen door dit filter komt, bijvoorbeeld zonder gram van stage BESLUIT."
         },
-        "kies": {
+        "pick": {
           "enum": [
-            "laatste"
+            "latest"
           ],
           "description": "Welk gram telt als er meer zijn: laatste is het gram met het laatste op_moment, bij gelijk op_moment het laatste vastgelegd_op (een herstel is een nieuw gram). Zonder kies wordt geen gram gekozen, en kan elke afleiding alleen over een verzameling grammen werken."
         },
-        "afleidingen": {
+        "derivations": {
           "type": "object",
           "description": "Per parameter van een artikel onder de grondslag van het event of van de afleiding zelf: hoe die uit het gram volgt. Leeg mag, als extra_velden wel iets levert: een lexostatus die alleen kolommen voor een synthese per regel levert, levert geen parameter.",
           "propertyNames": {
             "pattern": "^[a-z_][a-z0-9_]*$"
           },
           "additionalProperties": {
-            "$ref": "#/definitions/afleiding"
+            "$ref": "#/definitions/derivation"
           }
         },
-        "extra_velden": {
+        "extra_fields": {
           "type": "object",
           "description": "Waarden die geen parameter zijn, zoals een invoer voor een synthese-bron. Ze staan apart in de lexostatus en gaan nooit naar de engine.",
           "propertyNames": {
             "pattern": "^[a-z_][a-z0-9_]*$"
           },
           "additionalProperties": {
-            "$ref": "#/definitions/afleiding"
+            "$ref": "#/definitions/derivation"
           }
         }
       },
       "dependencies": {
-        "zonder": [
-          "groepeer"
+        "without": [
+          "group_by"
         ]
       }
     },
-    "afleiding": {
+    "derivation": {
       "oneOf": [
         {
           "description": "De waarde van het veld. Leeg of afwezig: de parameter blijft weg.",
           "type": "object",
           "required": [
-            "veld"
+            "field"
           ],
           "additionalProperties": false,
           "properties": {
-            "veld": {
-              "$ref": "#/definitions/veldpad"
+            "field": {
+              "$ref": "#/definitions/field_path"
             },
-            "grondslag": {
+            "legal_basis": {
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
               "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
               "items": {
-                "$ref": "#/definitions/grondslag"
+                "$ref": "#/definitions/legal_basis"
               }
             }
           }
@@ -211,20 +211,20 @@
           "description": "Het jaartal van een datumveld (JJJJ-MM-DD). Geen datum: de parameter blijft weg.",
           "type": "object",
           "required": [
-            "jaar_van"
+            "year_of"
           ],
           "additionalProperties": false,
           "properties": {
-            "jaar_van": {
-              "$ref": "#/definitions/veldpad"
+            "year_of": {
+              "$ref": "#/definitions/field_path"
             },
-            "grondslag": {
+            "legal_basis": {
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
               "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
               "items": {
-                "$ref": "#/definitions/grondslag"
+                "$ref": "#/definitions/legal_basis"
               }
             }
           }
@@ -233,28 +233,28 @@
           "description": "De periode waarin een datumveld (JJJJ-MM-DD) van het gekozen gram valt, als de eerste dag van die periode (JJJJ-MM-DD): een maand, een kwartaal of een jaar. Zo is een tijdvak een datum die de engine kan lezen. Geen datum: de parameter blijft weg.",
           "type": "object",
           "required": [
-            "periode_van"
+            "period_of"
           ],
           "additionalProperties": false,
           "properties": {
-            "periode_van": {
-              "$ref": "#/definitions/veldpad"
+            "period_of": {
+              "$ref": "#/definitions/field_path"
             },
-            "periode": {
+            "period": {
               "enum": [
-                "jaar",
-                "kwartaal",
-                "maand"
+                "year",
+                "quarter",
+                "month"
               ],
               "description": "De periode: jaar, kwartaal of maand. Zonder neemt de runtime bij het opstarten de temporal.period_type (year, month) van de parameter met de naam van de afleiding uit de grondslag (RFC-001): de regeling zegt dan welke periode het is."
             },
-            "grondslag": {
+            "legal_basis": {
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
               "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
               "items": {
-                "$ref": "#/definitions/grondslag"
+                "$ref": "#/definitions/legal_basis"
               }
             }
           }
@@ -263,20 +263,20 @@
           "description": "Waar als het veld gevuld is (niet afwezig, niet null, geen lege tekst, geen lege lijst).",
           "type": "object",
           "required": [
-            "gevuld"
+            "filled"
           ],
           "additionalProperties": false,
           "properties": {
-            "gevuld": {
-              "$ref": "#/definitions/veldpad"
+            "filled": {
+              "$ref": "#/definitions/field_path"
             },
-            "grondslag": {
+            "legal_basis": {
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
               "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
               "items": {
-                "$ref": "#/definitions/grondslag"
+                "$ref": "#/definitions/legal_basis"
               }
             }
           }
@@ -285,22 +285,22 @@
           "description": "Waar als het veld die waarde heeft. Leeg of afwezig: de parameter blijft weg.",
           "type": "object",
           "required": [
-            "gelijk"
+            "equals"
           ],
           "additionalProperties": false,
           "properties": {
-            "gelijk": {
+            "equals": {
               "type": "object",
               "required": [
-                "veld",
-                "aan"
+                "field",
+                "value"
               ],
               "additionalProperties": false,
               "properties": {
-                "veld": {
-                  "$ref": "#/definitions/veldpad"
+                "field": {
+                  "$ref": "#/definitions/field_path"
                 },
-                "aan": {
+                "value": {
                   "type": [
                     "string",
                     "number",
@@ -309,13 +309,13 @@
                 }
               }
             },
-            "grondslag": {
+            "legal_basis": {
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
               "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
               "items": {
-                "$ref": "#/definitions/grondslag"
+                "$ref": "#/definitions/legal_basis"
               }
             }
           }
@@ -324,27 +324,27 @@
           "description": "Waar als de tabel ten minste een regel heeft en elke regel die kolom gevuld heeft; met alleen_waar tellen alleen de regels waarin die kolom waar is.",
           "type": "object",
           "required": [
-            "tabel",
-            "elke_regel"
+            "table",
+            "each_row"
           ],
           "additionalProperties": false,
           "properties": {
-            "tabel": {
-              "$ref": "#/definitions/veldpad"
+            "table": {
+              "$ref": "#/definitions/field_path"
             },
-            "elke_regel": {
-              "$ref": "#/definitions/kolom"
+            "each_row": {
+              "$ref": "#/definitions/column"
             },
-            "alleen_waar": {
-              "$ref": "#/definitions/kolom"
+            "only_where": {
+              "$ref": "#/definitions/column"
             },
-            "grondslag": {
+            "legal_basis": {
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
               "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
               "items": {
-                "$ref": "#/definitions/grondslag"
+                "$ref": "#/definitions/legal_basis"
               }
             }
           }
@@ -353,24 +353,24 @@
           "description": "Waar als ten minste een regel van de tabel die kolom op waar heeft.",
           "type": "object",
           "required": [
-            "tabel",
-            "een_regel"
+            "table",
+            "one_row"
           ],
           "additionalProperties": false,
           "properties": {
-            "tabel": {
-              "$ref": "#/definitions/veldpad"
+            "table": {
+              "$ref": "#/definitions/field_path"
             },
-            "een_regel": {
-              "$ref": "#/definitions/kolom"
+            "one_row": {
+              "$ref": "#/definitions/column"
             },
-            "grondslag": {
+            "legal_basis": {
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
               "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
               "items": {
-                "$ref": "#/definitions/grondslag"
+                "$ref": "#/definitions/legal_basis"
               }
             }
           }
@@ -385,17 +385,17 @@
           "properties": {
             "moment": {
               "enum": [
-                "op_moment",
-                "vastgelegd_op"
+                "effective_at",
+                "recorded_at"
               ]
             },
-            "grondslag": {
+            "legal_basis": {
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
               "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
               "items": {
-                "$ref": "#/definitions/grondslag"
+                "$ref": "#/definitions/legal_basis"
               }
             }
           }
@@ -404,26 +404,26 @@
           "description": "Over de grammen die door filter komen: waar als er ten minste een is. Geen gram is onwaar: de cel spreekt alleen over haar eigen kroniek. Met gevuld telt alleen een gram waarin dat veld gevuld is (niet afwezig, niet null, geen lege tekst, geen lege lijst).",
           "type": "object",
           "required": [
-            "bestaat"
+            "exists"
           ],
           "additionalProperties": false,
           "properties": {
             "filter": {
               "$ref": "#/definitions/filter"
             },
-            "bestaat": {
+            "exists": {
               "const": true
             },
-            "gevuld": {
-              "$ref": "#/definitions/veldpad"
+            "filled": {
+              "$ref": "#/definitions/field_path"
             },
-            "grondslag": {
+            "legal_basis": {
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
               "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
               "items": {
-                "$ref": "#/definitions/grondslag"
+                "$ref": "#/definitions/legal_basis"
               }
             }
           }
@@ -432,28 +432,28 @@
           "description": "Over de grammen die door filter komen: per gram een regel met deze velden, in de volgorde van de kroniek. Een veld dat een gram niet heeft, is null. Geen gram is een lege lijst. Voor een tabel, zoals de regels van een uitslag; gebruik het als extra veld, niet als parameter.",
           "type": "object",
           "required": [
-            "verzamel"
+            "collect"
           ],
           "additionalProperties": false,
           "properties": {
             "filter": {
               "$ref": "#/definitions/filter"
             },
-            "verzamel": {
+            "collect": {
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
               "items": {
-                "$ref": "#/definitions/veldpad"
+                "$ref": "#/definitions/field_path"
               }
             },
-            "grondslag": {
+            "legal_basis": {
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
               "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
               "items": {
-                "$ref": "#/definitions/grondslag"
+                "$ref": "#/definitions/legal_basis"
               }
             }
           }
@@ -462,23 +462,23 @@
           "description": "Over de grammen die door filter komen: de som van dit getalveld. Geen gram is nul.",
           "type": "object",
           "required": [
-            "som"
+            "sum"
           ],
           "additionalProperties": false,
           "properties": {
             "filter": {
               "$ref": "#/definitions/filter"
             },
-            "som": {
-              "$ref": "#/definitions/veldpad"
+            "sum": {
+              "$ref": "#/definitions/field_path"
             },
-            "grondslag": {
+            "legal_basis": {
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
               "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
               "items": {
-                "$ref": "#/definitions/grondslag"
+                "$ref": "#/definitions/legal_basis"
               }
             }
           }
@@ -487,7 +487,7 @@
           "description": "Over de grammen die door filter komen: de datum van een moment (op_moment of vastgelegd_op) van het gram met het laatste op_moment. Geen gram: de waarde van geen_gram, en zonder geen_gram blijft de parameter weg. Zo leest een lijst per zaak het moment van een bepaald gram, zoals de ontvangst van de aanvraag, terwijl zij andere grammen van de zaak ook leest.",
           "type": "object",
           "required": [
-            "kies",
+            "pick",
             "moment"
           ],
           "additionalProperties": false,
@@ -495,18 +495,18 @@
             "filter": {
               "$ref": "#/definitions/filter"
             },
-            "kies": {
+            "pick": {
               "enum": [
-                "laatste"
+                "latest"
               ]
             },
             "moment": {
               "enum": [
-                "op_moment",
-                "vastgelegd_op"
+                "effective_at",
+                "recorded_at"
               ]
             },
-            "geen_gram": {
+            "no_gram": {
               "type": [
                 "null",
                 "string",
@@ -515,13 +515,13 @@
               ],
               "description": "De waarde als geen gram door filter komt: de lezing van afwezigheid binnen de eigen kroniek, bijvoorbeeld null voor een datum van iets dat niet gebeurde. Zonder geen_gram blijft de parameter dan weg."
             },
-            "grondslag": {
+            "legal_basis": {
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
               "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
               "items": {
-                "$ref": "#/definitions/grondslag"
+                "$ref": "#/definitions/legal_basis"
               }
             }
           }
@@ -530,23 +530,23 @@
           "description": "Over de grammen die door filter komen: de waarde van veld in het gram met het laatste op_moment. Een leeg veld: de parameter blijft weg. Geen gram: de waarde van geen_gram, en zonder geen_gram blijft de parameter weg.",
           "type": "object",
           "required": [
-            "kies",
-            "veld"
+            "pick",
+            "field"
           ],
           "additionalProperties": false,
           "properties": {
             "filter": {
               "$ref": "#/definitions/filter"
             },
-            "kies": {
+            "pick": {
               "enum": [
-                "laatste"
+                "latest"
               ]
             },
-            "veld": {
-              "$ref": "#/definitions/veldpad"
+            "field": {
+              "$ref": "#/definitions/field_path"
             },
-            "geen_gram": {
+            "no_gram": {
               "type": [
                 "null",
                 "string",
@@ -555,13 +555,13 @@
               ],
               "description": "De waarde als geen gram door filter komt: de lezing van afwezigheid binnen de eigen kroniek, bijvoorbeeld null voor een datum van iets dat niet gebeurde. Zonder geen_gram blijft de parameter dan weg."
             },
-            "grondslag": {
+            "legal_basis": {
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
               "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
               "items": {
-                "$ref": "#/definitions/grondslag"
+                "$ref": "#/definitions/legal_basis"
               }
             }
           }
@@ -570,23 +570,23 @@
           "description": "Over de grammen die door filter komen: het jaartal van het datumveld in het gram met het laatste op_moment. Geen datum: de parameter blijft weg. Geen gram: de waarde van geen_gram, en zonder geen_gram blijft de parameter weg.",
           "type": "object",
           "required": [
-            "kies",
-            "jaar_van"
+            "pick",
+            "year_of"
           ],
           "additionalProperties": false,
           "properties": {
             "filter": {
               "$ref": "#/definitions/filter"
             },
-            "kies": {
+            "pick": {
               "enum": [
-                "laatste"
+                "latest"
               ]
             },
-            "jaar_van": {
-              "$ref": "#/definitions/veldpad"
+            "year_of": {
+              "$ref": "#/definitions/field_path"
             },
-            "geen_gram": {
+            "no_gram": {
               "type": [
                 "null",
                 "string",
@@ -595,13 +595,13 @@
               ],
               "description": "De waarde als geen gram door filter komt: de lezing van afwezigheid binnen de eigen kroniek. Zonder geen_gram blijft de parameter dan weg."
             },
-            "grondslag": {
+            "legal_basis": {
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
               "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
               "items": {
-                "$ref": "#/definitions/grondslag"
+                "$ref": "#/definitions/legal_basis"
               }
             }
           }
@@ -610,31 +610,31 @@
           "description": "Over de grammen die door filter komen: de periode waarin een datumveld van het laatste gram valt, als de eerste dag van die periode (zie periode_van op het gekozen gram).",
           "type": "object",
           "required": [
-            "kies",
-            "periode_van"
+            "pick",
+            "period_of"
           ],
           "additionalProperties": false,
           "properties": {
             "filter": {
               "$ref": "#/definitions/filter"
             },
-            "kies": {
+            "pick": {
               "enum": [
-                "laatste"
+                "latest"
               ]
             },
-            "periode_van": {
-              "$ref": "#/definitions/veldpad"
+            "period_of": {
+              "$ref": "#/definitions/field_path"
             },
-            "periode": {
+            "period": {
               "enum": [
-                "jaar",
-                "kwartaal",
-                "maand"
+                "year",
+                "quarter",
+                "month"
               ],
               "description": "De periode: jaar, kwartaal of maand. Zonder neemt de runtime bij het opstarten de temporal.period_type (year, month) van de parameter met de naam van de afleiding uit de grondslag (RFC-001): de regeling zegt dan welke periode het is."
             },
-            "geen_gram": {
+            "no_gram": {
               "type": [
                 "null",
                 "string",
@@ -643,13 +643,13 @@
               ],
               "description": "De waarde als geen gram door filter komt: de lezing van afwezigheid binnen de eigen kroniek. Zonder geen_gram blijft de parameter dan weg."
             },
-            "grondslag": {
+            "legal_basis": {
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
               "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
               "items": {
-                "$ref": "#/definitions/grondslag"
+                "$ref": "#/definitions/legal_basis"
               }
             }
           }
@@ -658,31 +658,31 @@
           "description": "Over de grammen die door filter komen: waar als het lijstveld bevat.veld in het laatste gram de waarde bevat. Geen gram is onwaar.",
           "type": "object",
           "required": [
-            "kies",
-            "bevat"
+            "pick",
+            "contains"
           ],
           "additionalProperties": false,
           "properties": {
             "filter": {
               "$ref": "#/definitions/filter"
             },
-            "kies": {
+            "pick": {
               "enum": [
-                "laatste"
+                "latest"
               ]
             },
-            "bevat": {
+            "contains": {
               "type": "object",
               "required": [
-                "veld",
-                "waarde"
+                "field",
+                "value"
               ],
               "additionalProperties": false,
               "properties": {
-                "veld": {
-                  "$ref": "#/definitions/veldpad"
+                "field": {
+                  "$ref": "#/definitions/field_path"
                 },
-                "waarde": {
+                "value": {
                   "type": [
                     "string",
                     "number",
@@ -691,13 +691,13 @@
                 }
               }
             },
-            "grondslag": {
+            "legal_basis": {
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
               "description": "Waarop deze afleiding rust: het artikel dat het feit vraagt, of het artikel dat de lezing draagt (zoals het register dat de cel bijhoudt: geen gram is nee). De naam van een parameter-afleiding is een parameter van een artikel uit de grondslag van het event of uit deze grondslag. Bij het opstarten: elk artikel geladen, het lid bestaat.",
               "items": {
-                "$ref": "#/definitions/grondslag"
+                "$ref": "#/definitions/legal_basis"
               }
             }
           }
@@ -708,7 +708,7 @@
       "type": "object",
       "description": "Gelijkheid op het gram. De sleutels id, wortel, name, type, soort, stage, recording_actor, chronicle, legal_character, decision_type, regulation en competent_authority zijn velden van het gram zelf (wortel uit de index van de cel), en verwijst.<naam> is het id waarnaar het gram onder die naam verwijst; elke andere sleutel is een veldpad onder fields. Een waarde $<input> komt uit de inputs van de lexostatus. De vaste waarden van name, type en soort wijzen het event of de events aan.",
       "propertyNames": {
-        "$ref": "#/definitions/veldpad"
+        "$ref": "#/definitions/field_path"
       },
       "additionalProperties": {
         "type": "string",
@@ -716,7 +716,7 @@
       },
       "minProperties": 1
     },
-    "grondslag": {
+    "legal_basis": {
       "type": "string",
       "description": "<regeling-$id>#<artikelnummer>, optioneel met ' lid <n>', zoals bij een event (stream.json).",
       "pattern": "^[a-z][a-z0-9_]*#[A-Za-z0-9]([A-Za-z0-9:._ -]*[A-Za-z0-9])?( lid [0-9]+[a-z]?)?$"

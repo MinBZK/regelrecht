@@ -14,7 +14,7 @@ use axum::Json;
 use serde_json::Value;
 
 use super::sessie::behandelaar;
-use super::{fout, van_cel, Fout, ProcesState};
+use super::{error, van_cel, Error, ProcesState};
 use crate::celclient::celpad;
 
 impl ProcesState {
@@ -24,34 +24,37 @@ impl ProcesState {
         let d = &self.proces.definitie;
         let mut uit: BTreeSet<String> = std::iter::once(self.cel_id().to_string()).collect();
         uit.extend(
-            d.synthese
+            d.synthesis
                 .iter()
                 .filter(|b| b.url.is_none())
-                .map(|b| b.cel.clone()),
+                .map(|b| b.cell.clone()),
         );
-        let rijen = d.portaal.iter().flat_map(|p| p.toets.rijen.iter()).chain(
-            d.behandeling
-                .iter()
-                .flat_map(|b| b.handelingen.iter().flat_map(|h| h.rijen.iter())),
-        );
+        let rows = d
+            .portal
+            .iter()
+            .flat_map(|p| p.assessment.rows.iter())
+            .chain(
+                d.handling
+                    .iter()
+                    .flat_map(|b| b.actions.iter().flat_map(|h| h.rows.iter())),
+            );
         uit.extend(
-            rijen
-                .flat_map(|r| r.bronnen.iter())
+            rows.flat_map(|r| r.sources.iter())
                 .filter(|b| b.url.is_none())
-                .map(|b| b.cel.clone()),
+                .map(|b| b.cell.clone()),
         );
         uit
     }
 }
 
-fn toegestaan(state: &ProcesState, headers: &HeaderMap, cel: &str) -> Result<(), Fout> {
+fn toegestaan(state: &ProcesState, headers: &HeaderMap, cell: &str) -> Result<(), Error> {
     behandelaar(state, headers)?;
-    if state.inzage_cellen().contains(cel) {
+    if state.inzage_cellen().contains(cell) {
         Ok(())
     } else {
-        Err(fout(
+        Err(error(
             StatusCode::NOT_FOUND,
-            format!("proces '{}' leest geen cel '{cel}'", state.proces.id()),
+            format!("proces '{}' leest geen cel '{cell}'", state.proces.id()),
         ))
     }
 }
@@ -60,12 +63,12 @@ fn toegestaan(state: &ProcesState, headers: &HeaderMap, cel: &str) -> Result<(),
 pub(super) async fn kroniek_route(
     State(state): State<ProcesState>,
     headers: HeaderMap,
-    Path(cel): Path<String>,
-) -> Result<Json<Value>, Fout> {
-    toegestaan(&state, &headers, &cel)?;
+    Path(cell): Path<String>,
+) -> Result<Json<Value>, Error> {
+    toegestaan(&state, &headers, &cell)?;
     state
-        .cel
-        .haal(&celpad(&cel, "kroniek"))
+        .cell
+        .haal(&celpad(&cell, "chronicle"))
         .await
         .map(Json)
         .map_err(van_cel)
@@ -76,24 +79,24 @@ pub(super) async fn kroniek_route(
 pub(super) async fn lexostatus_route(
     State(state): State<ProcesState>,
     headers: HeaderMap,
-    Path((cel, naam)): Path<(String, String)>,
+    Path((cell, name)): Path<(String, String)>,
     RawQuery(query): RawQuery,
-) -> Result<Json<Value>, Fout> {
-    toegestaan(&state, &headers, &cel)?;
-    if naam.is_empty() || naam.chars().all(|c| c == '.') {
-        return Err(fout(
+) -> Result<Json<Value>, Error> {
+    toegestaan(&state, &headers, &cell)?;
+    if name.is_empty() || name.chars().all(|c| c == '.') {
+        return Err(error(
             StatusCode::BAD_REQUEST,
-            format!("geen lexostatus '{naam}'"),
+            format!("geen lexostatus '{name}'"),
         ));
     }
-    let naam: String = crate::celclient::url_segment(&naam);
-    let pad = match query {
-        Some(q) if !q.is_empty() => format!("lexostatus/{naam}?{q}"),
-        _ => format!("lexostatus/{naam}"),
+    let name: String = crate::celclient::url_segment(&name);
+    let path = match query {
+        Some(q) if !q.is_empty() => format!("lexostatus/{name}?{q}"),
+        _ => format!("lexostatus/{name}"),
     };
     state
-        .cel
-        .haal(&celpad(&cel, &pad))
+        .cell
+        .haal(&celpad(&cell, &path))
         .await
         .map(Json)
         .map_err(van_cel)

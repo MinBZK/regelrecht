@@ -1,7 +1,7 @@
 <script setup>
 // Een proces. Welke rollen er zijn, langs welk kanaal ze inloggen en welke
-// schermen ze hebben, zegt GET /api/processen (`kanalen` en `rollen` in
-// proces.yaml): een rol met routes portaal ziet wat het beleid aanbiedt en
+// schermen ze hebben, zegt GET /api/processes (`channels` en `roles` in
+// process.yaml): een rol met routes portaal ziet wat het beleid aanbiedt en
 // dient in, een rol met routes behandeling ziet de werkvoorraad, een zaak
 // met haar handelingen (het besluit, de bekendmaking, een betaling, een
 // feit uit het verloop), een rol met routes loket voert een
@@ -24,7 +24,7 @@ import Grammen from '../components/Grammen.vue';
 
 const props = defineProps({
   proces: { type: Object, required: true },
-  // De cel waarin het proces vastlegt, zoals GET /api/cellen haar beschrijft.
+  // De cel waarin het proces vastlegt, zoals GET /api/cells haar beschrijft.
   cel: { type: Object, required: true },
 });
 
@@ -33,7 +33,7 @@ provide('api', api);
 provide('celApi', inzageApi(props.proces.id, props.cel.id));
 // De voorbeelden van het proces (inloggen, aanvraag, en per handeling een
 // formulier); zonder: leeg.
-const voorbeelden = ref({ inloggen: [], aanvraag: null, handelingen: {} });
+const voorbeelden = ref({ logins: [], application: null, actions: {} });
 provide('voorbeelden', voorbeelden);
 provide('proces', props.proces);
 
@@ -56,13 +56,13 @@ function beginscherm(r) {
 }
 
 // De routegroepen van de gekozen rol.
-const mag = (routes) => props.proces.rollen?.[rol.value]?.routes?.includes(routes) ?? false;
+const mag = (routes) => props.proces.roles?.[rol.value]?.routes?.includes(routes) ?? false;
 
 // Het kanaal van de gekozen rol, en of de login de rol moet noemen (als er
 // langs dat kanaal meer dan een rol inlogt).
-const kanaalId = computed(() => props.proces.rollen?.[rol.value]?.kanaal ?? null);
-const kanaal = computed(() => props.proces.kanalen?.[kanaalId.value] ?? null);
-const rolMeesturen = computed(() => rollen.value.filter((r) => r.kanaal === kanaalId.value).length > 1);
+const kanaalId = computed(() => props.proces.roles?.[rol.value]?.channel ?? null);
+const kanaal = computed(() => props.proces.channels?.[kanaalId.value] ?? null);
+const rolMeesturen = computed(() => rollen.value.filter((r) => r.channel === kanaalId.value).length > 1);
 
 onMounted(async () => {
   if (rol.value === null) return;
@@ -72,9 +72,9 @@ onMounted(async () => {
     .catch(() => {});
   try {
     const s = await api.sessie().catch(() => null);
-    if (s && props.proces.rollen?.[s.rol]) {
+    if (s && props.proces.roles?.[s.role]) {
       sessie.value = s;
-      kiesRol(s.rol);
+      kiesRol(s.role);
     }
   } finally {
     geladen.value = true;
@@ -88,13 +88,13 @@ function kiesRol(r) {
   nieuw.value = null;
 }
 
-const ingelogd = computed(() => sessie.value !== null && sessie.value.rol === rol.value);
+const ingelogd = computed(() => sessie.value !== null && sessie.value.role === rol.value);
 const werkvoorraadKolommen = computed(
-  () => props.cel.lexostatussen.find((l) => l.name === props.proces.behandeling?.werkvoorraad)?.kolommen ?? [],
+  () => props.cel.lexostatuses.find((l) => l.name === props.proces.handling?.worklist)?.columns ?? [],
 );
 
 function mogelijkhedenGeladen(lijst) {
-  mogelijk.value = lijst.filter((m) => m.oordeel === 'mogelijk');
+  mogelijk.value = lijst.filter((m) => m.verdict === 'possible');
 }
 
 // Wat vooraf vaststaat: het veld van het gekozen tijdvak.
@@ -111,7 +111,7 @@ function ingediend(item) {
 }
 
 async function uitloggen() {
-  await api.uitloggen(sessie.value.kanaal).catch(() => {});
+  await api.uitloggen(sessie.value.channel).catch(() => {});
   sessie.value = null;
   nieuw.value = null;
   mogelijk.value = [];
@@ -151,25 +151,25 @@ const wie = computed(() => sessieTekst(props.proces, sessie.value));
     <nldd-container layout="row" horizontal-alignment="space-between" vertical-alignment="center">
       <nldd-tab-bar size="md" accessible-label="Scherm" @tabchange="tab">
         <nldd-tab-bar-item
-          v-if="mag('portaal') && proces.portaal"
+          v-if="mag('portal') && proces.portal"
           data-scherm="mogelijkheden"
           text="Wat kan ik aanvragen"
           :current="scherm === 'mogelijkheden' || undefined"
         ></nldd-tab-bar-item>
         <nldd-tab-bar-item
-          v-if="mag('portaal') && proces.portaal && mogelijk.length"
+          v-if="mag('portal') && proces.portal && mogelijk.length"
           data-scherm="aanvraag"
           text="Indienen"
           :current="scherm === 'aanvraag' || undefined"
         ></nldd-tab-bar-item>
         <nldd-tab-bar-item
-          v-if="mag('behandeling') && proces.behandeling"
+          v-if="mag('handling') && proces.handling"
           data-scherm="werkvoorraad"
           text="Werkvoorraad"
           :current="scherm === 'werkvoorraad' || undefined"
         ></nldd-tab-bar-item>
         <nldd-tab-bar-item
-          v-if="mag('loket') && proces.loket"
+          v-if="mag('counter') && proces.counter"
           data-scherm="loket"
           text="Loket"
           :current="scherm === 'loket' || undefined"
@@ -181,13 +181,13 @@ const wie = computed(() => sessieTekst(props.proces, sessie.value));
           :current="scherm === 'ingediend' || undefined"
         ></nldd-tab-bar-item>
         <nldd-tab-bar-item
-          v-if="mag('behandeling') && proces.behandeling"
+          v-if="mag('handling') && proces.handling"
           data-scherm="kroniek"
           text="Kroniek"
           :current="scherm === 'kroniek' || undefined"
         ></nldd-tab-bar-item>
         <nldd-tab-bar-item
-          v-if="mag('behandeling') && proces.behandeling && cel.lexostatussen.length"
+          v-if="mag('handling') && proces.handling && cel.lexostatuses.length"
           data-scherm="lexostatus"
           text="Lexostatus"
           :current="scherm === 'lexostatus' || undefined"
@@ -214,8 +214,8 @@ const wie = computed(() => sessieTekst(props.proces, sessie.value));
       <nldd-spacer size="16"></nldd-spacer>
       <Grammen :items="[nieuw]" :nieuw="nieuw.gram" />
     </template>
-    <KroniekView v-else-if="scherm === 'kroniek' && mag('behandeling')" :portaal="proces.portaal" />
-    <LexostatusView v-else-if="scherm === 'lexostatus' && mag('behandeling')" :lexostatussen="cel.lexostatussen" />
+    <KroniekView v-else-if="scherm === 'kroniek' && mag('handling')" :portaal="proces.portal" />
+    <LexostatusView v-else-if="scherm === 'lexostatus' && mag('handling')" :lexostatussen="cel.lexostatuses" />
     <nldd-inline-dialog
       v-else
       text="Geen scherm voor deze rol"

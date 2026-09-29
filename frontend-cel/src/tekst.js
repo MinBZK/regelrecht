@@ -29,28 +29,28 @@ export function bedragTekst(w, eenheid) {
   return eenheid ? `${w} ${eenheid}` : String(w);
 }
 
-// Een uitkomst als tekst, naar haar type uit de regeling (`{type, eenheid}`,
+// Een uitkomst als tekst, naar haar type uit de regeling (`{type, unit}`,
 // zoals de runtime het per uitkomst meegeeft): een bedrag in zijn eenheid,
 // de rest als waarde.
 export function uitkomstTekst(w, type) {
-  return type?.type === 'amount' ? bedragTekst(w, type.eenheid) : waardeTekst(w);
+  return type?.type === 'amount' ? bedragTekst(w, type.unit) : waardeTekst(w);
 }
 
 // Waar een parameter vandaan kwam: één tekst per variant van Herkomst in
 // packages/cel/src/synthese.rs (de tests in tekst.test.js lopen ze alle na).
 export function herkomstTekst(h) {
-  switch (h?.bron) {
-    case 'eigen':
+  switch (h?.source) {
+    case 'own':
       return `eigen lexostatus ${h.lexostatus}`;
-    case 'cel':
-      return `cel ${h.cel}, lexostatus ${h.lexostatus} (${h.transport})`;
-    case 'per_regel':
-      return `per regel uit ${h.veld} van eigen lexostatus ${h.lexostatus}`;
-    case 'behandelaar':
+    case 'cell':
+      return `cel ${h.cell}, lexostatus ${h.lexostatus} (${h.transport})`;
+    case 'per_row':
+      return `per regel uit ${h.field} van eigen lexostatus ${h.lexostatus}`;
+    case 'handler':
       return 'behandelaar (formulier van de handeling)';
-    case 'stand_bij_besluit':
+    case 'state_at_decision':
       return h.stage ? `stand bij besluit (ontstaat pas in stage ${h.stage})` : 'stand bij besluit';
-    case 'keuze':
+    case 'choice':
       return 'keuze van de aanvrager (portaal)';
     default:
       // Een variant die de runtime kent en deze tekst nog niet: laat zien wat
@@ -60,27 +60,27 @@ export function herkomstTekst(h) {
 }
 
 // Langs welke route een cel een lexostatus reduceerde (experiment A, alleen
-// in een runtime met CEL_REDUCTIE): `{route, regeling, reden, duur_us}` als
+// in een runtime met CELL_REDUCTION): `{route, regulation, reason, duration_us}` als
 // tekst; leeg zonder route.
 export function routeTekst(r) {
   if (!r?.route) return '';
-  const duur = typeof r.duur_us === 'number' ? `, ${(r.duur_us / 1000).toFixed(2)} ms` : '';
-  if (r.route === 'engine') return `reductie via de engine (${r.regeling}${duur})`;
-  if (r.route === 'runtime') return `door de runtime zelf${r.reden ? ` (${r.reden})` : ''}`;
-  return `reductie via de DSL${r.reden ? ` (bewust: ${r.reden})` : ''}${duur}`;
+  const duur = typeof r.duration_us === 'number' ? `, ${(r.duration_us / 1000).toFixed(2)} ms` : '';
+  if (r.route === 'engine') return `reductie via de engine (${r.regulation}${duur})`;
+  if (r.route === 'runtime') return `door de runtime zelf${r.reason ? ` (${r.reason})` : ''}`;
+  return `reductie via de DSL${r.reason ? ` (bewust: ${r.reason})` : ''}${duur}`;
 }
 
 // De route per lexostatus uit een antwoord van een toets of een handeling:
-// de eigen lexostatussen (`lexostatussen`, bij de toets `lexostatus`) en de
-// bronnen van de synthese (`bronnen`, met hun cel). Een functie (bron uit de
+// de eigen lexostatussen (`lexostatuses`, bij de toets `lexostatus`) en de
+// bronnen van de synthese (`sources`, met hun cel). Een functie (bron uit de
 // herkomst) -> route.
 export function routesUit(antwoord) {
-  const lexostatussen = antwoord?.lexostatussen ?? (antwoord?.lexostatus ? [antwoord.lexostatus] : []);
-  const eigen = new Map(lexostatussen.map((l) => [l.naam, l.reductie]));
-  const bronnen = new Map((antwoord?.bronnen ?? []).map((b) => [`${b.cel}/${b.lexostatus}`, b.reductie]));
+  const lexostatussen = antwoord?.lexostatuses ?? (antwoord?.lexostatus ? [antwoord.lexostatus] : []);
+  const eigen = new Map(lexostatussen.map((l) => [l.name, l.reduction]));
+  const bronnen = new Map((antwoord?.sources ?? []).map((b) => [`${b.cell}/${b.lexostatus}`, b.reduction]));
   return (h) => {
-    if (h?.bron === 'eigen' || h?.bron === 'per_regel') return eigen.get(h.lexostatus) ?? null;
-    if (h?.bron === 'cel') return bronnen.get(`${h.cel}/${h.lexostatus}`) ?? null;
+    if (h?.source === 'own' || h?.source === 'per_row') return eigen.get(h.lexostatus) ?? null;
+    if (h?.source === 'cell') return bronnen.get(`${h.cell}/${h.lexostatus}`) ?? null;
     return null;
   };
 }
@@ -98,7 +98,21 @@ export function herkomstRijen(parameters, herkomst, routeVan = () => null) {
   });
 }
 
-// De soort van een handeling: de runtime geeft haar als {soort, ...}.
+// De soort van een handeling: de runtime geeft haar als {kind, ...}, of
+// (bij een proef) als `kind` naast de rest.
 export function soortVan(h) {
-  return typeof h?.soort === 'object' && h.soort !== null ? h.soort.soort : h?.soort;
+  return typeof h?.kind === 'object' && h.kind !== null ? h.kind.kind : h?.kind;
+}
+
+// Hoe de vraag aan een bron verliep, in woorden (`status` van een bron in
+// packages/cel/src/synthese.rs).
+const BRONSTATUS = {
+  queried: 'bevraagd',
+  unreachable: 'onbereikbaar',
+  error: 'fout',
+  not_queried: 'niet bevraagd',
+};
+
+export function bronStatusTekst(s) {
+  return BRONSTATUS[s] ?? String(s ?? '').replace(/_/g, ' ');
 }

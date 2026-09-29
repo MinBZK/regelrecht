@@ -14,7 +14,7 @@ const geladen = ref(false);
 
 onMounted(async () => {
   try {
-    lijst.value = (await api.werkvoorraad()).lijst ?? [];
+    lijst.value = (await api.werkvoorraad()).list ?? [];
   } catch (e) {
     fout.value = e.message;
   } finally {
@@ -41,12 +41,12 @@ const sjabloon = computed(() => ['90px', 'minmax(280px,1.4fr)', ...kolommen.valu
       <nldd-text-cell text="Zaakkenmerk"></nldd-text-cell>
       <nldd-text-cell v-for="k in kolommen" :key="k" :text="k"></nldd-text-cell>
     </nldd-table-row>
-    <nldd-table-row v-for="r in lijst" :key="r.wortel">
+    <nldd-table-row v-for="r in lijst" :key="r.root">
       <nldd-cell>
-        <nldd-button variant="secondary" text="Open" :accessible-label="`Open zaak ${r.wortel}`" @click="emit('open', r.wortel)"></nldd-button>
+        <nldd-button variant="secondary" text="Open" :accessible-label="`Open zaak ${r.root}`" @click="emit('open', r.root)"></nldd-button>
       </nldd-cell>
-      <nldd-text-cell :text="r.wortel"></nldd-text-cell>
-      <nldd-text-cell v-for="k in kolommen" :key="k" :text="waardeTekst(r.velden[k])"></nldd-text-cell>
+      <nldd-text-cell :text="r.root"></nldd-text-cell>
+      <nldd-text-cell v-for="k in kolommen" :key="k" :text="waardeTekst(r.fields[k])"></nldd-text-cell>
     </nldd-table-row>
   </nldd-table>
 </template>

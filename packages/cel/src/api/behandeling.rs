@@ -11,7 +11,7 @@ use futures_util::future::join_all;
 use serde_json::{json, Map, Value};
 
 use super::sessie::{behandelaar, voor_handeling};
-use super::{fout, van_cel, Fout, ProcesState};
+use super::{error, van_cel, Error, ProcesState};
 use crate::celclient;
 use crate::config::HandelingDefinitie;
 use crate::handeling::{self, Omgeving, Opgave, Weigering};
@@ -22,9 +22,9 @@ use crate::synthese::{self, Bron};
 use crate::transport::{Onthouden, Transport};
 use chrono::{DateTime, FixedOffset};
 
-fn behandeling(state: &ProcesState) -> Result<&crate::config::Behandeling, Fout> {
-    state.proces.definitie.behandeling.as_ref().ok_or_else(|| {
-        fout(
+fn handling(state: &ProcesState) -> Result<&crate::config::Handling, Error> {
+    state.proces.definitie.handling.as_ref().ok_or_else(|| {
+        error(
             StatusCode::INTERNAL_SERVER_ERROR,
             "geen behandeling geconfigureerd",
         )
@@ -35,13 +35,13 @@ fn behandeling(state: &ProcesState) -> Result<&crate::config::Behandeling, Fout>
 pub(super) async fn werkvoorraad_route(
     State(state): State<ProcesState>,
     headers: HeaderMap,
-) -> Result<Json<Value>, Fout> {
+) -> Result<Json<Value>, Error> {
     behandelaar(&state, &headers)?;
-    let w = &behandeling(&state)?.werkvoorraad;
+    let w = &handling(&state)?.worklist;
     let v = state
-        .cel
-        .haal(&synthese::pad(
-            &w.cel,
+        .cell
+        .haal(&synthese::path(
+            &w.cell,
             &w.lexostatus,
             &Map::new(),
             &Peil::default(),
@@ -53,29 +53,29 @@ pub(super) async fn werkvoorraad_route(
 
 /// Een weigering als HTTP-antwoord. Wat de stand van de zaak niet toelaat
 /// (niet te nemen, al vastgelegd, een ander bevoegd gezag) is een 409.
-fn weigering(w: Weigering) -> Fout {
+fn weigering(w: Weigering) -> Error {
     match w {
-        Weigering::Ongeldig(t) => fout(StatusCode::BAD_REQUEST, t),
+        Weigering::Ongeldig(t) => error(StatusCode::BAD_REQUEST, t),
         Weigering::NietTeNemen(t) | Weigering::Conflict(t) | Weigering::Onbevoegd(t) => {
-            fout(StatusCode::CONFLICT, t)
+            error(StatusCode::CONFLICT, t)
         }
-        Weigering::Cel(t) => fout(StatusCode::INTERNAL_SERVER_ERROR, t),
+        Weigering::Cell(t) => error(StatusCode::INTERNAL_SERVER_ERROR, t),
     }
 }
 
 /// De grammen van een zaak, zoals de cel ze geeft; een 404 als de cel de
 /// zaak niet kent. Alleen voor inzage in het dossier: het proces leidt er
 /// niets uit af.
-async fn zaakgrammen(state: &ProcesState, wortel: &str) -> Result<Vec<celclient::MetYaml>, Fout> {
-    celclient::lees_zaak(state.cel.as_ref(), state.cel_id(), wortel)
+async fn zaakgrammen(state: &ProcesState, root: &str) -> Result<Vec<celclient::MetYaml>, Error> {
+    celclient::lees_zaak(state.cell.as_ref(), state.cel_id(), root)
         .await
         .map_err(van_cel)
 }
 
 /// De stand van een zaak, zoals de cel haar afleidt; een 404 als de cel de
 /// zaak niet kent.
-async fn zaakstand(state: &ProcesState, wortel: &str) -> Result<Zaakstand, Fout> {
-    celclient::zaakstand(state.cel.as_ref(), state.cel_id(), wortel, None)
+async fn zaakstand(state: &ProcesState, root: &str) -> Result<Zaakstand, Error> {
+    celclient::zaakstand(state.cell.as_ref(), state.cel_id(), root, None)
         .await
         .map_err(van_cel)
 }
@@ -84,23 +84,23 @@ async fn zaakstand(state: &ProcesState, wortel: &str) -> Result<Zaakstand, Fout>
 /// kent.
 fn handeling_met<'s>(
     state: &'s ProcesState,
-    naam: &str,
-) -> Result<(usize, &'s HandelingDefinitie), Fout> {
-    behandeling(state)?
-        .handelingen
+    name: &str,
+) -> Result<(usize, &'s HandelingDefinitie), Error> {
+    handling(state)?
+        .actions
         .iter()
         .enumerate()
-        .find(|(_, h)| h.naam == naam)
-        .ok_or_else(|| fout(StatusCode::NOT_FOUND, format!("geen handeling '{naam}'")))
+        .find(|(_, h)| h.name == name)
+        .ok_or_else(|| error(StatusCode::NOT_FOUND, format!("geen handeling '{name}'")))
 }
 
 fn omgeving(state: &ProcesState, i: usize) -> Omgeving<'_> {
-    let h = &state.handelingen[i];
+    let h = &state.actions[i];
     omgeving_met(
         state,
-        state.cel.as_ref(),
-        &h.bronnen,
-        &h.rijen,
+        state.cell.as_ref(),
+        &h.sources,
+        &h.rows,
         (state.klok)(),
     )
 }
@@ -109,17 +109,17 @@ fn omgeving(state: &ProcesState, i: usize) -> Omgeving<'_> {
 /// gegeven bronnen (zoals die het zaakscherm deelt).
 fn omgeving_met<'a>(
     state: &'a ProcesState,
-    cel: &'a dyn Transport,
-    bronnen: &'a [Bron],
-    rijen: &'a [Rijen],
+    cell: &'a dyn Transport,
+    sources: &'a [Bron],
+    rows: &'a [Rijen],
     nu: DateTime<FixedOffset>,
 ) -> Omgeving<'a> {
     Omgeving {
         proces: &state.proces,
-        cel,
-        bronnen,
-        rijen,
-        regelingen: &state.regelingen,
+        cell,
+        sources,
+        rows,
+        regulations: &state.regulations,
         nu,
     }
 }
@@ -134,12 +134,12 @@ fn omgeving_met<'a>(
 pub(super) async fn zaak_route(
     State(state): State<ProcesState>,
     headers: HeaderMap,
-    Path(wortel): Path<String>,
-) -> Result<Json<Value>, Fout> {
+    Path(root): Path<String>,
+) -> Result<Json<Value>, Error> {
     behandelaar(&state, &headers)?;
-    let zaak = zaakstand(&state, &wortel).await?;
-    let grammen = zaakgrammen(&state, &wortel).await?;
-    let b = behandeling(&state)?;
+    let case = zaakstand(&state, &root).await?;
+    let grams = zaakgrammen(&state, &root).await?;
+    let b = handling(&state)?;
     let leeg = Opgave::default();
     // De zaakcontext (de lexostatussen van de zaak, de synthese en de
     // synthese per regel) is voor elke handeling op dezelfde peildatum
@@ -147,111 +147,111 @@ pub(super) async fn zaak_route(
     // proces elke lexostatus en elke bron een keer vraagt. Een feit dat op
     // proef als concept meetelt, reduceert de cel per handeling.
     let geheugen = Onthouden::default();
-    let cel = geheugen.om(state.cel.clone());
+    let cell = geheugen.om(state.cell.clone());
     let gedeeld: Vec<(Vec<Bron>, Vec<Rijen>)> = state
-        .handelingen
+        .actions
         .iter()
         .map(|hs| {
-            let bronnen = hs
-                .bronnen
+            let sources = hs
+                .sources
                 .iter()
                 .map(|b| b.langs(|t| geheugen.om(t)))
                 .collect();
-            let rijen = hs
-                .rijen
+            let rows = hs
+                .rows
                 .iter()
                 .map(|r| Rijen {
                     definitie: r.definitie.clone(),
-                    bronnen: r
-                        .bronnen
+                    sources: r
+                        .sources
                         .iter()
                         .map(|b| b.langs(|t| geheugen.om(t)))
                         .collect(),
                 })
                 .collect();
-            (bronnen, rijen)
+            (sources, rows)
         })
         .collect();
     let nu = (state.klok)();
-    let proeven = join_all(b.handelingen.iter().enumerate().map(|(i, h)| {
-        let om = omgeving_met(&state, cel.as_ref(), &gedeeld[i].0, &gedeeld[i].1, nu);
-        let stand = handeling::stand(&state.proces, h, &zaak);
-        let zaak = &zaak;
-        let wortel = &wortel;
+    let proeven = join_all(b.actions.iter().enumerate().map(|(i, h)| {
+        let om = omgeving_met(&state, cell.as_ref(), &gedeeld[i].0, &gedeeld[i].1, nu);
+        let stand = handeling::stand(&state.proces, h, &case);
+        let case = &case;
+        let root = &root;
         let leeg = &leeg;
         async move {
             // Een stage die al ligt of nog niet kan, rekent de zaak niet uit.
-            let proef = if stand.beschikbaar {
-                Some(handeling::proef(&om, h, wortel, zaak, leeg).await)
+            let trial = if stand.available {
+                Some(handeling::trial(&om, h, root, case, leeg).await)
             } else {
                 None
             };
-            (stand, proef)
+            (stand, trial)
         }
     }))
     .await;
-    let mut handelingen = Vec::new();
-    for (h, (stand, proef)) in b.handelingen.iter().zip(proeven) {
+    let mut actions = Vec::new();
+    for (h, (stand, trial)) in b.actions.iter().zip(proeven) {
         // De controle bij het opstarten las dit al; een fout hier is er een
         // van de runtime.
         let benodigd = handeling::benodigd(&state.proces.service, h)
-            .map_err(|f| fout(StatusCode::INTERNAL_SERVER_ERROR, f))?;
-        let proef = match proef {
+            .map_err(|f| error(StatusCode::INTERNAL_SERVER_ERROR, f))?;
+        let trial = match trial {
             None => Value::Null,
             Some(Ok(p)) => json!(p),
-            Some(Err(w)) => json!({"fout": weigering_tekst(&w)}),
+            Some(Err(w)) => json!({"error": weigering_tekst(&w)}),
         };
-        let formulier: Vec<Value> = h
-            .oordelen
+        let form: Vec<Value> = h
+            .verdicts
             .iter()
             .map(|o| {
-                let typering = benodigd.get(&o.parameter).map(|b| &b.typering);
+                let typing = benodigd.get(&o.parameter).map(|b| &b.typing);
                 let mut v = json!({
-                    "naam": o.parameter,
+                    "name": o.parameter,
                     "label": o.label,
-                    "type": typering.map(|t| handeling::veldsoort(t.soort)),
-                    "groep": o.groep,
-                    "soort": "oordeel",
+                    "type": typing.map(|t| handeling::veldsoort(t.soort)),
+                    "group": o.group,
+                    "kind": "verdict",
                 });
-                if let Some(e) = typering.and_then(|t| t.eenheid.as_deref()) {
-                    v["eenheid"] = json!(e);
+                if let Some(e) = typing.and_then(|t| t.unit.as_deref()) {
+                    v["unit"] = json!(e);
                 }
                 v
             })
             .chain(h.feiten.iter().map(|f| {
                 let mut v = json!(f);
-                v["soort"] = json!("feit");
+                v["kind"] = json!("fact");
                 v
             }))
             .collect();
-        handelingen.push(json!({
-            "naam": h.naam,
+        actions.push(json!({
+            "name": h.name,
             "label": h.label(),
-            "rol": h.rol,
-            "soort": h.soort,
+            "role": h.role,
+            "kind": h.soort,
             "stage": h.stage,
-            "regeling": h.regeling,
-            "artikel": h.artikel,
-            "uitkomsten": h.uitkomsten,
-            "toetsen": h.toetsen,
-            "typen": h.typen,
-            "haken": h.haken,
-            "nog_niet": h.nog_niet,
-            "formulier": formulier,
-            "beschikbaar": stand.beschikbaar,
-            "reden": stand.reden,
-            "vastgelegd": stand.vastgelegd,
-            "besluit": stand.besluit,
-            "besluitrol": h.besluitrol,
-            "proef": proef,
+            "regulation": h.regulation,
+            "article": h.article,
+            "outputs": h.outputs,
+            "assessments": h.assessments,
+            "types": h.types,
+            "hooks": h.hooks,
+            "not_yet": h.not_yet,
+            "form": form,
+            "available": stand.available,
+            "reason": stand.reason,
+            "recorded": stand.recorded,
+            "decision": stand.decision,
+            "decision_role": h.decision_role,
+            "trial": trial,
         }));
     }
     Ok(Json(json!({
-        "wortel": wortel,
-        "grammen": grammen,
-        "procedure": handeling::procedure_van_de_zaak(&state.proces, &zaak),
-        "besluiten": handeling::besluiten_in_zaak(&state.proces, &zaak),
-        "handelingen": handelingen,
+        "root": root,
+        "grams": grams,
+        "procedure": handeling::procedure_van_de_zaak(&state.proces, &case),
+        "decisions": handeling::besluiten_in_zaak(&state.proces, &case),
+        "actions": actions,
     })))
 }
 
@@ -261,7 +261,7 @@ fn weigering_tekst(w: &Weigering) -> String {
         | Weigering::NietTeNemen(t)
         | Weigering::Conflict(t)
         | Weigering::Onbevoegd(t)
-        | Weigering::Cel(t) => t.clone(),
+        | Weigering::Cell(t) => t.clone(),
     }
 }
 
@@ -269,13 +269,13 @@ fn weigering_tekst(w: &Weigering) -> String {
 pub(super) async fn proefhandeling_route(
     State(state): State<ProcesState>,
     headers: HeaderMap,
-    Path((wortel, naam)): Path<(String, String)>,
+    Path((root, name)): Path<(String, String)>,
     Json(opgave): Json<Opgave>,
-) -> Result<Json<handeling::Proefhandeling>, Fout> {
-    let (i, h) = handeling_met(&state, &naam)?;
-    voor_handeling(&state, &headers, h.rol.as_deref())?;
-    let zaak = zaakstand(&state, &wortel).await?;
-    handeling::proef(&omgeving(&state, i), h, &wortel, &zaak, &opgave)
+) -> Result<Json<handeling::Proefhandeling>, Error> {
+    let (i, h) = handeling_met(&state, &name)?;
+    voor_handeling(&state, &headers, h.role.as_deref())?;
+    let case = zaakstand(&state, &root).await?;
+    handeling::trial(&omgeving(&state, i), h, &root, &case, &opgave)
         .await
         .map(Json)
         .map_err(weigering)
@@ -289,19 +289,19 @@ pub(super) async fn proefhandeling_route(
 pub(super) async fn handeling_route(
     State(state): State<ProcesState>,
     headers: HeaderMap,
-    Path((wortel, naam)): Path<(String, String)>,
+    Path((root, name)): Path<(String, String)>,
     Json(opgave): Json<Opgave>,
-) -> Result<(StatusCode, Json<handeling::Genomen>), Fout> {
-    let (i, h) = handeling_met(&state, &naam)?;
-    let wie = voor_handeling(&state, &headers, h.rol.as_deref())?;
-    let zaak = zaakstand(&state, &wortel).await?;
-    let genomen = handeling::neem(&omgeving(&state, i), h, &wortel, &zaak, &opgave, &wie)
+) -> Result<(StatusCode, Json<handeling::Genomen>), Error> {
+    let (i, h) = handeling_met(&state, &name)?;
+    let wie = voor_handeling(&state, &headers, h.role.as_deref())?;
+    let case = zaakstand(&state, &root).await?;
+    let genomen = handeling::neem(&omgeving(&state, i), h, &root, &case, &opgave, &wie)
         .await
         .map_err(weigering)?;
     tracing::info!(
         proces = %state.proces.id(),
-        wortel = %wortel,
-        handeling = %h.naam,
+        root = %root,
+        action = %h.name,
         stage = genomen.gram.stage.as_deref().unwrap_or("-"),
         "handeling vastgelegd"
     );

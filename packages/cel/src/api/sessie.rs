@@ -9,15 +9,15 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde_json::{Map, Value};
 
-use super::{fout, Fout, ProcesState};
+use super::{error, Error, ProcesState};
 use crate::kanaal::{KanaalDefinitie, Routes, Sessie};
 use crate::sessie::COOKIE;
 
-fn gebruiker(state: &ProcesState, headers: &HeaderMap) -> Result<Sessie, Fout> {
+fn gebruiker(state: &ProcesState, headers: &HeaderMap) -> Result<Sessie, Error> {
     state
         .sessies
         .zoek(headers)
-        .ok_or_else(|| fout(StatusCode::UNAUTHORIZED, "niet ingelogd"))
+        .ok_or_else(|| error(StatusCode::UNAUTHORIZED, "niet ingelogd"))
 }
 
 /// De ingelogde gebruiker, als zijn rol routegroep `r` mag gebruiken; anders
@@ -26,32 +26,32 @@ pub(super) fn met_routes(
     state: &ProcesState,
     headers: &HeaderMap,
     r: Routes,
-) -> Result<Sessie, Fout> {
+) -> Result<Sessie, Error> {
     let s = gebruiker(state, headers)?;
     let d = &state.proces.definitie;
-    if d.rollen.get(&s.rol).is_some_and(|rol| rol.mag(r)) {
+    if d.roles.get(&s.role).is_some_and(|role| role.mag(r)) {
         return Ok(s);
     }
     let wel: Vec<&str> = d.rollen_met(r).map(|(id, _)| id.as_str()).collect();
-    Err(fout(
+    Err(error(
         StatusCode::FORBIDDEN,
         format!(
             "alleen voor de rol {} (routes {}), en u bent ingelogd als {}",
             wel.join(" of "),
             r.als_tekst(),
-            s.rol
+            s.role
         ),
     ))
 }
 
 /// De ingelogde gebruiker van het portaal.
-pub(super) fn ingelogd(state: &ProcesState, headers: &HeaderMap) -> Result<Sessie, Fout> {
-    met_routes(state, headers, Routes::Portaal)
+pub(super) fn ingelogd(state: &ProcesState, headers: &HeaderMap) -> Result<Sessie, Error> {
+    met_routes(state, headers, Routes::Portal)
 }
 
 /// De ingelogde gebruiker van de behandeling.
-pub(super) fn behandelaar(state: &ProcesState, headers: &HeaderMap) -> Result<Sessie, Fout> {
-    met_routes(state, headers, Routes::Behandeling)
+pub(super) fn behandelaar(state: &ProcesState, headers: &HeaderMap) -> Result<Sessie, Error> {
+    met_routes(state, headers, Routes::Handling)
 }
 
 /// De ingelogde gebruiker die een handeling mag doen: een rol die de
@@ -59,66 +59,66 @@ pub(super) fn behandelaar(state: &ProcesState, headers: &HeaderMap) -> Result<Se
 pub(super) fn voor_handeling(
     state: &ProcesState,
     headers: &HeaderMap,
-    rol: Option<&str>,
-) -> Result<Sessie, Fout> {
+    role: Option<&str>,
+) -> Result<Sessie, Error> {
     let s = behandelaar(state, headers)?;
-    match rol {
-        Some(r) if s.rol != r => Err(fout(
+    match role {
+        Some(r) if s.role != r => Err(error(
             StatusCode::FORBIDDEN,
-            format!("alleen voor de rol {r}, en u bent ingelogd als {}", s.rol),
+            format!("alleen voor de rol {r}, en u bent ingelogd als {}", s.role),
         )),
         _ => Ok(s),
     }
 }
 
 /// De cookie geldt alleen onder het pad van dit proces.
-fn cookie(state: &ProcesState, waarde: &str, extra: &str) -> String {
+fn cookie(state: &ProcesState, value: &str, extra: &str) -> String {
     format!(
-        "{COOKIE}={waarde}; Path=/processen/{}/; HttpOnly; SameSite=Strict{extra}",
+        "{COOKIE}={value}; Path=/processes/{}/; HttpOnly; SameSite=Strict{extra}",
         state.proces.id()
     )
 }
 
-fn kanaal<'a>(state: &'a ProcesState, id: &str) -> Result<&'a KanaalDefinitie, Fout> {
+fn channel<'a>(state: &'a ProcesState, id: &str) -> Result<&'a KanaalDefinitie, Error> {
     state
         .proces
         .definitie
-        .kanalen
+        .channels
         .get(id)
-        .ok_or_else(|| fout(StatusCode::NOT_FOUND, format!("geen kanaal '{id}'")))
+        .ok_or_else(|| error(StatusCode::NOT_FOUND, format!("geen kanaal '{id}'")))
 }
 
 /// De rol waarin iemand langs dit kanaal inlogt: de rol uit de invoer
 /// (`rol`), of de enige rol van het kanaal.
 fn rol_voor(
     state: &ProcesState,
-    kanaal: &str,
-    invoer: &Map<String, Value>,
-) -> Result<String, Fout> {
-    let rollen: Vec<&String> = state
+    channel: &str,
+    input: &Map<String, Value>,
+) -> Result<String, Error> {
+    let roles: Vec<&String> = state
         .proces
         .definitie
-        .rollen
+        .roles
         .iter()
-        .filter(|(_, r)| r.kanaal == kanaal)
+        .filter(|(_, r)| r.channel == channel)
         .map(|(id, _)| id)
         .collect();
-    match invoer.get("rol").and_then(Value::as_str) {
-        Some(r) if rollen.iter().any(|x| *x == r) => Ok(r.to_string()),
-        Some(r) => Err(fout(
+    match input.get("role").and_then(Value::as_str) {
+        Some(r) if roles.iter().any(|x| *x == r) => Ok(r.to_string()),
+        Some(r) => Err(error(
             StatusCode::BAD_REQUEST,
-            format!("rol '{r}' logt niet in langs kanaal '{kanaal}'"),
+            format!("rol '{r}' logt niet in langs kanaal '{channel}'"),
         )),
-        None => match rollen.as_slice() {
+        None => match roles.as_slice() {
             [een] => Ok((*een).clone()),
-            [] => Err(fout(
+            [] => Err(error(
                 StatusCode::NOT_FOUND,
-                format!("geen rol logt in langs kanaal '{kanaal}'"),
+                format!("geen rol logt in langs kanaal '{channel}'"),
             )),
-            meer => Err(fout(
+            meer => Err(error(
                 StatusCode::BAD_REQUEST,
                 format!(
-                    "kies een rol: langs kanaal '{kanaal}' loggen {} in",
+                    "kies een role: langs kanaal '{channel}' loggen {} in",
                     meer.iter()
                         .map(|r| r.as_str())
                         .collect::<Vec<_>>()
@@ -134,21 +134,21 @@ fn rol_voor(
 pub(super) async fn login(
     State(state): State<ProcesState>,
     Path(id): Path<String>,
-    Json(invoer): Json<Map<String, Value>>,
-) -> Result<Response, Fout> {
-    let k = kanaal(&state, &id)?;
-    let rol = rol_voor(&state, &id, &invoer)?;
-    let velden = k
-        .valideer(&invoer)
-        .map_err(|e| fout(StatusCode::BAD_REQUEST, e))?;
-    let sessie = Sessie {
-        rol,
-        kanaal: id,
-        velden,
+    Json(input): Json<Map<String, Value>>,
+) -> Result<Response, Error> {
+    let k = channel(&state, &id)?;
+    let role = rol_voor(&state, &id, &input)?;
+    let fields = k
+        .valideer(&input)
+        .map_err(|e| error(StatusCode::BAD_REQUEST, e))?;
+    let session = Sessie {
+        role,
+        channel: id,
+        fields,
     };
-    let token = state.sessies.nieuw(sessie.clone());
+    let token = state.sessies.nieuw(session.clone());
     let cookie = cookie(&state, &token, "");
-    Ok(([(header::SET_COOKIE, cookie)], Json(sessie)).into_response())
+    Ok(([(header::SET_COOKIE, cookie)], Json(session)).into_response())
 }
 
 /// `GET /api/kanalen/{kanaal}/sessie`: wie langs dit kanaal is ingelogd; 401
@@ -157,23 +157,23 @@ pub(super) async fn kanaalsessie(
     State(state): State<ProcesState>,
     Path(id): Path<String>,
     headers: HeaderMap,
-) -> Result<Json<Sessie>, Fout> {
-    kanaal(&state, &id)?;
+) -> Result<Json<Sessie>, Error> {
+    channel(&state, &id)?;
     let s = gebruiker(&state, &headers)?;
-    if s.kanaal != id {
-        return Err(fout(
+    if s.channel != id {
+        return Err(error(
             StatusCode::FORBIDDEN,
-            format!("ingelogd langs kanaal '{}', niet langs '{id}'", s.kanaal),
+            format!("ingelogd langs kanaal '{}', niet langs '{id}'", s.channel),
         ));
     }
     Ok(Json(s))
 }
 
 /// `GET /api/sessie`: wie er is ingelogd, langs welk kanaal ook.
-pub(super) async fn sessie(
+pub(super) async fn session(
     State(state): State<ProcesState>,
     headers: HeaderMap,
-) -> Result<Json<Sessie>, Fout> {
+) -> Result<Json<Sessie>, Error> {
     gebruiker(&state, &headers).map(Json)
 }
 

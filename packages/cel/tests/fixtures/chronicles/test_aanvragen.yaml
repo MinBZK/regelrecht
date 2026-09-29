@@ -6,36 +6,36 @@ chronicle: test_kroniek
 events:
   - name: aanvraag_ontvangen
     intake: portaal
-    grondslag:
+    legal_basis:
       - testregeling_aanvraag#1
-    type: indiening
-    soort: aanvraag
+    type: submission
+    subtype: aanvraag
     # Een loket kan een eerdere ontvangst opgeven (een datumstempel); via het
     # portaal is de ontvangst het vastleggen zelf.
-    op_moment:
-      bron: $intake.ontvangen_op
-      grondslag: [testregeling_aanvraag#1]
+    effective_at:
+      source: $intake.received_at
+      legal_basis: [testregeling_aanvraag#1]
     fields:
-      kern:
+      core:
         aanvrager:
           naam: $external.naam
           adres: $external.adres
         dagtekening: $external.dagtekening
         gevraagde_beschikking: testbeschikking, testregeling artikel 1
-        ondertekend_via:
-          kanaal: $intake.kanaal
+        signed_via:
+          kanaal: $intake.channel
           kvk_nummer: $intake.eherkenning.kvk
           gemachtigde: $intake.eherkenning.persoon
           burgernummer: $intake.burger.nummer
-      inhoud:
+      content:
         aanvraagjaar: $external.aanvraagjaar
         naam: $external.naam
         aanduiding: $external.aanduiding
         registratie: $external.registratie
         organen:
-          tabel: $external.organen
-          kolommen: [orgaan, zetels, samengevoegd, aantal_aanduidingen]
+          table: $external.organen
+          columns: [orgaan, zetels, samengevoegd, aantal_aanduidingen]
         rekeningnummer: $external.rekeningnummer
-    niet_gereduceerd:
-      - {veld: kern, reden: de vaste kern van een aanvraag; geen artikel van de testregeling leest haar}
-      - {veld: inhoud.rekeningnummer, reden: voor de betaling}
+    not_reduced:
+      - {field: core, reason: de vaste kern van een aanvraag; geen artikel van de testregeling leest haar}
+      - {field: content.rekeningnummer, reason: voor de betaling}

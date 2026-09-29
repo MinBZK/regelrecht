@@ -45,25 +45,25 @@ use crate::reductie::{self, Lexostatus, LexostatusDefinitie, Lexostatussen, Peil
 use crate::toets;
 
 /// De uitkomst met de volgorde van het gram dat de lexostatus kiest.
-pub const LAATSTE: &str = "laatste";
+pub const LAATSTE: &str = "latest";
 
 /// De plaats in de tijd van elk gram, in de volgorde van `grammen`: zoals
 /// `kies: laatste` die leest ([`Gram::tijdvolgorde`]: eerst `op_moment`, dan
 /// `vastgelegd_op`, en bij gelijke tijden de volgorde van de kroniek).
-fn in_de_tijd(grammen: &[&Gram]) -> Result<Vec<usize>, String> {
-    for g in grammen {
+fn in_de_tijd(grams: &[&Gram]) -> Result<Vec<usize>, String> {
+    for g in grams {
         // Een ongeldig moment is een fout, geen plaats achteraan.
         g.moment()?;
-        g.vastgelegd()?;
+        g.recorded()?;
     }
-    let mut volgorde: Vec<usize> = (0..grammen.len()).collect();
+    let mut volgorde: Vec<usize> = (0..grams.len()).collect();
     // Stabiel: bij gelijke tijden blijft de volgorde van de kroniek.
     volgorde.sort_by(|&a, &b| {
-        grammen[a]
-            .tijdvolgorde(grammen[b])
+        grams[a]
+            .tijdvolgorde(grams[b])
             .unwrap_or(std::cmp::Ordering::Equal)
     });
-    let mut plaats = vec![0; grammen.len()];
+    let mut plaats = vec![0; grams.len()];
     for (p, i) in volgorde.into_iter().enumerate() {
         plaats[i] = p;
     }
@@ -76,20 +76,23 @@ fn in_de_tijd(grammen: &[&Gram]) -> Result<Vec<usize>, String> {
 /// momenten en hun datum, en `fields`.
 fn als_element(g: &Gram, volgorde: usize) -> Result<Value, String> {
     let mut o = Map::new();
-    o.insert("volgorde".into(), json!(volgorde));
+    o.insert("sequence".into(), json!(volgorde));
     // Een kenmerk dat het gram niet heeft, is null: een filter erop is dan
     // onwaar, zoals in de DSL, en geen ontbrekend feit.
     for sleutel in reductie::GRAM_SLEUTELS {
         o.insert((*sleutel).into(), json!(g.kenmerk(sleutel).flatten()));
     }
     // De verwijzingen, per naam: een filter `verwijst.<naam>` leest ze.
-    o.insert("verwijst".into(), json!(g.verwijst));
-    o.insert("op_moment".into(), json!(g.op_moment));
-    o.insert("op_datum".into(), json!(datum::peildatum(&g.moment()?)));
-    o.insert("vastgelegd_op".into(), json!(g.vastgelegd_op));
+    o.insert("refers_to".into(), json!(g.refers_to));
+    o.insert("effective_at".into(), json!(g.effective_at));
     o.insert(
-        "vastgelegd_datum".into(),
-        json!(datum::peildatum(&g.vastgelegd()?)),
+        "effective_date".into(),
+        json!(datum::reference_date(&g.moment()?)),
+    );
+    o.insert("recorded_at".into(), json!(g.recorded_at));
+    o.insert(
+        "recorded_date".into(),
+        json!(datum::reference_date(&g.recorded()?)),
     );
     o.insert("fields".into(), Value::Object(g.fields.clone()));
     Ok(Value::Object(o))
@@ -99,9 +102,9 @@ fn als_element(g: &Gram, volgorde: usize) -> Result<Value, String> {
 /// (zie [`als_element`]). Zo is "het laatste gram" het gram met de hoogste
 /// volgorde, en blijft een verzameling (`verzamel`) in de volgorde van de
 /// kroniek.
-fn als_parameter(grammen: &[&Gram]) -> Result<Value, String> {
-    let plaats = in_de_tijd(grammen)?;
-    grammen
+fn als_parameter(grams: &[&Gram]) -> Result<Value, String> {
+    let plaats = in_de_tijd(grams)?;
+    grams
         .iter()
         .zip(plaats)
         .map(|(g, p)| als_element(g, p))
@@ -112,12 +115,12 @@ fn als_parameter(grammen: &[&Gram]) -> Result<Value, String> {
 /// De grammen van `kroniek` als parameter voor de engine (zie
 /// [`als_parameter`]).
 pub fn als_kroniek<'g>(
-    grammen: impl IntoIterator<Item = &'g Gram>,
-    kroniek: &str,
+    grams: impl IntoIterator<Item = &'g Gram>,
+    chronicle: &str,
 ) -> Result<Value, String> {
-    let door: Vec<&Gram> = grammen
+    let door: Vec<&Gram> = grams
         .into_iter()
-        .filter(|g| g.chronicle == kroniek)
+        .filter(|g| g.chronicle == chronicle)
         .collect();
     als_parameter(&door)
 }
@@ -126,26 +129,26 @@ pub fn als_kroniek<'g>(
 /// parameter `grammen`: de waarden (ook null) en, als gevraagd, de trace.
 fn evalueer(
     service: &LawExecutionService,
-    regeling: &str,
-    uitkomsten: &[&str],
+    regulation: &str,
+    outputs: &[&str],
     inputs: &Map<String, Value>,
-    grammen: Value,
-    datum: &str,
+    grams: Value,
+    date: &str,
     met_trace: bool,
 ) -> Result<(BTreeMap<String, Value>, Option<String>), String> {
     let mut parameters: BTreeMap<String, Value> =
         inputs.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-    parameters.insert("grammen".into(), grammen);
+    parameters.insert("grams".into(), grams);
     let e = if met_trace {
-        toets::evalueer_met_trace(service, regeling, uitkomsten, &parameters, datum)
+        toets::evalueer_met_trace(service, regulation, outputs, &parameters, date)
     } else {
-        toets::evalueer(service, regeling, uitkomsten, &parameters, datum)
+        toets::evalueer(service, regulation, outputs, &parameters, date)
     };
-    if let Some(f) = e.fout {
+    if let Some(f) = e.error {
         return Err(f);
     }
-    if !e.mist.is_empty() {
-        return Err(format!("de engine mist {:?}", e.mist));
+    if !e.missing.is_empty() {
+        return Err(format!("de engine mist {:?}", e.missing));
     }
     Ok((e.waarden, e.trace_text))
 }
@@ -155,20 +158,20 @@ fn evalueer(
 /// weg, zoals een parameter waarover de kroniek niets zegt in de reductie.
 pub fn reduceer<'g>(
     service: &LawExecutionService,
-    regeling: &str,
-    uitkomsten: &[&str],
+    regulation: &str,
+    outputs: &[&str],
     inputs: &Map<String, Value>,
-    grammen: impl IntoIterator<Item = &'g Gram>,
-    kroniek: &str,
-    datum: &str,
+    grams: impl IntoIterator<Item = &'g Gram>,
+    chronicle: &str,
+    date: &str,
 ) -> Result<BTreeMap<String, Value>, String> {
     let (waarden, _) = evalueer(
         service,
-        regeling,
-        uitkomsten,
+        regulation,
+        outputs,
         inputs,
-        als_kroniek(grammen, kroniek)?,
-        datum,
+        als_kroniek(grams, chronicle)?,
+        date,
         false,
     )?;
     Ok(waarden.into_iter().filter(|(_, v)| !v.is_null()).collect())
@@ -181,17 +184,17 @@ pub fn reduceer<'g>(
 pub fn uitkomsten_van(def: &LexostatusDefinitie) -> Vec<String> {
     let r = &def.reduction;
     let mut uit: Vec<String> = r
-        .afleidingen
+        .derivations
         .keys()
-        .chain(r.extra_velden.keys())
+        .chain(r.extra_fields.keys())
         .cloned()
         .collect();
-    if r.kies.is_some() {
+    if r.pick.is_some() {
         uit.push(LAATSTE.into());
     }
-    for (naam, a) in r.afleidingen.iter().chain(&r.extra_velden) {
-        if a.geen_gram().is_some() {
-            uit.push(hulp_van(naam));
+    for (name, a) in r.derivations.iter().chain(&r.extra_fields) {
+        if a.no_gram().is_some() {
+            uit.push(hulp_van(name));
         }
     }
     uit
@@ -201,8 +204,8 @@ pub fn uitkomsten_van(def: &LexostatusDefinitie) -> Vec<String> {
 /// gram dat zij kiest, of null. Zo ziet de cel het verschil tussen "geen
 /// gram" (dan `geen_gram`) en "een gram zonder dat veld" (dan niets), dat
 /// een uitkomst null alleen niet draagt.
-pub fn hulp_van(afleiding: &str) -> String {
-    format!("{LAATSTE}_{afleiding}")
+pub fn hulp_van(derivation: &str) -> String {
+    format!("{LAATSTE}_{derivation}")
 }
 
 /// Hoe een cel een lexostatus reduceert in een runtime met de engine-route.
@@ -212,11 +215,11 @@ pub enum Wijze {
     /// de wet het lezende artikel; de regeling is dan in het geheugen
     /// gemaakt uit zijn `leest` ([`crate::engine_regeling`]).
     Engine {
-        regeling: String,
-        artikel: Option<String>,
+        regulation: String,
+        article: Option<String>,
     },
     /// Bewust langs de reductie-DSL, met de reden uit het koppelbestand.
-    Dsl { reden: String },
+    Dsl { reason: String },
 }
 
 /// De engine-route van een cel: de regelingen van haar lexostatussen en per
@@ -233,7 +236,7 @@ pub struct CelRoute {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Koppelbestand {
-    cellen: BTreeMap<String, BTreeMap<String, Koppeling>>,
+    cells: BTreeMap<String, BTreeMap<String, Koppeling>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -254,9 +257,9 @@ enum Koppeling {
 /// `legal_basis` van zo'n regeling. Elke fout komt terug, niet alleen de
 /// eerste.
 pub fn laad_koppeling(
-    pad: &Path,
+    path: &Path,
     vergelijk: bool,
-    cellen: &[(&str, &Lexostatussen)],
+    cells: &[(&str, &Lexostatussen)],
     corpus: &LawExecutionService,
 ) -> Result<BTreeMap<String, CelRoute>, Vec<String>> {
     let namen: BTreeMap<String, String> = corpus
@@ -271,48 +274,50 @@ pub fn laad_koppeling(
             ))
         })
         .collect();
-    let bron = pad.display().to_string();
-    let bestand: Koppelbestand = laden::laad(pad, laden::yaml)?;
-    let map = pad.parent().map(Path::to_path_buf).unwrap_or_default();
+    let source = path.display().to_string();
+    let bestand: Koppelbestand = laden::laad(path, laden::yaml)?;
+    let map = path.parent().map(Path::to_path_buf).unwrap_or_default();
     let mut service = LawExecutionService::new();
     let mut geladen: BTreeMap<PathBuf, String> = BTreeMap::new();
     let mut fouten = Vec::new();
     let mut wijzen_per_cel: BTreeMap<String, BTreeMap<String, Wijze>> = BTreeMap::new();
-    for id in bestand.cellen.keys() {
-        if !cellen.iter().any(|(c, _)| c == id) {
-            fouten.push(format!("{bron}: cel '{id}' draait niet in deze runtime"));
+    for id in bestand.cells.keys() {
+        if !cells.iter().any(|(c, _)| c == id) {
+            fouten.push(format!("{source}: cel '{id}' draait niet in deze runtime"));
         }
     }
-    for (id, lexostatussen) in cellen {
+    for (id, lexostatuses) in cells {
         let leeg = BTreeMap::new();
-        let koppelingen = match bestand.cellen.get(*id) {
+        let koppelingen = match bestand.cells.get(*id) {
             Some(k) => k,
             // Alleen lexostatussen uit de wet: die hebben geen koppeling nodig.
-            None if lexostatussen
+            None if lexostatuses
                 .lexostatus_definitions
                 .iter()
-                .all(|d| d.wet.is_some()) =>
+                .all(|d| d.law.is_some()) =>
             {
                 &leeg
             }
             None => {
                 fouten.push(format!(
-                    "{bron}: cel '{id}' heeft geen koppeling; zet elke lexostatus op een regeling of op dsl"
+                    "{source}: cel '{id}' heeft geen koppeling; zet elke lexostatus op een regeling of op dsl"
                 ));
                 continue;
             }
         };
-        for naam in koppelingen.keys() {
-            if lexostatussen.lexostatus(naam).is_none() {
-                fouten.push(format!("{bron}: cel '{id}' heeft geen lexostatus '{naam}'"));
+        for name in koppelingen.keys() {
+            if lexostatuses.lexostatus(name).is_none() {
+                fouten.push(format!(
+                    "{source}: cel '{id}' heeft geen lexostatus '{name}'"
+                ));
             }
         }
         let mut wijzen = BTreeMap::new();
-        for def in &lexostatussen.lexostatus_definitions {
-            let waar = format!("{bron}: cel '{id}', lexostatus '{}'", def.name);
+        for def in &lexostatuses.lexostatus_definitions {
+            let waar = format!("{source}: cel '{id}', lexostatus '{}'", def.name);
             let wijze = match koppelingen.get(&def.name) {
-                None if def.wet.is_some() => {
-                    let regeling = format!(
+                None if def.law.is_some() => {
+                    let regulation = format!(
                         "lexostatus_{}_{}",
                         id,
                         def.name
@@ -324,12 +329,12 @@ pub fn laad_koppeling(
                             })
                             .collect::<String>()
                     );
-                    let geladen = crate::engine_regeling::regeling(def, &regeling, &namen)
+                    let geladen = crate::engine_regeling::regulation(def, &regulation, &namen)
                         .and_then(|tekst| service.load_law(&tekst).map_err(|e| e.to_string()));
                     match geladen {
                         Ok(r) => Wijze::Engine {
-                            regeling: r,
-                            artikel: Some(def.name.clone()),
+                            regulation: r,
+                            article: Some(def.name.clone()),
                         },
                         Err(e) => {
                             fouten.push(format!(
@@ -339,7 +344,7 @@ pub fn laad_koppeling(
                         }
                     }
                 }
-                Some(Koppeling::Regeling(_)) if def.wet.is_some() => {
+                Some(Koppeling::Regeling(_)) if def.law.is_some() => {
                     fouten.push(format!(
                         "{waar}: komt uit de wet; haar engine-regeling maakt de runtime uit het artikel, dus geen bestand (alleen dsl met een reden kan)"
                     ));
@@ -351,7 +356,9 @@ pub fn laad_koppeling(
                     ));
                     continue;
                 }
-                Some(Koppeling::Dsl { dsl }) => Wijze::Dsl { reden: dsl.clone() },
+                Some(Koppeling::Dsl { dsl }) => Wijze::Dsl {
+                    reason: dsl.clone(),
+                },
                 Some(Koppeling::Regeling(bestand)) => {
                     if def.is_lijst() {
                         fouten.push(format!(
@@ -360,7 +367,7 @@ pub fn laad_koppeling(
                         continue;
                     }
                     let regelingpad = map.join(bestand);
-                    let regeling = match geladen.get(&regelingpad) {
+                    let regulation = match geladen.get(&regelingpad) {
                         Some(r) => r.clone(),
                         None => {
                             let r = laden::lees(&regelingpad).and_then(|(tekst, b)| {
@@ -388,29 +395,29 @@ pub fn laad_koppeling(
                             }
                         }
                     };
-                    let Some(info) = service.get_law_info(&regeling) else {
-                        fouten.push(format!("{waar}: regeling '{regeling}' is niet te lezen"));
+                    let Some(info) = service.get_law_info(&regulation) else {
+                        fouten.push(format!("{waar}: regeling '{regulation}' is niet te lezen"));
                         continue;
                     };
                     // De hulpuitkomsten mogen niet heten als een afleiding.
                     let r = &def.reduction;
-                    for naam in r.afleidingen.keys().chain(r.extra_velden.keys()) {
-                        if naam == LAATSTE || naam.starts_with(&format!("{LAATSTE}_")) {
+                    for name in r.derivations.keys().chain(r.extra_fields.keys()) {
+                        if name == LAATSTE || name.starts_with(&format!("{LAATSTE}_")) {
                             fouten.push(format!(
-                                "{waar}: afleiding '{naam}' botst met een hulpuitkomst van de engine-route ({LAATSTE}, {LAATSTE}_<naam>)"
+                                "{waar}: afleiding '{name}' botst met een hulpuitkomst van de engine-route ({LAATSTE}, {LAATSTE}_<naam>)"
                             ));
                         }
                     }
                     for u in uitkomsten_van(def) {
                         if !info.outputs.contains(&u) {
                             fouten.push(format!(
-                                "{waar}: regeling '{regeling}' heeft geen uitkomst '{u}'"
+                                "{waar}: regeling '{regulation}' heeft geen uitkomst '{u}'"
                             ));
                         }
                     }
                     Wijze::Engine {
-                        regeling,
-                        artikel: None,
+                        regulation,
+                        article: None,
                     }
                 }
             };
@@ -446,52 +453,55 @@ pub fn reduceer_lexostatus<'g>(
     route: &CelRoute,
     def: &LexostatusDefinitie,
     inputs: &Map<String, Value>,
-    grammen: impl IntoIterator<Item = &'g Gram>,
+    grams: impl IntoIterator<Item = &'g Gram>,
     peil: &Peil,
-    datum: &str,
+    date: &str,
     met_trace: bool,
 ) -> Result<Option<Lexostatus>, String> {
-    let grammen: Vec<&Gram> = grammen.into_iter().collect();
+    let grams: Vec<&Gram> = grams.into_iter().collect();
     let t = Instant::now();
-    let regeling = match route.wijzen.get(&def.name) {
+    let regulation = match route.wijzen.get(&def.name) {
         None => return Err(format!("lexostatus '{}' heeft geen koppeling", def.name)),
-        Some(Wijze::Dsl { reden }) => {
-            let l = reductie::reduceer_op(def, inputs, grammen.iter().copied(), peil)?;
-            let duur_us = micro(t);
+        Some(Wijze::Dsl { reason }) => {
+            let l = reductie::reduceer_op(def, inputs, grams.iter().copied(), peil)?;
+            let duration_us = micro(t);
             return Ok(l.map(|l| Lexostatus {
-                reductie: Some(Reductieroute {
+                reduction: Some(Reductieroute {
                     route: "dsl".into(),
-                    regeling: None,
-                    reden: Some(reden.clone()),
-                    duur_us,
-                    dsl_duur_us: None,
+                    regulation: None,
+                    reason: Some(reason.clone()),
+                    duration_us,
+                    dsl_duration_us: None,
                     trace_text: None,
                 }),
                 ..l
             }));
         }
-        Some(Wijze::Engine { regeling, artikel }) => (regeling, artikel),
+        Some(Wijze::Engine {
+            regulation,
+            article,
+        }) => (regulation, article),
     };
-    let (regeling, artikel) = regeling;
+    let (regulation, article) = regulation;
     let engine = via_engine(
-        route, regeling, def, inputs, &grammen, peil, datum, met_trace,
+        route, regulation, def, inputs, &grams, peil, date, met_trace,
     )?;
-    let duur_us = micro(t);
-    let dsl_duur_us = if route.vergelijk {
+    let duration_us = micro(t);
+    let dsl_duration_us = if route.vergelijk {
         let t = Instant::now();
-        let dsl = reductie::reduceer_op(def, inputs, grammen.iter().copied(), peil)?;
+        let dsl = reductie::reduceer_op(def, inputs, grams.iter().copied(), peil)?;
         let d = micro(t);
         let zelfde = match (&engine, &dsl) {
-            (Some((e, _)), Some(d)) => inhoud(e) == inhoud(d),
+            (Some((e, _)), Some(d)) => content(e) == content(d),
             (None, None) => true,
             _ => false,
         };
         if !zelfde {
             return Err(format!(
-                "lexostatus '{}': de engine ({regeling}) en de DSL verschillen: engine {}, dsl {}",
+                "lexostatus '{}': de engine ({regulation}) en de DSL verschillen: engine {}, dsl {}",
                 def.name,
-                json!(engine.as_ref().map(|(e, _)| inhoud(e))),
-                json!(dsl.as_ref().map(inhoud)),
+                json!(engine.as_ref().map(|(e, _)| content(e))),
+                json!(dsl.as_ref().map(content)),
             ));
         }
         Some(d)
@@ -499,12 +509,12 @@ pub fn reduceer_lexostatus<'g>(
         None
     };
     Ok(engine.map(|(l, trace_text)| Lexostatus {
-        reductie: Some(Reductieroute {
+        reduction: Some(Reductieroute {
             route: "engine".into(),
-            regeling: Some(artikel.clone().unwrap_or_else(|| regeling.clone())),
-            reden: None,
-            duur_us,
-            dsl_duur_us,
+            regulation: Some(article.clone().unwrap_or_else(|| regulation.clone())),
+            reason: None,
+            duration_us,
+            dsl_duration_us,
             trace_text,
         }),
         ..l
@@ -516,14 +526,14 @@ fn micro(t: Instant) -> u64 {
 }
 
 /// Wat een lexostatus zegt, zonder route: om engine en DSL te vergelijken.
-fn inhoud(l: &Lexostatus) -> Value {
+fn content(l: &Lexostatus) -> Value {
     json!({
-        "wortel": l.wortel,
-        "op_moment": l.op_moment,
-        "vastgelegd_op": l.vastgelegd_op,
+        "root": l.root,
+        "effective_at": l.effective_at,
+        "recorded_at": l.recorded_at,
         "parameters": l.parameters,
-        "extra_velden": l.extra_velden,
-        "niet_afgeleid": l.niet_afgeleid,
+        "extra_fields": l.extra_fields,
+        "not_derived": l.not_derived,
     })
 }
 
@@ -532,12 +542,12 @@ fn inhoud(l: &Lexostatus) -> Value {
 #[allow(clippy::too_many_arguments)]
 fn via_engine(
     route: &CelRoute,
-    regeling: &str,
+    regulation: &str,
     def: &LexostatusDefinitie,
     inputs: &Map<String, Value>,
-    grammen: &[&Gram],
+    grams: &[&Gram],
     peil: &Peil,
-    datum: &str,
+    date: &str,
     met_trace: bool,
 ) -> Result<Option<(Lexostatus, Option<String>)>, String> {
     let r = &def.reduction;
@@ -548,23 +558,23 @@ fn via_engine(
         ));
     }
     let mut door = Vec::new();
-    for g in grammen {
-        if g.chronicle == r.kroniek && peil.laat_door(g)? {
+    for g in grams {
+        if g.chronicle == r.chronicle && peil.laat_door(g)? {
             door.push(*g);
         }
     }
     let namen = uitkomsten_van(def);
-    let uitkomsten: Vec<&str> = namen.iter().map(String::as_str).collect();
+    let outputs: Vec<&str> = namen.iter().map(String::as_str).collect();
     let (waarden, trace_text) = evalueer(
         &route.service,
-        regeling,
-        &uitkomsten,
+        regulation,
+        &outputs,
         inputs,
         als_parameter(&door)?,
-        datum,
+        date,
         met_trace,
     )?;
-    let gekozen = match (r.kies, waarden.get(LAATSTE)) {
+    let gekozen = match (r.pick, waarden.get(LAATSTE)) {
         (None, _) => None,
         (Some(_), None | Some(Value::Null)) => return Ok(None),
         (Some(_), Some(v)) => {
@@ -580,36 +590,36 @@ fn via_engine(
         }
     };
     let mut l = Lexostatus {
-        wortel: gekozen.and_then(|g| g.wortel.clone()),
-        op_moment: gekozen.map(|g| g.op_moment.clone()),
-        vastgelegd_op: gekozen.map(|g| g.vastgelegd_op.clone()),
-        peilmoment: peil.peilmoment.map(|t| t.to_string()),
-        bekend_op: peil.bekend_op.map(|t| t.to_string()),
+        root: gekozen.and_then(|g| g.root.clone()),
+        effective_at: gekozen.map(|g| g.effective_at.clone()),
+        recorded_at: gekozen.map(|g| g.recorded_at.clone()),
+        as_of: peil.as_of.map(|t| t.to_string()),
+        known_at: peil.known_at.map(|t| t.to_string()),
         ..Lexostatus::leeg(&def.name)
     };
-    for (naam, a, extra) in r
-        .afleidingen
+    for (name, a, extra) in r
+        .derivations
         .iter()
         .map(|(n, a)| (n, a, false))
-        .chain(r.extra_velden.iter().map(|(n, a)| (n, a, true)))
+        .chain(r.extra_fields.iter().map(|(n, a)| (n, a, true)))
     {
         // Null is "de kroniek zegt er niets over", tenzij de afleiding zegt
         // hoe zij afwezigheid leest (`geen_gram`) en er geen gram is.
-        let w = match waarden.get(naam) {
+        let w = match waarden.get(name) {
             Some(Value::Null) | None => a
-                .geen_gram()
-                .filter(|_| waarden.get(&hulp_van(naam)).is_none_or(Value::is_null)),
+                .no_gram()
+                .filter(|_| waarden.get(&hulp_van(name)).is_none_or(Value::is_null)),
             Some(w) => Some(w),
         }
         .cloned();
         match (w, extra) {
             (Some(w), false) => {
-                l.parameters.insert(naam.clone(), w);
+                l.parameters.insert(name.clone(), w);
             }
             (Some(w), true) => {
-                l.extra_velden.insert(naam.clone(), w);
+                l.extra_fields.insert(name.clone(), w);
             }
-            (None, false) => l.niet_afgeleid.push(naam.clone()),
+            (None, false) => l.not_derived.push(name.clone()),
             (None, true) => {}
         }
     }
@@ -623,50 +633,50 @@ fn via_engine(
 /// deploymentconfiguratie. In dit experiment een momentopname; in een
 /// runtime zou de bron de kroniek live lezen.
 pub struct KroniekBron {
-    naam: String,
-    regeling: String,
-    grammen: regelrecht_engine::Value,
+    name: String,
+    regulation: String,
+    grams: regelrecht_engine::Value,
 }
 
 impl KroniekBron {
     pub fn new<'g>(
-        regeling: &str,
-        grammen: impl IntoIterator<Item = &'g Gram>,
-        kroniek: &str,
+        regulation: &str,
+        grams: impl IntoIterator<Item = &'g Gram>,
+        chronicle: &str,
     ) -> Result<Self, String> {
         Ok(Self {
-            naam: format!("kroniek:{kroniek}"),
-            regeling: regeling.to_string(),
-            grammen: regelrecht_engine::Value::from(&als_kroniek(grammen, kroniek)?),
+            name: format!("chronicle:{chronicle}"),
+            regulation: regulation.to_string(),
+            grams: regelrecht_engine::Value::from(&als_kroniek(grams, chronicle)?),
         })
     }
 }
 
 impl regelrecht_engine::DataSource for KroniekBron {
     fn name(&self) -> &str {
-        &self.naam
+        &self.name
     }
     fn priority(&self) -> i32 {
         10
     }
     fn source_type(&self) -> &str {
-        "kroniek"
+        "chronicle"
     }
     fn has_field(&self, field: &str) -> bool {
-        field == "grammen"
+        field == "grams"
     }
     fn get(
         &self,
         field: &str,
         _criteria: &BTreeMap<String, regelrecht_engine::Value>,
     ) -> Option<regelrecht_engine::Value> {
-        (field == "grammen").then(|| self.grammen.clone())
+        (field == "grams").then(|| self.grams.clone())
     }
     fn fields(&self) -> Vec<&str> {
-        vec!["grammen"]
+        vec!["grams"]
     }
     fn law_scope(&self) -> Option<&str> {
-        Some(&self.regeling)
+        Some(&self.regulation)
     }
     fn key_fields(&self) -> Option<&[String]> {
         Some(&[])

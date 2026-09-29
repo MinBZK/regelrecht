@@ -11,10 +11,10 @@
     "name",
     "chronicle",
     "recording_actor",
-    "grondslag",
-    "op_moment",
-    "vastgelegd_op",
-    "stroom",
+    "legal_basis",
+    "effective_at",
+    "recorded_at",
+    "stream",
     "fields"
   ],
   "additionalProperties": false,
@@ -30,7 +30,7 @@
       "$ref": "#/definitions/identifier",
       "description": "Open woordenschat (RFC-022 par. 1), bijvoorbeeld executogram of indiening."
     },
-    "soort": {
+    "subtype": {
       "$ref": "#/definitions/identifier",
       "description": "De soort binnen het type, bijvoorbeeld aanvraag bij een indiening."
     },
@@ -48,7 +48,7 @@
     "recording_actor": {
       "$ref": "#/definitions/identifier"
     },
-    "grondslag": {
+    "legal_basis": {
       "type": "array",
       "minItems": 1,
       "items": {
@@ -80,52 +80,52 @@
       "minLength": 1,
       "description": "Alleen bij een besluit, en alleen als de regeling een bevoegd gezag noemt: dat gezag. Het proces toetst het tegen het gezag waarvoor het handelt (namens) en zijn mandaten, en legt bij een ander gezag niets vast; noemt de regeling er geen, dan staat dit veld er niet en waarschuwt het proces."
     },
-    "handelende_actor": {
+    "acting_actor": {
       "type": "object",
       "description": "Alleen bij een besluit dat een proces nam: wie handelde. Naast recording_actor (wie vastlegt) en competent_authority (wie de wet bevoegd maakt) de derde as van RFC-022 par. 2. Het kanaal is nagebootst: de identiteit is wat de gebruiker invulde.",
       "required": [
-        "rol",
-        "kanaal",
-        "identiteit"
+        "role",
+        "channel",
+        "identity"
       ],
       "additionalProperties": false,
       "properties": {
-        "rol": {
+        "role": {
           "type": "string",
           "minLength": 1
         },
-        "kanaal": {
+        "channel": {
           "type": "string",
           "minLength": 1
         },
-        "identiteit": {
+        "identity": {
           "type": "object",
           "additionalProperties": {
             "type": "string"
           }
         },
-        "grondslag": {
+        "legal_basis": {
           "type": "string",
           "minLength": 1,
           "description": "De grondslag van de rol, als de procesconfiguratie er een noemt."
         },
-        "namens": {
+        "on_behalf_of": {
           "type": "string",
           "minLength": 1,
           "description": "Het gezag in wiens naam is gehandeld."
         },
-        "mandaat": {
+        "mandate": {
           "type": "string",
           "minLength": 1,
           "description": "De grondslag van het mandaat (Awb 10:1), als dat gezag niet het eigen gezag van het proces is."
         }
       }
     },
-    "op_moment": {
+    "effective_at": {
       "$ref": "#/definitions/moment",
       "description": "Het moment waarop het feit rechtens geldt of plaatsvond (RFC 3339, met tijdzone). Standaard gelijk aan vastgelegd_op; een event kan het aan een ingediende waarde binden (zie op_moment_grondslag), en in een startstand is het met de hand gezet, zoals de datum van een besluit."
     },
-    "op_moment_grondslag": {
+    "effective_at_legal_basis": {
       "type": "array",
       "minItems": 1,
       "description": "Alleen als het event op_moment aan een ingediende waarde bond en die waarde er was: waarom dat moment rechtens telt, uit de stroom. Bijvoorbeeld de dag van ontvangst van een aanvraag die langs een andere weg binnenkwam (Awb 4:1, 4:13).",
@@ -134,11 +134,11 @@
         "pattern": "^[a-z][a-z0-9_]*#[A-Za-z0-9]([A-Za-z0-9:._ -]*[A-Za-z0-9])?( lid [0-9]+[a-z]?)?$"
       }
     },
-    "vastgelegd_op": {
+    "recorded_at": {
       "$ref": "#/definitions/moment",
       "description": "Het moment waarop de cel het gram vastlegde: altijd haar eigen klok, bij een startstand de laadtijd. Een gram in een kroniek van voor dit veld heeft het niet; de runtime leest het dan als op_moment, met een waarschuwing."
     },
-    "verwijst": {
+    "refers_to": {
       "type": "object",
       "description": "Naar welke grammen dit gram verwijst, per naam uit de wettekst (op_aanvraag, aanvraag, besluit, wijzigt, betreft). De namen en wat elk mag aanwijzen, zegt het vestigende artikel (produces.extensions.chronolex.vestigt[].verwijst) of de stroom; de cel controleert bij het vastleggen dat het gram bestaat en past. Geen verwijzing: het gram is zelf een wortel.",
       "propertyNames": {
@@ -148,7 +148,7 @@
         "$ref": "#/definitions/uuid"
       }
     },
-    "stroom": {
+    "stream": {
       "type": "object",
       "description": "De stroomdefinitie waarmee het gram is gebouwd, met de hash van dat bestand.",
       "required": [
@@ -166,9 +166,9 @@
         }
       }
     },
-    "herkomst": {
+    "provenance": {
       "enum": [
-        "startstand"
+        "initial_state"
       ],
       "description": "Alleen als het gram niet door de cel zelf is vastgesteld. startstand: bij het starten in een lege kroniek geplaatst, niet berekend (geen engine-trace)."
     },
@@ -184,26 +184,26 @@
       "additionalProperties": {
         "type": "object",
         "required": [
-          "waarde",
-          "herkomst"
+          "value",
+          "provenance"
         ],
         "additionalProperties": false,
         "properties": {
-          "waarde": {},
-          "herkomst": {
+          "value": {},
+          "provenance": {
             "type": "object",
             "required": [
-              "bron"
+              "source"
             ],
             "properties": {
-              "bron": {
+              "source": {
                 "enum": [
-                  "eigen",
-                  "cel",
-                  "per_regel",
-                  "behandelaar",
-                  "stand_bij_besluit",
-                  "besluit"
+                  "own",
+                  "cell",
+                  "per_row",
+                  "handler",
+                  "state_at_decision",
+                  "decision"
                 ]
               }
             }
@@ -215,13 +215,13 @@
       "type": "object",
       "description": "Alleen bij een handeling die een proces uitrekende: wat er meedeed, zodat het te herhalen is (RFC-013 execution receipt, RFC-022 par. 1.3 voor de stromen).",
       "required": [
-        "regelingen",
-        "stromen",
+        "regulations",
+        "streams",
         "sha256"
       ],
       "additionalProperties": false,
       "properties": {
-        "regelingen": {
+        "regulations": {
           "type": "array",
           "items": {
             "type": "object",
@@ -245,7 +245,7 @@
             }
           }
         },
-        "stromen": {
+        "streams": {
           "type": "array",
           "items": {
             "type": "object",
@@ -281,14 +281,14 @@
       "type": "string",
       "pattern": "^[a-z][a-z0-9_]*$"
     },
-    "kern_aanvraag": {
+    "core_application": {
       "description": "De vaste kern van een aanvraag (Awb 4:2 lid 1). Een waarde mag null zijn: ook een onvolledige aanvraag wordt vastgelegd.",
       "type": "object",
       "required": [
         "aanvrager",
         "dagtekening",
         "gevraagde_beschikking",
-        "ondertekend_via"
+        "signed_via"
       ],
       "additionalProperties": false,
       "properties": {
@@ -306,7 +306,7 @@
         },
         "dagtekening": {},
         "gevraagde_beschikking": {},
-        "ondertekend_via": {
+        "signed_via": {
           "type": "object"
         }
       }
@@ -321,7 +321,7 @@
       "if": {
         "properties": {
           "type": {
-            "const": "indiening"
+            "const": "submission"
           }
         },
         "required": [
@@ -330,7 +330,7 @@
       },
       "then": {
         "required": [
-          "soort"
+          "subtype"
         ]
       }
     },
@@ -338,30 +338,30 @@
       "if": {
         "properties": {
           "type": {
-            "const": "indiening"
+            "const": "submission"
           },
-          "soort": {
+          "subtype": {
             "const": "aanvraag"
           }
         },
         "required": [
           "type",
-          "soort"
+          "subtype"
         ]
       },
       "then": {
         "properties": {
           "fields": {
             "required": [
-              "kern",
-              "inhoud"
+              "core",
+              "content"
             ],
             "additionalProperties": false,
             "properties": {
-              "kern": {
-                "$ref": "#/definitions/kern_aanvraag"
+              "core": {
+                "$ref": "#/definitions/core_application"
               },
-              "inhoud": {
+              "content": {
                 "type": "object"
               }
             }
@@ -380,8 +380,8 @@
           "type": {
             "enum": [
               "decretogram",
-              "indiening",
-              "handeling"
+              "submission",
+              "act"
             ]
           }
         },

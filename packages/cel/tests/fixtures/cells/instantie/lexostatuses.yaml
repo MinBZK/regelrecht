@@ -1,0 +1,21 @@
+---
+# Fictieve lexostatus-definities: de lexostatus die de kroniek van een zaak
+# reduceert tot de parameters van artikel 1 van de testregeling.
+cell: test_instantie
+lexostatus_definitions:
+  - name: aanvraag_inhoud
+    inputs: [{name: root, type: string}]
+    reduction:
+      chronicle: test_kroniek
+      filter: {type: submission, subtype: aanvraag, root: $root}
+      pick: latest
+      derivations:
+        aanvraagjaar: {field: content.aanvraagjaar}
+        aanvraagdatum: {moment: effective_at}
+        bevat_naam: {filled: content.naam}
+        bevat_aanduiding: {filled: content.aanduiding}
+        bevat_naam_orgaan: {table: content.organen, each_row: orgaan}
+        bevat_aantal_zetels: {table: content.organen, each_row: zetels}
+        is_samengevoegd: {table: content.organen, one_row: samengevoegd}
+        bevat_aantal_aanduidingen: {table: content.organen, each_row: aantal_aanduidingen, only_where: samengevoegd}
+        registratie_categorie_a: {equals: {field: content.registratie, value: a}}

@@ -7,7 +7,7 @@
 # alleen de configuratie en de regelingen verschillen.
 id: test_toeslag
 recording_actor: test_toeslagdienst
-stromen:
+streams:
   - ../../chronicles/test_toeslag_aanvragen.yaml
   - ../../chronicles/test_toeslag_zaakverloop.yaml
-lexostatussen: lexostatussen.yaml
+lexostatuses: lexostatuses.yaml

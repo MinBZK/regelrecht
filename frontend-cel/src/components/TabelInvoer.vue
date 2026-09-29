@@ -45,7 +45,7 @@ const kolomBreedtes = () => ['56px', ...props.kolommen.map(() => 'minmax(120px,1
         <Invoer
           :soort="k.type"
           :label="`${k.label ?? k.id}, regel ${i + 1}`"
-          :keuzes="k.opties"
+          :keuzes="k.options"
           :model-value="r[k.id] ?? null"
           @update:model-value="zet(i, k.id, $event)"
         />

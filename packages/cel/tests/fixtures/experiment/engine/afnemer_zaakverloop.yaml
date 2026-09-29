@@ -22,25 +22,25 @@ articles:
         parameters:
           - {name: wortel, type: string, required: true}
         input:
-          - name: grammen
+          - name: grams
             type: array
             source: {}
         output:
-          - {name: laatste_datum_uitnodiging_aanvulling, type: number, nullable: true}
+          - {name: latest_datum_uitnodiging_aanvulling, type: number, nullable: true}
           - {name: datum_uitnodiging_aanvulling, type: date, nullable: true}
           - {name: opgeschorte_dagen, type: number}
         actions:
-          - output: laatste_datum_uitnodiging_aanvulling
+          - output: latest_datum_uitnodiging_aanvulling
             value:
               operation: FOREACH
-              collection: $grammen
+              collection: $grams
               as: g
               filter:
                 operation: AND
                 conditions:
                   - {operation: EQUALS, subject: $g.name, value: aanvulling_gevraagd}
-                  - {operation: EQUALS, subject: $g.wortel, value: $wortel}
-              body: $g.volgorde
+                  - {operation: EQUALS, subject: $g.root, value: $root}
+              body: $g.sequence
               combine: MAX
           - output: datum_uitnodiging_aanvulling
             value:
@@ -48,14 +48,14 @@ articles:
               cases:
                 - when:
                     operation: FOREACH
-                    collection: $grammen
+                    collection: $grams
                     as: g
                     filter:
                       operation: AND
                       conditions:
                         - operation: EQUALS
-                          subject: $g.volgorde
-                          value: $laatste_datum_uitnodiging_aanvulling
+                          subject: $g.sequence
+                          value: $latest_datum_uitnodiging_aanvulling
                         - operation: NOT
                           value: {operation: EQUALS, subject: $g.fields.datum_uitnodiging, value: null}
                         - operation: NOT
@@ -64,14 +64,14 @@ articles:
                     combine: OR
                   then:
                     operation: FOREACH
-                    collection: $grammen
+                    collection: $grams
                     as: g
                     filter:
                       operation: AND
                       conditions:
                         - operation: EQUALS
-                          subject: $g.volgorde
-                          value: $laatste_datum_uitnodiging_aanvulling
+                          subject: $g.sequence
+                          value: $latest_datum_uitnodiging_aanvulling
                         - operation: NOT
                           value: {operation: EQUALS, subject: $g.fields.datum_uitnodiging, value: null}
                         - operation: NOT
@@ -81,13 +81,13 @@ articles:
           - output: opgeschorte_dagen
             value:
               operation: FOREACH
-              collection: $grammen
+              collection: $grams
               as: g
               filter:
                 operation: AND
                 conditions:
                   - {operation: EQUALS, subject: $g.name, value: termijn_opgeschort}
-                  - {operation: EQUALS, subject: $g.wortel, value: $wortel}
+                  - {operation: EQUALS, subject: $g.root, value: $root}
                   - operation: NOT
                     value: {operation: EQUALS, subject: $g.fields.dagen, value: null}
               body: $g.fields.dagen

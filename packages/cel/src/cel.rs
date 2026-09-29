@@ -17,30 +17,30 @@ use crate::stroom::{self, Event, Stroom};
 use crate::{controle, startstand, wet};
 
 /// Een geladen cel die de controles bij het opstarten doorstond.
-pub struct Cel {
+pub struct Cell {
     pub definitie: CelDefinitie,
     /// De map van de cel; paden in `cel.yaml` zijn hier relatief aan.
     pub map: PathBuf,
-    pub strommen: Vec<Stroom>,
-    pub lexostatussen: Lexostatussen,
+    pub streams: Vec<Stroom>,
+    pub lexostatuses: Lexostatussen,
     /// Het corpus, gedeeld door alle cellen van de runtime.
     pub service: Arc<LawExecutionService>,
     /// De grammen voor een lege kroniek (leeg zonder `startstand`).
-    pub startstand: Vec<Gram>,
+    pub initial_state: Vec<Gram>,
     /// De engine-route van de cel (experiment A, `CEL_REDUCTIE`); zonder
     /// reduceert de cel langs de reductie-DSL.
     pub route: Option<Arc<CelRoute>>,
 }
 
-impl Cel {
+impl Cell {
     /// Laad een cel uit haar map en controleer haar. Elke fout komt terug,
     /// niet alleen de eerste, en elke fout noemt de cel.
     pub fn laad(map: &Path, service: Arc<LawExecutionService>) -> Result<Self, Vec<String>> {
-        let naam = map
+        let name = map
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
-        let definitie = CelDefinitie::laad(map).map_err(|f| met_cel(&naam, f))?;
+        let definitie = CelDefinitie::laad(map).map_err(|f| met_cel(&name, f))?;
         Self::laad_definitie(definitie, map, service)
     }
 
@@ -50,53 +50,53 @@ impl Cel {
         service: Arc<LawExecutionService>,
     ) -> Result<Self, Vec<String>> {
         let id = definitie.id.clone();
-        let fout = |f: Vec<String>| met_cel(&id, f);
+        let error = |f: Vec<String>| met_cel(&id, f);
         let mut fouten = Vec::new();
-        let mut strommen = Vec::new();
-        for pad in &definitie.stromen {
-            match stroom::laad(&map.join(pad)) {
-                Ok(s) => strommen.extend(s),
+        let mut streams = Vec::new();
+        for path in &definitie.streams {
+            match stroom::laad(&map.join(path)) {
+                Ok(s) => streams.extend(s),
                 Err(f) => fouten.extend(f),
             }
         }
         // Wat de wet over de events zegt (`vestigt`), vóór alles wat de
         // events leest.
         if fouten.is_empty() {
-            fouten.extend(wet::vestig(&mut strommen, &service));
+            fouten.extend(wet::vestig(&mut streams, &service));
         }
         // De rollen van de events (besluit, volgt een besluit, wortel) volgen
         // uit hun stage en verwijzingen; elke verwijzing moet naar een event
         // van de cel kunnen wijzen.
         if fouten.is_empty() {
-            stroom::leid_rollen_af(&mut strommen);
-            fouten.extend(stroom::controleer_verwijzingen(&strommen));
+            stroom::leid_rollen_af(&mut streams);
+            fouten.extend(stroom::controleer_verwijzingen(&streams));
         }
-        let lexostatussen = reductie::laad(&map.join(&definitie.lexostatussen))
+        let lexostatuses = reductie::laad(&map.join(&definitie.lexostatuses))
             .map_err(|f| fouten.extend(f))
             .ok();
-        let Some(mut lexostatussen) = lexostatussen.filter(|_| fouten.is_empty()) else {
-            return Err(fout(fouten));
+        let Some(mut lexostatuses) = lexostatuses.filter(|_| fouten.is_empty()) else {
+            return Err(error(fouten));
         };
         // De lexostatussen die de wet in deze cel leest, naast die van de cel.
-        match wet::lexostatussen(&strommen, &service, &lexostatussen.wet) {
-            Ok(uit_de_wet) => {
-                for d in uit_de_wet {
-                    if lexostatussen.lexostatus(&d.name).is_some() {
+        match wet::lexostatuses(&streams, &service, &lexostatuses.law) {
+            Ok(from_law) => {
+                for d in from_law {
+                    if lexostatuses.lexostatus(&d.name).is_some() {
                         fouten.push(format!("lexostatus '{}' staat ook in de wet", d.name));
                     }
-                    lexostatussen.lexostatus_definitions.push(d);
+                    lexostatuses.lexostatus_definitions.push(d);
                 }
             }
             Err(f) => fouten.extend(f),
         }
-        fouten.extend(controle::perioden(&strommen, &mut lexostatussen, &service));
-        if lexostatussen.cel != definitie.id {
+        fouten.extend(controle::perioden(&streams, &mut lexostatuses, &service));
+        if lexostatuses.cell != definitie.id {
             fouten.push(format!(
                 "{}: cel '{}' is niet de id van deze cel",
-                definitie.lexostatussen, lexostatussen.cel
+                definitie.lexostatuses, lexostatuses.cell
             ));
         }
-        for s in &strommen {
+        for s in &streams {
             if s.recording_actor != definitie.recording_actor {
                 fouten.push(format!(
                     "stroom '{}' heeft recording_actor '{}', de cel '{}'",
@@ -104,25 +104,25 @@ impl Cel {
                 ));
             }
         }
-        if let Err(f) = controle::controleer(&strommen, &lexostatussen, &service) {
+        if let Err(f) = controle::controleer(&streams, &lexostatuses, &service) {
             fouten.extend(f);
         }
-        let startstand = match &definitie.startstand {
-            Some(pad) => startstand::laad(&map.join(pad), &strommen)
+        let initial_state = match &definitie.initial_state {
+            Some(path) => startstand::laad(&map.join(path), &streams)
                 .map_err(|f| fouten.extend(f))
                 .unwrap_or_default(),
             None => Vec::new(),
         };
         if !fouten.is_empty() {
-            return Err(fout(fouten));
+            return Err(error(fouten));
         }
         Ok(Self {
             definitie,
             map: map.to_path_buf(),
-            strommen,
-            lexostatussen,
+            streams,
+            lexostatuses,
             service,
-            startstand,
+            initial_state,
             route: None,
         })
     }
@@ -132,14 +132,14 @@ impl Cel {
     }
 
     /// Een event uit een stroom van de cel.
-    pub fn event(&self, stroom: &str, event: &str) -> Option<(&Stroom, &Event)> {
-        let s = self.strommen.iter().find(|s| s.id == stroom)?;
+    pub fn event(&self, stream: &str, event: &str) -> Option<(&Stroom, &Event)> {
+        let s = self.streams.iter().find(|s| s.id == stream)?;
         Some((s, s.event(event)?))
     }
 
     /// De kronieken van de cel, gesorteerd en zonder dubbelen.
-    pub fn kronieken(&self) -> Vec<&str> {
-        let mut v: Vec<&str> = self.strommen.iter().map(|s| s.chronicle.as_str()).collect();
+    pub fn chronicles(&self) -> Vec<&str> {
+        let mut v: Vec<&str> = self.streams.iter().map(|s| s.chronicle.as_str()).collect();
         v.sort_unstable();
         v.dedup();
         v
@@ -150,18 +150,18 @@ impl Cel {
     /// [`crate::reductie::ZAAKSTAND`] aan: de stand van de groep rond een
     /// wortel.
     pub fn heeft_zaken(&self) -> bool {
-        self.strommen
+        self.streams
             .iter()
             .flat_map(|s| s.events.iter())
-            .any(|e| e.zaak.heeft_kenmerk())
+            .any(|e| e.case.heeft_kenmerk())
     }
 }
 
 /// Zet de cel voor elke melding.
-pub fn met_cel(cel: &str, fouten: Vec<String>) -> Vec<String> {
+pub fn met_cel(cell: &str, fouten: Vec<String>) -> Vec<String> {
     fouten
         .into_iter()
-        .map(|f| format!("cel '{cel}': {f}"))
+        .map(|f| format!("cel '{cell}': {f}"))
         .collect()
 }
 
@@ -185,7 +185,7 @@ mod tests {
     #[test]
     fn fixture_cellen_laden() {
         let s = service();
-        let instantie = Cel::laad(&fixtures().join("cellen/instantie"), s.clone()).unwrap();
+        let instantie = Cell::laad(&fixtures().join("cells/instantie"), s.clone()).unwrap();
         assert_eq!(
             instantie
                 .event("test_aanvragen", "aanvraag_ontvangen")
@@ -194,15 +194,15 @@ mod tests {
                 .name,
             "aanvraag_ontvangen"
         );
-        assert!(instantie.startstand.is_empty());
+        assert!(instantie.initial_state.is_empty());
 
-        let register = Cel::laad(&fixtures().join("cellen/register"), s.clone()).unwrap();
-        assert_eq!(register.startstand.len(), 4);
-        assert_eq!(register.kronieken(), ["test_register"]);
+        let register = Cell::laad(&fixtures().join("cells/register"), s.clone()).unwrap();
+        assert_eq!(register.initial_state.len(), 4);
+        assert_eq!(register.chronicles(), ["test_register"]);
 
-        let afnemer = Cel::laad(&fixtures().join("cellen/afnemer"), s).unwrap();
+        let afnemer = Cell::laad(&fixtures().join("cells/afnemer"), s).unwrap();
         assert_eq!(
-            afnemer.kronieken(),
+            afnemer.chronicles(),
             ["test_afnemer"],
             "twee stromen, een kroniek"
         );
@@ -210,18 +210,18 @@ mod tests {
 
     /// Kopieer een fixture-cel en de stromen naar een tijdelijke map, zodat
     /// een test er een bestand in kan veranderen.
-    fn kopie(cel: &str) -> tempfile::TempDir {
+    fn kopie(cell: &str) -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
         let f = fixtures();
-        std::fs::create_dir_all(dir.path().join("cellen").join(cel)).unwrap();
+        std::fs::create_dir_all(dir.path().join("cells").join(cell)).unwrap();
         std::fs::create_dir_all(dir.path().join("chronicles")).unwrap();
-        for e in std::fs::read_dir(f.join("cellen").join(cel)).unwrap() {
+        for e in std::fs::read_dir(f.join("cells").join(cell)).unwrap() {
             let p = e.unwrap().path();
             std::fs::copy(
                 &p,
                 dir.path()
-                    .join("cellen")
-                    .join(cel)
+                    .join("cells")
+                    .join(cell)
                     .join(p.file_name().unwrap()),
             )
             .unwrap();
@@ -240,14 +240,14 @@ mod tests {
     #[test]
     fn elke_melding_noemt_de_cel() {
         let dir = kopie("register");
-        let map = dir.path().join("cellen/register");
-        let lexo = std::fs::read_to_string(map.join("lexostatussen.yaml")).unwrap();
+        let map = dir.path().join("cells/register");
+        let lexo = std::fs::read_to_string(map.join("lexostatuses.yaml")).unwrap();
         std::fs::write(
-            map.join("lexostatussen.yaml"),
-            lexo.replace("cel: test_register", "cel: ander_register"),
+            map.join("lexostatuses.yaml"),
+            lexo.replace("cell: test_register", "cell: ander_register"),
         )
         .unwrap();
-        let fouten = Cel::laad(&map, service()).err().unwrap();
+        let fouten = Cell::laad(&map, service()).err().unwrap();
         assert!(!fouten.is_empty());
         assert!(
             fouten
@@ -263,10 +263,10 @@ mod tests {
     #[test]
     fn ontbrekende_bestanden_worden_allemaal_gemeld() {
         let dir = kopie("instantie");
-        let map = dir.path().join("cellen/instantie");
-        std::fs::remove_file(map.join("lexostatussen.yaml")).unwrap();
+        let map = dir.path().join("cells/instantie");
+        std::fs::remove_file(map.join("lexostatuses.yaml")).unwrap();
         std::fs::remove_file(dir.path().join("chronicles/test_aanvragen.yaml")).unwrap();
-        let fouten = Cel::laad(&map, service()).err().unwrap();
+        let fouten = Cell::laad(&map, service()).err().unwrap();
         assert_eq!(fouten.len(), 2, "{fouten:?}");
     }
 
@@ -275,24 +275,24 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let map = dir.path().join("leeg");
         std::fs::create_dir_all(&map).unwrap();
-        let fouten = Cel::laad(&map, service()).err().unwrap();
+        let fouten = Cell::laad(&map, service()).err().unwrap();
         assert!(fouten[0].starts_with("cel 'leeg': "), "{fouten:?}");
     }
 
     #[test]
     fn stroom_van_een_andere_actor() {
         let dir = kopie("register");
-        let map = dir.path().join("cellen/register");
-        let cel = std::fs::read_to_string(map.join("cel.yaml")).unwrap();
+        let map = dir.path().join("cells/register");
+        let cell = std::fs::read_to_string(map.join("cell.yaml")).unwrap();
         std::fs::write(
-            map.join("cel.yaml"),
-            cel.replace(
+            map.join("cell.yaml"),
+            cell.replace(
                 "recording_actor: test_register",
                 "recording_actor: iemand_anders",
             ),
         )
         .unwrap();
-        let fouten = Cel::laad(&map, service()).err().unwrap();
+        let fouten = Cell::laad(&map, service()).err().unwrap();
         assert!(
             fouten
                 .iter()

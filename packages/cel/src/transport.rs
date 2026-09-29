@@ -30,10 +30,10 @@ use tokio::sync::OnceCell;
 use tower::ServiceExt;
 
 /// De header waarin een proces het runtime-token meestuurt.
-pub const RUNTIME_TOKEN_HEADER: &str = "x-cel-runtime-token";
+pub const RUNTIME_TOKEN_HEADER: &str = "x-cell-runtime-token";
 
 /// De header waarin een andere runtime het leestoken meestuurt.
-pub const LEES_TOKEN_HEADER: &str = "x-cel-lees-token";
+pub const LEES_TOKEN_HEADER: &str = "x-cell-read-token";
 
 /// Een geheim dat de runtime bij elke start nieuw maakt, en dat alleen haar
 /// eigen processen kennen: het interne transport stuurt het mee, en een cel
@@ -97,9 +97,9 @@ impl std::fmt::Debug for RuntimeToken {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TransportFout {
     /// Geen antwoord: geen verbinding, of niet binnen de tijdslimiet.
-    Onbereikbaar(String),
+    Unreachable(String),
     /// Wel een antwoord, maar geen lexostatus (een HTTP-foutstatus).
-    Antwoord { status: u16, fout: String },
+    Antwoord { status: u16, error: String },
     /// Een antwoord met een goede status, maar geen JSON of niet de vorm die
     /// de vrager verwacht; of een verzoek dat niet als JSON te schrijven is.
     Json(String),
@@ -108,8 +108,8 @@ pub enum TransportFout {
 impl std::fmt::Display for TransportFout {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TransportFout::Onbereikbaar(r) => write!(f, "onbereikbaar: {r}"),
-            TransportFout::Antwoord { status, fout } => write!(f, "status {status}: {fout}"),
+            TransportFout::Unreachable(r) => write!(f, "onbereikbaar: {r}"),
+            TransportFout::Antwoord { status, error } => write!(f, "status {status}: {error}"),
             TransportFout::Json(r) => write!(f, "onleesbaar: {r}"),
         }
     }
@@ -125,11 +125,11 @@ pub trait Transport: Send + Sync {
 
     /// `GET` op een pad van de runtime, zoals `/api/cellen` of
     /// `/cellen/<id>/api/lexostatus/<naam>?<invoer>`, met JSON terug.
-    fn haal<'a>(&'a self, pad: &'a str) -> Antwoord<'a>;
+    fn haal<'a>(&'a self, path: &'a str) -> Antwoord<'a>;
 
     /// `POST` met een JSON-body op een pad van de runtime, zoals
     /// `/cellen/<id>/api/grammen`, met JSON terug.
-    fn stuur<'a>(&'a self, pad: &'a str, body: &'a Value) -> Antwoord<'a>;
+    fn stuur<'a>(&'a self, path: &'a str, body: &'a Value) -> Antwoord<'a>;
 }
 
 /// Onthoudt de antwoorden op `GET` van een of meer transporten, per
@@ -159,7 +159,7 @@ impl Onthouden {
     fn plek(
         &self,
         binnen: &Arc<dyn Transport>,
-        pad: &str,
+        path: &str,
     ) -> Arc<OnceCell<Result<Value, TransportFout>>> {
         // Hetzelfde transport is hetzelfde doel; de sleutel is zijn adres.
         // Dat is uniek zolang het transport leeft, en elk `Onthoudend` houdt
@@ -168,7 +168,7 @@ impl Onthouden {
         self.0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .entry((wie, pad.to_string()))
+            .entry((wie, path.to_string()))
             .or_default()
             .clone()
     }
@@ -184,27 +184,27 @@ impl Transport for Onthoudend {
         self.binnen.soort()
     }
 
-    fn haal<'a>(&'a self, pad: &'a str) -> Antwoord<'a> {
+    fn haal<'a>(&'a self, path: &'a str) -> Antwoord<'a> {
         Box::pin(async move {
-            let plek = self.geheugen.plek(&self.binnen, pad);
-            plek.get_or_init(|| self.binnen.haal(pad)).await.clone()
+            let plek = self.geheugen.plek(&self.binnen, path);
+            plek.get_or_init(|| self.binnen.haal(path)).await.clone()
         })
     }
 
-    fn stuur<'a>(&'a self, pad: &'a str, body: &'a Value) -> Antwoord<'a> {
-        self.binnen.stuur(pad, body)
+    fn stuur<'a>(&'a self, path: &'a str, body: &'a Value) -> Antwoord<'a> {
+        self.binnen.stuur(path, body)
     }
 }
 
 /// Vraag binnen een tijdslimiet. Te laat is onbereikbaar.
 pub async fn haal_binnen(
     transport: &dyn Transport,
-    pad: &str,
+    path: &str,
     limiet: Duration,
 ) -> Result<Value, TransportFout> {
-    match tokio::time::timeout(limiet, transport.haal(pad)).await {
+    match tokio::time::timeout(limiet, transport.haal(path)).await {
         Ok(antwoord) => antwoord,
-        Err(_) => Err(TransportFout::Onbereikbaar(format!(
+        Err(_) => Err(TransportFout::Unreachable(format!(
             "geen antwoord binnen {} s",
             limiet.as_secs_f32()
         ))),
@@ -214,11 +214,11 @@ pub async fn haal_binnen(
 /// Een fout-antwoord `{"fout": "..."}` in woorden. Een antwoord zonder die
 /// vorm gaat mee zoals het is (ingekort), met de reden van de status ervoor.
 fn fouttekst(status: StatusCode, body: &[u8]) -> TransportFout {
-    let reden = status.canonical_reason().unwrap_or("fout");
+    let reason = status.canonical_reason().unwrap_or("fout");
     let als_fout = serde_json::from_slice::<Value>(body)
         .ok()
-        .and_then(|v| v.get("fout")?.as_str().map(str::to_string));
-    let fout = match als_fout {
+        .and_then(|v| v.get("error")?.as_str().map(str::to_string));
+    let error = match als_fout {
         Some(f) => f,
         None => {
             let tekst: String = String::from_utf8_lossy(body)
@@ -227,15 +227,15 @@ fn fouttekst(status: StatusCode, body: &[u8]) -> TransportFout {
                 .take(200)
                 .collect();
             if tekst.is_empty() {
-                reden.to_string()
+                reason.to_string()
             } else {
-                format!("{reden}: {tekst}")
+                format!("{reason}: {tekst}")
             }
         }
     };
     TransportFout::Antwoord {
         status: status.as_u16(),
-        fout,
+        error,
     }
 }
 
@@ -256,26 +256,26 @@ impl Intern {
 
 impl Transport for Intern {
     fn soort(&self) -> &'static str {
-        "intern"
+        "internal"
     }
 
-    fn haal<'a>(&'a self, pad: &'a str) -> Antwoord<'a> {
+    fn haal<'a>(&'a self, path: &'a str) -> Antwoord<'a> {
         Box::pin(async move {
-            let req = Request::get(pad)
+            let req = Request::get(path)
                 .header(RUNTIME_TOKEN_HEADER, self.token.als_str())
                 .body(Body::empty())
-                .map_err(|e| TransportFout::Onbereikbaar(e.to_string()))?;
+                .map_err(|e| TransportFout::Unreachable(e.to_string()))?;
             self.vraag(req).await
         })
     }
 
-    fn stuur<'a>(&'a self, pad: &'a str, body: &'a Value) -> Antwoord<'a> {
+    fn stuur<'a>(&'a self, path: &'a str, body: &'a Value) -> Antwoord<'a> {
         Box::pin(async move {
-            let req = Request::post(pad)
+            let req = Request::post(path)
                 .header(header::CONTENT_TYPE, "application/json")
                 .header(RUNTIME_TOKEN_HEADER, self.token.als_str())
                 .body(Body::from(body.to_string()))
-                .map_err(|e| TransportFout::Onbereikbaar(e.to_string()))?;
+                .map_err(|e| TransportFout::Unreachable(e.to_string()))?;
             self.vraag(req).await
         })
     }
@@ -287,17 +287,17 @@ impl Intern {
             .router
             .get()
             .cloned()
-            .ok_or_else(|| TransportFout::Onbereikbaar("de runtime draait nog niet".into()))?;
+            .ok_or_else(|| TransportFout::Unreachable("de runtime draait nog niet".into()))?;
         let resp = router
             .oneshot(req)
             .await
-            .map_err(|e| TransportFout::Onbereikbaar(e.to_string()))?;
+            .map_err(|e| TransportFout::Unreachable(e.to_string()))?;
         let status = resp.status();
         let body = resp
             .into_body()
             .collect()
             .await
-            .map_err(|e| TransportFout::Onbereikbaar(e.to_string()))?
+            .map_err(|e| TransportFout::Unreachable(e.to_string()))?
             .to_bytes();
         if !status.is_success() {
             return Err(fouttekst(status, &body));
@@ -352,16 +352,16 @@ impl Transport for Http {
         "http"
     }
 
-    fn haal<'a>(&'a self, pad: &'a str) -> Antwoord<'a> {
+    fn haal<'a>(&'a self, path: &'a str) -> Antwoord<'a> {
         Box::pin(async move {
-            let url = format!("{}{pad}", self.basis);
+            let url = format!("{}{path}", self.basis);
             self.antwoord(&url, self.client.get(&url)).await
         })
     }
 
-    fn stuur<'a>(&'a self, pad: &'a str, body: &'a Value) -> Antwoord<'a> {
+    fn stuur<'a>(&'a self, path: &'a str, body: &'a Value) -> Antwoord<'a> {
         Box::pin(async move {
-            let url = format!("{}{pad}", self.basis);
+            let url = format!("{}{path}", self.basis);
             self.antwoord(
                 &url,
                 self.client
@@ -389,13 +389,13 @@ impl Http {
         let resp = verzoek
             .send()
             .await
-            .map_err(|e| TransportFout::Onbereikbaar(format!("{url}: {e}")))?;
+            .map_err(|e| TransportFout::Unreachable(format!("{url}: {e}")))?;
         let status = StatusCode::from_u16(resp.status().as_u16())
             .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
         let body = resp
             .bytes()
             .await
-            .map_err(|e| TransportFout::Onbereikbaar(format!("{url}: {e}")))?;
+            .map_err(|e| TransportFout::Unreachable(format!("{url}: {e}")))?;
         if !status.is_success() {
             return Err(fouttekst(status, &body));
         }
@@ -432,15 +432,15 @@ pub(crate) mod proef {
 
     impl Transport for Vast {
         fn soort(&self) -> &'static str {
-            "intern"
+            "internal"
         }
-        fn haal<'a>(&'a self, pad: &'a str) -> Antwoord<'a> {
-            self.vragen.lock().unwrap().push(pad.to_string());
+        fn haal<'a>(&'a self, path: &'a str) -> Antwoord<'a> {
+            self.vragen.lock().unwrap().push(path.to_string());
             let a = self.antwoord.clone();
             Box::pin(async move { a })
         }
-        fn stuur<'a>(&'a self, pad: &'a str, _body: &'a Value) -> Antwoord<'a> {
-            self.haal(pad)
+        fn stuur<'a>(&'a self, path: &'a str, _body: &'a Value) -> Antwoord<'a> {
+            self.haal(path)
         }
     }
 }
@@ -458,7 +458,7 @@ mod tests {
             .route("/goed", get(|| async { Json(json!({"a": 1})) }))
             .route(
                 "/fout",
-                get(|| async { (StatusCode::NOT_FOUND, Json(json!({"fout": "weg"}))) }),
+                get(|| async { (StatusCode::NOT_FOUND, Json(json!({"error": "weg"}))) }),
             )
             .route("/geen-json", get(|| async { "geen json" }))
             .route(
@@ -495,7 +495,7 @@ mod tests {
         let t = Intern::new(lock.clone(), RuntimeToken::nieuw());
         assert!(matches!(
             t.haal("/goed").await,
-            Err(TransportFout::Onbereikbaar(_))
+            Err(TransportFout::Unreachable(_))
         ));
         lock.set(router()).ok();
         assert_eq!(t.haal("/goed").await.unwrap(), json!({"a": 1}));
@@ -503,7 +503,7 @@ mod tests {
             t.haal("/fout").await.unwrap_err(),
             TransportFout::Antwoord {
                 status: 404,
-                fout: "weg".into()
+                error: "weg".into()
             }
         );
     }
@@ -524,10 +524,10 @@ mod tests {
             t.haal("/geen-json").await,
             Err(TransportFout::Json(r)) if r.contains("geen JSON")
         ));
-        let fout = haal_binnen(&t, "/traag", Duration::from_millis(200))
+        let error = haal_binnen(&t, "/traag", Duration::from_millis(200))
             .await
             .unwrap_err();
-        assert!(matches!(fout, TransportFout::Onbereikbaar(r) if r.contains("binnen")));
+        assert!(matches!(error, TransportFout::Unreachable(r) if r.contains("binnen")));
     }
 
     /// Een route die de header met het runtime-token teruggeeft.
@@ -579,7 +579,7 @@ mod tests {
         let t = Http::new(&format!("http://{adres}"), Duration::from_secs(2)).unwrap();
         assert!(matches!(
             t.haal("/goed").await,
-            Err(TransportFout::Onbereikbaar(_))
+            Err(TransportFout::Unreachable(_))
         ));
     }
 }

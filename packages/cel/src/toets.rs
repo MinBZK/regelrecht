@@ -16,22 +16,22 @@ use serde_json::Value;
 /// De uitslag van een toets.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Uitslag {
-    pub regeling: String,
-    pub uitkomst: String,
+    pub regulation: String,
+    pub output: String,
     /// Of de engine een waarde gaf.
-    pub te_beoordelen: bool,
+    pub to_assess: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub waarde: Option<Value>,
+    pub value: Option<Value>,
     /// Wat de engine miste, als hij dat noemde.
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub mist: Vec<String>,
+    pub missing: Vec<String>,
     /// Waarom niet te beoordelen, in woorden.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub reden: Option<String>,
+    pub reason: Option<String>,
     /// De parameters uit de lexostatus die zeggen dat iets ontbreekt
     /// (zie [`crate::reductie::ontbreekt`]). Staat los van de uitkomst: ook
     /// een niet te beoordelen toets noemt wat er aan de aanvraag ontbreekt.
-    pub ontbreekt: Vec<String>,
+    pub absent: Vec<String>,
     /// De trace van de engine-run, als tekst.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trace_text: Option<String>,
@@ -43,35 +43,35 @@ pub struct Evaluatie {
     /// De uitkomsten met een waarde zonder onbekende feiten.
     pub waarden: BTreeMap<String, Value>,
     /// Wat de engine miste, zonder dubbelen, in de volgorde van de uitkomsten.
-    pub mist: Vec<String>,
+    pub missing: Vec<String>,
     /// Wat de engine miste, per uitkomst zonder waarde. Brak de run af op een
     /// ontbrekend feit, dan mist elke gevraagde uitkomst dat feit.
     pub mist_per: BTreeMap<String, Vec<String>>,
     /// Waarom een uitkomst geen waarde kreeg, als de engine dat niet als
     /// ontbrekend feit noemde.
-    pub fout: Option<String>,
+    pub error: Option<String>,
     /// De trace van de engine-run als tekst, als die gevraagd was.
     pub trace_text: Option<String>,
 }
 
 impl Evaluatie {
     /// Of elke gevraagde uitkomst een waarde heeft.
-    pub fn volledig(&self, uitkomsten: &[&str]) -> bool {
-        self.fout.is_none()
-            && self.mist.is_empty()
-            && uitkomsten.iter().all(|u| self.waarden.contains_key(*u))
+    pub fn volledig(&self, outputs: &[&str]) -> bool {
+        self.error.is_none()
+            && self.missing.is_empty()
+            && outputs.iter().all(|u| self.waarden.contains_key(*u))
     }
 
     /// Wat `uitkomst` miste; leeg als ze niets miste.
-    pub fn mist_van(&self, uitkomst: &str) -> &[String] {
-        self.mist_per.get(uitkomst).map_or(&[], Vec::as_slice)
+    pub fn mist_van(&self, output: &str) -> &[String] {
+        self.mist_per.get(output).map_or(&[], Vec::as_slice)
     }
 
     /// Waarom niet volledig, in woorden; `voorvoegsel` is bijvoorbeeld "niet
     /// te beoordelen".
-    pub fn reden(&self, voorvoegsel: &str) -> String {
-        match (&self.fout, self.mist.is_empty()) {
-            (_, false) => format!("{voorvoegsel}: mist {}", self.mist.join(", ")),
+    pub fn reason(&self, voorvoegsel: &str) -> String {
+        match (&self.error, self.missing.is_empty()) {
+            (_, false) => format!("{voorvoegsel}: mist {}", self.missing.join(", ")),
             (Some(f), true) => format!("{voorvoegsel}: {f}"),
             (None, true) => voorvoegsel.to_string(),
         }
@@ -83,50 +83,50 @@ impl Evaluatie {
 /// onbekend feit heeft geen waarde, en dat feit staat in `mist`.
 pub fn evalueer(
     service: &LawExecutionService,
-    regeling: &str,
-    uitkomsten: &[&str],
+    regulation: &str,
+    outputs: &[&str],
     parameters: &BTreeMap<String, Value>,
-    datum: &str,
+    date: &str,
 ) -> Evaluatie {
-    evalueer_als(service, regeling, uitkomsten, parameters, datum, false)
+    evalueer_als(service, regulation, outputs, parameters, date, false)
 }
 
 /// Als [`evalueer`], met de trace van de engine erbij (voor wie wil zien hoe
 /// de uitkomst tot stand kwam).
 pub fn evalueer_met_trace(
     service: &LawExecutionService,
-    regeling: &str,
-    uitkomsten: &[&str],
+    regulation: &str,
+    outputs: &[&str],
     parameters: &BTreeMap<String, Value>,
-    datum: &str,
+    date: &str,
 ) -> Evaluatie {
-    evalueer_als(service, regeling, uitkomsten, parameters, datum, true)
+    evalueer_als(service, regulation, outputs, parameters, date, true)
 }
 
 fn evalueer_als(
     service: &LawExecutionService,
-    regeling: &str,
-    uitkomsten: &[&str],
+    regulation: &str,
+    outputs: &[&str],
     parameters: &BTreeMap<String, Value>,
-    datum: &str,
+    date: &str,
     met_trace: bool,
 ) -> Evaluatie {
     let mut uit = Evaluatie::default();
-    let invoer: BTreeMap<String, EngineValue> = parameters
+    let input: BTreeMap<String, EngineValue> = parameters
         .iter()
         .map(|(k, v)| (k.clone(), EngineValue::from(v)))
         .collect();
     let resultaat = if met_trace {
-        service.evaluate_law_with_trace(regeling, uitkomsten, invoer, datum)
+        service.evaluate_law_with_trace(regulation, outputs, input, date)
     } else {
-        service.evaluate_law(regeling, uitkomsten, invoer, datum)
+        service.evaluate_law(regulation, outputs, input, date)
     };
     match resultaat {
         Ok(resultaat) => {
             // Dezelfde tekstweergave als de editor: de box-drawing-trace van
             // de engine.
             uit.trace_text = resultaat.trace.as_ref().map(|t| t.render_box_drawing());
-            for u in uitkomsten {
+            for u in outputs {
                 match resultaat.outputs.get(*u) {
                     Some(w) if w.contains_unknown() => {
                         let eigen = uit.mist_per.entry((*u).to_string()).or_default();
@@ -134,8 +134,8 @@ fn evalueer_als(
                             if !eigen.contains(&f.name) {
                                 eigen.push(f.name.clone());
                             }
-                            if !uit.mist.contains(&f.name) {
-                                uit.mist.push(f.name.clone());
+                            if !uit.missing.contains(&f.name) {
+                                uit.missing.push(f.name.clone());
                             }
                         }
                     }
@@ -144,28 +144,28 @@ fn evalueer_als(
                             uit.waarden.insert((*u).to_string(), v);
                         }
                         Err(e) => {
-                            uit.fout.get_or_insert_with(|| {
+                            uit.error.get_or_insert_with(|| {
                                 format!("de waarde van '{u}' is niet als JSON te lezen: {e}")
                             });
                         }
                     },
                     None => {
-                        uit.fout
+                        uit.error
                             .get_or_insert_with(|| format!("de engine gaf geen waarde voor '{u}'"));
                     }
                 }
             }
         }
         Err(e) => {
-            let (mist, reden) = verklaar(&e);
-            match mist {
+            let (missing, reason) = verklaar(&e);
+            match missing {
                 Some(m) => {
-                    for u in uitkomsten {
+                    for u in outputs {
                         uit.mist_per.insert((*u).to_string(), vec![m.clone()]);
                     }
-                    uit.mist.push(m);
+                    uit.missing.push(m);
                 }
-                None => uit.fout = Some(reden),
+                None => uit.error = Some(reason),
             }
         }
     }
@@ -174,24 +174,24 @@ fn evalueer_als(
 
 /// Evalueer `uitkomst` van `regeling` met deze parameters op `datum`
 /// (JJJJ-MM-DD). `ontbreekt` gaat ongewijzigd mee in de uitslag.
-pub fn toets(
+pub fn assessment(
     service: &LawExecutionService,
-    regeling: &str,
-    uitkomst: &str,
+    regulation: &str,
+    output: &str,
     parameters: &BTreeMap<String, Value>,
-    ontbreekt: Vec<String>,
-    datum: &str,
+    absent: Vec<String>,
+    date: &str,
 ) -> Uitslag {
-    let e = evalueer_met_trace(service, regeling, &[uitkomst], parameters, datum);
-    let te_beoordelen = e.volledig(&[uitkomst]);
+    let e = evalueer_met_trace(service, regulation, &[output], parameters, date);
+    let to_assess = e.volledig(&[output]);
     Uitslag {
-        regeling: regeling.to_string(),
-        uitkomst: uitkomst.to_string(),
-        te_beoordelen,
-        waarde: e.waarden.get(uitkomst).cloned(),
-        reden: (!te_beoordelen).then(|| e.reden("niet te beoordelen")),
-        mist: e.mist,
-        ontbreekt,
+        regulation: regulation.to_string(),
+        output: output.to_string(),
+        to_assess,
+        value: e.waarden.get(output).cloned(),
+        reason: (!to_assess).then(|| e.reason("niet te beoordelen")),
+        missing: e.missing,
+        absent,
         trace_text: e.trace_text,
     }
 }
@@ -200,7 +200,7 @@ pub fn toets(
 fn verklaar(e: &EngineError) -> (Option<String>, String) {
     match e {
         EngineError::TracedError { source, .. } => verklaar(source),
-        EngineError::VariableNotFound(naam) => (Some(naam.clone()), e.to_string()),
+        EngineError::VariableNotFound(name) => (Some(name.clone()), e.to_string()),
         EngineError::MissingParameter { name, .. } => (Some(name.clone()), e.to_string()),
         // Een null waar de regeling er geen toestaat: ook dat feit is er niet.
         EngineError::NullForNonNullable { field, .. } => (Some(field.clone()), e.to_string()),
@@ -235,7 +235,7 @@ mod tests {
 
     #[test]
     fn volledige_aanvraag() {
-        let u = toets(
+        let u = assessment(
             &service(),
             "testregeling_aanvraag",
             "aanvraag_volledig",
@@ -243,15 +243,15 @@ mod tests {
             Vec::new(),
             "2025-03-12",
         );
-        assert!(u.te_beoordelen, "{u:?}");
-        assert_eq!(u.waarde, Some(json!(true)));
+        assert!(u.to_assess, "{u:?}");
+        assert_eq!(u.value, Some(json!(true)));
     }
 
     #[test]
     fn onvolledige_aanvraag() {
         let mut p = volledig();
         p.insert("bevat_aanduiding".into(), json!(false));
-        let u = toets(
+        let u = assessment(
             &service(),
             "testregeling_aanvraag",
             "aanvraag_volledig",
@@ -259,15 +259,15 @@ mod tests {
             vec!["bevat_aanduiding".into()],
             "2025-03-12",
         );
-        assert_eq!(u.waarde, Some(json!(false)));
-        assert_eq!(u.ontbreekt, vec!["bevat_aanduiding"]);
+        assert_eq!(u.value, Some(json!(false)));
+        assert_eq!(u.absent, vec!["bevat_aanduiding"]);
     }
 
     #[test]
     fn ontbrekende_parameter_is_niet_te_beoordelen() {
         let mut p = volledig();
         p.remove("aanvraagjaar");
-        let u = toets(
+        let u = assessment(
             &service(),
             "testregeling_aanvraag",
             "aanvraag_volledig",
@@ -275,10 +275,10 @@ mod tests {
             Vec::new(),
             "2025-03-12",
         );
-        assert!(!u.te_beoordelen);
-        assert_eq!(u.mist, vec!["aanvraagjaar"]);
+        assert!(!u.to_assess);
+        assert_eq!(u.missing, vec!["aanvraagjaar"]);
         assert_eq!(
-            u.reden.as_deref(),
+            u.reason.as_deref(),
             Some("niet te beoordelen: mist aanvraagjaar")
         );
     }
@@ -288,7 +288,7 @@ mod tests {
         let mut p = volledig();
         p.insert("is_samengevoegd".into(), json!(true));
         p.remove("bevat_aantal_aanduidingen");
-        let u = toets(
+        let u = assessment(
             &service(),
             "testregeling_aanvraag",
             "aanvraag_volledig",
@@ -296,8 +296,8 @@ mod tests {
             Vec::new(),
             "2025-03-12",
         );
-        assert!(!u.te_beoordelen);
-        assert_eq!(u.mist, vec!["bevat_aantal_aanduidingen"]);
+        assert!(!u.to_assess);
+        assert_eq!(u.missing, vec!["bevat_aantal_aanduidingen"]);
     }
 
     /// De engine-bevinding: bij een gevraagde uitkomst voert de engine het
@@ -310,7 +310,7 @@ mod tests {
         let s = service();
         let p: BTreeMap<String, Value> =
             serde_json::from_value(json!({"bevat_naam": true, "bevat_aanduiding": true})).unwrap();
-        let u = toets(
+        let u = assessment(
             &s,
             "testregeling_aanvraag",
             "aanvraag_compleet",
@@ -318,12 +318,12 @@ mod tests {
             Vec::new(),
             "2025-03-12",
         );
-        assert!(!u.te_beoordelen, "{u:?}");
-        assert_eq!(u.mist, vec!["verzuimdagen"]);
+        assert!(!u.to_assess, "{u:?}");
+        assert_eq!(u.missing, vec!["verzuimdagen"]);
 
         let mut p2 = p.clone();
         p2.insert("verzuimdagen".into(), json!(0));
-        let u = toets(
+        let u = assessment(
             &s,
             "testregeling_aanvraag",
             "aanvraag_compleet",
@@ -331,10 +331,10 @@ mod tests {
             Vec::new(),
             "2025-03-12",
         );
-        assert_eq!(u.mist, vec!["eigen_feit_behandelaar"]);
+        assert_eq!(u.missing, vec!["eigen_feit_behandelaar"]);
 
         p2.insert("eigen_feit_behandelaar".into(), json!(false));
-        let u = toets(
+        let u = assessment(
             &s,
             "testregeling_aanvraag",
             "aanvraag_compleet",
@@ -342,12 +342,12 @@ mod tests {
             Vec::new(),
             "2025-03-12",
         );
-        assert_eq!(u.waarde, Some(json!(true)));
+        assert_eq!(u.value, Some(json!(true)));
     }
 
     #[test]
     fn onbekende_regeling() {
-        let u = toets(
+        let u = assessment(
             &service(),
             "bestaat_niet",
             "x",
@@ -355,7 +355,7 @@ mod tests {
             Vec::new(),
             "2025-03-12",
         );
-        assert!(!u.te_beoordelen);
-        assert!(u.reden.unwrap().contains("bestaat_niet"));
+        assert!(!u.to_assess);
+        assert!(u.reason.unwrap().contains("bestaat_niet"));
     }
 }

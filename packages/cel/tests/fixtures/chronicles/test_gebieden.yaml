@@ -8,7 +8,7 @@ chronicle: test_gebieden
 events:
   - name: tarief_vastgesteld
     intake: besluit
-    grondslag: [testregeling_afnemer#3]
+    legal_basis: [testregeling_afnemer#3]
     type: decretogram
     fields:
       gebied: $external.gebied

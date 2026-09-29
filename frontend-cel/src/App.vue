@@ -4,8 +4,8 @@
 // een zaak openen en er handelingen in doen, op proef en vastgelegd. Een cel
 // toont haar kroniek en haar lexostatussen aan wie als behandelaar is
 // ingelogd in een proces dat haar leest. De frontend kent geen casus:
-// welke processen en cellen er zijn, komt van GET /api/processen en
-// GET /api/cellen.
+// welke processen en cellen er zijn, komt van GET /api/processes en
+// GET /api/cells.
 import { computed, onMounted, ref } from 'vue';
 import { cellen as haalCellen, processen as haalProcessen } from './api.js';
 import CelView from './views/CelView.vue';
@@ -18,31 +18,31 @@ const gekozen = ref(null);
 const fout = ref('');
 const geladen = ref(false);
 
-const portalen = computed(() => processen.value.filter((p) => p.portaal));
+const portalen = computed(() => processen.value.filter((p) => p.portal));
 const proces = computed(() => processen.value.find((p) => `proces:${p.id}` === gekozen.value) ?? null);
 const cel = computed(() => cellen.value.find((c) => `cel:${c.id}` === gekozen.value) ?? null);
-const celVan = (p) => cellen.value.find((c) => c.id === p.cel) ?? null;
+const celVan = (p) => cellen.value.find((c) => c.id === p.cell) ?? null;
 
 // Langs welke route de cellen reduceren (experiment A): `engine` of
-// `vergelijk` als de runtime met CEL_REDUCTIE draait, anders null (de
+// `vergelijk` (runtime: `compare`) als de runtime met CELL_REDUCTION draait, anders null (de
 // reductie-DSL). De lexostatussen die bewust langs de DSL gaan, met reden.
 const reductie = computed(() => {
-  const r = cellen.value.map((c) => c.reductie).filter(Boolean);
+  const r = cellen.value.map((c) => c.reduction).filter(Boolean);
   if (!r.length) return null;
-  return r.includes('vergelijk') ? 'vergelijk' : 'engine';
+  return r.includes('compare') ? 'vergelijk' : 'engine';
 });
 const langsDeDsl = computed(() =>
   cellen.value.flatMap((c) =>
-    (c.lexostatussen ?? [])
-      .filter((l) => l.reductie?.route === 'dsl')
-      .map((l) => `${c.id}/${l.name} (${l.reductie.reden})`),
+    (c.lexostatuses ?? [])
+      .filter((l) => l.reduction?.route === 'dsl')
+      .map((l) => `${c.id}/${l.name} (${l.reduction.reason})`),
   ),
 );
 const reductieUitleg = computed(() => {
-  const n = cellen.value.flatMap((c) => c.lexostatussen ?? []).filter((l) => l.reductie?.route === 'engine').length;
+  const n = cellen.value.flatMap((c) => c.lexostatuses ?? []).filter((l) => l.reduction?.route === 'engine').length;
   const vergelijk = reductie.value === 'vergelijk' ? ' Elke reductie gaat ook langs de DSL; een verschil is een fout.' : '';
   const dsl = langsDeDsl.value.length ? ` Bewust langs de DSL: ${langsDeDsl.value.join('; ')}.` : '';
-  const runtime = [...new Set(cellen.value.flatMap((c) => (c.lexostatussen ?? []).filter((l) => l.reductie?.route === 'runtime').map((l) => l.name)))];
+  const runtime = [...new Set(cellen.value.flatMap((c) => (c.lexostatuses ?? []).filter((l) => l.reduction?.route === 'runtime').map((l) => l.name)))];
   const zelf = runtime.length ? ` Door de runtime zelf: ${runtime.join(', ')}.` : '';
   return `${n} lexostatussen reduceren als engine-run van een regeling (experiment A).${vergelijk}${dsl}${zelf}`;
 });
@@ -65,18 +65,18 @@ function tab(e) {
 }
 
 function procesTekst(p) {
-  const delen = [`cel ${p.cel}`, p.portaal ? 'portaal' : 'geen portaal'];
-  if (p.behandeling) delen.push(`behandeling (werkvoorraad, ${p.behandeling.handelingen?.length ?? 0} handelingen)`);
-  const bronnen = [...new Set(p.synthese.filter((s) => !s.zaak).map((s) => s.cel))];
+  const delen = [`cel ${p.cell}`, p.portal ? 'portaal' : 'geen portaal'];
+  if (p.handling) delen.push(`behandeling (werkvoorraad, ${p.handling.actions?.length ?? 0} handelingen)`);
+  const bronnen = [...new Set(p.synthesis.filter((s) => !s.case).map((s) => s.cell))];
   if (bronnen.length) delen.push(`synthese uit ${bronnen.join(', ')}`);
   return delen.join('; ');
 }
 
 function celTekst(c) {
-  const delen = [`kroniek ${c.kronieken.join(', ')}`];
-  if (c.lexostatussen.length) {
-    const naam = (l) => (l.reductie?.route ? `${l.name} (${l.reductie.route})` : l.name);
-    delen.push(`lexostatus ${c.lexostatussen.map(naam).join(', ')}`);
+  const delen = [`kroniek ${c.chronicles.join(', ')}`];
+  if (c.lexostatuses.length) {
+    const naam = (l) => (l.reduction?.route ? `${l.name} (${l.reduction.route})` : l.name);
+    delen.push(`lexostatus ${c.lexostatuses.map(naam).join(', ')}`);
   }
   return delen.join('; ');
 }
@@ -125,7 +125,7 @@ function celTekst(c) {
           v-else-if="cel"
           :key="gekozen"
           :cel="cel"
-          :processen="processen.filter((p) => (p.inzage ?? []).includes(cel.id))"
+          :processen="processen.filter((p) => (p.inspection ?? []).includes(cel.id))"
           @open="gekozen = `proces:${$event}`"
         />
         <template v-else>
@@ -141,7 +141,7 @@ function celTekst(c) {
               <nldd-cell>
                 <nldd-button variant="secondary" text="Open" :accessible-label="`Open proces ${p.id}`" @click="gekozen = `proces:${p.id}`"></nldd-button>
               </nldd-cell>
-              <nldd-text-cell :text="p.id" :supporting-text="p.titel ?? undefined"></nldd-text-cell>
+              <nldd-text-cell :text="p.id" :supporting-text="p.title ?? undefined"></nldd-text-cell>
               <nldd-text-cell :text="procesTekst(p)"></nldd-text-cell>
             </nldd-table-row>
           </nldd-table>

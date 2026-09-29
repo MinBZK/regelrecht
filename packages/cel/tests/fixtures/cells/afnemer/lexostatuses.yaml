@@ -1,0 +1,63 @@
+---
+# Fictieve lexostatussen van de afnemer. De aanduiding zelf is geen
+# parameter: ze is de invoer voor de registercel, en gaat niet naar de engine.
+# De werkvoorraad is een lijst: een regel per zaak met een aanvraag en zonder
+# besluit. Het verloop van de zaak leest afwezigheid als "niet gebeurd". Het
+# besluit: het vastgestelde bedrag, wat betaald is, de bekendmaking en de
+# bezwaartermijn.
+cell: test_afnemer
+lexostatus_definitions:
+  - name: aanvraag_inhoud
+    inputs: [{name: root, type: string}]
+    reduction:
+      chronicle: test_afnemer
+      filter: {type: submission, subtype: aanvraag, root: $root}
+      pick: latest
+      derivations:
+        aanvraagdatum: {moment: effective_at}
+        bevat_aanduiding: {filled: content.aanduiding}
+      extra_fields:
+        aanduiding: {field: content.aanduiding}
+        gebieden: {field: content.gebieden}   # de regels voor de synthese per regel
+  - name: werkvoorraad
+    inputs: []
+    reduction:
+      chronicle: test_afnemer
+      filter: {type: submission, subtype: aanvraag}
+      group_by: root
+      without: {stage: BESLUIT}
+      pick: latest
+      derivations:
+        ontvangen_op: {moment: effective_at}
+        aanvrager: {field: core.aanvrager.naam}
+        kvk: {field: core.signed_via.kvk_nummer}
+  - name: zaakverloop
+    inputs: [{name: root, type: string}]
+    reduction:
+      chronicle: test_afnemer
+      filter: {root: $root}
+      derivations:
+        datum_uitnodiging_aanvulling:
+          filter: {name: aanvulling_gevraagd}
+          pick: latest
+          field: datum_uitnodiging
+          no_gram: null
+        opgeschorte_dagen: {filter: {name: termijn_opgeschort}, sum: dagen}
+  - name: besluit
+    inputs: [{name: root, type: string}]
+    reduction:
+      chronicle: test_afnemer
+      filter: {root: $root}
+      derivations:
+        vastgesteld_bedrag:
+          {filter: {stage: BESLUIT}, pick: latest, field: vastgesteld_bedrag, legal_basis: [testregeling_awb#3 lid 1]}
+        betaald_bedrag: {filter: {name: betaling_verricht}, sum: bedrag, legal_basis: [testregeling_awb#3 lid 1]}
+        datum_bekendmaking:
+          filter: {stage: BEKENDMAKING}
+          pick: latest
+          field: datum_bekendmaking
+          no_gram: null
+          legal_basis: [testregeling_awb#2]
+      extra_fields:
+        aanvang_bezwaartermijn: {filter: {stage: BEKENDMAKING}, pick: latest, field: aanvang_bezwaartermijn, no_gram: null}
+        einde_bezwaartermijn: {filter: {stage: BEKENDMAKING}, pick: latest, field: einde_bezwaartermijn, no_gram: null}

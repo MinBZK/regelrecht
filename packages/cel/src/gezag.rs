@@ -28,7 +28,7 @@ use crate::regelingen;
 
 /// Een naam van een gezag uit `competent_authority`: een tekst, of een
 /// object met `name`. Een verwijzing (`#bevoegd_gezag`) is geen naam.
-fn naam(v: &Value) -> Option<String> {
+fn name(v: &Value) -> Option<String> {
     match v {
         Value::String(s) => s.strip_prefix('#').is_none().then(|| s.clone()),
         Value::Object(o) => o.get("name").and_then(Value::as_str).map(str::to_string),
@@ -36,26 +36,26 @@ fn naam(v: &Value) -> Option<String> {
     }
 }
 
-fn naam_van<T: serde::Serialize>(gezag: &T) -> Option<String> {
-    naam(&serde_json::to_value(gezag).ok()?)
+fn naam_van<T: serde::Serialize>(authority: &T) -> Option<String> {
+    name(&serde_json::to_value(authority).ok()?)
 }
 
 /// Het bevoegd gezag van een regeling zelf, zonder dat van een artikel.
-pub fn gezag_van_regeling(service: &LawExecutionService, regeling: &str) -> Option<String> {
-    let law = service.resolver().get_law(regeling)?;
+pub fn gezag_van_regeling(service: &LawExecutionService, regulation: &str) -> Option<String> {
+    let law = service.resolver().get_law(regulation)?;
     naam_van(law.competent_authority.as_ref()?)
 }
 
 /// Het bevoegd gezag volgens de wet: van het artikel zelf, anders van de
 /// regeling.
-pub fn gezag_van(service: &LawExecutionService, regeling: &str, artikel: &str) -> Option<String> {
-    let law = service.resolver().get_law(regeling)?;
-    let gezag = law
-        .find_article_by_number(artikel)
+pub fn gezag_van(service: &LawExecutionService, regulation: &str, article: &str) -> Option<String> {
+    let law = service.resolver().get_law(regulation)?;
+    let authority = law
+        .find_article_by_number(article)
         .and_then(|a| a.machine_readable.as_ref())
         .and_then(|m| m.competent_authority.as_ref())
         .or(law.competent_authority.as_ref())?;
-    naam_van(gezag)
+    naam_van(authority)
 }
 
 /// Elk gezag dat een geladen regeling noemt, bij de regeling of bij een
@@ -83,7 +83,7 @@ pub fn gezagen(service: &LawExecutionService) -> BTreeSet<String> {
 /// elk artikel dat een `BESCHIKKING` produceert en waarvan het bevoegd gezag
 /// (van het artikel, anders van de regeling) `gezag` is. Zo vindt een proces
 /// zijn besluit in de wet, zonder dat de configuratie het aanwijst.
-pub fn beschikkingen_van(service: &LawExecutionService, gezag: &str) -> Vec<(String, String)> {
+pub fn beschikkingen_van(service: &LawExecutionService, authority: &str) -> Vec<(String, String)> {
     let mut uit = Vec::new();
     for id in service.list_laws() {
         let Some(law) = service.resolver().get_law(id) else {
@@ -95,7 +95,7 @@ pub fn beschikkingen_van(service: &LawExecutionService, gezag: &str) -> Vec<(Str
                 .and_then(|e| e.produces.as_ref())
                 .and_then(|p| p.legal_character.as_deref())
                 == Some("BESCHIKKING");
-            if beschikking && gezag_van(service, id, &a.number).as_deref() == Some(gezag) {
+            if beschikking && gezag_van(service, id, &a.number).as_deref() == Some(authority) {
                 uit.push((id.to_string(), a.number.clone()));
             }
         }
@@ -108,9 +108,9 @@ pub fn beschikkingen_van(service: &LawExecutionService, gezag: &str) -> Vec<(Str
 /// Het gezag waarvoor het proces handelt, uit `namens`, zonder controle:
 /// `None` als het proces er geen noemt of de regeling er geen heeft.
 pub fn eigen(d: &ProcesDefinitie, service: &LawExecutionService) -> Option<String> {
-    match d.namens.as_ref()? {
-        Namens::Gezag { gezag } => Some(gezag.clone()),
-        Namens::Regeling { regeling } => gezag_van_regeling(service, regeling),
+    match d.on_behalf_of.as_ref()? {
+        Namens::Gezag { authority } => Some(authority.clone()),
+        Namens::Regeling { regulation } => gezag_van_regeling(service, regulation),
     }
 }
 
@@ -135,47 +135,49 @@ pub fn los_op(
         )
     };
     let mut fouten = Vec::new();
-    let eigen = match &d.namens {
+    let eigen = match &d.on_behalf_of {
         None => None,
-        Some(Namens::Gezag { gezag }) => {
-            if !bekend.contains(gezag) {
-                fouten.push(format!("namens: {}", onbekend(gezag)));
+        Some(Namens::Gezag { authority }) => {
+            if !bekend.contains(authority) {
+                fouten.push(format!("on_behalf_of: {}", onbekend(authority)));
             }
-            Some(gezag.clone())
+            Some(authority.clone())
         }
-        Some(Namens::Regeling { regeling }) => match service.resolver().get_law(regeling) {
+        Some(Namens::Regeling { regulation }) => match service.resolver().get_law(regulation) {
             None => {
-                fouten.push(format!("namens: regeling '{regeling}' is niet geladen"));
+                fouten.push(format!(
+                    "on_behalf_of: regeling '{regulation}' is niet geladen"
+                ));
                 None
             }
-            Some(_) => match gezag_van_regeling(service, regeling) {
+            Some(_) => match gezag_van_regeling(service, regulation) {
                 Some(g) => Some(g),
                 None => {
                     fouten.push(format!(
-                        "namens: regeling '{regeling}' noemt geen bevoegd gezag (competent_authority)"
+                        "on_behalf_of: regeling '{regulation}' noemt geen bevoegd gezag (competent_authority)"
                     ));
                     None
                 }
             },
         },
     };
-    for m in &d.mandaten {
-        if !bekend.contains(&m.gezag) {
-            fouten.push(format!("mandaat: {}", onbekend(&m.gezag)));
+    for m in &d.mandates {
+        if !bekend.contains(&m.authority) {
+            fouten.push(format!("mandaat: {}", onbekend(&m.authority)));
         }
-        if eigen.as_deref() == Some(m.gezag.as_str()) {
+        if eigen.as_deref() == Some(m.authority.as_str()) {
             fouten.push(format!(
                 "mandaat: '{}' is het gezag waarvoor het proces zelf handelt (namens)",
-                m.gezag
+                m.authority
             ));
         }
-        if let Err(f) = regelingen::geldig(service, &m.grondslag) {
-            fouten.push(format!("mandaat van '{}': {f}", m.gezag));
+        if let Err(f) = regelingen::geldig(service, &m.legal_basis) {
+            fouten.push(format!("mandaat van '{}': {f}", m.authority));
         }
     }
-    if d.behandeling.is_some() && d.namens.is_none() {
+    if d.handling.is_some() && d.on_behalf_of.is_none() {
         fouten.push(
-            "behandeling zonder namens: noem het bevoegd gezag waarvoor het proces besluit (namens: {gezag: <naam>} of {regeling: <$id>})".into(),
+            "behandeling zonder on_behalf_of: noem het bevoegd gezag waarvoor het proces besluit (namens: {authority: <naam>} of {regulation: <$id>})".into(),
         );
     }
     if fouten.is_empty() {
@@ -189,29 +191,29 @@ pub fn los_op(
 /// mag nemen: als dat gezag zelf, of in mandaat.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Bevoegdheid<'a> {
-    Eigen,
+    Own,
     Mandaat(&'a Mandaat),
 }
 
 /// Toets het gezag van de wet tegen het eigen gezag en de mandaten. Een
 /// ander gezag zonder mandaat is een weigering, met de reden.
-pub fn toets<'a>(
+pub fn assessment<'a>(
     eigen: Option<&str>,
-    mandaten: &'a [Mandaat],
-    wet: &str,
+    mandates: &'a [Mandaat],
+    law: &str,
 ) -> Result<Bevoegdheid<'a>, String> {
-    if eigen == Some(wet) {
-        return Ok(Bevoegdheid::Eigen);
+    if eigen == Some(law) {
+        return Ok(Bevoegdheid::Own);
     }
-    if let Some(m) = mandaten.iter().find(|m| m.gezag == wet) {
+    if let Some(m) = mandates.iter().find(|m| m.authority == law) {
         return Ok(Bevoegdheid::Mandaat(m));
     }
     Err(match eigen {
         Some(e) => format!(
-            "de wet wijst '{wet}' aan als bevoegd gezag, en het proces handelt namens '{e}' zonder mandaat van '{wet}'"
+            "de wet wijst '{law}' aan als bevoegd gezag, en het proces handelt namens '{e}' zonder mandaat van '{law}'"
         ),
         None => format!(
-            "de wet wijst '{wet}' aan als bevoegd gezag, en het proces noemt niet namens wie het handelt"
+            "de wet wijst '{law}' aan als bevoegd gezag, en het proces noemt niet namens wie het handelt"
         ),
     })
 }
@@ -284,23 +286,23 @@ articles:
     #[test]
     fn namens_een_gezag_of_een_regeling() {
         let s = service();
-        let d = proces("namens: {gezag: De Raad van Voorbeeld}\n");
+        let d = proces("on_behalf_of: {authority: De Raad van Voorbeeld}\n");
         assert_eq!(
             los_op(&d, &s).unwrap().as_deref(),
             Some("De Raad van Voorbeeld")
         );
-        let d = proces("namens: {regeling: testregeling_bevoegd}\n");
+        let d = proces("on_behalf_of: {regulation: testregeling_bevoegd}\n");
         assert_eq!(
             los_op(&d, &s).unwrap().as_deref(),
             Some("De Instantie van Voorbeeld")
         );
-        let d = proces("namens: {gezag: de_instantie_van_voorbeeld}\n");
+        let d = proces("on_behalf_of: {authority: de_instantie_van_voorbeeld}\n");
         let f = los_op(&d, &s).unwrap_err();
         assert!(
             f[0].contains("geen geladen regeling noemt 'de_instantie_van_voorbeeld'"),
             "{f:?}"
         );
-        let d = proces("namens: {regeling: bestaat_niet}\n");
+        let d = proces("on_behalf_of: {regulation: bestaat_niet}\n");
         assert!(los_op(&d, &s).unwrap_err()[0].contains("niet geladen"));
         assert_eq!(los_op(&proces(""), &s).unwrap(), None);
     }
@@ -309,13 +311,13 @@ articles:
     fn een_mandaat_noemt_een_bekend_gezag_en_een_grondslag() {
         let s = service();
         let ok = proces(
-            "namens: {regeling: testregeling_bevoegd}\nmandaten:\n  - {gezag: De Raad van Voorbeeld, grondslag: 'testregeling_bevoegd#4'}\n",
+            "on_behalf_of: {regulation: testregeling_bevoegd}\nmandates:\n  - {authority: De Raad van Voorbeeld, legal_basis: 'testregeling_bevoegd#4'}\n",
         );
         assert!(los_op(&ok, &s).is_ok());
-        let fout = proces(
-            "namens: {regeling: testregeling_bevoegd}\nmandaten:\n  - {gezag: De Instantie van Voorbeeld, grondslag: 'testregeling_bevoegd#9'}\n  - {gezag: Niemand, grondslag: 'testregeling_bevoegd#4'}\n",
+        let error = proces(
+            "on_behalf_of: {regulation: testregeling_bevoegd}\nmandates:\n  - {authority: De Instantie van Voorbeeld, legal_basis: 'testregeling_bevoegd#9'}\n  - {authority: Niemand, legal_basis: 'testregeling_bevoegd#4'}\n",
         );
-        let f = los_op(&fout, &s).unwrap_err();
+        let f = los_op(&error, &s).unwrap_err();
         assert_eq!(f.len(), 3, "{f:?}");
         assert!(f[0].contains("het gezag waarvoor het proces zelf handelt"));
         assert!(f[1].contains("testregeling_bevoegd#9"));
@@ -325,23 +327,23 @@ articles:
     #[test]
     fn eigen_gezag_mandaat_of_weigeren() {
         let m = [Mandaat {
-            gezag: "De Raad van Voorbeeld".into(),
-            grondslag: "testregeling_bevoegd#4".into(),
+            authority: "De Raad van Voorbeeld".into(),
+            legal_basis: "testregeling_bevoegd#4".into(),
         }];
         let eigen = Some("De Instantie van Voorbeeld");
         assert_eq!(
-            toets(eigen, &m, "De Instantie van Voorbeeld"),
-            Ok(Bevoegdheid::Eigen)
+            assessment(eigen, &m, "De Instantie van Voorbeeld"),
+            Ok(Bevoegdheid::Own)
         );
         assert_eq!(
-            toets(eigen, &m, "De Raad van Voorbeeld"),
+            assessment(eigen, &m, "De Raad van Voorbeeld"),
             Ok(Bevoegdheid::Mandaat(&m[0]))
         );
-        assert!(toets(eigen, &m, "Een ander")
+        assert!(assessment(eigen, &m, "Een ander")
             .unwrap_err()
             .contains("zonder mandaat van 'Een ander'"));
-        assert!(toets(eigen, &[], "De Raad van Voorbeeld").is_err());
-        assert!(toets(None, &m, "Een ander")
+        assert!(assessment(eigen, &[], "De Raad van Voorbeeld").is_err());
+        assert!(assessment(None, &m, "Een ander")
             .unwrap_err()
             .contains("niet namens wie"));
     }

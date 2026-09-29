@@ -47,13 +47,13 @@ pub struct Gram {
     #[serde(rename = "type")]
     pub type_: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub soort: Option<String>,
+    pub subtype: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stage: Option<String>,
     pub name: String,
     pub chronicle: String,
     pub recording_actor: String,
-    pub grondslag: Vec<String>,
+    pub legal_basis: Vec<String>,
     /// Alleen bij een besluit dat een proces nam: het rechtskarakter en de
     /// soort beslissing uit `produces` van het artikel (RFC-008).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -74,24 +74,24 @@ pub struct Gram {
     /// `competent_authority` (wie de wet bevoegd maakt) de derde as van
     /// RFC-022 §2.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub handelende_actor: Option<HandelendeActor>,
+    pub acting_actor: Option<HandelendeActor>,
     /// Wanneer het feit rechtens geldt of plaatsvond.
-    pub op_moment: String,
+    pub effective_at: String,
     /// Alleen als het event `op_moment` aan een ingediende waarde bond en die
     /// waarde er was: de grondslag daarvan, uit de stroom.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub op_moment_grondslag: Option<Vec<String>>,
+    pub effective_at_legal_basis: Option<Vec<String>>,
     /// Wanneer de cel het gram vastlegde: haar eigen klok.
-    pub vastgelegd_op: String,
+    pub recorded_at: String,
     /// Naar welke grammen dit gram verwijst, per naam uit de wettekst
     /// (`op_aanvraag`, `besluit`, `wijzigt`, ...): het id van dat gram.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub verwijst: BTreeMap<String, String>,
-    pub stroom: StroomVerwijzing,
+    pub refers_to: BTreeMap<String, String>,
+    pub stream: StroomVerwijzing,
     /// Alleen als de cel het gram niet zelf vaststelde: `startstand` is bij
     /// het starten in een lege kroniek geplaatst (zie [`crate::startstand`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub herkomst: Option<String>,
+    pub provenance: Option<String>,
     pub fields: Map<String, Value>,
     /// Bij elke handeling die de engine uitrekende (een besluit, een vervolg
     /// of een feit met uitkomsten): elke parameter die meedeed, met haar
@@ -111,7 +111,7 @@ pub struct Gram {
     /// gram zonder verwijzing is zijn eigen wortel). Geen deel van het gram:
     /// de kroniek vult het in bij het laden en het vastleggen.
     #[serde(skip)]
-    pub wortel: Option<String>,
+    pub root: Option<String>,
 }
 
 /// De gelezen tijden van een gram, elk met de tekst waaruit het gelezen is.
@@ -120,7 +120,7 @@ pub struct Gram {
 #[derive(Debug, Clone, Default)]
 pub struct Tijden {
     moment: OnceLock<(String, DateTime<FixedOffset>)>,
-    vastgelegd: OnceLock<(String, DateTime<FixedOffset>)>,
+    recorded: OnceLock<(String, DateTime<FixedOffset>)>,
 }
 
 impl PartialEq for Tijden {
@@ -154,34 +154,34 @@ fn gelezen(
 /// kanaal is nagebootst: de identiteit is wat de gebruiker invulde.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HandelendeActor {
-    pub rol: String,
-    pub kanaal: String,
-    pub identiteit: BTreeMap<String, String>,
+    pub role: String,
+    pub channel: String,
+    pub identity: BTreeMap<String, String>,
     /// De grondslag van de rol, als de configuratie er een noemt.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub grondslag: Option<String>,
+    pub legal_basis: Option<String>,
     /// Het gezag in wiens naam is gehandeld.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub namens: Option<String>,
+    pub on_behalf_of: Option<String>,
     /// De grondslag van het mandaat, als het gezag niet het eigen gezag van
     /// het proces is.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub mandaat: Option<String>,
+    pub mandate: Option<String>,
 }
 
 /// Een geaccepteerde invoer van een besluit: een waarde met haar herkomst.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Invoer {
-    pub waarde: Value,
-    pub herkomst: crate::synthese::Herkomst,
+    pub value: Value,
+    pub provenance: crate::synthese::Herkomst,
 }
 
 /// Wat er bij een besluit meedeed, zodat het te herhalen is: de geladen
 /// regelingen en de stroomdefinities, met een hash over beide.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Receipt {
-    pub regelingen: Vec<GeladenRegeling>,
-    pub stromen: Vec<StroomVerwijzing>,
+    pub regulations: Vec<GeladenRegeling>,
+    pub streams: Vec<StroomVerwijzing>,
     /// SHA-256 over de twee lijsten hierboven, als canonieke JSON.
     pub sha256: String,
 }
@@ -196,12 +196,12 @@ pub struct GeladenRegeling {
 
 impl Receipt {
     /// Bouw het receipt en reken de hash uit.
-    pub fn nieuw(regelingen: Vec<GeladenRegeling>, stromen: Vec<StroomVerwijzing>) -> Self {
+    pub fn nieuw(regulations: Vec<GeladenRegeling>, streams: Vec<StroomVerwijzing>) -> Self {
         let canoniek =
-            serde_json::json!({"regelingen": regelingen, "stromen": stromen}).to_string();
+            serde_json::json!({"regulations": regulations, "streams": streams}).to_string();
         Self {
-            regelingen,
-            stromen,
+            regulations,
+            streams,
             sha256: hex::encode(Sha256::digest(canoniek.as_bytes())),
         }
     }
@@ -216,7 +216,7 @@ pub struct StroomVerwijzing {
 
 /// Het voorvoegsel van een filtersleutel op een verwijzing:
 /// `verwijst.<naam>` is het id waarnaar het gram onder die naam verwijst.
-pub const VERWIJST: &str = "verwijst.";
+pub const VERWIJST: &str = "refers_to.";
 
 /// Een nieuw id voor een gram: een uuid v7 op het moment `nu` (de klok van
 /// de cel), zodat ids in de tijd oplopen.
@@ -249,10 +249,10 @@ impl Gram {
         let mut fouten = schema::valideer(Soort::Gram, &json)
             .err()
             .unwrap_or_default();
-        if let Err(f) = datum::moment(&self.op_moment) {
+        if let Err(f) = datum::moment(&self.effective_at) {
             fouten.push(f);
         }
-        if let Err(f) = datum::moment_van("vastgelegd_op", &self.vastgelegd_op) {
+        if let Err(f) = datum::moment_van("recorded_at", &self.recorded_at) {
             fouten.push(f);
         }
         if fouten.is_empty() {
@@ -267,15 +267,15 @@ impl Gram {
     /// `sleutel` geen zo'n veld is: dan is het een veldpad onder `fields`.
     /// `Some(None)` als het gram het veld niet heeft.
     pub fn kenmerk(&self, sleutel: &str) -> Option<Option<&str>> {
-        if let Some(naam) = sleutel.strip_prefix(VERWIJST) {
-            return Some(self.verwijst.get(naam).map(String::as_str));
+        if let Some(name) = sleutel.strip_prefix(VERWIJST) {
+            return Some(self.refers_to.get(name).map(String::as_str));
         }
         Some(match sleutel {
             "id" => Some(self.id.as_str()),
-            "wortel" => self.wortel.as_deref(),
+            "root" => self.root.as_deref(),
             "name" => Some(self.name.as_str()),
             "type" => Some(self.type_.as_str()),
-            "soort" => self.soort.as_deref(),
+            "subtype" => self.subtype.as_deref(),
             "stage" => self.stage.as_deref(),
             "recording_actor" => Some(self.recording_actor.as_str()),
             "chronicle" => Some(self.chronicle.as_str()),
@@ -288,21 +288,21 @@ impl Gram {
     }
 
     /// De waarde op een pad onder `fields`.
-    pub fn veld(&self, pad: &str) -> Option<&Value> {
-        op_pad(&self.fields, pad)
+    pub fn field(&self, path: &str) -> Option<&Value> {
+        op_pad(&self.fields, path)
     }
 
     /// Het `op_moment`, gelezen; een ongeldig moment is een fout.
     pub fn moment(&self) -> Result<DateTime<FixedOffset>, String> {
-        gelezen(&self.tijden.moment, &self.op_moment, || {
-            datum::moment(&self.op_moment).map_err(|e| format!("gram '{}': {e}", self.name))
+        gelezen(&self.tijden.moment, &self.effective_at, || {
+            datum::moment(&self.effective_at).map_err(|e| format!("gram '{}': {e}", self.name))
         })
     }
 
     /// Het `vastgelegd_op`, gelezen; een ongeldig moment is een fout.
-    pub fn vastgelegd(&self) -> Result<DateTime<FixedOffset>, String> {
-        gelezen(&self.tijden.vastgelegd, &self.vastgelegd_op, || {
-            datum::moment_van("vastgelegd_op", &self.vastgelegd_op)
+    pub fn recorded(&self) -> Result<DateTime<FixedOffset>, String> {
+        gelezen(&self.tijden.recorded, &self.recorded_at, || {
+            datum::moment_van("recorded_at", &self.recorded_at)
                 .map_err(|e| format!("gram '{}': {e}", self.name))
         })
     }
@@ -324,15 +324,15 @@ impl Gram {
             _ => nu,
         };
         let tekst = datum::als_op_moment(&moment);
-        if self.op_moment_grondslag.is_none() && self.herkomst.is_none() {
-            self.op_moment = tekst.clone();
+        if self.effective_at_legal_basis.is_none() && self.provenance.is_none() {
+            self.effective_at = tekst.clone();
         } else if self.moment()? > moment {
             return Err(format!(
                 "op_moment {} ligt na het vastleggen ({tekst}): wat nog moet gebeuren, wordt niet vastgelegd",
-                self.op_moment
+                self.effective_at
             ));
         }
-        self.vastgelegd_op = tekst;
+        self.recorded_at = tekst;
         Ok(())
     }
 
@@ -343,15 +343,15 @@ impl Gram {
         Ok(self
             .moment()?
             .cmp(&ander.moment()?)
-            .then(self.vastgelegd()?.cmp(&ander.vastgelegd()?)))
+            .then(self.recorded()?.cmp(&ander.recorded()?)))
     }
 }
 
 /// De waarde op een veldpad met punten (`inhoud.organen`) in een object;
 /// `None` als een deel van het pad er niet is of geen object is.
-pub fn op_pad<'v>(velden: &'v Map<String, Value>, pad: &str) -> Option<&'v Value> {
-    let mut delen = pad.split('.');
-    let mut huidig = velden.get(delen.next()?)?;
+pub fn op_pad<'v>(fields: &'v Map<String, Value>, path: &str) -> Option<&'v Value> {
+    let mut delen = path.split('.');
+    let mut huidig = fields.get(delen.next()?)?;
     for deel in delen {
         huidig = huidig.as_object()?.get(deel)?;
     }
@@ -359,12 +359,12 @@ pub fn op_pad<'v>(velden: &'v Map<String, Value>, pad: &str) -> Option<&'v Value
 }
 /// Zet een waarde op een veldpad met punten, en maak de tussenliggende
 /// objecten; wat op de weg geen object is, wordt er een.
-pub fn zet_pad(doel: &mut Map<String, Value>, pad: &str, waarde: Value) {
-    let mut delen = pad.split('.').peekable();
+pub fn zet_pad(doel: &mut Map<String, Value>, path: &str, value: Value) {
+    let mut delen = path.split('.').peekable();
     let mut hier = doel;
     while let Some(deel) = delen.next() {
         if delen.peek().is_none() {
-            hier.insert(deel.to_string(), waarde);
+            hier.insert(deel.to_string(), value);
             return;
         }
         let volgend = hier
@@ -387,28 +387,28 @@ pub(crate) fn testgram(id: &str) -> Gram {
     Gram {
         kind: "chronolexogram".into(),
         id: id.into(),
-        type_: "indiening".into(),
-        soort: Some("melding".into()),
+        type_: "submission".into(),
+        subtype: Some("melding".into()),
         stage: None,
         name: "melding_ontvangen".into(),
         chronicle: "test_kroniek".into(),
         recording_actor: "test_instantie".into(),
-        grondslag: vec!["testregeling_aanvraag#1".into()],
+        legal_basis: vec!["testregeling_aanvraag#1".into()],
         legal_character: None,
         decision_type: None,
         regulation: None,
         regulation_valid_from: None,
         competent_authority: None,
-        handelende_actor: None,
-        op_moment: "2025-03-12T10:14:03+01:00".into(),
-        op_moment_grondslag: None,
-        vastgelegd_op: "2025-03-12T10:14:05+01:00".into(),
-        verwijst: BTreeMap::new(),
-        stroom: StroomVerwijzing {
+        acting_actor: None,
+        effective_at: "2025-03-12T10:14:03+01:00".into(),
+        effective_at_legal_basis: None,
+        recorded_at: "2025-03-12T10:14:05+01:00".into(),
+        refers_to: BTreeMap::new(),
+        stream: StroomVerwijzing {
             id: "test".into(),
             sha256: "a".repeat(64),
         },
-        herkomst: None,
+        provenance: None,
         fields: serde_json::json!({"x": 1})
             .as_object()
             .cloned()
@@ -416,17 +416,17 @@ pub(crate) fn testgram(id: &str) -> Gram {
         inputs: BTreeMap::new(),
         receipt: None,
         tijden: Tijden::default(),
-        wortel: Some(id.into()),
+        root: Some(id.into()),
     }
 }
 
 /// Een gram voor tests dat met `naam` naar `doel` verwijst, met een nieuw
 /// id; de wortel is die van het doel.
 #[cfg(test)]
-pub(crate) fn testvolger(naam: &str, doel: &Gram) -> Gram {
+pub(crate) fn testvolger(name: &str, doel: &Gram) -> Gram {
     let mut g = testgram(&uuid::Uuid::now_v7().to_string());
-    g.verwijst.insert(naam.into(), doel.id.clone());
-    g.wortel = doel.wortel.clone();
+    g.refers_to.insert(name.into(), doel.id.clone());
+    g.root = doel.root.clone();
     g
 }
 
@@ -450,17 +450,17 @@ mod tests {
     #[test]
     fn de_gelezen_tijd_volgt_de_tekst() {
         let mut g = testgram("z");
-        let eerst = g.vastgelegd().unwrap();
-        assert_eq!(g.vastgelegd().unwrap(), eerst);
+        let eerst = g.recorded().unwrap();
+        assert_eq!(g.recorded().unwrap(), eerst);
         let later = DateTime::parse_from_rfc3339("2025-03-13T09:00:00+01:00").unwrap();
         g.stempel(later, None).unwrap();
-        assert_eq!(g.vastgelegd().unwrap(), later);
+        assert_eq!(g.recorded().unwrap(), later);
         assert_eq!(
             g.moment().unwrap(),
             later,
             "een ongebonden op_moment schuift mee"
         );
-        g.op_moment = "geen moment".into();
+        g.effective_at = "geen moment".into();
         assert!(g.moment().is_err());
     }
 }

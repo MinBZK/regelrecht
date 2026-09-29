@@ -3,18 +3,18 @@ import { beginscherm, lege, portaalkanalen, rollenVan, sessieTekst } from './kan
 
 // Een fictief proces met twee portaalkanalen en een loket.
 const proces = {
-  portaal: true,
-  behandeling: null,
-  loket: true,
-  kanalen: {
-    org: { label: 'Organisatie', velden: [{ naam: 'nummer', label: 'Nummer' }, { naam: 'persoon', label: 'Naam' }] },
-    burger: { label: 'Burger', velden: [{ naam: 'nummer', label: 'Burgernummer' }] },
-    medewerker: { label: 'Medewerker', velden: [{ naam: 'naam', label: 'Naam' }] },
+  portal: true,
+  handling: null,
+  counter: true,
+  channels: {
+    org: { label: 'Organisatie', fields: [{ name: 'nummer', label: 'Nummer' }, { name: 'persoon', label: 'Naam' }] },
+    burger: { label: 'Burger', fields: [{ name: 'nummer', label: 'Burgernummer' }] },
+    medewerker: { label: 'Medewerker', fields: [{ name: 'naam', label: 'Naam' }] },
   },
-  rollen: {
-    aanvrager: { kanaal: 'org', routes: ['portaal'], label: 'Aanvrager' },
-    burger: { kanaal: 'burger', routes: ['portaal'], label: 'burger' },
-    loket: { kanaal: 'medewerker', routes: ['loket'], label: 'Loket' },
+  roles: {
+    aanvrager: { channel: 'org', routes: ['portal'], label: 'Aanvrager' },
+    burger: { channel: 'burger', routes: ['portal'], label: 'burger' },
+    loket: { channel: 'medewerker', routes: ['counter'], label: 'Loket' },
   },
 };
 
@@ -38,13 +38,13 @@ describe('kanalen en rollen', () => {
   });
 
   it('schrijft de sessie uit in de volgorde van de velden', () => {
-    const s = { rol: 'aanvrager', kanaal: 'org', velden: { persoon: 'A. Tester', nummer: '12345678' } };
+    const s = { role: 'aanvrager', channel: 'org', fields: { persoon: 'A. Tester', nummer: '12345678' } };
     expect(sessieTekst(proces, s)).toBe('12345678, A. Tester, Aanvrager');
     expect(sessieTekst(proces, null)).toBe('');
   });
 
   it('vult de velden leeg of uit een voorbeeld', () => {
-    expect(lege(proces.kanalen.org)).toEqual({ nummer: '', persoon: '' });
-    expect(lege(proces.kanalen.org, { nummer: '1' })).toEqual({ nummer: '1', persoon: '' });
+    expect(lege(proces.channels.org)).toEqual({ nummer: '', persoon: '' });
+    expect(lege(proces.channels.org, { nummer: '1' })).toEqual({ nummer: '1', persoon: '' });
   });
 });

@@ -2,17 +2,17 @@
 # Fictieve lexostatus die alleen een kolom levert, geen parameter: het tarief
 # is een kolom van de gebiedstabel van de afnemer. Daarom staat het onder
 # extra_velden en gaat het nooit rechtstreeks naar de engine.
-cel: test_gebieden
+cell: test_gebieden
 lexostatus_definitions:
   - name: tarief
     inputs:
       - {name: gebied, type: string}
       - {name: peildatum, type: date}
     reduction:
-      kroniek: test_gebieden
-      afleidingen: {}
-      extra_velden:
+      chronicle: test_gebieden
+      derivations: {}
+      extra_fields:
         tarief:
           filter: {name: tarief_vastgesteld, gebied: $gebied, peildatum: $peildatum}
-          kies: laatste
-          veld: tarief
+          pick: latest
+          field: tarief

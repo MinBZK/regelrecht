@@ -13,70 +13,70 @@ chronicle: test_afnemer
 events:
   - name: aanvulling_gevraagd
     intake: behandelaar
-    grondslag:
+    legal_basis:
       - testregeling_afnemer#3
     type: executogram
-    verwijst: {aanvraag: {naar: aanvraag_ontvangen, verplicht: true}}
+    refers_to: {application: {to: aanvraag_ontvangen, required: true}}
     fields:
       datum_uitnodiging: $external.datum_uitnodiging
   - name: termijn_opgeschort
     intake: behandelaar
-    grondslag:
+    legal_basis:
       - testregeling_afnemer#3
     type: executogram
-    verwijst: {aanvraag: {naar: aanvraag_ontvangen, verplicht: true}}
+    refers_to: {application: {to: aanvraag_ontvangen, required: true}}
     fields:
       dagen: $external.dagen
   - name: besluit_genomen
     intake: behandelaar
-    grondslag:
+    legal_basis:
       - testregeling_afnemer#3 lid 1   # het besluit, niet de tijdigheid (lid 2)
     type: decretogram
     stage: BESLUIT
-    verwijst: {op_aanvraag: {naar: aanvraag_ontvangen, verplicht: true}}
-    op_moment:                         # de dag van het besluit, niet die van het vastleggen
-      bron: $external.besluitdatum
-      grondslag: [testregeling_afnemer#3 lid 1]
+    refers_to: {on_application: {to: aanvraag_ontvangen, required: true}}
+    effective_at:                         # de dag van het besluit, niet die van het vastleggen
+      source: $external.besluitdatum
+      legal_basis: [testregeling_afnemer#3 lid 1]
     fields:                            # de uitkomsten van het besluit
       vastgesteld_bedrag: $external.vastgesteld_bedrag
       gebiedsbedrag: $external.gebiedsbedrag
       besluit_tijdig: $external.besluit_tijdig
       besluitdeadline: $external.besluitdeadline
       zorgvuldig: $external.zorgvuldig
-    niet_gereduceerd:
-      - {veld: gebiedsbedrag, reden: uitkomst van het besluit}
-      - {veld: besluit_tijdig, reden: uitkomst van het besluit}
-      - {veld: besluitdeadline, reden: uitkomst van het besluit}
-      - {veld: zorgvuldig, reden: uitkomst van het besluit}
+    not_reduced:
+      - {field: gebiedsbedrag, reason: uitkomst van het besluit}
+      - {field: besluit_tijdig, reason: uitkomst van het besluit}
+      - {field: besluitdeadline, reason: uitkomst van het besluit}
+      - {field: zorgvuldig, reason: uitkomst van het besluit}
   - name: besluit_bekendgemaakt
     intake: behandelaar
-    grondslag:
+    legal_basis:
       - testregeling_awb#2
-    type: handeling
-    soort: bekendmaking
+    type: act
+    subtype: bekendmaking
     stage: BEKENDMAKING
-    verwijst: {besluit: {naar: {stage: BESLUIT}, verplicht: true}}
-    op_moment:
-      bron: $external.datum_bekendmaking
-      grondslag: [testregeling_awb#2]
+    refers_to: {decision: {to: {stage: BESLUIT}, required: true}}
+    effective_at:
+      source: $external.datum_bekendmaking
+      legal_basis: [testregeling_awb#2]
     fields:                            # wat de stage vraagt, en wat zij uitrekent
       datum_bekendmaking: $external.datum_bekendmaking
       bekendgemaakt: $external.bekendgemaakt
       besluit_tijdig: $external.besluit_tijdig
       aanvang_bezwaartermijn: $external.aanvang_bezwaartermijn
       einde_bezwaartermijn: $external.einde_bezwaartermijn
-    niet_gereduceerd:
-      - {veld: bekendgemaakt, reden: feit van de bekendmaking; het vervolg leest het uit het formulier}
-      - {veld: besluit_tijdig, reden: uitkomst van het besluit in de stage BEKENDMAKING}
+    not_reduced:
+      - {field: bekendgemaakt, reason: feit van de bekendmaking; het vervolg leest het uit het formulier}
+      - {field: besluit_tijdig, reason: uitkomst van het besluit in de stage BEKENDMAKING}
   - name: betaling_verricht
     intake: behandelaar
-    grondslag:
+    legal_basis:
       - testregeling_awb#3 lid 1
     type: executogram
-    soort: betaling
-    verwijst: {besluit: {naar: {stage: BESLUIT}, verplicht: true}}
-    op_moment:
-      bron: $external.datum_betaling
-      grondslag: [testregeling_awb#3 lid 2]
+    subtype: betaling
+    refers_to: {decision: {to: {stage: BESLUIT}, required: true}}
+    effective_at:
+      source: $external.datum_betaling
+      legal_basis: [testregeling_awb#3 lid 2]
     fields:
       bedrag: $external.bedrag

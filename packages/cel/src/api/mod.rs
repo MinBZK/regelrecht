@@ -100,36 +100,36 @@ pub fn systeemklok() -> Klok {
 }
 
 /// Een fout als `{"fout": "..."}` met een status.
-pub struct Fout(StatusCode, String);
+pub struct Error(StatusCode, String);
 
-impl IntoResponse for Fout {
+impl IntoResponse for Error {
     fn into_response(self) -> Response {
-        (self.0, Json(json!({"fout": self.1}))).into_response()
+        (self.0, Json(json!({"error": self.1}))).into_response()
     }
 }
 
-fn fout(status: StatusCode, tekst: impl Into<String>) -> Fout {
-    Fout(status, tekst.into())
+fn error(status: StatusCode, tekst: impl Into<String>) -> Error {
+    Error(status, tekst.into())
 }
 
 /// Een fout van de runtime zelf (500).
-fn intern(tekst: impl Into<String>) -> Fout {
-    fout(StatusCode::INTERNAL_SERVER_ERROR, tekst)
+fn intern(tekst: impl Into<String>) -> Error {
+    error(StatusCode::INTERNAL_SERVER_ERROR, tekst)
 }
 
 /// Een fout van de cel als antwoord van het proces: dezelfde status en
 /// dezelfde tekst. Een cel die niet antwoordt, of onleesbaar, is een fout van
 /// de runtime.
-fn van_cel(f: TransportFout) -> Fout {
+fn van_cel(f: TransportFout) -> Error {
     match f {
         TransportFout::Antwoord {
             status,
-            fout: tekst,
-        } => Fout(
+            error: tekst,
+        } => Error(
             StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
             tekst,
         ),
-        TransportFout::Onbereikbaar(r) => intern(format!("de cel is onbereikbaar: {r}")),
+        TransportFout::Unreachable(r) => intern(format!("de cel is onbereikbaar: {r}")),
         TransportFout::Json(r) => intern(format!("de cel antwoordde onleesbaar: {r}")),
     }
 }

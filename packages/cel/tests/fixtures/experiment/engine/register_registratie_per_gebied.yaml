@@ -23,7 +23,7 @@ articles:
           - {name: aanduiding, type: string, required: true}
           - {name: gebied, type: string, required: true}
         input:
-          - name: grammen
+          - name: grams
             type: array
             source: {}
         output:
@@ -33,7 +33,7 @@ articles:
             legal_basis: {law: Testregeling, article: '1'}
             value:
               operation: FOREACH
-              collection: $grammen
+              collection: $grams
               as: g
               filter:
                 operation: AND

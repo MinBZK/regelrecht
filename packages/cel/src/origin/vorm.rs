@@ -84,7 +84,7 @@ pub struct Overschrijvingen(BTreeMap<(String, String), Geldend>);
 /// artikelen die dezelfde parameter een andere herkomst geven, zijn een fout.
 pub fn overschrijvingen(
     service: &LawExecutionService,
-    gezag: Option<&str>,
+    authority: Option<&str>,
 ) -> Result<Overschrijvingen, Vec<String>> {
     let mut uit: BTreeMap<(String, String), Geldend> = BTreeMap::new();
     let mut fouten = Vec::new();
@@ -101,30 +101,30 @@ pub fn overschrijvingen(
             let Some(origins) = a.machine_readable.as_ref().and_then(|m| m.origins.as_ref()) else {
                 continue;
             };
-            let van_actor =
-                gezag.is_some() && gezag::gezag_van(service, id, &a.number).as_deref() == gezag;
+            let van_actor = authority.is_some()
+                && gezag::gezag_van(service, id, &a.number).as_deref() == authority;
             if !van_actor {
                 continue;
             }
-            let artikel = format!("{id}#{}", a.number);
+            let article = format!("{id}#{}", a.number);
             for o in origins
                 .iter()
                 .filter_map(Declared::<OriginOverride>::as_valid)
             {
                 if let Err(f) = regelingen::ontleed(&o.origin.grondslag) {
-                    fouten.push(format!("origins in {artikel}: {f}"));
+                    fouten.push(format!("origins in {article}: {f}"));
                     continue;
                 }
                 if !declareert(service, &o.regulation, &o.parameter) {
                     fouten.push(format!(
-                        "origins in {artikel}: regeling '{}' heeft geen parameter '{}'",
+                        "origins in {article}: regeling '{}' heeft geen parameter '{}'",
                         o.regulation, o.parameter
                     ));
                     continue;
                 }
                 let nieuw = Geldend {
                     origin: o.origin.clone(),
-                    beleid: Some(artikel.clone()),
+                    beleid: Some(article.clone()),
                 };
                 let sleutel = (o.regulation.clone(), o.parameter.clone());
                 match uit.get(&sleutel) {
@@ -151,8 +151,8 @@ pub fn overschrijvingen(
 }
 
 /// Of een geladen regeling ergens een parameter met deze naam declareert.
-fn declareert(service: &LawExecutionService, regeling: &str, parameter: &str) -> bool {
-    service.resolver().get_law(regeling).is_some_and(|l| {
+fn declareert(service: &LawExecutionService, regulation: &str, parameter: &str) -> bool {
+    service.resolver().get_law(regulation).is_some_and(|l| {
         l.articles
             .iter()
             .any(|a| a.get_parameters().iter().any(|p| p.name == parameter))
@@ -161,19 +161,19 @@ fn declareert(service: &LawExecutionService, regeling: &str, parameter: &str) ->
 
 /// De parameter achter een [`Benodigd`].
 pub fn parameter<'s>(service: &'s LawExecutionService, b: &Benodigd) -> Option<&'s Parameter> {
-    regelingen::artikel(service, &b.artikel)
+    regelingen::article(service, &b.article)
         .ok()?
         .get_parameters()
         .iter()
-        .find(|p| p.name == b.naam)
+        .find(|p| p.name == b.name)
 }
 
 impl Overschrijvingen {
     /// De geldende herkomst van een parameter van een regeling: die uit het
     /// beleid, anders die uit de wet. Een origin die niet te lezen is, telt
     /// als geen; het laden van de regeling heeft hem al gemeld.
-    pub fn geldend(&self, regeling: &str, p: &Parameter) -> Option<Geldend> {
-        if let Some(g) = self.0.get(&(regeling.to_string(), p.name.clone())) {
+    pub fn geldend(&self, regulation: &str, p: &Parameter) -> Option<Geldend> {
+        if let Some(g) = self.0.get(&(regulation.to_string(), p.name.clone())) {
             return Some(g.clone());
         }
         p.origin

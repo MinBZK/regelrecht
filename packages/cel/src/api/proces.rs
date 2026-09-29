@@ -13,7 +13,7 @@ use super::behandeling::{handeling_route, proefhandeling_route, werkvoorraad_rou
 use super::inzage;
 use super::loket::loket_indienen;
 use super::portaal::{formulier_route, indienen, mogelijkheden_route, toets_route};
-use super::sessie::{kanaalsessie, login, logout, sessie};
+use super::sessie::{kanaalsessie, login, logout, session};
 use super::Klok;
 use crate::gram::GeladenRegeling;
 use crate::kanaal::Routes;
@@ -28,19 +28,19 @@ use crate::transport::Transport;
 pub struct ProcesState {
     pub proces: Arc<Proces>,
     /// Het transport naar de cel waarin het proces vastlegt (intern).
-    pub cel: Arc<dyn Transport>,
+    pub cell: Arc<dyn Transport>,
     pub sessies: Arc<Sessies>,
     pub klok: Klok,
     /// De synthese-bronnen die geen lexostatus van de zaak zijn, met het
     /// transport dat de runtime koos.
-    pub bronnen: Arc<Vec<Bron>>,
+    pub sources: Arc<Vec<Bron>>,
     /// Per handeling (in de volgorde van `proces.yaml`) de bronnen die haar
     /// artikel vraagt en haar synthese per regel.
-    pub handelingen: Arc<Vec<HandelingState>>,
+    pub actions: Arc<Vec<HandelingState>>,
     /// De synthese per regel van de toets, met haar bronnen.
     pub toets_rijen: Arc<Vec<Rijen>>,
     /// De geladen regelingen, voor het receipt van een besluit.
-    pub regelingen: Arc<Vec<GeladenRegeling>>,
+    pub regulations: Arc<Vec<GeladenRegeling>>,
 }
 
 /// Wat de runtime per handeling klaarzet: de synthese-bronnen die haar
@@ -48,13 +48,13 @@ pub struct ProcesState {
 /// per regel, met het transport dat de runtime koos.
 #[derive(Clone)]
 pub struct HandelingState {
-    pub bronnen: Vec<Bron>,
-    pub rijen: Vec<Rijen>,
+    pub sources: Vec<Bron>,
+    pub rows: Vec<Rijen>,
 }
 
 impl ProcesState {
     pub(super) fn cel_id(&self) -> &str {
-        self.proces.cel.id()
+        self.proces.cell.id()
     }
 }
 
@@ -63,40 +63,40 @@ impl ProcesState {
 /// proces ze heeft, en elke route controleert of de rol van de ingelogde
 /// gebruiker die groep mag gebruiken.
 pub fn proces_router(state: ProcesState) -> Router {
-    let mut r = Router::new().route("/api/voorbeelden", get(voorbeelden_route));
+    let mut r = Router::new().route("/api/examples", get(voorbeelden_route));
     let d = &state.proces.definitie;
-    if !d.rollen.is_empty() {
+    if !d.roles.is_empty() {
         r = r
-            .route("/api/kanalen/{kanaal}/login", post(login))
-            .route("/api/kanalen/{kanaal}/sessie", get(kanaalsessie))
-            .route("/api/kanalen/{kanaal}/logout", post(logout))
-            .route("/api/sessie", get(sessie));
+            .route("/api/channels/{channel}/login", post(login))
+            .route("/api/channels/{channel}/session", get(kanaalsessie))
+            .route("/api/channels/{channel}/logout", post(logout))
+            .route("/api/session", get(session));
     }
-    if state.proces.portaal().is_some() {
+    if state.proces.portal().is_some() {
         r = r
-            .route("/api/formulier", get(formulier_route))
-            .route("/api/aanvraag/toets", post(toets_route))
-            .route("/api/aanvraag", post(indienen))
-            .route("/api/mogelijkheden", get(mogelijkheden_route));
+            .route("/api/form", get(formulier_route))
+            .route("/api/application/assessment", post(toets_route))
+            .route("/api/application", post(indienen))
+            .route("/api/possibilities", get(mogelijkheden_route));
     }
-    if d.rollen_met(Routes::Loket).next().is_some() {
-        r = r.route("/api/loket/aanvraag", post(loket_indienen));
+    if d.rollen_met(Routes::Counter).next().is_some() {
+        r = r.route("/api/counter/application", post(loket_indienen));
     }
-    if d.behandeling.is_some() {
+    if d.handling.is_some() {
         r = r
-            .route("/api/inzage/{cel}/kroniek", get(inzage::kroniek_route))
             .route(
-                "/api/inzage/{cel}/lexostatus/{naam}",
+                "/api/inspection/{cell}/chronicle",
+                get(inzage::kroniek_route),
+            )
+            .route(
+                "/api/inspection/{cell}/lexostatus/{name}",
                 get(inzage::lexostatus_route),
             )
-            .route("/api/werkvoorraad", get(werkvoorraad_route))
-            .route("/api/zaken/{wortel}", get(zaak_route))
+            .route("/api/worklist", get(werkvoorraad_route))
+            .route("/api/cases/{root}", get(zaak_route))
+            .route("/api/cases/{root}/actions/{name}", post(handeling_route))
             .route(
-                "/api/zaken/{wortel}/handelingen/{naam}",
-                post(handeling_route),
-            )
-            .route(
-                "/api/zaken/{wortel}/handelingen/{naam}/proef",
+                "/api/cases/{root}/actions/{name}/trial",
                 post(proefhandeling_route),
             );
     }
@@ -111,8 +111,8 @@ async fn voorbeelden_route(
     Json(
         state
             .proces
-            .voorbeelden
-            .op(&crate::datum::peildatum(&(state.klok)())),
+            .examples
+            .op(&crate::datum::reference_date(&(state.klok)())),
     )
 }
 
@@ -122,63 +122,63 @@ async fn voorbeelden_route(
 pub fn proces_beschrijving(state: &ProcesState) -> Value {
     let p = &state.proces;
     let d = &p.definitie;
-    let synthese: Vec<Value> = d
+    let synthesis: Vec<Value> = d
         .zaakbronnen()
         .map(|b| {
             json!({
-                "cel": b.cel,
+                "cell": b.cell,
                 "lexostatus": b.lexostatus,
-                "zaak": true,
-                "transport": state.cel.soort(),
+                "case": true,
+                "transport": state.cell.soort(),
                 "parameters": Vec::<String>::new(),
             })
         })
-        .chain(state.bronnen.iter().map(|b| {
+        .chain(state.sources.iter().map(|b| {
             json!({
-                "cel": b.definitie.cel,
+                "cell": b.definitie.cell,
                 "lexostatus": b.definitie.lexostatus,
-                "zaak": false,
+                "case": false,
                 "transport": b.transport.soort(),
                 "parameters": b.definitie.parameters,
                 // De bron spreekt haar eigen taal; de afnemer vertaalt.
-                "vertaling": b.definitie.parameters.vertaald(),
+                "translation": b.definitie.parameters.vertaald(),
             })
         }))
         .collect();
     json!({
         "id": p.id(),
         "actor": d.actor,
-        "cel": p.cel.id(),
-        "portaal": p.portaal().is_some(),
-        "gezag": p.gezag,
-        "kanalen": d.kanalen.iter().map(|(id, k)| (id.clone(), json!({
+        "cell": p.cell.id(),
+        "portal": p.portal().is_some(),
+        "authority": p.authority,
+        "channels": d.channels.iter().map(|(id, k)| (id.clone(), json!({
             "label": k.label,
-            "uitleg": k.uitleg,
-            "velden": k.velden,
-            "eigenaar": k.eigenaar,
+            "explanation": k.explanation,
+            "fields": k.fields,
+            "owner": k.owner,
         }))).collect::<serde_json::Map<String, Value>>(),
-        "rollen": d.rollen.iter().map(|(id, r)| (id.clone(), json!({
-            "kanaal": r.kanaal,
+        "roles": d.roles.iter().map(|(id, r)| (id.clone(), json!({
+            "channel": r.channel,
             "routes": r.routes,
             "label": r.label.as_deref().unwrap_or(id),
         }))).collect::<serde_json::Map<String, Value>>(),
-        "loket": d.rollen_met(Routes::Loket).next().is_some(),
-        "behandeling": d.behandeling.as_ref().map(|b| json!({
-            "werkvoorraad": b.werkvoorraad.lexostatus,
-            "handelingen": b.handelingen.iter().map(|h| json!({
-                "naam": h.naam,
+        "counter": d.rollen_met(Routes::Counter).next().is_some(),
+        "handling": d.handling.as_ref().map(|b| json!({
+            "worklist": b.worklist.lexostatus,
+            "actions": b.actions.iter().map(|h| json!({
+                "name": h.name,
                 "label": h.label(),
-                "rol": h.rol,
-                "soort": h.soort,
+                "role": h.role,
+                "kind": h.soort,
                 "stage": h.stage,
-                "regeling": h.regeling,
-                "artikel": h.artikel,
-                "uitkomsten": h.uitkomsten,
+                "regulation": h.regulation,
+                "article": h.article,
+                "outputs": h.outputs,
             })).collect::<Vec<_>>(),
         })),
-        "titel": p.formulier.as_ref().and_then(|f| f.titel.clone()),
-        "synthese": synthese,
+        "title": p.form.as_ref().and_then(|f| f.title.clone()),
+        "synthesis": synthesis,
         // De cellen die een behandelaar via dit proces mag inzien.
-        "inzage": if d.behandeling.is_some() { state.inzage_cellen().into_iter().collect() } else { Vec::new() },
+        "inspection": if d.handling.is_some() { state.inzage_cellen().into_iter().collect() } else { Vec::new() },
     })
 }

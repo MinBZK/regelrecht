@@ -18,13 +18,13 @@ const emit = defineEmits(['open']);
       <nldd-text-cell text="Soort"></nldd-text-cell>
       <nldd-text-cell text="Stand"></nldd-text-cell>
     </nldd-table-row>
-    <nldd-table-row v-for="h in handelingen" :key="h.naam">
+    <nldd-table-row v-for="h in handelingen" :key="h.name">
       <nldd-cell>
-        <nldd-button variant="secondary" text="Open" :accessible-label="`Open: ${h.label}`" @click="emit('open', h.naam)"></nldd-button>
+        <nldd-button variant="secondary" text="Open" :accessible-label="`Open: ${h.label}`" @click="emit('open', h.name)"></nldd-button>
       </nldd-cell>
-      <nldd-text-cell :text="h.label" :supporting-text="h.artikel"></nldd-text-cell>
+      <nldd-text-cell :text="h.label" :supporting-text="h.article"></nldd-text-cell>
       <nldd-text-cell :text="soortTekst(h)"></nldd-text-cell>
-      <nldd-text-cell :text="statusTekst(h)" :supporting-text="h.reden ?? ''"></nldd-text-cell>
+      <nldd-text-cell :text="statusTekst(h)" :supporting-text="h.reason ?? ''"></nldd-text-cell>
     </nldd-table-row>
   </nldd-table>
 </template>

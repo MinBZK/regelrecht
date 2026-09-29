@@ -34,7 +34,7 @@ articles:
         parameters:
           - {name: besluit, type: string, required: true}
         input:
-          - {name: grammen, type: array, source: {}}
+          - {name: grams, type: array, source: {}}
         output:
           - {name: betaald_bij_besluit, type: number}
           - {name: betaalde_voorschotten, type: number}
@@ -42,40 +42,40 @@ articles:
           - output: betaald_bij_besluit
             value:
               operation: FOREACH
-              collection: $grammen
+              collection: $grams
               as: p
               filter:
                 operation: AND
                 conditions:
-                  - {operation: EQUALS, subject: $p.soort, value: betaling}
-                  - {operation: EQUALS, subject: $p.verwijst.besluit, value: $besluit}
+                  - {operation: EQUALS, subject: $p.subtype, value: betaling}
+                  - {operation: EQUALS, subject: $p.refers_to.decision, value: $besluit}
               body: $p.fields.bedrag
               combine: ADD
           - output: betaalde_voorschotten
             value:
               operation: FOREACH
-              collection: $grammen
+              collection: $grams
               as: p
               filter:
                 operation: AND
                 conditions:
-                  - {operation: EQUALS, subject: $p.soort, value: betaling}
+                  - {operation: EQUALS, subject: $p.subtype, value: betaling}
                   - operation: FOREACH
-                    collection: $grammen
+                    collection: $grams
                     as: v
                     filter:
                       operation: AND
                       conditions:
-                        - {operation: EQUALS, subject: $v.id, value: $p.verwijst.besluit}
-                        - {operation: EQUALS, subject: $v.soort, value: voorschot}
+                        - {operation: EQUALS, subject: $v.id, value: $p.refers_to.decision}
+                        - {operation: EQUALS, subject: $v.subtype, value: voorschot}
                         - operation: FOREACH
-                          collection: $grammen
+                          collection: $grams
                           as: b
                           filter:
                             operation: AND
                             conditions:
                               - {operation: EQUALS, subject: $b.id, value: $besluit}
-                              - {operation: EQUALS, subject: $b.verwijst.op_aanvraag, value: $v.verwijst.op_aanvraag}
+                              - {operation: EQUALS, subject: $b.refers_to.on_application, value: $v.refers_to.on_application}
                           body: true
                           combine: OR
                     body: true

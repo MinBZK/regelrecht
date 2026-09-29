@@ -50,8 +50,8 @@ describe('external', () => {
 });
 
 describe('opties', () => {
-  it('maakt van tekst en objecten {waarde, label}', () => {
-    expect(opties(['a', { waarde: 2, label: 'twee' }, { value: 3 }])).toEqual([
+  it('maakt van tekst en objecten {value, label} een {waarde, label}', () => {
+    expect(opties(['a', { value: 2, label: 'twee' }, { value: 3 }])).toEqual([
       { waarde: 'a', label: 'a' },
       { waarde: 2, label: 'twee' },
       { waarde: 3, label: '3' },
@@ -72,16 +72,16 @@ describe('veldTekst', () => {
 });
 
 describe('een bedrag in de eenheid van de regeling', () => {
-  const cent = { naam: 'bedrag', label: 'Bedrag', type: 'bedrag', eenheid: 'eurocent' };
-  const euro = { ...cent, eenheid: 'euro' };
-  const kaal = { ...cent, eenheid: undefined };
+  const cent = { name: 'bedrag', label: 'Bedrag', type: 'amount', unit: 'eurocent' };
+  const euro = { ...cent, unit: 'euro' };
+  const kaal = { ...cent, unit: undefined };
 
   it('vraagt eurocent en euro in euro', () => {
     expect(inEuro(cent)).toBe(true);
     expect(inEuro(euro)).toBe(true);
     expect(inEuro(kaal)).toBe(false);
     expect(veldLabel(cent)).toBe('Bedrag (euro)');
-    expect(veldLabel({ ...cent, eenheid: 'punten' })).toBe('Bedrag (punten)');
+    expect(veldLabel({ ...cent, unit: 'punten' })).toBe('Bedrag (punten)');
     expect(veldLabel(kaal)).toBe('Bedrag');
   });
 
@@ -91,6 +91,6 @@ describe('een bedrag in de eenheid van de regeling', () => {
     expect(naarWet(euro, 12.34)).toBe(12.34);
     expect(naarWet(kaal, 12)).toBe(12);
     expect(naarWet(cent, null)).toBe(null);
-    expect(naarWet({ naam: 'n', type: 'getal', eenheid: 'eurocent' }, 5)).toBe(5);
+    expect(naarWet({ name: 'n', type: 'number', unit: 'eurocent' }, 5)).toBe(5);
   });
 });

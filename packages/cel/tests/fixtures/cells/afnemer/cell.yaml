@@ -5,7 +5,7 @@
 # proces processes/afnemer/proces.yaml.
 id: test_afnemer
 recording_actor: test_afnemer
-stromen:
+streams:
   - ../../chronicles/test_afnemer_aanvragen.yaml
   - ../../chronicles/test_afnemer_zaakverloop.yaml
-lexostatussen: lexostatussen.yaml
+lexostatuses: lexostatuses.yaml

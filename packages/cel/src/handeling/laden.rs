@@ -6,13 +6,13 @@ use super::*;
 /// Het artikel van een regeling met deze uitkomst, als `<regeling>#<artikel>`.
 pub(super) fn artikel_met(
     service: &LawExecutionService,
-    regeling: &str,
-    uitkomst: &str,
+    regulation: &str,
+    output: &str,
 ) -> Option<String> {
     service
         .resolver()
-        .get_article_by_output(regeling, uitkomst, None)
-        .map(|a| format!("{regeling}#{}", a.number))
+        .get_article_by_output(regulation, output, None)
+        .map(|a| format!("{regulation}#{}", a.number))
 }
 
 /// De parameters die de aanroeper van het artikel van een handeling moet
@@ -21,16 +21,16 @@ pub fn benodigd(
     service: &LawExecutionService,
     h: &HandelingDefinitie,
 ) -> Result<BTreeMap<String, Benodigd>, String> {
-    let a = regelingen::artikel(service, &h.artikel)?;
-    Ok(regelingen::benodigde_parameters(service, &h.regeling, a))
+    let a = regelingen::article(service, &h.article)?;
+    Ok(regelingen::benodigde_parameters(service, &h.regulation, a))
 }
 
 /// De procedure (RFC-008) van het rechtskarakter dat een artikel produceert.
 pub fn procedure_van<'s>(
     service: &'s LawExecutionService,
-    artikel: &str,
+    article: &str,
 ) -> Option<&'s ProcedureDefinition> {
-    let a = regelingen::artikel(service, artikel).ok()?;
+    let a = regelingen::article(service, article).ok()?;
     let p = a.get_produces()?;
     service
         .resolver()
@@ -41,8 +41,8 @@ pub fn procedure_van<'s>(
 /// artikel produceert (RFC-007, RFC-008), als `<regeling>#<artikel>`,
 /// gesorteerd. De engine zoekt ze, met haar eigen regels: het rechtskarakter,
 /// het soort besluit en de stage, op elk haakpunt.
-pub fn haken_op(service: &LawExecutionService, artikel: &str, stage: &str) -> Vec<String> {
-    let Some(produces) = regelingen::artikel(service, artikel)
+pub fn haken_op(service: &LawExecutionService, article: &str, stage: &str) -> Vec<String> {
+    let Some(produces) = regelingen::article(service, article)
         .ok()
         .and_then(|a| a.get_produces())
     else {
@@ -63,8 +63,8 @@ pub fn haken_op(service: &LawExecutionService, artikel: &str, stage: &str) -> Ve
 }
 
 /// De uitkomsten van een artikel, in de volgorde van declaratie.
-pub(super) fn uitkomsten_van(service: &LawExecutionService, artikel: &str) -> Vec<String> {
-    regelingen::artikel(service, artikel)
+pub(super) fn uitkomsten_van(service: &LawExecutionService, article: &str) -> Vec<String> {
+    regelingen::article(service, article)
         .ok()
         .and_then(|a| a.get_execution_spec())
         .and_then(|e| e.output.as_ref())
@@ -89,34 +89,35 @@ pub(super) fn uitkomsten_van(service: &LawExecutionService, artikel: &str) -> Ve
 /// aanroept, draagt de toets met `legal_basis` Awb 4:52 lid 1. Een
 /// vaststelling of een oordeel (zoals over verzuim) is geen uitvoering: wat
 /// die op haar grondslag uitwerkt, is juist wat zij vastlegt.
-pub fn toetsen(service: &LawExecutionService, artikel: &str, event: &Event) -> Vec<String> {
+pub fn assessments(service: &LawExecutionService, article: &str, event: &Event) -> Vec<String> {
     if event.type_ != "executogram" {
         return Vec::new();
     }
-    let Ok(a) = regelingen::artikel(service, artikel) else {
+    let Ok(a) = regelingen::article(service, article) else {
         return Vec::new();
     };
     if a.get_produces().and_then(|p| p.legal_character.as_deref()) != Some("TOETS") {
         return Vec::new();
     }
     let gronden: Vec<regelingen::Grondslag<'_>> = event
-        .grondslag
+        .legal_basis
         .iter()
         .filter_map(|g| regelingen::ontleed(g).ok())
         .collect();
-    let lid_past = |lid: Option<&str>, lb: &regelrecht_law_model::ProvisionReference| match lid {
-        None => true,
-        Some(l) => lb.paragraph.as_deref() == Some(l),
-    };
+    let lid_past =
+        |paragraph: Option<&str>, lb: &regelrecht_law_model::ProvisionReference| match paragraph {
+            None => true,
+            Some(l) => lb.paragraph.as_deref() == Some(l),
+        };
     // De naam van een regeling zoals een legal_basis haar schrijft: haar id,
     // haar naam, of haar id in woorden ("Algemene wet bestuursrecht").
-    let noemt = |lb: &regelrecht_law_model::ProvisionReference, regeling: &str| {
+    let noemt = |lb: &regelrecht_law_model::ProvisionReference, regulation: &str| {
         lb.law.as_deref().is_some_and(|w| {
-            w == regeling
-                || w.to_lowercase().replace(' ', "_") == regeling
+            w == regulation
+                || w.to_lowercase().replace(' ', "_") == regulation
                 || service
                     .resolver()
-                    .get_law(regeling)
+                    .get_law(regulation)
                     .and_then(|l| l.name.as_deref())
                     == Some(w)
         })
@@ -131,11 +132,11 @@ pub fn toetsen(service: &LawExecutionService, artikel: &str, event: &Event) -> V
                         return false;
                     };
                     gronden.iter().any(|g| {
-                        let eigen = format!("{}#{}", g.regeling, g.artikel) == artikel
+                        let eigen = format!("{}#{}", g.regulation, g.article) == article
                             && lb.article.as_deref().is_none_or(|x| x == a.number);
                         let uitgevoerd =
-                            lb.article.as_deref() == Some(g.artikel) && noemt(lb, g.regeling);
-                        (eigen || uitgevoerd) && lid_past(g.lid, lb)
+                            lb.article.as_deref() == Some(g.article) && noemt(lb, g.regulation);
+                        (eigen || uitgevoerd) && lid_past(g.paragraph, lb)
                     })
                 })
                 .map(|o| o.name.clone())
@@ -149,7 +150,7 @@ pub fn toetsen(service: &LawExecutionService, artikel: &str, event: &Event) -> V
 /// van het vastleg-event. Een boolean is onwaar, al het andere leeg. Wat een
 /// lexostatus van de zaak al afleidt, staat hier niet: geen gram is dan "niet
 /// gebeurd", en dat zegt de cel zelf (een parameter komt uit een bron).
-pub fn nog_niet(
+pub fn not_yet(
     service: &LawExecutionService,
     h: &HandelingDefinitie,
     procedure: &ProcedureDefinition,
@@ -173,13 +174,13 @@ pub fn nog_niet(
             if uit_de_zaak.contains(&r.name) {
                 continue;
             }
-            let waarde = if p.typering.soort == ParameterType::Boolean {
+            let value = if p.typing.soort == ParameterType::Boolean {
                 Value::Bool(false)
             } else {
                 Value::Null
             };
             uit.entry(r.name.clone()).or_insert(NogNiet {
-                waarde,
+                value,
                 stage: later.name.clone(),
             });
         }
@@ -195,46 +196,46 @@ pub fn nog_niet(
 /// op de herkomst (zie [`zet_formulier`]).
 pub fn bereid_voor(
     d: &mut ProcesDefinitie,
-    gezag: Option<&str>,
+    authority: Option<&str>,
     service: &LawExecutionService,
-    cel: &Cel,
+    cell: &Cell,
 ) -> Vec<String> {
     let mut fouten = Vec::new();
     let uit_de_zaak: BTreeSet<String> = d
         .zaakbronnen()
-        .filter_map(|b| cel.lexostatussen.lexostatus(&b.lexostatus))
-        .flat_map(|l| l.reduction.afleidingen.keys().cloned())
+        .filter_map(|b| cell.lexostatuses.lexostatus(&b.lexostatus))
+        .flat_map(|l| l.reduction.derivations.keys().cloned())
         .collect();
-    let Some(behandeling) = d.behandeling.as_mut() else {
+    let Some(handling) = d.handling.as_mut() else {
         return fouten;
     };
     let mut namen = BTreeSet::new();
-    for h in &mut behandeling.handelingen {
-        let wie = format!("handeling '{}'", h.naam);
-        if !namen.insert(h.naam.clone()) {
+    for h in &mut handling.actions {
+        let wie = format!("handeling '{}'", h.name);
+        if !namen.insert(h.name.clone()) {
             fouten.push(format!("{wie}: de naam staat er meer dan een keer"));
         }
-        let Some((_, event)) = cel.event(&h.vastleggen.stroom, &h.vastleggen.event) else {
+        let Some((_, event)) = cell.event(&h.record.stream, &h.record.event) else {
             fouten.push(format!(
                 "{wie}, vastleggen {}/{}: die stroom of dat event bestaat niet",
-                h.vastleggen.stroom, h.vastleggen.event
+                h.record.stream, h.record.event
             ));
             continue;
         };
         h.stage = event.stage.clone();
-        h.besluitrol = event.besluit;
+        h.decision_role = event.decision;
         // De regeling: genoemd, of de beschikking waarvoor het gezag van het
         // proces bevoegd is.
         let mut beschikking = None;
-        if h.regeling.is_empty() {
+        if h.regulation.is_empty() {
             // Zonder gezag meldt de controle op `namens` het al.
-            let Some(actor) = gezag else {
+            let Some(actor) = authority else {
                 continue;
             };
             let kandidaten = gezag::beschikkingen_van(service, actor);
             match kandidaten.as_slice() {
                 [(r, a)] => {
-                    h.regeling = r.clone();
+                    h.regulation = r.clone();
                     beschikking = Some(format!("{r}#{a}"));
                 }
                 [] => {
@@ -244,78 +245,81 @@ pub fn bereid_voor(
                     continue;
                 }
                 meer => {
-                    let lijst: Vec<String> = meer.iter().map(|(r, a)| format!("{r}#{a}")).collect();
+                    let list: Vec<String> = meer.iter().map(|(r, a)| format!("{r}#{a}")).collect();
                     fouten.push(format!(
                         "{wie}: '{actor}' is bevoegd voor meer dan een beschikking ({}); kies er een met regeling",
-                        lijst.join(", ")
+                        list.join(", ")
                     ));
                     continue;
                 }
             }
         }
         // Het artikel: dat van de eerste uitkomst, of de beschikking.
-        let artikel = match h.uitkomsten.first() {
-            Some(u) => artikel_met(service, &h.regeling, u),
+        let article = match h.outputs.first() {
+            Some(u) => artikel_met(service, &h.regulation, u),
             None => beschikking.clone(),
         };
-        let Some(artikel) = artikel else {
-            fouten.push(match h.uitkomsten.first() {
-                Some(u) => format!("{wie}: regeling '{}' heeft geen uitkomst '{u}'", h.regeling),
-                None => format!("{wie}: noem een uitkomst van regeling '{}'", h.regeling),
+        let Some(article) = article else {
+            fouten.push(match h.outputs.first() {
+                Some(u) => format!(
+                    "{wie}: regeling '{}' heeft geen uitkomst '{u}'",
+                    h.regulation
+                ),
+                None => format!("{wie}: noem een uitkomst van regeling '{}'", h.regulation),
             });
             continue;
         };
         if let Some(b) = &beschikking {
-            if b != &artikel {
+            if b != &article {
                 fouten.push(format!(
                     "{wie}: uitkomst '{}' komt niet uit {b}, de beschikking waarvoor '{}' bevoegd is",
-                    h.uitkomsten[0],
-                    gezag.unwrap_or_default()
+                    h.outputs[0],
+                    authority.unwrap_or_default()
                 ));
             }
         }
-        h.artikel = artikel;
-        h.toetsen = toetsen(service, &h.artikel, event)
+        h.article = article;
+        h.assessments = assessments(service, &h.article, event)
             .into_iter()
-            .filter(|t| !h.uitkomsten.contains(t))
+            .filter(|t| !h.outputs.contains(t))
             .collect();
     }
     // De soort: per artikel met een procedure is de vroegste stage het
     // besluit, elke latere een vervolg.
-    let lijst = &mut behandeling.handelingen;
+    let list = &mut handling.actions;
     let mut vroegste: BTreeMap<String, (usize, String)> = BTreeMap::new();
-    for h in lijst.iter() {
-        let (Some(stage), Some(p)) = (&h.stage, procedure_van(service, &h.artikel)) else {
+    for h in list.iter() {
+        let (Some(stage), Some(p)) = (&h.stage, procedure_van(service, &h.article)) else {
             continue;
         };
         let Some(i) = p.stages.iter().position(|s| &s.name == stage) else {
             continue;
         };
         let e = vroegste
-            .entry(h.artikel.clone())
-            .or_insert((i, h.naam.clone()));
+            .entry(h.article.clone())
+            .or_insert((i, h.name.clone()));
         if i < e.0 {
-            *e = (i, h.naam.clone());
+            *e = (i, h.name.clone());
         }
     }
-    for h in lijst.iter_mut() {
-        let wie = format!("handeling '{}'", h.naam);
+    for h in list.iter_mut() {
+        let wie = format!("handeling '{}'", h.name);
         let Some(stage) = h.stage.clone() else {
-            h.soort = Handelingsoort::Feit;
+            h.soort = Handelingsoort::Fact;
             continue;
         };
-        let Some(p) = procedure_van(service, &h.artikel) else {
+        let Some(p) = procedure_van(service, &h.article) else {
             // Zonder procedure: een besluit zonder stand van wat later komt.
-            h.soort = Handelingsoort::Besluit;
+            h.soort = Handelingsoort::Decision;
             continue;
         };
         if !p.stages.iter().any(|s| s.name == stage) {
             fouten.push(format!(
                 "{wie}, vastleggen {}/{}: stage '{stage}' staat niet in procedure '{}' van {} ({})",
-                h.vastleggen.stroom,
-                h.vastleggen.event,
+                h.record.stream,
+                h.record.event,
                 p.id,
-                h.artikel,
+                h.article,
                 p.stages
                     .iter()
                     .map(|s| s.name.as_str())
@@ -324,33 +328,33 @@ pub fn bereid_voor(
             ));
             continue;
         }
-        let besluit = vroegste.get(&h.artikel).map(|(_, n)| n.clone());
-        if besluit.as_deref() == Some(h.naam.as_str()) {
-            h.soort = Handelingsoort::Besluit;
-            h.nog_niet = nog_niet(service, h, p, &uit_de_zaak);
-        } else if let Some(besluit) = besluit {
-            h.soort = Handelingsoort::Vervolg {
-                besluit,
+        let decision = vroegste.get(&h.article).map(|(_, n)| n.clone());
+        if decision.as_deref() == Some(h.name.as_str()) {
+            h.soort = Handelingsoort::Decision;
+            h.not_yet = not_yet(service, h, p, &uit_de_zaak);
+        } else if let Some(decision) = decision {
+            h.soort = Handelingsoort::FollowUp {
+                decision,
                 procedure: p.id.clone(),
             };
-            h.haken = haken_op(service, &h.artikel, &stage);
-            for haak in &h.haken {
+            h.hooks = haken_op(service, &h.article, &stage);
+            for haak in &h.hooks {
                 for u in uitkomsten_van(service, haak) {
-                    if !h.uitkomsten.contains(&u) {
-                        h.uitkomsten.push(u);
+                    if !h.outputs.contains(&u) {
+                        h.outputs.push(u);
                     }
                 }
             }
-            h.toetsen.clear();
+            h.assessments.clear();
         }
     }
-    for h in lijst.iter_mut() {
-        let mut typen = regelingen::uitkomsttypen(service, &h.artikel);
-        for haak in &h.haken {
-            typen.extend(regelingen::uitkomsttypen(service, haak));
+    for h in list.iter_mut() {
+        let mut types = regelingen::uitkomsttypen(service, &h.article);
+        for haak in &h.hooks {
+            types.extend(regelingen::uitkomsttypen(service, haak));
         }
-        typen.retain(|naam, _| h.uitkomsten.contains(naam) || h.toetsen.contains(naam));
-        h.typen = typen;
+        types.retain(|name, _| h.outputs.contains(name) || h.assessments.contains(name));
+        h.types = types;
     }
     fouten
 }
@@ -360,11 +364,11 @@ pub fn bereid_voor(
 /// regeling met `type_spec.unit`, en dat krijgt het veld mee als `eenheid`.
 pub fn veldsoort(soort: ParameterType) -> String {
     match soort {
-        ParameterType::Boolean => "janee",
-        ParameterType::Date => "datum",
-        ParameterType::Amount => "bedrag",
-        ParameterType::Number => "getal",
-        _ => "tekst",
+        ParameterType::Boolean => "yes_no",
+        ParameterType::Date => "date",
+        ParameterType::Amount => "amount",
+        ParameterType::Number => "number",
+        _ => "text",
     }
     .to_string()
 }
@@ -376,27 +380,27 @@ pub fn veldsoort(soort: ParameterType) -> String {
 /// komt uit de wet: uit de parameter die een afleiding van de zaak uit dat
 /// veld maakt, of uit de stage; een veld dat alleen het `op_moment` bindt, is
 /// een datum.
-pub fn zet_formulier(d: &mut ProcesDefinitie, service: &LawExecutionService, cel: &Cel) {
-    let Some(behandeling) = d.behandeling.as_mut() else {
+pub fn zet_formulier(d: &mut ProcesDefinitie, service: &LawExecutionService, cell: &Cell) {
+    let Some(handling) = d.handling.as_mut() else {
         return;
     };
-    let besluiten: BTreeMap<String, String> = behandeling
-        .handelingen
+    let decisions: BTreeMap<String, String> = handling
+        .actions
         .iter()
-        .map(|h| (h.naam.clone(), h.artikel.clone()))
+        .map(|h| (h.name.clone(), h.article.clone()))
         .collect();
-    for h in &mut behandeling.handelingen {
-        let Some((stroom, event)) = cel.event(&h.vastleggen.stroom, &h.vastleggen.event) else {
+    for h in &mut handling.actions {
+        let Some((stream, event)) = cell.event(&h.record.stream, &h.record.event) else {
             continue;
         };
         h.feiten = match &h.soort {
-            Handelingsoort::Vervolg { besluit, .. } => {
-                let benodigd = besluiten
-                    .get(besluit)
-                    .and_then(|a| regelingen::artikel(service, a).ok())
-                    .map(|a| regelingen::benodigde_parameters(service, &h.regeling, a))
+            Handelingsoort::FollowUp { decision, .. } => {
+                let benodigd = decisions
+                    .get(decision)
+                    .and_then(|a| regelingen::article(service, a).ok())
+                    .map(|a| regelingen::benodigde_parameters(service, &h.regulation, a))
                     .unwrap_or_default();
-                let stage = procedure_van(service, &h.artikel)
+                let stage = procedure_van(service, &h.article)
                     .and_then(|p| p.stages.iter().find(|s| Some(&s.name) == h.stage.as_ref()));
                 stage
                     .into_iter()
@@ -404,29 +408,29 @@ pub fn zet_formulier(d: &mut ProcesDefinitie, service: &LawExecutionService, cel
                     .map(|r| {
                         let b = benodigd.get(&r.name);
                         Veld {
-                            naam: r.name.clone(),
+                            name: r.name.clone(),
                             label: b
-                                .and_then(|b| b.omschrijving.as_deref())
+                                .and_then(|b| b.description.as_deref())
                                 .map(crate::origin::label_uit)
                                 .unwrap_or_else(|| leesbaar(&r.name)),
                             soort: Some(veldsoort(r.req_type)),
-                            eenheid: b.and_then(|b| b.typering.eenheid.clone()),
-                            opties: None,
-                            kolommen: None,
-                            uitleg: None,
-                            groep: None,
-                            grondslag: Vec::new(),
+                            unit: b.and_then(|b| b.typing.unit.clone()),
+                            options: None,
+                            columns: None,
+                            explanation: None,
+                            group: None,
+                            legal_basis: Vec::new(),
                         }
                     })
                     .collect()
             }
             _ => {
-                let oordelen: Vec<&str> = h.oordelen.iter().map(|o| o.parameter.as_str()).collect();
+                let verdicts: Vec<&str> = h.verdicts.iter().map(|o| o.parameter.as_str()).collect();
                 event
                     .external_sleutels()
                     .into_iter()
-                    .filter(|k| !h.uitkomsten.contains(k) && !oordelen.contains(&k.as_str()))
-                    .map(|k| feitveld(service, cel, stroom, event, &k))
+                    .filter(|k| !h.outputs.contains(k) && !verdicts.contains(&k.as_str()))
+                    .map(|k| feitveld(service, cell, stream, event, &k))
                     .collect()
             }
         };
@@ -438,7 +442,7 @@ pub fn zet_formulier(d: &mut ProcesDefinitie, service: &LawExecutionService, cel
 fn overneemt(a: &crate::reductie::Afgeleid) -> bool {
     use crate::reductie::Afleiding as A;
     matches!(
-        a.afleiding,
+        a.derivation,
         A::Veld { .. } | A::LaatsteVeld { .. } | A::Som { .. }
     )
 }
@@ -448,29 +452,29 @@ fn overneemt(a: &crate::reductie::Afgeleid) -> bool {
 /// afleidt.
 fn feitveld(
     service: &LawExecutionService,
-    cel: &Cel,
-    stroom: &crate::stroom::Stroom,
+    cell: &Cell,
+    stream: &crate::stroom::Stroom,
     event: &Event,
     sleutel: &str,
 ) -> Veld {
     let mut soort = None;
-    let mut eenheid = None;
-    let mut uitleg = None;
+    let mut unit = None;
+    let mut explanation = None;
     // Welk veld van het gram bindt aan deze sleutel?
     let paden: Vec<String> = event
         .bladeren()
         .into_iter()
         .filter(|b| matches!(&b.binding, Binding::External(s) if s == sleutel))
-        .map(|b| b.pad)
+        .map(|b| b.path)
         .collect();
     // Eerst een afleiding die het veld overneemt (veld, som), dan een die er
     // iets van afleidt (een jaar, of het veld gevuld is): het type van de
     // eerste is dat van het veld zelf.
-    let mut kandidaten: Vec<(&String, &crate::reductie::Afgeleid)> = cel
-        .lexostatussen
+    let mut kandidaten: Vec<(&String, &crate::reductie::Afgeleid)> = cell
+        .lexostatuses
         .lexostatus_definitions
         .iter()
-        .filter(|d| d.reduction.kroniek == stroom.chronicle)
+        .filter(|d| d.reduction.chronicle == stream.chronicle)
         .flat_map(|d| d.alle_afleidingen())
         .filter(|(_, a)| {
             a.gelezen_paden()
@@ -479,55 +483,55 @@ fn feitveld(
         })
         .collect();
     kandidaten.sort_by_key(|(_, a)| !overneemt(a));
-    'zoek: for (naam, a) in kandidaten {
+    'zoek: for (name, a) in kandidaten {
         // De parameter met deze naam, in de grondslag van het event of van de
         // afleiding.
-        for g in event.grondslag.iter().chain(a.grondslag.iter()) {
-            let Ok(art) = regelingen::artikel(service, g) else {
+        for g in event.legal_basis.iter().chain(a.legal_basis.iter()) {
+            let Ok(art) = regelingen::article(service, g) else {
                 continue;
             };
-            if let Some(p) = art.get_parameters().iter().find(|p| &p.name == naam) {
+            if let Some(p) = art.get_parameters().iter().find(|p| &p.name == name) {
                 soort = Some(veldsoort(p.param_type));
-                eenheid = p.type_spec.as_ref().and_then(|t| t.unit.clone());
-                uitleg = p.description.clone();
+                unit = p.type_spec.as_ref().and_then(|t| t.unit.clone());
+                explanation = p.description.clone();
                 break 'zoek;
             }
         }
     }
     // Zegt de wet het type van het veld, dan dat (Awb 4:87: het bedrag).
     if soort.is_none() {
-        if let Some(t) = paden.iter().find_map(|p| event.veldtypen.get(p)) {
+        if let Some(t) = paden.iter().find_map(|p| event.field_types.get(p)) {
             soort = Some(veldsoort(t.type_));
-            eenheid = t.unit.clone();
-            uitleg = Some(format!(
+            unit = t.unit.clone();
+            explanation = Some(format!(
                 "Het type van dit veld zegt de wet die het feit vestigt ({}).",
-                event.vestigt.join(", ")
+                event.establishes.join(", ")
             ));
         }
     }
-    let op_moment = event
-        .op_moment
+    let effective_at = event
+        .effective_at
         .as_ref()
         .is_some_and(|b| matches!(b.binding(), Binding::External(s) if s == sleutel));
-    if soort.is_none() && op_moment {
-        soort = Some("datum".into());
-        uitleg = event.op_moment.as_ref().map(|b| {
+    if soort.is_none() && effective_at {
+        soort = Some("date".into());
+        explanation = event.effective_at.as_ref().map(|b| {
             format!(
                 "Het moment waarop het feit rechtens plaatsvond ({}).",
-                b.grondslag.join(", ")
+                b.legal_basis.join(", ")
             )
         });
     }
     Veld {
-        naam: sleutel.to_string(),
+        name: sleutel.to_string(),
         label: leesbaar(sleutel),
         soort,
-        eenheid,
-        opties: None,
-        kolommen: None,
-        uitleg,
-        groep: None,
-        grondslag: event.grondslag.clone(),
+        unit,
+        options: None,
+        columns: None,
+        explanation,
+        group: None,
+        legal_basis: event.legal_basis.clone(),
     }
 }
 
@@ -636,24 +640,24 @@ articles:
     fn toetsen_uit_de_grondslag_van_het_event() {
         let s = service();
         let event: Event = serde_yaml_ng::from_str(
-            "name: e\nintake: behandelaar\ngrondslag: ['testregeling_bevoegd#1 lid 1']\ntype: executogram\nzaak: volgt\nfields: {x: $external.x}\n",
+            "name: e\nintake: behandelaar\nlegal_basis: ['testregeling_bevoegd#1 lid 1']\ntype: executogram\ncase: volgt\nfields: {x: $external.x}\n",
         )
         .unwrap();
-        assert_eq!(toetsen(&s, "testregeling_bevoegd#1", &event), ["toets"]);
+        assert_eq!(assessments(&s, "testregeling_bevoegd#1", &event), ["toets"]);
         // Een oordeel of vaststelling voert geen besluit uit: geen toets.
-        let mut oordeel = event.clone();
-        oordeel.type_ = "handeling".into();
-        assert!(toetsen(&s, "testregeling_bevoegd#1", &oordeel).is_empty());
-        assert!(toetsen(&s, "testregeling_bevoegd#2", &event).is_empty());
+        let mut verdict = event.clone();
+        verdict.type_ = "act".into();
+        assert!(assessments(&s, "testregeling_bevoegd#1", &verdict).is_empty());
+        assert!(assessments(&s, "testregeling_bevoegd#2", &event).is_empty());
         let ander: Event = serde_yaml_ng::from_str(
-            "name: e\nintake: behandelaar\ngrondslag: ['testregeling_bevoegd#2']\ntype: executogram\nzaak: volgt\nfields: {x: $external.x}\n",
+            "name: e\nintake: behandelaar\nlegal_basis: ['testregeling_bevoegd#2']\ntype: executogram\ncase: volgt\nfields: {x: $external.x}\n",
         )
         .unwrap();
-        assert!(toetsen(&s, "testregeling_bevoegd#1", &ander).is_empty());
+        assert!(assessments(&s, "testregeling_bevoegd#1", &ander).is_empty());
         let ander_lid: Event = serde_yaml_ng::from_str(
-            "name: e\nintake: behandelaar\ngrondslag: ['testregeling_bevoegd#1 lid 2']\ntype: executogram\nzaak: volgt\nfields: {x: $external.x}\n",
+            "name: e\nintake: behandelaar\nlegal_basis: ['testregeling_bevoegd#1 lid 2']\ntype: executogram\ncase: volgt\nfields: {x: $external.x}\n",
         )
         .unwrap();
-        assert!(toetsen(&s, "testregeling_bevoegd#1", &ander_lid).is_empty());
+        assert!(assessments(&s, "testregeling_bevoegd#1", &ander_lid).is_empty());
     }
 }

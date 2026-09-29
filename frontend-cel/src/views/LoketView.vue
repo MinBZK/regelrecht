@@ -4,8 +4,8 @@
 // aanvrager duidt het loket aan met de velden van een portaalkanaal (uit de
 // configuratie van het proces); niemand logde daarmee in. De dag van
 // ontvangst telt rechtens (Awb 4:13: de beslistermijn loopt vanaf de
-// ontvangst) en wordt het op_moment van het gram; het invoeren is
-// vastgelegd_op. Het proces weigert een dag na vandaag, en een dag vóór de
+// ontvangst) en wordt het effective_at van het gram; het invoeren is
+// recorded_at. Het proces weigert een dag na vandaag, en een dag vóór de
 // openstelling van het tijdvak als het beleid die noemt.
 import { computed, inject, ref } from 'vue';
 import { veldTekst } from '../formulier.js';
@@ -30,8 +30,8 @@ function kiesKanaal(id) {
 
 function verstuur(external) {
   return api.loketIndienen({
-    aanvrager: { kanaal: kanaalId.value, ...aanvrager.value },
-    ontvangen_op: ontvangenOp.value ?? '',
+    applicant: { channel: kanaalId.value, ...aanvrager.value },
+    received_at: ontvangenOp.value ?? '',
     external,
   });
 }
@@ -53,16 +53,16 @@ function verstuur(external) {
           <nldd-segmented-control-item v-for="k in kanalen" :key="k.id" :value="k.id" :text="k.rol"></nldd-segmented-control-item>
         </nldd-segmented-control>
       </nldd-form-field>
-      <nldd-form-field v-for="v in kanaal?.velden ?? []" :key="kanaalId + v.naam" :label="v.label">
+      <nldd-form-field v-for="v in kanaal?.fields ?? []" :key="kanaalId + v.name" :label="v.label">
         <nldd-text-field
-          :value="aanvrager[v.naam]"
-          :name="`aanvrager-${v.naam}`"
-          :keyboard="v.numeriek ? 'numeric' : undefined"
-          @input="aanvrager = { ...aanvrager, [v.naam]: veldTekst($event) }"
+          :value="aanvrager[v.name]"
+          :name="`aanvrager-${v.name}`"
+          :keyboard="v.numeric ? 'numeric' : undefined"
+          @input="aanvrager = { ...aanvrager, [v.name]: veldTekst($event) }"
         ></nldd-text-field>
       </nldd-form-field>
       <nldd-form-field label="Ontvangen op" supporting-label="de datumstempel">
-        <Invoer soort="datum" label="Ontvangen op" :model-value="ontvangenOp" @update:model-value="ontvangenOp = $event" />
+        <Invoer soort="date" label="Ontvangen op" :model-value="ontvangenOp" @update:model-value="ontvangenOp = $event" />
       </nldd-form-field>
     </template>
   </AanvraagView>
