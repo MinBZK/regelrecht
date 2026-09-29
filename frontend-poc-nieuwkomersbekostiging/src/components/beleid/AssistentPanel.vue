@@ -62,7 +62,7 @@
       ></nldd-button>
     </div>
 
-    <div v-if="feed.length || streaming || afronding" ref="feedEl" class="as-feed">
+    <div v-if="feed.length || streaming || afronding" ref="feedEl" class="as-feed" @scroll="opScroll">
       <div v-for="(item, i) in feed" :key="i" class="as-item" :class="`as-${item.type}`">
         <span v-if="item.type === 'tekst'" class="as-md" v-html="eenvoudigeMarkdown(item.tekst)"></span>
         <template v-else-if="item.type === 'tool'">
@@ -192,6 +192,13 @@
         :disabled="!beschikbaar || !prompt.trim() || (loopt && !!openVraag)"
         @click="verstuur"
       ></nldd-button>
+      <nldd-button
+        v-if="feed.length"
+        :text="gekopieerd ? 'Gekopieerd' : 'Kopieer gesprek'"
+        :start-icon="gekopieerd ? 'checked' : 'copy'"
+        variant="secondary"
+        @click="kopieerGesprek"
+      ></nldd-button>
       <nldd-button v-if="loopt" text="Stop" start-icon="remove" variant="secondary" @click="stop"></nldd-button>
     </div>
   </div>
@@ -298,6 +305,40 @@ async function peilHealth() {
 const resultaat = ref(false);
 const feedEl = ref(null);
 
+/**
+ * Of de feed onderaan meeloopt met nieuwe berichten. Alleen zolang de lezer
+ * onderaan staat: wie terugscrolt om iets te lezen, wordt er niet bij elk
+ * bericht weer onder vandaan getrokken. Terug naar onderen scrollen zet het
+ * meelopen weer aan.
+ */
+let volgOnderkant = true;
+
+function opScroll() {
+  const el = feedEl.value;
+  if (!el) return;
+  volgOnderkant = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+}
+
+const gekopieerd = ref(false);
+let gekopieerdTimer = null;
+
+/**
+ * Het gesprek als platte tekst op het klembord, zoals het er staat. De tekst
+ * komt uit de feed zelf, zodat wat je plakt gelijk is aan wat je las.
+ */
+async function kopieerGesprek() {
+  const tekst = feedEl.value?.innerText?.trim();
+  if (!tekst) return;
+  try {
+    await navigator.clipboard.writeText(tekst);
+    gekopieerd.value = true;
+    clearTimeout(gekopieerdTimer);
+    gekopieerdTimer = setTimeout(() => { gekopieerd.value = false; }, 2000);
+  } catch {
+    feed.value.push({ type: 'fout', melding: 'Kopiëren lukte niet; selecteer de tekst handmatig.' });
+  }
+}
+
 const aantalDocumenten = computed(() => Object.keys(overlays.value ?? {}).length);
 const heeftWijziging = computed(() => aantalDocumenten.value > 0 || !!handelingenYaml.value);
 const wijzigingLabel = computed(() => {
@@ -375,7 +416,7 @@ watch(feedEl, (el) => {
 // krijgt zijn berichten wel binnen, maar het scrollen erbij landt op een
 // pagina die niemand ziet; sommige browsers rekenen er dan ook niet goed mee.
 function opZichtbaar() {
-  if (document.visibilityState === 'visible') scrollNaarBeneden();
+  if (document.visibilityState === 'visible' && volgOnderkant) scrollNaarBeneden();
 }
 document.addEventListener('visibilitychange', opZichtbaar);
 onUnmounted(() => {
@@ -528,6 +569,7 @@ async function submit() {
   // binnenkomt is in een demo voor OCW lelijk.
   vraagNotificatieToestemming();
   feed.value = [];
+  volgOnderkant = true;
   pad.value = [];
   gekozenPunt.value = null;
   overlays.value = null;
@@ -639,7 +681,7 @@ function verwerkEvent(ev) {
     } else {
       feed.value.push(ev);
     }
-    scrollNaarBeneden();
+    if (volgOnderkant) scrollNaarBeneden();
 }
 
 /**
