@@ -946,14 +946,25 @@ fn supplied_value(
                     "field '{path}' is supplied by the {source} ({value}); the submission may not change it ({submitted})"
                 ));
             }
-            let legal_basis = s
-                .get("legal_basis")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-                .filter_map(Value::as_str)
-                .map(str::to_string)
-                .collect();
+            // Why that source may supply the field: for the channel the
+            // origin the field has in force (the rule that makes the channel
+            // supply it), otherwise what the receiving channel says (the
+            // policy that names the register).
+            let of_origin = event
+                .field_defs
+                .iter()
+                .find(|d| d.name == name && source == "channel")
+                .and_then(|d| d.origin.as_ref())
+                .map(|o| vec![o.grondslag.clone()]);
+            let legal_basis = of_origin.unwrap_or_else(|| {
+                s.get("legal_basis")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            });
             Ok((
                 value,
                 crate::gram::FieldProvenance {

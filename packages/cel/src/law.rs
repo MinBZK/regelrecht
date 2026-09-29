@@ -801,27 +801,33 @@ fn part_fields(
 }
 
 /// The overrides of an origin by the policy that takes part in the event,
-/// per (regulation, parameter): `origins` of the article (RFC-043).
+/// per (regulation, parameter): `origins` (RFC-043) of every article of an
+/// implementing policy of which an article takes part (the policy that
+/// extends the event may say elsewhere who supplies a field, such as a
+/// provision that only overrides origins). With the article that says so.
 fn origins_of(parts: &[Part<'_, '_>]) -> BTreeMap<(String, String), (Origin, String)> {
     let mut out = BTreeMap::new();
+    let mut seen: BTreeSet<&str> = BTreeSet::new();
     for p in parts {
-        let Some(origins) = p
-            .law
-            .article
-            .machine_readable
-            .as_ref()
-            .and_then(|m| m.origins.as_ref())
-        else {
-            continue;
-        };
-        for o in origins
-            .iter()
-            .filter_map(Declared::<OriginOverride>::as_valid)
+        let law = p.law.regulation;
+        if law.regulatory_layer != regelrecht_engine::RegulatoryLayer::Uitvoeringsbeleid
+            || !seen.insert(law.id.as_str())
         {
-            out.insert(
-                (o.regulation.clone(), o.parameter.clone()),
-                (o.origin.clone(), p.law.reference.clone()),
-            );
+            continue;
+        }
+        for a in &law.articles {
+            let Some(origins) = a.machine_readable.as_ref().and_then(|m| m.origins.as_ref()) else {
+                continue;
+            };
+            for o in origins
+                .iter()
+                .filter_map(Declared::<OriginOverride>::as_valid)
+            {
+                out.insert(
+                    (o.regulation.clone(), o.parameter.clone()),
+                    (o.origin.clone(), format!("{}#{}", law.id, a.number)),
+                );
+            }
         }
     }
     out
