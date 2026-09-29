@@ -44,7 +44,15 @@ impl Runtime {
     /// router. Faalt een cel of een proces, dan start de runtime niet; elke
     /// melding noemt de cel of het proces.
     pub fn laad(config: &Config, klok: Klok) -> Result<Self, Vec<String>> {
-        let corpus = regelingen::laad(&config.regulation_path)?;
+        let mut corpus = regelingen::laad(&config.regulation_path)?;
+        // De registers die het beleid bevraagt, als bron in het corpus
+        // (notitie bron en gram-id); hun kronieken komen erbij als de cellen
+        // ze openen.
+        let registers = crate::register::laad(
+            config.registers.as_deref(),
+            &mut corpus.service,
+            &crate::datum::peildatum(&klok()),
+        )?;
         let service = Arc::new(corpus.service);
         let geladen = Arc::new(corpus.regelingen);
         let mappen = celmappen(&config.cells_path).map_err(|e| vec![e])?;
@@ -79,6 +87,11 @@ impl Runtime {
                 Err(f) => fouten.extend(f),
             }
         }
+        let per_kroniek: Vec<(&str, Vec<&str>)> = geladen_cellen
+            .iter()
+            .map(|c| (c.id(), c.kronieken()))
+            .collect();
+        fouten.extend(registers.controleer(&per_kroniek));
         let cellen: Vec<Arc<Cel>> = geladen_cellen.into_iter().map(Arc::new).collect();
         let mut per_id: BTreeMap<String, Arc<Cel>> = BTreeMap::new();
         for c in &cellen {
@@ -130,11 +143,14 @@ impl Runtime {
         let lees_token = config.lees_token.as_deref().map(LeesToken::uit);
         let mut celstaten = Vec::new();
         for cel in cellen {
-            let kroniek = open_kroniek(&config.data_dir, &cel, &klok)
-                .map_err(|f| met_cel(cel.id(), vec![f]))?;
+            let kroniek = Arc::new(
+                open_kroniek(&config.data_dir, &cel, &klok)
+                    .map_err(|f| met_cel(cel.id(), vec![f]))?,
+            );
+            registers.open(cel.id(), &kroniek);
             celstaten.push(CelState {
                 cel,
-                kroniek: Arc::new(kroniek),
+                kroniek,
                 klok: klok.clone(),
                 runtime_token: runtime_token.clone(),
                 lees_token: lees_token.clone(),

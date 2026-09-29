@@ -1,0 +1,65 @@
+---
+# Fictief beleid van een registerhouder (notitie "bron en gram-id",
+# 29-09-2026): de bevraging van het register van de fictieve registercel
+# (cellen/register), als artikel in het beleid van de beheerder, niet als
+# lexostatus in de cel. Welke bron het register levert (de kroniek van een cel
+# of een oude API), zegt de deployment: de test in
+# tests/exp_reductie_als_engine.rs zet er eerst een kroniek en dan een
+# DictDataSource tegenover, en de uitkomst is dezelfde.
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
+$id: testbeleid_registerhouder
+name: Testbeleid registerhouder (fictief)
+competent_authority:
+  name: Test registerhouder
+  type: INSTANCE
+legal_basis:
+  - {law_id: testregeling_register, article: '1'}
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.com/testbeleid_registerhouder
+articles:
+  - number: '1'
+    url: https://example.com/testbeleid_registerhouder/1
+    text: Het register wordt bevraagd per aanduiding en orgaan; is de aanduiding ingeschreven, en is zij geschrapt?
+    machine_readable:
+      execution:
+        parameters:
+          - {name: aanduiding, type: string, required: true}
+          - {name: orgaan, type: string, required: true}
+        input:
+          - name: grammen
+            type: array
+            source: {}
+        output:
+          - {name: is_ingeschreven_in_register, type: boolean}
+          - {name: is_geschrapt, type: boolean}
+        actions:
+          - output: is_ingeschreven_in_register
+            legal_basis: {law: Testregeling, article: '1', paragraph: '1'}
+            value:
+              operation: FOREACH
+              collection: $grammen
+              as: g
+              filter:
+                operation: AND
+                conditions:
+                  - {operation: EQUALS, subject: $g.name, value: aanduiding_ingeschreven}
+                  - {operation: EQUALS, subject: $g.fields.orgaan, value: $orgaan}
+                  - {operation: EQUALS, subject: $g.fields.aanduiding, value: $aanduiding}
+              body: true
+              combine: OR
+          - output: is_geschrapt
+            legal_basis: {law: Testregeling, article: '1', paragraph: '1'}
+            value:
+              operation: FOREACH
+              collection: $grammen
+              as: g
+              filter:
+                operation: AND
+                conditions:
+                  - {operation: EQUALS, subject: $g.name, value: aanduiding_geschrapt}
+                  - {operation: EQUALS, subject: $g.fields.orgaan, value: $orgaan}
+                  - {operation: EQUALS, subject: $g.fields.aanduiding, value: $aanduiding}
+              body: true
+              combine: OR

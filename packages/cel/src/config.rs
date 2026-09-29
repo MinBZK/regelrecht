@@ -46,6 +46,11 @@ pub struct Config {
     pub lees_token_bronnen: Vec<String>,
     /// Langs welke route de cellen reduceren (`CEL_REDUCTIE`, experiment A).
     pub reductie: Reductiemodus,
+    /// Het koppelbestand van de registers (`CEL_REGISTERS`): welk systeem
+    /// het register levert dat een beleid bevraagt (zie
+    /// [`crate::register`]). Zonder: geen registers, en een beleid dat er een
+    /// bevraagt houdt de runtime tegen.
+    pub registers: Option<PathBuf>,
 }
 
 /// Hoe de cellen van de runtime een lexostatus reduceren (`CEL_REDUCTIE`).
@@ -129,6 +134,7 @@ impl Config {
                 std::env::var("CEL_REDUCTIE").ok().as_deref(),
                 std::env::var("CEL_ENGINE_KOPPELING").ok().as_deref(),
             )?,
+            registers: pad("CEL_REGISTERS").ok(),
         })
     }
 }
@@ -278,6 +284,13 @@ pub struct HandelingDefinitie {
     /// [`Handelingsoort::Vervolg`]).
     #[serde(default)]
     pub besluit: Option<String>,
+    /// De parameter van het artikel die het id krijgt van het besluit
+    /// waarop de handeling handelt (notitie bron en gram-id): zo roept het
+    /// proces het eigen beleid aan dat per besluit leest, zoals de
+    /// betalingsadministratie. Bedrading, geen wet: welke parameter het is,
+    /// zegt het proces.
+    #[serde(default)]
+    pub besluitparameter: Option<String>,
     /// Leeg in `proces.yaml`: de runtime vult haar bij het laden met de
     /// regeling van de beschikking waarvoor het gezag van het proces
     /// (`namens`) bevoegd is (zie [`crate::gezag::beschikkingen_van`]).

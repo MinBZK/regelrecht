@@ -134,7 +134,7 @@ async fn zaaklexostatus(
     wortel: &str,
     peil: &Peil,
     concept: Option<&Vastlegverzoek>,
-) -> Result<Lexostatus, Weigering> {
+) -> Result<(Lexostatus, Option<Gram>), Weigering> {
     let def = om
         .proces
         .cel
@@ -150,6 +150,7 @@ async fn zaaklexostatus(
             .await
             .and_then(|v| {
                 serde_json::from_value::<Lexostatus>(v)
+                    .map(|l| (l, None))
                     .map_err(|e| TransportFout::Json(e.to_string()))
             }),
         Some(c) => {
@@ -158,16 +159,19 @@ async fn zaaklexostatus(
             }
             celclient::proef(om.cel, &bron.cel, &bron.lexostatus, c, &inputs)
                 .await
-                .map(|p| p.lexostatus)
+                .map(|p| (p.lexostatus, Some(p.gram)))
         }
     };
     match antwoord {
         Ok(l) => Ok(l),
         // Kiest de definitie een gram en is er geen, dan levert zij niets.
-        Err(TransportFout::Antwoord { status: 404, .. }) => Ok(Lexostatus {
-            niet_afgeleid: def.reduction.afleidingen.keys().cloned().collect(),
-            ..Lexostatus::leeg(&def.name)
-        }),
+        Err(TransportFout::Antwoord { status: 404, .. }) => Ok((
+            Lexostatus {
+                niet_afgeleid: def.reduction.afleidingen.keys().cloned().collect(),
+                ..Lexostatus::leeg(&def.name)
+            },
+            None,
+        )),
         // Het concept past niet in een gram: een fout in het formulier.
         Err(TransportFout::Antwoord { status: 400, fout }) => Err(Weigering::Ongeldig(fout)),
         Err(TransportFout::Antwoord { status: 409, fout }) => Err(Weigering::Conflict(fout)),
@@ -411,8 +415,13 @@ async fn op_de_zaak(
         wortel_grammen: None,
     });
     let mut eigen = Vec::new();
+    // Het gram van het concept, zoals de cel het bouwde: een register dat
+    // het beleid bevraagt, telt het op proef mee (zie [`crate::register`]).
+    let mut proefgram: Option<Gram> = None;
     for bron in proces.definitie.zaakbronnen() {
-        eigen.push(zaaklexostatus(om, bron, wortel, &peil, concept.as_ref()).await?);
+        let (l, g) = zaaklexostatus(om, bron, wortel, &peil, concept.as_ref()).await?;
+        proefgram = proefgram.or(g);
+        eigen.push(l);
     }
 
     // 2. Synthese, met de invoer uit de lexostatus van de zaak die haar
@@ -461,6 +470,15 @@ async fn op_de_zaak(
         }
     }
 
+    // 4b. Het besluit waarop de handeling handelt, als het artikel het als
+    // parameter vraagt (het eigen beleid dat per besluit leest).
+    if let (Some(naam), Some(b)) = (&h.besluitparameter, &p.besluit) {
+        samen
+            .parameters
+            .insert(naam.clone(), Value::String(b.id.clone()));
+        samen.herkomst.insert(naam.clone(), Herkomst::Besluit);
+    }
+
     // 5. Wat een latere stage pas vraagt, is nog niet gebeurd.
     for (naam, n) in &h.nog_niet {
         samen.parameters.insert(naam.clone(), n.waarde.clone());
@@ -479,13 +497,15 @@ async fn op_de_zaak(
         .chain(h.toetsen.iter())
         .map(String::as_str)
         .collect();
-    let e = toets::evalueer_met_trace(
-        service,
-        &h.regeling,
-        &gevraagd,
-        &samen.parameters,
-        &p.peildatum,
-    );
+    let e = crate::register::met_proef(proefgram.into_iter().collect(), || {
+        toets::evalueer_met_trace(
+            service,
+            &h.regeling,
+            &gevraagd,
+            &samen.parameters,
+            &p.peildatum,
+        )
+    });
     let volledig = e.volledig(&gevraagd);
     let mut reden = (!volledig).then(|| e.reden("niet te nemen"));
     if !volledig {

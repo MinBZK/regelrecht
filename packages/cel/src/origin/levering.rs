@@ -79,6 +79,8 @@ pub(super) enum Levering {
     Stand,
     /// De keuze van het tijdvak in het portaal.
     Keuze,
+    /// Het id van het besluit waarop de handeling handelt.
+    Besluit,
     Bron(BronLevering),
 }
 
@@ -91,6 +93,7 @@ impl Levering {
             } => format!("eigen lexostatus {lexostatus} ({})", gelezen.woorden()),
             Levering::Stand => "de stand bij besluit".into(),
             Levering::Keuze => "de keuze in het portaal".into(),
+            Levering::Besluit => "het besluit waarop de handeling handelt".into(),
             Levering::Bron(b) => format!("synthese-bron {}/{}", b.cel, b.lexostatus),
         }
     }
@@ -121,7 +124,9 @@ impl Levering {
                 OriginValue::Dossier,
             )
             | (Levering::Bron(_), OriginValue::Register) => true,
-            (Levering::Stand, OriginValue::Dossier) => uitvoering.is_handeling(),
+            (Levering::Stand | Levering::Besluit, OriginValue::Dossier) => {
+                uitvoering.is_handeling()
+            }
             (Levering::Keuze, OriginValue::Belanghebbende) => {
                 uitvoering.is_aanbod() && g.is_tijdvak()
             }
@@ -188,6 +193,9 @@ impl Leveranciers {
         if let Uitvoering::Handeling(h) = uitvoering {
             for naam in h.nog_niet.keys() {
                 l.voeg_toe(naam, Levering::Stand);
+            }
+            if let Some(p) = &h.besluitparameter {
+                l.voeg_toe(p, Levering::Besluit);
             }
         }
         // De synthese per regel levert alleen aan de uitvoering die haar

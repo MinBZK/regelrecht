@@ -41,6 +41,7 @@ fn runtime_op(opstelling: &Path, data: &Path) -> Result<Runtime, Vec<String>> {
         lees_token: None,
         lees_token_bronnen: Vec::new(),
         reductie: Default::default(),
+        registers: None,
     };
     Runtime::laad(&config, klok())
 }
@@ -56,6 +57,7 @@ fn runtime_met_leestoken(opstelling: &Path, data: &Path, token: &str, bronnen: &
         lees_token: Some(token.to_string()),
         lees_token_bronnen: bronnen.iter().map(|b| b.to_string()).collect(),
         reductie: Default::default(),
+        registers: None,
     };
     Runtime::laad(&config, klok()).unwrap()
 }
@@ -1742,6 +1744,7 @@ fn zonder_processen_draaien_alleen_de_cellen() {
         lees_token: None,
         lees_token_bronnen: Vec::new(),
         reductie: Default::default(),
+        registers: None,
     };
     let r = Runtime::laad(&config, klok()).unwrap();
     assert_eq!(r.cellen.len(), 5);
@@ -2100,6 +2103,7 @@ fn met_ander_gezag(
         lees_token: None,
         lees_token_bronnen: Vec::new(),
         reductie: Default::default(),
+        registers: None,
     };
     let app = Runtime::laad(&config, klok()).unwrap().router;
     (cellen, data, app)
@@ -4613,6 +4617,7 @@ fn runtime_met_reductie(data: &Path, reductie: Reductiemodus) -> Result<Runtime,
         lees_token: None,
         lees_token_bronnen: Vec::new(),
         reductie,
+        registers: None,
     };
     Runtime::laad(&config, klok())
 }

@@ -202,7 +202,8 @@
                   "cel",
                   "per_regel",
                   "behandelaar",
-                  "stand_bij_besluit"
+                  "stand_bij_besluit",
+                  "besluit"
                 ]
               }
             }

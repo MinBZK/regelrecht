@@ -112,6 +112,9 @@ pub enum Herkomst {
     StandBijBesluit { stage: String },
     /// Het tijdvak dat de aanvrager in het portaal koos.
     Keuze,
+    /// Het id van het besluit waarop de handeling handelt (de
+    /// `besluitparameter` van de handeling; notitie bron en gram-id).
+    Besluit,
 }
 
 /// Hoe de vraag aan een bron verliep.

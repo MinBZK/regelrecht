@@ -40,6 +40,7 @@ pub mod origin;
 pub mod proces;
 pub mod reductie;
 pub mod regelingen;
+pub mod register;
 pub mod rijen;
 pub mod runtime;
 pub mod schema;

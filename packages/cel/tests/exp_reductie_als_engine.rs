@@ -40,6 +40,14 @@ fn grammen_van(cel_map: &Path, extra: &[Value]) -> (CelDefinitie, Vec<Gram>) {
     for s in &def.stromen {
         strommen.extend(stroom::laad(&cel_map.join(s)).unwrap());
     }
+    // Een stroom met `vestigt` krijgt zijn vorm uit de wet: met
+    // `EXP_REGULATION` het corpus waarin die wet staat.
+    if let Ok(pad) = std::env::var("EXP_REGULATION") {
+        let corpus = regelrecht_cel::regelingen::laad(Path::new(&pad)).unwrap();
+        let fouten = regelrecht_cel::wet::vestig(&mut strommen, &corpus.service);
+        assert!(fouten.is_empty(), "{fouten:?}");
+    }
+    stroom::leid_rollen_af(&mut strommen);
     let mut tekst =
         std::fs::read_to_string(cel_map.join(def.startstand.as_ref().unwrap())).unwrap();
     for e in extra {
@@ -115,6 +123,76 @@ fn register() -> (reductie::LexostatusDefinitie, Vec<Gram>) {
     let (def, grammen) = grammen_van(&map, &extra);
     let lexo = reductie::laad(&map.join(&def.lexostatussen)).unwrap();
     (lexo.lexostatus("registerstatus").unwrap().clone(), grammen)
+}
+
+/// Notitie "bron en gram-id", stap 4: de bevraging van een register staat in
+/// het beleid van de beheerder; welke bron het register levert, zegt de
+/// deployment. Hetzelfde beleidsartikel, een keer met de kroniek van de cel
+/// als bron ([`lexostatus_engine::KroniekBron`]) en een keer met een oude API
+/// ([`DictDataSource`], die per gevraagde aanduiding de passende records
+/// teruggeeft): de uitkomst is dezelfde. Het beleid weet niet wat erachter
+/// zit.
+#[test]
+fn een_register_uit_de_kroniek_en_uit_een_legacy_adapter_geeft_hetzelfde() {
+    use regelrecht_engine::DictDataSource;
+    const BELEID: &str = "testbeleid_registerhouder";
+    let (_, grammen) = register();
+    let tekst =
+        std::fs::read_to_string(fixtures().join("beleid/testbeleid_registerhouder.yaml")).unwrap();
+    let mut kroniek = LawExecutionService::new();
+    kroniek.load_law(&tekst).unwrap();
+    kroniek.add_data_source(Box::new(
+        lexostatus_engine::KroniekBron::new(BELEID, &grammen, "test_register").unwrap(),
+    ));
+    // De oude API: per aanduiding de records van die aanduiding, in de vorm
+    // die het beleid leest.
+    let aanduidingen = ["VOORBEELD", "ANDERS", "ONBEKEND"];
+    let records: Vec<BTreeMap<String, regelrecht_engine::Value>> = aanduidingen
+        .iter()
+        .map(|a| {
+            let eigen: Vec<&Gram> = grammen
+                .iter()
+                .filter(|g| g.fields.get("aanduiding").and_then(Value::as_str) == Some(*a))
+                .collect();
+            let lijst = lexostatus_engine::als_kroniek(eigen, "test_register").unwrap();
+            BTreeMap::from([
+                (
+                    "aanduiding".to_string(),
+                    regelrecht_engine::Value::from(&json!(a)),
+                ),
+                (
+                    "grammen".to_string(),
+                    regelrecht_engine::Value::from(&lijst),
+                ),
+            ])
+        })
+        .collect();
+    let mut api = LawExecutionService::new();
+    api.load_law(&tekst).unwrap();
+    api.add_data_source(Box::new(
+        DictDataSource::from_records("register_api", 10, "aanduiding", records)
+            .unwrap()
+            .with_law_scope(BELEID),
+    ));
+    let uitkomsten = ["is_ingeschreven_in_register", "is_geschrapt"];
+    let mut gezien = 0;
+    for a in aanduidingen {
+        for orgaan in ["raad", "staten"] {
+            let p: BTreeMap<String, Value> = BTreeMap::from([
+                ("aanduiding".into(), json!(a)),
+                ("orgaan".into(), json!(orgaan)),
+            ]);
+            let k = regelrecht_cel::toets::evalueer(&kroniek, BELEID, &uitkomsten, &p, DATUM);
+            let d = regelrecht_cel::toets::evalueer(&api, BELEID, &uitkomsten, &p, DATUM);
+            assert!(k.volledig(&uitkomsten), "{a} {orgaan}: {k:?}");
+            assert_eq!(k.waarden, d.waarden, "{a} {orgaan}");
+            gezien += usize::from(k.waarden["is_ingeschreven_in_register"] == json!(true));
+        }
+    }
+    assert_eq!(
+        gezien, 2,
+        "VOORBEELD en ANDERS staan bij de raad ingeschreven"
+    );
 }
 
 fn inputs(aanduidingen: &[&str]) -> Vec<Map<String, Value>> {

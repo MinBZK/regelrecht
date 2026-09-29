@@ -83,9 +83,12 @@ pub(super) fn uitkomsten_van(service: &LawExecutionService, artikel: &str) -> Ve
 /// proces voor het handelt, geen weigering van de cel: gebeurde de levering
 /// toch, dan legt de cel haar vast (zie [`neem`]). Een uitkomst is de norm
 /// van een grondslag als haar `legal_basis` het artikel noemt, en het lid als
-/// de grondslag er een noemt. Een vaststelling of een oordeel (zoals over
-/// verzuim) is geen uitvoering: wat die op haar grondslag uitwerkt, is juist
-/// wat zij vastlegt.
+/// de grondslag er een noemt. Dat kan het artikel van de handeling zelf zijn,
+/// of (notitie bron en gram-id) een artikel dat het beleid van de handeling
+/// uitvoert: het beleid van een bestuursorgaan dat Awb 4:52 met een `source`
+/// aanroept, draagt de toets met `legal_basis` Awb 4:52 lid 1. Een
+/// vaststelling of een oordeel (zoals over verzuim) is geen uitvoering: wat
+/// die op haar grondslag uitwerkt, is juist wat zij vastlegt.
 pub fn toetsen(service: &LawExecutionService, artikel: &str, event: &Event) -> Vec<String> {
     if event.type_ != "executogram" {
         return Vec::new();
@@ -96,16 +99,28 @@ pub fn toetsen(service: &LawExecutionService, artikel: &str, event: &Event) -> V
     if a.get_produces().and_then(|p| p.legal_character.as_deref()) != Some("TOETS") {
         return Vec::new();
     }
-    let leden: Vec<Option<String>> = event
+    let gronden: Vec<regelingen::Grondslag<'_>> = event
         .grondslag
         .iter()
         .filter_map(|g| regelingen::ontleed(g).ok())
-        .filter(|o| format!("{}#{}", o.regeling, o.artikel) == artikel)
-        .map(|o| o.lid.map(str::to_string))
         .collect();
-    if leden.is_empty() {
-        return Vec::new();
-    }
+    let lid_past = |lid: Option<&str>, lb: &regelrecht_law_model::ProvisionReference| match lid {
+        None => true,
+        Some(l) => lb.paragraph.as_deref() == Some(l),
+    };
+    // De naam van een regeling zoals een legal_basis haar schrijft: haar id,
+    // haar naam, of haar id in woorden ("Algemene wet bestuursrecht").
+    let noemt = |lb: &regelrecht_law_model::ProvisionReference, regeling: &str| {
+        lb.law.as_deref().is_some_and(|w| {
+            w == regeling
+                || w.to_lowercase().replace(' ', "_") == regeling
+                || service
+                    .resolver()
+                    .get_law(regeling)
+                    .and_then(|l| l.name.as_deref())
+                    == Some(w)
+        })
+    };
     a.get_execution_spec()
         .and_then(|e| e.output.as_ref())
         .map(|o| {
@@ -115,11 +130,13 @@ pub fn toetsen(service: &LawExecutionService, artikel: &str, event: &Event) -> V
                     let Some(lb) = &o.legal_basis else {
                         return false;
                     };
-                    lb.article.as_deref().is_none_or(|x| x == a.number)
-                        && leden.iter().any(|lid| match lid {
-                            None => true,
-                            Some(l) => lb.paragraph.as_deref() == Some(l.as_str()),
-                        })
+                    gronden.iter().any(|g| {
+                        let eigen = format!("{}#{}", g.regeling, g.artikel) == artikel
+                            && lb.article.as_deref().is_none_or(|x| x == a.number);
+                        let uitgevoerd =
+                            lb.article.as_deref() == Some(g.artikel) && noemt(lb, g.regeling);
+                        (eigen || uitgevoerd) && lid_past(g.lid, lb)
+                    })
                 })
                 .map(|o| o.name.clone())
                 .collect()
