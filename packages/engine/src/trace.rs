@@ -642,10 +642,9 @@ impl PathNode {
                         .map(|(_, rest)| rest.trim_matches(|c| c == '(' || c == ')'))
                         .unwrap_or(&self.name);
                     lines.push(format!(
-                        "{}╙──Result: {} = {}",
+                        "{}╙──Result: {}",
                         pfx,
-                        output_name,
-                        format_value_display(result)
+                        format_outputs(output_name, result)
                     ));
                 }
             }
@@ -911,9 +910,28 @@ fn missing_names(missing: &[crate::types::MissingFact]) -> String {
         .join(", ")
 }
 
+/// `name = value` for the outputs an article evaluation was asked for. Several
+/// outputs come back as one object; each gets its own `name = value`, in the
+/// order they were asked, rather than the object as a dict.
+fn format_outputs(output_names: &str, result: &Value) -> String {
+    let names: Vec<&str> = output_names.split(", ").collect();
+    if let (true, Value::Object(obj)) = (names.len() > 1, result) {
+        if names.iter().all(|name| obj.contains_key(*name)) {
+            return names
+                .iter()
+                .map(|name| format!("{} = {}", name, format_value_display(&obj[*name])))
+                .collect::<Vec<_>>()
+                .join(", ");
+        }
+    }
+    format!("{} = {}", output_names, format_value_display(result))
+}
+
 /// Format a Value for box-drawing trace output.
 ///
-/// Uses display formatting: True/False for bools, quoted strings, etc.
+/// Uses display formatting: True/False for bools, quoted strings, etc. A date
+/// the engine carries as an object (`{iso, year, month, day}`, the
+/// `$referencedate`) shows as the date it is.
 fn format_value_display(value: &Value) -> String {
     match value {
         Value::Null => "None".to_string(),
@@ -936,6 +954,9 @@ fn format_value_display(value: &Value) -> String {
         Value::Array(arr) => {
             let items: Vec<String> = arr.iter().map(format_value_display).collect();
             format!("[{}]", items.join(", "))
+        }
+        Value::Object(obj) if matches!(obj.get("iso"), Some(Value::String(_))) => {
+            format_value_display(&obj["iso"])
         }
         Value::Object(obj) => {
             let mut keys: Vec<&String> = obj.keys().collect();
@@ -2298,6 +2319,32 @@ articles:
             rendered.contains("Result: my_output = 42"),
             "Action result should show 'Result: name = value' in:\n{}",
             rendered
+        );
+    }
+
+    fn object(entries: &[(&str, Value)]) -> Value {
+        Value::Object(
+            entries
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.clone()))
+                .collect(),
+        )
+    }
+
+    #[test]
+    fn an_object_without_an_iso_date_still_renders_as_a_dict() {
+        let adres = object(&[("straat", Value::String("Dorpsstraat".into()))]);
+        assert_eq!(format_value_display(&adres), "{'straat': 'Dorpsstraat'}");
+    }
+
+    #[test]
+    fn a_single_output_that_is_an_object_keeps_its_whole_value() {
+        // One output whose value happens to hold a key with its own name: the
+        // value is the object, not that key.
+        let adres = object(&[("adres", Value::Int(1)), ("postcode", Value::Int(2))]);
+        assert_eq!(
+            format_outputs("adres", &adres),
+            "adres = {'adres': 1, 'postcode': 2}"
         );
     }
 

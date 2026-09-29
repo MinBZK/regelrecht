@@ -667,3 +667,80 @@ fn a_declared_value_reports_its_unit() {
         );
     }
 }
+
+/// The closing line of a trace for several outputs names each requested output
+/// with its value, not the whole result object as a dict, and leaves out what a
+/// hook added: that has its own lines under the HOOK node. A date the engine
+/// carries as an object (`$referencedate`) reads as the date it is.
+#[test]
+fn a_multi_output_trace_ends_with_one_value_per_requested_output() {
+    let law = r#"
+$id: trace_multi
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het bestuursorgaan stelt het bedrag vast op de peildatum.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+        output:
+          - name: bedrag
+            type: number
+          - name: peildatum
+            type: date
+        actions:
+          - output: bedrag
+            value: 100
+          - output: peildatum
+            value: $referencedate
+"#;
+    let hook = r#"
+$id: trace_multi_hook
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Bij de beschikking hoort een bezwaartermijn.
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: BESLUIT
+      execution:
+        output:
+          - name: bezwaartermijn_weken
+            type: number
+        actions:
+          - output: bezwaartermijn_weken
+            value: 6
+"#;
+    let mut service = LawExecutionService::new();
+    service.load_law(law).unwrap();
+    service.load_law(hook).unwrap();
+    let result = service
+        .evaluate_law_with_trace(
+            "trace_multi",
+            &["bedrag", "peildatum"],
+            BTreeMap::new(),
+            "2025-02-01",
+        )
+        .unwrap();
+    let rendered = result.trace.as_ref().unwrap().render_box_drawing();
+    let last = rendered.lines().next_back().unwrap();
+
+    assert!(
+        last.ends_with("Result: bedrag = 100, peildatum = '2025-02-01'"),
+        "closing line:\n{last}\n\nin:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("'iso':"),
+        "a date object renders as its date:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("bezwaartermijn_weken = 6"),
+        "the hook keeps its own line:\n{rendered}"
+    );
+}
