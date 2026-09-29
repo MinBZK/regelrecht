@@ -195,7 +195,7 @@ pub enum Weigering {
 pub struct Opgave {
     #[serde(default)]
     pub formulier: Map<String, Value>,
-    #[serde(default, alias = "besluitkenmerk")]
+    #[serde(default)]
     pub besluit: Option<String>,
     #[serde(default)]
     pub gebeurd: bool,

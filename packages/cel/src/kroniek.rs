@@ -596,8 +596,8 @@ impl Kroniek {
 /// grammen, nog zonder wortel. Een laatste regel zonder regeleinde is
 /// onvolledig geschreven: die wordt afgekapt, met een melding, maar pas als
 /// de rest leesbaar is. Een tijdelijk bestand van een onderbroken startstand
-/// wordt weggehaald. Een gram uit een kroniek van voor v0.2.0 (met zaak- en
-/// besluitkenmerk) krijgt een vast id en verwijzingen ([`crate::gram::migreer`]).
+/// wordt weggehaald. Een kroniek van voor chronolex v0.2.0 (een gram zonder
+/// id of `vastgelegd_op`) wordt niet omgezet maar geweigerd.
 fn lees_bestand(pad: &Path, kroniek: &str) -> Result<(u64, Vec<Gram>), String> {
     let fout = |e: std::io::Error| format!("{}: {e}", pad.display());
     let tijdelijk = pad.with_extension("jsonl.nieuw");
@@ -614,37 +614,22 @@ fn lees_bestand(pad: &Path, kroniek: &str) -> Result<(u64, Vec<Gram>), String> {
     let tekst = std::str::from_utf8(&bytes[..heel])
         .map_err(|e| format!("{}: geen UTF-8: {e}", pad.display()))?;
     let mut grammen = Vec::new();
-    let mut zonder_vastgelegd_op = 0_usize;
-    let mut gemigreerd = 0_usize;
     for (i, regel) in tekst.lines().enumerate() {
         if regel.trim().is_empty() {
             continue;
         }
-        let mut doc: serde_json::Value = serde_json::from_str(regel)
+        let doc: serde_json::Value = serde_json::from_str(regel)
             .map_err(|e| format!("{} regel {}: {e}", pad.display(), i + 1))?;
-        if crate::gram::migreer(&mut doc, &format!("{kroniek}\n{i}\n{regel}")) {
-            gemigreerd += 1;
+        if ["id", "vastgelegd_op"].iter().any(|k| doc.get(k).is_none()) {
+            return Err(format!(
+                "{} regel {}: een gram van voor chronolex v0.2.0 (zonder id of vastgelegd_op); oude kronieken worden niet omgezet: begin met een lege DATA_DIR voor kroniek '{kroniek}'",
+                pad.display(),
+                i + 1
+            ));
         }
-        let mut gram: Gram = serde_json::from_value(doc)
+        let gram: Gram = serde_json::from_value(doc)
             .map_err(|e| format!("{} regel {}: {e}", pad.display(), i + 1))?;
-        if gram.vul_vastgelegd_op() {
-            zonder_vastgelegd_op += 1;
-        }
         grammen.push(gram);
-    }
-    if zonder_vastgelegd_op > 0 {
-        tracing::warn!(
-            kroniek = %pad.display(),
-            grammen = zonder_vastgelegd_op,
-            "grammen zonder vastgelegd_op (van voor dat veld): gelezen alsof ze op hun op_moment zijn vastgelegd"
-        );
-    }
-    if gemigreerd > 0 {
-        tracing::warn!(
-            kroniek = %pad.display(),
-            grammen = gemigreerd,
-            "grammen van voor chronolex v0.2.0 (zaak- en besluitkenmerk): gelezen met een vast id en verwijzingen"
-        );
     }
     if heel < bytes.len() {
         tracing::warn!(
@@ -754,35 +739,20 @@ mod tests {
         assert_eq!(k.lees_wortel(K, Z2).unwrap().len(), 1);
     }
 
-    /// Een kroniek van voor v0.2.0 laadt: de aanvraag krijgt haar zaakkenmerk
-    /// als id, en wie in de zaak volgde, hoort bij die wortel.
+    /// Een kroniek van voor v0.2.0 (zonder id, met zaakkenmerk) wordt niet
+    /// omgezet: de cel weigert haar, met wat te doen.
     #[test]
-    fn een_oude_kroniek_laadt_met_wortels() {
+    fn een_oude_kroniek_wordt_geweigerd() {
         let dir = tempfile::tempdir().unwrap();
         let mut oud = serde_json::to_value(wortel(Z1)).unwrap();
         let o = oud.as_object_mut().unwrap();
         o.remove("id");
         o.insert("zaak".into(), "opent".into());
         o.insert("zaakkenmerk".into(), Z1.into());
-        let mut besluit = oud.clone();
-        besluit["zaak"] = "volgt".into();
-        besluit["besluit"] = "opent".into();
-        besluit["besluitkenmerk"] = format!("{Z1}/1").into();
-        let mut betaling = besluit.clone();
-        betaling["besluit"] = "volgt".into();
-        std::fs::write(
-            dir.path().join("test_kroniek.jsonl"),
-            // Twee gelijke regels (twee betalingen van hetzelfde bedrag op
-            // dezelfde dag) zijn twee grammen, met elk een eigen id.
-            format!("{oud}\n{besluit}\n{betaling}\n{betaling}\n"),
-        )
-        .unwrap();
-        let k = open(dir.path());
-        let groep = k.lees_wortel(K, Z1).unwrap();
-        assert_eq!(groep.len(), 4);
-        assert_eq!(groep[0].gram.id, Z1);
-        assert_eq!(groep[2].gram.verwijst["besluit"], groep[1].gram.id);
-        assert_ne!(groep[2].gram.id, groep[3].gram.id);
+        std::fs::write(dir.path().join("test_kroniek.jsonl"), format!("{oud}\n")).unwrap();
+        let f = Kroniek::open(dir.path(), K).err().unwrap();
+        assert!(f.contains("van voor chronolex v0.2.0"), "{f}");
+        assert!(f.contains("lege DATA_DIR"), "{f}");
     }
 
     #[test]
@@ -837,26 +807,6 @@ mod tests {
         let f = k.voeg_toe(&g).unwrap_err();
         assert!(f.contains("vastgelegd_op"), "{f}");
         assert_eq!(aantal(&k), 0);
-    }
-
-    /// Een kroniek van voor `vastgelegd_op` laadt nog: het gram krijgt zijn
-    /// `op_moment` als registratietijd. Een gram met het veld houdt het zijne.
-    #[test]
-    fn een_oud_gram_zonder_vastgelegd_op_laadt_met_zijn_op_moment() {
-        let dir = tempfile::tempdir().unwrap();
-        let mut oud = serde_json::to_value(wortel(Z1)).unwrap();
-        oud.as_object_mut().unwrap().remove("vastgelegd_op");
-        let nieuw = serde_json::to_string(&wortel(Z2)).unwrap();
-        std::fs::write(
-            dir.path().join("test_kroniek.jsonl"),
-            format!("{oud}\n{nieuw}\n"),
-        )
-        .unwrap();
-        let k = open(dir.path());
-        let grammen = k.lees("test_kroniek").unwrap();
-        assert_eq!(grammen[0].gram.vastgelegd_op, "2025-03-12T10:14:03+01:00");
-        assert_eq!(grammen[1].gram.vastgelegd_op, "2025-03-12T10:14:05+01:00");
-        grammen[0].gram.valideer().unwrap();
     }
 
     #[test]

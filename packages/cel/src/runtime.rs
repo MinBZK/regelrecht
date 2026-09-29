@@ -243,13 +243,9 @@ impl Runtime {
     }
 
     /// De waarschuwingen over synthese-bronnen: onbereikbaar, of zonder de
-    /// verwachte lexostatus of parameters, en over grammen uit een kroniek van
-    /// voor chronolex v0.2.0. Geen reden om niet te starten.
+    /// verwachte lexostatus of parameters. Geen reden om niet te starten.
     pub async fn waarschuwingen(&self) -> Vec<String> {
         let mut uit = Vec::new();
-        for c in &self.cellen {
-            uit.extend(gemigreerd(c));
-        }
         for s in &self.processen {
             uit.extend(met_proces(s.proces.id(), s.proces.waarschuwingen.clone()));
             for b in s.bronnen.iter() {
@@ -270,36 +266,6 @@ impl Runtime {
         uit.dedup();
         uit
     }
-}
-
-/// Grammen uit een kroniek van voor chronolex v0.2.0: de cel las ze met een
-/// vast id en verwijzingen (zie [`crate::gram::migreer`]), maar een gram dat
-/// in een zaak volgde zonder besluit verwijst met de naam `zaak`, die de wet
-/// niet kent. De groep (de wortel) klopt; een reductie op een verwijzing met
-/// de naam uit de wet ziet zo'n gram niet. De runtime start wel.
-fn gemigreerd(c: &CelState) -> Option<String> {
-    let grammen = match c.kroniek.alle(&c.cel.kronieken()) {
-        Ok(g) => g,
-        Err(f) => return Some(format!("cel '{}': kroniek niet te lezen: {f}", c.cel.id())),
-    };
-    let oud: BTreeSet<&str> = grammen
-        .iter()
-        .map(|v| &v.gram)
-        .filter(|g| {
-            c.cel
-                .event(&g.stroom.id, &g.name)
-                .is_some_and(|(_, e)| g.verwijst.keys().any(|n| !e.verwijst.contains_key(n)))
-        })
-        .map(|g| g.name.as_str())
-        .collect();
-    if oud.is_empty() {
-        return None;
-    }
-    Some(format!(
-        "cel '{}': grammen van {} verwijzen met een naam die hun event niet kent (uit een kroniek van voor chronolex v0.2.0, gelezen met verwijzing 'zaak'); de groep klopt, een reductie op de naam uit de wet ziet ze niet. Begin zo nodig met een lege DATA_DIR voor deze cel.",
-        c.cel.id(),
-        oud.into_iter().collect::<Vec<_>>().join(", ")
-    ))
 }
 
 /// Open de kroniek van een cel. Is elke kroniek van de cel leeg, dan komt de

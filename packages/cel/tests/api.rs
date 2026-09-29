@@ -2916,78 +2916,15 @@ async fn de_proefroute_peilt_ook() {
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
-/// Een kroniek van voor `vastgelegd_op` laadt: het gram krijgt zijn
-/// `op_moment` als registratietijd.
+/// Een kroniek van voor chronolex v0.2.0 (zonder id, met zaakkenmerk) wordt
+/// niet omgezet: de runtime start niet, en zegt waarom.
 #[tokio::test]
-async fn een_oude_kroniek_zonder_vastgelegd_op_laadt() {
-    let dir = tempfile::tempdir().unwrap();
-    let rt = runtime_op(&fixtures(), dir.path()).unwrap();
-    let (status, body) = als_runtime(
-        &rt,
-        "POST",
-        &format!("{INSTANTIE_CEL}/api/grammen"),
-        verzoek("test_instantie"),
-    )
-    .await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
-    drop(rt);
-    // Het gram zoals een eerdere versie van de runtime het schreef.
-    let pad = dir.path().join("test_instantie/test_kroniek.jsonl");
-    let mut oud: Value =
-        serde_json::from_str(std::fs::read_to_string(&pad).unwrap().trim()).unwrap();
-    oud.as_object_mut().unwrap().remove("vastgelegd_op");
-    oud["op_moment"] = json!("2025-03-01T09:00:00+01:00");
-    std::fs::write(&pad, format!("{oud}\n")).unwrap();
-
-    let app = app(dir.path());
-    let (status, k, _) = vraag(
-        &app,
-        "GET",
-        &format!("{INSTANTIE_CEL}/api/kroniek"),
-        None,
-        None,
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK, "{k}");
-    assert_eq!(k[0]["gram"]["vastgelegd_op"], "2025-03-01T09:00:00+01:00");
-    schema::valideer(Soort::Gram, &k[0]["gram"]).unwrap();
-}
-
-/// Een kroniek van voor chronolex v0.2.0 (met zaak- en besluitkenmerk)
-/// laadt: de aanvraag krijgt haar zaakkenmerk als id, het besluit een vast
-/// id uit zijn besluitkenmerk, en de groep klopt. Een vervolg op dat besluit
-/// verwijst ernaar. De runtime waarschuwt dat het besluit verwijst met de
-/// naam `zaak`, die de wet niet kent.
-#[tokio::test]
-async fn een_oude_kroniek_met_zaak_en_besluitkenmerk_laadt() {
+async fn een_oude_kroniek_start_niet() {
     let data = tempfile::tempdir().unwrap();
     let zaak = {
         let app = app(data.path());
-        let zaak = afnemer_indienen(&app, "12345678").await;
-        let b = behandelaar(&app).await;
-        let (status, body) = handeling(
-            &app,
-            &b,
-            &zaak,
-            "besluit",
-            false,
-            oordelen()["formulier"].clone(),
-        )
-        .await;
-        assert_eq!(status, StatusCode::CREATED, "{body}");
-        zaak
+        afnemer_indienen(&app, "12345678").await
     };
-    let schoon = runtime_op(&fixtures(), data.path()).unwrap();
-    assert!(
-        !schoon
-            .waarschuwingen()
-            .await
-            .iter()
-            .any(|w| w.contains("voor chronolex v0.2.0")),
-        "een nieuwe kroniek geeft geen waarschuwing"
-    );
-    drop(schoon);
-    // De grammen zoals een runtime van voor v0.2.0 ze schreef.
     let pad = data.path().join("test_afnemer/test_afnemer.jsonl");
     let regels: Vec<String> = std::fs::read_to_string(&pad)
         .unwrap()
@@ -2996,58 +2933,18 @@ async fn een_oude_kroniek_met_zaak_en_besluitkenmerk_laadt() {
             let mut g: Value = serde_json::from_str(r).unwrap();
             let o = g.as_object_mut().unwrap();
             o.remove("id");
-            match o.remove("verwijst") {
-                None => {
-                    o.insert("zaak".into(), json!("opent"));
-                    o.insert("zaakkenmerk".into(), json!(zaak));
-                }
-                Some(_) => {
-                    o.insert("zaak".into(), json!("volgt"));
-                    o.insert("zaakkenmerk".into(), json!(zaak));
-                    o.insert("besluit".into(), json!("opent"));
-                    o.insert("besluitkenmerk".into(), json!(format!("{zaak}/1")));
-                }
-            }
+            o.insert("zaak".into(), json!("opent"));
+            o.insert("zaakkenmerk".into(), json!(zaak));
             g.to_string()
         })
         .collect();
     std::fs::write(&pad, regels.join("\n") + "\n").unwrap();
-    let rt = runtime_op(&fixtures(), data.path()).unwrap();
-    let w = rt.waarschuwingen().await;
-    let oud = w
-        .iter()
-        .find(|w| w.contains("voor chronolex v0.2.0"))
-        .unwrap_or_else(|| panic!("{w:?}"));
-    assert!(oud.contains("besluit_genomen"), "{oud}");
-    let app = rt.router;
-    let b = behandelaar(&app).await;
-    let (_, z, _) = vraag(
-        &app,
-        "GET",
-        &format!("{AFNEMER}/api/zaken/{zaak}"),
-        Some(&b),
-        None,
-    )
-    .await;
-    let besluit_id = uuid::Uuid::new_v5(
-        &uuid::Uuid::NAMESPACE_URL,
-        format!("urn:regelrecht:cel:besluitkenmerk:{zaak}/1").as_bytes(),
-    )
-    .to_string();
-    assert_eq!(z["besluiten"][0]["id"], json!(besluit_id), "{z}");
-    // Een tweede besluit op dezelfde aanvraag weigert de cel nog steeds.
-    assert_eq!(z["handelingen"][0]["beschikbaar"], json!(false), "{z}");
-    let (status, body) = handeling(
-        &app,
-        &b,
-        &zaak,
-        "bekendmaken",
-        false,
-        json!({"datum_bekendmaking": "2025-03-12", "bekendgemaakt": true}),
-    )
-    .await;
-    assert_eq!(status, StatusCode::CREATED, "{body}");
-    assert_eq!(body["gram"]["verwijst"]["besluit"], json!(besluit_id));
+    let f = runtime_op(&fixtures(), data.path())
+        .err()
+        .unwrap()
+        .join("\n");
+    assert!(f.contains("van voor chronolex v0.2.0"), "{f}");
+    assert!(f.contains("lege DATA_DIR"), "{f}");
 }
 
 // --- Kanalen en rollen als configuratie ---
@@ -4626,13 +4523,10 @@ fn koppeling() -> PathBuf {
     fixtures().join("experiment/engine/koppeling.yaml")
 }
 
-/// Wat een antwoord zegt, zonder wat per run verschilt (zaak- en
-/// besluitkenmerken, tijdstippen, hashes) en zonder de route van de
-/// reductie.
+/// Wat een antwoord zegt, zonder wat per run verschilt (tijdstippen,
+/// hashes) en zonder de route van de reductie.
 fn zonder_run(w: &Value) -> Value {
     const WEG: &[&str] = &[
-        "zaakkenmerk",
-        "besluitkenmerk",
         "op_moment",
         "vastgelegd_op",
         "reductie",

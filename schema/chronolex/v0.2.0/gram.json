@@ -24,7 +24,7 @@
     },
     "id": {
       "$ref": "#/definitions/uuid",
-      "description": "Het eigen id van het gram: een uuid (v7, oplopend in de tijd), dat de cel bij het vastleggen geeft, onder hetzelfde slot als vastgelegd_op. Een gram uit een kroniek van voor v0.2.0 krijgt bij het laden een vast id: een aanvraag haar oude zaakkenmerk, een besluit een id uit zijn besluitkenmerk."
+      "description": "Het eigen id van het gram: een uuid (v7, oplopend in de tijd), dat de cel bij het vastleggen geeft, onder hetzelfde slot als vastgelegd_op. Een kroniek van voor v0.2.0 wordt niet omgezet."
     },
     "type": {
       "$ref": "#/definitions/identifier",

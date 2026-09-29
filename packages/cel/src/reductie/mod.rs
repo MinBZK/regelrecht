@@ -1595,29 +1595,6 @@ mod tests {
         assert!(op(peil(Some("2025-03-06"), Some("2025-03-11"))).is_none());
     }
 
-    /// Een gram van voor `vastgelegd_op` (uit een oudere kroniek) krijgt
-    /// zijn op_moment, en telt daarna gewoon mee.
-    #[test]
-    fn een_oud_gram_zonder_vastgelegd_op() {
-        let mut oud =
-            serde_json::to_value(gram("z", "2025-03-05T09:00:00+01:00", json!({"a": 1}))).unwrap();
-        oud.as_object_mut().unwrap().remove("vastgelegd_op");
-        let mut g: Gram = serde_json::from_value(oud).unwrap();
-        assert_eq!(g.vastgelegd_op, "");
-        assert!(g.vul_vastgelegd_op());
-        assert!(!g.vul_vastgelegd_op());
-        assert_eq!(g.vastgelegd_op, g.op_moment);
-        let l = reduceer_op(
-            &kies_a(),
-            &Map::new(),
-            [&g],
-            &peil(None, Some("2025-03-05")),
-        )
-        .unwrap()
-        .unwrap();
-        assert_eq!(l.parameters["bekend"], json!("2025-03-05"));
-    }
-
     /// `kies: laatste` kiest op op_moment; bij gelijk op_moment op
     /// vastgelegd_op; en als ook dat gelijk is, het later toegevoegde.
     #[test]

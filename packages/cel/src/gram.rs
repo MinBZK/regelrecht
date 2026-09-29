@@ -21,8 +21,10 @@
 //!   4:13). In een startstand is het met de hand gezet (de datum van een
 //!   besluit, of van een vaststelling).
 //! - `vastgelegd_op`: wanneer de cel het vastlegde, altijd haar eigen klok;
-//!   bij een startstand de laadtijd. Een gram van voor dit veld heeft het
-//!   niet: dan geldt het `op_moment` (zie [`Gram::vul_vastgelegd_op`]).
+//!   bij een startstand de laadtijd.
+//!
+//! Een kroniek van voor chronolex v0.2.0 (zonder id, met zaak- en
+//! besluitkenmerk) wordt niet omgezet: de cel weigert haar te laden.
 
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
@@ -79,9 +81,7 @@ pub struct Gram {
     /// waarde er was: de grondslag daarvan, uit de stroom.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub op_moment_grondslag: Option<Vec<String>>,
-    /// Wanneer de cel het gram vastlegde: haar eigen klok. Leeg bij een gram
-    /// van voor dit veld, tot [`Gram::vul_vastgelegd_op`] het invult.
-    #[serde(default)]
+    /// Wanneer de cel het gram vastlegde: haar eigen klok.
     pub vastgelegd_op: String,
     /// Naar welke grammen dit gram verwijst, per naam uit de wettekst
     /// (`op_aanvraag`, `besluit`, `wijzigt`, ...): het id van dat gram.
@@ -229,64 +229,10 @@ pub fn nieuw_id(nu: DateTime<FixedOffset>) -> String {
     uuid::Uuid::new_v7(ts).to_string()
 }
 
-/// Het vaste id dat een gram uit een kroniek van voor v0.2.0 bij het laden
-/// krijgt: een uuid v5 over `sleutel`, zodat elke lezing hetzelfde id geeft.
+/// Een vast id: een uuid v5 over `sleutel`, zodat elke lezing hetzelfde id
+/// geeft (voor een regel van een startstand zonder eigen id).
 pub fn vast_id(sleutel: &str) -> String {
     uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, sleutel.as_bytes()).to_string()
-}
-
-/// Maak een gram uit een kroniek van voor v0.2.0 (met `zaak`,
-/// `zaakkenmerk`, `besluit`, `besluitkenmerk`, `wijzigt`) leesbaar: het
-/// krijgt een vast id en verwijzingen. Een gram dat een zaak opende (de
-/// aanvraag), krijgt zijn zaakkenmerk als id; een besluit (opent of wijzigt)
-/// een id uit zijn besluitkenmerk; een ander gram een id uit `bron` (de
-/// kroniek en de regel zelf). Een gram dat een besluit volgde, verwijst er
-/// met `besluit` naar, een wijziging met `wijzigt`, en een ander gram in een
-/// zaak met `zaak` naar het gram dat de zaak opende. Welke naam de wet voor
-/// die laatste verwijzing heeft, weet het oude gram niet; de groep (de
-/// wortel) klopt wel. Waar als er iets te migreren viel.
-pub fn migreer(doc: &mut Value, bron: &str) -> bool {
-    let Some(o) = doc.as_object_mut() else {
-        return false;
-    };
-    if o.contains_key("id") {
-        return false;
-    }
-    let tekst = |o: &mut Map<String, Value>, k: &str| {
-        o.remove(k).and_then(|v| v.as_str().map(str::to_string))
-    };
-    let zaak = tekst(o, "zaak");
-    let zaakkenmerk = tekst(o, "zaakkenmerk");
-    let besluit = tekst(o, "besluit");
-    let besluitkenmerk = tekst(o, "besluitkenmerk");
-    let wijzigt = tekst(o, "wijzigt");
-    let besluit_id = |k: &str| vast_id(&format!("urn:regelrecht:cel:besluitkenmerk:{k}"));
-    let is_besluit = matches!(besluit.as_deref(), Some("opent" | "wijzigt"));
-    let id = match (&zaak, &zaakkenmerk, &besluitkenmerk) {
-        (Some(z), Some(k), _) if z == "opent" => k.clone(),
-        (_, _, Some(k)) if is_besluit => besluit_id(k),
-        _ => vast_id(&format!("urn:regelrecht:cel:gram:{bron}")),
-    };
-    let mut verwijst = Map::new();
-    match (besluit.as_deref(), &besluitkenmerk, &wijzigt) {
-        (Some("volgt"), Some(k), _) => {
-            verwijst.insert("besluit".into(), Value::String(besluit_id(k)));
-        }
-        (Some("wijzigt"), _, Some(w)) => {
-            verwijst.insert("wijzigt".into(), Value::String(besluit_id(w)));
-        }
-        _ => {}
-    }
-    if verwijst.is_empty() && zaak.as_deref() == Some("volgt") {
-        if let Some(z) = zaakkenmerk {
-            verwijst.insert("zaak".into(), Value::String(z));
-        }
-    }
-    o.insert("id".into(), Value::String(id));
-    if !verwijst.is_empty() {
-        o.insert("verwijst".into(), Value::Object(verwijst));
-    }
-    true
 }
 
 impl Gram {
@@ -390,17 +336,6 @@ impl Gram {
         Ok(())
     }
 
-    /// Een gram van voor `vastgelegd_op` (gelezen uit een oudere kroniek)
-    /// krijgt zijn `op_moment` als registratietijd: iets beters is er niet.
-    /// Waar als het ontbrak, zodat de lezer het kan melden.
-    pub fn vul_vastgelegd_op(&mut self) -> bool {
-        if !self.vastgelegd_op.is_empty() {
-            return false;
-        }
-        self.vastgelegd_op = self.op_moment.clone();
-        true
-    }
-
     /// De volgorde van twee grammen in de tijd: eerst op `op_moment`, bij
     /// gelijk moment op `vastgelegd_op`. `Equal` laat de volgorde in de
     /// kroniek beslissen.
@@ -500,31 +435,6 @@ pub(crate) fn testvolger(naam: &str, doel: &Gram) -> Gram {
 mod tests {
     use super::*;
     use serde_json::json;
-
-    /// Een gram uit een kroniek van voor v0.2.0 krijgt een vast id en
-    /// verwijzingen: de aanvraag haar zaakkenmerk, een besluit een id uit
-    /// zijn besluitkenmerk, en wie het besluit volgt, verwijst ernaar.
-    #[test]
-    fn een_oud_gram_wordt_gemigreerd() {
-        let z = "00000000-0000-4000-8000-000000000001";
-        let mut aanvraag = json!({"name": "a", "zaak": "opent", "zaakkenmerk": z});
-        assert!(migreer(&mut aanvraag, "k:1"));
-        assert_eq!(aanvraag["id"], z);
-        assert!(aanvraag.get("zaak").is_none() && aanvraag.get("verwijst").is_none());
-        let mut besluit = json!({"name": "b", "zaak": "volgt", "zaakkenmerk": z, "besluit": "opent", "besluitkenmerk": format!("{z}/1")});
-        migreer(&mut besluit, "k:2");
-        let mut betaling = json!({"name": "c", "zaak": "volgt", "zaakkenmerk": z, "besluit": "volgt", "besluitkenmerk": format!("{z}/1")});
-        migreer(&mut betaling, "k:3");
-        assert_eq!(betaling["verwijst"]["besluit"], besluit["id"]);
-        let mut verloop = json!({"name": "d", "zaak": "volgt", "zaakkenmerk": z});
-        migreer(&mut verloop, "k:4");
-        assert_eq!(verloop["verwijst"]["zaak"], z);
-        // Een tweede lezing geeft hetzelfde id; een nieuw gram blijft zoals het is.
-        let mut nog = json!({"name": "d", "zaak": "volgt", "zaakkenmerk": z});
-        migreer(&mut nog, "k:4");
-        assert_eq!(nog["id"], verloop["id"]);
-        assert!(!migreer(&mut nog, "k:4"));
-    }
 
     #[test]
     fn zet_pad_maakt_de_objecten() {
