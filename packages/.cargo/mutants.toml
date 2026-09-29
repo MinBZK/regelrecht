@@ -104,6 +104,13 @@ exclude_re = [
     # niet willen vastpinnen.
     'data_source\.rs.*impl std::fmt::Debug for DataSourceRegistry',
 
+    # --- context.rs --------------------------------------------------------
+
+    # Hetzelfde geval: `Debug for LazyHook` bestaat alleen omdat
+    # `&dyn LazyInputs` geen Debug afleidt en `RuleContext` dat wel wil. De
+    # uitvoer is diagnostisch, niets leest hem (RFC-043).
+    'context\.rs.*impl std::fmt::Debug for LazyHook',
+
     # --- typecheck.rs ------------------------------------------------------
 
     # `Facts::is_empty` wordt op één plek gelezen: `check_action` besluit

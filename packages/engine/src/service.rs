@@ -27,7 +27,7 @@
 
 use crate::article::{Article, ArticleBasedLaw, Execution, HookPoint, Input, MachineReadable};
 use crate::config;
-use crate::context::RuleContext;
+use crate::context::{LazyInputs, RuleContext};
 use crate::data_source::{DataSource, DataSourceRegistry, DictDataSource};
 use crate::engine::{ArticleEngine, ArticleResult, OutputProvenance};
 use crate::error::{EngineError, Result};
@@ -35,7 +35,8 @@ use crate::operations::ValueResolver;
 use crate::priority;
 use crate::resolver::{
     hook_filter_admits, missing_article_reason, DeclarationKind, DeclarationNotInForce,
-    DeclarationsFromOtherVersion, DelegationRefusal, ProcedureMiss, RuleResolver, SelectionReason,
+    DeclarationsFromOtherVersion, DelegationRefusal, HookEntry, LawArticleRef, ProcedureMiss,
+    RuleResolver, SelectionReason,
 };
 use crate::trace::{LegalAnchor, TraceBuilder, ValueSource};
 use crate::types::{
@@ -46,7 +47,7 @@ use crate::uri::RegelrechtUri;
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
@@ -483,6 +484,406 @@ fn voided_output_error(
                 .unwrap_or_else(|| "no ground was quoted".to_string()),
         }),
         _ => None,
+    }
+}
+
+/// What an article execution needs, settled before its actions run (RFC-043).
+#[derive(Debug)]
+struct Demand {
+    /// The outputs to compute, closed over what they read; `None` for all.
+    outputs: Option<BTreeSet<String>>,
+    /// Requested outputs a `voids` excludes: not computed, their ground is
+    /// recorded by `apply_overrides`.
+    voided: Vec<String>,
+    /// What the pre_actions hooks declare as parameters.
+    read_before_actions: BTreeSet<String>,
+    /// What the post_actions hooks and replacing overrides declare.
+    read_after_actions: BTreeSet<String>,
+}
+
+/// The one override of an output that applies (RFC-007, RFC-041).
+enum SelectedOverride<'s> {
+    /// In force on this date, with the declaration that addresses the output.
+    InForce {
+        reference: &'s LawArticleRef,
+        law: &'s ArticleBasedLaw,
+        article: &'s Article,
+        declaration: Option<&'s crate::article::OverrideDeclaration>,
+    },
+    /// Addressed, but not in force on this date, and why.
+    NotInForce {
+        reference: &'s LawArticleRef,
+        reason: String,
+    },
+}
+
+impl<'s> SelectedOverride<'s> {
+    fn reference(&self) -> &'s LawArticleRef {
+        match self {
+            Self::InForce { reference, .. } | Self::NotInForce { reference, .. } => reference,
+        }
+    }
+}
+
+/// Which overrides of an article's outputs apply, read before its actions
+/// run (RFC-043).
+#[derive(Debug, Default)]
+struct OverridePlan {
+    /// Outputs an applicable `voids` excludes: not computed when requested.
+    voided: BTreeSet<String>,
+    /// Per output with an applicable replacing override, the parameters its
+    /// article declares: it receives those names from this article, when it
+    /// runs, which is when its output is computed.
+    replacing: BTreeMap<String, BTreeSet<String>>,
+}
+
+/// An article's inputs and open terms, each resolved the first time it is
+/// read and kept for the rest of the execution (RFC-043).
+///
+/// Resolving takes the resolution context mutably. What a resolution reads of
+/// the same article is therefore resolved before the context is taken (the
+/// inputs a cross-law call is keyed on, `bsn: $partner_bsn`), or with the
+/// context in hand (the earlier terms an open term's default reads).
+///
+/// A name being resolved is not this article's to answer while it is: it
+/// falls through to the parameters. So a source keyed on its own name reads
+/// the parameter of that name, and two inputs keyed on each other find
+/// neither.
+struct LazyArticleInputs<'a, 'r, 'c> {
+    service: &'a LawExecutionService,
+    article: &'a Article,
+    law: &'a ArticleBasedLaw,
+    parameters: &'a BTreeMap<String, Value>,
+    /// The article-level scope a source's parameters are read in, built once.
+    scope: RuleContext<'static>,
+    res_ctx: RefCell<&'r mut ResolutionContext<'c>>,
+    memo: RefCell<BTreeMap<String, Slot>>,
+}
+
+/// What the memo knows about a name.
+#[derive(Clone)]
+enum Slot {
+    Resolving,
+    /// Resolved, with where it came from, or `None`: not this article's to
+    /// resolve, or left unresolved.
+    Done(Option<(Value, ResolveType)>),
+}
+
+/// What a name read in an article refers to, when the article resolves it.
+enum LazyName<'a> {
+    Input(&'a Input),
+    /// An input the caller passed a value for: the value wins over the source.
+    Passed(&'a Input),
+    OpenTerm(&'a crate::article::OpenTerm),
+}
+
+/// The actions' view of an article's inputs after its pre_actions hooks ran:
+/// a name a hook produced a value under is read from that value. Where the
+/// article's sources read their parameters the inputs themselves count.
+struct AfterPreHooks<'x> {
+    inputs: &'x dyn LazyInputs,
+    hook_outputs: &'x BTreeMap<String, Value>,
+}
+
+impl LazyInputs for AfterPreHooks<'_> {
+    fn resolve_input(&self, name: &str) -> Option<Result<(Value, ResolveType)>> {
+        if self.hook_outputs.contains_key(name) {
+            return None;
+        }
+        self.inputs.resolve_input(name)
+    }
+}
+
+/// Resolves an open term declared before the one being resolved, by name:
+/// `None` when the name is not one.
+type EarlierTerm<'x, 'c> =
+    dyn FnMut(&str, &mut ResolutionContext<'c>) -> Result<Option<Value>> + 'x;
+
+/// The open terms declared before the one whose default is being evaluated,
+/// resolved when an operation of that default reads one (RFC-043).
+struct EarlierTerms<'x, 'c> {
+    earlier: RefCell<&'x mut EarlierTerm<'x, 'c>>,
+    res_ctx: RefCell<&'x mut ResolutionContext<'c>>,
+}
+
+impl LazyInputs for EarlierTerms<'_, '_> {
+    fn resolve_input(&self, name: &str) -> Option<Result<(Value, ResolveType)>> {
+        let (Ok(mut earlier), Ok(mut res_ctx)) =
+            (self.earlier.try_borrow_mut(), self.res_ctx.try_borrow_mut())
+        else {
+            return Some(Err(EngineError::InvalidOperation(format!(
+                "open term '{name}' was read while another one was being resolved"
+            ))));
+        };
+        (*earlier)(name, &mut res_ctx)
+            .transpose()
+            .map(|value| value.map(|value| (value, ResolveType::OpenTerm)))
+    }
+}
+
+/// The key the override in `law_id` article `article` is entered under, for
+/// cycle detection.
+fn override_key(law_id: &str, article: &str) -> String {
+    format!("override:{law_id}\0{article}")
+}
+
+/// The key the hook in `law_id` article `article` is entered under, for cycle
+/// detection.
+fn hook_key(law_id: &str, article: &str) -> String {
+    format!("hook:{law_id}\0{article}")
+}
+
+/// A hook that fires on an article: its entry, and its law and article in
+/// force on the date.
+struct FireableHook<'s> {
+    entry: &'s HookEntry,
+    law: &'s ArticleBasedLaw,
+    article: &'s Article,
+}
+
+/// The parameters an article declares: the names it receives from a caller.
+fn declared_parameter_names(article: &Article) -> impl Iterator<Item = String> + '_ {
+    article
+        .get_execution_spec()
+        .and_then(|e| e.parameters.as_ref())
+        .into_iter()
+        .flatten()
+        .map(|p| p.name.clone())
+}
+
+impl<'a, 'r, 'c> LazyArticleInputs<'a, 'r, 'c> {
+    fn new(
+        service: &'a LawExecutionService,
+        article: &'a Article,
+        law: &'a ArticleBasedLaw,
+        parameters: &'a BTreeMap<String, Value>,
+        res_ctx: &'r mut ResolutionContext<'c>,
+    ) -> Result<Self> {
+        let scope = crate::engine::article_context(
+            law,
+            article,
+            parameters,
+            res_ctx.calculation_date,
+            res_ctx.trace.as_ref(),
+        )?;
+        Ok(Self {
+            service,
+            article,
+            law,
+            parameters,
+            scope,
+            res_ctx: RefCell::new(res_ctx),
+            memo: RefCell::new(BTreeMap::new()),
+        })
+    }
+
+    /// Everything resolved so far: what this article consulted.
+    fn resolved(&self) -> BTreeMap<String, Value> {
+        self.memo
+            .borrow()
+            .iter()
+            .filter_map(|(name, slot)| match slot {
+                Slot::Done(Some((value, _))) => Some((name.clone(), value.clone())),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Lend the resolution context out for a step between resolutions (firing
+    /// a hook). Nothing resolves lazily while it is lent.
+    fn with_resolution_context<T>(
+        &self,
+        step: impl FnOnce(&mut ResolutionContext<'c>) -> Result<T>,
+    ) -> Result<T> {
+        let mut res_ctx = self.res_ctx.try_borrow_mut().map_err(|_| {
+            EngineError::InvalidOperation(format!(
+                "the resolution context of {} article {} is already in use",
+                self.law.id, self.article.number
+            ))
+        })?;
+        step(&mut res_ctx)
+    }
+
+    /// Resolve each of `names` that is an input or open term of this article.
+    fn resolve_names<'n>(&self, names: impl IntoIterator<Item = &'n String>) -> Result<()> {
+        for name in names {
+            if let Some(Err(e)) = self.resolve_input(name) {
+                return Err(e);
+            }
+        }
+        Ok(())
+    }
+
+    /// Answer `name` from the memo, or with `resolve` and remember the
+    /// answer. `None` while `name` is being resolved.
+    fn memoized(
+        &self,
+        name: &str,
+        resolve: impl FnOnce() -> Result<Option<(Value, ResolveType)>>,
+    ) -> Option<Result<(Value, ResolveType)>> {
+        let known = self.memo.borrow().get(name).cloned();
+        match known {
+            Some(Slot::Done(answer)) => return answer.map(Ok),
+            Some(Slot::Resolving) => return None,
+            None => {}
+        }
+        self.memo
+            .borrow_mut()
+            .insert(name.to_string(), Slot::Resolving);
+        match resolve() {
+            Ok(answer) => {
+                self.memo
+                    .borrow_mut()
+                    .insert(name.to_string(), Slot::Done(answer.clone()));
+                answer.map(Ok)
+            }
+            Err(e) => {
+                self.memo.borrow_mut().remove(name);
+                Some(Err(e))
+            }
+        }
+    }
+
+    /// What `name` refers to, if this article resolves it. An open term
+    /// comes before an input and a parameter of the same name; of two inputs
+    /// with one name the last declared counts; a value passed under an
+    /// input's name wins over its source.
+    fn owner(&self, name: &str) -> Option<LazyName<'a>> {
+        let article: &'a Article = self.article;
+        if let Some(term) = article
+            .get_open_terms()
+            .and_then(|terms| terms.iter().find(|t| t.id == name))
+        {
+            return Some(LazyName::OpenTerm(term));
+        }
+        let input = article.get_inputs().iter().rev().find(|i| i.name == name)?;
+        if self.parameters.contains_key(name) {
+            return Some(LazyName::Passed(input));
+        }
+        input.source.is_some().then_some(LazyName::Input(input))
+    }
+
+    /// The article-level scope a source's parameters are read in: the
+    /// caller's parameters, the article's definitions and its other inputs,
+    /// never the scope of the operation that happened to read the input (a
+    /// FOREACH variable must not become a lookup key).
+    fn article_context(&self) -> RuleContext<'_> {
+        let mut context: RuleContext<'_> = self.scope.clone();
+        context.set_lazy(self);
+        context
+    }
+
+    /// Resolve what a name refers to. `Ok(None)` leaves it unresolved.
+    fn resolve_owned(&self, name: LazyName<'a>) -> Result<Option<(Value, ResolveType)>> {
+        match name {
+            // A value handed in under the input's name bypasses its source,
+            // not its declaration: a null for an input that is never absent is
+            // refused like a null cell would be, whoever passed it (a caller,
+            // a scenario, an editor form). Otherwise it would surface later as
+            // an absent operand without an origin (RFC-036). The value itself
+            // is read from the parameters.
+            LazyName::Passed(input) => {
+                if self.parameters.get(&input.name).is_some_and(Value::is_null)
+                    && !input.is_nullable()
+                {
+                    return Err(null_for_non_nullable(
+                        self.law,
+                        input,
+                        "parameter from caller".to_string(),
+                    ));
+                }
+                Ok(None)
+            }
+            LazyName::Input(input) => {
+                let context = self.article_context();
+                // A call to another law is keyed on the source's parameters,
+                // which may read other inputs of this article: those are
+                // resolved first, each as its own step. No other way of
+                // resolving an input reads them.
+                if self
+                    .service
+                    .calls_other_law(self.law, input, self.parameters)
+                {
+                    let keys = input
+                        .source
+                        .iter()
+                        .flat_map(|source| source.parameters.iter().flat_map(|p| p.values()))
+                        .filter_map(|reference| crate::demand::reference_base(reference));
+                    for key in keys {
+                        if self.owner(key).is_some() {
+                            context.resolve(key)?;
+                        }
+                    }
+                }
+                let value = self.with_resolution_context(|res_ctx| {
+                    self.service.resolve_input(
+                        self.article,
+                        self.law,
+                        input,
+                        &context,
+                        self.parameters,
+                        res_ctx,
+                    )
+                })?;
+                Ok(value.map(|value| (value, ResolveType::ResolvedInput)))
+            }
+            LazyName::OpenTerm(term) => {
+                let value =
+                    self.with_resolution_context(|res_ctx| self.resolve_term(term, res_ctx))?;
+                Ok(Some((value, ResolveType::OpenTerm)))
+            }
+        }
+    }
+
+    /// Resolve an open term with the context in hand. Its default reads the
+    /// terms declared before it through [`Self::earlier_term`].
+    fn resolve_term(
+        &self,
+        term: &'a crate::article::OpenTerm,
+        res_ctx: &mut ResolutionContext<'c>,
+    ) -> Result<Value> {
+        self.service.resolve_open_term(
+            self.article,
+            self.law,
+            term,
+            self.parameters,
+            &mut |id, res_ctx| self.earlier_term(term, id, res_ctx),
+            res_ctx,
+        )
+    }
+
+    /// The value of `id` if it is an open term declared before `term`.
+    fn earlier_term(
+        &self,
+        term: &crate::article::OpenTerm,
+        id: &str,
+        res_ctx: &mut ResolutionContext<'c>,
+    ) -> Result<Option<Value>> {
+        let article: &'a Article = self.article;
+        let Some(earlier) = article.get_open_terms().and_then(|terms| {
+            terms
+                .iter()
+                .take_while(|t| t.id != term.id)
+                .find(|t| t.id == id)
+        }) else {
+            return Ok(None);
+        };
+        let answer = self.memoized(id, || {
+            let value = self.resolve_term(earlier, res_ctx)?;
+            Ok(Some((value, ResolveType::OpenTerm)))
+        });
+        answer
+            .transpose()
+            .map(|found| found.map(|(value, _)| value))
+    }
+}
+
+impl LazyInputs for LazyArticleInputs<'_, '_, '_> {
+    fn resolve_input(&self, name: &str) -> Option<Result<(Value, ResolveType)>> {
+        self.memoized(name, || match self.owner(name) {
+            Some(owned) => self.resolve_owned(owned),
+            None => Ok(None),
+        })
     }
 }
 
@@ -1312,7 +1713,8 @@ impl LawExecutionService {
             article,
             law,
             stage_params,
-            Some(output_name),
+            // A stage accumulates every output for the stages after it.
+            None,
             &stage.name,
             &mut res_ctx,
         )?;
@@ -1448,15 +1850,8 @@ impl LawExecutionService {
         let mut merged_result: Option<ArticleResult> = None;
 
         for outputs in article_to_outputs.values() {
-            // Use the first output name for the internal call (output_name is used
-            // for article lookup and tracing, but all outputs are computed regardless)
-            let primary_output = outputs[0];
-            let result = self.evaluate_law_output_internal(
-                law_id,
-                primary_output,
-                parameters.clone(),
-                res_ctx,
-            )?;
+            let result =
+                self.evaluate_outputs_internal(law_id, outputs, parameters.clone(), res_ctx)?;
 
             match &mut merged_result {
                 None => {
@@ -1481,11 +1876,9 @@ impl LawExecutionService {
             result.article_number = article_numbers.join(", ");
         }
 
-        // No output filtering: the engine only executes articles that produce
-        // the requested outputs. All outputs from those articles are returned,
-        // including co-products (multiple outputs from the same article) and
-        // causally-entailed outputs (hooks, overrides). A beschikking is legally
-        // indivisible per AWB 1:3 — its consequences cannot be stripped.
+        // The engine executes only the articles that produce the requested
+        // outputs, and in each only the actions those outputs depend on
+        // (RFC-043). Causally-entailed outputs (hooks, overrides) stay in.
 
         // Every refusal seen anywhere in this execution chain, not just in the
         // article that happened to be merged first.
@@ -1510,9 +1903,30 @@ impl LawExecutionService {
         parameters: BTreeMap<String, Value>,
         res_ctx: &mut ResolutionContext<'_>,
     ) -> Result<ArticleResult> {
+        self.evaluate_outputs_internal(
+            law_id,
+            std::slice::from_ref(&output_name),
+            parameters,
+            res_ctx,
+        )
+    }
+
+    /// Outputs of one article of `law_id` in a single execution, with cycle
+    /// tracking: the actions in the union of their closures run once (RFC-043).
+    /// The cache is keyed on one output, so only a single one is cached.
+    fn evaluate_outputs_internal(
+        &self,
+        law_id: &str,
+        output_names: &[&str],
+        parameters: BTreeMap<String, Value>,
+        res_ctx: &mut ResolutionContext<'_>,
+    ) -> Result<ArticleResult> {
+        let output_name = output_names.first().copied().unwrap_or_default();
+        let cacheable = output_names.len() == 1;
+
         // --- Cache check (before depth check: cached results don't increase depth) ---
         let key = cache_key(law_id, output_name, &parameters);
-        if let Some(cached) = res_ctx.cache.get(&key) {
+        if let Some(cached) = res_ctx.cache.get(&key).filter(|_| cacheable) {
             // Runtime collision check: hash keys are u64 so collisions are
             // theoretically possible. For legally binding decisions, we must
             // never silently return wrong results.
@@ -1612,10 +2026,13 @@ impl LawExecutionService {
             article,
             law,
             parameters,
-            Some(output_name),
+            Some(output_names),
             "BESLUIT",
             res_ctx,
         )?;
+        if !cacheable {
+            return Ok(result);
+        }
 
         // --- Cache store (only on success) ---
         // Note: on a hash collision (astronomically unlikely, ~1e-18 per pair),
@@ -1634,6 +2051,222 @@ impl LawExecutionService {
         );
 
         Ok(result)
+    }
+
+    /// The hooks at `hook_point` that fire on `article` at this stage, as
+    /// [`Self::fire_hooks`] runs them and [`Self::hook_parameter_names`] reads
+    /// them, with the legal character they attach to. A hook not in force on
+    /// the date comes back as the record of why; one already executing is
+    /// left out. `None` when the article produces nothing a hook attaches to.
+    #[allow(clippy::type_complexity)]
+    fn fireable_hooks<'s, 'x>(
+        &'s self,
+        hook_point: HookPoint,
+        article: &'x Article,
+        stage: &str,
+        res_ctx: &ResolutionContext<'_>,
+    ) -> Option<(
+        &'x str,
+        Vec<std::result::Result<FireableHook<'s>, DeclarationNotInForce>>,
+    )> {
+        let produces = article.get_produces()?;
+        let legal_character = produces.legal_character.as_deref()?;
+        let decision_type = produces.decision_type.as_deref();
+        let matching_hooks =
+            self.resolver
+                .find_hooks(hook_point, legal_character, decision_type, stage);
+        let subject = format!(
+            "hook point {} on {legal_character} at stage {stage}",
+            hook_point.as_str()
+        );
+        let ref_date = res_ctx.reference_date();
+        let hooks = matching_hooks
+            .iter()
+            .filter(|hook_entry| {
+                // Cycle detection: don't re-enter a hook we're already executing
+                let key = hook_key(&hook_entry.law_id, &hook_entry.article_number);
+                let visited = res_ctx.is_visited(&key);
+                if visited {
+                    tracing::debug!(hook_key = %key, "Skipping hook: cycle detected");
+                }
+                !visited
+            })
+            .map(|hook_entry| {
+                let not_in_force = |reason: String| DeclarationNotInForce {
+                    kind: DeclarationKind::Hook,
+                    law_id: hook_entry.law_id.clone(),
+                    article: hook_entry.article_number.clone(),
+                    subject: subject.clone(),
+                    reason,
+                };
+                // A hook that does not fire leaves nothing behind: the decision
+                // simply comes out without its motivering, its bekendmaking or
+                // its bezwaartermijn, and nothing in the outcome says one was
+                // owed. "Hook law not found" was moreover untrue for the common
+                // case (the law is loaded, it is this date it has no version
+                // for), so the reason travels along, to the trace and to the
+                // receipt.
+                let law = self
+                    .resolver
+                    .get_law_for_date_reported(&hook_entry.law_id, ref_date)
+                    .map_err(|reason| not_in_force(reason.describe()))?;
+                // The law is in force, but the version selected for this date
+                // need not carry the article the hooks index points at: that
+                // index is built from the newest version. The hook still does
+                // not fire (an article inserted later is not in force yet, and
+                // a renumbered one is missed by the undated index), but the
+                // same safeguards go missing as above, so the skip is recorded
+                // the same way.
+                let article = law
+                    .find_article_by_number(&hook_entry.article_number)
+                    .ok_or_else(|| {
+                        not_in_force(missing_article_reason(
+                            law,
+                            &hook_entry.article_number,
+                            "a hook that fires at the same point on this decision",
+                            |candidate| {
+                                let offered = matching_hooks.iter().any(|h| {
+                                    h.law_id == hook_entry.law_id
+                                        && h.article_number == candidate.number
+                                });
+                                !offered
+                                    && candidate.get_hooks().is_some_and(|decls| {
+                                        decls.iter().any(|d| {
+                                            d.hook_point == hook_point
+                                                && d.applies_to.legal_character.as_deref()
+                                                    == Some(legal_character)
+                                                && hook_filter_admits(
+                                                    &d.applies_to,
+                                                    decision_type,
+                                                    stage,
+                                                )
+                                        })
+                                    })
+                            },
+                        ))
+                    })?;
+                Ok(FireableHook {
+                    entry: hook_entry,
+                    law,
+                    article,
+                })
+            })
+            .collect();
+        Some((legal_character, hooks))
+    }
+
+    /// The parameters the hooks at `hook_point` on this article declare: the
+    /// names they receive from it (RFC-043).
+    fn hook_parameter_names(
+        &self,
+        hook_point: HookPoint,
+        article: &Article,
+        stage: &str,
+        res_ctx: &ResolutionContext<'_>,
+    ) -> BTreeSet<String> {
+        self.fireable_hooks(hook_point, article, stage, res_ctx)
+            .map(|(_, hooks)| {
+                hooks
+                    .into_iter()
+                    .flatten()
+                    .flat_map(|hook| declared_parameter_names(hook.article))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// What an execution of `article` needs, before any of its actions runs
+    /// (RFC-043): which actions, and which inputs a hook or a replacing
+    /// override reads.
+    fn plan_demand(
+        &self,
+        article: &Article,
+        law: &ArticleBasedLaw,
+        requested_outputs: Option<&[&str]>,
+        stage: &str,
+        res_ctx: &ResolutionContext<'_>,
+    ) -> Demand {
+        let plan = self.override_plan(article, law, res_ctx);
+        let read_before_actions =
+            self.hook_parameter_names(HookPoint::PreActions, article, stage, res_ctx);
+        let post_hooks = self.hook_parameter_names(HookPoint::PostActions, article, stage, res_ctx);
+        // What the post hooks read, and what the replacing overrides of the
+        // computed outputs read; `None` means every output is computed.
+        let read_after = |computed: Option<&BTreeSet<String>>| -> BTreeSet<String> {
+            let replacing = plan
+                .replacing
+                .iter()
+                .filter(|(output, _)| computed.is_none_or(|c| c.contains(*output)))
+                .flat_map(|(_, parameters)| parameters.iter().cloned());
+            post_hooks.iter().cloned().chain(replacing).collect()
+        };
+
+        let Some(requested) = requested_outputs else {
+            return Demand {
+                outputs: None,
+                voided: Vec::new(),
+                read_before_actions,
+                read_after_actions: read_after(None),
+            };
+        };
+        // The requested outputs and the outputs a post hook reads, closed over
+        // what they read, where computing an output also reads what its
+        // replacing override declares. An output a void excludes is not
+        // computed for a request or a hook: the law says it does not arise.
+        let actions = article
+            .get_execution_spec()
+            .and_then(|e| e.actions.as_deref())
+            .unwrap_or_default();
+        let wanted: Vec<&str> = requested
+            .iter()
+            .copied()
+            .chain(post_hooks.iter().map(String::as_str))
+            .filter(|name| !plan.voided.contains(*name))
+            .collect();
+        let outputs = crate::demand::required_outputs_with(actions, &wanted, &plan.replacing);
+        let read_after_actions = read_after(Some(&outputs));
+        Demand {
+            outputs: Some(outputs),
+            voided: requested
+                .iter()
+                .filter(|name| plan.voided.contains(**name))
+                .map(|name| name.to_string())
+                .collect(),
+            read_before_actions,
+            read_after_actions,
+        }
+    }
+
+    /// Which overrides of this article's outputs apply, read before any action
+    /// runs (RFC-043), with the selection [`Self::apply_overrides`] uses.
+    fn override_plan(
+        &self,
+        article: &Article,
+        law: &ArticleBasedLaw,
+        res_ctx: &ResolutionContext<'_>,
+    ) -> OverridePlan {
+        let mut plan = OverridePlan::default();
+        for output in crate::demand::action_outputs(article) {
+            // Not in force, more than one, or none: nothing to plan for;
+            // `apply_overrides` records or reports it.
+            let Ok(Some(SelectedOverride::InForce {
+                article: ovr_article,
+                declaration,
+                ..
+            })) = self.select_override(law, article, output, res_ctx)
+            else {
+                continue;
+            };
+            if declaration.is_some_and(|d| d.voids) {
+                plan.voided.insert(output.to_string());
+            } else {
+                plan.replacing.insert(
+                    output.to_string(),
+                    declared_parameter_names(ovr_article).collect(),
+                );
+            }
+        }
+        plan
     }
 
     /// Fire hooks that match the given article's `produces` annotation.
@@ -1665,24 +2298,13 @@ impl LawExecutionService {
         let hook_point_str = hook_point.as_str();
 
         // Only fire hooks if the article declares what it produces
-        let produces = match article.get_produces() {
-            Some(p) => p,
-            None => return Ok((hook_outputs, hook_provenance)),
+        let Some((legal_character, hooks)) =
+            self.fireable_hooks(hook_point, article, stage, res_ctx)
+        else {
+            return Ok((hook_outputs, hook_provenance));
         };
 
-        let legal_character = match &produces.legal_character {
-            Some(lc) => lc.as_str(),
-            None => return Ok((hook_outputs, hook_provenance)),
-        };
-
-        let decision_type = produces.decision_type.as_deref();
-
-        // Find matching hooks
-        let matching_hooks =
-            self.resolver
-                .find_hooks(hook_point, legal_character, decision_type, stage);
-
-        if matching_hooks.is_empty() {
+        if hooks.is_empty() {
             return Ok((hook_outputs, hook_provenance));
         }
 
@@ -1690,86 +2312,25 @@ impl LawExecutionService {
             hook_point = ?hook_point,
             legal_character = legal_character,
             stage = stage,
-            matches = matching_hooks.len(),
+            matches = hooks.len(),
             "Firing hooks"
         );
 
-        for hook_entry in &matching_hooks {
-            let hook_law_id = &hook_entry.law_id;
-            let hook_article_number = &hook_entry.article_number;
-            // Cycle detection: don't re-enter a hook we're already executing
-            let hook_key = format!("hook:{}\0{}", hook_law_id, hook_article_number);
-            if res_ctx.is_visited(&hook_key) {
-                tracing::debug!(hook_key = %hook_key, "Skipping hook: cycle detected");
-                continue;
-            }
-
-            // Look up the hook article
-            let ref_date = res_ctx.reference_date();
-            // A hook that does not fire leaves nothing behind: the decision
-            // simply comes out without its motivering, its bekendmaking or its
-            // bezwaartermijn, and nothing in the outcome says one was owed.
-            // "Hook law not found" was moreover untrue for the common case —
-            // the law is loaded, it is this date it has no version for — so the
-            // reason travels along, to the trace and to the receipt.
-            let hook_law = match self
-                .resolver
-                .get_law_for_date_reported(hook_law_id, ref_date)
-            {
-                Ok(law) => law,
-                Err(reason) => {
-                    res_ctx.note_not_in_force(DeclarationNotInForce {
-                        kind: DeclarationKind::Hook,
-                        law_id: hook_law_id.clone(),
-                        article: hook_article_number.clone(),
-                        subject: format!(
-                            "hook point {hook_point_str} on {legal_character} at stage {stage}"
-                        ),
-                        reason: reason.describe(),
-                    });
+        for hook in hooks {
+            let FireableHook {
+                entry: hook_entry,
+                law: hook_law,
+                article: hook_article,
+            } = match hook {
+                Ok(hook) => hook,
+                Err(not_in_force) => {
+                    res_ctx.note_not_in_force(not_in_force);
                     continue;
                 }
             };
-            // The law is in force, but the version selected for this date need
-            // not carry the article the hooks index points at: that index is
-            // built from the newest version. The hook still does not fire (an
-            // article inserted later is not in force yet, and a renumbered one
-            // is missed by the undated index), but the same safeguards go
-            // missing as above, so the skip is recorded the same way.
-            let Some(hook_article) = hook_law.find_article_by_number(hook_article_number) else {
-                res_ctx.note_not_in_force(DeclarationNotInForce {
-                    kind: DeclarationKind::Hook,
-                    law_id: hook_law_id.clone(),
-                    article: hook_article_number.clone(),
-                    subject: format!(
-                        "hook point {hook_point_str} on {legal_character} at stage {stage}"
-                    ),
-                    reason: missing_article_reason(
-                        hook_law,
-                        hook_article_number,
-                        "a hook that fires at the same point on this decision",
-                        |candidate| {
-                            let offered = matching_hooks.iter().any(|h| {
-                                h.law_id == *hook_law_id && h.article_number == candidate.number
-                            });
-                            !offered
-                                && candidate.get_hooks().is_some_and(|decls| {
-                                    decls.iter().any(|d| {
-                                        d.hook_point == hook_point
-                                            && d.applies_to.legal_character.as_deref()
-                                                == Some(legal_character)
-                                            && hook_filter_admits(
-                                                &d.applies_to,
-                                                decision_type,
-                                                stage,
-                                            )
-                                    })
-                                })
-                        },
-                    ),
-                });
-                continue;
-            };
+            let hook_law_id = &hook_entry.law_id;
+            let hook_article_number = &hook_entry.article_number;
+            let hook_key = hook_key(&hook_entry.law_id, &hook_entry.article_number);
 
             // Filter parameters: only pass parameters declared by the hook article (least privilege)
             let hook_params = Self::filter_parameters_for_article(hook_article, parameters);
@@ -1922,6 +2483,129 @@ impl LawExecutionService {
         Ok(taints)
     }
 
+    /// The override of `output_name` that applies, if any, as both
+    /// [`Self::override_plan`] and [`Self::apply_overrides`] read it. An
+    /// error when more than one applies.
+    fn select_override(
+        &self,
+        law: &ArticleBasedLaw,
+        article: &Article,
+        output_name: &str,
+        res_ctx: &ResolutionContext<'_>,
+    ) -> Result<Option<SelectedOverride<'_>>> {
+        let overrides = self
+            .resolver
+            .find_overrides(&law.id, &article.number, output_name);
+
+        // An override from another law applies only within the execution
+        // that law started: a Vreemdelingenwet exclusion on Awb 6:7 is not
+        // a Participatiewet case (RFC-007, "contextual law").
+        //
+        // An article overriding an output of its own law is a different
+        // claim. There is no other law to be protected from, and the
+        // scoping made the outcome depend on the route in: asked through
+        // the law itself the exclusion applied, asked through a third law
+        // reading that output it did not, and the amount the statute says
+        // does not arise was handed out anyway. Zorgtoeslag article 3
+        // voiding article 2 of the same law is exactly that shape, and it
+        // is the case RFC-027 works out, and RFC-041 records the
+        // amendment to RFC-007's contextual-law rule that this is.
+        let applicable: Vec<_> = overrides
+            .iter()
+            .filter(|ovr| {
+                ovr.law_id == law.id || Some(&ovr.law_id) == res_ctx.contextual_law_id.as_ref()
+            })
+            .collect();
+
+        let [reference] = applicable.as_slice() else {
+            if applicable.is_empty() {
+                return Ok(None);
+            }
+            return Err(EngineError::InvalidOperation(format!(
+                "Multiple overrides for output '{}' on '{}:{}' (from {})",
+                output_name,
+                law.id,
+                article.number,
+                applicable
+                    .iter()
+                    .map(|o| o.law_id.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )));
+        };
+        let reference = *reference;
+
+        // An override that is already executing does not apply again.
+        if res_ctx.is_visited(&override_key(&reference.law_id, &reference.article_number)) {
+            tracing::debug!(
+                law = %reference.law_id,
+                article = %reference.article_number,
+                "Skipping override: cycle detected"
+            );
+            return Ok(None);
+        }
+
+        // Look up overriding article
+        let ref_date = res_ctx.reference_date();
+        // The overrides index is built from the newest version of each law,
+        // so it offers a lex specialis that may not be in force on this
+        // date. Skipping it is right, staying silent about it is not: the
+        // output then carries the general rule's value and neither the
+        // provenance nor the trace mentions that a special rule addresses
+        // exactly this output. Same ground as the `voids` branch of
+        // `apply_overrides`, where an absence with a ground stays
+        // distinguishable from an absence nobody asked about.
+        let ovr_law = match self
+            .resolver
+            .get_law_for_date_reported(&reference.law_id, ref_date)
+        {
+            Ok(law) => law,
+            Err(reason) => {
+                return Ok(Some(SelectedOverride::NotInForce {
+                    reference,
+                    reason: reason.describe(),
+                }));
+            }
+        };
+        // The law is in force, but the version selected for this date need
+        // not carry the article the index points at: the index is built
+        // from the newest version. An article inserted later is genuinely
+        // not in force today. A renumbering is a known limitation of that
+        // undated index: the special rule is in force under another number
+        // and is still not applied. Either way the general rule's value
+        // stands, unchanged from before; what changes is that the skip is
+        // recorded like the one above, so "no lex specialis" never reads as
+        // a finding about the case (and the reason names a renumbered
+        // declaration when that version has one).
+        let Some(ovr_article) = ovr_law.find_article_by_number(&reference.article_number) else {
+            return Ok(Some(SelectedOverride::NotInForce {
+                reference,
+                reason: article_missing_from_version(
+                    ovr_law,
+                    &reference.article_number,
+                    &law.id,
+                    &article.number,
+                    output_name,
+                ),
+            }));
+        };
+
+        // The declaration itself says whether this override replaces the value
+        // or removes it. Read it from the overriding article rather than from
+        // the index, which carries only the addressing.
+        let declaration = ovr_article.get_overrides().and_then(|decls| {
+            decls
+                .iter()
+                .find(|d| d.law == law.id && d.article == article.number && d.output == output_name)
+        });
+        Ok(Some(SelectedOverride::InForce {
+            reference,
+            law: ovr_law,
+            article: ovr_article,
+            declaration,
+        }))
+    }
+
     /// Apply lex specialis overrides to an article's outputs.
     ///
     /// For each output in the result, checks if an override exists from the contextual law.
@@ -1932,89 +2616,37 @@ impl LawExecutionService {
         article: &Article,
         law: &ArticleBasedLaw,
         parameters: &BTreeMap<String, Value>,
+        voided_requested: &[String],
         res_ctx: &mut ResolutionContext<'_>,
     ) -> Result<()> {
         // A law overriding its own output needs no contextual law, so a
-        // standalone call is no longer a reason to stop here. The filter below
+        // standalone call is no longer a reason to stop here: the selection
         // still drops every override from another law when there is none.
-        let contextual_law_id = res_ctx.contextual_law_id.clone();
-
-        // Check each output for overrides
-        let output_names: Vec<String> = result.outputs.keys().cloned().collect();
+        //
+        // Check each output for overrides, and each requested output a void
+        // kept from being computed (RFC-043): its ground is recorded the same.
+        let mut output_names: Vec<String> = result.outputs.keys().cloned().collect();
+        for name in voided_requested {
+            if !output_names.contains(name) {
+                output_names.push(name.clone());
+            }
+        }
         for output_name in output_names {
-            let overrides = self
-                .resolver
-                .find_overrides(&law.id, &article.number, &output_name);
-
-            if overrides.is_empty() {
+            let Some(selected) = self.select_override(law, article, &output_name, res_ctx)? else {
                 continue;
-            }
+            };
+            let ovr_law_id = &selected.reference().law_id;
+            let ovr_article_number = &selected.reference().article_number;
+            let ovr_key = override_key(ovr_law_id, ovr_article_number);
 
-            // An override from another law applies only within the execution
-            // that law started: a Vreemdelingenwet exclusion on Awb 6:7 is not
-            // a Participatiewet case (RFC-007, "contextual law").
-            //
-            // An article overriding an output of its own law is a different
-            // claim. There is no other law to be protected from, and the
-            // scoping made the outcome depend on the route in: asked through
-            // the law itself the exclusion applied, asked through a third law
-            // reading that output it did not, and the amount the statute says
-            // does not arise was handed out anyway. Zorgtoeslag article 3
-            // voiding article 2 of the same law is exactly that shape, and it
-            // is the case RFC-027 works out, and RFC-041 records the
-            // amendment to RFC-007's contextual-law rule that this is.
-            let applicable: Vec<_> = overrides
-                .iter()
-                .filter(|ovr| {
-                    ovr.law_id == law.id || Some(&ovr.law_id) == contextual_law_id.as_ref()
-                })
-                .collect();
-
-            if applicable.is_empty() {
-                continue;
-            }
-
-            if applicable.len() > 1 {
-                return Err(EngineError::InvalidOperation(format!(
-                    "Multiple overrides for output '{}' on '{}:{}' (from {})",
-                    output_name,
-                    law.id,
-                    article.number,
-                    applicable
-                        .iter()
-                        .map(|o| o.law_id.as_str())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )));
-            }
-
-            let ovr_ref = applicable[0];
-            let ovr_law_id = &ovr_ref.law_id;
-            let ovr_article_number = &ovr_ref.article_number;
-
-            // Cycle detection
-            let ovr_key = format!("override:{}\0{}", ovr_law_id, ovr_article_number);
-            if res_ctx.is_visited(&ovr_key) {
-                tracing::debug!(ovr_key = %ovr_key, "Skipping override: cycle detected");
-                continue;
-            }
-
-            // Look up overriding article
-            let ref_date = res_ctx.reference_date();
-            // The overrides index is built from the newest version of each law,
-            // so it offers a lex specialis that may not be in force on this
-            // date. Skipping it is right, staying silent about it is not: the
-            // output then carries the general rule's value and neither the
-            // provenance nor the trace mentions that a special rule addresses
-            // exactly this output. Same ground as the `voids` branch below,
-            // where an absence with a ground stays distinguishable from an
-            // absence nobody asked about.
-            let ovr_law = match self
-                .resolver
-                .get_law_for_date_reported(ovr_law_id, ref_date)
-            {
-                Ok(law) => law,
-                Err(reason) => {
+            let (ovr_law, ovr_article, declaration) = match selected {
+                SelectedOverride::InForce {
+                    law,
+                    article,
+                    declaration,
+                    ..
+                } => (law, article, declaration),
+                SelectedOverride::NotInForce { reason, .. } => {
                     res_ctx.note_not_in_force(DeclarationNotInForce {
                         kind: DeclarationKind::Override,
                         law_id: ovr_law_id.clone(),
@@ -2023,39 +2655,10 @@ impl LawExecutionService {
                             "output '{}' of {} article {}",
                             output_name, law.id, article.number
                         ),
-                        reason: reason.describe(),
+                        reason,
                     });
                     continue;
                 }
-            };
-            // The law is in force, but the version selected for this date need
-            // not carry the article the index points at: the index is built
-            // from the newest version. An article inserted later is genuinely
-            // not in force today. A renumbering is a known limitation of that
-            // undated index: the special rule is in force under another number
-            // and is still not applied. Either way the general rule's value
-            // stands, unchanged from before; what changes is that the skip is
-            // recorded like the one above, so "no lex specialis" never reads as
-            // a finding about the case (and the reason names a renumbered
-            // declaration when that version has one).
-            let Some(ovr_article) = ovr_law.find_article_by_number(ovr_article_number) else {
-                res_ctx.note_not_in_force(DeclarationNotInForce {
-                    kind: DeclarationKind::Override,
-                    law_id: ovr_law_id.clone(),
-                    article: ovr_article_number.clone(),
-                    subject: format!(
-                        "output '{}' of {} article {}",
-                        output_name, law.id, article.number
-                    ),
-                    reason: article_missing_from_version(
-                        ovr_law,
-                        ovr_article_number,
-                        &law.id,
-                        &article.number,
-                        &output_name,
-                    ),
-                });
-                continue;
             };
 
             // Trace (guard auto-pops on all exit paths)
@@ -2068,15 +2671,6 @@ impl LawExecutionService {
                 ovr_law_id, ovr_article_number, law.id, article.number, output_name
             ));
 
-            // Execute overriding article
-            // The declaration itself says whether this override replaces the
-            // value or removes it. Read it from the overriding article rather
-            // than from the index, which carries only the addressing.
-            let declaration = ovr_article.get_overrides().and_then(|decls| {
-                decls.iter().find(|d| {
-                    d.law == law.id && d.article == article.number && d.output == output_name
-                })
-            });
             if let Some(decl) = declaration.filter(|d| d.voids) {
                 // "Bestaat geen aanspraak": the entitlement does not arise, so
                 // there is no value to compute or replace. The output leaves
@@ -2105,7 +2699,7 @@ impl LawExecutionService {
                 ovr_article,
                 ovr_law,
                 ovr_params,
-                Some(&output_name),
+                Some(&[output_name.as_str()]),
                 "BESLUIT", // override articles are not procedure-aware
                 res_ctx,
             );
@@ -2159,13 +2753,13 @@ impl LawExecutionService {
         article: &Article,
         law: &ArticleBasedLaw,
         parameters: BTreeMap<String, Value>,
-        requested_output: Option<&str>,
+        requested_outputs: Option<&[&str]>,
         stage: &str,
         res_ctx: &mut ResolutionContext<'_>,
     ) -> Result<ArticleResult> {
         let outer_anchor = res_ctx.enter_anchor(Some(LegalAnchor::from_article(law, article)));
         let result =
-            self.evaluate_article_body(article, law, parameters, requested_output, stage, res_ctx);
+            self.evaluate_article_body(article, law, parameters, requested_outputs, stage, res_ctx);
         // Restored before the `?`: an error must not leave the caller anchored
         // to the article that failed.
         res_ctx.enter_anchor(outer_anchor);
@@ -2177,7 +2771,7 @@ impl LawExecutionService {
         article: &Article,
         law: &ArticleBasedLaw,
         parameters: BTreeMap<String, Value>,
-        requested_output: Option<&str>,
+        requested_outputs: Option<&[&str]>,
         stage: &str,
         res_ctx: &mut ResolutionContext<'_>,
     ) -> Result<ArticleResult> {
@@ -2211,82 +2805,57 @@ impl LawExecutionService {
             }
         }
 
-        // Create execution context — pass parameters by reference, only clone
-        // into combined_params below when we need ownership.
-        let mut context = RuleContext::new(parameters.clone(), res_ctx.calculation_date)?;
-        // The optional parameters this caller left out resolve to Unknown for
-        // lack of them (RFC-036), also while cross-law parameters are built
-        // from this context: `bsn: $partner_bsn` with no partner_bsn passed
-        // hands the target an Unknown, not an error.
-        context.set_law_scope(
-            &law.id,
-            crate::engine::unpassed_optional_parameters(article, &parameters),
-        );
+        // What this execution needs, settled before any action runs (RFC-043).
+        let demand = self.plan_demand(article, law, requested_outputs, stage, res_ctx);
 
-        // Attach trace builder if available
-        if let Some(ref tb) = res_ctx.trace {
-            context.set_trace(Rc::clone(tb));
-            // The provision being executed: every step this context pushes
-            // happens inside this article, so that is what it is anchored to
-            // (RFC-039).
-            context.set_anchor(LegalAnchor::from_article(law, article));
-        }
-
-        // Set definitions from article
-        if let Some(definitions) = article.get_definitions() {
-            context.set_definitions(definitions);
-        }
-
-        // Resolve inputs with sources using ServiceProvider
-        self.resolve_inputs_with_service(article, law, &mut context, &parameters, res_ctx)?;
-
-        // Resolve open terms via IoC (implements index lookup)
-        let open_term_values = self.resolve_open_terms(article, law, &context, res_ctx)?;
-
-        // Use ArticleEngine for action execution (it handles the internal logic)
+        // Inputs and open terms are resolved when they are first read: by an
+        // action, or by a hook or override that declares them as parameters.
         let engine = ArticleEngine::new(article, law);
+        let calculation_date = res_ctx.calculation_date;
+        let trace = res_ctx.trace.as_ref().map(Rc::clone);
+        let lazy = LazyArticleInputs::new(self, article, law, &parameters, res_ctx)?;
 
-        // Build combined_params: start with owned parameters, merge in resolved data.
-        let mut combined_params = parameters;
-        for (name, value) in context.resolved_inputs() {
-            combined_params.insert(name.clone(), value.clone());
-        }
-        // Merge open term values (IoC resolved)
-        for (name, value) in open_term_values {
-            combined_params.insert(name, value);
-        }
+        lazy.resolve_names(&demand.read_before_actions)?;
+        let mut hook_params = parameters.clone();
+        hook_params.extend(lazy.resolved());
+        let (pre_hook_outputs, pre_hook_provenance) = lazy.with_resolution_context(|res_ctx| {
+            self.fire_hooks(
+                HookPoint::PreActions,
+                article,
+                law,
+                stage,
+                &hook_params,
+                res_ctx,
+            )
+        })?;
 
-        // Fire pre_actions hooks (between open term resolution and action execution).
-        let (pre_hook_outputs, pre_hook_provenance) = self.fire_hooks(
-            HookPoint::PreActions,
-            article,
-            law,
-            stage,
-            &combined_params,
-            res_ctx,
+        let mut engine_params = parameters.clone();
+        engine_params.extend(pre_hook_outputs.clone());
+        let mut result = engine.evaluate_outputs(
+            engine_params,
+            calculation_date,
+            demand.outputs.as_ref(),
+            trace,
+            Some(&AfterPreHooks {
+                inputs: &lazy,
+                hook_outputs: &pre_hook_outputs,
+            }),
         )?;
-        for (name, value) in &pre_hook_outputs {
-            combined_params.insert(name.clone(), value.clone());
-        }
+        lazy.resolve_names(
+            demand
+                .read_after_actions
+                .iter()
+                .filter(|name| !pre_hook_outputs.contains_key(*name)),
+        )?;
 
-        // Clone for post-hook params before moving combined_params into the engine.
-        let mut post_params = combined_params.clone();
-
-        // Use traced evaluation if trace is available
-        let mut result = if let Some(ref tb) = res_ctx.trace {
-            engine.evaluate_with_trace(
-                combined_params,
-                res_ctx.calculation_date,
-                requested_output,
-                Rc::clone(tb),
-            )?
-        } else {
-            engine.evaluate_with_output(
-                combined_params,
-                res_ctx.calculation_date,
-                requested_output,
-            )?
-        };
+        // What the post-action steps receive: the parameters, what was
+        // resolved, and over those what a pre hook produced. What was resolved
+        // is also what this article consulted.
+        result.resolved_inputs = lazy.resolved();
+        drop(lazy);
+        let mut post_params = parameters.clone();
+        post_params.extend(result.resolved_inputs.clone());
+        post_params.extend(pre_hook_outputs.clone());
 
         // Fire post_actions hooks (between action execution and result return).
         // Post-hooks receive both parameters and article outputs.
@@ -2347,7 +2916,14 @@ impl LawExecutionService {
         }
 
         // Apply lex specialis overrides
-        self.apply_overrides(&mut result, article, law, &post_params, res_ctx)?;
+        self.apply_overrides(
+            &mut result,
+            article,
+            law,
+            &post_params,
+            &demand.voided,
+            res_ctx,
+        )?;
 
         // RFC-024: the engine no longer rounds eurocent outputs implicitly. Rounding
         // is a law-modeled instruction — a law that must round to whole euros/cents
@@ -2380,7 +2956,8 @@ impl LawExecutionService {
         Ok(result)
     }
 
-    /// Resolve open terms declared on an article via IoC (implements index).
+    /// Resolve one open term declared on an article via IoC (implements index),
+    /// the first time an action reads it (RFC-043).
     ///
     /// For each open term:
     /// 1. Look up implementations in the resolver's implements_index
@@ -2391,72 +2968,148 @@ impl LawExecutionService {
     ///    own rule (its default) applies (RFC-003, RFC-036).
     /// 4. If not found + required + no default: error
     /// 5. If not found + not required + no default: skip
-    fn resolve_open_terms(
+    ///
+    /// A default reads the caller's parameters and, through `earlier`, the
+    /// terms of this article declared before it, each resolved when the
+    /// default reads it.
+    fn resolve_open_term<'c>(
         &self,
         article: &Article,
         law: &ArticleBasedLaw,
-        context: &RuleContext,
-        res_ctx: &mut ResolutionContext<'_>,
-    ) -> Result<BTreeMap<String, Value>> {
-        let mut resolved = BTreeMap::new();
-
-        let open_terms = match article.get_open_terms() {
-            Some(terms) => terms,
-            None => return Ok(resolved),
-        };
-
-        for term in open_terms {
-            // Cycle detection: check if we're already resolving this open term
-            // Use \0 as separator to prevent key collisions when IDs contain #
-            let ot_key = format!("open_term:{}\0{}\0{}", law.id, article.number, term.id);
-            if res_ctx.is_visited(&ot_key) {
-                tracing::warn!(
-                    law_id = %law.id,
-                    article = %article.number,
-                    open_term = %term.id,
-                    "Circular open term dependency detected"
-                );
-                let _guard = res_ctx.trace_guard(&term.id, PathNodeType::OpenTermResolution);
-                res_ctx.trace_set_message(format!(
-                    "Circular dependency: open term '{}' on {}#{} is already being resolved",
-                    term.id, law.id, article.number
-                ));
-                return Err(EngineError::CircularReference(format!(
-                    "Circular open term dependency: '{}' on {} article {} is already being resolved",
-                    term.id, law.id, article.number
-                )));
-            }
-            res_ctx.enter(ot_key.clone());
-
-            tracing::debug!(
+        term: &crate::article::OpenTerm,
+        parameters: &BTreeMap<String, Value>,
+        earlier: &mut EarlierTerm<'_, 'c>,
+        res_ctx: &mut ResolutionContext<'c>,
+    ) -> Result<Value> {
+        // Cycle detection: check if we're already resolving this open term
+        // Use \0 as separator to prevent key collisions when IDs contain #
+        let ot_key = format!("open_term:{}\0{}\0{}", law.id, article.number, term.id);
+        if res_ctx.is_visited(&ot_key) {
+            tracing::warn!(
                 law_id = %law.id,
                 article = %article.number,
                 open_term = %term.id,
-                "Resolving open term"
+                "Circular open term dependency detected"
+            );
+            let _guard = res_ctx.trace_guard(&term.id, PathNodeType::OpenTermResolution);
+            res_ctx.trace_set_message(format!(
+                "Circular dependency: open term '{}' on {}#{} is already being resolved",
+                term.id, law.id, article.number
+            ));
+            return Err(EngineError::CircularReference(format!(
+                "Circular open term dependency: '{}' on {} article {} is already being resolved",
+                term.id, law.id, article.number
+            )));
+        }
+        res_ctx.enter(ot_key.clone());
+
+        tracing::debug!(
+            law_id = %law.id,
+            article = %article.number,
+            open_term = %term.id,
+            "Resolving open term"
+        );
+
+        // Trace the open term resolution (guard auto-pops on all exit paths)
+        let _guard = res_ctx.trace_guard(&term.id, PathNodeType::OpenTermResolution);
+        res_ctx.trace_set_resolve_type(ResolveType::OpenTerm);
+
+        // Look up implementations (filtered by execution scope)
+        // Convert BTreeMap to HashMap at the resolver boundary
+        let scope: HashMap<String, Value> = parameters
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        let lookup = match self.resolver.find_implementations(
+            &law.id,
+            &article.number,
+            term,
+            res_ctx.reference_date(),
+            &scope,
+        ) {
+            Ok(lookup) => lookup,
+            Err(e) => {
+                res_ctx.trace_set_message(format!(
+                    "Open term '{}': implementation lookup failed: {}",
+                    term.id, e
+                ));
+                res_ctx.leave(&ot_key);
+                return Err(e);
+            }
+        };
+
+        // A regulation that arrogates a term the law delegates elsewhere is
+        // skipped, so a competent regulation lower in the ranking can still
+        // win. But it is a defect in the corpus, not a property of this
+        // case, so it is recorded: it stands in the trace under this open
+        // term and travels to the receipt even when tracing is off. Without
+        // that record a citizen would read "no implementation found, using
+        // default" and never learn that a filling was offered and refused.
+        for refusal in &lookup.refusals {
+            tracing::warn!(
+                law_id = %refusal.declaring_law,
+                article = %refusal.declaring_article,
+                open_term = %refusal.open_term,
+                required_layer = %refusal.required_layer,
+                refused_law = %refusal.refused_law,
+                refused_layer = %refusal.refused_layer,
+                "Implementation refused: regulatory_layer is not the delegated layer"
+            );
+            let message = refusal.message();
+            {
+                let _refusal_guard =
+                    res_ctx.trace_guard(&refusal.refused_law, PathNodeType::OpenTermResolution);
+                res_ctx.trace_set_message(message);
+            }
+        }
+        res_ctx
+            .delegation_refusals
+            .extend(lookup.refusals.iter().cloned());
+
+        // A regulation that fills this term but is not in force on this
+        // date is no candidate either. Without a record the branches below
+        // report "no implementation, using the default" or "resolved as
+        // null" — the same sentences they print when nobody ever wrote one.
+        for note in lookup.not_in_force {
+            res_ctx.note_not_in_force(note);
+        }
+
+        // Every candidate that survives `find_implementations` is competent:
+        // the resolver drops implementations whose regulatory_layer is not
+        // the layer the open term delegates to, before priority ranking.
+        //
+        // Whether an implementation filled the term for this case, and
+        // which implementations were silent for it (null). The candidates
+        // come winner first (priority resolution); the first one that
+        // fills the term decides, and a silent one is passed over for
+        // the next, so a filling implementation wins over a silent one
+        // whatever their order.
+        let mut filled: Option<Value> = None;
+        let mut silent: Vec<String> = Vec::new();
+        for (impl_law, impl_article) in &lookup.implementations {
+            tracing::debug!(
+                open_term = %term.id,
+                implementing_law = %impl_law.id,
+                implementing_article = %impl_article.number,
+                "Found implementation for open term"
             );
 
-            // Trace the open term resolution (guard auto-pops on all exit paths)
-            let _guard = res_ctx.trace_guard(&term.id, PathNodeType::OpenTermResolution);
-            res_ctx.trace_set_resolve_type(ResolveType::OpenTerm);
-
-            // Look up implementations (filtered by execution scope)
-            // Convert BTreeMap to HashMap at the resolver boundary
-            let scope: HashMap<String, Value> = context
-                .parameters()
-                .iter()
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect();
-            let lookup = match self.resolver.find_implementations(
-                &law.id,
-                &article.number,
-                term,
-                res_ctx.reference_date(),
-                &scope,
+            // Execute the implementing article to get the value.
+            // Only forward parameters that the implementing article declares
+            // in its execution.parameters — principle of least privilege.
+            let impl_params = Self::filter_parameters_for_article(impl_article, parameters);
+            let result = match self.evaluate_article_with_service(
+                impl_article,
+                impl_law,
+                impl_params,
+                Some(&[term.id.as_str()]),
+                "BESLUIT",
+                res_ctx,
             ) {
-                Ok(lookup) => lookup,
+                Ok(r) => r,
                 Err(e) => {
                     res_ctx.trace_set_message(format!(
-                        "Open term '{}': implementation lookup failed: {}",
+                        "Open term '{}': implementation execution failed: {}",
                         term.id, e
                     ));
                     res_ctx.leave(&ot_key);
@@ -2464,79 +3117,110 @@ impl LawExecutionService {
                 }
             };
 
-            // A regulation that arrogates a term the law delegates elsewhere is
-            // skipped, so a competent regulation lower in the ranking can still
-            // win. But it is a defect in the corpus, not a property of this
-            // case, so it is recorded: it stands in the trace under this open
-            // term and travels to the receipt even when tracing is off. Without
-            // that record a citizen would read "no implementation found, using
-            // default" and never learn that a filling was offered and refused.
-            for refusal in &lookup.refusals {
-                tracing::warn!(
-                    law_id = %refusal.declaring_law,
-                    article = %refusal.declaring_article,
-                    open_term = %refusal.open_term,
-                    required_layer = %refusal.required_layer,
-                    refused_law = %refusal.refused_law,
-                    refused_layer = %refusal.refused_layer,
-                    "Implementation refused: regulatory_layer is not the delegated layer"
-                );
-                let message = refusal.message();
-                {
-                    let _refusal_guard =
-                        res_ctx.trace_guard(&refusal.refused_law, PathNodeType::OpenTermResolution);
-                    res_ctx.trace_set_message(message);
+            if let Some(value) = result.outputs.get(&term.id) {
+                if value.is_null() && term.default.is_some() {
+                    // The verordening says nothing for this case ("de APV
+                    // zwijgt"): no deviation was allowed, so the rule of
+                    // the delegating law applies, which is its default.
+                    // An implementation cannot express "there is none"
+                    // for a term that has a default; RFC-036 accepts
+                    // that, and the trace and the log say what happened,
+                    // since a typo in the implementation looks the same.
+                    silent.push(format!("{} article {}", impl_law.id, impl_article.number));
+                } else {
+                    res_ctx.trace_set_result(value.clone());
+                    res_ctx.trace_set_message(format!(
+                        "Open term '{}' implemented by {} article {}",
+                        term.id, impl_law.id, impl_article.number
+                    ));
+                    filled = Some(value.clone());
+                    break;
                 }
+            } else {
+                // An implementation that voids the very term it implements
+                // did produce an answer: the law says the value does not
+                // arise. Reporting that as "produced no matching output"
+                // is the misdiagnosis `OutputVoided` exists to prevent,
+                // and it would send a reader looking for a modelling
+                // defect in a regulation that is correct.
+                if let Some(error) =
+                    voided_output_error(&impl_law.id, &term.id, &result.output_provenance)
+                {
+                    res_ctx.trace_set_message(error.to_string());
+                    res_ctx.leave(&ot_key);
+                    return Err(error);
+                }
+                // Implementation executed but didn't produce the expected output
+                res_ctx.trace_set_message(format!(
+                    "Open term '{}': implementation {} article {} produced no matching output",
+                    term.id, impl_law.id, impl_article.number
+                ));
+                res_ctx.leave(&ot_key);
+                return Err(EngineError::InvalidOperation(format!(
+                    "Implementation {} article {} for open term '{}' did not produce output named '{}'",
+                    impl_law.id, impl_article.number, term.id, term.id
+                )));
             }
-            res_ctx
-                .delegation_refusals
-                .extend(lookup.refusals.iter().cloned());
+        }
+        if let Some(value) = filled {
+            res_ctx.leave(&ot_key);
+            return Ok(value);
+        }
+        let value = if let Some(ref default) = term.default {
+            // No implementation found, or a silent one — execute default actions
+            tracing::debug!(
+                open_term = %term.id,
+                "No implementation filled the term, using default"
+            );
 
-            // A regulation that fills this term but is not in force on this
-            // date is no candidate either. Without a record the branches below
-            // report "no implementation, using the default" or "resolved as
-            // null" — the same sentences they print when nobody ever wrote one.
-            for note in lookup.not_in_force {
-                res_ctx.note_not_in_force(note);
-            }
+            if let Some(ref actions) = default.actions {
+                // Build a synthetic article from the default actions and evaluate
+                // it through ArticleEngine — this correctly handles action.output,
+                // intermediate variables, and all operation patterns.
+                let synthetic_article = Article {
+                    number: format!("default:{}", term.id),
+                    text: String::new(),
+                    url: None,
+                    placement: None,
+                    machine_readable: Some(MachineReadable {
+                        execution: Some(Execution {
+                            produces: None,
+                            parameters: None,
+                            input: None,
+                            output: None,
+                            actions: Some(actions.clone()),
+                        }),
+                        ..Default::default()
+                    }),
+                    references: None,
+                };
 
-            // Every candidate that survives `find_implementations` is competent:
-            // the resolver drops implementations whose regulatory_layer is not
-            // the layer the open term delegates to, before priority ranking.
-            //
-            // Whether an implementation filled the term for this case, and
-            // which implementations were silent for it (null). The candidates
-            // come winner first (priority resolution); the first one that
-            // fills the term decides, and a silent one is passed over for
-            // the next, so a filling implementation wins over a silent one
-            // whatever their order.
-            let mut filled = false;
-            let mut silent: Vec<String> = Vec::new();
-            for (impl_law, impl_article) in &lookup.implementations {
-                tracing::debug!(
-                    open_term = %term.id,
-                    implementing_law = %impl_law.id,
-                    implementing_article = %impl_article.number,
-                    "Found implementation for open term"
-                );
+                let engine = ArticleEngine::new(&synthetic_article, law);
 
-                // Execute the implementing article to get the value.
-                // Only forward parameters that the implementing article declares
-                // in its execution.parameters — principle of least privilege.
-                let impl_params =
-                    Self::filter_parameters_for_article(impl_article, context.parameters());
-                let result = match self.evaluate_article_with_service(
-                    impl_article,
-                    impl_law,
-                    impl_params,
-                    Some(&term.id),
-                    "BESLUIT",
-                    res_ctx,
-                ) {
+                // The default reads the current context parameters (variables
+                // like $type_beplanting) and an earlier term when one of its
+                // operations reaches it (RFC-043).
+                let calculation_date = res_ctx.calculation_date;
+                let evaluated = {
+                    let earlier_terms = EarlierTerms {
+                        earlier: RefCell::new(&mut *earlier),
+                        res_ctx: RefCell::new(&mut *res_ctx),
+                    };
+                    let required = crate::demand::required_outputs(actions, &[term.id.as_str()]);
+                    engine.evaluate_outputs(
+                        parameters.clone(),
+                        calculation_date,
+                        Some(&required),
+                        None,
+                        Some(&earlier_terms),
+                    )
+                };
+
+                let default_result = match evaluated {
                     Ok(r) => r,
                     Err(e) => {
                         res_ctx.trace_set_message(format!(
-                            "Open term '{}': implementation execution failed: {}",
+                            "Open term '{}': default evaluation failed: {}",
                             term.id, e
                         ));
                         res_ctx.leave(&ot_key);
@@ -2544,509 +3228,395 @@ impl LawExecutionService {
                     }
                 };
 
-                if let Some(value) = result.outputs.get(&term.id) {
-                    if value.is_null() && term.default.is_some() {
-                        // The verordening says nothing for this case ("de APV
-                        // zwijgt"): no deviation was allowed, so the rule of
-                        // the delegating law applies, which is its default.
-                        // An implementation cannot express "there is none"
-                        // for a term that has a default; RFC-036 accepts
-                        // that, and the trace and the log say what happened,
-                        // since a typo in the implementation looks the same.
-                        silent.push(format!("{} article {}", impl_law.id, impl_article.number));
-                    } else {
-                        res_ctx.trace_set_result(value.clone());
-                        res_ctx.trace_set_message(format!(
-                            "Open term '{}' implemented by {} article {}",
-                            term.id, impl_law.id, impl_article.number
-                        ));
-                        resolved.insert(term.id.clone(), value.clone());
-                        filled = true;
-                        break;
-                    }
-                } else {
-                    // An implementation that voids the very term it implements
-                    // did produce an answer: the law says the value does not
-                    // arise. Reporting that as "produced no matching output"
-                    // is the misdiagnosis `OutputVoided` exists to prevent,
-                    // and it would send a reader looking for a modelling
-                    // defect in a regulation that is correct.
-                    if let Some(error) =
-                        voided_output_error(&impl_law.id, &term.id, &result.output_provenance)
-                    {
-                        res_ctx.trace_set_message(error.to_string());
-                        res_ctx.leave(&ot_key);
-                        return Err(error);
-                    }
-                    // Implementation executed but didn't produce the expected output
+                // The default must produce the term it is the default for.
+                // Reading a missing output as null let two different things
+                // arrive as the same value: a default that says "null" and
+                // a default that produced nothing at all — an action whose
+                // `output` names something else, or none. Downstream null
+                // is a signal in its own right ("no municipal verordening,
+                // fall back to the statutory distance"), so the second case
+                // handed the citizen the general rule under a trace saying
+                // the default had been applied. The implementation branch
+                // above refuses the same miss; so does this one.
+                let Some(default_value) = default_result.outputs.get(&term.id).cloned() else {
                     res_ctx.trace_set_message(format!(
-                        "Open term '{}': implementation {} article {} produced no matching output",
-                        term.id, impl_law.id, impl_article.number
+                        "Open term '{}': default produced no output named '{}'",
+                        term.id, term.id
                     ));
                     res_ctx.leave(&ot_key);
                     return Err(EngineError::InvalidOperation(format!(
-                        "Implementation {} article {} for open term '{}' did not produce output named '{}'",
-                        impl_law.id, impl_article.number, term.id, term.id
+                        "Default for open term '{}' on {}#{} did not produce output named \
+                         '{}', so there is no default value to apply",
+                        term.id, law.id, article.number, term.id
                     )));
-                }
-            }
-            if filled {
-                res_ctx.leave(&ot_key);
-                continue;
-            }
-            if let Some(ref default) = term.default {
-                // No implementation found, or a silent one — execute default actions
-                tracing::debug!(
-                    open_term = %term.id,
-                    "No implementation filled the term, using default"
-                );
+                };
 
-                if let Some(ref actions) = default.actions {
-                    // Build a synthetic article from the default actions and evaluate
-                    // it through ArticleEngine — this correctly handles action.output,
-                    // intermediate variables, and all operation patterns.
-                    let synthetic_article = Article {
-                        number: format!("default:{}", term.id),
-                        text: String::new(),
-                        url: None,
-                        placement: None,
-                        machine_readable: Some(MachineReadable {
-                            execution: Some(Execution {
-                                produces: None,
-                                parameters: None,
-                                input: None,
-                                output: None,
-                                actions: Some(actions.clone()),
-                            }),
-                            ..Default::default()
-                        }),
-                        references: None,
-                    };
-
-                    let engine = ArticleEngine::new(&synthetic_article, law);
-
-                    // Pass current context parameters so default actions can
-                    // reference variables like $type_beplanting
-                    let mut default_params = context.parameters().clone();
-                    // Include already-resolved open terms from this evaluation
-                    for (k, v) in &resolved {
-                        default_params.insert(k.clone(), v.clone());
-                    }
-
-                    let default_result = match engine.evaluate_with_output(
-                        default_params,
-                        res_ctx.calculation_date,
-                        Some(&term.id),
-                    ) {
-                        Ok(r) => r,
-                        Err(e) => {
-                            res_ctx.trace_set_message(format!(
-                                "Open term '{}': default evaluation failed: {}",
-                                term.id, e
-                            ));
-                            res_ctx.leave(&ot_key);
-                            return Err(e);
-                        }
-                    };
-
-                    // The default must produce the term it is the default for.
-                    // Reading a missing output as null let two different things
-                    // arrive as the same value: a default that says "null" and
-                    // a default that produced nothing at all — an action whose
-                    // `output` names something else, or none. Downstream null
-                    // is a signal in its own right ("no municipal verordening,
-                    // fall back to the statutory distance"), so the second case
-                    // handed the citizen the general rule under a trace saying
-                    // the default had been applied. The implementation branch
-                    // above refuses the same miss; so does this one.
-                    let Some(default_value) = default_result.outputs.get(&term.id).cloned() else {
-                        res_ctx.trace_set_message(format!(
-                            "Open term '{}': default produced no output named '{}'",
-                            term.id, term.id
-                        ));
-                        res_ctx.leave(&ot_key);
-                        return Err(EngineError::InvalidOperation(format!(
-                            "Default for open term '{}' on {}#{} did not produce output named \
-                             '{}', so there is no default value to apply",
-                            term.id, law.id, article.number, term.id
-                        )));
-                    };
-
-                    res_ctx.trace_set_result(default_value.clone());
-                    if silent.is_empty() {
-                        res_ctx.trace_set_message(format!(
-                            "Open term '{}' using default value",
-                            term.id
-                        ));
-                    } else {
-                        let implementations = silent.join(", ");
-                        tracing::warn!(
-                            law_id = %law.id,
-                            article = %article.number,
-                            open_term = %term.id,
-                            implementations = %implementations,
-                            "Implementation returned null for an open term with a default: \
-                             the delegating law's default applies"
-                        );
-                        res_ctx.trace_set_resolve_type(ResolveType::OpenTermSilent);
-                        res_ctx.trace_set_message(format!(
-                            "Open term '{}' using default value: implementation {implementations} \
-                             is silent for this case (null)",
-                            term.id
-                        ));
-                    }
-                    resolved.insert(term.id.clone(), default_value);
-                } else {
-                    // Default exists but has no actions — treat as null
-                    res_ctx.trace_set_result(Value::Null);
+                res_ctx.trace_set_result(default_value.clone());
+                if silent.is_empty() {
                     res_ctx
-                        .trace_set_message(format!("Open term '{}' using empty default", term.id));
-                    resolved.insert(term.id.clone(), Value::Null);
+                        .trace_set_message(format!("Open term '{}' using default value", term.id));
+                } else {
+                    let implementations = silent.join(", ");
+                    tracing::warn!(
+                        law_id = %law.id,
+                        article = %article.number,
+                        open_term = %term.id,
+                        implementations = %implementations,
+                        "Implementation returned null for an open term with a default: \
+                         the delegating law's default applies"
+                    );
+                    res_ctx.trace_set_resolve_type(ResolveType::OpenTermSilent);
+                    res_ctx.trace_set_message(format!(
+                        "Open term '{}' using default value: implementation {implementations} \
+                         is silent for this case (null)",
+                        term.id
+                    ));
                 }
-            } else if term.required {
-                // Required but no implementation and no default
-                res_ctx.trace_set_message(format!(
-                    "Open term '{}' is required but no implementation found",
-                    term.id
-                ));
-                res_ctx.leave(&ot_key);
-                return Err(EngineError::ResolutionError(format!(
-                    "Required open term '{}' on {}#{} has no implementation and no default",
-                    term.id, law.id, article.number
-                )));
+                default_value
             } else {
-                // Not required, no implementation, no default — resolve as null
-                // so downstream actions can check for null and fall back to their
-                // own defaults (e.g., BW 5:42 falls back to the statutory distance
-                // when no municipal verordening overrides it).
-                tracing::debug!(
-                    open_term = %term.id,
-                    "Optional open term not implemented, resolving as null"
-                );
-
-                res_ctx.trace_set_message(format!(
-                    "Open term '{}' not required, no implementation, resolved as null",
-                    term.id
-                ));
-                resolved.insert(term.id.clone(), Value::Null);
+                // Default exists but has no actions — treat as null
+                res_ctx.trace_set_result(Value::Null);
+                res_ctx.trace_set_message(format!("Open term '{}' using empty default", term.id));
+                Value::Null
             }
-
+        } else if term.required {
+            // Required but no implementation and no default
+            res_ctx.trace_set_message(format!(
+                "Open term '{}' is required but no implementation found",
+                term.id
+            ));
             res_ctx.leave(&ot_key);
-        }
+            return Err(EngineError::ResolutionError(format!(
+                "Required open term '{}' on {}#{} has no implementation and no default",
+                term.id, law.id, article.number
+            )));
+        } else {
+            // Not required, no implementation, no default — resolve as null
+            // so downstream actions can check for null and fall back to their
+            // own defaults (e.g., BW 5:42 falls back to the statutory distance
+            // when no municipal verordening overrides it).
+            tracing::debug!(
+                open_term = %term.id,
+                "Optional open term not implemented, resolving as null"
+            );
 
-        Ok(resolved)
+            res_ctx.trace_set_message(format!(
+                "Open term '{}' not required, no implementation, resolved as null",
+                term.id
+            ));
+            Value::Null
+        };
+
+        res_ctx.leave(&ot_key);
+        Ok(value)
     }
 
-    /// Resolve input sources using ServiceProvider.
-    fn resolve_inputs_with_service(
+    /// Whether resolving `input` calls another law: it names a regulation and
+    /// no data source answers for it first, the order [`Self::resolve_input`]
+    /// follows.
+    fn calls_other_law(
+        &self,
+        law: &ArticleBasedLaw,
+        input: &Input,
+        parameters: &BTreeMap<String, Value>,
+    ) -> bool {
+        input
+            .source
+            .as_ref()
+            .is_some_and(|source| source.regulation.is_some())
+            && self
+                .data_registry
+                .resolve_for_law(&input.name, parameters, Some(&law.id))
+                .is_none()
+    }
+
+    /// Resolve one input from its source, the first time an action reads it
+    /// (RFC-043). `Ok(None)` leaves it unresolved: it
+    /// has no source, or a required lookup key was not passed, and a reference
+    /// to it fails as a missing variable.
+    fn resolve_input(
         &self,
         article: &Article,
         law: &ArticleBasedLaw,
-        context: &mut RuleContext,
+        input: &crate::article::Input,
+        context: &RuleContext,
         parameters: &BTreeMap<String, Value>,
         res_ctx: &mut ResolutionContext<'_>,
-    ) -> Result<()> {
-        let inputs = article.get_inputs();
+    ) -> Result<Option<Value>> {
+        let source = match &input.source {
+            Some(s) => s,
+            None => return Ok(None),
+        };
 
-        for input in inputs {
-            // A value handed in under the input's name bypasses its source,
-            // not its declaration: a null for an input that is never absent
-            // is refused at this boundary like a null cell would be, whoever
-            // passed it (a top-level caller, a Gherkin parameter, an editor
-            // form). Otherwise it would surface three operations later as an
-            // absent operand without an origin (RFC-036).
-            if let Some(value) = parameters.get(&input.name) {
+        // Check DataSourceRegistry before cross-law resolution.
+        // An empty registry resolves to None, so no separate guard is needed.
+        if let Some(data_match) =
+            self.data_registry
+                .resolve_for_law(&input.name, parameters, Some(&law.id))
+        {
+            tracing::debug!(
+                input = %input.name,
+                source = %data_match.source_name,
+                "Resolved input from data registry"
+            );
+
+            // Trace the data source resolution
+            {
+                let _guard = res_ctx.trace_guard(&input.name, PathNodeType::Resolve);
+                res_ctx.trace_set_resolve_type(ResolveType::DataSource);
+                res_ctx.trace_set_result(data_match.value.clone());
+                // Which organization supplied this fact, in a field
+                // (RFC-039). The message below says the same thing for a
+                // person reading a terminal; it used to be the only place
+                // it was said, so consumers matched a regular expression
+                // against it.
+                res_ctx.trace_set_source(ValueSource {
+                    kind: ResolveType::DataSource,
+                    provider: Some(data_match.source_name.clone()),
+                    scope: data_match.law_scope.clone(),
+                });
+                // The unit the law declares for this input, so a reader
+                // sees an amount and not a bare count of cents (RFC-023,
+                // RFC-039). Only where a declaration carries one; a value
+                // computed mid-expression has none, and version 1 does not
+                // infer one.
+                if let Some(ref ts) = input.type_spec {
+                    res_ctx.trace_set_type_spec(ts.clone());
+                }
+                res_ctx.trace_set_message(format!(
+                    "Resolving from SOURCE {}: {}",
+                    data_match.source_name, data_match.value
+                ));
+            }
+
+            // An explicit null cell is the register's claim that there is
+            // none. The law's declaration says whether that is a value this
+            // input can take; if not, the two contradict each other and the
+            // data is wrong at the boundary (RFC-036).
+            if data_match.value.is_null() && !input.is_nullable() {
+                return Err(null_for_non_nullable(
+                    law,
+                    input,
+                    format!("source {}", data_match.source_name),
+                ));
+            }
+
+            return Ok(Some(data_match.value));
+        }
+
+        // For cross-law resolution, output defaults to input name
+        let output_name = source.output.as_deref().unwrap_or(&input.name);
+
+        if let Some(regulation) = &source.regulation {
+            // External reference
+            let resolution = self.resolve_external_input_detailed(
+                regulation,
+                output_name,
+                source.parameters.as_ref(),
+                context,
+                res_ctx,
+            )?;
+
+            // The other law said "none" (its output was null), or it was
+            // not run because a required parameter named nobody. Either
+            // way the value is an absence, and this input has to be
+            // declared able to take one (RFC-036).
+            if resolution.value.is_null() && !input.is_nullable() {
+                let origin = if resolution.skipped {
+                    format!("skipped call to {regulation}")
+                } else {
+                    format!("{regulation}.{output_name}")
+                };
+                return Err(null_for_non_nullable(law, input, origin));
+            }
+
+            Ok(Some(resolution.value))
+        } else if source.output.is_some() {
+            // Internal reference (same-law) with output specified.
+            // Resolve through the service layer so cross-law inputs of the
+            // referenced article are properly handled.
+            let _guard =
+                res_ctx.trace_guard(format!("{}#{}", law.id, output_name), PathNodeType::Resolve);
+            res_ctx.trace_set_resolve_type(ResolveType::ResolvedInput);
+            res_ctx.trace_set_message(format!("Internal reference: {}#{}", law.id, output_name));
+
+            // Cycle detection: check if this internal output is already being
+            // resolved. Use \0 as separator to prevent key collisions, and an
+            // "internal:" prefix to keep keys distinct from external references.
+            let internal_key = format!("internal:{}\0{}", law.id, output_name);
+            if res_ctx.is_visited(&internal_key) {
+                res_ctx.trace_set_message(format!(
+                    "Circular internal reference detected: {}#{} is already being resolved",
+                    law.id, output_name
+                ));
+                return Err(EngineError::CircularReference(format!(
+                    "Circular internal reference: output '{}' in {} is already being resolved",
+                    output_name, law.id
+                )));
+            }
+
+            let ref_article = match law.find_article_by_output(output_name) {
+                Some(a) => a,
+                None => {
+                    res_ctx.trace_set_message(format!(
+                        "Internal reference failed: output '{}' not found in {}",
+                        output_name, law.id
+                    ));
+                    return Err(EngineError::OutputNotFound {
+                        law_id: law.id.clone(),
+                        output: output_name.to_string(),
+                    });
+                }
+            };
+
+            let ref_params = parameters.clone();
+
+            // Enter internal resolution scope for cycle detection
+            res_ctx.enter(internal_key.clone());
+
+            // Check depth limit (mirrors evaluate_law_output_internal): the
+            // visited set bounds distinct outputs, but a long non-cyclic
+            // internal chain could still overflow the stack.
+            if res_ctx.depth > config::MAX_CROSS_LAW_DEPTH {
+                res_ctx.leave(&internal_key);
+                tracing::warn!(
+                    law_id = %law.id,
+                    output = %output_name,
+                    depth = res_ctx.depth,
+                    "Cross-law resolution depth exceeded (internal reference)"
+                );
+                res_ctx.trace_set_message(format!(
+                    "Cross-law resolution depth exceeded {} levels ({}:{})",
+                    config::MAX_CROSS_LAW_DEPTH,
+                    law.id,
+                    output_name
+                ));
+                return Err(EngineError::CircularReference(format!(
+                    "Cross-law resolution depth exceeded {} levels. \
+                     Possible circular reference involving {}:{}",
+                    config::MAX_CROSS_LAW_DEPTH,
+                    law.id,
+                    output_name
+                )));
+            }
+
+            let eval_result = self.evaluate_article_with_service(
+                ref_article,
+                law,
+                ref_params,
+                Some(std::slice::from_ref(&output_name)),
+                "BESLUIT",
+                res_ctx,
+            );
+
+            // Leave scope (even on error, for correct cycle tracking)
+            res_ctx.leave(&internal_key);
+
+            let result = match eval_result {
+                Ok(r) => r,
+                Err(e) => {
+                    res_ctx.trace_set_message(format!("Internal reference failed: {}", e));
+                    return Err(e);
+                }
+            };
+
+            if let Some(value) = result.outputs.get(output_name) {
+                res_ctx.trace_set_result(value.clone());
+                // Same rule as across laws: an absent output of another
+                // article only fits an input that may be absent (RFC-036).
                 if value.is_null() && !input.is_nullable() {
                     return Err(null_for_non_nullable(
                         law,
                         input,
-                        "parameter from caller".to_string(),
+                        format!("{}.{output_name}", law.id),
                     ));
                 }
-                continue;
+                Ok(Some(value.clone()))
+            } else {
+                // The referenced article ran but produced no such output
+                // (e.g. an IF action whose branch was not taken). Surface the
+                // precise cause here instead of leaving the input unresolved
+                // and letting the consuming action fail later with a generic
+                // VariableNotFound. Mirrors the external-reference path
+                // (resolve_external_input_internal), which errors the same way.
+                res_ctx.trace_set_message(format!(
+                    "Internal reference: output '{}' not in result from article {}",
+                    output_name, ref_article.number
+                ));
+                Err(missing_output_error(
+                    &law.id,
+                    output_name,
+                    &result.output_provenance,
+                ))
             }
-
-            let source = match &input.source {
-                Some(s) => s,
-                None => continue,
-            };
-
-            // Check DataSourceRegistry before cross-law resolution.
-            // An empty registry resolves to None, so no separate guard is needed.
-            if let Some(data_match) =
+        } else {
+            // Empty source (source: {}) — resolved from DataSourceRegistry
+            // only, and no source had a value: no matching row, or a row
+            // without this field. The fact exists but nobody has it, so the
+            // input is Unknown for lack of exactly this fact (RFC-036). An
+            // explicit null cell never reaches here: the source answered
+            // "none", and that is absence, a value.
+            //
+            // Unless the register was never asked about anybody: a required
+            // parameter of this article (the lookup key, typically `bsn`)
+            // that the caller did not pass. Then nothing is known about
+            // the fact because the question was malformed, not because
+            // nobody has the answer, and the input stays unresolved as it
+            // did before RFC-036. A reference to it fails, so a forgotten
+            // or misspelled required parameter never becomes an unknown
+            // outcome.
+            let _guard = res_ctx.trace_guard(&input.name, PathNodeType::Resolve);
+            // Nor when the register could not be asked at all: a source
+            // that holds this field keys on a parameter that is unknown
+            // (nobody knows yet whose record to read) or null (there is
+            // nobody to read about). Then the input is that same unknown,
+            // so the outcome names the key and not the field, or that same
+            // null, mirroring the cross-law skip rule (RFC-036).
+            if let Some(blocked) =
                 self.data_registry
-                    .resolve_for_law(&input.name, parameters, Some(&law.id))
+                    .blocked_lookup_for_law(&input.name, parameters, Some(&law.id))
             {
-                tracing::debug!(
-                    input = %input.name,
-                    source = %data_match.source_name,
-                    "Resolved input from data registry"
-                );
-
-                // Trace the data source resolution
-                {
-                    let _guard = res_ctx.trace_guard(&input.name, PathNodeType::Resolve);
-                    res_ctx.trace_set_resolve_type(ResolveType::DataSource);
-                    res_ctx.trace_set_result(data_match.value.clone());
-                    // Which organization supplied this fact, in a field
-                    // (RFC-039). The message below says the same thing for a
-                    // person reading a terminal; it used to be the only place
-                    // it was said, so consumers matched a regular expression
-                    // against it.
-                    res_ctx.trace_set_source(ValueSource {
-                        kind: ResolveType::DataSource,
-                        provider: Some(data_match.source_name.clone()),
-                        scope: data_match.law_scope.clone(),
-                    });
-                    // The unit the law declares for this input, so a reader
-                    // sees an amount and not a bare count of cents (RFC-023,
-                    // RFC-039). Only where a declaration carries one; a value
-                    // computed mid-expression has none, and version 1 does not
-                    // infer one.
-                    if let Some(ref ts) = input.type_spec {
-                        res_ctx.trace_set_type_spec(ts.clone());
-                    }
-                    res_ctx.trace_set_message(format!(
-                        "Resolving from SOURCE {}: {}",
-                        data_match.source_name, data_match.value
-                    ));
-                }
-
-                // An explicit null cell is the register's claim that there is
-                // none. The law's declaration says whether that is a value this
-                // input can take; if not, the two contradict each other and the
-                // data is wrong at the boundary (RFC-036).
-                if data_match.value.is_null() && !input.is_nullable() {
+                res_ctx.trace_set_resolve_type(ResolveType::DataSource);
+                res_ctx.trace_set_result(blocked.clone());
+                res_ctx.trace_set_message(if blocked.is_unknown() {
+                    format!(
+                        "Input '{}' cannot be looked up, the key is unknown: input is unknown for the same reason",
+                        input.name
+                    )
+                } else {
+                    format!(
+                        "Input '{}' cannot be looked up, the key is null (nobody to look up): input is null",
+                        input.name
+                    )
+                });
+                // Asked about nobody, the register answers with an absence;
+                // the input has to be declared able to take one (RFC-036).
+                if blocked.is_null() && !input.is_nullable() {
                     return Err(null_for_non_nullable(
                         law,
                         input,
-                        format!("source {}", data_match.source_name),
+                        "lookup keyed on null".to_string(),
                     ));
                 }
-
-                context.set_resolved_input(&input.name, data_match.value);
-                continue;
+                return Ok(Some(blocked));
             }
-
-            // For cross-law resolution, output defaults to input name
-            let output_name = source.output.as_deref().unwrap_or(&input.name);
-
-            if let Some(regulation) = &source.regulation {
-                // External reference
-                let resolution = self.resolve_external_input_detailed(
-                    regulation,
-                    output_name,
-                    source.parameters.as_ref(),
-                    context,
-                    res_ctx,
-                )?;
-
-                // The other law said "none" (its output was null), or it was
-                // not run because a required parameter named nobody. Either
-                // way the value is an absence, and this input has to be
-                // declared able to take one (RFC-036).
-                if resolution.value.is_null() && !input.is_nullable() {
-                    let origin = if resolution.skipped {
-                        format!("skipped call to {regulation}")
-                    } else {
-                        format!("{regulation}.{output_name}")
-                    };
-                    return Err(null_for_non_nullable(law, input, origin));
-                }
-
-                context.set_resolved_input(&input.name, resolution.value);
-            } else if source.output.is_some() {
-                // Internal reference (same-law) with output specified.
-                // Resolve through the service layer so cross-law inputs of the
-                // referenced article are properly handled.
-                let _guard = res_ctx
-                    .trace_guard(format!("{}#{}", law.id, output_name), PathNodeType::Resolve);
-                res_ctx.trace_set_resolve_type(ResolveType::ResolvedInput);
-                res_ctx
-                    .trace_set_message(format!("Internal reference: {}#{}", law.id, output_name));
-
-                // Cycle detection: check if this internal output is already being
-                // resolved. Use \0 as separator to prevent key collisions, and an
-                // "internal:" prefix to keep keys distinct from external references.
-                let internal_key = format!("internal:{}\0{}", law.id, output_name);
-                if res_ctx.is_visited(&internal_key) {
-                    res_ctx.trace_set_message(format!(
-                        "Circular internal reference detected: {}#{} is already being resolved",
-                        law.id, output_name
-                    ));
-                    return Err(EngineError::CircularReference(format!(
-                        "Circular internal reference: output '{}' in {} is already being resolved",
-                        output_name, law.id
-                    )));
-                }
-
-                let ref_article = match law.find_article_by_output(output_name) {
-                    Some(a) => a,
-                    None => {
-                        res_ctx.trace_set_message(format!(
-                            "Internal reference failed: output '{}' not found in {}",
-                            output_name, law.id
-                        ));
-                        return Err(EngineError::OutputNotFound {
-                            law_id: law.id.clone(),
-                            output: output_name.to_string(),
-                        });
-                    }
-                };
-
-                let ref_params = parameters.clone();
-
-                // Enter internal resolution scope for cycle detection
-                res_ctx.enter(internal_key.clone());
-
-                // Check depth limit (mirrors evaluate_law_output_internal): the
-                // visited set bounds distinct outputs, but a long non-cyclic
-                // internal chain could still overflow the stack.
-                if res_ctx.depth > config::MAX_CROSS_LAW_DEPTH {
-                    res_ctx.leave(&internal_key);
-                    tracing::warn!(
-                        law_id = %law.id,
-                        output = %output_name,
-                        depth = res_ctx.depth,
-                        "Cross-law resolution depth exceeded (internal reference)"
-                    );
-                    res_ctx.trace_set_message(format!(
-                        "Cross-law resolution depth exceeded {} levels ({}:{})",
-                        config::MAX_CROSS_LAW_DEPTH,
-                        law.id,
-                        output_name
-                    ));
-                    return Err(EngineError::CircularReference(format!(
-                        "Cross-law resolution depth exceeded {} levels. \
-                         Possible circular reference involving {}:{}",
-                        config::MAX_CROSS_LAW_DEPTH,
-                        law.id,
-                        output_name
-                    )));
-                }
-
-                let eval_result = self.evaluate_article_with_service(
-                    ref_article,
-                    law,
-                    ref_params,
-                    Some(output_name),
-                    "BESLUIT",
-                    res_ctx,
-                );
-
-                // Leave scope (even on error, for correct cycle tracking)
-                res_ctx.leave(&internal_key);
-
-                let result = match eval_result {
-                    Ok(r) => r,
-                    Err(e) => {
-                        res_ctx.trace_set_message(format!("Internal reference failed: {}", e));
-                        return Err(e);
-                    }
-                };
-
-                if let Some(value) = result.outputs.get(output_name) {
-                    res_ctx.trace_set_result(value.clone());
-                    // Same rule as across laws: an absent output of another
-                    // article only fits an input that may be absent (RFC-036).
-                    if value.is_null() && !input.is_nullable() {
-                        return Err(null_for_non_nullable(
-                            law,
-                            input,
-                            format!("{}.{output_name}", law.id),
-                        ));
-                    }
-                    context.set_resolved_input(&input.name, value.clone());
-                } else {
-                    // The referenced article ran but produced no such output
-                    // (e.g. an IF action whose branch was not taken). Surface the
-                    // precise cause here instead of leaving the input unresolved
-                    // and letting the consuming action fail later with a generic
-                    // VariableNotFound. Mirrors the external-reference path
-                    // (resolve_external_input_internal), which errors the same way.
-                    res_ctx.trace_set_message(format!(
-                        "Internal reference: output '{}' not in result from article {}",
-                        output_name, ref_article.number
-                    ));
-                    return Err(missing_output_error(
-                        &law.id,
-                        output_name,
-                        &result.output_provenance,
-                    ));
-                }
-            } else {
-                // Empty source (source: {}) — resolved from DataSourceRegistry
-                // only, and no source had a value: no matching row, or a row
-                // without this field. The fact exists but nobody has it, so the
-                // input is Unknown for lack of exactly this fact (RFC-036). An
-                // explicit null cell never reaches here: the source answered
-                // "none", and that is absence, a value.
-                //
-                // Unless the register was never asked about anybody: a required
-                // parameter of this article (the lookup key, typically `bsn`)
-                // that the caller did not pass. Then nothing is known about
-                // the fact because the question was malformed, not because
-                // nobody has the answer, and the input stays unresolved as it
-                // did before RFC-036. A reference to it fails, so a forgotten
-                // or misspelled required parameter never becomes an unknown
-                // outcome.
-                let _guard = res_ctx.trace_guard(&input.name, PathNodeType::Resolve);
-                // Nor when the register could not be asked at all: a source
-                // that holds this field keys on a parameter that is unknown
-                // (nobody knows yet whose record to read) or null (there is
-                // nobody to read about). Then the input is that same unknown,
-                // so the outcome names the key and not the field, or that same
-                // null, mirroring the cross-law skip rule (RFC-036).
-                if let Some(blocked) = self.data_registry.blocked_lookup_for_law(
-                    &input.name,
-                    parameters,
-                    Some(&law.id),
-                ) {
-                    res_ctx.trace_set_resolve_type(ResolveType::DataSource);
-                    res_ctx.trace_set_result(blocked.clone());
-                    res_ctx.trace_set_message(if blocked.is_unknown() {
-                        format!(
-                            "Input '{}' cannot be looked up, the key is unknown: input is unknown for the same reason",
-                            input.name
-                        )
-                    } else {
-                        format!(
-                            "Input '{}' cannot be looked up, the key is null (nobody to look up): input is null",
-                            input.name
-                        )
-                    });
-                    // Asked about nobody, the register answers with an absence;
-                    // the input has to be declared able to take one (RFC-036).
-                    if blocked.is_null() && !input.is_nullable() {
-                        return Err(null_for_non_nullable(
-                            law,
-                            input,
-                            "lookup keyed on null".to_string(),
-                        ));
-                    }
-                    context.set_resolved_input(&input.name, blocked);
-                    continue;
-                }
-                if let Some(missing) = required_parameter_not_passed(article, parameters) {
-                    res_ctx.trace_set_message(format!(
-                        "Input '{}' has empty source and no data source match; left unresolved \
-                         because required parameter '{}' was not passed",
-                        input.name, missing
-                    ));
-                    continue;
-                }
-                let unknown = Value::unknown(&law.id, &input.name, MissingKind::NoData);
-                res_ctx.trace_set_resolve_type(ResolveType::DataSource);
-                res_ctx.trace_set_result(unknown.clone());
+            if let Some(missing) = required_parameter_not_passed(article, parameters) {
                 res_ctx.trace_set_message(format!(
-                    "Input '{}' has no value in any data source: unknown",
-                    input.name
+                    "Input '{}' has empty source and no data source match; left unresolved \
+                     because required parameter '{}' was not passed",
+                    input.name, missing
                 ));
-                context.set_resolved_input(&input.name, unknown);
+                return Ok(None);
             }
+            let unknown = Value::unknown(&law.id, &input.name, MissingKind::NoData);
+            res_ctx.trace_set_resolve_type(ResolveType::DataSource);
+            res_ctx.trace_set_result(unknown.clone());
+            res_ctx.trace_set_message(format!(
+                "Input '{}' has no value in any data source: unknown",
+                input.name
+            ));
+            Ok(Some(unknown))
         }
-
-        Ok(())
     }
 
     /// Internal method for external input resolution with depth tracking.
@@ -3545,6 +4115,23 @@ mod tests {
     use super::*;
     use crate::article::LawLoad;
     use crate::types::MissingFact;
+
+    /// Cycle detection enters every hook and override under its own key: a
+    /// shared one would read a second, different hook nested in a first as
+    /// the first one again, and skip it.
+    #[test]
+    fn every_hook_and_override_has_its_own_cycle_key() {
+        let keys = [
+            hook_key("wet_a", "1"),
+            hook_key("wet_a", "2"),
+            hook_key("wet_b", "1"),
+            override_key("wet_a", "1"),
+            override_key("wet_a", "2"),
+            override_key("wet_b", "1"),
+        ];
+        let distinct: std::collections::BTreeSet<&String> = keys.iter().collect();
+        assert_eq!(distinct.len(), keys.len(), "{keys:?}");
+    }
 
     fn make_base_law() -> &'static str {
         r#"
@@ -4854,8 +5441,11 @@ articles:
     fn test_cross_law_call_missing_required_parameter_still_fails() {
         // The same call, but the permit law insists on the form field. The
         // engine must not invent a null for it: a caller that forgets (or
-        // misspells) a required parameter gets the error, not an unknown.
+        // misspells) a required parameter gets the error, not an unknown. The
+        // tax law asks for the output that reads the form field: an output that
+        // does not read it runs without it (RFC-043).
         let (permit, tax) = fill_laws("required: true");
+        let tax = tax.replace("heeft_vergunning", "past_oppervlakte");
         let mut service = LawExecutionService::new();
         service.load_law(&permit).unwrap();
         service.load_law(&tax).unwrap();
@@ -7699,8 +8289,9 @@ articles:
         let mut service = LawExecutionService::new();
         service.load_law(target).unwrap();
 
-        // Asking for the neighbouring output keeps the result readable while
-        // the voided one is gone from it.
+        // Asking for the neighbouring output does not compute the entitlement
+        // at all (RFC-043): it depends on nothing, so the result carries no
+        // value and no provenance for it.
         let result = service
             .evaluate_law(
                 "void_provenance_law",
@@ -7709,25 +8300,103 @@ articles:
                 "2025-01-01",
             )
             .expect("the article still produces its other output");
-
         assert_eq!(result.outputs.get("toelichting"), Some(&Value::Int(1)));
-        assert!(
-            !result.outputs.contains_key("aanspraak"),
-            "a voided entitlement must not carry a value: {:?}",
-            result.outputs
-        );
-        match result.output_provenance.get("aanspraak") {
-            Some(OutputProvenance::Voided {
+        assert!(!result.outputs.contains_key("aanspraak"));
+        assert!(!result.output_provenance.contains_key("aanspraak"));
+
+        // Asking for the entitlement itself gets the ground (RFC-041).
+        match service.evaluate_law(
+            "void_provenance_law",
+            &["aanspraak"],
+            BTreeMap::new(),
+            "2025-01-01",
+        ) {
+            Err(EngineError::OutputVoided {
                 law_id,
+                voided_by,
                 article,
                 grounds,
+                ..
             }) => {
                 assert_eq!(law_id, "void_provenance_law");
+                assert_eq!(voided_by, "void_provenance_law");
                 assert_eq!(article, "2");
-                assert_eq!(grounds.as_deref(), Some("bestaat geen aanspraak"));
+                assert_eq!(grounds, "bestaat geen aanspraak");
             }
-            other => panic!("expected a Voided provenance with its ground, got {other:?}"),
+            other => panic!("expected OutputVoided with its ground, got {other:?}"),
         }
+    }
+
+    /// A `post_actions` hook receives the parameters it declares from the
+    /// article, so an output it declares is computed even when the caller asks
+    /// for another one (RFC-043): here the hook reads `grondslag`, which the
+    /// requested `bedrag` does not depend on.
+    #[test]
+    fn an_output_a_post_hook_declares_is_computed() {
+        let triggering = r#"
+$id: demand_hook_trigger_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het bestuursorgaan stelt het bedrag vast op grond van de grondslag.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+        output:
+          - name: bedrag
+            type: number
+          - name: grondslag
+            type: number
+        actions:
+          - output: bedrag
+            value: 100
+          - output: grondslag
+            value: 7
+"#;
+        let hook_law = r#"
+$id: demand_hook_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Bij de beschikking wordt de grondslag vermeld.
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: BESLUIT
+      execution:
+        parameters:
+          - name: grondslag
+            type: number
+            required: true
+        output:
+          - name: vermelde_grondslag
+            type: number
+        actions:
+          - output: vermelde_grondslag
+            value: $grondslag
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(triggering).unwrap();
+        service.load_law(hook_law).unwrap();
+
+        let result = service
+            .evaluate_law_output(
+                "demand_hook_trigger_law",
+                "bedrag",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .expect("the hook finds the output it reads");
+        assert_eq!(result.outputs.get("bedrag"), Some(&Value::Int(100)));
+        assert_eq!(
+            result.outputs.get("vermelde_grondslag"),
+            Some(&Value::Int(7))
+        );
     }
 
     // -------------------------------------------------------------------------
@@ -10782,7 +11451,12 @@ articles:
             ],
         );
         let result = service
-            .evaluate_law_output("nul_register", "toeslagklasse", bsn_one(), "2025-01-01")
+            .evaluate_law(
+                "nul_register",
+                &["toeslagklasse", "toeslag_strikt"],
+                bsn_one(),
+                "2025-01-01",
+            )
             .unwrap();
         assert_eq!(result.outputs.get("toeslagklasse"), Some(&Value::Null));
         assert_eq!(result.outputs.get("toeslag_strikt"), Some(&Value::Int(700)));

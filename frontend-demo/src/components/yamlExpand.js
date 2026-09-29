@@ -45,8 +45,26 @@ export function onPath(pattern, path) {
 }
 
 /** Is `path` precies `pattern`? `*` matcht elk segment. */
-function matches(pattern, path) {
+export function matches(pattern, path) {
   return pattern.split('.').length === path.split('.').length && onPath(pattern, path);
+}
+
+/** Label used in the child path: items of a list get their name/output. */
+export function scalarHint(obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return undefined;
+  // Only a scalar names a node; an execution block's `output` is a list.
+  return [obj.output, obj.name, obj.number].find((h) => typeof h === 'string' || typeof h === 'number');
+}
+
+/** The path of `child`, found under `key` in the node at `parent`. */
+export function childPath(parent, key, child, parentIsList) {
+  // Only a list item takes its name as label; a mapping key stays the key, so
+  // `source: {output: x}` is addressed as `.source`, not `.x`.
+  const hint = parentIsList ? scalarHint(child) : undefined;
+  // Paths are dot-separated, so a dot inside a label (article "2.34") would
+  // split it into two segments and no default or configured path would match.
+  const label = (hint !== undefined ? String(hint) : String(key)).replaceAll('.', '_');
+  return parent ? `${parent}.${label}` : label;
 }
 
 /**

@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
-import { initiallyOpen } from './yamlExpand.js';
+import { childPath as pathOf, initiallyOpen, scalarHint } from './yamlExpand.js';
 
 // One node of a parsed YAML document rendered as a collapsible tree. Mappings
 // and sequences fold; scalars show typed. A `source.regulation: <law>` value
@@ -38,21 +38,8 @@ const entries = computed(() => {
   return [];
 });
 
-/** Label used in the child path: items of a list get their name/output. */
-function scalarHint(obj) {
-  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return undefined;
-  // Only a scalar names a node; an execution block's `output` is a list.
-  return [obj.output, obj.name, obj.number].find((h) => typeof h === 'string' || typeof h === 'number');
-}
-
 function childPath(key, child) {
-  // Only a list item takes its name as label; a mapping key stays the key, so
-  // `source: {output: x}` is addressed as `.source`, not `.x`.
-  const hint = isList.value ? scalarHint(child) : undefined;
-  // Paths are dot-separated, so a dot inside a label (article "2.34") would
-  // split it into two segments and no default or configured path would match.
-  const label = (hint !== undefined ? String(hint) : String(key)).replaceAll('.', '_');
-  return props.path ? `${props.path}.${label}` : label;
+  return pathOf(props.path, key, child, isList.value);
 }
 
 function summary() {

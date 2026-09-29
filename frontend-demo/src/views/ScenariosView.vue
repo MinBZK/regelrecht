@@ -90,8 +90,8 @@ watch(
       const path = `/data/laws/${featurePath}`;
       if (path !== selectedPath.value) select(path, { replaceRoute: true });
     } else if (!selectedPath.value) {
-      const wanted = profile.value?.default_feature;
-      const first = features.value.find((f) => f.law_path === wanted) ?? features.value[0];
+      const wanted = `/data/laws/${profile.value?.default_feature}`;
+      const first = features.value.find((f) => f.path === wanted) ?? features.value[0];
       if (first) select(first.path, { replaceRoute: true });
     }
   },

@@ -14,7 +14,9 @@ profiles:
     bsn: '999100001'
     kvk: null
     default_law: {law_path: zorgtoeslagwet, service: TOESLAGEN}
-    default_feature: zorgtoeslagwet
+    # Scenario's: the feature file that opens first, by its path under
+    # regulation/nl. A law can have several, so the law alone is not enough.
+    default_feature: zorgtoeslagwet/scenarios/zorgtoeslagwet_TOESLAGEN-2025-01-01.feature
     # Graaf: the laws that tell this persona's story (detentie -> verzekerd -> zorgtoeslag)
     graph_laws: [penitentiaire_beginselenwet, zvw, zorgtoeslagwet]
     zaaksysteem_service: TOESLAGEN
@@ -67,7 +69,7 @@ profiles:
     default_law:
       law_path: verordening_precariobelasting/gemeenten
       service: GEMEENTE_ROTTERDAM
-    default_feature: verordening_precariobelasting
+    default_feature: verordening_precariobelasting/gemeenten/scenarios/precariobelasting_GEMEENTE_ROTTERDAM-2024-01-01.feature
     # Graaf: the horeca chain in Rotterdam
     graph_laws:
       - alcoholwet/vergunning/rotterdam
@@ -459,8 +461,11 @@ expanded_paths:
     # the eighteenth birthday), at position 0 in 2025 and 1 in 2024
     - articles.*.machine_readable.execution.actions.voldoet_aan_voorwaarden.value.conditions.0.subject.reference_date
     - articles.*.machine_readable.execution.actions.voldoet_aan_voorwaarden.value.conditions.1.subject.reference_date
+    # the amount only for who meets the requirements (art. 2 lid 1): the first
+    # thing a click on `hoogte_toeslag` shows, above the calculation
+    - articles.*.machine_readable.execution.actions.hoogte_toeslag.value.cases.0.when
     # the calculation for a partner: joint income against the threshold
-    - articles.*.machine_readable.execution.actions.hoogte_toeslag.value.value.cases.0.then.cases.0.when.subject.values
+    - articles.*.machine_readable.execution.actions.hoogte_toeslag.value.cases.0.then.value.cases.0.then.cases.0.when.subject.values
   zvw:
     # the only article, so it opens straight away
     - articles.1
@@ -493,8 +498,8 @@ expanded_paths:
 # Nodes on a prepared path that still start folded, because the presenter opens
 # them by hand at that point in the story. What lies below them is prepared all
 # the same: one click on `actions` shows the two requirements, one click on
-# `hoogte_toeslag` the partner calculation. Same path language as above, but a
-# pattern matches only the node itself.
+# `hoogte_toeslag` the requirements it waits for and the partner calculation.
+# Same path language as above, but a pattern matches only the node itself.
 folded_paths:
   zorgtoeslagwet:
     - articles.*.machine_readable.execution.input

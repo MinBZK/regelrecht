@@ -271,7 +271,9 @@ fn every_step_is_anchored_to_the_provision_it_came_from() {
     let result = service
         .evaluate_law_output_with_trace(
             "wet_op_de_zorgtoeslag",
-            "hoogte_zorgtoeslag",
+            // The entitlement reads every article of the chain; the amount
+            // alone does not read the insurance or the capital test (RFC-043).
+            "heeft_recht_op_zorgtoeslag",
             params,
             "2025-01-01",
         )
@@ -336,10 +338,19 @@ fn every_step_is_anchored_to_the_provision_it_came_from() {
     // article 4, and `rendementsgrondslag` is an input of article 3. A reader
     // following either anchor to wetten.overheid.nl has to land where the
     // engine actually was.
+    // The first step under that name of the kind that resolves it: with
+    // resolution at the point of use (RFC-043), the article reading the value
+    // shows a step of the same name around it.
     let article_of = |name: &str| -> Option<String> {
         nodes
             .iter()
-            .find(|n| n.name == name)
+            .find(|n| {
+                n.name == name
+                    && matches!(
+                        n.node_type,
+                        PathNodeType::OpenTermResolution | PathNodeType::CrossLawReference
+                    )
+            })
             .and_then(|n| n.anchor.as_ref())
             .and_then(|a| a.article.clone())
     };
@@ -370,7 +381,9 @@ fn an_action_carries_the_provision_the_corpus_cites() {
     let result = service
         .evaluate_law_output_with_trace(
             "wet_op_de_zorgtoeslag",
-            "hoogte_zorgtoeslag",
+            // The entitlement reads every article of the chain; the amount
+            // alone does not read the insurance or the capital test (RFC-043).
+            "heeft_recht_op_zorgtoeslag",
             params,
             "2025-01-01",
         )
@@ -430,19 +443,21 @@ fn an_action_carries_the_provision_the_corpus_cites() {
 
     // Every action that states a basis gets one, not just the first: stamping
     // only the first action would otherwise pass unnoticed.
-    let cited: Vec<&str> = nodes
+    let cited: std::collections::BTreeSet<&str> = nodes
         .iter()
         .filter(|n| n.legal_basis.is_some())
         .map(|n| n.name.as_str())
         .collect();
     assert_eq!(
         cited,
-        vec![
+        [
             "vermogen_onder_grens",
             "in_aanmerking_genomen_toetsingsinkomen",
             "hoogte_zorgtoeslag",
             "heeft_recht_op_zorgtoeslag",
-        ],
+        ]
+        .into_iter()
+        .collect(),
         "every action of articles 2 and 3 cites its basis"
     );
 
@@ -474,7 +489,9 @@ fn a_value_from_a_register_names_its_source() {
     let result = service
         .evaluate_law_output_with_trace(
             "wet_op_de_zorgtoeslag",
-            "hoogte_zorgtoeslag",
+            // The entitlement reads every article of the chain; the amount
+            // alone does not read the insurance or the capital test (RFC-043).
+            "heeft_recht_op_zorgtoeslag",
             params,
             "2025-01-01",
         )

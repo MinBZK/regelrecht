@@ -3625,7 +3625,7 @@ mod tests {
         use crate::context::RuleContext;
 
         /// A context whose parameters are the given variables.
-        fn ctx(vars: Vec<(&str, Value)>) -> RuleContext {
+        fn ctx(vars: Vec<(&str, Value)>) -> RuleContext<'static> {
             let params: BTreeMap<String, Value> =
                 vars.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
             RuleContext::new(params, "2025-06-15").expect("valid date")
