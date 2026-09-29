@@ -4395,6 +4395,29 @@ profiles:
             toegestane_locaties:
               - voor
               - zij
+          # Jaarrond toegestaan: hetzelfde beleid geldt voor wie alleen een zomer-
+          # of winterterras vraagt. Zonder deze rijen had zo'n aanvraag geen
+          # maximale sluitingstijd en werd ze zonder opgave van reden geweigerd.
+          - adres: Nieuwe Binnenweg 225A, 3021GC Rotterdam
+            seizoen: zomer
+            gebied: Rotterdam West
+            max_oppervlakte: 20.0
+            max_sluitingstijd_doordeweeks: 25
+            max_sluitingstijd_weekend: 26
+            seizoensregels: jaarrond toegestaan
+            toegestane_locaties:
+              - voor
+              - zij
+          - adres: Nieuwe Binnenweg 225A, 3021GC Rotterdam
+            seizoen: winter
+            gebied: Rotterdam West
+            max_oppervlakte: 20.0
+            max_sluitingstijd_doordeweeks: 25
+            max_sluitingstijd_weekend: 26
+            seizoensregels: jaarrond toegestaan
+            toegestane_locaties:
+              - voor
+              - zij
       LBB:
         bibob_adviezen:
           - kvk_nummer: '85234567'

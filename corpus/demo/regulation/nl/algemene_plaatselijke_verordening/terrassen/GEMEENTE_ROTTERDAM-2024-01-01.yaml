@@ -428,17 +428,19 @@ articles:
                     subject: $obstakelvrije_ruimte
                     value: $minimale_obstakelvrije_ruimte
                   then: Obstakelvrije ruimte is minder dan 1,8 meter
+                # Elke voorwaarde die voldoet_aan_voorwaarden onwaar maakt, heeft
+                # hier een grond; zonder deze twee werd een aanvraag zonder
+                # terraslocatie of zonder beleid voor het seizoen geweigerd zonder
+                # te zeggen waarom.
                 - when:
-                    operation: AND
-                    conditions:
-                      - operation: NOT
-                        value:
-                          operation: EQUALS
-                          subject: $beschikbare_oppervlakte
-                          value: null
-                      - operation: GREATER_THAN
-                        subject: $terras_oppervlakte
-                        value: $beschikbare_oppervlakte
+                    operation: EQUALS
+                    subject: $beschikbare_oppervlakte
+                    value: null
+                  then: Geen terraslocatie beschikbaar op dit adres en deze plek
+                - when:
+                    operation: GREATER_THAN
+                    subject: $terras_oppervlakte
+                    value: $beschikbare_oppervlakte
                   then: Gevraagde oppervlakte groter dan beschikbare ruimte
                 - when:
                     operation: NOT
@@ -448,29 +450,25 @@ articles:
                       value: $toegestane_bgt_functies
                   then: Locatie niet geschikt voor terras (verkeerde BGT-functie)
                 - when:
-                    operation: AND
+                    operation: OR
                     conditions:
-                      - operation: NOT
-                        value:
-                          operation: EQUALS
-                          subject: $max_sluitingstijd_doordeweeks
-                          value: null
-                      - operation: GREATER_THAN
-                        subject: $gewenste_sluitingstijd_doordeweeks
-                        value: $max_sluitingstijd_doordeweeks
+                      - operation: EQUALS
+                        subject: $max_sluitingstijd_doordeweeks
+                        value: null
+                      - operation: EQUALS
+                        subject: $max_sluitingstijd_weekend
+                        value: null
+                  then: Geen terrassenbeleid voor dit gebied in het gevraagde seizoen
+                - when:
+                    operation: GREATER_THAN
+                    subject: $gewenste_sluitingstijd_doordeweeks
+                    value: $max_sluitingstijd_doordeweeks
                   then: >-
                     Gevraagde sluitingstijd doordeweeks (zo-do) later dan toegestaan in dit gebied
                 - when:
-                    operation: AND
-                    conditions:
-                      - operation: NOT
-                        value:
-                          operation: EQUALS
-                          subject: $max_sluitingstijd_weekend
-                          value: null
-                      - operation: GREATER_THAN
-                        subject: $gewenste_sluitingstijd_weekend
-                        value: $max_sluitingstijd_weekend
+                    operation: GREATER_THAN
+                    subject: $gewenste_sluitingstijd_weekend
+                    value: $max_sluitingstijd_weekend
                   then: >-
                     Gevraagde sluitingstijd weekend (vr-za) later dan toegestaan in dit gebied
                 - when:
