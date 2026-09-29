@@ -42,7 +42,7 @@ pub(super) async fn form_route(
     let mut fields = crate::form::fields(event, form).map_err(internal)?;
     if let Ok(session) = logged_in(&state, &headers) {
         let intake = portal_intake(&state, event, &session);
-        crate::form::with_supplied(&mut fields, &intake);
+        crate::form::with_supplied(&mut fields, event, &intake);
     }
     Ok(Json(json!({
         "cell": state.cell_id(),

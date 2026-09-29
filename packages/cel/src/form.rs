@@ -105,8 +105,9 @@ pub struct Field {
     pub supplied: Option<Value>,
 }
 
-/// Add to the fields what `intake` supplies (`$intake.supplied`), per field.
-pub fn with_supplied(fields: &mut [Field], intake: &Value) {
+/// Add to the fields what `intake` supplies (`$intake.supplied`), per field,
+/// with the legal basis the gram will carry for it.
+pub fn with_supplied(fields: &mut [Field], event: &Event, intake: &Value) {
     let Some(supplied) = intake
         .get(crate::stream::SUPPLIED)
         .and_then(Value::as_object)
@@ -115,7 +116,14 @@ pub fn with_supplied(fields: &mut [Field], intake: &Value) {
     };
     for f in fields {
         if let Some(s) = supplied.get(&f.name) {
-            f.supplied = Some(s.clone());
+            let mut s = s.clone();
+            let source = s
+                .get("source")
+                .and_then(Value::as_str)
+                .unwrap_or("channel")
+                .to_string();
+            s["legal_basis"] = serde_json::json!(event.supply_legal_basis(&f.name, &source, &s));
+            f.supplied = Some(s);
         }
     }
 }
