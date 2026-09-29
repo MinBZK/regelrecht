@@ -118,6 +118,17 @@ describe('supportingLaws', () => {
     expect(supportingLaws(corpus, [top], constants, (l) => l.id !== 'verborgen').map((l) => l.id)).toEqual(['zichtbaar']);
   });
 
+  it('biedt een regeling die een open term invult ook aan als de demo hem verbergt', () => {
+    // hidden_laws houdt de standaardpremie-regeling van het portaal; hier
+    // hoort hij juist, anders valt de eerste "wat als" van de presentator weg.
+    const zorgtoeslag = entry('zorgtoeslagwet', doc({ reads: ['hulpwet'] }));
+    const regeling = entry('standaardpremie', doc({ defs: { standaardpremie_2025: 211200 }, implementsLaw: 'zorgtoeslagwet' }));
+    const hulpwet = entry('hulpwet', doc({ defs: { x: 1 } }));
+    const corpus = corpusOf(zorgtoeslag, regeling, hulpwet);
+    const visible = (l) => l.id === 'zorgtoeslagwet';
+    expect(supportingLaws(corpus, [zorgtoeslag], constants, visible).map((l) => l.id)).toEqual(['standaardpremie']);
+  });
+
   it('noemt een gesimuleerde wet niet nog eens, en overleeft een kring', () => {
     const a = entry('a', doc({ defs: { x: 1 }, reads: ['b'] }));
     const b = entry('b', doc({ defs: { y: 2 }, reads: ['a'] }));
