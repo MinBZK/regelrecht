@@ -28,8 +28,9 @@ Feature: Berekening Zorgtoeslag 2024
     And the following "RVZ" data with key "bsn" for law "zvw":
       | bsn       | polis_status | registratie |
       | 999993653 | ACTIEF       | null        |
-    When I evaluate outputs "voldoet_aan_voorwaarden" of "zorgtoeslagwet"
+    When I evaluate outputs "voldoet_aan_voorwaarden, hoogte_toeslag" of "zorgtoeslagwet"
     Then output "voldoet_aan_voorwaarden" is false
+    And output "hoogte_toeslag" is absent
 
   Scenario: Persoon boven 18 heeft recht op zorgtoeslag
     Given the following "DJI" data with key "bsn" for law "penitentiaire_beginselenwet":
@@ -118,5 +119,6 @@ Feature: Berekening Zorgtoeslag 2024
     And the following "RVZ" data with key "bsn" for law "zvw":
       | bsn       | polis_status | registratie |
       | 999993653 | ACTIEF       | null        |
-    When I evaluate outputs "voldoet_aan_voorwaarden" of "zorgtoeslagwet"
+    When I evaluate outputs "voldoet_aan_voorwaarden, hoogte_toeslag" of "zorgtoeslagwet"
     Then output "voldoet_aan_voorwaarden" is false
+    And output "hoogte_toeslag" is absent

@@ -74,7 +74,7 @@ const EUROCENT_FIELD_ALIASES = {
  * and scenario name, then output name (`name@<phase>` to target one phase of a
  * multi-When scenario). Used where the POC asserted approximately (WW 1%,
  * kindgebonden budget 2%), qualitatively ("lager door hoog inkomen"), or read a
- * missing output as `false`. A `null` value emits `is null`; a boolean emits
+ * missing output as `false`. A `null` value emits `is absent`; a boolean emits
  * `is true/false`. Each entry carries the POC's original intent as a comment.
  */
 const ADOPTED = {
@@ -819,7 +819,7 @@ function assertionLine(item) {
     case 'succeeds': return 'the execution succeeds';
     case 'true': return `output "${item.output}" is true`;
     case 'false': return `output "${item.output}" is false`;
-    case 'null': return `output "${item.output}" is null`;
+    case 'null': return `output "${item.output}" is absent`;
     case 'contains': return `output "${item.output}" contains "${item.value}"`;
     case 'equals':
       if (typeof item.value === 'number') return `output "${item.output}" equals ${item.value}`;

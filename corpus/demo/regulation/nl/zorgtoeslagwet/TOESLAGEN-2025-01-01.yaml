@@ -223,13 +223,34 @@ articles:
                 - subject: $is_verzekerde
                   operation: EQUALS
                   value: true
+                # Art. 3 lid 1: bij een vermogen boven de grens "bestaat geen aanspraak". Met een
+                # toeslagpartner telt het gezamenlijk vermogen tegen de partnergrens, anders het
+                # eigen vermogen tegen de alleenstaandengrens.
+                - operation: LESS_THAN_OR_EQUAL
+                  subject:
+                    operation: IF
+                    cases:
+                      - when:
+                          operation: EQUALS
+                          subject: $heeft_partner
+                          value: true
+                        then: $gezamenlijk_vermogen
+                    default: $vermogen
+                  value:
+                    operation: IF
+                    cases:
+                      - when:
+                          operation: EQUALS
+                          subject: $heeft_partner
+                          value: true
+                        then: $vermogensgrens_toeslagpartner
+                    default: $vermogensgrens_alleenstaande
           # Art. 2 lid 1: "verzekerde" (art. 1 sub c) is de voorwaarde voor de aanspraak; deze
           # toets was een constante true. voldoet_aan_voorwaarden toetst ook de leeftijd, dus
           # hier direct de verzekerdheidstoets zelf gebruiken.
           - output: is_verzekerde_zorgtoeslag
             value: $is_verzekerde
           - output: hoogte_toeslag
-        # RFC-024: afronding expliciet (POC rondde impliciet af op de precisie van type_spec)
             # Art. 2 lid 1: alleen de verzekerde die aan de voorwaarden voldoet heeft
             # aanspraak. Wie dat niet doet heeft geen aanspraak, en dat is een afwezig
             # bedrag (null), niet een aanspraak op nihil (0) (RFC-036). De voorwaarden staan
@@ -243,6 +264,8 @@ articles:
                     subject: $voldoet_aan_voorwaarden
                     value: true
                   then:
+                    # RFC-024: afronding expliciet (POC rondde impliciet af op de precisie van
+                    # type_spec)
                     operation: ROUND
                     precision: 0
                     # Met partner het partnerbedrag, anders het bedrag voor een alleenstaande. Als twee
@@ -266,11 +289,6 @@ articles:
                                       - $inkomen
                                       - $partner_inkomen
                                   value: $drempelinkomen_toeslagpartner
-                                then: 0
-                              - when:
-                                  operation: GREATER_THAN
-                                  subject: $gezamenlijk_vermogen
-                                  value: $vermogensgrens_toeslagpartner
                                 then: 0
                             default:
                               # Art. 2 lid 4: "in afwijking van het eerste lid" de helft van het lid-1-bedrag
@@ -375,11 +393,6 @@ articles:
                               operation: GREATER_THAN
                               subject: $inkomen
                               value: $drempelinkomen_alleenstaande
-                            then: 0
-                          - when:
-                              operation: GREATER_THAN
-                              subject: $vermogen
-                              value: $vermogensgrens_alleenstaande
                             then: 0
                         default:
                           operation: SUBTRACT

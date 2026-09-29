@@ -496,8 +496,8 @@ expanded_paths:
 # Nodes on a prepared path that still start folded, because the presenter opens
 # them by hand at that point in the story. What lies below them is prepared all
 # the same: one click on `actions` shows the two requirements, one click on
-# `hoogte_toeslag` the requirements it waits for and the partner calculation. Same path language as above, but a
-# pattern matches only the node itself.
+# `hoogte_toeslag` the requirements it waits for and the partner calculation.
+# Same path language as above, but a pattern matches only the node itself.
 folded_paths:
   zorgtoeslagwet:
     - articles.*.machine_readable.execution.input

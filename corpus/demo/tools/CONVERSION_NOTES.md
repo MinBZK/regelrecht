@@ -234,6 +234,13 @@ and would otherwise fail here.
   `wet_brp#geboortedatum` and tests the age on the last day of the month before
   the calculation month. The edge cases are in
   `zorgtoeslagwet_verzekerde_vanaf_18-2025-01-01.feature`.
+- `zorgtoeslagwet` (2024 and 2025): `hoogte_toeslag` is computed only when
+  `voldoet_aan_voorwaarden` holds, and is absent otherwise. The POC returned 0
+  for a person without aanspraak; the law (art. 2 lid 1, art. 3 lid 1) gives no
+  aanspraak at all, which is not an aanspraak on nothing. The wealth test of
+  art. 3 lid 1 moved into `voldoet_aan_voorwaarden`. The under-18 and wealth
+  scenarios assert `hoogte_toeslag` is absent, and
+  `zorgtoeslagwet_geen_aanspraak-2025-01-01.feature` covers wealth in 2025.
 - `burgerlijk_wetboek_handelingsonbekwaamheid.curator_bsn`: the one SWITCH-shaped
   site the tool reports; rewritten by hand to the same count + FOREACH form.
 - `wet_structuur_uitvoeringsorganisatie_werk_en_inkomen`: a dienstverband without

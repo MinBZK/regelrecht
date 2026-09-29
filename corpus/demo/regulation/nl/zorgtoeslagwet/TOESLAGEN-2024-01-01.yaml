@@ -269,7 +269,6 @@ articles:
                   operation: EQUALS
                   value: true
           - output: hoogte_toeslag
-        # RFC-024: afronding expliciet (POC rondde impliciet af op de precisie van type_spec)
             # Art. 2 lid 1: alleen de verzekerde die aan de voorwaarden voldoet heeft
             # aanspraak. Wie dat niet doet heeft geen aanspraak, en dat is een afwezig
             # bedrag (null), niet een aanspraak op nihil (0) (RFC-036). De voorwaarden staan
@@ -283,6 +282,8 @@ articles:
                     subject: $voldoet_aan_voorwaarden
                     value: true
                   then:
+                    # RFC-024: afronding expliciet (POC rondde impliciet af op de precisie van
+                    # type_spec)
                     operation: ROUND
                     precision: 0
                     # Met partner het partnerbedrag, anders het bedrag voor een alleenstaande. Als twee
