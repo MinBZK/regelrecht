@@ -58,7 +58,11 @@ export function simulationLaws(corpus, kind, isLawEnabled = () => true) {
  * @param {object[]} runnable  the laws the simulation runs
  * @param {(doc: object) => unknown[]} hasConstants  a law's tunable constants
  * @param {(law: object) => boolean} [isLawEnabled]  the demo's visibility
- *   choice, as for `simulationLaws`: a hidden law is not offered here either
+ *   choice, as for `simulationLaws`: a hidden law reached through
+ *   `source.regulation` is not offered here either. A regeling that fills an
+ *   open term is, even when hidden: `hidden_laws` keeps it off the portal
+ *   (the standaardpremie regeling is hidden there), and this list is not a
+ *   portal but exactly where that regeling belongs.
  * @returns {object[]} sorted by name, without the runnable laws themselves
  */
 export function supportingLaws(corpus, runnable, hasConstants, isLawEnabled = () => true) {
@@ -74,10 +78,12 @@ export function supportingLaws(corpus, runnable, hasConstants, isLawEnabled = ()
   }
   const runIds = new Set(runnable.map((law) => law.id));
   const seen = new Set(runIds);
+  const fillsOpenTerm = new Set();
   const queue = [...runIds];
   while (queue.length) {
     const law = corpus.latestById.get(queue.shift());
     const next = new Set(implementers.get(law?.id) ?? []);
+    for (const id of next) fillsOpenTerm.add(id);
     for (const article of law?.doc?.articles ?? []) {
       for (const input of article.machine_readable?.execution?.input ?? []) {
         if (input?.source?.regulation) next.add(input.source.regulation);
@@ -92,7 +98,7 @@ export function supportingLaws(corpus, runnable, hasConstants, isLawEnabled = ()
   return [...seen]
     .filter((id) => !runIds.has(id))
     .map((id) => corpus.latestById.get(id))
-    .filter((law) => isLawEnabled(law) && hasConstants(law.doc).length > 0)
+    .filter((law) => (fillsOpenTerm.has(law.id) || isLawEnabled(law)) && hasConstants(law.doc).length > 0)
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
