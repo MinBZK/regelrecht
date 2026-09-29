@@ -622,7 +622,7 @@ fn lees_bestand(pad: &Path, kroniek: &str) -> Result<(u64, Vec<Gram>), String> {
         }
         let mut doc: serde_json::Value = serde_json::from_str(regel)
             .map_err(|e| format!("{} regel {}: {e}", pad.display(), i + 1))?;
-        if crate::gram::migreer(&mut doc, &format!("{kroniek}\n{regel}")) {
+        if crate::gram::migreer(&mut doc, &format!("{kroniek}\n{i}\n{regel}")) {
             gemigreerd += 1;
         }
         let mut gram: Gram = serde_json::from_value(doc)
@@ -772,14 +772,17 @@ mod tests {
         betaling["besluit"] = "volgt".into();
         std::fs::write(
             dir.path().join("test_kroniek.jsonl"),
-            format!("{oud}\n{besluit}\n{betaling}\n"),
+            // Twee gelijke regels (twee betalingen van hetzelfde bedrag op
+            // dezelfde dag) zijn twee grammen, met elk een eigen id.
+            format!("{oud}\n{besluit}\n{betaling}\n{betaling}\n"),
         )
         .unwrap();
         let k = open(dir.path());
         let groep = k.lees_wortel(K, Z1).unwrap();
-        assert_eq!(groep.len(), 3);
+        assert_eq!(groep.len(), 4);
         assert_eq!(groep[0].gram.id, Z1);
         assert_eq!(groep[2].gram.verwijst["besluit"], groep[1].gram.id);
+        assert_ne!(groep[2].gram.id, groep[3].gram.id);
     }
 
     #[test]

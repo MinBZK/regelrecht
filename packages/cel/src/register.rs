@@ -51,11 +51,20 @@ thread_local! {
 /// Voer `f` uit met `grammen` erbij in elke registerbron: het concept van
 /// een handeling op proef telt mee alsof het vastlag. Alleen op deze draad,
 /// en alleen tijdens `f` (een engine-run is synchroon).
+/// Ook na een panic in `f` gaat de overlay eraf: de draad dient daarna een
+/// ander verzoek.
 pub fn met_proef<T>(grammen: Vec<Gram>, f: impl FnOnce() -> T) -> T {
-    let oud = PROEF.with(|p| std::mem::replace(&mut *p.borrow_mut(), grammen));
-    let uit = f();
-    PROEF.with(|p| *p.borrow_mut() = oud);
-    uit
+    struct Terug(Option<Vec<Gram>>);
+    impl Drop for Terug {
+        fn drop(&mut self) {
+            let oud = self.0.take().unwrap_or_default();
+            PROEF.with(|p| *p.borrow_mut() = oud);
+        }
+    }
+    let _terug = Terug(Some(
+        PROEF.with(|p| std::mem::replace(&mut *p.borrow_mut(), grammen)),
+    ));
+    f()
 }
 
 /// Een regel van het koppelbestand.
@@ -290,5 +299,26 @@ impl Registers {
                 let _ = slot.set(kroniek.clone());
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn proef() -> usize {
+        PROEF.with(|p| p.borrow().len())
+    }
+
+    /// De overlay gaat eraf, ook als de engine-run in paniek raakt: het
+    /// volgende verzoek op deze draad ziet het concept niet als vastgelegd.
+    #[test]
+    fn een_proef_gaat_eraf_ook_na_een_panic() {
+        let g = crate::gram::testgram("00000000-0000-4000-8000-000000000001");
+        assert_eq!(met_proef(vec![g.clone()], proef), 1);
+        assert_eq!(proef(), 0);
+        let uit = std::panic::catch_unwind(|| met_proef(vec![g], || panic!("engine")));
+        assert!(uit.is_err());
+        assert_eq!(proef(), 0);
     }
 }

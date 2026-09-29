@@ -114,6 +114,34 @@ impl Beleidsbron {
         }
     }
 
+    /// Een parameter uit de query met het type dat de regeling hem geeft:
+    /// de query kent alleen tekst (zie [`pad`]), de engine rekent met een
+    /// getal, een bedrag of een waarheidswaarde. `null` is geen waarde.
+    fn waarde(&self, naam: &str, tekst: String) -> Value {
+        use regelrecht_engine::ParameterType as T;
+        if tekst == "null" {
+            return Value::Null;
+        }
+        let soort = self
+            .service
+            .resolver()
+            .get_law(&self.regeling)
+            .and_then(|law| {
+                law.articles
+                    .iter()
+                    .filter_map(|a| a.get_execution_spec())
+                    .flat_map(|e| e.parameters.iter().flatten())
+                    .find(|p| p.name == naam)
+                    .map(|p| p.param_type)
+            });
+        match soort {
+            Some(T::Number | T::Amount | T::Boolean | T::Array | T::Object) => {
+                serde_json::from_str(&tekst).unwrap_or(Value::String(tekst))
+            }
+            _ => Value::String(tekst),
+        }
+    }
+
     fn antwoord(&self, pad: &str) -> Result<Value, TransportFout> {
         let query = pad.split_once('?').map_or("", |(_, q)| q);
         let paren: Vec<(String, String)> = serde_urlencoded::from_str(query)
@@ -131,7 +159,8 @@ impl Beleidsbron {
                 }
                 "bekend_op" => {}
                 _ => {
-                    parameters.insert(k, Value::String(v));
+                    let w = self.waarde(&k, v);
+                    parameters.insert(k, w);
                 }
             }
         }
@@ -148,6 +177,11 @@ impl Beleidsbron {
                 status: 400,
                 fout: format!("{}: {f}", self.naam),
             });
+        }
+        // Een uitkomst zonder waarde valt weg (de synthese mist dan dat veld),
+        // maar niet stil.
+        if !e.mist.is_empty() {
+            tracing::warn!(bron = %self.naam, mist = %e.mist.join(", "), "beleidsbron: uitkomsten zonder waarde");
         }
         let l = Lexostatus {
             extra_velden: e

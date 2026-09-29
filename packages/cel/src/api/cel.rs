@@ -253,7 +253,9 @@ fn toets_verwijzingen(
         }
         niet_voor(gram, doel)?;
     }
-    if let Some(n) = verwacht {
+    // Een gram zonder verwijzing is zijn eigen wortel: het heeft (nog) geen
+    // groep om te vergelijken.
+    if let Some(n) = verwacht.filter(|_| !gram.verwijst.is_empty()) {
         if zicht.groep.len() != n {
             return Err(fout(
                 StatusCode::CONFLICT,
@@ -269,8 +271,13 @@ fn toets_verwijzingen(
         return Ok(());
     };
     let rol = event.and_then(|e| e.besluit);
-    let doelen: Vec<&String> = gram.verwijst.values().collect();
-    let deelt = |g: &Gram| g.verwijst.values().any(|d| doelen.contains(&d));
+    // Hetzelfde doel onder dezelfde naam: een ander besluit onder `besluit`
+    // bij dezelfde `aanvraag` is een ander feit.
+    let deelt = |g: &Gram| {
+        g.verwijst
+            .iter()
+            .any(|(naam, d)| gram.verwijst.get(naam) == Some(d))
+    };
     if rol.is_some_and(Besluit::is_besluit) {
         if rol == Some(Besluit::Opent) {
             if let Some(eerder) = zicht
@@ -296,9 +303,9 @@ fn toets_verwijzingen(
     {
         let doel = eerder
             .verwijst
-            .values()
-            .find(|d| doelen.contains(d))
-            .map_or("-", String::as_str);
+            .iter()
+            .find(|(naam, d)| gram.verwijst.get(*naam) == Some(d))
+            .map_or("-", |(_, d)| d.as_str());
         return Err(fout(
             StatusCode::CONFLICT,
             format!(
