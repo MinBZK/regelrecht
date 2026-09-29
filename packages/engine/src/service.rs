@@ -1426,8 +1426,15 @@ impl LawExecutionService {
                         tb.set_result(value.clone());
                     }
                 } else {
-                    // Multiple outputs: set result as object
-                    let obj: BTreeMap<String, Value> = result.outputs.clone();
+                    // Multiple outputs: the requested ones, as with a single
+                    // output. A hook's outputs have their own lines already.
+                    let obj: BTreeMap<String, Value> = output_names
+                        .iter()
+                        .filter_map(|name| {
+                            let value = result.outputs.get(*name)?;
+                            Some((name.to_string(), value.clone()))
+                        })
+                        .collect();
                     tb.set_result(Value::Object(obj));
                 }
                 if let Some(error) = voided {
