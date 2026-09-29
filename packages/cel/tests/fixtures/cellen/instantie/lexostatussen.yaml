@@ -4,10 +4,10 @@
 cel: test_instantie
 lexostatus_definitions:
   - name: aanvraag_inhoud
-    inputs: [{name: zaakkenmerk, type: string}]
+    inputs: [{name: wortel, type: string}]
     reduction:
       kroniek: test_kroniek
-      filter: {type: indiening, soort: aanvraag, zaakkenmerk: $zaakkenmerk}
+      filter: {type: indiening, soort: aanvraag, wortel: $wortel}
       kies: laatste
       afleidingen:
         aanvraagjaar: {veld: inhoud.aanvraagjaar}

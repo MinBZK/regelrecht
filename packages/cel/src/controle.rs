@@ -15,10 +15,8 @@
 //! 3. Geen weesveld: elk veld van een event wordt door een afleiding of een
 //!    filter gelezen, of staat met reden in `niet_gereduceerd`.
 //! 4. Geen naamsbotsing: een parameter krijgt maar een afleiding.
-//! 5. Alleen een event met een zaak (`zaak: opent` of `volgt`) heeft een
-//!    zaakkenmerk: een filter op `zaakkenmerk`, een input `zaakkenmerk` of
-//!    `groepeer: zaakkenmerk` mag alleen events met een zaak aanwijzen, ook
-//!    in `zonder`.
+//! 5. (Vervallen met chronolex v0.2.0: elk gram heeft een wortel, dus een
+//!    filter op `wortel` of `groepeer: wortel` kan elk event aanwijzen.)
 //! 6. Een lijst-lexostatus (`groepeer`) heeft kolommen, geen parameters: haar
 //!    afleidingen hoeven geen parameter van een artikel te zijn en botsen niet
 //!    met die van andere lexostatussen. Haar `zonder` wijst een event aan in
@@ -174,7 +172,6 @@ pub fn controleer(
     verwijzingen(strommen, lexostatussen, service, &mut fouten);
     weesvelden(strommen, lexostatussen, &mut fouten);
     botsingen(strommen, lexostatussen, &mut fouten);
-    zaakkenmerken(strommen, lexostatussen, &mut fouten);
     if fouten.is_empty() {
         Ok(())
     } else {
@@ -465,74 +462,6 @@ fn botsingen(strommen: &[Stroom], lexostatussen: &Lexostatussen, fouten: &mut Ve
     }
 }
 
-/// Een filter op `zaakkenmerk`, of een input `zaakkenmerk`, vraagt dat elk
-/// event dat het aanwijst een zaak heeft: zonder zaak heeft een gram geen
-/// zaakkenmerk en komt het nooit door zo'n filter.
-fn zaakkenmerken(strommen: &[Stroom], lexostatussen: &Lexostatussen, fouten: &mut Vec<String>) {
-    let zonder_zaak = |events: Vec<StroomEvent<'_>>| -> Vec<String> {
-        events
-            .into_iter()
-            .filter(|(_, e)| !e.zaak.heeft_kenmerk())
-            .map(|(s, e)| format!("'{}' (stroom '{}')", e.name, s.id))
-            .collect()
-    };
-    let melding = |waar: &str, events: Vec<String>| {
-        format!(
-            "{waar}, maar event {} heeft geen zaak (zaak: geen) en dus geen zaakkenmerk; geef het event zaak: opent of volgt, of gebruik geen zaakkenmerk",
-            events.join(", ")
-        )
-    };
-    for def in &lexostatussen.lexostatus_definitions {
-        if def.is_lijst() {
-            let mut events = zonder_zaak(events_voor(def, None, strommen));
-            if !def.reduction.zonder.is_empty() {
-                events.extend(zonder_zaak(events_in(
-                    &def.reduction.kroniek,
-                    &def.reduction.zonder,
-                    strommen,
-                )));
-            }
-            if !events.is_empty() {
-                fouten.push(melding(
-                    &format!("lexostatus '{}': groepeer op 'zaakkenmerk'", def.name),
-                    events,
-                ));
-            }
-        }
-        let input = def.inputs.iter().any(|i| i.name == "zaakkenmerk");
-        let filter = def.reduction.filter.contains_key("zaakkenmerk");
-        if input || filter {
-            let events = zonder_zaak(events_voor(def, None, strommen));
-            if !events.is_empty() {
-                let wat = match (input, filter) {
-                    (true, true) => "input en filter op 'zaakkenmerk'",
-                    (true, false) => "input 'zaakkenmerk'",
-                    _ => "filter op 'zaakkenmerk'",
-                };
-                fouten.push(melding(
-                    &format!("lexostatus '{}': {wat}", def.name),
-                    events,
-                ));
-            }
-        }
-        for (naam, a) in def.alle_afleidingen() {
-            let Some(f) = a.filter().filter(|f| f.contains_key("zaakkenmerk")) else {
-                continue;
-            };
-            let events = zonder_zaak(events_voor(def, Some(f), strommen));
-            if !events.is_empty() {
-                fouten.push(melding(
-                    &format!(
-                        "lexostatus '{}', afleiding '{naam}': filter op 'zaakkenmerk'",
-                        def.name
-                    ),
-                    events,
-                ));
-            }
-        }
-    }
-}
-
 /// De controles op het portaal van een proces, tegen de stromen en
 /// lexostatussen van de cel waarin het vastlegt: het event bestaat, bindt
 /// alleen `$intake`-paden die de kanalen van het portaal leveren
@@ -618,9 +547,9 @@ fn portaal_(
                     def.name
                 ));
             }
-            for i in def.inputs.iter().filter(|i| i.name != "zaakkenmerk") {
+            for i in def.inputs.iter().filter(|i| i.name != "wortel") {
                 fouten.push(format!(
-                    "portaal: lexostatus '{}' vraagt input '{}'; de toets geeft alleen 'zaakkenmerk' mee",
+                    "portaal: lexostatus '{}' vraagt input '{}'; de toets geeft alleen 'wortel' mee",
                     def.name, i.name
                 ));
             }
@@ -869,16 +798,13 @@ mod tests {
 
     #[test]
     fn filter_zonder_event() {
-        let cel = CEL.replace(
-            "soort: aanvraag, zaakkenmerk",
-            "soort: melding, zaakkenmerk",
-        );
+        let cel = CEL.replace("soort: aanvraag, wortel", "soort: melding, wortel");
         faalt_met(STROOM, &cel, "het filter wijst geen event aan");
     }
 
     #[test]
     fn filter_met_onbekende_input() {
-        let cel = CEL.replace("zaakkenmerk: $zaakkenmerk}", "zaakkenmerk: $zaak}");
+        let cel = CEL.replace("wortel: $wortel}", "wortel: $zaak}");
         faalt_met(STROOM, &cel, "'zaak' is geen input");
     }
 
@@ -962,7 +888,7 @@ mod tests {
     // 4. Geen naamsbotsing.
     #[test]
     fn dubbele_afleiding_over_twee_lexostatussen() {
-        let extra = "  - name: tweede\n    inputs: [{name: zaakkenmerk, type: string}]\n    reduction:\n      kroniek: test_kroniek\n      filter: {name: aanvraag_ontvangen, zaakkenmerk: $zaakkenmerk}\n      kies: laatste\n      afleidingen:\n        bevat_naam: {gevuld: kern.aanvrager.naam}\n";
+        let extra = "  - name: tweede\n    inputs: [{name: wortel, type: string}]\n    reduction:\n      kroniek: test_kroniek\n      filter: {name: aanvraag_ontvangen, wortel: $wortel}\n      kies: laatste\n      afleidingen:\n        bevat_naam: {gevuld: kern.aanvrager.naam}\n";
         let cel = format!("{CEL}{extra}");
         faalt_met(
             STROOM,
@@ -983,60 +909,6 @@ mod tests {
             &cel,
             "duplicate entry with key \"bevat_aanduiding\"",
         );
-    }
-
-    // 5. Zaakkenmerk alleen bij een event met een zaak.
-    #[test]
-    fn filter_op_zaakkenmerk_vraagt_een_event_met_een_zaak() {
-        // De fixture: aanvraag_ontvangen opent een zaak.
-        assert!(STROOM.contains("zaak: opent"));
-        let volgt = STROOM.replace("zaak: opent", "zaak: volgt");
-        draai(&volgt, CEL).unwrap();
-        for stroom in [
-            STROOM.replace("    zaak: opent\n", ""),
-            STROOM.replace("zaak: opent", "zaak: geen"),
-        ] {
-            faalt_met(
-                &stroom,
-                CEL,
-                "lexostatus 'aanvraag_inhoud': input en filter op 'zaakkenmerk', maar event 'aanvraag_ontvangen' (stroom 'test_aanvragen') heeft geen zaak",
-            );
-        }
-        // Alleen de input, zonder filter.
-        let stroom = STROOM.replace("zaak: opent", "zaak: geen");
-        let cel = CEL.replace(", zaakkenmerk: $zaakkenmerk}", "}");
-        faalt_met(
-            &stroom,
-            &cel,
-            "lexostatus 'aanvraag_inhoud': input 'zaakkenmerk', maar",
-        );
-    }
-
-    #[test]
-    fn filter_per_afleiding_op_zaakkenmerk_zonder_zaak() {
-        let cel = REG_CEL.replace(
-            "inputs: [{name: aanduiding, type: string}]",
-            "inputs: [{name: aanduiding, type: string}, {name: zaakkenmerk, type: string}]",
-        );
-        register_faalt_met(
-            &cel,
-            "lexostatus 'registerstatus': input 'zaakkenmerk', maar event",
-        );
-        let cel = REG_CEL.replace(
-            "filter: {name: aanduiding_geschrapt, orgaan: $orgaan,",
-            "filter: {name: aanduiding_geschrapt, zaakkenmerk: 00000000-0000-4000-8000-000000000001, orgaan: $orgaan,",
-        );
-        register_faalt_met(
-            &cel,
-            "afleiding 'is_geschrapt': filter op 'zaakkenmerk', maar event 'aanduiding_geschrapt' (stroom 'test_registers') heeft geen zaak",
-        );
-    }
-
-    // Portaal.
-    #[test]
-    fn portaal_met_onbekende_uitkomst() {
-        let celdef = CELDEF.replace("uitkomst: aanvraag_volledig", "uitkomst: bestaat_niet");
-        portaal_faalt_met(&celdef, "geen uitkomst 'bestaat_niet'");
     }
 
     #[test]
@@ -1243,26 +1115,13 @@ mod tests {
     }
 
     // 6. Een lijst-lexostatus.
-    const LIJST: &str = "  - name: werkvoorraad\n    inputs: []\n    reduction:\n      kroniek: test_kroniek\n      filter: {type: indiening}\n      groepeer: zaakkenmerk\n      kies: laatste\n      afleidingen:\n        naam: {veld: inhoud.naam}\n        aanvraagjaar: {veld: inhoud.aanvraagjaar}\n";
+    const LIJST: &str = "  - name: werkvoorraad\n    inputs: []\n    reduction:\n      kroniek: test_kroniek\n      filter: {type: indiening}\n      groepeer: wortel\n      kies: laatste\n      afleidingen:\n        naam: {veld: inhoud.naam}\n        aanvraagjaar: {veld: inhoud.aanvraagjaar}\n";
 
     #[test]
     fn lijst_heeft_kolommen_geen_parameters() {
         // `naam` is geen parameter, en `aanvraagjaar` botst niet met de
         // afleiding in aanvraag_inhoud: een lijst gaat nooit naar de engine.
         draai(STROOM, &format!("{CEL}{LIJST}")).unwrap();
-    }
-
-    #[test]
-    fn groepeer_vraagt_events_met_een_zaak() {
-        let stroom = STROOM.replace("zaak: opent", "zaak: geen");
-        let cel = CEL
-            .replace("inputs: [{name: zaakkenmerk, type: string}]", "inputs: []")
-            .replace(", zaakkenmerk: $zaakkenmerk", "");
-        faalt_met(
-            &stroom,
-            &format!("{cel}{LIJST}"),
-            "lexostatus 'werkvoorraad': groepeer op 'zaakkenmerk', maar event 'aanvraag_ontvangen'",
-        );
     }
 
     #[test]

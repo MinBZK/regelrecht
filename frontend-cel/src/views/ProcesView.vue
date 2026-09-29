@@ -206,7 +206,7 @@ const wie = computed(() => sessieTekst(props.proces, sessie.value));
     <AanvraagView v-else-if="scherm === 'aanvraag'" :key="JSON.stringify(vooraf)" :vooraf="vooraf" @ingediend="ingediend" />
     <LoketView v-else-if="scherm === 'loket'" @ingediend="ingediend" />
     <template v-else-if="scherm === 'werkvoorraad'">
-      <ZaakView v-if="zaak" :key="zaak" :zaakkenmerk="zaak" @terug="zaak = null" />
+      <ZaakView v-if="zaak" :key="zaak" :wortel="zaak" @terug="zaak = null" />
       <WerkvoorraadView v-else :kolommen="werkvoorraadKolommen" @open="zaak = $event" />
     </template>
     <template v-else-if="scherm === 'ingediend' && nieuw">

@@ -53,7 +53,7 @@ pub(super) fn eigen<'z>(
 /// [`Zaakstand`]: bij een vervolg een besluit van de handeling van het
 /// besluit (de stage gaat daarop verder), bij een feit dat een besluit volgt
 /// en bij een wijziging een besluit van de handeling die zij noemen, een
-/// wijziging ervan meegerekend. Noemt de behandelaar een besluitkenmerk
+/// wijziging ervan meegerekend. Noemt de behandelaar een besluit (een id)
 /// (`gekozen`), dan dat besluit, als het er een van is; anders het laatste.
 /// `Ok(None)`: de handeling hoort bij geen besluit, of opent er zelf een.
 /// `Err`: het besluit ligt er nog niet, of het gekozen besluit is er geen
@@ -85,10 +85,10 @@ pub fn doel<'z>(
     if let Some(k) = gekozen {
         return lijst
             .iter()
-            .find(|b| b.besluitkenmerk == k)
+            .find(|b| b.id == k)
             .map(|b| Some(*b))
             .ok_or_else(|| {
-                let kan: Vec<&str> = lijst.iter().map(|b| b.besluitkenmerk.as_str()).collect();
+                let kan: Vec<&str> = lijst.iter().map(|b| b.id.as_str()).collect();
                 format!(
                     "besluit {k} is geen besluit waarop handeling '{}' handelt (wel: {})",
                     h.naam,
@@ -117,7 +117,7 @@ pub fn doel<'z>(
 fn verwijzing(b: &Besluitstand) -> Option<BesluitVerwijzing> {
     let (stage, gram) = b.genomen()?;
     Some(BesluitVerwijzing {
-        besluitkenmerk: b.besluitkenmerk.clone(),
+        id: b.id.clone(),
         name: gram.event.clone(),
         stage: Some(stage.clone()),
         op_moment: gram.op_moment.clone(),
@@ -131,7 +131,7 @@ fn verwijzing(b: &Besluitstand) -> Option<BesluitVerwijzing> {
 async fn zaaklexostatus(
     om: &Omgeving<'_>,
     bron: &crate::config::SyntheseBron,
-    zaakkenmerk: &str,
+    wortel: &str,
     peil: &Peil,
     concept: Option<&Vastlegverzoek>,
 ) -> Result<Lexostatus, Weigering> {
@@ -142,7 +142,7 @@ async fn zaaklexostatus(
         .lexostatus(&bron.lexostatus)
         .ok_or_else(|| Weigering::Cel(format!("lexostatus '{}' bestaat niet", bron.lexostatus)))?;
     let mut inputs = Map::new();
-    inputs.insert("zaakkenmerk".into(), Value::String(zaakkenmerk.to_string()));
+    inputs.insert("wortel".into(), Value::String(wortel.to_string()));
     let antwoord = match concept {
         None => om
             .cel
@@ -239,7 +239,7 @@ enum Bezwaar {
 pub async fn proef(
     om: &Omgeving<'_>,
     h: &HandelingDefinitie,
-    zaakkenmerk: &str,
+    wortel: &str,
     zaak: &Zaakstand,
     opgave: &Opgave,
 ) -> Result<Proefhandeling, Weigering> {
@@ -292,7 +292,7 @@ pub async fn proef(
         .collect();
     // Het besluit waarop de handeling handelt. Ligt het er nog niet, dan is
     // er niets uit te rekenen: dat is de vorm (de volgorde van de zaak).
-    let doel = match doel(proces, h, zaak, opgave.besluitkenmerk.as_deref()) {
+    let doel = match doel(proces, h, zaak, opgave.besluit.as_deref()) {
         Ok(b) => b,
         Err(r) => {
             p.reden = Some(format!("niet te nemen: {r}"));
@@ -317,7 +317,7 @@ pub async fn proef(
         // Een onvolledige uitkomst (een waarde mist, een bron antwoordde niet)
         // is geen conclusie over de inhoud: dan ligt er niets vast, ook niet
         // gemeld, want de invoer en het receipt zouden niet kloppen.
-        _ => op_de_zaak(om, h, event, zaakkenmerk, formulier, &mut p)
+        _ => op_de_zaak(om, h, event, wortel, formulier, &mut p)
             .await?
             .map(Bezwaar::Vorm),
     };
@@ -385,7 +385,7 @@ async fn op_de_zaak(
     om: &Omgeving<'_>,
     h: &HandelingDefinitie,
     event: &Event,
-    zaakkenmerk: &str,
+    wortel: &str,
     formulier: &Map<String, Value>,
     p: &mut Proefhandeling,
 ) -> Result<Option<String>, Weigering> {
@@ -401,14 +401,18 @@ async fn op_de_zaak(
         event: h.vastleggen.event.clone(),
         intake: Value::Null,
         external: event_velden(event, &h.uitkomsten, formulier, &BTreeMap::new()),
-        zaakkenmerk: Some(zaakkenmerk.to_string()),
-        besluitkenmerk: p.besluit.as_ref().map(|b| b.besluitkenmerk.clone()),
+        verwijst: super::verwijzingen(
+            &proces.cel,
+            event,
+            wortel,
+            p.besluit.as_ref().map(|b| b.id.as_str()),
+        ),
         besluit: None,
-        zaak_grammen: None,
+        wortel_grammen: None,
     });
     let mut eigen = Vec::new();
     for bron in proces.definitie.zaakbronnen() {
-        eigen.push(zaaklexostatus(om, bron, zaakkenmerk, &peil, concept.as_ref()).await?);
+        eigen.push(zaaklexostatus(om, bron, wortel, &peil, concept.as_ref()).await?);
     }
 
     // 2. Synthese, met de invoer uit de lexostatus van de zaak die haar
@@ -536,13 +540,13 @@ fn vervolg(
     let Some((_, gram)) = stand.genomen() else {
         return Err(Weigering::Cel(format!(
             "besluit {} heeft geen stage van het besluit",
-            stand.besluitkenmerk
+            stand.id
         )));
     };
     if let Some(s) = h.stage.as_ref().filter(|s| stand.stages.contains_key(*s)) {
         return Ok(Some(Bezwaar::Vorm(format!(
             "niet te nemen: stage {s} ligt al in besluit {}",
-            stand.besluitkenmerk
+            stand.id
         ))));
     }
     let (Handelingsoort::Vervolg { procedure, .. }, Some(stage)) = (&h.soort, h.stage.clone())

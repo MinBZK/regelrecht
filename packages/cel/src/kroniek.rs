@@ -5,8 +5,10 @@
 //! correctie of herstel is een nieuw gram.
 //!
 //! Het bestand is de bron; de grammen staan daarnaast in het geheugen, met
-//! een index per zaak, zodat een reductie of een vraag naar een zaak het
-//! bestand niet bij elke vraag opnieuw leest. Het geheugen groeit alleen,
+//! een index op id en een index per wortel, zodat een reductie of een vraag
+//! naar een groep het bestand niet bij elke vraag opnieuw leest. De wortel
+//! van een gram is de wortel van het gram waarnaar het verwijst; een gram
+//! zonder verwijzing is zijn eigen wortel (zie [`crate::gram`]). Het geheugen groeit alleen,
 //! onder hetzelfde slot als het schrijven: wat in het geheugen staat, staat
 //! op schijf. Wie de runtime draait, schrijft dus niet zelf in het bestand.
 //!
@@ -61,39 +63,151 @@ impl Vastgelegd {
 #[derive(Default)]
 struct Stapel {
     grammen: Vec<Arc<Vastgelegd>>,
-    /// zaakkenmerk -> posities in `grammen`, in de volgorde van vastleggen.
-    per_zaak: HashMap<String, Vec<usize>>,
     /// De lengte van het bestand: tot hier staat er een hele regel.
     lengte: u64,
 }
 
-impl Stapel {
+/// Alle geladen kronieken, met de indexen over de kronieken heen: een gram
+/// mag verwijzen naar een gram in een andere kroniek van dezelfde cel.
+#[derive(Default)]
+struct Staat {
+    stapels: BTreeMap<String, Stapel>,
+    /// id -> het gram.
+    per_id: HashMap<String, Arc<Vastgelegd>>,
+    /// wortel -> de grammen met die wortel, in de volgorde van vastleggen.
+    per_wortel: HashMap<String, Vec<Arc<Vastgelegd>>>,
+}
+
+impl Staat {
+    /// Voeg een gram toe waarvan de wortel bekend is.
     fn voeg_toe(&mut self, gram: Gram) -> Arc<Vastgelegd> {
-        if let Some(z) = &gram.zaakkenmerk {
-            self.per_zaak
-                .entry(z.clone())
-                .or_default()
-                .push(self.grammen.len());
-        }
+        let wortel = gram.wortel.clone().unwrap_or_else(|| gram.id.clone());
         let v = Vastgelegd::nieuw(gram);
-        self.grammen.push(v.clone());
+        self.per_id.insert(v.gram.id.clone(), v.clone());
+        self.per_wortel.entry(wortel).or_default().push(v.clone());
+        self.stapels
+            .entry(v.gram.chronicle.clone())
+            .or_default()
+            .grammen
+            .push(v.clone());
         v
+    }
+
+    /// De wortel van een gram dat naar `doelen` verwijst: die van de doelen,
+    /// als ze er allemaal zijn en dezelfde wortel hebben. Zonder verwijzing
+    /// zijn eigen id.
+    fn wortel_van(&self, gram: &Gram, extra: &HashMap<String, String>) -> Wortel {
+        if gram.verwijst.is_empty() {
+            return Wortel::Eigen;
+        }
+        let mut gevonden: Option<String> = None;
+        for id in gram.verwijst.values() {
+            let w = match self.per_id.get(id) {
+                Some(v) => v.gram.wortel.clone().unwrap_or_else(|| v.gram.id.clone()),
+                None => match extra.get(id) {
+                    Some(w) => w.clone(),
+                    None => return Wortel::Onbekend(id.clone()),
+                },
+            };
+            match &gevonden {
+                Some(g) if *g != w => return Wortel::Verschillend,
+                _ => gevonden = Some(w),
+            }
+        }
+        gevonden.map_or(Wortel::Eigen, Wortel::Van)
+    }
+
+    /// De grammen met deze wortel in deze kronieken, in de volgorde van
+    /// vastleggen.
+    fn van_de_wortel(&self, kronieken: &[&str], wortel: &str) -> Vec<Arc<Vastgelegd>> {
+        self.per_wortel
+            .get(wortel)
+            .into_iter()
+            .flatten()
+            .filter(|v| kronieken.contains(&v.gram.chronicle.as_str()))
+            .cloned()
+            .collect()
     }
 }
 
-/// De grammen van een zaak in deze stapels, uit de index `per_zaak`, per
-/// stapel in de volgorde van vastleggen.
-fn van_de_zaak<'s>(
-    stapels: impl IntoIterator<Item = &'s Stapel>,
-    zaakkenmerk: &str,
-) -> Vec<Arc<Vastgelegd>> {
-    let mut uit = Vec::new();
-    for s in stapels {
-        if let Some(posities) = s.per_zaak.get(zaakkenmerk) {
-            uit.extend(posities.iter().map(|&i| s.grammen[i].clone()));
+/// Wat de wortel van een gram is.
+enum Wortel {
+    /// Het gram verwijst nergens naar: het is zijn eigen wortel.
+    Eigen,
+    /// De wortel van de grammen waarnaar het verwijst.
+    Van(String),
+    /// Het gram verwijst naar een id dat (nog) niet geladen is.
+    Onbekend(String),
+    /// De grammen waarnaar het verwijst, hebben verschillende wortels.
+    Verschillend,
+}
+
+/// Wat een controle ziet, in eigen bezit (zie [`Kroniek::zicht_voor`]): de
+/// grammen waarnaar een gram verwijst, de groep van zijn wortel en die
+/// wortel.
+pub struct ZichtEigen {
+    doelen: Vec<Arc<Vastgelegd>>,
+    groep: Vec<Arc<Vastgelegd>>,
+    pub wortel: Option<String>,
+    wortelfout: Option<String>,
+}
+
+impl ZichtEigen {
+    /// Het zicht om een controle mee te doen.
+    pub fn zicht(&self) -> Zicht<'_> {
+        Zicht {
+            doelen: self
+                .doelen
+                .iter()
+                .map(|v| (v.gram.id.clone(), &v.gram))
+                .collect(),
+            groep: self.groep.iter().map(|v| &v.gram).collect(),
+            wortelfout: self.wortelfout.clone(),
         }
     }
-    uit
+}
+
+impl Staat {
+    /// Wat een controle over `gram` ziet, in `kronieken`.
+    fn zicht(&self, kronieken: &[&str], gram: &Gram) -> ZichtEigen {
+        let doelen: Vec<Arc<Vastgelegd>> = gram
+            .verwijst
+            .values()
+            .filter_map(|id| self.per_id.get(id).cloned())
+            .collect();
+        let (wortel, wortelfout) = match self.wortel_van(gram, &HashMap::new()) {
+            Wortel::Eigen => (None, None),
+            Wortel::Van(w) => (Some(w), None),
+            Wortel::Onbekend(id) => (None, Some(format!("geen gram '{id}' in de kroniek"))),
+            Wortel::Verschillend => (
+                None,
+                Some("het gram verwijst naar grammen die niet bij dezelfde wortel horen".into()),
+            ),
+        };
+        let groep = wortel
+            .as_deref()
+            .map(|w| self.van_de_wortel(kronieken, w))
+            .unwrap_or_default();
+        ZichtEigen {
+            doelen,
+            groep,
+            wortel,
+            wortelfout,
+        }
+    }
+}
+
+/// Wat een controle bij het vastleggen ziet (zie [`Kroniek::leg_vast_mits`]):
+/// de grammen waarnaar het nieuwe gram verwijst, en de grammen van zijn
+/// wortel, zoals ze op dat moment vastliggen.
+pub struct Zicht<'a> {
+    /// Per id waarnaar het gram verwijst het gram, als het er is.
+    pub doelen: BTreeMap<String, &'a Gram>,
+    /// De grammen met dezelfde wortel als het nieuwe gram, in de volgorde van
+    /// vastleggen; leeg als het gram zijn eigen wortel is.
+    pub groep: Vec<&'a Gram>,
+    /// Waarom het gram geen wortel kreeg, als dat zo is.
+    pub wortelfout: Option<String>,
 }
 
 pub struct Kroniek {
@@ -103,8 +217,8 @@ pub struct Kroniek {
     /// schijf (fsync) gebeurt zonder `staat` vast te houden, en alleen
     /// schrijvers veranderen `staat`.
     schrijver: Mutex<()>,
-    /// Per kroniek de grammen.
-    staat: RwLock<BTreeMap<String, Stapel>>,
+    /// Per kroniek de grammen, en de indexen.
+    staat: RwLock<Staat>,
 }
 
 /// Een regel als JSONL, met regeleinde.
@@ -124,7 +238,7 @@ impl Kroniek {
         let k = Self {
             map: map.to_path_buf(),
             schrijver: Mutex::new(()),
-            staat: RwLock::new(BTreeMap::new()),
+            staat: RwLock::new(Staat::default()),
         };
         k.laad(kronieken)?;
         Ok(k)
@@ -152,23 +266,26 @@ impl Kroniek {
             .unwrap_or_else(PoisonError::into_inner)
     }
 
-    fn lees_staat(&self) -> RwLockReadGuard<'_, BTreeMap<String, Stapel>> {
+    fn lees_staat(&self) -> RwLockReadGuard<'_, Staat> {
         self.staat.read().unwrap_or_else(PoisonError::into_inner)
     }
 
-    fn schrijf_staat(&self) -> RwLockWriteGuard<'_, BTreeMap<String, Stapel>> {
+    fn schrijf_staat(&self) -> RwLockWriteGuard<'_, Staat> {
         self.staat.write().unwrap_or_else(PoisonError::into_inner)
     }
 
     /// Zorg dat deze kronieken in het geheugen staan; een kroniek die er nog
-    /// niet is, wordt van schijf gelezen.
+    /// niet is, wordt van schijf gelezen. De wortels van de nieuwe grammen
+    /// komen uit hun verwijzingen, ook naar een gram in een andere kroniek die
+    /// tegelijk geladen wordt. Een gram dat naar een onbekend id verwijst,
+    /// wordt zijn eigen wortel, met een melding.
     fn laad(&self, kronieken: &[&str]) -> Result<(), String> {
         let ontbreekt: Vec<&str> = {
             let staat = self.lees_staat();
             kronieken
                 .iter()
                 .copied()
-                .filter(|k| !staat.contains_key(*k))
+                .filter(|k| !staat.stapels.contains_key(*k))
                 .collect()
         };
         if ontbreekt.is_empty() {
@@ -177,12 +294,52 @@ impl Kroniek {
         // Onder het schrijfslot, zodat niemand tegelijk aan het bestand
         // schrijft terwijl het gelezen (en zo nodig afgekapt) wordt.
         let _schrijver = self.schrijfslot();
+        let mut nieuw: Vec<(String, u64, Vec<Gram>)> = Vec::new();
         for k in ontbreekt {
-            if self.lees_staat().contains_key(k) {
+            if self.lees_staat().stapels.contains_key(k) || nieuw.iter().any(|(n, _, _)| n == k) {
                 continue;
             }
-            let s = lees_bestand(&self.bestand(k)?)?;
-            self.schrijf_staat().insert(k.to_string(), s);
+            let (lengte, grammen) = lees_bestand(&self.bestand(k)?, k)?;
+            nieuw.push((k.to_string(), lengte, grammen));
+        }
+        let mut staat = self.schrijf_staat();
+        // De wortels, in rondes: een gram kan verwijzen naar een gram dat
+        // later in de lijst staat (een andere kroniek).
+        let mut bekend: HashMap<String, String> = HashMap::new();
+        loop {
+            let mut verder = false;
+            for (_, _, grammen) in &mut nieuw {
+                for g in grammen.iter_mut().filter(|g| g.wortel.is_none()) {
+                    let w = match staat.wortel_van(g, &bekend) {
+                        Wortel::Eigen => g.id.clone(),
+                        Wortel::Van(w) => w,
+                        Wortel::Onbekend(_) | Wortel::Verschillend => continue,
+                    };
+                    bekend.insert(g.id.clone(), w.clone());
+                    g.wortel = Some(w);
+                    verder = true;
+                }
+            }
+            if !verder {
+                break;
+            }
+        }
+        for (k, lengte, grammen) in nieuw {
+            let mut los = 0_usize;
+            staat.stapels.entry(k.clone()).or_default().lengte = lengte;
+            for mut g in grammen {
+                if g.wortel.is_none() {
+                    los += 1;
+                    g.wortel = Some(g.id.clone());
+                }
+                if staat.per_id.contains_key(&g.id) {
+                    return Err(format!("kroniek '{k}': id {} staat er twee keer in", g.id));
+                }
+                staat.voeg_toe(g);
+            }
+            if los > 0 {
+                tracing::warn!(kroniek = %k, grammen = los, "grammen die naar een onbekend gram verwijzen (of naar grammen van verschillende wortels): gelezen als hun eigen wortel");
+            }
         }
         Ok(())
     }
@@ -191,22 +348,15 @@ impl Kroniek {
     /// [`Kroniek::open`] laadt de kronieken van de cel, en een lezer (vaak op
     /// een async-draad) wacht zo niet op een bestand. Een kroniek die niet
     /// geopend is, is een fout.
-    fn met_stapels<T>(
-        &self,
-        kronieken: &[&str],
-        f: impl FnOnce(Vec<&Stapel>) -> T,
-    ) -> Result<T, String> {
+    fn met_staat<T>(&self, kronieken: &[&str], f: impl FnOnce(&Staat) -> T) -> Result<T, String> {
         let staat = self.lees_staat();
-        let mut stapels = Vec::with_capacity(kronieken.len());
         for k in kronieken {
             self.bestand(k)?;
-            stapels.push(
-                staat
-                    .get(*k)
-                    .ok_or_else(|| format!("kroniek '{k}' is niet geopend"))?,
-            );
+            if !staat.stapels.contains_key(*k) {
+                return Err(format!("kroniek '{k}' is niet geopend"));
+            }
         }
-        Ok(f(stapels))
+        Ok(f(&staat))
     }
 
     /// Voeg een gram toe. Het gram moet valideren tegen `gram.json`.
@@ -217,11 +367,12 @@ impl Kroniek {
     }
 
     /// Voeg een gram toe als `controle` dat toelaat. De controle ziet de
-    /// grammen van de zaak van het gram in `kronieken` (uit de index per
-    /// zaak, zonder de rest van de kroniek te kopiëren; geen zaak, geen
-    /// grammen), zoals ze op dat moment vastliggen, onder hetzelfde slot als
-    /// het schrijven. Zo kunnen twee gelijktijdige verzoeken niet allebei
-    /// door een controle komen die op het andere had moeten stuiten.
+    /// grammen waarnaar het gram verwijst en de grammen van zijn wortel in
+    /// `kronieken` (uit de indexen, zonder de rest van de kroniek te
+    /// kopiëren; zie [`Zicht`]), zoals ze op dat moment vastliggen, onder
+    /// hetzelfde slot als het schrijven. Zo kunnen twee gelijktijdige
+    /// verzoeken niet allebei door een controle komen die op het andere had
+    /// moeten stuiten. Het gram krijgt zijn wortel voor de controle.
     ///
     /// De buitenste fout is een fout van de opslag; de binnenste is de
     /// weigering van de controle, en dan is er niets vastgelegd.
@@ -229,7 +380,7 @@ impl Kroniek {
         &self,
         gram: &Gram,
         kronieken: &[&str],
-        controle: impl FnOnce(&mut Gram, &[&Gram]) -> Result<(), E>,
+        controle: impl FnOnce(&mut Gram, &Zicht<'_>) -> Result<(), E>,
     ) -> Result<Result<Arc<Vastgelegd>, E>, String> {
         self.schrijf_mits(
             gram.clone(),
@@ -241,20 +392,19 @@ impl Kroniek {
 
     /// Leg een gram vast zoals [`Kroniek::voeg_toe_mits`], en zet eerst,
     /// onder het schrijfslot, het moment van vastleggen uit `klok` (zie
-    /// [`Gram::stempel`]). Zo is de volgorde van de regels in het bestand die
+    /// [`Gram::stempel`]) en een nieuw id (een uuid v7 op dat moment). Zo is de volgorde van de regels in het bestand die
     /// van hun `vastgelegd_op`, ook als twee verzoeken tegelijk komen. De
     /// controle ziet het gestempelde gram. Antwoord: het gram zoals het
     /// vastligt. Weigert het stempel het gram (een gebonden `op_moment` na
     /// het vastleggen), dan maakt `weiger` daar de weigering van. De
-    /// controle mag het gram aanvullen met wat pas onder het slot vaststaat,
-    /// zoals het volgnummer van een besluit in de zaak.
+    /// controle mag het gram aanvullen met wat pas onder het slot vaststaat.
     pub fn leg_vast_mits<E>(
         &self,
         gram: Gram,
         kronieken: &[&str],
         klok: impl FnOnce() -> DateTime<FixedOffset>,
         weiger: impl FnOnce(String) -> E,
-        controle: impl FnOnce(&mut Gram, &[&Gram]) -> Result<(), E>,
+        controle: impl FnOnce(&mut Gram, &Zicht<'_>) -> Result<(), E>,
     ) -> Result<Result<Arc<Vastgelegd>, E>, String> {
         self.schrijf_mits(gram, kronieken, Some((klok, weiger)), controle)
     }
@@ -267,7 +417,7 @@ impl Kroniek {
             impl FnOnce() -> DateTime<FixedOffset>,
             impl FnOnce(String) -> E,
         )>,
-        controle: impl FnOnce(&mut Gram, &[&Gram]) -> Result<(), E>,
+        controle: impl FnOnce(&mut Gram, &Zicht<'_>) -> Result<(), E>,
     ) -> Result<Result<Arc<Vastgelegd>, E>, String> {
         let pad = self.bestand(&gram.chronicle)?;
         let mut alle = kronieken.to_vec();
@@ -276,33 +426,45 @@ impl Kroniek {
         let _schrijver = self.schrijfslot();
         // Zolang wij het schrijfslot hebben, verandert `staat` niet: de
         // controle ziet wat er ligt, ook nadat het leesslot weer los is.
-        let (zaak, lengte, laatst) = {
+        let (zicht, lengte, laatst) = {
             let staat = self.lees_staat();
-            let zaak = match &gram.zaakkenmerk {
-                Some(z) => van_de_zaak(kronieken.iter().filter_map(|k| staat.get(*k)), z),
-                None => Vec::new(),
-            };
-            let stapel = staat.get(&gram.chronicle);
+            let zicht = staat.zicht(kronieken, &gram);
+            gram.wortel = zicht.wortel.clone();
+            let stapel = staat.stapels.get(&gram.chronicle);
             let lengte = stapel.map_or(0, |s| s.lengte);
             let laatst = stapel.and_then(|s| s.grammen.last()).cloned();
-            (zaak, lengte, laatst)
+            (zicht, lengte, laatst)
         };
         if let Some((klok, weiger)) = klok {
             let niet_voor = laatst.map(|v| v.gram.vastgelegd()).transpose()?;
-            if let Err(f) = gram.stempel(klok(), niet_voor) {
+            let nu = klok();
+            if let Err(f) = gram.stempel(nu, niet_voor) {
                 return Ok(Err(weiger(f)));
             }
+            gram.id = crate::gram::nieuw_id(gram.vastgelegd()?);
         }
-        let zicht: Vec<&Gram> = zaak.iter().map(|v| &v.gram).collect();
+        if gram.wortel.is_none() && zicht.wortelfout.is_none() {
+            gram.wortel = Some(gram.id.clone());
+        }
+        let zicht = zicht.zicht();
         if let Err(w) = controle(&mut gram, &zicht) {
             return Ok(Err(w));
+        }
+        if let Some(f) = zicht.wortelfout {
+            return Err(f);
+        }
+        if self.lees_staat().per_id.contains_key(&gram.id) {
+            return Err(format!("er ligt al een gram met id {}", gram.id));
         }
         let regel = als_regel(&gram)?;
         schrijf_regel(&pad, lengte, regel.as_bytes())?;
         let mut staat = self.schrijf_staat();
-        let stapel = staat.entry(gram.chronicle.clone()).or_default();
-        stapel.lengte = lengte + regel.len() as u64;
-        Ok(Ok(stapel.voeg_toe(gram)))
+        staat
+            .stapels
+            .entry(gram.chronicle.clone())
+            .or_default()
+            .lengte = lengte + regel.len() as u64;
+        Ok(Ok(staat.voeg_toe(gram)))
     }
 
     /// Zet de startstand in de kroniek, als elke kroniek van `kronieken` leeg
@@ -326,10 +488,31 @@ impl Kroniek {
             let staat = self.lees_staat();
             if alle
                 .iter()
-                .any(|k| staat.get(*k).is_some_and(|s| !s.grammen.is_empty()))
+                .any(|k| staat.stapels.get(*k).is_some_and(|s| !s.grammen.is_empty()))
             {
                 return Ok(false);
             }
+        }
+        // De wortels van de startstand, uit haar eigen verwijzingen, in de
+        // volgorde van de startstand.
+        let mut met_wortel: Vec<Gram> = Vec::with_capacity(grammen.len());
+        let mut bekend: HashMap<String, String> = HashMap::new();
+        for g in grammen {
+            let mut g = g.clone();
+            let mut w = g.id.clone();
+            for id in g.verwijst.values() {
+                w = bekend.get(id).cloned().ok_or_else(|| {
+                    format!(
+                        "startstand: gram {} verwijst naar {id}, dat er niet (eerder) in staat",
+                        g.id
+                    )
+                })?;
+            }
+            if bekend.insert(g.id.clone(), w.clone()).is_some() {
+                return Err(format!("startstand: id {} staat er twee keer in", g.id));
+            }
+            g.wortel = Some(w);
+            met_wortel.push(g);
         }
         // Eerst alles naast de kroniek, dan hernoemen: een hernoeming is
         // per bestand atomair.
@@ -345,10 +528,9 @@ impl Kroniek {
             std::fs::rename(tijdelijk, pad).map_err(|e| format!("{}: {e}", pad.display()))?;
             // Wat hernoemd is, staat ook in het geheugen, ook als een
             // volgende hernoeming mislukt.
-            let stapel = staat.entry((*k).to_string()).or_default();
-            stapel.lengte = tekst.len() as u64;
-            for g in grammen.iter().filter(|g| g.chronicle == *k) {
-                stapel.voeg_toe(g.clone());
+            staat.stapels.entry((*k).to_string()).or_default().lengte = tekst.len() as u64;
+            for g in met_wortel.iter().filter(|g| g.chronicle == *k) {
+                staat.voeg_toe(g.clone());
             }
         }
         if let Ok(d) = std::fs::File::open(&self.map) {
@@ -367,30 +549,56 @@ impl Kroniek {
     /// Alle grammen van deze kronieken, per kroniek in de volgorde van
     /// vastleggen.
     pub fn alle(&self, kronieken: &[&str]) -> Result<Vec<Arc<Vastgelegd>>, String> {
-        self.met_stapels(kronieken, |stapels| {
-            stapels
+        self.met_staat(kronieken, |staat| {
+            kronieken
                 .iter()
+                .filter_map(|k| staat.stapels.get(*k))
                 .flat_map(|s| s.grammen.iter().cloned())
                 .collect()
         })
     }
 
-    /// De grammen van een zaak, over de gegeven kronieken, in de volgorde
-    /// van vastleggen per kroniek.
-    pub fn lees_zaak(
+    /// De grammen met deze wortel, over de gegeven kronieken, in de volgorde
+    /// van vastleggen.
+    pub fn lees_wortel(
         &self,
         kronieken: &[&str],
-        zaakkenmerk: &str,
+        wortel: &str,
     ) -> Result<Vec<Arc<Vastgelegd>>, String> {
-        self.met_stapels(kronieken, |stapels| van_de_zaak(stapels, zaakkenmerk))
+        self.met_staat(kronieken, |staat| staat.van_de_wortel(kronieken, wortel))
+    }
+
+    /// Wat een controle over `gram` zou zien als het nu werd vastgelegd (zie
+    /// [`Zicht`]), zonder slot: voor een proef, die niets vastlegt. Het gram
+    /// krijgt zijn wortel (zijn eigen id als het nergens naar verwijst).
+    pub fn zicht_voor(&self, kronieken: &[&str], gram: &mut Gram) -> Result<ZichtEigen, String> {
+        let z = self.met_staat(kronieken, |staat| staat.zicht(kronieken, gram))?;
+        gram.wortel = z
+            .wortel
+            .clone()
+            .or_else(|| z.wortelfout.is_none().then(|| gram.id.clone()));
+        Ok(z)
+    }
+
+    /// Het gram met dit id, als het in een van deze kronieken ligt.
+    pub fn gram(&self, kronieken: &[&str], id: &str) -> Result<Option<Arc<Vastgelegd>>, String> {
+        self.met_staat(kronieken, |staat| {
+            staat
+                .per_id
+                .get(id)
+                .filter(|v| kronieken.contains(&v.gram.chronicle.as_str()))
+                .cloned()
+        })
     }
 }
 
-/// Lees een kroniek van schijf. Een laatste regel zonder regeleinde is
+/// Lees een kroniek van schijf: de lengte tot de laatste hele regel en de
+/// grammen, nog zonder wortel. Een laatste regel zonder regeleinde is
 /// onvolledig geschreven: die wordt afgekapt, met een melding, maar pas als
 /// de rest leesbaar is. Een tijdelijk bestand van een onderbroken startstand
-/// wordt weggehaald.
-fn lees_bestand(pad: &Path) -> Result<Stapel, String> {
+/// wordt weggehaald. Een gram uit een kroniek van voor v0.2.0 (met zaak- en
+/// besluitkenmerk) krijgt een vast id en verwijzingen ([`crate::gram::migreer`]).
+fn lees_bestand(pad: &Path, kroniek: &str) -> Result<(u64, Vec<Gram>), String> {
     let fout = |e: std::io::Error| format!("{}: {e}", pad.display());
     let tijdelijk = pad.with_extension("jsonl.nieuw");
     if tijdelijk.exists() {
@@ -399,33 +607,43 @@ fn lees_bestand(pad: &Path) -> Result<Stapel, String> {
     }
     let bytes = match std::fs::read(pad) {
         Ok(b) => b,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Stapel::default()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((0, Vec::new())),
         Err(e) => return Err(fout(e)),
     };
     let heel = bytes.iter().rposition(|b| *b == b'\n').map_or(0, |i| i + 1);
     let tekst = std::str::from_utf8(&bytes[..heel])
         .map_err(|e| format!("{}: geen UTF-8: {e}", pad.display()))?;
-    let mut stapel = Stapel {
-        lengte: heel as u64,
-        ..Stapel::default()
-    };
+    let mut grammen = Vec::new();
     let mut zonder_vastgelegd_op = 0_usize;
+    let mut gemigreerd = 0_usize;
     for (i, regel) in tekst.lines().enumerate() {
         if regel.trim().is_empty() {
             continue;
         }
-        let mut gram: Gram = serde_json::from_str(regel)
+        let mut doc: serde_json::Value = serde_json::from_str(regel)
+            .map_err(|e| format!("{} regel {}: {e}", pad.display(), i + 1))?;
+        if crate::gram::migreer(&mut doc, &format!("{kroniek}\n{regel}")) {
+            gemigreerd += 1;
+        }
+        let mut gram: Gram = serde_json::from_value(doc)
             .map_err(|e| format!("{} regel {}: {e}", pad.display(), i + 1))?;
         if gram.vul_vastgelegd_op() {
             zonder_vastgelegd_op += 1;
         }
-        stapel.voeg_toe(gram);
+        grammen.push(gram);
     }
     if zonder_vastgelegd_op > 0 {
         tracing::warn!(
             kroniek = %pad.display(),
             grammen = zonder_vastgelegd_op,
             "grammen zonder vastgelegd_op (van voor dat veld): gelezen alsof ze op hun op_moment zijn vastgelegd"
+        );
+    }
+    if gemigreerd > 0 {
+        tracing::warn!(
+            kroniek = %pad.display(),
+            grammen = gemigreerd,
+            "grammen van voor chronolex v0.2.0 (zaak- en besluitkenmerk): gelezen met een vast id en verwijzingen"
         );
     }
     if heel < bytes.len() {
@@ -439,7 +657,7 @@ fn lees_bestand(pad: &Path) -> Result<Stapel, String> {
             .and_then(|()| f.sync_all())
             .map_err(fout)?;
     }
-    Ok(stapel)
+    Ok((heel as u64, grammen))
 }
 
 /// Schrijf een regel achter de eerste `lengte` bytes van een kroniek, en
@@ -474,10 +692,28 @@ fn schrijf_bestand(pad: &Path, inhoud: &[u8]) -> Result<(), String> {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use crate::stroom::Zaak;
+    use crate::gram::testvolger;
 
-    fn gram(zaak: &str) -> Gram {
-        crate::gram::testgram(zaak)
+    /// Een gram met een nieuw id dat naar het gram met id `wortel` verwijst,
+    /// of, als `wortel` nog niet in de kroniek ligt, dat gram zelf.
+    fn gram(wortel: &str) -> Gram {
+        crate::gram::testgram(&uuid::Uuid::now_v7().to_string()).met_verwijzing(wortel)
+    }
+
+    trait MetVerwijzing {
+        fn met_verwijzing(self, doel: &str) -> Gram;
+    }
+    impl MetVerwijzing for Gram {
+        fn met_verwijzing(mut self, doel: &str) -> Gram {
+            self.verwijst.insert("aanvraag".into(), doel.into());
+            self.wortel = None;
+            self
+        }
+    }
+
+    /// Het gram dat de wortel `id` is.
+    fn wortel(id: &str) -> Gram {
+        crate::gram::testgram(id)
     }
 
     const Z1: &str = "00000000-0000-4000-8000-000000000001";
@@ -497,26 +733,63 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let k = open(dir.path());
         assert_eq!(aantal(&k), 0);
-        k.voeg_toe(&gram(Z1)).unwrap();
-        k.voeg_toe(&gram(Z2)).unwrap();
-        k.voeg_toe(&gram(Z1)).unwrap();
-        assert_eq!(aantal(&k), 3);
-        assert_eq!(k.lees_zaak(K, Z1).unwrap().len(), 2);
-        // Na opnieuw openen staat hetzelfde er, uit het bestand.
+        k.voeg_toe(&wortel(Z1)).unwrap();
+        k.voeg_toe(&wortel(Z2)).unwrap();
+        let volger = k
+            .voeg_toe_mits(&gram(Z1), K, |_, _| Ok::<(), ()>(()))
+            .unwrap()
+            .unwrap();
+        assert_eq!(volger.gram.wortel.as_deref(), Some(Z1));
+        // Een gram dat naar de volger verwijst, hoort bij dezelfde wortel.
+        let verder = testvolger("besluit", &volger.gram);
+        k.voeg_toe(&verder).unwrap();
+        assert_eq!(aantal(&k), 4);
+        assert_eq!(k.lees_wortel(K, Z1).unwrap().len(), 3);
+        assert_eq!(k.gram(K, &verder.id).unwrap().unwrap().gram.id, verder.id);
+        // Na opnieuw openen staat hetzelfde er, uit het bestand, met de wortels.
         drop(k);
         let k = open(dir.path());
-        assert_eq!(aantal(&k), 3);
-        assert_eq!(k.lees_zaak(K, Z2).unwrap().len(), 1);
+        assert_eq!(aantal(&k), 4);
+        assert_eq!(k.lees_wortel(K, Z1).unwrap().len(), 3);
+        assert_eq!(k.lees_wortel(K, Z2).unwrap().len(), 1);
+    }
+
+    /// Een kroniek van voor v0.2.0 laadt: de aanvraag krijgt haar zaakkenmerk
+    /// als id, en wie in de zaak volgde, hoort bij die wortel.
+    #[test]
+    fn een_oude_kroniek_laadt_met_wortels() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut oud = serde_json::to_value(wortel(Z1)).unwrap();
+        let o = oud.as_object_mut().unwrap();
+        o.remove("id");
+        o.insert("zaak".into(), "opent".into());
+        o.insert("zaakkenmerk".into(), Z1.into());
+        let mut besluit = oud.clone();
+        besluit["zaak"] = "volgt".into();
+        besluit["besluit"] = "opent".into();
+        besluit["besluitkenmerk"] = format!("{Z1}/1").into();
+        let mut betaling = besluit.clone();
+        betaling["besluit"] = "volgt".into();
+        std::fs::write(
+            dir.path().join("test_kroniek.jsonl"),
+            format!("{oud}\n{besluit}\n{betaling}\n"),
+        )
+        .unwrap();
+        let k = open(dir.path());
+        let groep = k.lees_wortel(K, Z1).unwrap();
+        assert_eq!(groep.len(), 3);
+        assert_eq!(groep[0].gram.id, Z1);
+        assert_eq!(groep[2].gram.verwijst["besluit"], groep[1].gram.id);
     }
 
     #[test]
     fn alleen_toevoegen_eerdere_regels_blijven_staan() {
         let dir = tempfile::tempdir().unwrap();
         let k = open(dir.path());
-        k.voeg_toe(&gram(Z1)).unwrap();
+        k.voeg_toe(&wortel(Z1)).unwrap();
         let pad = dir.path().join("test_kroniek.jsonl");
         let voor = std::fs::read_to_string(&pad).unwrap();
-        k.voeg_toe(&gram(Z2)).unwrap();
+        k.voeg_toe(&wortel(Z2)).unwrap();
         let na = std::fs::read_to_string(&pad).unwrap();
         assert!(na.starts_with(&voor));
         assert_eq!(na.lines().count(), 2);
@@ -526,23 +799,26 @@ mod tests {
     fn ongeldig_gram_wordt_niet_vastgelegd() {
         let dir = tempfile::tempdir().unwrap();
         let k = open(dir.path());
-        let mut g = gram(Z1);
-        g.zaakkenmerk = Some("geen-uuid".into());
-        assert!(k.voeg_toe(&g).unwrap_err().contains("zaakkenmerk"));
-        // Een event met een zaak zonder zaakkenmerk, en een zonder zaak met.
-        g.zaakkenmerk = None;
-        assert!(k.voeg_toe(&g).unwrap_err().contains("zaakkenmerk"));
-        g.zaak = Zaak::Geen;
-        g.zaakkenmerk = Some(Z1.into());
+        let mut g = wortel(Z1);
+        g.id = "geen-uuid".into();
+        assert!(k.voeg_toe(&g).unwrap_err().contains("id"));
+        // Een verwijzing die geen uuid is, en een id dat er al ligt.
+        let mut g = wortel(Z1);
+        g.verwijst.insert("aanvraag".into(), "geen-uuid".into());
         assert!(k.voeg_toe(&g).is_err());
-        assert_eq!(aantal(&k), 0);
+        k.voeg_toe(&wortel(Z1)).unwrap();
+        assert!(k
+            .voeg_toe(&wortel(Z1))
+            .unwrap_err()
+            .contains("al een gram met id"));
+        assert_eq!(aantal(&k), 1);
     }
 
     #[test]
     fn een_gram_met_een_ongeldig_op_moment_wordt_niet_vastgelegd() {
         let dir = tempfile::tempdir().unwrap();
         let k = open(dir.path());
-        let mut g = gram(Z1);
+        let mut g = wortel(Z1);
         g.op_moment = "2025-03-12 10:14".into();
         let f = k.voeg_toe(&g).unwrap_err();
         assert!(f.contains("ongeldig op_moment '2025-03-12 10:14'"), "{f}");
@@ -553,7 +829,7 @@ mod tests {
     fn een_gram_zonder_vastgelegd_op_wordt_niet_vastgelegd() {
         let dir = tempfile::tempdir().unwrap();
         let k = open(dir.path());
-        let mut g = gram(Z1);
+        let mut g = wortel(Z1);
         g.vastgelegd_op = String::new();
         let f = k.voeg_toe(&g).unwrap_err();
         assert!(f.contains("vastgelegd_op"), "{f}");
@@ -565,9 +841,9 @@ mod tests {
     #[test]
     fn een_oud_gram_zonder_vastgelegd_op_laadt_met_zijn_op_moment() {
         let dir = tempfile::tempdir().unwrap();
-        let mut oud = serde_json::to_value(gram(Z1)).unwrap();
+        let mut oud = serde_json::to_value(wortel(Z1)).unwrap();
         oud.as_object_mut().unwrap().remove("vastgelegd_op");
-        let nieuw = serde_json::to_string(&gram(Z2)).unwrap();
+        let nieuw = serde_json::to_string(&wortel(Z2)).unwrap();
         std::fs::write(
             dir.path().join("test_kroniek.jsonl"),
             format!("{oud}\n{nieuw}\n"),
@@ -584,10 +860,10 @@ mod tests {
     fn een_weigering_van_de_controle_legt_niets_vast() {
         let dir = tempfile::tempdir().unwrap();
         let k = open(dir.path());
-        k.voeg_toe(&gram(Z1)).unwrap();
+        k.voeg_toe(&wortel(Z1)).unwrap();
         let uitkomst = k
-            .voeg_toe_mits(&gram(Z1), K, |_, bestaand| {
-                if bestaand.is_empty() {
+            .voeg_toe_mits(&gram(Z1), K, |_, zicht| {
+                if zicht.groep.is_empty() {
                     Ok(())
                 } else {
                     Err("er ligt al iets")
@@ -598,46 +874,52 @@ mod tests {
         assert_eq!(aantal(&k), 1);
     }
 
-    /// De controle ziet alleen de grammen van de zaak van het gram, uit de
-    /// index per zaak; een gram zonder zaak ziet niets.
+    /// De controle ziet de grammen waarnaar het gram verwijst en de groep van
+    /// zijn wortel, uit de indexen; een gram zonder verwijzing ziet geen
+    /// groep, en een gram met een onbekende verwijzing krijgt geen wortel.
     #[test]
-    fn de_controle_ziet_alleen_de_zaak() {
+    fn de_controle_ziet_doelen_en_groep() {
         let dir = tempfile::tempdir().unwrap();
         let k = open(dir.path());
+        k.voeg_toe(&wortel(Z1)).unwrap();
+        k.voeg_toe(&wortel(Z2)).unwrap();
         k.voeg_toe(&gram(Z1)).unwrap();
-        k.voeg_toe(&gram(Z2)).unwrap();
-        k.voeg_toe(&gram(Z1)).unwrap();
-        let mut gezien = Vec::new();
-        k.voeg_toe_mits(&gram(Z1), K, |_, zaak| {
-            gezien = zaak.iter().map(|g| g.zaakkenmerk.clone()).collect();
+        let mut gezien = (0, 0);
+        k.voeg_toe_mits(&gram(Z1), K, |g, zicht| {
+            gezien = (zicht.doelen.len(), zicht.groep.len());
+            assert_eq!(g.wortel.as_deref(), Some(Z1));
             Ok::<(), ()>(())
         })
         .unwrap()
         .unwrap();
-        assert_eq!(gezien, [Some(Z1.to_string()), Some(Z1.to_string())]);
-        let mut zonder = gram(Z1);
-        zonder.zaak = Zaak::Geen;
-        zonder.zaakkenmerk = None;
+        assert_eq!(gezien, (1, 2));
         let mut aantal_gezien = usize::MAX;
-        k.voeg_toe_mits(&zonder, K, |_, zaak| {
-            aantal_gezien = zaak.len();
+        k.voeg_toe_mits(&wortel(&uuid::Uuid::now_v7().to_string()), K, |_, zicht| {
+            aantal_gezien = zicht.groep.len();
             Ok::<(), ()>(())
         })
         .unwrap()
         .unwrap();
         assert_eq!(aantal_gezien, 0);
+        let los = gram("00000000-0000-4000-8000-00000000000f");
+        let fout = k.voeg_toe_mits(&los, K, |_, zicht| match &zicht.wortelfout {
+            Some(f) => Err(f.clone()),
+            None => Ok(()),
+        });
+        assert!(fout.unwrap().unwrap_err().contains("geen gram"));
     }
 
     #[test]
     fn gelijktijdige_controles_laten_er_een_door() {
         let dir = tempfile::tempdir().unwrap();
         let k = Arc::new(open(dir.path()));
+        k.voeg_toe(&wortel(Z1)).unwrap();
         let draden: Vec<_> = (0..8)
             .map(|_| {
                 let k = k.clone();
                 std::thread::spawn(move || {
-                    k.voeg_toe_mits(&gram(Z1), K, |_, bestaand| {
-                        if bestaand.is_empty() {
+                    k.voeg_toe_mits(&gram(Z1), K, |_, zicht| {
+                        if zicht.groep.len() == 1 {
                             Ok(())
                         } else {
                             Err(())
@@ -654,9 +936,9 @@ mod tests {
             .filter(|ok| *ok)
             .count();
         assert_eq!(gelukt, 1);
-        assert_eq!(aantal(&k), 1);
+        assert_eq!(aantal(&k), 2);
         let pad = dir.path().join("test_kroniek.jsonl");
-        assert_eq!(std::fs::read_to_string(pad).unwrap().lines().count(), 1);
+        assert_eq!(std::fs::read_to_string(pad).unwrap().lines().count(), 2);
     }
 
     /// Het stempel `vastgelegd_op` komt onder het schrijfslot: bij
@@ -674,7 +956,7 @@ mod tests {
             .map(|i| {
                 let (k, teller) = (k.clone(), teller.clone());
                 std::thread::spawn(move || {
-                    let mut g = gram(if i % 2 == 0 { Z1 } else { Z2 });
+                    let mut g = wortel(&format!("00000000-0000-4000-8000-{i:012}"));
                     g.vastgelegd_op = "2000-01-01T00:00:00+01:00".into();
                     let klok = || {
                         let s = teller.fetch_add(1, Ordering::SeqCst);
@@ -691,10 +973,16 @@ mod tests {
             d.join().unwrap();
         }
         let tekst = std::fs::read_to_string(dir.path().join("test_kroniek.jsonl")).unwrap();
-        let momenten: Vec<String> = tekst
+        let grammen: Vec<Gram> = tekst
             .lines()
-            .map(|r| serde_json::from_str::<Gram>(r).unwrap().vastgelegd_op)
+            .map(|r| serde_json::from_str::<Gram>(r).unwrap())
             .collect();
+        let momenten: Vec<String> = grammen.iter().map(|g| g.vastgelegd_op.clone()).collect();
+        // Elk gram kreeg onder het slot een eigen id.
+        let mut ids: Vec<&str> = grammen.iter().map(|g| g.id.as_str()).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        assert_eq!(ids.len(), 16);
         assert_eq!(momenten.len(), 16);
         let mut gesorteerd = momenten.clone();
         gesorteerd.sort();
@@ -717,7 +1005,7 @@ mod tests {
         let t = |s: &str| DateTime::parse_from_rfc3339(s).unwrap();
         let eerst = k
             .leg_vast_mits(
-                gram(Z1),
+                wortel(Z1),
                 &[],
                 || t("2025-03-12T10:00:00+01:00"),
                 |f| f,
@@ -727,7 +1015,7 @@ mod tests {
             .unwrap();
         let daarna = k
             .leg_vast_mits(
-                gram(Z1),
+                wortel(Z1),
                 &[],
                 || t("2025-03-12T09:00:00+01:00"),
                 |f| f,
@@ -736,7 +1024,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(daarna.gram.vastgelegd_op, eerst.gram.vastgelegd_op);
-        let mut gebonden = gram(Z1);
+        let mut gebonden = wortel(Z1);
         gebonden.op_moment = "2025-03-13T00:00:00+01:00".into();
         gebonden.op_moment_grondslag = Some(vec!["testregeling_aanvraag#1".into()]);
         let f = k
@@ -765,19 +1053,19 @@ mod tests {
     fn een_halve_laatste_regel_wordt_bij_het_openen_afgekapt() {
         let dir = tempfile::tempdir().unwrap();
         let k = open(dir.path());
-        k.voeg_toe(&gram(Z1)).unwrap();
+        k.voeg_toe(&wortel(Z1)).unwrap();
         drop(k);
         // De runtime stopte midden in het schrijven van het tweede gram.
         let pad = dir.path().join("test_kroniek.jsonl");
         let heel = std::fs::read_to_string(&pad).unwrap();
-        let tweede = serde_json::to_string(&gram(Z2)).unwrap();
+        let tweede = serde_json::to_string(&wortel(Z2)).unwrap();
         std::fs::write(&pad, format!("{heel}{}", &tweede[..40])).unwrap();
 
         let k = open(dir.path());
         assert_eq!(aantal(&k), 1);
         assert_eq!(std::fs::read_to_string(&pad).unwrap(), heel);
         // En daarna gaat het vastleggen gewoon verder, op een hele regel.
-        k.voeg_toe(&gram(Z2)).unwrap();
+        k.voeg_toe(&wortel(Z2)).unwrap();
         drop(k);
         let k = open(dir.path());
         assert_eq!(aantal(&k), 2);
@@ -787,7 +1075,7 @@ mod tests {
     fn een_kapotte_regel_middenin_opent_niet() {
         let dir = tempfile::tempdir().unwrap();
         let pad = dir.path().join("test_kroniek.jsonl");
-        let g = serde_json::to_string(&gram(Z1)).unwrap();
+        let g = serde_json::to_string(&wortel(Z1)).unwrap();
         std::fs::write(&pad, format!("{g}\n{{\"kind\": \n{g}\n")).unwrap();
         let fout = Kroniek::open(dir.path(), K).err().unwrap();
         assert!(fout.contains("test_kroniek.jsonl regel 2"), "{fout}");
@@ -805,13 +1093,13 @@ mod tests {
     fn een_rest_van_een_mislukte_schrijfactie_wordt_overschreven() {
         let dir = tempfile::tempdir().unwrap();
         let k = open(dir.path());
-        k.voeg_toe(&gram(Z1)).unwrap();
+        k.voeg_toe(&wortel(Z1)).unwrap();
         // Een eerdere schrijfactie liet een halve regel achter die niet
         // teruggezet kon worden; de kroniek weet nog de goede lengte.
         let pad = dir.path().join("test_kroniek.jsonl");
         let heel = std::fs::read_to_string(&pad).unwrap();
         std::fs::write(&pad, format!("{heel}{{\"half")).unwrap();
-        k.voeg_toe(&gram(Z2)).unwrap();
+        k.voeg_toe(&wortel(Z2)).unwrap();
         drop(k);
         let k = open(dir.path());
         assert_eq!(aantal(&k), 2);
@@ -824,7 +1112,7 @@ mod tests {
         std::fs::write(&rest, "{\"half").unwrap();
         let k = open(dir.path());
         assert!(!rest.exists());
-        assert!(k.zet_startstand(K, &[gram(Z1)]).unwrap());
+        assert!(k.zet_startstand(K, &[wortel(Z1)]).unwrap());
         assert_eq!(aantal(&k), 1);
     }
 
@@ -832,7 +1120,7 @@ mod tests {
     fn de_startstand_in_een_keer_en_alleen_in_een_lege_kroniek() {
         let dir = tempfile::tempdir().unwrap();
         let k = open(dir.path());
-        let stand = [gram(Z1), gram(Z2)];
+        let stand = [wortel(Z1), wortel(Z2)];
         assert!(k.zet_startstand(K, &stand).unwrap());
         assert_eq!(aantal(&k), 2);
         let pad = dir.path().join("test_kroniek.jsonl");
@@ -844,9 +1132,9 @@ mod tests {
         // Een ongeldig gram: niets geschreven.
         let leeg = tempfile::tempdir().unwrap();
         let k = open(leeg.path());
-        let mut slecht = gram(Z2);
+        let mut slecht = wortel(Z2);
         slecht.op_moment = "gisteren".into();
-        assert!(k.zet_startstand(K, &[gram(Z1), slecht]).is_err());
+        assert!(k.zet_startstand(K, &[wortel(Z1), slecht]).is_err());
         assert_eq!(aantal(&k), 0);
         assert!(!leeg.path().join("test_kroniek.jsonl").exists());
     }
@@ -855,7 +1143,7 @@ mod tests {
     fn de_yaml_wordt_een_keer_gemaakt() {
         let dir = tempfile::tempdir().unwrap();
         let k = open(dir.path());
-        k.voeg_toe(&gram(Z1)).unwrap();
+        k.voeg_toe(&wortel(Z1)).unwrap();
         let v = k.lees("test_kroniek").unwrap().remove(0);
         let mut keren = 0;
         for _ in 0..3 {

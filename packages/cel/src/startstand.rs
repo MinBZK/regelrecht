@@ -2,9 +2,10 @@
 //! zet.
 //!
 //! Een regel van het JSONL-bestand noemt de stroom, het event (`name`),
-//! `op_moment`, `herkomst: startstand` en `fields`. Een `zaakkenmerk` staat
-//! erin als het event een zaak heeft (`zaak: opent` of `volgt`), en alleen
-//! dan; de startstand verzint er geen. De rest (type, soort, grondslag, kroniek, actor en de hash
+//! `op_moment`, `herkomst: startstand` en `fields`, en zo nodig `id` en
+//! `verwijst` (naar een eerder gram van de startstand, met de namen van het
+//! event). Zonder `id` krijgt het gram een vast id uit de regel zelf, zodat
+//! elke lading hetzelfde id geeft. De rest (type, soort, grondslag, kroniek, actor en de hash
 //! van de stroom) volgt uit de stroom, zodat een startstand niet veroudert als
 //! de stroom verandert. De velden moeten precies die van het event zijn.
 //!
@@ -41,14 +42,9 @@ struct Regel {
     op_moment: String,
     herkomst: String,
     #[serde(default)]
-    zaakkenmerk: Option<String>,
-    /// Bij een event met `besluit`: het kenmerk van het besluit, met de hand
-    /// gezet zoals het zaakkenmerk; bij `besluit: wijzigt` ook het gewijzigde
-    /// besluit. Het schema van het gram toetst dat ze er precies dan zijn.
+    id: Option<String>,
     #[serde(default)]
-    besluitkenmerk: Option<String>,
-    #[serde(default)]
-    wijzigt: Option<String>,
+    verwijst: BTreeMap<String, String>,
     fields: Map<String, Value>,
 }
 
@@ -93,11 +89,17 @@ fn bouw(tekst: &str, strommen: &[Stroom]) -> Result<Gram, String> {
         .event(&regel.name)
         .ok_or_else(|| format!("stroom '{}' heeft geen event '{}'", stroom.id, regel.name))?;
     velden_passen(event, &regel.fields, "")?;
-    event
-        .zaak
-        .toets_kenmerk(&event.name, regel.zaakkenmerk.as_deref())?;
+    crate::stroom::toets_verwijzingen(event, &regel.verwijst)?;
+    let id = regel.id.clone().unwrap_or_else(|| {
+        crate::gram::vast_id(&format!(
+            "urn:regelrecht:cel:startstand:{}:{}",
+            stroom.id,
+            tekst.trim()
+        ))
+    });
     let gram = Gram {
         kind: "chronolexogram".into(),
+        id,
         type_: event.type_.clone(),
         soort: event.soort.clone(),
         stage: event.stage.clone(),
@@ -115,11 +117,7 @@ fn bouw(tekst: &str, strommen: &[Stroom]) -> Result<Gram, String> {
         op_moment_grondslag: None,
         // De laadtijd komt bij het plaatsen, zie `geplaatst`.
         vastgelegd_op: String::new(),
-        zaak: event.zaak,
-        zaakkenmerk: regel.zaakkenmerk,
-        besluit: event.besluit,
-        besluitkenmerk: regel.besluitkenmerk,
-        wijzigt: regel.wijzigt,
+        verwijst: regel.verwijst,
         stroom: StroomVerwijzing {
             id: stroom.id.clone(),
             sha256: stroom.sha256.clone(),
@@ -129,6 +127,7 @@ fn bouw(tekst: &str, strommen: &[Stroom]) -> Result<Gram, String> {
         inputs: BTreeMap::new(),
         receipt: None,
         tijden: Default::default(),
+        wortel: None,
     };
     // Valideren kan al: met het op_moment op de plaats van de laadtijd.
     Gram {
@@ -266,45 +265,21 @@ mod tests {
         assert!(fout(r).starts_with("s regel 1: "));
     }
 
+    /// Een regel zonder id krijgt een vast id uit de regel zelf; een regel
+    /// mag een id en verwijzingen noemen, met de namen van het event.
     #[test]
-    fn geen_zaak_geen_zaakkenmerk() {
-        // De startstand verzint geen zaakkenmerk.
-        for g in parse(STARTSTAND, "s", &strommen()).unwrap() {
-            assert_eq!(g.zaakkenmerk, None);
-            assert!(g.als_json().get("zaakkenmerk").is_none());
-            assert!(g.als_json().get("zaak").is_none());
-        }
-        let r = r#"{"stroom": "test_registers", "name": "aanduiding_geschrapt", "op_moment": "2024-01-10T09:00:00+01:00", "herkomst": "startstand", "zaakkenmerk": "00000000-0000-4000-8000-000000000001", "fields": {"aanduiding": "X", "orgaan": "raad"}}"#;
-        assert!(
-            fout(r).contains("heeft geen zaak (zaak: geen)"),
-            "{}",
-            fout(r)
-        );
-    }
-
-    #[test]
-    fn zaakkenmerk_bij_een_event_met_een_zaak() {
-        for zaak in ["opent", "volgt"] {
-            let stroom = STROOM.replace(
-                "  - name: aanduiding_geschrapt\n",
-                &format!("  - name: aanduiding_geschrapt\n    zaak: {zaak}\n"),
-            );
-            let strommen = vec![crate::stroom::parse(&stroom, "stroom").unwrap()];
-            let zonder = r#"{"stroom": "test_registers", "name": "aanduiding_geschrapt", "op_moment": "2024-01-10T09:00:00+01:00", "herkomst": "startstand", "fields": {"aanduiding": "X", "orgaan": "raad"}}"#;
-            let f = parse(zonder, "s", &strommen).unwrap_err().join("; ");
-            assert!(f.contains("het zaakkenmerk ontbreekt"), "{f}");
-            let met = zonder.replace(
-                r#""fields""#,
-                r#""zaakkenmerk": "00000000-0000-4000-8000-000000000001", "fields""#,
-            );
-            let g = parse(&met, "s", &strommen).unwrap().remove(0);
-            assert_eq!(
-                g.zaakkenmerk.as_deref(),
-                Some("00000000-0000-4000-8000-000000000001")
-            );
-            assert_eq!(g.als_json()["zaak"], zaak);
-            let laadtijd = datum::moment("2025-03-12T10:14:03+01:00").unwrap();
-            geplaatst(&[g], &laadtijd).unwrap()[0].valideer().unwrap();
-        }
+    fn id_en_verwijzingen() {
+        let a = parse(STARTSTAND, "s", &strommen()).unwrap();
+        let b = parse(STARTSTAND, "s", &strommen()).unwrap();
+        assert_eq!(a[0].id, b[0].id, "elke lading hetzelfde id");
+        assert_ne!(a[0].id, a[1].id);
+        assert!(a[0].verwijst.is_empty());
+        let r = r#"{"stroom": "test_registers", "name": "aanduiding_geschrapt", "op_moment": "2024-01-10T09:00:00+01:00", "herkomst": "startstand", "verwijst": {"zaak": "00000000-0000-4000-8000-000000000001"}, "fields": {"aanduiding": "X", "orgaan": "raad"}}"#;
+        assert!(fout(r).contains("verwijst niet met 'zaak'"), "{}", fout(r));
+        let r = r#"{"stroom": "test_registers", "name": "aanduiding_geschrapt", "op_moment": "2024-01-10T09:00:00+01:00", "herkomst": "startstand", "id": "00000000-0000-4000-8000-00000000000a", "fields": {"aanduiding": "X", "orgaan": "raad"}}"#;
+        let g = parse(r, "s", &strommen()).unwrap().remove(0);
+        assert_eq!(g.id, "00000000-0000-4000-8000-00000000000a");
+        let laadtijd = datum::moment("2025-03-12T10:14:03+01:00").unwrap();
+        geplaatst(&[g], &laadtijd).unwrap()[0].valideer().unwrap();
     }
 }

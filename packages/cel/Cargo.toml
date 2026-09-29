@@ -30,7 +30,7 @@ hex = "0.4"
 regex.workspace = true
 chrono.workspace = true
 chrono-tz.workspace = true
-uuid = { workspace = true, features = ["v4"] }
+uuid = { workspace = true, features = ["v4", "v5", "v7"] }
 walkdir.workspace = true
 tracing.workspace = true
 tower = { workspace = true, features = ["util"] }

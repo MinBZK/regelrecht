@@ -159,7 +159,8 @@ pub struct Proefhandeling {
 /// noemt.
 #[derive(Debug, Clone, Serialize)]
 pub struct BesluitVerwijzing {
-    pub besluitkenmerk: String,
+    /// Het id van het gram dat het besluit is.
+    pub id: String,
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stage: Option<String>,
@@ -187,16 +188,48 @@ pub enum Weigering {
 }
 
 /// Wat de behandelaar bij een handeling opgeeft: het formulier, zo nodig
-/// het besluit waarop zij handelt (een besluitkenmerk; zonder het laatste,
-/// zie [`doel`]), en bij het nemen of het feit toch gebeurde (zie [`neem`]).
+/// het besluit waarop zij handelt (het id van het besluitgram; zonder het
+/// laatste, zie [`doel`]), en bij het nemen of het feit toch gebeurde (zie
+/// [`neem`]).
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct Opgave {
     #[serde(default)]
     pub formulier: Map<String, Value>,
-    #[serde(default)]
-    pub besluitkenmerk: Option<String>,
+    #[serde(default, alias = "besluitkenmerk")]
+    pub besluit: Option<String>,
     #[serde(default)]
     pub gebeurd: bool,
+}
+
+/// De verwijzingen van een gram van `event` dat een proces vastlegt: een
+/// verwijzing die alleen op een besluit kan wijzen, krijgt het besluit
+/// waarop de handeling handelt (`besluit`); elke andere de wortel van de
+/// groep (zoals de aanvraag). Zonder besluit blijft een besluitverwijzing
+/// weg; is zij verplicht, dan weigert de cel.
+pub fn verwijzingen(
+    cel: &Cel,
+    event: &Event,
+    wortel: &str,
+    besluit: Option<&str>,
+) -> BTreeMap<String, String> {
+    let events: Vec<&Event> = cel.strommen.iter().flat_map(|s| s.events.iter()).collect();
+    event
+        .verwijst
+        .iter()
+        .filter_map(|(naam, v)| {
+            let doelen: Vec<&&Event> = events.iter().filter(|d| v.naar.past_event(d)).collect();
+            let naar_besluit = !doelen.is_empty()
+                && doelen
+                    .iter()
+                    .all(|d| d.stage.as_deref() == Some(crate::stroom::BESLUIT));
+            let id = if naar_besluit {
+                besluit?.to_string()
+            } else {
+                wortel.to_string()
+            };
+            Some((naam.clone(), id))
+        })
+        .collect()
 }
 
 /// Wat een handeling nodig heeft van de runtime: de cel, de bronnen en de

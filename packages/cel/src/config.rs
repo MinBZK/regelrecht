@@ -133,7 +133,7 @@ impl Config {
     }
 }
 
-/// Een celdefinitie (`schema/chronolex/v0.1.0/cel.json`): alleen wat de
+/// Een celdefinitie (`schema/chronolex/v0.2.0/cel.json`): alleen wat de
 /// cel zelf doet. Vastleggen (de stromen), bewaren (de kronieken) en
 /// reduceren (de lexostatussen).
 #[derive(Debug, Clone, Deserialize)]
@@ -146,7 +146,7 @@ pub struct CelDefinitie {
     pub startstand: Option<String>,
 }
 
-/// Een procesdefinitie (`schema/chronolex/v0.1.0/proces.json`): wie er
+/// Een procesdefinitie (`schema/chronolex/v0.2.0/proces.json`): wie er
 /// handelt en hoe. Informeren (synthese, toets, aanbod), concluderen (het
 /// besluit) en een cel laten vastleggen.
 #[derive(Debug, Clone, Deserialize)]
@@ -619,7 +619,7 @@ pub struct FormulierVerwijzing {
 /// Een lexostatus van een cel die het proces samenvoegt (synthese).
 ///
 /// Een bron met `zaak: true` is een lexostatus van de zaak zelf, in de cel
-/// waarin het proces vastlegt: het proces bevraagt haar met het zaakkenmerk,
+/// waarin het proces vastlegt: het proces bevraagt haar met het wortel,
 /// en ze levert al haar parameters en extra velden. Elke andere bron noemt
 /// haar invoer en haar parameters.
 #[derive(Debug, Clone, Deserialize)]
@@ -629,7 +629,7 @@ pub struct SyntheseBron {
     #[serde(default)]
     pub url: Option<String>,
     pub lexostatus: String,
-    /// Een lexostatus van de zaak, met als enige input `zaakkenmerk`.
+    /// Een lexostatus van de zaak, met als enige input `wortel`.
     #[serde(default)]
     pub zaak: bool,
     /// Per input van de bron: uit welk veld van een lexostatus van de zaak

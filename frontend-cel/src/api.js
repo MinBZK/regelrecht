@@ -65,15 +65,15 @@ export function procesApi(id) {
     // {aanvrager, ontvangen_op, external}.
     loketIndienen: (invoer) => vraag('POST', `${p}/loket/aanvraag`, invoer),
     werkvoorraad: () => vraag('GET', `${p}/werkvoorraad`),
-    zaak: (zaakkenmerk) => vraag('GET', `${p}/zaken/${encodeURIComponent(zaakkenmerk)}`),
+    zaak: (wortel) => vraag('GET', `${p}/zaken/${encodeURIComponent(wortel)}`),
     // Een handeling in een zaak (het besluit, een latere stage, een feit uit
     // het verloop): op proef, of genomen en vastgelegd. Een route voor elke
     // handeling; welke er zijn, zegt de zaak.
-    proefhandeling: (zaakkenmerk, naam, formulier) =>
-      vraag('POST', `${handeling(zaakkenmerk, naam)}/proef`, { formulier }),
+    proefhandeling: (wortel, naam, formulier) =>
+      vraag('POST', `${handeling(wortel, naam)}/proef`, { formulier }),
     // Met `gebeurd` meldt de behandelaar een feit dat gebeurde terwijl de
     // proef om de inhoud nee zei.
-    handeling: (zaakkenmerk, naam, formulier, gebeurd = false) =>
-      vraag('POST', handeling(zaakkenmerk, naam), gebeurd ? { formulier, gebeurd } : { formulier }),
+    handeling: (wortel, naam, formulier, gebeurd = false) =>
+      vraag('POST', handeling(wortel, naam), gebeurd ? { formulier, gebeurd } : { formulier }),
   };
 }

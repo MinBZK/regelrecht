@@ -1,13 +1,14 @@
 ---
-# Fictieve teststroom: het verloop van een toeslagzaak. Een zaak heeft hier
-# meer dan een besluit, elk een eigen event met een eigen grondslag en elk
-# met een eigen besluitkenmerk (besluit: opent): het voorschot, de
-# vaststelling en de terugvordering. Een tweede vaststelling in dezelfde
-# zaak weigert de cel; de wijziging van een vaststelling is een eigen besluit
-# met een eigen grondslag (besluit: wijzigt, naar Awb 4:49). De bekendmaking
-# is een event voor elk besluit: het besluitkenmerk zegt welk besluit zij
-# bekendmaakt, en elk besluit wordt een keer bekendgemaakt. De betaling van
-# het voorschot en de terugbetaling volgen het besluit dat zij uitvoeren.
+# Fictieve teststroom: het verloop van een toeslag. Op een aanvraag volgen
+# hier meer besluiten, elk een eigen event met een eigen grondslag, en elk
+# een eigen gram met een eigen id dat op de aanvraag verwijst (op_aanvraag):
+# het voorschot, de vaststelling en de terugvordering. Een tweede
+# vaststelling op dezelfde aanvraag weigert de cel; de wijziging van een
+# vaststelling is een eigen besluit met een eigen grondslag, dat met wijzigt
+# naar dat besluit verwijst (Awb 4:49). De bekendmaking is een event voor elk
+# besluit: zij verwijst met besluit naar het besluit dat zij bekendmaakt, en
+# elk besluit wordt een keer bekendgemaakt. De betaling van het voorschot en
+# de terugbetaling verwijzen naar het besluit dat zij uitvoeren.
 $id: test_toeslag_zaakverloop
 recording_actor: test_toeslagdienst
 chronicle: test_toeslag
@@ -19,8 +20,7 @@ events:
     type: decretogram
     soort: voorschot
     stage: BESLUIT
-    zaak: volgt
-    besluit: opent
+    verwijst: {op_aanvraag: {naar: aanvraag_ontvangen, verplicht: true}}
     op_moment:
       bron: $external.voorschotdatum
       grondslag: [testregeling_toeslag#2 lid 1]
@@ -33,8 +33,7 @@ events:
     type: decretogram
     soort: vaststelling
     stage: BESLUIT
-    zaak: volgt
-    besluit: opent
+    verwijst: {op_aanvraag: {naar: aanvraag_ontvangen, verplicht: true}}
     op_moment:
       bron: $external.vaststellingsdatum
       grondslag: [testregeling_toeslag#3 lid 1]
@@ -48,8 +47,7 @@ events:
     type: decretogram
     soort: vaststelling
     stage: BESLUIT
-    zaak: volgt
-    besluit: wijzigt
+    verwijst: {wijzigt: {naar: {stage: BESLUIT}, verplicht: true}}
     op_moment:
       bron: $external.wijzigingsdatum
       grondslag: [testregeling_toeslag#4 lid 1]
@@ -63,8 +61,7 @@ events:
     type: decretogram
     soort: terugvordering
     stage: BESLUIT
-    zaak: volgt
-    besluit: opent
+    verwijst: {op_aanvraag: {naar: aanvraag_ontvangen, verplicht: true}}
     op_moment:
       bron: $external.terugvorderingsdatum
       grondslag: [testregeling_toeslag#5 lid 1]
@@ -77,8 +74,7 @@ events:
     type: handeling
     soort: bekendmaking
     stage: BEKENDMAKING
-    zaak: volgt
-    besluit: volgt
+    verwijst: {besluit: {naar: {stage: BESLUIT}, verplicht: true}}
     op_moment:
       bron: $external.datum_bekendmaking
       grondslag: [testregeling_awb#2]
@@ -98,8 +94,7 @@ events:
       - testregeling_toeslag#8 lid 1
     type: executogram
     soort: betaling
-    zaak: volgt
-    besluit: volgt
+    verwijst: {besluit: {naar: {stage: BESLUIT}, verplicht: true}}
     op_moment:
       bron: $external.datum_betaling
       grondslag: [testregeling_toeslag#8 lid 2]
@@ -111,8 +106,7 @@ events:
       - testregeling_awb#6 lid 2
     type: executogram
     soort: terugbetaling
-    zaak: volgt
-    besluit: volgt
+    verwijst: {besluit: {naar: {stage: BESLUIT}, verplicht: true}}
     op_moment:
       bron: $external.datum_terugbetaling
       grondslag: [testregeling_awb#6 lid 3]

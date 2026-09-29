@@ -1,5 +1,5 @@
 //! De lexostatus-definities: wat `lexostatussen.yaml` van een cel declareert
-//! (`schema/chronolex/v0.1.0/lexostatus.json`), en wat de controles bij het
+//! (`schema/chronolex/v0.2.0/lexostatus.json`), en wat de controles bij het
 //! opstarten erover vragen. Het uitvoeren staat in [`super`].
 
 use std::collections::BTreeMap;
@@ -11,7 +11,7 @@ use serde_json::Value;
 use crate::laden;
 use crate::schema::Soort;
 
-/// De lexostatus-definities van een cel (`schema/chronolex/v0.1.0/lexostatus.json`).
+/// De lexostatus-definities van een cel (`schema/chronolex/v0.2.0/lexostatus.json`).
 #[derive(Debug, Clone, Deserialize)]
 pub struct Lexostatussen {
     pub cel: String,
@@ -57,19 +57,17 @@ pub struct InputDefinitie {
 pub type Filter = BTreeMap<String, String>;
 
 /// De filtersleutels die een veld van het gram zelf zijn, geen veldpad: elk
-/// veld met een tekst als waarde (zie [`crate::gram::Gram::kenmerk`]). Zo kan
-/// een lexostatus ook per besluit in een zaak filteren (`besluit`,
-/// `besluitkenmerk`, `wijzigt`).
+/// veld met een tekst als waarde (zie [`crate::gram::Gram::kenmerk`]): het
+/// id, de wortel (uit de index van de kroniek) en de vaste velden. Daarnaast
+/// is `verwijst.<naam>` het id waarnaar een gram onder die naam verwijst; zo
+/// filtert een lexostatus per besluit.
 pub const GRAM_SLEUTELS: &[&str] = &[
+    "id",
+    "wortel",
     "name",
     "type",
     "soort",
     "stage",
-    "zaak",
-    "zaakkenmerk",
-    "besluit",
-    "besluitkenmerk",
-    "wijzigt",
     "recording_actor",
     "chronicle",
     "legal_character",
@@ -149,8 +147,10 @@ impl<'de> Deserialize<'de> for Afgeleid {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Groepeer {
-    /// Een regel per zaak. Alleen events met een zaak hebben een zaakkenmerk.
-    Zaakkenmerk,
+    /// Een regel per wortel: de grammen die via hun verwijzingen bij
+    /// hetzelfde gram zonder verwijzing uitkomen (zoals een aanvraag en wat
+    /// erop volgt).
+    Wortel,
 }
 
 /// Welk gram telt als er meer zijn.
@@ -402,7 +402,7 @@ impl LexostatusDefinitie {
 
 /// Of een filtersleutel een veld van het gram zelf is.
 pub fn is_gram_sleutel(sleutel: &str) -> bool {
-    GRAM_SLEUTELS.contains(&sleutel)
+    GRAM_SLEUTELS.contains(&sleutel) || sleutel.starts_with(crate::gram::VERWIJST)
 }
 
 /// De veldpaden onder `fields` waarop een filter selecteert.

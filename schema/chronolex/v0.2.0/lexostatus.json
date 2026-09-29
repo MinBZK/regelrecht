@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.1.0/lexostatus.json",
-  "title": "Celconfiguratie met lexostatus-definities v0.1.0",
+  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.2.0/lexostatus.json",
+  "title": "Celconfiguratie met lexostatus-definities v0.2.0",
   "description": "De lexostatussen die een cel aanbiedt en hoe elk uit de eigen kroniek wordt gereduceerd (RFC-022 par. 4.1, daar voorlopig). reduction kiest met filter en kies zo nodig een gram en leidt met afleidingen de parameters van een artikel af: een afleiding op het gekozen gram (veld, jaar_van, periode_van, gevuld, gelijk, tabel, moment), of een afleiding over de grammen die door haar eigen filter komen (bestaat, som, kies met veld, jaar_van, periode_van of bevat). Met groepeer: zaakkenmerk (en zo nodig zonder) is de lexostatus een lijst met een regel per zaak. extra_velden levert waarden die geen parameter zijn en niet naar de engine gaan.",
   "type": "object",
   "required": [
@@ -142,13 +142,13 @@
         },
         "groepeer": {
           "enum": [
-            "zaakkenmerk"
+            "wortel"
           ],
-          "description": "Maakt van de lexostatus een lijst: een regel per zaak. Een zaak telt als ten minste een van haar grammen door filter komt; kies en de afleidingen werken dan per zaak, over haar grammen. Alleen voor events met een zaak (zaak: opent of volgt). Een lijst is voor de afnemer en gaat nooit naar de engine; de afleidingen zijn dan kolommen, geen parameters."
+          "description": "Maakt van de lexostatus een lijst: een regel per wortel (het gram zonder verwijzing waar de andere via verwijst naar toe leiden, zoals de aanvraag). Een wortel telt als ten minste een van haar grammen door filter komt; kies en de afleidingen werken dan per wortel, over haar grammen. Een lijst is voor de afnemer en gaat nooit naar de engine; de afleidingen zijn dan kolommen, geen parameters."
         },
         "zonder": {
           "$ref": "#/definitions/filter",
-          "description": "Alleen met groepeer: een zaak blijft alleen in de lijst als geen van haar grammen door dit filter komt, bijvoorbeeld zonder gram van stage BESLUIT."
+          "description": "Alleen met groepeer: een wortel blijft alleen in de lijst als geen van haar grammen door dit filter komt, bijvoorbeeld zonder gram van stage BESLUIT."
         },
         "kies": {
           "enum": [
@@ -706,7 +706,7 @@
     },
     "filter": {
       "type": "object",
-      "description": "Gelijkheid op het gram. De sleutels name, type, soort, stage, zaak, zaakkenmerk, besluit, besluitkenmerk, wijzigt, recording_actor, chronicle, legal_character, decision_type, regulation en competent_authority zijn velden van het gram zelf; elke andere sleutel is een veldpad onder fields. Met besluit en besluitkenmerk filtert een lexostatus per besluit in een zaak. Een waarde $<input> komt uit de inputs van de lexostatus. De vaste waarden van name, type en soort wijzen het event of de events aan.",
+      "description": "Gelijkheid op het gram. De sleutels id, wortel, name, type, soort, stage, recording_actor, chronicle, legal_character, decision_type, regulation en competent_authority zijn velden van het gram zelf (wortel uit de index van de cel), en verwijst.<naam> is het id waarnaar het gram onder die naam verwijst; elke andere sleutel is een veldpad onder fields. Een waarde $<input> komt uit de inputs van de lexostatus. De vaste waarden van name, type en soort wijzen het event of de events aan.",
       "propertyNames": {
         "$ref": "#/definitions/veldpad"
       },

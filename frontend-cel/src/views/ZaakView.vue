@@ -15,7 +15,7 @@ import Handelingen from '../components/Handelingen.vue';
 import { waardeTekst } from '../tekst.js';
 import { besluitKop, indeling } from '../zaak.js';
 
-const props = defineProps({ zaakkenmerk: { type: String, required: true } });
+const props = defineProps({ wortel: { type: String, required: true } });
 const emit = defineEmits(['terug']);
 const api = inject('api');
 
@@ -37,7 +37,7 @@ const versie = ref(0);
 
 async function laad() {
   try {
-    zaak.value = await api.zaak(props.zaakkenmerk);
+    zaak.value = await api.zaak(props.wortel);
   } catch (e) {
     fout.value = e.message;
   }
@@ -66,7 +66,7 @@ async function vastgelegd() {
   <nldd-button variant="neutral-transparent" start-icon="arrow-left" text="Werkvoorraad" @click="emit('terug')"></nldd-button>
   <nldd-spacer size="8"></nldd-spacer>
   <nldd-title size="2">
-    <h1>Zaak {{ zaakkenmerk }}</h1>
+    <h1>Aanvraag {{ wortel }} en wat erop volgt</h1>
     <span slot="subtitle" v-if="zaak">{{ delen.besluiten.length }} besluit(en) in de zaak</span>
   </nldd-title>
   <nldd-spacer size="16"></nldd-spacer>
@@ -75,7 +75,7 @@ async function vastgelegd() {
     <nldd-spacer size="16"></nldd-spacer>
   </template>
   <template v-if="zaak">
-    <template v-for="b in delen.besluiten" :key="b.besluitkenmerk">
+    <template v-for="b in delen.besluiten" :key="b.id">
       <nldd-title size="3">
         <h2>Besluit {{ b.nummer }}: {{ b.label }}</h2>
         <span slot="subtitle">{{ besluitKop(b) }} ({{ b.artikel }})</span>
@@ -152,7 +152,7 @@ async function vastgelegd() {
     <template v-if="handeling">
       <nldd-spacer size="24"></nldd-spacer>
       <div ref="handelingEl"></div>
-      <Handeling :key="`${handeling.naam}-${versie}`" :zaakkenmerk="zaakkenmerk" :handeling="handeling" @vastgelegd="vastgelegd" />
+      <Handeling :key="`${handeling.naam}-${versie}`" :wortel="wortel" :handeling="handeling" @vastgelegd="vastgelegd" />
     </template>
 
     <nldd-spacer size="24"></nldd-spacer>

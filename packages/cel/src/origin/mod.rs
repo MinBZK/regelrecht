@@ -64,7 +64,7 @@ use levering::{leverancier, vooraf_bekend, Leveranciers, Uitslag};
 pub use vorm::{overschrijvingen, parameter, valideer, Overschrijvingen};
 
 /// Het type van een gram dat een belanghebbende indient (RFC-022 par. 1,
-/// `schema/chronolex/v0.1.0/stream.json`): wat de aanvrager aanlevert.
+/// `schema/chronolex/v0.2.0/stream.json`): wat de aanvrager aanlevert.
 const INDIENING: &str = "indiening";
 
 /// De herkomst die voor een parameter geldt, en waar ze staat.

@@ -17,10 +17,10 @@ use crate::cel::Cel;
 use crate::celclient::Vastlegverzoek;
 use crate::datum;
 use crate::gram::Gram;
-use crate::kroniek::{Kroniek, Vastgelegd};
+use crate::kroniek::{Kroniek, Vastgelegd, Zicht};
 use crate::lexostatus_engine;
 use crate::reductie::{self, Lexostatus, Peil, Reductieroute};
-use crate::stroom::{self, Besluit, Indiening, Zaak};
+use crate::stroom::{self, Besluit, Indiening};
 use crate::transport::{LeesToken, RuntimeToken, LEES_TOKEN_HEADER, RUNTIME_TOKEN_HEADER};
 
 /// De toestand van een cel in de runtime.
@@ -53,7 +53,7 @@ pub fn cel_router(state: CelState) -> Router {
         ));
     let lezen = Router::new()
         .route("/api/kroniek", get(kroniek_route))
-        .route("/api/zaken/{zaakkenmerk}", get(zaak_van_cel_route))
+        .route("/api/zaken/{wortel}", get(zaak_van_cel_route))
         .route("/api/lexostatus/{naam}", get(lexostatus_route))
         .route_layer(middleware::from_fn_with_state(state.clone(), alleen_lezers));
     Router::new()
@@ -123,41 +123,10 @@ async fn alleen_lezers(
     Ok(verder.run(verzoek).await)
 }
 
-/// Het zaakkenmerk van een gram. `zaak: opent` geeft een nieuw kenmerk;
-/// `volgt` neemt dat uit het verzoek (of de kroniek die zaak kent, toetst
-/// [`toets_zaak`]); `geen` geeft er geen.
-fn zaakkenmerk_voor(
-    event: &stroom::Event,
-    meegegeven: Option<String>,
-) -> Result<Option<String>, Fout> {
-    match event.zaak {
-        Zaak::Opent if meegegeven.is_some() => Err(fout(
-            StatusCode::BAD_REQUEST,
-            format!(
-                "event '{}' opent een zaak: de cel geeft het zaakkenmerk, het concept niet",
-                event.name
-            ),
-        )),
-        Zaak::Opent => Ok(Some(uuid::Uuid::new_v4().to_string())),
-        Zaak::Volgt => {
-            let Some(z) = meegegeven else {
-                return Err(fout(
-                    StatusCode::BAD_REQUEST,
-                    format!(
-                        "event '{}' volgt een zaak: geef het zaakkenmerk mee",
-                        event.name
-                    ),
-                ));
-            };
-            Ok(Some(z))
-        }
-        Zaak::Geen => Ok(meegegeven),
-    }
-}
-
 /// Bouw een gram uit een verzoek, zonder het vast te leggen. De actor moet de
-/// `recording_actor` van de stroom zijn. Het gram valideert pas na
-/// [`toets_zaak`]: het kenmerk van een nieuw besluit komt onder het slot.
+/// `recording_actor` van de stroom zijn. Of de verwijzingen bestaan en
+/// passen, toetst [`toets_verwijzingen`] onder het slot; het id geeft de cel
+/// daar ook.
 fn bouw(state: &CelState, v: &Vastlegverzoek) -> Result<Gram, Fout> {
     let (stroom, event) = state.cel.event(&v.stroom, &v.event).ok_or_else(|| {
         fout(
@@ -179,7 +148,6 @@ fn bouw(state: &CelState, v: &Vastlegverzoek) -> Result<Gram, Fout> {
             ),
         ));
     }
-    let zaakkenmerk = zaakkenmerk_voor(event, v.zaakkenmerk.clone())?;
     let mut gram = stroom::bouw_gram(
         stroom,
         event,
@@ -187,8 +155,7 @@ fn bouw(state: &CelState, v: &Vastlegverzoek) -> Result<Gram, Fout> {
             intake: &v.intake,
             external: &v.external,
             vastgelegd_op: (state.klok)(),
-            zaakkenmerk: zaakkenmerk.as_deref(),
-            besluitkenmerk: v.besluitkenmerk.as_deref(),
+            verwijst: &v.verwijst,
         },
     )
     .map_err(|e| fout(StatusCode::BAD_REQUEST, e))?;
@@ -234,88 +201,108 @@ pub fn als_yaml(cel: &Cel, gram: &Gram) -> Result<String, String> {
     serde_yaml_ng::to_string(&doc).map_err(|e| niet(e.to_string()))
 }
 
-/// Of een gram past in de zaak die het draagt, gegeven de grammen die in
-/// de kronieken van de cel al in die zaak liggen (`zaak`, uit de index per
-/// zaak). De cel dwingt de vorm af, nooit de inhoud: wat een
-/// handeling waard is, concludeert het proces voor het handelt. Welke feiten
-/// vastlegbaar zijn, laat de paper open (P:110, een vraag voor verder
-/// onderzoek: eisen aan de vorm zonder de inhoud te beperken); deze grens is
-/// een eigen keuze (RFC-044 par. 1 en 4).
+/// Of een gram past bij de grammen waarnaar het verwijst, gegeven wat de
+/// cel onder haar slot ziet (`zicht`: de doelen en de groep van de wortel).
+/// De cel dwingt de vorm af, nooit de inhoud: wat een handeling waard is,
+/// concludeert het proces voor het handelt. Welke feiten vastlegbaar zijn,
+/// laat de paper open (P:110); deze grens is een eigen keuze (RFC-044 par. 1
+/// en 4), per verwijzing in plaats van per zaak.
 ///
-/// - Een gram dat een zaak volgt, volgt een zaak die de kroniek kent, en ligt
-///   rechtens niet voor die zaak (zie [`niet_voor_de_zaak`]).
-/// - Een zaak kan meer besluiten hebben; elk besluit doorloopt elke stage een
-///   keer. De stage-grammen van een besluit delen zijn besluitkenmerk (RFC-022
-///   par. 1.2: de stages van een besluit, elk een eigen elementair gram). Een
-///   gram dat een besluit opent of wijzigt, krijgt hier het volgende
-///   kenmerk; een gram dat een besluit volgt of wijzigt, noemt een besluit
-///   in de zaak. Een tweede besluit van hetzelfde event in dezelfde zaak is
-///   een ander besluit over dezelfde aanvraag, en dat vraagt een eigen
-///   grondslag: een event met `besluit: wijzigt`. Een stage die bij geen
-///   besluit hoort (zoals de aanvraag), ligt een keer in de zaak.
-/// - Zegt het verzoek hoeveel grammen de zaak had toen het proces haar las
-///   (`zaak_grammen`), dan legt de cel alleen vast als dat nog zo is. Wat het
-///   proces uitrekende (zoals wat er nog te betalen is), gold voor de zaak
-///   zoals die toen was; twee gelijktijdige betalingen komen zo niet allebei
-///   door.
-fn toets_zaak(gram: &mut Gram, zaak: &[&Gram], verwacht: Option<usize>) -> Result<(), Fout> {
-    let Some(z) = gram.zaakkenmerk.clone() else {
-        return Ok(());
-    };
-    if gram.zaak == Zaak::Volgt && zaak.is_empty() {
-        return Err(fout(
-            StatusCode::BAD_REQUEST,
-            format!("geen zaak '{z}' in de kroniek"),
-        ));
+/// - Elk gram waarnaar verwezen wordt, ligt in de kronieken van de cel, past
+///   bij wat de verwijzing mag aanwijzen (`naar`: een artikel dat het
+///   vestigt, een event of een stage), en alle doelen hebben dezelfde wortel.
+/// - Het gram ligt rechtens niet voor een gram waarnaar het verwijst: de dag
+///   van zijn `op_moment` ligt niet voor die van het doel (zwakker dan de
+///   oude regel "niet voor het laatste feit in de zaak": een betaling op het
+///   voorschot mag later vastgelegd worden dan de vaststelling).
+/// - Een besluit (stage BESLUIT, geen wijziging) van hetzelfde event dat
+///   naar hetzelfde gram verwijst, ligt er ten hoogste een keer: een ander
+///   besluit over dezelfde aanvraag vraagt een eigen grondslag (`wijzigt`).
+///   Een ander gram met een stage (zoals de bekendmaking) ligt ten hoogste
+///   een keer per stage en per doel: een besluit wordt een keer bekendgemaakt.
+/// - Zegt het verzoek hoeveel grammen de groep had toen het proces haar las
+///   (`wortel_grammen`), dan legt de cel alleen vast als dat nog zo is.
+fn toets_verwijzingen(
+    cel: &Cel,
+    gram: &Gram,
+    zicht: &Zicht<'_>,
+    verwacht: Option<usize>,
+) -> Result<(), Fout> {
+    if let Some(f) = &zicht.wortelfout {
+        return Err(fout(StatusCode::BAD_REQUEST, f.clone()));
     }
-    niet_voor_de_zaak(gram, zaak)?;
-    if let Some(n) = verwacht {
-        if zaak.len() != n {
+    let event = cel.event(&gram.stroom.id, &gram.name).map(|(_, e)| e);
+    for (naam, id) in &gram.verwijst {
+        let Some(doel) = zicht.doelen.get(id) else {
             return Err(fout(
-                StatusCode::CONFLICT,
-                format!(
-                    "zaak {z} veranderde sinds het proces haar las ({n} grammen, nu {}); reken de handeling opnieuw uit",
-                    zaak.len()
-                ),
+                StatusCode::BAD_REQUEST,
+                format!("geen gram '{id}' in de kroniek ({naam})"),
             ));
-        }
-    }
-    toets_besluit(gram, &z, zaak)?;
-    let Some(stage) = gram.stage.clone() else {
-        return Ok(());
-    };
-    // Een nieuw besluit heeft nog geen stage; een gram dat een besluit volgt,
-    // deelt de stage met de grammen van dat besluit, een ander met de zaak.
-    if gram.besluit.is_some_and(Besluit::is_besluit) {
-        // Een kroniek van voor het besluitkenmerk: een besluit van hetzelfde
-        // event zonder kenmerk telt als besluit van de zaak.
-        if let Some(eerder) = zaak.iter().find(|g| {
-            g.besluitkenmerk.is_none()
-                && g.stage.as_deref() == Some(stage.as_str())
-                && g.name == gram.name
-        }) {
-            return Err(fout(
-                StatusCode::CONFLICT,
-                format!(
-                    "in zaak {z} ligt al een besluit '{}' zonder besluitkenmerk (een oudere kroniek); een ander besluit hierover vraagt een event met besluit: wijzigt",
-                    eerder.name
-                ),
-            ));
-        }
-        return Ok(());
-    }
-    let scope = gram.besluitkenmerk.as_deref();
-    if let Some(eerder) = zaak.iter().find(|g| {
-        g.stage.as_deref() == Some(stage.as_str()) && g.besluitkenmerk.as_deref() == scope
-    }) {
-        let waar = match scope {
-            Some(b) => format!("besluit {b}"),
-            None => format!("zaak {z}"),
         };
+        if let Some(v) = event.and_then(|e| e.verwijst.get(naam)) {
+            let doel_event = cel.event(&doel.stroom.id, &doel.name).map(|(_, e)| e);
+            if !v.naar.past(doel, doel_event) {
+                return Err(fout(
+                    StatusCode::BAD_REQUEST,
+                    format!(
+                        "'{naam}' wijst naar {}, maar gram {id} is '{}'",
+                        v.naar, doel.name
+                    ),
+                ));
+            }
+        }
+        niet_voor(gram, doel)?;
+    }
+    if let Some(n) = verwacht {
+        if zicht.groep.len() != n {
+            return Err(fout(
+                StatusCode::CONFLICT,
+                format!(
+                    "de groep van wortel {} veranderde sinds het proces haar las ({n} grammen, nu {}); reken de handeling opnieuw uit",
+                    gram.wortel.as_deref().unwrap_or("-"),
+                    zicht.groep.len()
+                ),
+            ));
+        }
+    }
+    let Some(stage) = gram.stage.as_deref() else {
+        return Ok(());
+    };
+    let rol = event.and_then(|e| e.besluit);
+    let doelen: Vec<&String> = gram.verwijst.values().collect();
+    let deelt = |g: &Gram| g.verwijst.values().any(|d| doelen.contains(&d));
+    if rol.is_some_and(Besluit::is_besluit) {
+        if rol == Some(Besluit::Opent) {
+            if let Some(eerder) = zicht
+                .groep
+                .iter()
+                .find(|g| g.name == gram.name && g.stroom.id == gram.stroom.id && deelt(g))
+            {
+                return Err(fout(
+                    StatusCode::CONFLICT,
+                    format!(
+                        "er ligt al een besluit '{}' ({}) dat naar hetzelfde gram verwijst; een ander besluit hierover vraagt een eigen grondslag, een event met een verwijzing wijzigt",
+                        eerder.name, eerder.id
+                    ),
+                ));
+            }
+        }
+        return Ok(());
+    }
+    if let Some(eerder) = zicht
+        .groep
+        .iter()
+        .find(|g| g.stage.as_deref() == Some(stage) && deelt(g))
+    {
+        let doel = eerder
+            .verwijst
+            .values()
+            .find(|d| doelen.contains(d))
+            .map_or("-", String::as_str);
         return Err(fout(
             StatusCode::CONFLICT,
             format!(
-                "in {waar} ligt al een gram met stage {stage} ('{}'); een besluit doorloopt elke stage één keer (RFC-022 par. 1.2)",
+                "bij gram {doel} ligt al een gram met stage {stage} ('{}'); een besluit doorloopt elke stage één keer (RFC-022 par. 1.2)",
                 eerder.name
             ),
         ));
@@ -323,105 +310,25 @@ fn toets_zaak(gram: &mut Gram, zaak: &[&Gram], verwacht: Option<usize>) -> Resul
     Ok(())
 }
 
-/// Het besluit van een gram in zijn zaak. Een gram dat een besluit opent of
-/// wijzigt, krijgt het volgende kenmerk (`<zaakkenmerk>/<volgnummer>`); het
-/// volgnummer telt de besluiten in de zaak, zodat het kenmerk zegt het
-/// hoeveelste besluit het is. Een gram dat een besluit volgt of wijzigt,
-/// noemt een besluit dat in de zaak ligt.
-fn toets_besluit(gram: &mut Gram, z: &str, zaak: &[&Gram]) -> Result<(), Fout> {
-    let Some(rol) = gram.besluit else {
-        return Ok(());
-    };
-    let besluiten: Vec<&&Gram> = zaak
-        .iter()
-        .filter(|g| g.besluit.is_some_and(Besluit::is_besluit))
-        .collect();
-    let bestaat = |k: &str| {
-        besluiten
-            .iter()
-            .any(|g| g.besluitkenmerk.as_deref() == Some(k))
-    };
-    let genoemd = match rol {
-        Besluit::Volgt => gram.besluitkenmerk.as_deref(),
-        Besluit::Wijzigt => gram.wijzigt.as_deref(),
-        Besluit::Opent => None,
-    };
-    if let Some(k) = genoemd {
-        if !bestaat(k) {
-            return Err(fout(
-                StatusCode::BAD_REQUEST,
-                format!("geen besluit '{k}' in zaak {z}"),
-            ));
-        }
-    }
-    if rol == Besluit::Opent {
-        if let Some(eerder) = besluiten
-            .iter()
-            .find(|g| g.name == gram.name && g.stroom.id == gram.stroom.id)
-        {
-            return Err(fout(
-                StatusCode::CONFLICT,
-                format!(
-                    "in zaak {z} ligt al een besluit '{}' ({}); een ander besluit over dezelfde aanvraag vraagt een eigen grondslag, een event met besluit: wijzigt",
-                    eerder.name,
-                    eerder.besluitkenmerk.as_deref().unwrap_or("-")
-                ),
-            ));
-        }
-    }
-    if rol.is_besluit() {
-        // Het hoogste volgnummer plus een: een startstand mag nummers
-        // overslaan, en een kenmerk is uniek in de zaak. Een besluit zonder
-        // kenmerk (een oudere kroniek) telt niet; een kenmerk dat niet
-        // `<zaakkenmerk>/<volgnummer>` is, is een fout in de kroniek.
-        let mut hoogste = 0_u64;
-        for k in besluiten.iter().filter_map(|g| g.besluitkenmerk.as_deref()) {
-            let n = k
-                .strip_prefix(z)
-                .and_then(|r| r.strip_prefix('/'))
-                .and_then(|n| n.parse::<u64>().ok())
-                .ok_or_else(|| {
-                    intern(format!(
-                        "besluitkenmerk '{k}' in zaak {z} is niet <zaakkenmerk>/<volgnummer>"
-                    ))
-                })?;
-            hoogste = hoogste.max(n);
-        }
-        gram.besluitkenmerk = Some(format!("{z}/{}", hoogste + 1));
-    }
-    Ok(())
-}
-
-/// Een gram dat een zaak volgt, ligt rechtens niet voor de zaak: de dag van
-/// zijn `op_moment` ligt niet voor die van het laatste `op_moment` in de zaak.
-/// Een zaak loopt vooruit in de tijd: een besluit van voor de aanvraag, of
-/// een bekendmaking van voor het besluit, is geen feit van deze zaak. Het
-/// gaat om de dag, omdat een gebonden moment vaak een datum is (het begin
-/// van die dag) en het feit ervoor op dezelfde dag later kan zijn
-/// vastgelegd. Een ongebonden `op_moment` is het moment van vastleggen en
-/// ligt daarom nooit voor de zaak.
-fn niet_voor_de_zaak(gram: &Gram, zaak: &[&Gram]) -> Result<(), Fout> {
-    if gram.zaak != Zaak::Volgt {
-        return Ok(());
-    }
+/// Een gram ligt rechtens niet voor een gram waarnaar het verwijst: de dag
+/// van zijn `op_moment` ligt niet voor die van het doel. Het gaat om de dag,
+/// omdat een gebonden moment vaak een datum is (het begin van die dag) en
+/// het doel op dezelfde dag later kan zijn vastgelegd. Een ongebonden
+/// `op_moment` is het moment van vastleggen en ligt daarom nooit ervoor.
+fn niet_voor(gram: &Gram, doel: &Gram) -> Result<(), Fout> {
     let dag =
         datum::peildatum_van(&gram.op_moment).map_err(|e| fout(StatusCode::BAD_REQUEST, e))?;
-    let mut laatste: Option<(String, &str)> = None;
-    for g in zaak {
-        let d = datum::peildatum_van(&g.op_moment).map_err(intern)?;
-        if laatste.as_ref().is_none_or(|(l, _)| d > *l) {
-            laatste = Some((d, g.name.as_str()));
-        }
-    }
-    match laatste {
-        Some((l, naam)) if dag < l => Err(fout(
+    let d = datum::peildatum_van(&doel.op_moment).map_err(intern)?;
+    if dag < d {
+        return Err(fout(
             StatusCode::CONFLICT,
             format!(
-                "op_moment {dag} ligt voor de zaak: het laatste feit erin ('{naam}') geldt op {l}; een zaak loopt vooruit in de tijd"
+                "op_moment {dag} ligt voor het gram waarnaar het verwijst ('{}', {d}); wat volgt, loopt vooruit in de tijd",
+                doel.name
             ),
-        )),
-        _ => Ok(()),
+        ));
     }
+    Ok(())
 }
 
 /// Leg een gram vast. Antwoord: het gram, met YAML. Het stempelen
@@ -435,15 +342,15 @@ async fn grammen_route(
 ) -> Result<(StatusCode, Json<Value>), Fout> {
     let gram = bouw(&state, &verzoek)?;
     let (kroniek, cel, klok) = (state.kroniek.clone(), state.cel.clone(), state.klok.clone());
-    let verwacht = verzoek.zaak_grammen;
+    let verwacht = verzoek.wortel_grammen;
     let gram = tokio::task::spawn_blocking(move || {
         kroniek.leg_vast_mits(
             gram,
             &cel.kronieken(),
             || klok(),
             |f| fout(StatusCode::BAD_REQUEST, f),
-            |g, zaak| {
-                toets_zaak(g, zaak, verwacht)?;
+            |g, zicht| {
+                toets_verwijzingen(&cel, g, zicht, verwacht)?;
                 valideer(&cel, g)
             },
         )
@@ -451,7 +358,7 @@ async fn grammen_route(
     .await
     .map_err(|e| intern(format!("het vastleggen brak af: {e}")))?
     .map_err(intern)??;
-    tracing::info!(cel = %state.cel.id(), zaakkenmerk = gram.gram.zaakkenmerk.as_deref().unwrap_or("-"), name = %gram.gram.name, "gram vastgelegd");
+    tracing::info!(cel = %state.cel.id(), id = %gram.gram.id, wortel = gram.gram.wortel.as_deref().unwrap_or("-"), name = %gram.gram.name, "gram vastgelegd");
     // De YAML komt in het vastgelegde gram, zodat een latere lezing haar niet
     // opnieuw maakt.
     let yaml = gram.yaml(|g| als_yaml(&state.cel, g)).map_err(intern)?;
@@ -471,7 +378,7 @@ struct Proefverzoek {
 }
 
 /// Een proefreductie: het gram van het concept in het geheugen, de kroniek
-/// mét dat gram gereduceerd. Zonder input `zaakkenmerk` telt dat van het
+/// mét dat gram gereduceerd. Zonder input `wortel` telt die van het
 /// concept. Een concept is geen feit: niets wordt vastgelegd. Het concept
 /// telt als vastgelegd op de klok van nu; met een peil geldt voor het concept
 /// hetzelfde als voor elk ander gram.
@@ -482,24 +389,17 @@ async fn proef_route(
 ) -> Result<Json<Value>, Fout> {
     let def = lexostatus_def(&state, &naam)?;
     let mut gram = bouw(&state, &verzoek.concept)?;
-    if let Some(z) = gram.zaakkenmerk.clone() {
-        let zaak = state
-            .kroniek
-            .lees_zaak(&state.cel.kronieken(), &z)
-            .map_err(intern)?;
-        toets_zaak(
-            &mut gram,
-            &zaak.iter().map(|v| &v.gram).collect::<Vec<_>>(),
-            None,
-        )?;
-    }
+    let zicht = state
+        .kroniek
+        .zicht_voor(&state.cel.kronieken(), &mut gram)
+        .map_err(intern)?;
+    toets_verwijzingen(&state.cel, &gram, &zicht.zicht(), None)?;
     valideer(&state.cel, &gram)?;
     let mut inputs = verzoek.inputs;
     let peil = Peil::uit_query(&mut inputs).map_err(|e| fout(StatusCode::BAD_REQUEST, e))?;
-    if let Some(z) = &gram.zaakkenmerk {
-        if def.inputs.iter().any(|i| i.name == "zaakkenmerk") && !inputs.contains_key("zaakkenmerk")
-        {
-            inputs.insert("zaakkenmerk".into(), Value::String(z.clone()));
+    if let Some(w) = &gram.wortel {
+        if def.inputs.iter().any(|i| i.name == WORTEL) && !inputs.contains_key(WORTEL) {
+            inputs.insert(WORTEL.into(), Value::String(w.clone()));
         }
     }
     inputs_compleet(def, &inputs)?;
@@ -526,9 +426,12 @@ fn lexostatus_def<'s>(
         .ok_or_else(|| fout(StatusCode::NOT_FOUND, format!("geen lexostatus '{naam}'")))
 }
 
+/// De naam van de input en de filtersleutel van de wortel.
+pub const WORTEL: &str = "wortel";
+
 /// De grammen die een reductie leest: de kroniek van de definitie, en als
-/// haar filter op het zaakkenmerk van een input filtert (en zij geen lijst
-/// is), alleen de grammen van die zaak, uit de index per zaak. Het filter
+/// haar filter op de wortel van een input filtert (en zij geen lijst is),
+/// alleen de grammen van die wortel, uit de index per wortel. Het filter
 /// zelf past de reductie daarna toe; dit scheelt alleen het lezen van de
 /// rest van de kroniek.
 fn grammen_voor(
@@ -537,16 +440,16 @@ fn grammen_voor(
     inputs: &Map<String, Value>,
 ) -> Result<Vec<Arc<Vastgelegd>>, Fout> {
     let r = &def.reduction;
-    let zaak = r
+    let wortel = r
         .filter
-        .get("zaakkenmerk")
+        .get(WORTEL)
         .filter(|_| r.groepeer.is_none())
         .and_then(|v| match v.strip_prefix('$') {
             Some(input) => inputs.get(input).and_then(Value::as_str),
             None => Some(v.as_str()),
         });
-    match zaak {
-        Some(z) => state.kroniek.lees_zaak(&[r.kroniek.as_str()], z),
+    match wortel {
+        Some(w) => state.kroniek.lees_wortel(&[r.kroniek.as_str()], w),
         None => state.kroniek.lees(&r.kroniek),
     }
     .map_err(intern)
@@ -584,21 +487,20 @@ async fn kroniek_route(State(state): State<CelState>) -> Result<Json<Value>, Fou
     Ok(Json(met_yaml(&state, &grammen)?))
 }
 
-/// De grammen van één zaak, over alle kronieken van de cel. Het filteren op
-/// de zaak gebeurt hier, in de cel; een proces krijgt alleen de zaak die het
-/// vraagt.
+/// De grammen met één wortel, over alle kronieken van de cel. Het filteren
+/// gebeurt hier, in de cel; een proces krijgt alleen de groep die het vraagt.
 async fn zaak_van_cel_route(
     State(state): State<CelState>,
-    Path(zaakkenmerk): Path<String>,
+    Path(wortel): Path<String>,
 ) -> Result<Json<Value>, Fout> {
     let grammen = state
         .kroniek
-        .lees_zaak(&state.cel.kronieken(), &zaakkenmerk)
+        .lees_wortel(&state.cel.kronieken(), &wortel)
         .map_err(intern)?;
     if grammen.is_empty() {
         return Err(fout(
             StatusCode::NOT_FOUND,
-            format!("geen zaak '{zaakkenmerk}' in de kroniek"),
+            format!("geen wortel '{wortel}' in de kroniek"),
         ));
     }
     Ok(Json(met_yaml(&state, &grammen)?))
@@ -691,11 +593,11 @@ fn reduceer<'g>(
     .ok_or_else(|| fout(StatusCode::NOT_FOUND, "geen gram voor deze vraag"))
 }
 
-/// De stand van een zaak (zie [`reductie::Zaakstand`]): de cel filtert de
-/// grammen van de zaak en leidt af wat een proces erover vraagt. Input
-/// `zaakkenmerk`; met `eigenaar_pad` (een `$intake`-pad zonder `$intake.`)
-/// en `eigenaar` ook of iemand met die waarde de zaak kent. 404 als de cel
-/// de zaak niet kent.
+/// De stand van de groep rond een wortel (zie [`reductie::Zaakstand`]): de
+/// cel filtert de grammen van de wortel en leidt af wat een proces erover
+/// vraagt. Input `wortel`; met `eigenaar_pad` (een `$intake`-pad zonder
+/// `$intake.`) en `eigenaar` ook of iemand met die waarde de groep kent. 404
+/// als de cel de wortel niet kent.
 fn zaakstand(
     state: &CelState,
     inputs: &Map<String, Value>,
@@ -707,8 +609,8 @@ fn zaakstand(
             .and_then(Value::as_str)
             .filter(|t| !t.is_empty())
     };
-    let z = tekst("zaakkenmerk")
-        .ok_or_else(|| fout(StatusCode::BAD_REQUEST, "input 'zaakkenmerk' ontbreekt"))?;
+    let z =
+        tekst(WORTEL).ok_or_else(|| fout(StatusCode::BAD_REQUEST, "input 'wortel' ontbreekt"))?;
     let eigenaar = match (tekst(reductie::EIGENAAR_PAD), tekst(reductie::EIGENAAR)) {
         (Some(p), Some(w)) => Some((p, w)),
         (None, None) => None,
@@ -721,7 +623,7 @@ fn zaakstand(
     };
     let grammen = state
         .kroniek
-        .lees_zaak(&state.cel.kronieken(), z)
+        .lees_wortel(&state.cel.kronieken(), z)
         .map_err(intern)?;
     let cel = &state.cel;
     let bindt = |g: &Gram, pad: &str| -> Vec<String> {
@@ -740,7 +642,7 @@ fn zaakstand(
         .ok_or_else(|| {
             fout(
                 StatusCode::NOT_FOUND,
-                format!("geen zaak '{z}' in de kroniek"),
+                format!("geen wortel '{z}' in de kroniek"),
             )
         })?
         .als_lexostatus(z, peil)
@@ -787,7 +689,7 @@ pub fn cel_beschrijving(state: &CelState) -> Value {
         // De stand van een zaak biedt de runtime aan, niet de configuratie.
         lexostatussen.push(json!({
             "name": reductie::ZAAKSTAND,
-            "inputs": [{"name": "zaakkenmerk", "type": "string"}],
+            "inputs": [{"name": WORTEL, "type": "string"}],
             "lijst": false,
             "parameters": [],
             "kolommen": [],
@@ -833,209 +735,150 @@ fn reductie_van(cel: &Cel, naam: &str) -> Value {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use crate::gram::testgram;
+    use crate::gram::{testgram, testvolger};
 
     const Z: &str = "00000000-0000-4000-8000-000000000001";
+    const DAG: &str = "2025-03-12T10:00:00+01:00";
 
-    /// Een gram in zaak [`Z`]: event `naam`, met een stage, een rol tegenover
-    /// een besluit, het kenmerk van dat besluit, en een `op_moment`.
-    fn gram(
-        naam: &str,
-        stage: Option<&str>,
-        besluit: Option<Besluit>,
-        kenmerk: Option<&str>,
-        op_moment: &str,
-    ) -> Gram {
-        let mut g = testgram(Z);
+    /// Een cel met de fictieve afnemer: aanvraag, verloop, besluit,
+    /// bekendmaking en betaling.
+    fn cel() -> Cel {
+        let map = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+        let service = Arc::new(
+            crate::regelingen::laad(&map.join("regulation"))
+                .unwrap()
+                .service,
+        );
+        Cel::laad(&map.join("cellen/afnemer"), service).unwrap()
+    }
+
+    fn als(naam: &str, stroom: &str, g: &mut Gram) {
         g.name = naam.into();
-        g.stage = stage.map(str::to_string);
-        g.zaak = Zaak::Volgt;
-        g.besluit = besluit;
-        g.besluitkenmerk = kenmerk.map(str::to_string);
-        g.op_moment = op_moment.into();
-        g
+        g.stroom.id = stroom.into();
     }
 
     fn aanvraag() -> Gram {
-        let mut g = gram(
-            "aanvraag",
-            Some("AANVRAAG"),
-            None,
-            None,
-            "2025-03-01T10:00:00+01:00",
-        );
-        g.zaak = Zaak::Opent;
+        let mut g = testgram(Z);
+        als("aanvraag_ontvangen", "test_afnemer_aanvragen", &mut g);
+        g.stage = Some("AANVRAAG".into());
+        g.op_moment = "2025-03-01T10:00:00+01:00".into();
         g
     }
 
-    const DAG: &str = "2025-03-12T10:00:00+01:00";
+    fn volger(naam: &str, verwijzing: &str, doel: &Gram, stage: Option<&str>) -> Gram {
+        let mut g = testvolger(verwijzing, doel);
+        als(naam, "test_afnemer_zaakverloop", &mut g);
+        g.stage = stage.map(str::to_string);
+        g.op_moment = DAG.into();
+        g
+    }
 
-    fn toets(g: &mut Gram, zaak: &[&Gram], verwacht: Option<usize>) -> Result<(), (u16, String)> {
-        toets_zaak(g, zaak, verwacht).map_err(|Fout(s, t)| (s.as_u16(), t))
+    fn toets(
+        c: &Cel,
+        g: &Gram,
+        doelen: &[&Gram],
+        groep: &[&Gram],
+        verwacht: Option<usize>,
+    ) -> Result<(), (u16, String)> {
+        let zicht = Zicht {
+            doelen: doelen.iter().map(|d| (d.id.clone(), *d)).collect(),
+            groep: groep.to_vec(),
+            wortelfout: None,
+        };
+        toets_verwijzingen(c, g, &zicht, verwacht).map_err(|Fout(s, t)| (s.as_u16(), t))
     }
 
     #[test]
-    fn een_gram_dat_een_zaak_volgt_vraagt_de_zaak() {
-        let mut b = gram("besluit", Some("BESLUIT"), Some(Besluit::Opent), None, DAG);
-        let (status, f) = toets(&mut b, &[], None).unwrap_err();
-        assert_eq!(status, 400);
-        assert!(f.contains("geen zaak"), "{f}");
-    }
-
-    /// De optimistische toets: legt het proces vast op een zaak met meer (of
-    /// minder) grammen dan het las, dan weigert de cel (409), en er komt geen
-    /// besluitkenmerk.
-    #[test]
-    fn een_zaak_die_veranderde_sinds_het_lezen_weigert() {
+    fn een_verwijzing_naar_een_onbekend_gram_weigert() {
+        let c = cel();
         let a = aanvraag();
-        let mut b = gram("besluit", Some("BESLUIT"), Some(Besluit::Opent), None, DAG);
-        let (status, f) = toets(&mut b, &[&a], Some(2)).unwrap_err();
+        let b = volger("besluit_genomen", "op_aanvraag", &a, Some("BESLUIT"));
+        let (status, f) = toets(&c, &b, &[], &[&a], None).unwrap_err();
+        assert_eq!(status, 400);
+        assert!(f.contains("geen gram"), "{f}");
+    }
+
+    /// Een betaling die naar de aanvraag verwijst in plaats van naar het
+    /// besluit, weigert de cel: `besluit` wijst naar een gram met stage
+    /// BESLUIT.
+    #[test]
+    fn een_verwijzing_naar_het_verkeerde_gram_weigert() {
+        let c = cel();
+        let a = aanvraag();
+        let betaling = volger("betaling_verricht", "besluit", &a, None);
+        let (status, f) = toets(&c, &betaling, &[&a], &[&a], None).unwrap_err();
+        assert_eq!(status, 400);
+        assert!(f.contains("stage BESLUIT"), "{f}");
+        let b = volger("besluit_genomen", "op_aanvraag", &a, Some("BESLUIT"));
+        let betaling = volger("betaling_verricht", "besluit", &b, None);
+        toets(&c, &betaling, &[&b], &[&a, &b], None).unwrap();
+    }
+
+    /// De optimistische toets: legt het proces vast op een groep met meer
+    /// (of minder) grammen dan het las, dan weigert de cel (409).
+    #[test]
+    fn een_groep_die_veranderde_sinds_het_lezen_weigert() {
+        let c = cel();
+        let a = aanvraag();
+        let b = volger("besluit_genomen", "op_aanvraag", &a, Some("BESLUIT"));
+        let (status, f) = toets(&c, &b, &[&a], &[&a], Some(2)).unwrap_err();
         assert_eq!(status, 409);
         assert!(f.contains("veranderde sinds het proces haar las"), "{f}");
-        assert_eq!(b.besluitkenmerk, None);
-        toets(&mut b, &[&a], Some(1)).unwrap();
-        assert_eq!(b.besluitkenmerk.as_deref(), Some(&*format!("{Z}/1")));
+        toets(&c, &b, &[&a], &[&a], Some(1)).unwrap();
     }
 
     #[test]
-    fn een_gram_ligt_niet_voor_de_zaak() {
+    fn een_gram_ligt_niet_voor_het_gram_waarnaar_het_verwijst() {
+        let c = cel();
         let a = aanvraag();
-        let mut b = gram(
-            "besluit",
-            Some("BESLUIT"),
-            Some(Besluit::Opent),
-            None,
-            "2025-02-28T10:00:00+01:00",
-        );
-        let (status, f) = toets(&mut b, &[&a], None).unwrap_err();
+        let mut b = volger("besluit_genomen", "op_aanvraag", &a, Some("BESLUIT"));
+        b.op_moment = "2025-02-28T10:00:00+01:00".into();
+        let (status, f) = toets(&c, &b, &[&a], &[&a], None).unwrap_err();
         assert_eq!(status, 409);
-        assert!(f.contains("ligt voor de zaak"), "{f}");
+        assert!(
+            f.contains("ligt voor het gram waarnaar het verwijst"),
+            "{f}"
+        );
     }
 
-    /// Het besluitkenmerk: een nieuw besluit krijgt het hoogste volgnummer
-    /// plus een, een tweede besluit van hetzelfde event weigert de cel, een
-    /// wijziging krijgt een eigen kenmerk en noemt het besluit dat zij
-    /// wijzigt, en een gram dat een besluit volgt noemt een besluit dat er
-    /// ligt.
+    /// Een tweede besluit van hetzelfde event op dezelfde aanvraag weigert de
+    /// cel; een besluit wordt een keer bekendgemaakt, een ander besluit heeft
+    /// zijn eigen bekendmaking.
     #[test]
-    fn het_besluitkenmerk_van_een_besluit_in_de_zaak() {
+    fn een_besluit_en_een_stage_een_keer_per_doel() {
+        let c = cel();
         let a = aanvraag();
-        let k1 = format!("{Z}/1");
-        let k3 = format!("{Z}/3");
-        let b1 = gram(
-            "besluit",
-            Some("BESLUIT"),
-            Some(Besluit::Opent),
-            Some(&k1),
-            DAG,
-        );
-        let mut w = gram(
-            "wijziging",
-            Some("BESLUIT"),
-            Some(Besluit::Wijzigt),
-            None,
-            DAG,
-        );
-        w.besluitkenmerk = Some(k3.clone());
-        // Een startstand mag nummers overslaan: na /1 en /3 komt /4.
-        let mut ander = gram(
-            "voorschot",
-            Some("BESLUIT"),
-            Some(Besluit::Opent),
-            None,
-            DAG,
-        );
-        toets(&mut ander, &[&a, &b1, &w], None).unwrap();
-        assert_eq!(ander.besluitkenmerk, Some(format!("{Z}/4")));
-
-        let mut nog_een = gram("besluit", Some("BESLUIT"), Some(Besluit::Opent), None, DAG);
-        let (status, f) = toets(&mut nog_een, &[&a, &b1], None).unwrap_err();
+        let b1 = volger("besluit_genomen", "op_aanvraag", &a, Some("BESLUIT"));
+        let nog_een = volger("besluit_genomen", "op_aanvraag", &a, Some("BESLUIT"));
+        let (status, f) = toets(&c, &nog_een, &[&a], &[&a, &b1], None).unwrap_err();
         assert_eq!(status, 409);
-        assert!(f.contains("ligt al een besluit 'besluit'"), "{f}");
-
-        let mut wijziging = gram(
-            "wijziging",
-            Some("BESLUIT"),
-            Some(Besluit::Wijzigt),
-            None,
-            DAG,
+        assert!(
+            f.contains("er ligt al een besluit 'besluit_genomen'"),
+            "{f}"
         );
-        wijziging.wijzigt = Some(k1.clone());
-        toets(&mut wijziging, &[&a, &b1], None).unwrap();
-        assert_eq!(wijziging.besluitkenmerk, Some(format!("{Z}/2")));
-        let mut los = gram(
-            "wijziging",
-            Some("BESLUIT"),
-            Some(Besluit::Wijzigt),
-            None,
-            DAG,
-        );
-        los.wijzigt = Some(format!("{Z}/9"));
-        assert_eq!(toets(&mut los, &[&a, &b1], None).unwrap_err().0, 400);
-
-        let mut volgt = gram(
-            "bekendmaking",
+        let bm1 = volger(
+            "besluit_bekendgemaakt",
+            "besluit",
+            &b1,
             Some("BEKENDMAKING"),
-            Some(Besluit::Volgt),
-            Some(&format!("{Z}/9")),
-            DAG,
         );
-        let (status, f) = toets(&mut volgt, &[&a, &b1], None).unwrap_err();
-        assert_eq!(status, 400);
-        assert!(f.contains("geen besluit"), "{f}");
-    }
-
-    /// Elk besluit doorloopt elke stage een keer; een ander besluit in de
-    /// zaak heeft zijn eigen stages. Een stage die bij geen besluit hoort,
-    /// ligt een keer in de zaak.
-    #[test]
-    fn een_stage_een_keer_per_besluit() {
-        let a = aanvraag();
-        let (k1, k2) = (format!("{Z}/1"), format!("{Z}/2"));
-        let b1 = gram(
+        let bm2 = volger(
+            "besluit_bekendgemaakt",
             "besluit",
-            Some("BESLUIT"),
-            Some(Besluit::Opent),
-            Some(&k1),
-            DAG,
+            &b1,
+            Some("BEKENDMAKING"),
         );
-        let b2 = gram(
-            "voorschot",
-            Some("BESLUIT"),
-            Some(Besluit::Opent),
-            Some(&k2),
-            DAG,
+        let (status, f) = toets(&c, &bm2, &[&b1], &[&a, &b1, &bm1], None).unwrap_err();
+        assert_eq!(status, 409);
+        assert!(f.contains(&format!("bij gram {}", b1.id)), "{f}");
+        let mut b2 = volger("besluit_genomen", "op_aanvraag", &a, Some("BESLUIT"));
+        b2.id = uuid::Uuid::now_v7().to_string();
+        let bm = volger(
+            "besluit_bekendgemaakt",
+            "besluit",
+            &b2,
+            Some("BEKENDMAKING"),
         );
-        let bm = |k: &str| {
-            gram(
-                "bekendmaking",
-                Some("BEKENDMAKING"),
-                Some(Besluit::Volgt),
-                Some(k),
-                DAG,
-            )
-        };
-        let eerste = bm(&k1);
-        let (status, f) = toets(&mut bm(&k1), &[&a, &b1, &b2, &eerste], None).unwrap_err();
-        assert_eq!(status, 409);
-        assert!(f.contains(&format!("in besluit {k1}")), "{f}");
-        toets(&mut bm(&k2), &[&a, &b1, &b2, &eerste], None).unwrap();
-        let mut tweede_aanvraag = aanvraag();
-        tweede_aanvraag.zaak = Zaak::Volgt;
-        let (status, f) = toets(&mut tweede_aanvraag, &[&a], None).unwrap_err();
-        assert_eq!(status, 409);
-        assert!(f.contains(&format!("in zaak {Z}")), "{f}");
-    }
-
-    /// Een kroniek van voor het besluitkenmerk: een besluit van hetzelfde
-    /// event zonder kenmerk telt als besluit van de zaak.
-    #[test]
-    fn een_oud_besluit_zonder_kenmerk_telt_mee() {
-        let a = aanvraag();
-        let oud = gram("besluit", Some("BESLUIT"), None, None, DAG);
-        let mut nieuw = gram("besluit", Some("BESLUIT"), Some(Besluit::Opent), None, DAG);
-        let (status, f) = toets(&mut nieuw, &[&a, &oud], None).unwrap_err();
-        assert_eq!(status, 409);
-        assert!(f.contains("zonder besluitkenmerk"), "{f}");
+        toets(&c, &bm, &[&b2], &[&a, &b1, &bm1, &b2], None).unwrap();
     }
 }

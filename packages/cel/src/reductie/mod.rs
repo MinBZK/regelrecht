@@ -16,9 +16,10 @@
 //! wordt niets aangevuld, tenzij de definitie met `geen_gram` zegt hoe zij
 //! afwezigheid leest (bijvoorbeeld null: niet gebeurd).
 //!
-//! Met `groepeer: zaakkenmerk` is een lexostatus een **lijst**: een regel per
-//! zaak waarvan ten minste een gram door `filter` komt, en met `zonder` geen
-//! gram door dat filter. `kies` en de afleidingen werken dan per zaak. Een
+//! Met `groepeer: wortel` is een lexostatus een **lijst**: een regel per
+//! wortel (een aanvraag en wat erop volgt) waarvan ten minste een gram door
+//! `filter` komt, en met `zonder` geen gram door dat filter. `kies` en de
+//! afleidingen werken dan per wortel. Een
 //! lijst is voor de afnemer, zoals een behandelaar met een werkvoorraad; ze
 //! heeft geen parameters en gaat nooit naar de engine.
 //!
@@ -330,9 +331,9 @@ fn rijen<'g>(gram: &'g Gram, tabel: &str) -> Result<Vec<&'g Map<String, Value>>,
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Lexostatus {
     pub naam: String,
-    /// Het gekozen gram, als de definitie er een kiest.
+    /// De wortel van het gekozen gram, als de definitie er een kiest.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub zaakkenmerk: Option<String>,
+    pub wortel: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub op_moment: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -390,7 +391,7 @@ impl Lexostatus {
     pub fn leeg(naam: impl Into<String>) -> Self {
         Self {
             naam: naam.into(),
-            zaakkenmerk: None,
+            wortel: None,
             op_moment: None,
             vastgelegd_op: None,
             peilmoment: None,
@@ -413,11 +414,11 @@ impl Lexostatus {
     }
 }
 
-/// Een regel van een lijst-lexostatus: een zaak.
+/// Een regel van een lijst-lexostatus: een wortel.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Regel {
-    pub zaakkenmerk: String,
-    /// Het gekozen gram van de zaak, als de definitie er een kiest.
+    pub wortel: String,
+    /// Het gekozen gram van de wortel, als de definitie er een kiest.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub op_moment: Option<String>,
     /// De afleidingen en extra velden, per zaak. Geen parameters.
@@ -585,7 +586,7 @@ pub fn reduceer_op<'g>(
         return Ok(None);
     };
     Ok(Some(gepeild(Lexostatus {
-        zaakkenmerk: a.gekozen.and_then(|g| g.zaakkenmerk.clone()),
+        wortel: a.gekozen.and_then(|g| g.wortel.clone()),
         op_moment: a.gekozen.map(|g| g.op_moment.clone()),
         vastgelegd_op: a.gekozen.map(|g| g.vastgelegd_op.clone()),
         parameters: a.parameters,
@@ -595,10 +596,10 @@ pub fn reduceer_op<'g>(
     })))
 }
 
-/// Een lijst-lexostatus: groepeer per zaakkenmerk, houd de zaken met een gram
-/// door `filter` en zonder gram door `zonder`, en leid per zaak af. De regels
-/// staan op het moment van het gekozen gram (zonder `kies`: het eerste gram
-/// van de zaak), de oudste eerst.
+/// Een lijst-lexostatus: groepeer per wortel, houd de wortels met een gram
+/// door `filter` en zonder gram door `zonder`, en leid per wortel af. De
+/// regels staan op het moment van het gekozen gram (zonder `kies`: het eerste
+/// gram van de wortel), de oudste eerst.
 fn reduceer_lijst<'g>(
     definitie: &LexostatusDefinitie,
     inputs: &Map<String, Value>,
@@ -607,8 +608,8 @@ fn reduceer_lijst<'g>(
     let r = &definitie.reduction;
     let mut zaken: BTreeMap<&str, Vec<&Gram>> = BTreeMap::new();
     for g in grammen {
-        // Een gram zonder zaak hoort in geen regel.
-        if let Some(z) = g.zaakkenmerk.as_deref() {
+        // Een gram zonder bekende wortel hoort in geen regel.
+        if let Some(z) = g.wortel.as_deref() {
             zaken.entry(z).or_default().push(g);
         }
     }
@@ -641,14 +642,14 @@ fn reduceer_lijst<'g>(
         regels.push((
             moment,
             Regel {
-                zaakkenmerk: zaak.to_string(),
+                wortel: zaak.to_string(),
                 op_moment: a.gekozen.map(|g| g.op_moment.clone()),
                 velden,
                 niet_afgeleid: a.niet_afgeleid,
             },
         ));
     }
-    regels.sort_by(|(a, ra), (b, rb)| a.cmp(b).then_with(|| ra.zaakkenmerk.cmp(&rb.zaakkenmerk)));
+    regels.sort_by(|(a, ra), (b, rb)| a.cmp(b).then_with(|| ra.wortel.cmp(&rb.wortel)));
     Ok(Lexostatus {
         lijst: Some(regels.into_iter().map(|(_, r)| r).collect()),
         ..Lexostatus::leeg(&definitie.name)
@@ -656,11 +657,11 @@ fn reduceer_lijst<'g>(
 }
 
 /// Reduceer een enkel gram, zoals een concept dat nog geen feit is. Heeft
-/// het gram een zaakkenmerk, dan is dat de input `zaakkenmerk`.
+/// het gram een wortel, dan is dat de input `wortel`.
 pub fn leid_af(definitie: &LexostatusDefinitie, gram: &Gram) -> Result<Lexostatus, String> {
     let mut inputs = Map::new();
-    if let Some(z) = &gram.zaakkenmerk {
-        inputs.insert("zaakkenmerk".into(), Value::String(z.clone()));
+    if let Some(z) = &gram.wortel {
+        inputs.insert("wortel".into(), Value::String(z.clone()));
     }
     reduceer(definitie, &inputs, std::slice::from_ref(gram))?
         .ok_or_else(|| "de reductie vond het gram niet".to_string())
@@ -671,7 +672,6 @@ pub fn leid_af(definitie: &LexostatusDefinitie, gram: &Gram) -> Result<Lexostatu
 mod tests {
     use super::*;
     use crate::gram::StroomVerwijzing;
-    use crate::stroom::Zaak;
     use serde_json::json;
 
     const CEL: &str = include_str!("../../tests/fixtures/cellen/instantie/lexostatussen.yaml");
@@ -679,6 +679,7 @@ mod tests {
     fn gram(zaak: &str, moment: &str, fields: Value) -> Gram {
         Gram {
             kind: "chronolexogram".into(),
+            id: uuid::Uuid::now_v7().to_string(),
             type_: "indiening".into(),
             soort: Some("aanvraag".into()),
             stage: None,
@@ -695,11 +696,7 @@ mod tests {
             op_moment: moment.into(),
             op_moment_grondslag: None,
             vastgelegd_op: moment.into(),
-            zaak: Zaak::Opent,
-            zaakkenmerk: Some(zaak.into()),
-            besluit: None,
-            besluitkenmerk: None,
-            wijzigt: None,
+            verwijst: BTreeMap::new(),
             stroom: StroomVerwijzing {
                 id: "test_aanvragen".into(),
                 sha256: "0".repeat(64),
@@ -709,6 +706,7 @@ mod tests {
             inputs: BTreeMap::new(),
             receipt: None,
             tijden: Default::default(),
+            wortel: Some(zaak.into()),
         }
     }
 
@@ -989,7 +987,7 @@ mod tests {
                 json!({"inhoud": {}}),
             ),
         ];
-        let inputs = json!({"zaakkenmerk": ZAAK});
+        let inputs = json!({"wortel": ZAAK});
         let l = reduceer(def, inputs.as_object().unwrap(), &grammen)
             .unwrap()
             .unwrap();
@@ -1023,7 +1021,7 @@ mod tests {
     #[test]
     fn reductie_zonder_passend_gram() {
         let c = parse(CEL, "fixture").unwrap();
-        let inputs = json!({"zaakkenmerk": ZAAK});
+        let inputs = json!({"wortel": ZAAK});
         let l = reduceer(
             &c.lexostatus_definitions[0],
             inputs.as_object().unwrap(),
@@ -1038,42 +1036,34 @@ mod tests {
         let c = parse(CEL, "fixture").unwrap();
         let g = gram(ZAAK, "2025-03-01T09:00:00+01:00", json!({}));
         let fout = reduceer(&c.lexostatus_definitions[0], &Map::new(), &[g]).unwrap_err();
-        assert!(fout.contains("zaakkenmerk"), "{fout}");
+        assert!(fout.contains("wortel"), "{fout}");
     }
 
     #[test]
-    fn filter_op_zaakkenmerk_laat_een_gram_zonder_zaak_niet_door() {
+    fn filter_op_de_wortel_laat_een_gram_zonder_wortel_niet_door() {
         let mut filter = Filter::new();
-        filter.insert("zaakkenmerk".into(), "$zaakkenmerk".into());
-        let inputs = json!({"zaakkenmerk": ZAAK});
+        filter.insert("wortel".into(), "$wortel".into());
+        let inputs = json!({"wortel": ZAAK});
         let inputs = inputs.as_object().unwrap();
         let mut g = gram(ZAAK, "2025-03-01T09:00:00+01:00", json!({}));
         assert!(past(&filter, inputs, &g).unwrap());
-        g.zaak = Zaak::Geen;
-        g.zaakkenmerk = None;
+        g.wortel = None;
         assert!(!past(&filter, inputs, &g).unwrap());
     }
 
-    /// Een filter kan per besluit in de zaak selecteren: op het besluit
-    /// (opent, volgt, wijzigt) en op het besluitkenmerk, ook uit een input.
+    /// Een filter kan per besluit selecteren: op de verwijzing naar dat besluit.
     #[test]
-    fn filter_op_besluit_en_besluitkenmerk() {
+    fn filter_op_een_verwijzing() {
         let mut filter = Filter::new();
-        filter.insert("besluit".into(), "volgt".into());
-        filter.insert("besluitkenmerk".into(), "$besluitkenmerk".into());
-        let k1 = format!("{ZAAK}/1");
-        let inputs = json!({"besluitkenmerk": k1});
+        filter.insert("verwijst.besluit".into(), "$besluit".into());
+        let inputs = json!({"besluit": "b1"});
         let inputs = inputs.as_object().unwrap();
         let mut g = gram(ZAAK, "2025-03-01T09:00:00+01:00", json!({}));
-        assert!(!past(&filter, inputs, &g).unwrap(), "zonder besluit");
-        g.besluit = Some(crate::stroom::Besluit::Volgt);
-        g.besluitkenmerk = Some(k1.clone());
+        assert!(!past(&filter, inputs, &g).unwrap(), "zonder verwijzing");
+        g.verwijst.insert("besluit".into(), "b1".into());
         assert!(past(&filter, inputs, &g).unwrap());
-        g.besluitkenmerk = Some(format!("{ZAAK}/2"));
+        g.verwijst.insert("besluit".into(), "b2".into());
         assert!(!past(&filter, inputs, &g).unwrap(), "een ander besluit");
-        g.besluitkenmerk = Some(k1);
-        g.besluit = Some(crate::stroom::Besluit::Opent);
-        assert!(!past(&filter, inputs, &g).unwrap(), "het besluit zelf");
     }
 
     /// Een veld dat een lexostatus als datum leest, moet bij het vastleggen
@@ -1110,8 +1100,7 @@ mod tests {
 
     fn besluit(name: &str, moment: &str, fields: Value) -> Gram {
         let mut g = gram(ZAAK, moment, fields);
-        g.zaak = Zaak::Geen;
-        g.zaakkenmerk = None;
+        g.wortel = None;
         g.type_ = "decretogram".into();
         g.soort = None;
         g.name = name.into();
@@ -1232,7 +1221,7 @@ mod tests {
     #[test]
     fn filter_per_afleiding_bestaat_som_en_laatste() {
         let r = registerstand("VOORBEELD");
-        assert_eq!(r.zaakkenmerk, None, "zonder kies wordt geen gram gekozen");
+        assert_eq!(r.wortel, None, "zonder kies wordt geen gram gekozen");
         assert_eq!(r.parameters["is_ingeschreven_in_register"], json!(true));
         assert_eq!(r.parameters["is_geschrapt"], json!(false));
         let l = registerstatus("VOORBEELD");
@@ -1354,7 +1343,7 @@ mod tests {
 
     // --- Lijst-lexostatus: groepeer en zonder ---
 
-    const WERKVOORRAAD: &str = "cel: c\nlexostatus_definitions:\n  - name: werkvoorraad\n    inputs: []\n    reduction:\n      kroniek: test_kroniek\n      filter: {type: indiening, soort: aanvraag}\n      groepeer: zaakkenmerk\n      zonder: {stage: BESLUIT}\n      kies: laatste\n      afleidingen:\n        ontvangen_op: {moment: op_moment}\n        naam: {veld: inhoud.naam}\n";
+    const WERKVOORRAAD: &str = "cel: c\nlexostatus_definitions:\n  - name: werkvoorraad\n    inputs: []\n    reduction:\n      kroniek: test_kroniek\n      filter: {type: indiening, soort: aanvraag}\n      groepeer: wortel\n      zonder: {stage: BESLUIT}\n      kies: laatste\n      afleidingen:\n        ontvangen_op: {moment: op_moment}\n        naam: {veld: inhoud.naam}\n";
 
     fn stage(zaak: &str, moment: &str, stage: &str) -> Gram {
         let mut g = gram(zaak, moment, json!({}));
@@ -1362,7 +1351,6 @@ mod tests {
         g.soort = None;
         g.stage = Some(stage.into());
         g.name = "besluit".into();
-        g.zaak = Zaak::Volgt;
         g
     }
 
@@ -1381,8 +1369,7 @@ mod tests {
             "2025-01-01T09:00:00+01:00",
             json!({"inhoud": {"naam": "Geen"}}),
         );
-        zonder_zaak.zaak = Zaak::Geen;
-        zonder_zaak.zaakkenmerk = None;
+        zonder_zaak.wortel = None;
         let grammen = vec![
             // Zaak b is later ingediend maar komt eerst op kenmerk; de lijst
             // staat op moment.
@@ -1414,7 +1401,7 @@ mod tests {
         let l = reduceer(def, &Map::new(), &grammen).unwrap().unwrap();
         assert!(l.parameters.is_empty());
         let lijst = l.lijst.unwrap();
-        let zaken: Vec<&str> = lijst.iter().map(|r| r.zaakkenmerk.as_str()).collect();
+        let zaken: Vec<&str> = lijst.iter().map(|r| r.wortel.as_str()).collect();
         assert_eq!(zaken, [a, b]);
         assert_eq!(lijst[0].velden["naam"], json!("A herstel"));
         assert_eq!(lijst[0].velden["ontvangen_op"], json!("2025-03-02"));
@@ -1430,7 +1417,7 @@ mod tests {
 
     #[test]
     fn zonder_vraagt_groepeer() {
-        let tekst = WERKVOORRAAD.replace("      groepeer: zaakkenmerk\n", "");
+        let tekst = WERKVOORRAAD.replace("      groepeer: wortel\n", "");
         let fout = parse(&tekst, "w").unwrap_err();
         assert!(fout.iter().any(|f| f.contains("groepeer")), "{fout:?}");
     }

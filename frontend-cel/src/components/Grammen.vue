@@ -1,7 +1,7 @@
 <script setup>
-// Grammen als tabel, met de ruwe YAML eronder. Alleen een gram van een event
-// met een zaak heeft een zaakkenmerk, en alleen een gram dat een besluit in
-// de zaak opent, volgt of wijzigt een besluitkenmerk. Elk gram heeft twee
+// Grammen als tabel, met de ruwe YAML eronder. Elk gram heeft een eigen id,
+// en verwijst met een naam uit de wet naar het gram waar het bij hoort (een
+// besluit op_aanvraag, een betaling naar het besluit). Elk gram heeft twee
 // tijden: op_moment, wanneer het feit rechtens geldt (bij een aanvraag van
 // het loket de dag van ontvangst), en vastgelegd_op, wanneer de cel het
 // vastlegde.
@@ -13,8 +13,12 @@ const props = defineProps({
   leegTekst: { type: String, default: undefined },
 });
 
-// Een gram heeft geen eigen id; deze velden wijzen het aan.
-const sleutel = (g) => [g.chronicle, g.name, g.op_moment, g.zaakkenmerk ?? ''].join('|');
+// Het id van de cel wijst het gram aan.
+const sleutel = (g) => g.id;
+const verwijzingen = (g) =>
+  Object.entries(g.verwijst ?? {})
+    .map(([naam, id]) => `${naam}: ${id}`)
+    .join(', ') || undefined;
 const isNieuw = (g) => props.nieuw !== null && sleutel(g) === sleutel(props.nieuw);
 </script>
 
@@ -31,7 +35,7 @@ const isNieuw = (g) => props.nieuw !== null && sleutel(g) === sleutel(props.nieu
       <nldd-text-cell text="Kroniek"></nldd-text-cell>
       <nldd-text-cell text="Event"></nldd-text-cell>
       <nldd-text-cell text="Type"></nldd-text-cell>
-      <nldd-text-cell text="Zaakkenmerk"></nldd-text-cell>
+      <nldd-text-cell text="Id en verwijzingen"></nldd-text-cell>
       <nldd-text-cell text="Herkomst"></nldd-text-cell>
     </nldd-table-row>
     <nldd-table-row v-for="(i, n) in items" :key="n + sleutel(i.gram)" :selected="isNieuw(i.gram) || undefined">
@@ -41,15 +45,15 @@ const isNieuw = (g) => props.nieuw !== null && sleutel(g) === sleutel(props.nieu
       <nldd-text-cell :text="i.gram.name"></nldd-text-cell>
       <nldd-text-cell :text="[i.gram.type, i.gram.soort, i.gram.stage].filter(Boolean).join(' / ')"></nldd-text-cell>
       <nldd-text-cell
-        :text="i.gram.zaakkenmerk ?? 'geen zaak'"
-        :supporting-text="i.gram.besluitkenmerk ? `besluit ${i.gram.besluitkenmerk.split('/').pop()} (${i.gram.besluit})` : undefined"
+        :text="i.gram.id"
+        :supporting-text="verwijzingen(i.gram)"
       ></nldd-text-cell>
       <nldd-text-cell :text="i.gram.herkomst ?? 'vastgesteld'"></nldd-text-cell>
     </nldd-table-row>
   </nldd-table>
   <template v-for="(i, n) in items" :key="'yaml-' + n + sleutel(i.gram)">
     <nldd-spacer size="24"></nldd-spacer>
-    <nldd-title size="5"><h2>{{ i.gram.name }}{{ i.gram.zaakkenmerk ? `, zaak ${i.gram.zaakkenmerk}` : `, ${i.gram.op_moment}` }}</h2></nldd-title>
+    <nldd-title size="5"><h2>{{ i.gram.name }}, {{ i.gram.id }}</h2></nldd-title>
     <nldd-spacer size="8"></nldd-spacer>
     <nldd-code-viewer language="yaml" wrap>{{ i.yaml }}</nldd-code-viewer>
   </template>

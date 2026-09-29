@@ -7,10 +7,10 @@
 cel: test_toeslag
 lexostatus_definitions:
   - name: aanvraag
-    inputs: [{name: zaakkenmerk, type: string}]
+    inputs: [{name: wortel, type: string}]
     reduction:
       kroniek: test_toeslag
-      filter: {type: indiening, soort: aanvraag, zaakkenmerk: $zaakkenmerk}
+      filter: {type: indiening, soort: aanvraag, wortel: $wortel}
       kies: laatste
       afleidingen:
         maand: {periode_van: inhoud.maand}
@@ -20,17 +20,17 @@ lexostatus_definitions:
     reduction:
       kroniek: test_toeslag
       filter: {type: indiening, soort: aanvraag}
-      groepeer: zaakkenmerk
+      groepeer: wortel
       kies: laatste
       afleidingen:
         ontvangen_op: {moment: op_moment}
         aanvrager: {veld: kern.aanvrager.naam}
         maand: {periode_van: inhoud.maand, periode: maand}
   - name: besluiten
-    inputs: [{name: zaakkenmerk, type: string}]
+    inputs: [{name: wortel, type: string}]
     reduction:
       kroniek: test_toeslag
-      filter: {zaakkenmerk: $zaakkenmerk}
+      filter: {wortel: $wortel}
       afleidingen:
         voorschot:
           {filter: {soort: voorschot}, kies: laatste, veld: voorschot, grondslag: [testregeling_toeslag#8 lid 1]}

@@ -10,7 +10,6 @@ events:
     intake: besluit
     grondslag: [testregeling_afnemer#3]
     type: decretogram
-    zaak: geen
     fields:
       gebied: $external.gebied
       peildatum: $external.peildatum

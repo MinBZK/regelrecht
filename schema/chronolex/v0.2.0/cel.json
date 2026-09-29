@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.1.0/cel.json",
-  "title": "Celdefinitie (cel.yaml) v0.1.0",
+  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.2.0/cel.json",
+  "title": "Celdefinitie (cel.yaml) v0.2.0",
   "description": "Een cel is een map met configuratie; cel.yaml zegt wie de cel is, welke stromen ze vastlegt, welke lexostatussen ze aanbiedt en met welke grammen een lege kroniek begint (startstand). Een cel legt vast, bewaart en reduceert; wie er handelt, staat in een proces (proces.json). Paden zijn relatief aan de map van cel.yaml.",
   "type": "object",
   "required": [
@@ -44,7 +44,7 @@
     "startstand": {
       "type": "string",
       "minLength": 1,
-      "description": "Een JSONL-bestand met grammen die de cel bij het starten in een lege kroniek zet. Elke regel heeft stroom, name, op_moment, herkomst: startstand en fields, en een zaakkenmerk als het event een zaak heeft (zaak: opent of volgt), en alleen dan; de rest volgt uit de stroom."
+      "description": "Een JSONL-bestand met grammen die de cel bij het starten in een lege kroniek zet. Elke regel heeft stroom, name, op_moment, herkomst: startstand en fields, en zo nodig id en verwijst (een verwijzing naar een ander gram van de startstand); de rest volgt uit de stroom. Zonder id geeft de cel er een."
     }
   },
   "definitions": {

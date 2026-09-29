@@ -44,9 +44,9 @@ pub struct Event {
     pub intake: String,
     /// De artikelen die dit event vestigen (`produces.extensions.chronolex`
     /// in de wet, zie [`crate::wet`]). Dan komen `type`, `soort`, `stage`,
-    /// `zaak`, `besluit`, `grondslag` en de grondslag van `op_moment` uit de
-    /// wet; de runtime vult ze in bij het laden van de cel, voordat iets
-    /// anders het event leest.
+    /// `verwijst`, `grondslag` en de grondslag van `op_moment` uit de wet; de
+    /// runtime vult ze in bij het laden van de cel, voordat iets anders het
+    /// event leest.
     #[serde(default)]
     pub vestigt: Vec<String>,
     #[serde(default)]
@@ -58,14 +58,19 @@ pub struct Event {
     /// Bij een stage-decretogram: de stage van het besluit (RFC-008).
     #[serde(default)]
     pub stage: Option<String>,
-    /// Of het gram een zaak opent, een bestaande zaak volgt, of geen zaak
-    /// heeft. Bepaalt of het gram een `zaakkenmerk` draagt.
+    /// Naar welke grammen een gram van dit event verwijst, per naam uit de
+    /// wettekst, en wat elk mag aanwijzen (zie [`Verwijzing`]).
     #[serde(default)]
+    pub verwijst: BTreeMap<String, Verwijzing>,
+    /// Afgeleid bij het laden van de cel (zie [`leid_rollen_af`]): of een
+    /// gram van dit event een groep opent (een wortel waar andere naar
+    /// verwijzen), bij een groep hoort, of los staat. Niet in de YAML.
+    #[serde(skip)]
     pub zaak: Zaak,
-    /// Of het gram binnen de zaak een besluit opent, een besluit volgt of
-    /// een besluit wijzigt (zie [`Besluit`]). Zonder hoort het bij de zaak
-    /// zelf, niet bij een besluit.
-    #[serde(default)]
+    /// Afgeleid bij het laden van de cel (zie [`leid_rollen_af`]): of een
+    /// gram van dit event een besluit is, een besluit volgt of een besluit
+    /// wijzigt. Niet in de YAML.
+    #[serde(skip)]
     pub besluit: Option<Besluit>,
     /// Waaraan het `op_moment` van het gram bindt, als dat niet het moment
     /// van vastleggen is.
@@ -81,25 +86,108 @@ pub struct Event {
     pub als: BTreeMap<String, String>,
 }
 
-/// De zaak van een event. Een zaakkenmerk groepeert grammen van een zaak
-/// (RFC-022 par. 1.2 doet dat alleen voor de stage-decretogrammen van een
-/// besluit); niet elk feit hoort bij een zaak, dus de stroom zegt het per
-/// event.
+/// Een verwijzing van een event: wat het gram waarnaar een gram van dit
+/// event verwijst moet zijn (`naar`), en of het proces haar moet meegeven.
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct Verwijzing {
+    pub naar: Naar,
+    #[serde(default)]
+    pub verplicht: bool,
+}
+
+/// Wat een gram moet zijn om het doel van een verwijzing te zijn.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Naar {
+    /// Gevestigd door dit artikel (`<regeling>#<artikel>`): het event van het
+    /// doel noemt het in `vestigt`, of het gram draagt het als grondslag.
+    Artikel(String),
+    /// Een gram van dit event.
+    Event(String),
+    /// Een gram met deze stage.
+    Stage(String),
+}
+
+impl<'de> Deserialize<'de> for Naar {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Ruw {
+            Tekst(String),
+            Stage { stage: String },
+        }
+        Ok(match Ruw::deserialize(d)? {
+            Ruw::Tekst(t) if t.contains('#') => Naar::Artikel(t),
+            Ruw::Tekst(t) => Naar::Event(t),
+            Ruw::Stage { stage } => Naar::Stage(stage),
+        })
+    }
+}
+
+impl std::fmt::Display for Naar {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Naar::Artikel(a) => write!(f, "gevestigd door {a}"),
+            Naar::Event(e) => write!(f, "een gram '{e}'"),
+            Naar::Stage(s) => write!(f, "een gram met stage {s}"),
+        }
+    }
+}
+
+impl Naar {
+    /// Of een gram van `event` (in de cel met deze strommen) het doel kan
+    /// zijn. Bij een artikel: het event noemt het in `vestigt`, of zijn
+    /// grondslag begint ermee.
+    pub fn past_event(&self, event: &Event) -> bool {
+        match self {
+            Naar::Artikel(a) => {
+                event.vestigt.contains(a)
+                    || event
+                        .grondslag
+                        .iter()
+                        .any(|g| g == a || g.starts_with(&format!("{a} ")))
+            }
+            Naar::Event(e) => event.name == *e,
+            Naar::Stage(s) => event.stage.as_deref() == Some(s),
+        }
+    }
+
+    /// Of `gram` het doel kan zijn; `event` is het event van het gram, als
+    /// de cel het kent.
+    pub fn past(&self, gram: &Gram, event: Option<&Event>) -> bool {
+        match self {
+            Naar::Artikel(a) => {
+                event.is_some_and(|e| e.vestigt.contains(a))
+                    || gram
+                        .grondslag
+                        .iter()
+                        .any(|g| g == a || g.starts_with(&format!("{a} ")))
+            }
+            Naar::Event(e) => gram.name == *e,
+            Naar::Stage(s) => gram.stage.as_deref() == Some(s),
+        }
+    }
+}
+
+/// De rol van een event tegenover een groep, afgeleid uit de verwijzingen
+/// (zie [`leid_rollen_af`]). Er is geen zaak in het gram: dit zegt alleen of
+/// een gram van het event een wortel is waar andere grammen naar verwijzen
+/// (`Opent`, zoals de aanvraag), naar een ander gram verwijst (`Volgt`), of
+/// los staat (`Geen`, zoals een registerfeit dat niemand volgt).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Zaak {
-    /// De cel geeft bij vastleggen een nieuw zaakkenmerk.
+    /// Een gram van dit event is een wortel waar andere events naar verwijzen.
     Opent,
-    /// Het gram draagt het zaakkenmerk van een bestaande zaak, dat in de
-    /// invoer wordt meegegeven.
+    /// Een gram van dit event verwijst naar een ander gram.
     Volgt,
-    /// Geen zaakkenmerk.
+    /// Geen van beide.
     #[default]
     Geen,
 }
 
 impl Zaak {
-    /// Of een gram van dit event een zaakkenmerk draagt.
+    /// Of een gram van dit event bij een groep hoort.
     pub fn heeft_kenmerk(self) -> bool {
         self != Zaak::Geen
     }
@@ -111,43 +199,24 @@ impl Zaak {
             Zaak::Geen => "geen",
         }
     }
-
-    /// Of een zaakkenmerk, of het ontbreken ervan, past bij deze zaak.
-    pub fn toets_kenmerk(self, event: &str, zaakkenmerk: Option<&str>) -> Result<(), String> {
-        match (self.heeft_kenmerk(), zaakkenmerk) {
-            (true, None) => Err(format!(
-                "event '{event}' heeft zaak: {}, maar het zaakkenmerk ontbreekt",
-                self.als_tekst()
-            )),
-            (false, Some(_)) => Err(format!(
-                "event '{event}' heeft geen zaak (zaak: geen) en krijgt geen zaakkenmerk"
-            )),
-            _ => Ok(()),
-        }
-    }
 }
 
-/// Welk besluit een gram in een zaak betreft. Een zaak kan meer dan een
-/// besluit hebben (een voorschot, een vaststelling, een terugvordering); de
-/// stage-grammen van een besluit delen het besluitkenmerk (RFC-022 par. 1.2:
-/// de stages van een besluit horen bij elkaar, en het besluit is de state
-/// container van RFC-008). De cel geeft het kenmerk, zoals het zaakkenmerk.
+/// De rol van een event tegenover een besluit, afgeleid uit stage en
+/// verwijzingen (zie [`leid_rollen_af`]). Een besluit is de state container
+/// van RFC-008; de stage-grammen van een besluit verwijzen ernaar (RFC-022
+/// par. 1.2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Besluit {
-    /// Het gram is een besluit: de cel geeft een nieuw besluitkenmerk. Een
-    /// tweede gram van hetzelfde event in dezelfde zaak weigert de cel: een
-    /// ander besluit over dezelfde aanvraag vraagt een eigen grondslag.
+    /// Het gram is een besluit (stage BESLUIT, zonder `wijzigt`). Een tweede
+    /// besluit van hetzelfde event dat naar hetzelfde gram verwijst, weigert
+    /// de cel: een ander besluit hierover vraagt een eigen grondslag.
     Opent,
-    /// Het gram volgt een besluit in de zaak, zoals de bekendmaking of een
-    /// betaling die het uitvoert (RFC-022 par. 3.3 `references_decision`):
-    /// het proces geeft het besluitkenmerk mee.
+    /// Het gram verwijst naar een besluit, zoals de bekendmaking of een
+    /// betaling die het uitvoert (RFC-022 par. 3.3 `references_decision`).
     Volgt,
-    /// Het gram is een besluit dat een ander besluit in de zaak wijzigt of
-    /// intrekt (RFC-022 par. 3.1 `modality`, RFC-008 Open Question 5): een
-    /// eigen besluit met een eigen kenmerk en een eigen grondslag, zoals Awb
-    /// 4:48 en 4:49. Het proces geeft het kenmerk van het gewijzigde besluit
-    /// mee; het gram draagt het als `wijzigt`.
+    /// Het gram is een besluit dat met `wijzigt` naar een ander besluit
+    /// verwijst (RFC-022 par. 3.1, Awb 4:48 en 4:49).
     Wijzigt,
 }
 
@@ -160,11 +229,77 @@ impl Besluit {
         }
     }
 
-    /// Of een gram van dit event zelf een besluit is (en dus een eigen
-    /// besluitkenmerk krijgt).
+    /// Of een gram van dit event zelf een besluit is.
     pub fn is_besluit(self) -> bool {
         self != Besluit::Volgt
     }
+}
+
+/// De stage van een besluit (RFC-008).
+pub const BESLUIT: &str = "BESLUIT";
+
+/// De naam van de verwijzing waarmee een besluit een ander besluit wijzigt.
+pub const WIJZIGT: &str = "wijzigt";
+
+/// Leid per event van een cel de rollen af (zie [`Zaak`] en [`Besluit`]),
+/// uit de stages en de verwijzingen van alle events van de cel. Een event
+/// met stage BESLUIT is een besluit, met een verwijzing `wijzigt` een
+/// wijziging; een ander event volgt een besluit als een van zijn
+/// verwijzingen alleen op een besluit kan wijzen. Een event verwijst naar
+/// een groep als het verwijzingen heeft, en opent er een als een ander event
+/// naar een gram van dit event kan verwijzen en het zelf nergens naar
+/// verwijst.
+pub fn leid_rollen_af(strommen: &mut [Stroom]) {
+    let events: Vec<Event> = strommen.iter().flat_map(|s| s.events.clone()).collect();
+    let is_besluit = |e: &Event| e.stage.as_deref() == Some(BESLUIT);
+    for s in strommen.iter_mut() {
+        for e in &mut s.events {
+            e.besluit = if is_besluit(e) {
+                Some(if e.verwijst.contains_key(WIJZIGT) {
+                    Besluit::Wijzigt
+                } else {
+                    Besluit::Opent
+                })
+            } else if e.verwijst.values().any(|v| {
+                let doelen: Vec<&Event> = events.iter().filter(|d| v.naar.past_event(d)).collect();
+                !doelen.is_empty() && doelen.iter().all(|d| is_besluit(d))
+            }) {
+                Some(Besluit::Volgt)
+            } else {
+                None
+            };
+            let wordt_gevolgd = events
+                .iter()
+                .any(|a| a.verwijst.values().any(|v| v.naar.past_event(e)));
+            e.zaak = if !e.verwijst.is_empty() {
+                Zaak::Volgt
+            } else if wordt_gevolgd {
+                Zaak::Opent
+            } else {
+                Zaak::Geen
+            };
+        }
+    }
+}
+
+/// Controleer de verwijzingen van de events van een cel: elke verwijzing kan
+/// naar een event van de cel wijzen.
+pub fn controleer_verwijzingen(strommen: &[Stroom]) -> Vec<String> {
+    let events: Vec<&Event> = strommen.iter().flat_map(|s| s.events.iter()).collect();
+    let mut fouten = Vec::new();
+    for s in strommen {
+        for e in &s.events {
+            for (naam, v) in &e.verwijst {
+                if !events.iter().any(|d| v.naar.past_event(d)) {
+                    fouten.push(format!(
+                        "stroom '{}', event '{}': verwijzing '{naam}' wijst naar {}, maar geen event van de cel past",
+                        s.id, e.name, v.naar
+                    ));
+                }
+            }
+        }
+    }
+    fouten
 }
 
 /// Wat een sleutel van het gram zelf bij een event is (zie [`Event::kenmerk`]).
@@ -172,7 +307,7 @@ impl Besluit {
 pub enum Eventkenmerk<'a> {
     /// Vast in de stroom; `None` als een gram van dit event het niet heeft.
     Vast(Option<&'a str>),
-    /// Hangt van het gram af, zoals een zaak- of besluitkenmerk.
+    /// Hangt van het gram af, zoals het id, de wortel of een verwijzing.
     Vrij,
     /// Een gram van dit event heeft het nooit.
     Nooit,
@@ -409,18 +544,17 @@ impl Event {
                 Eventkenmerk::Nooit
             }
         };
+        if let Some(naam) = sleutel.strip_prefix(crate::gram::VERWIJST) {
+            return Some(vrij_als(self.verwijst.contains_key(naam)));
+        }
         Some(match sleutel {
+            "id" | "wortel" => Eventkenmerk::Vrij,
             "name" => Eventkenmerk::Vast(Some(self.name.as_str())),
             "type" => Eventkenmerk::Vast(Some(self.type_.as_str())),
             "soort" => Eventkenmerk::Vast(self.soort.as_deref()),
             "stage" => Eventkenmerk::Vast(self.stage.as_deref()),
-            "zaak" => Eventkenmerk::Vast(Some(self.zaak.als_tekst())),
-            "besluit" => Eventkenmerk::Vast(self.besluit.map(Besluit::als_tekst)),
             "recording_actor" => Eventkenmerk::Vast(Some(stroom.recording_actor.as_str())),
             "chronicle" => Eventkenmerk::Vast(Some(stroom.chronicle.as_str())),
-            "zaakkenmerk" => vrij_als(self.zaak.heeft_kenmerk()),
-            "besluitkenmerk" => vrij_als(self.besluit.is_some()),
-            "wijzigt" => vrij_als(self.besluit == Some(Besluit::Wijzigt)),
             // De velden van een besluit die een proces meegeeft.
             "legal_character" | "decision_type" | "regulation" | "competent_authority" => {
                 vrij_als(self.type_ == "decretogram")
@@ -602,13 +736,9 @@ pub struct Indiening<'a> {
     pub external: &'a Map<String, Value>,
     /// Het moment van vastleggen: de klok van de cel.
     pub vastgelegd_op: DateTime<FixedOffset>,
-    /// Bij `zaak: opent` het nieuwe kenmerk, bij `volgt` dat van de
-    /// bestaande zaak, bij `geen` niets.
-    pub zaakkenmerk: Option<&'a str>,
-    /// Bij `besluit: volgt` het besluit dat het gram volgt, bij `wijzigt`
-    /// het besluit dat het wijzigt; anders niets. Het kenmerk van een nieuw
-    /// besluit geeft de cel onder haar slot (zie [`Besluit`]).
-    pub besluitkenmerk: Option<&'a str>,
+    /// Per verwijzing van het event het id van het gram waarnaar het gram
+    /// verwijst. Dat het bestaat en past, toetst de cel onder haar slot.
+    pub verwijst: &'a BTreeMap<String, String>,
 }
 
 /// Bouw een gram uit een indiening. Het gram houdt de vorm van de stroom:
@@ -621,10 +751,7 @@ pub fn bouw_gram(
     event: &Event,
     indiening: &Indiening<'_>,
 ) -> Result<Gram, String> {
-    event
-        .zaak
-        .toets_kenmerk(&event.name, indiening.zaakkenmerk)?;
-    let (besluitkenmerk, wijzigt) = besluit_van(event, indiening.besluitkenmerk)?;
+    toets_verwijzingen(event, indiening.verwijst)?;
     let vorm = event.external_vorm().map_err(|f| f.join("; "))?;
     let mut onbekend = Vec::new();
     let mut fouten = Vec::new();
@@ -670,6 +797,7 @@ pub fn bouw_gram(
 
     Ok(Gram {
         kind: "chronolexogram".to_string(),
+        id: crate::gram::nieuw_id(indiening.vastgelegd_op),
         type_: event.type_.clone(),
         soort: event.soort.clone(),
         stage: event.stage.clone(),
@@ -686,11 +814,7 @@ pub fn bouw_gram(
         op_moment: datum::als_op_moment(&op_moment),
         op_moment_grondslag,
         vastgelegd_op: datum::als_op_moment(&indiening.vastgelegd_op),
-        zaak: event.zaak,
-        zaakkenmerk: indiening.zaakkenmerk.map(str::to_string),
-        besluit: event.besluit,
-        besluitkenmerk,
-        wijzigt,
+        verwijst: indiening.verwijst.clone(),
         stroom: StroomVerwijzing {
             id: stroom.id.clone(),
             sha256: stroom.sha256.clone(),
@@ -700,34 +824,41 @@ pub fn bouw_gram(
         inputs: BTreeMap::new(),
         receipt: None,
         tijden: Default::default(),
+        wortel: None,
     })
 }
 
-/// Het besluitkenmerk en het gewijzigde besluit van een gram, uit wat het
-/// proces meegeeft. Bij `volgt` is het meegegeven kenmerk het besluit dat het
-/// gram volgt, bij `wijzigt` het besluit dat het wijzigt; het kenmerk van
-/// een nieuw besluit (`opent`, `wijzigt`) geeft de cel pas onder haar slot.
-fn besluit_van(
+/// Of de verwijzingen die het proces meegeeft passen bij het event: elke
+/// naam is een verwijzing van het event, en elke verplichte verwijzing is er.
+/// Of het gram waarnaar verwezen wordt bestaat en past, toetst de cel onder
+/// haar slot.
+pub fn toets_verwijzingen(
     event: &Event,
-    meegegeven: Option<&str>,
-) -> Result<(Option<String>, Option<String>), String> {
+    verwijst: &BTreeMap<String, String>,
+) -> Result<(), String> {
     let naam = &event.name;
-    match (event.besluit, meegegeven) {
-        (None, None) => Ok((None, None)),
-        (None, Some(_)) => Err(format!(
-            "event '{naam}' hoort bij geen besluit en krijgt geen besluitkenmerk"
-        )),
-        (Some(Besluit::Opent), Some(_)) => Err(format!(
-            "event '{naam}' opent een besluit: de cel geeft het besluitkenmerk"
-        )),
-        (Some(Besluit::Opent), None) => Ok((None, None)),
-        (Some(b), None) => Err(format!(
-            "event '{naam}' {} een besluit: geef het besluitkenmerk mee",
-            b.als_tekst()
-        )),
-        (Some(Besluit::Volgt), Some(k)) => Ok((Some(k.to_string()), None)),
-        (Some(Besluit::Wijzigt), Some(k)) => Ok((None, Some(k.to_string()))),
+    for n in verwijst.keys() {
+        if !event.verwijst.contains_key(n) {
+            let kan: Vec<&str> = event.verwijst.keys().map(String::as_str).collect();
+            return Err(format!(
+                "event '{naam}' verwijst niet met '{n}' (wel: {})",
+                if kan.is_empty() {
+                    "geen verwijzing".to_string()
+                } else {
+                    kan.join(", ")
+                }
+            ));
+        }
     }
+    for (n, v) in &event.verwijst {
+        if v.verplicht && !verwijst.contains_key(n) {
+            return Err(format!(
+                "event '{naam}' verwijst verplicht met '{n}' naar {}: geef het id mee",
+                v.naar
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn intake_waarde<'i>(indiening: &'i Indiening<'_>, pad: &str) -> Option<&'i Value> {
@@ -820,18 +951,15 @@ mod tests {
                 .unwrap(),
         );
         assert_eq!(
-            bekend.kenmerk(&s, "besluit"),
-            Some(Eventkenmerk::Vast(Some("volgt")))
-        );
-        assert_eq!(
-            bekend.kenmerk(&s, "besluitkenmerk"),
+            bekend.kenmerk(&s, "verwijst.besluit"),
             Some(Eventkenmerk::Vrij)
         );
-        assert_eq!(bekend.kenmerk(&s, "wijzigt"), Some(Eventkenmerk::Nooit));
         assert_eq!(
-            bekend.kenmerk(&s, "zaak"),
-            Some(Eventkenmerk::Vast(Some("volgt")))
+            bekend.kenmerk(&s, "verwijst.wijzigt"),
+            Some(Eventkenmerk::Nooit)
         );
+        assert_eq!(bekend.kenmerk(&s, "wortel"), Some(Eventkenmerk::Vrij));
+        assert_eq!(bekend.kenmerk(&s, "zaak"), None);
         assert_eq!(
             besluit.kenmerk(&s, "legal_character"),
             Some(Eventkenmerk::Vrij)
@@ -912,8 +1040,7 @@ mod tests {
                 intake: &intake(),
                 external: external.as_object().unwrap(),
                 vastgelegd_op: moment(),
-                zaakkenmerk: Some(ZAAK),
-                besluitkenmerk: None,
+                verwijst: &BTreeMap::new(),
             },
         )
         .unwrap();
@@ -951,8 +1078,7 @@ mod tests {
                 intake: &intake,
                 external: &Map::new(),
                 vastgelegd_op: moment(),
-                zaakkenmerk: Some(ZAAK),
-                besluitkenmerk: None,
+                verwijst: &BTreeMap::new(),
             },
         )
     }
@@ -1026,8 +1152,7 @@ mod tests {
                 intake: &intake(),
                 external: external.as_object().unwrap(),
                 vastgelegd_op: moment(),
-                zaakkenmerk: Some(ZAAK),
-                besluitkenmerk: None,
+                verwijst: &BTreeMap::new(),
             },
         )
         .unwrap_err();
@@ -1042,8 +1167,7 @@ mod tests {
                 intake: &intake(),
                 external: external.as_object().unwrap(),
                 vastgelegd_op: moment(),
-                zaakkenmerk: Some(ZAAK),
-                besluitkenmerk: None,
+                verwijst: &BTreeMap::new(),
             },
         )
     }
@@ -1152,56 +1276,54 @@ mod tests {
         );
     }
 
+    /// De verwijzingen die het proces meegeeft, passen bij het event: een
+    /// onbekende naam en een ontbrekende verplichte verwijzing weigeren. De
+    /// rollen (besluit, volgt, wortel) volgen uit stage en verwijzingen.
     #[test]
-    fn zaakkenmerk_volgt_de_zaak_van_het_event() {
-        for (zaak, kenmerk, fout) in [
-            ("opent", Some(ZAAK), None),
-            ("volgt", Some(ZAAK), None),
-            ("geen", None, None),
-            (
-                "opent",
-                None,
-                Some("zaak: opent, maar het zaakkenmerk ontbreekt"),
-            ),
-            (
-                "volgt",
-                None,
-                Some("zaak: volgt, maar het zaakkenmerk ontbreekt"),
-            ),
-            ("geen", Some(ZAAK), Some("heeft geen zaak (zaak: geen)")),
-        ] {
-            let s = parse(
-                &STROOM.replace("zaak: opent", &format!("zaak: {zaak}")),
-                "t",
+    fn verwijzingen_en_rollen() {
+        let mut strommen = vec![
+            parse(
+                include_str!("../tests/fixtures/chronicles/test_afnemer_aanvragen.yaml"),
+                "a",
             )
-            .unwrap();
-            let uitkomst = bouw_gram(
-                &s,
-                &s.events[0],
-                &Indiening {
-                    intake: &intake(),
-                    external: &Map::new(),
-                    vastgelegd_op: moment(),
-                    zaakkenmerk: kenmerk,
-                    besluitkenmerk: None,
-                },
-            );
-            match fout {
-                None => {
-                    let gram = uitkomst.unwrap();
-                    assert_eq!(gram.zaakkenmerk.as_deref(), kenmerk);
-                    let json = gram.als_json();
-                    // Zonder zaak staat er geen zaak en geen zaakkenmerk in het gram.
-                    assert_eq!(json.get("zaak").is_some(), zaak != "geen");
-                    assert_eq!(json.get("zaakkenmerk").is_some(), zaak != "geen");
-                    gram.valideer().unwrap();
-                }
-                Some(f) => assert!(uitkomst.unwrap_err().contains(f), "{zaak}"),
-            }
-        }
-        // Zonder `zaak` in de stroom: geen.
-        let s = parse(&STROOM.replace("    zaak: opent\n", ""), "t").unwrap();
-        assert_eq!(s.events[0].zaak, Zaak::Geen);
+            .unwrap(),
+            parse(ZAAKVERLOOP, "v").unwrap(),
+        ];
+        assert!(controleer_verwijzingen(&strommen).is_empty());
+        leid_rollen_af(&mut strommen);
+        let e = |n: &str| {
+            strommen
+                .iter()
+                .flat_map(|s| s.events.iter())
+                .find(|e| e.name == n)
+                .unwrap()
+                .clone()
+        };
+        assert_eq!(e("aanvraag_ontvangen").zaak, Zaak::Opent);
+        assert_eq!(e("besluit_genomen").besluit, Some(Besluit::Opent));
+        assert_eq!(e("betaling_verricht").besluit, Some(Besluit::Volgt));
+        assert_eq!(e("aanvulling_gevraagd").besluit, None);
+        assert_eq!(e("aanvulling_gevraagd").zaak, Zaak::Volgt);
+        let betaling = e("betaling_verricht");
+        let leeg = BTreeMap::new();
+        assert!(toets_verwijzingen(&betaling, &leeg)
+            .unwrap_err()
+            .contains("verplicht met 'besluit'"));
+        let mut v = BTreeMap::new();
+        v.insert("aanvraag".to_string(), ZAAK.to_string());
+        assert!(toets_verwijzingen(&betaling, &v)
+            .unwrap_err()
+            .contains("verwijst niet met 'aanvraag'"));
+        v.clear();
+        v.insert("besluit".to_string(), ZAAK.to_string());
+        toets_verwijzingen(&betaling, &v).unwrap();
+        // Een verwijzing waar geen event van de cel bij past.
+        let los = parse(
+            &ZAAKVERLOOP.replace("naar: aanvraag_ontvangen", "naar: bestaat_niet"),
+            "v",
+        )
+        .unwrap();
+        assert!(!controleer_verwijzingen(&[los]).is_empty());
     }
 
     #[test]
@@ -1215,8 +1337,7 @@ mod tests {
                 intake: &json!({"kanaal": "portaal"}),
                 external: &external,
                 vastgelegd_op: moment(),
-                zaakkenmerk: Some(ZAAK),
-                besluitkenmerk: None,
+                verwijst: &BTreeMap::new(),
             },
         )
         .unwrap_err();

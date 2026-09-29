@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.1.0/proces.json",
-  "title": "Procesdefinitie (proces.yaml) v0.1.0",
+  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.2.0/proces.json",
+  "title": "Procesdefinitie (proces.yaml) v0.2.0",
   "description": "Een proces is een map met configuratie; proces.yaml zegt wie er handelt (actor) en hoe: namens welk gezag (namens, mandaten), langs welke kanalen en in welke rollen er wordt ingelogd (kanalen, rollen), of er een portaal is dat een indiening in een cel laat vastleggen, van welke cellen het lexostatussen samenvoegt (synthese), en welke handelingen een behandelaar in een zaak doet (behandeling). Een proces legt zelf niets vast en reduceert zelf niets: dat doet een cel, op verzoek van het proces. Paden zijn relatief aan de map van proces.yaml.",
   "type": "object",
   "required": [

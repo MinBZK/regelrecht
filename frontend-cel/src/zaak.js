@@ -1,14 +1,14 @@
 // De indeling van het zaakscherm. Een zaak kan meer besluiten hebben (een
 // voorschot, een vaststelling, een terugvordering); de runtime zegt welke
 // besluiten er liggen, en per handeling op welk besluit zij nu handelt
-// (`besluit`, het besluitkenmerk). Deze module kent geen besluit bij naam:
+// (`besluit`, het id van het besluitgram). Deze module kent geen besluit bij naam:
 // zij groepeert wat de runtime geeft.
 import { soortVan, uitkomstTekst } from './tekst.js';
 
 // Of een handeling bij een besluit hoort: zij legde het vast, of zij handelt
 // er nu op (een vervolg, een feit dat het volgt, een wijziging ervan).
 function hoortBij(h, besluit) {
-  return h.naam === besluit.handeling || h.besluit === besluit.besluitkenmerk;
+  return h.naam === besluit.handeling || h.besluit === besluit.id;
 }
 
 // De stand van de feiten met een bedrag (zoals wat er nog te betalen is):
@@ -31,7 +31,8 @@ export function indeling(zaak) {
   const handelingen = zaak?.handelingen ?? [];
   const besluiten = (zaak?.besluiten ?? []).map((b, i) => {
     const eigen = handelingen.filter((h) => hoortBij(h, b));
-    const nummer = b.besluitkenmerk.split('/').pop() || String(i + 1);
+    // Het hoeveelste besluit in de groep: het gram zelf heeft alleen een id.
+    const nummer = String(i + 1);
     return { ...b, nummer, handelingen: eigen, betaalstand: betaalstand(eigen) };
   });
   const overig = handelingen.filter((h) => !besluiten.some((b) => hoortBij(h, b)));
@@ -54,7 +55,7 @@ export function soortTekst(h) {
 
 // De kop van een besluit: welk besluit, wanneer, en wat het wijzigt.
 export function besluitKop(b) {
-  const delen = [`besluit ${b.besluitkenmerk}`];
+  const delen = [`besluit ${b.id}`];
   if (b.op_moment) delen.push(`genomen op ${b.op_moment.slice(0, 10)}`);
   if (b.wijzigt) delen.push(`wijzigt besluit ${b.wijzigt}`);
   return delen.join(', ');

@@ -31,14 +31,14 @@ pub fn stand(proces: &Proces, h: &HandelingDefinitie, zaak: &Zaakstand) -> Stand
     let reden = match doel(proces, h, zaak, None) {
         Err(r) => Some(r),
         Ok(b) => {
-            besluit = b.map(|b| b.besluitkenmerk.clone());
+            besluit = b.map(|b| b.id.clone());
             match (&h.soort, b) {
                 (Handelingsoort::Besluit, _) => al_genomen(proces, h, zaak),
                 (Handelingsoort::Vervolg { .. }, Some(b)) => h
                     .stage
                     .as_ref()
                     .filter(|s| b.stages.contains_key(*s))
-                    .map(|s| format!("stage {s} ligt al in besluit {}", b.besluitkenmerk)),
+                    .map(|s| format!("stage {s} ligt al in besluit {}", b.id)),
                 _ => None,
             }
         }
@@ -65,7 +65,7 @@ pub(super) fn al_genomen(
     eigen(proces, &h.naam, zaak).first().map(|b| {
         format!(
             "besluit {} ligt al in de zaak; een ander besluit hierover vraagt een eigen grondslag (een wijziging)",
-            b.besluitkenmerk
+            b.id
         )
     })
 }
@@ -115,7 +115,8 @@ pub struct Rechtsbescherming {
 /// het volgen, een wijziging).
 #[derive(Debug, Clone, Serialize)]
 pub struct BesluitInZaak {
-    pub besluitkenmerk: String,
+    /// Het id van het gram dat het besluit is.
+    pub id: String,
     /// De handeling die het besluit vastlegde, en haar artikel.
     pub handeling: String,
     pub label: String,
@@ -158,12 +159,12 @@ pub fn besluiten_in_zaak(proces: &Proces, zaak: &Zaakstand) -> Vec<BesluitInZaak
                     doel(proces, x, zaak, None)
                         .ok()
                         .flatten()
-                        .is_some_and(|d| d.besluitkenmerk == b.besluitkenmerk)
+                        .is_some_and(|d| d.id == b.id)
                 })
                 .map(|x| x.naam.clone())
                 .collect();
             Some(BesluitInZaak {
-                besluitkenmerk: b.besluitkenmerk.clone(),
+                id: b.id.clone(),
                 handeling: h.naam.clone(),
                 label: h.label().to_string(),
                 artikel: h.artikel.clone(),

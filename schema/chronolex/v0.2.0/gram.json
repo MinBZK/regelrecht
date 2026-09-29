@@ -1,11 +1,12 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.1.0/gram.json",
-  "title": "Vastgelegd chronolexogram v0.1.0",
-  "description": "Een feit zoals een cel het vastlegt: op vastgelegd_op legde recording_actor vast dat dit event met deze velden plaatsvond, op deze grondslag, en dat het rechtens geldt of plaatsvond op op_moment (paper P:46: twee tijden). Een gram wordt alleen toegevoegd, nooit bewerkt; een correctie is een nieuw gram. Een veld dat niet is ingevuld staat erin als null: het gram houdt de vorm van de stroom.",
+  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.2.0/gram.json",
+  "title": "Vastgelegd chronolexogram v0.2.0",
+  "description": "Een feit zoals een cel het vastlegt: op vastgelegd_op legde recording_actor vast dat dit event met deze velden plaatsvond, op deze grondslag, en dat het rechtens geldt of plaatsvond op op_moment (paper P:46: twee tijden). Een gram wordt alleen toegevoegd, nooit bewerkt; een correctie is een nieuw gram. Een veld dat niet is ingevuld staat erin als null: het gram houdt de vorm van de stroom. Sinds v0.2.0 heeft een gram een eigen id (uuid v7, door de cel gegeven) en verwijst het met een naam uit de wet naar het gram waar het bij hoort (verwijst); er is geen zaak- of besluitkenmerk meer. Groepen volgen uit die verwijzingen: de wortel van een gram is de wortel van het gram waarnaar het verwijst.",
   "type": "object",
   "required": [
     "kind",
+    "id",
     "type",
     "name",
     "chronicle",
@@ -21,6 +22,10 @@
     "kind": {
       "const": "chronolexogram"
     },
+    "id": {
+      "$ref": "#/definitions/uuid",
+      "description": "Het eigen id van het gram: een uuid (v7, oplopend in de tijd), dat de cel bij het vastleggen geeft, onder hetzelfde slot als vastgelegd_op. Een gram uit een kroniek van voor v0.2.0 krijgt bij het laden een vast id: een aanvraag haar oude zaakkenmerk, een besluit een id uit zijn besluitkenmerk."
+    },
     "type": {
       "$ref": "#/definitions/identifier",
       "description": "Open woordenschat (RFC-022 par. 1), bijvoorbeeld executogram of indiening."
@@ -32,7 +37,7 @@
     "stage": {
       "type": "string",
       "pattern": "^[A-Z][A-Z_]*$",
-      "description": "Uit de stroom: de stage van de zaak (RFC-008), bij een stage-decretogram, een indiening (AANVRAAG) of een handeling (BEKENDMAKING). Alleen bij een gram met een zaak."
+      "description": "Uit de wet of de stroom: de stage (RFC-008), bij een stage-decretogram, een indiening (AANVRAAG) of een handeling (BEKENDMAKING)."
     },
     "name": {
       "$ref": "#/definitions/identifier"
@@ -133,36 +138,15 @@
       "$ref": "#/definitions/moment",
       "description": "Het moment waarop de cel het gram vastlegde: altijd haar eigen klok, bij een startstand de laadtijd. Een gram in een kroniek van voor dit veld heeft het niet; de runtime leest het dan als op_moment, met een waarschuwing."
     },
-    "zaak": {
-      "enum": [
-        "opent",
-        "volgt",
-        "geen"
-      ],
-      "description": "Uit de stroom: of het gram een zaak opent of volgt. Ontbreekt het, dan is het geen: het gram hoort bij geen zaak."
-    },
-    "zaakkenmerk": {
-      "description": "Alleen bij zaak opent of volgt, en dan verplicht.",
-      "type": "string",
-      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-    },
-    "besluit": {
-      "enum": [
-        "opent",
-        "volgt",
-        "wijzigt"
-      ],
-      "description": "Uit de stroom: of het gram in de zaak een besluit opent, een besluit volgt of een besluit wijzigt. Ontbreekt het, dan hoort het gram bij de zaak zelf en bij geen besluit."
-    },
-    "besluitkenmerk": {
-      "description": "Alleen bij besluit, en dan verplicht: het kenmerk van het besluit. Bij opent en wijzigt geeft de cel het, als zaakkenmerk/volgnummer; bij volgt is het dat van het besluit dat het gram volgt.",
-      "type": "string",
-      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[1-9][0-9]*$"
-    },
-    "wijzigt": {
-      "description": "Alleen bij besluit wijzigt, en dan verplicht: het kenmerk van het besluit dat dit besluit wijzigt (RFC-022 par. 3.1 is_wijziging_van).",
-      "type": "string",
-      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[1-9][0-9]*$"
+    "verwijst": {
+      "type": "object",
+      "description": "Naar welke grammen dit gram verwijst, per naam uit de wettekst (op_aanvraag, aanvraag, besluit, wijzigt, betreft). De namen en wat elk mag aanwijzen, zegt het vestigende artikel (produces.extensions.chronolex.vestigt[].verwijst) of de stroom; de cel controleert bij het vastleggen dat het gram bestaat en past. Geen verwijzing: het gram is zelf een wortel.",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/definitions/uuid"
+      }
     },
     "stroom": {
       "type": "object",
@@ -325,36 +309,13 @@
           "type": "object"
         }
       }
+    },
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
     }
   },
   "allOf": [
-    {
-      "if": {
-        "properties": {
-          "zaak": {
-            "enum": [
-              "opent",
-              "volgt"
-            ]
-          }
-        },
-        "required": [
-          "zaak"
-        ]
-      },
-      "then": {
-        "required": [
-          "zaakkenmerk"
-        ]
-      },
-      "else": {
-        "not": {
-          "required": [
-            "zaakkenmerk"
-          ]
-        }
-      }
-    },
     {
       "if": {
         "properties": {
@@ -421,76 +382,11 @@
               "indiening",
               "handeling"
             ]
-          },
-          "zaak": {
-            "enum": [
-              "opent",
-              "volgt"
-            ]
           }
         },
         "required": [
-          "type",
-          "zaak"
+          "type"
         ]
-      }
-    },
-    {
-      "if": {
-        "required": [
-          "besluit"
-        ]
-      },
-      "then": {
-        "properties": {
-          "zaak": {
-            "const": "volgt"
-          }
-        },
-        "required": [
-          "zaak",
-          "besluitkenmerk"
-        ]
-      },
-      "else": {
-        "not": {
-          "anyOf": [
-            {
-              "required": [
-                "besluitkenmerk"
-              ]
-            },
-            {
-              "required": [
-                "wijzigt"
-              ]
-            }
-          ]
-        }
-      }
-    },
-    {
-      "if": {
-        "properties": {
-          "besluit": {
-            "const": "wijzigt"
-          }
-        },
-        "required": [
-          "besluit"
-        ]
-      },
-      "then": {
-        "required": [
-          "wijzigt"
-        ]
-      },
-      "else": {
-        "not": {
-          "required": [
-            "wijzigt"
-          ]
-        }
       }
     }
   ]

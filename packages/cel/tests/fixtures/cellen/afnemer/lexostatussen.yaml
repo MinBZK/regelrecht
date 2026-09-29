@@ -8,10 +8,10 @@
 cel: test_afnemer
 lexostatus_definitions:
   - name: aanvraag_inhoud
-    inputs: [{name: zaakkenmerk, type: string}]
+    inputs: [{name: wortel, type: string}]
     reduction:
       kroniek: test_afnemer
-      filter: {type: indiening, soort: aanvraag, zaakkenmerk: $zaakkenmerk}
+      filter: {type: indiening, soort: aanvraag, wortel: $wortel}
       kies: laatste
       afleidingen:
         aanvraagdatum: {moment: op_moment}
@@ -24,7 +24,7 @@ lexostatus_definitions:
     reduction:
       kroniek: test_afnemer
       filter: {type: indiening, soort: aanvraag}
-      groepeer: zaakkenmerk
+      groepeer: wortel
       zonder: {stage: BESLUIT}
       kies: laatste
       afleidingen:
@@ -32,10 +32,10 @@ lexostatus_definitions:
         aanvrager: {veld: kern.aanvrager.naam}
         kvk: {veld: kern.ondertekend_via.kvk_nummer}
   - name: zaakverloop
-    inputs: [{name: zaakkenmerk, type: string}]
+    inputs: [{name: wortel, type: string}]
     reduction:
       kroniek: test_afnemer
-      filter: {zaakkenmerk: $zaakkenmerk}
+      filter: {wortel: $wortel}
       afleidingen:
         datum_uitnodiging_aanvulling:
           filter: {name: aanvulling_gevraagd}
@@ -44,10 +44,10 @@ lexostatus_definitions:
           geen_gram: null
         opgeschorte_dagen: {filter: {name: termijn_opgeschort}, som: dagen}
   - name: besluit
-    inputs: [{name: zaakkenmerk, type: string}]
+    inputs: [{name: wortel, type: string}]
     reduction:
       kroniek: test_afnemer
-      filter: {zaakkenmerk: $zaakkenmerk}
+      filter: {wortel: $wortel}
       afleidingen:
         vastgesteld_bedrag:
           {filter: {stage: BESLUIT}, kies: laatste, veld: vastgesteld_bedrag, grondslag: [testregeling_awb#3 lid 1]}

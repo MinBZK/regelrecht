@@ -51,7 +51,7 @@ synthese:
 behandeling:
   werkvoorraad: {cel: test_toeslag, lexostatus: werkvoorraad}
   handelingen:
-    # Het voorschot: een besluit (stage BESLUIT, besluit: opent).
+    # Het voorschot: een besluit (stage BESLUIT).
     - naam: voorschot
       label: Voorschot verlenen
       regeling: testregeling_toeslag
@@ -83,7 +83,7 @@ behandeling:
       uitkomsten: [vastgestelde_toeslag]
       vastleggen: {cel: test_toeslag, stroom: test_toeslag_zaakverloop, event: besluit_bekendgemaakt}
     # De wijziging van de vaststelling: een eigen besluit met een eigen
-    # grondslag, dat de vaststelling wijzigt (besluit: wijzigt).
+    # grondslag, dat de vaststelling wijzigt (met een verwijzing wijzigt).
     - naam: vaststelling_wijzigen
       label: Vaststelling wijzigen
       besluit: vaststellen

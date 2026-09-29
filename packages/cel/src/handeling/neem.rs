@@ -34,7 +34,7 @@ pub struct Genomen {
 pub async fn neem(
     om: &Omgeving<'_>,
     h: &HandelingDefinitie,
-    zaakkenmerk: &str,
+    wortel: &str,
     zaak: &Zaakstand,
     opgave: &Opgave,
     handelend: &Sessie,
@@ -49,7 +49,7 @@ pub async fn neem(
             h.naam
         )));
     }
-    let proef = proef(om, h, zaakkenmerk, zaak, opgave).await?;
+    let proef = proef(om, h, wortel, zaak, opgave).await?;
     let mut waarschuwingen = Vec::new();
     if !proef.te_nemen {
         let reden = proef
@@ -174,15 +174,19 @@ pub async fn neem(
         event: event.name.clone(),
         intake: Value::Null,
         external,
-        zaakkenmerk: Some(zaakkenmerk.to_string()),
-        // Een nieuw besluit krijgt zijn kenmerk van de cel; een gram dat een
-        // besluit volgt of wijzigt, noemt dat besluit.
-        besluitkenmerk: match h.besluitrol {
-            Some(Besluit::Volgt | Besluit::Wijzigt) => {
-                proef.besluit.as_ref().map(|b| b.besluitkenmerk.clone())
-            }
-            _ => None,
-        },
+        // Een besluit verwijst naar de aanvraag (de wortel); een gram dat een
+        // besluit volgt of wijzigt, naar dat besluit. Het id geeft de cel.
+        verwijst: super::verwijzingen(
+            &proces.cel,
+            event,
+            wortel,
+            match h.besluitrol {
+                Some(Besluit::Volgt | Besluit::Wijzigt) => {
+                    proef.besluit.as_ref().map(|b| b.id.as_str())
+                }
+                _ => None,
+            },
+        ),
         besluit: Some(Besluitvelden {
             legal_character: produces.and_then(|p| p.legal_character.clone()),
             decision_type: produces.and_then(|p| p.decision_type.clone()),
@@ -193,7 +197,7 @@ pub async fn neem(
             inputs,
             receipt: Some(Receipt::nieuw(om.regelingen.to_vec(), stromen)),
         }),
-        zaak_grammen: Some(zaak.grammen),
+        wortel_grammen: Some(zaak.grammen),
     };
     let MetYaml { gram, yaml } = celclient::leg_vast(om.cel, &h.vastleggen.cel, &verzoek)
         .await

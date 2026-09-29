@@ -16,7 +16,7 @@ use crate::kanaal::{self, Routes, Sessie};
 use crate::mogelijkheid;
 use crate::reductie::{self, Lexostatus, Peil};
 use crate::rijen;
-use crate::stroom::{self, Zaak};
+use crate::stroom;
 use crate::synthese;
 use crate::toets;
 use crate::transport::TransportFout;
@@ -50,9 +50,10 @@ pub(super) async fn formulier_route(State(state): State<ProcesState>) -> Result<
 pub(super) struct Concept {
     #[serde(default)]
     external: Map<String, Value>,
-    /// Alleen bij een event met `zaak: volgt`: de zaak die het gram volgt.
+    /// Alleen bij een event met verwijzingen: per naam het id van het gram
+    /// waarnaar het nieuwe gram verwijst.
     #[serde(default)]
-    zaakkenmerk: Option<String>,
+    verwijst: std::collections::BTreeMap<String, String>,
 }
 
 /// Het eigenaarpad van het kanaal van de gebruiker (`kanalen.<id>.eigenaar`,
@@ -65,19 +66,20 @@ fn eigenaar_van<'s>(state: &ProcesState, sessie: &'s Sessie) -> Option<(String, 
     Some((pad, waarde.as_str()))
 }
 
-/// Het verzoek aan de cel voor een concept van de aanvrager. Volgt het event
-/// een zaak, dan moet de aanvrager die zaak kennen. Of hij dat doet, zegt de
-/// cel: haar [`crate::reductie::Zaakstand`] leidt af of er een gram in de zaak
-/// ligt waarvan het veld dat aan zijn eigenaarpad bindt, zijn waarde heeft.
-/// Het proces leest daarvoor geen grammen. De cel controleert de rest (zie
-/// [`zaakkenmerk_voor`]).
+/// Het verzoek aan de cel voor een concept van de aanvrager. Verwijst het
+/// event naar een ander gram, dan moet de aanvrager de groep van dat gram
+/// kennen (het gram waarnaar hij verwijst is dan zelf een wortel, zoals de
+/// aanvraag). Of hij dat doet, zegt de cel: haar
+/// [`crate::reductie::Zaakstand`] leidt af of er een gram in de groep ligt
+/// waarvan het veld dat aan zijn eigenaarpad bindt, zijn waarde heeft. Het
+/// proces leest daarvoor geen grammen. De cel controleert de rest.
 async fn verzoek_voor(
     state: &ProcesState,
     sessie: &Sessie,
     concept: &Concept,
 ) -> Result<Vastlegverzoek, Fout> {
     let (stroom, event) = portaal_event(state)?;
-    if let (Zaak::Volgt, Some(z)) = (event.zaak, &concept.zaakkenmerk) {
+    for z in concept.verwijst.values() {
         let bekend = match eigenaar_van(state, sessie) {
             None => false,
             Some((pad, waarde)) => {
@@ -98,7 +100,7 @@ async fn verzoek_voor(
         if !bekend {
             return Err(fout(
                 StatusCode::BAD_REQUEST,
-                format!("geen zaak '{z}' in de kroniek"),
+                format!("geen wortel '{z}' in de kroniek die u kent"),
             ));
         }
     }
@@ -112,10 +114,9 @@ async fn verzoek_voor(
             Some((&sessie.kanaal, &sessie.velden)),
         ),
         external: concept.external.clone(),
-        zaakkenmerk: concept.zaakkenmerk.clone(),
-        besluitkenmerk: None,
+        verwijst: concept.verwijst.clone(),
         besluit: None,
-        zaak_grammen: None,
+        wortel_grammen: None,
     })
 }
 
@@ -286,7 +287,7 @@ pub(super) async fn mogelijkheden_route(
         }
         let concept = Concept {
             external,
-            zaakkenmerk: None,
+            verwijst: Default::default(),
         };
         let begin = match (&keuze, &c0.begin) {
             (Some(k), Some(u)) => Some(

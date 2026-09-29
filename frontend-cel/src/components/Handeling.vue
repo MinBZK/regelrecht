@@ -14,7 +14,7 @@ import { naarFormulier, naarWet, veldLabel } from '../formulier.js';
 import TraceKnop from '@regelrecht/frontend-shared/components/TraceKnop.vue';
 
 const props = defineProps({
-  zaakkenmerk: { type: String, required: true },
+  wortel: { type: String, required: true },
   // Zoals de zaak haar beschrijft: naam, label, soort, formulier, proef ...
   handeling: { type: Object, required: true },
 });
@@ -82,7 +82,7 @@ async function opProef() {
   fout.value = '';
   bezig.value = 'proef';
   try {
-    proef.value = await api.proefhandeling(props.zaakkenmerk, props.handeling.naam, formulier(waarden.value));
+    proef.value = await api.proefhandeling(props.wortel, props.handeling.naam, formulier(waarden.value));
   } catch (e) {
     fout.value = e.message;
   } finally {
@@ -95,7 +95,7 @@ async function vastleggen(metVoorbeeld = false, gebeurd = false) {
   bezig.value = metVoorbeeld ? 'voorbeeld' : gebeurd ? 'melden' : 'vastleggen';
   try {
     const uitslag = await api.handeling(
-      props.zaakkenmerk,
+      props.wortel,
       props.handeling.naam,
       formulier(metVoorbeeld ? voorbeeldWaarden() : waarden.value),
       gebeurd,

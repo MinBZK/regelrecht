@@ -128,10 +128,9 @@ pub(super) async fn loket_indienen(
         event: event.name.clone(),
         intake,
         external: invoer.external,
-        zaakkenmerk: None,
-        besluitkenmerk: None,
+        verwijst: Default::default(),
         besluit: None,
-        zaak_grammen: None,
+        wortel_grammen: None,
     };
     let vastgelegd = celclient::leg_vast(state.cel.as_ref(), state.cel_id(), &verzoek)
         .await

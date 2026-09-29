@@ -13,7 +13,6 @@ events:
     type: indiening
     soort: aanvraag
     stage: AANVRAAG
-    zaak: opent
     fields:
       kern:
         aanvrager:

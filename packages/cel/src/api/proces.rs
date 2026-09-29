@@ -90,13 +90,13 @@ pub fn proces_router(state: ProcesState) -> Router {
                 get(inzage::lexostatus_route),
             )
             .route("/api/werkvoorraad", get(werkvoorraad_route))
-            .route("/api/zaken/{zaakkenmerk}", get(zaak_route))
+            .route("/api/zaken/{wortel}", get(zaak_route))
             .route(
-                "/api/zaken/{zaakkenmerk}/handelingen/{naam}",
+                "/api/zaken/{wortel}/handelingen/{naam}",
                 post(handeling_route),
             )
             .route(
-                "/api/zaken/{zaakkenmerk}/handelingen/{naam}/proef",
+                "/api/zaken/{wortel}/handelingen/{naam}/proef",
                 post(proefhandeling_route),
             );
     }

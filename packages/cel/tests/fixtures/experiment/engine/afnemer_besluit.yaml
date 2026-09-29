@@ -20,7 +20,7 @@ articles:
     machine_readable:
       execution:
         parameters:
-          - {name: zaakkenmerk, type: string, required: true}
+          - {name: wortel, type: string, required: true}
         input:
           - name: grammen
             type: array
@@ -44,7 +44,7 @@ articles:
               filter:
                 operation: AND
                 conditions:
-                  - {operation: EQUALS, subject: $g.zaakkenmerk, value: $zaakkenmerk}
+                  - {operation: EQUALS, subject: $g.wortel, value: $wortel}
                   - {operation: EQUALS, subject: $g.stage, value: BESLUIT}
               body: $g.volgorde
               combine: MAX
@@ -72,7 +72,7 @@ articles:
                 operation: AND
                 conditions:
                   - {operation: EQUALS, subject: $g.name, value: betaling_verricht}
-                  - {operation: EQUALS, subject: $g.zaakkenmerk, value: $zaakkenmerk}
+                  - {operation: EQUALS, subject: $g.wortel, value: $wortel}
                   - operation: NOT
                     value: {operation: EQUALS, subject: $g.fields.bedrag, value: null}
               body: $g.fields.bedrag
@@ -85,7 +85,7 @@ articles:
               filter:
                 operation: AND
                 conditions:
-                  - {operation: EQUALS, subject: $g.zaakkenmerk, value: $zaakkenmerk}
+                  - {operation: EQUALS, subject: $g.wortel, value: $wortel}
                   - {operation: EQUALS, subject: $g.stage, value: BEKENDMAKING}
               body: $g.volgorde
               combine: MAX
@@ -130,7 +130,7 @@ articles:
               filter:
                 operation: AND
                 conditions:
-                  - {operation: EQUALS, subject: $g.zaakkenmerk, value: $zaakkenmerk}
+                  - {operation: EQUALS, subject: $g.wortel, value: $wortel}
                   - {operation: EQUALS, subject: $g.stage, value: BEKENDMAKING}
               body: $g.volgorde
               combine: MAX
@@ -178,7 +178,7 @@ articles:
               filter:
                 operation: AND
                 conditions:
-                  - {operation: EQUALS, subject: $g.zaakkenmerk, value: $zaakkenmerk}
+                  - {operation: EQUALS, subject: $g.wortel, value: $wortel}
                   - {operation: EQUALS, subject: $g.stage, value: BEKENDMAKING}
               body: $g.volgorde
               combine: MAX

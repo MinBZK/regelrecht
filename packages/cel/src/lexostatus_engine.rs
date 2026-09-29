@@ -82,6 +82,8 @@ fn als_element(g: &Gram, volgorde: usize) -> Result<Value, String> {
     for sleutel in reductie::GRAM_SLEUTELS {
         o.insert((*sleutel).into(), json!(g.kenmerk(sleutel).flatten()));
     }
+    // De verwijzingen, per naam: een filter `verwijst.<naam>` leest ze.
+    o.insert("verwijst".into(), json!(g.verwijst));
     o.insert("op_moment".into(), json!(g.op_moment));
     o.insert("op_datum".into(), json!(datum::peildatum(&g.moment()?)));
     o.insert("vastgelegd_op".into(), json!(g.vastgelegd_op));
@@ -516,7 +518,7 @@ fn micro(t: Instant) -> u64 {
 /// Wat een lexostatus zegt, zonder route: om engine en DSL te vergelijken.
 fn inhoud(l: &Lexostatus) -> Value {
     json!({
-        "zaakkenmerk": l.zaakkenmerk,
+        "wortel": l.wortel,
         "op_moment": l.op_moment,
         "vastgelegd_op": l.vastgelegd_op,
         "parameters": l.parameters,
@@ -578,7 +580,7 @@ fn via_engine(
         }
     };
     let mut l = Lexostatus {
-        zaakkenmerk: gekozen.and_then(|g| g.zaakkenmerk.clone()),
+        wortel: gekozen.and_then(|g| g.wortel.clone()),
         op_moment: gekozen.map(|g| g.op_moment.clone()),
         vastgelegd_op: gekozen.map(|g| g.vastgelegd_op.clone()),
         peilmoment: peil.peilmoment.map(|t| t.to_string()),

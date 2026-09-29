@@ -20,7 +20,7 @@ articles:
     machine_readable:
       execution:
         parameters:
-          - {name: zaakkenmerk, type: string, required: true}
+          - {name: wortel, type: string, required: true}
         input:
           - name: grammen
             type: array
@@ -39,7 +39,7 @@ articles:
                 operation: AND
                 conditions:
                   - {operation: EQUALS, subject: $g.name, value: aanvulling_gevraagd}
-                  - {operation: EQUALS, subject: $g.zaakkenmerk, value: $zaakkenmerk}
+                  - {operation: EQUALS, subject: $g.wortel, value: $wortel}
               body: $g.volgorde
               combine: MAX
           - output: datum_uitnodiging_aanvulling
@@ -87,7 +87,7 @@ articles:
                 operation: AND
                 conditions:
                   - {operation: EQUALS, subject: $g.name, value: termijn_opgeschort}
-                  - {operation: EQUALS, subject: $g.zaakkenmerk, value: $zaakkenmerk}
+                  - {operation: EQUALS, subject: $g.wortel, value: $wortel}
                   - operation: NOT
                     value: {operation: EQUALS, subject: $g.fields.dagen, value: null}
               body: $g.fields.dagen

@@ -12,7 +12,7 @@ use super::*;
 /// - de uitkomsten van een handeling komen uit een en hetzelfde artikel (bij
 ///   een vervolg ook uit de haken van die stage);
 /// - de lexostatussen van de zaak bestaan, zijn geen lijst en hebben als
-///   enige input `zaakkenmerk`;
+///   enige input `wortel`;
 /// - elke parameter uit het formulier, de stand van wat nog niet gebeurd is
 ///   of een `rijen`-blok is een parameter die de aanroeper van het artikel
 ///   moet leveren, en komt uit maar een bron;
@@ -41,7 +41,7 @@ pub fn controleer(proces: &Proces) -> Vec<String> {
             behandeling.werkvoorraad.lexostatus
         )),
         Some(l) if !l.is_lijst() => fouten.push(format!(
-            "behandeling: werkvoorraad '{}' is geen lijst (groepeer: zaakkenmerk)",
+            "behandeling: werkvoorraad '{}' is geen lijst (groepeer: wortel)",
             l.name
         )),
         Some(_) => {}
@@ -60,9 +60,9 @@ pub fn controleer(proces: &Proces) -> Vec<String> {
                     ));
                 }
                 let inputs: Vec<&str> = l.inputs.iter().map(|i| i.name.as_str()).collect();
-                if inputs != ["zaakkenmerk"] {
+                if inputs != ["wortel"] {
                     fouten.push(format!(
-                        "behandeling: lexostatus '{naam}' heeft inputs [{}]; een handeling geeft alleen 'zaakkenmerk' mee",
+                        "behandeling: lexostatus '{naam}' heeft inputs [{}]; een handeling geeft alleen 'wortel' mee",
                         inputs.join(", ")
                     ));
                 }

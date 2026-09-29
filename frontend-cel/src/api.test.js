@@ -77,9 +77,9 @@ describe('vraag', () => {
     vi.stubGlobal('fetch', fetch);
     await inzageApi('p 1', 'c').kroniek();
     expect(fetch).toHaveBeenCalledWith('/processen/p%201/api/inzage/c/kroniek', expect.anything());
-    await inzageApi('p', 'c').lexostatus('zaakstand', { zaakkenmerk: 'Z 1' });
+    await inzageApi('p', 'c').lexostatus('zaakstand', { wortel: 'Z 1' });
     expect(fetch).toHaveBeenLastCalledWith(
-      '/processen/p/api/inzage/c/lexostatus/zaakstand?zaakkenmerk=Z+1',
+      '/processen/p/api/inzage/c/lexostatus/zaakstand?wortel=Z+1',
       expect.anything(),
     );
   });

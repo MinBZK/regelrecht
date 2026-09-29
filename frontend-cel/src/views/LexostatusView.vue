@@ -98,8 +98,8 @@ const rijen = computed(() => {
         <nldd-text-cell text="Zaakkenmerk"></nldd-text-cell>
         <nldd-text-cell v-for="k in kolommen" :key="k" :text="k"></nldd-text-cell>
       </nldd-table-row>
-      <nldd-table-row v-for="r in lijst" :key="r.zaakkenmerk">
-        <nldd-text-cell :text="r.zaakkenmerk"></nldd-text-cell>
+      <nldd-table-row v-for="r in lijst" :key="r.wortel">
+        <nldd-text-cell :text="r.wortel"></nldd-text-cell>
         <nldd-text-cell v-for="k in kolommen" :key="k" :text="waarde(r.velden[k])"></nldd-text-cell>
       </nldd-table-row>
     </nldd-table>

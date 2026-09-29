@@ -1,4 +1,4 @@
-//! De JSON-schema's uit `schema/chronolex/v0.1.0/`, ingebakken bij het
+//! De JSON-schema's uit `schema/chronolex/v0.2.0/`, ingebakken bij het
 //! bouwen. De bestanden zijn de bron; deze module compileert ze eenmaal.
 
 use std::sync::LazyLock;
@@ -6,11 +6,11 @@ use std::sync::LazyLock;
 use jsonschema::Validator;
 use serde_json::Value;
 
-const STREAM: &str = include_str!("../../../schema/chronolex/v0.1.0/stream.json");
-const LEXOSTATUS: &str = include_str!("../../../schema/chronolex/v0.1.0/lexostatus.json");
-const GRAM: &str = include_str!("../../../schema/chronolex/v0.1.0/gram.json");
-const CEL: &str = include_str!("../../../schema/chronolex/v0.1.0/cel.json");
-const PROCES: &str = include_str!("../../../schema/chronolex/v0.1.0/proces.json");
+const STREAM: &str = include_str!("../../../schema/chronolex/v0.2.0/stream.json");
+const LEXOSTATUS: &str = include_str!("../../../schema/chronolex/v0.2.0/lexostatus.json");
+const GRAM: &str = include_str!("../../../schema/chronolex/v0.2.0/gram.json");
+const CEL: &str = include_str!("../../../schema/chronolex/v0.2.0/cel.json");
+const PROCES: &str = include_str!("../../../schema/chronolex/v0.2.0/proces.json");
 
 /// Welk van de schema's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -100,45 +100,38 @@ mod tests {
         );
     }
 
-    fn gram(zaak: Option<&str>, zaakkenmerk: Option<&str>) -> Value {
-        let mut g = serde_json::json!({
-            "kind": "chronolexogram", "type": "decretogram", "name": "x",
+    fn gram() -> Value {
+        serde_json::json!({
+            "kind": "chronolexogram", "id": "01900000-0000-7000-8000-000000000001",
+            "type": "decretogram", "name": "x",
             "chronicle": "k", "recording_actor": "a", "grondslag": ["r#1"],
             "op_moment": "2025-03-12T10:14:03+01:00",
             "vastgelegd_op": "2025-03-12T10:14:03+01:00",
             "stroom": {"id": "s", "sha256": "0".repeat(64)}, "fields": {}
-        });
-        if let Some(z) = zaak {
-            g["zaak"] = z.into();
-        }
-        if let Some(k) = zaakkenmerk {
-            g["zaakkenmerk"] = k.into();
-        }
-        g
+        })
+    }
+
+    /// Een gram heeft een id (een uuid) en verwijst met een naam naar een
+    /// ander id; een zaak- of besluitkenmerk kent v0.2.0 niet meer.
+    #[test]
+    fn gram_id_en_verwijzingen() {
+        let mut g = gram();
+        valideer(Soort::Gram, &g).unwrap();
+        g["verwijst"] = serde_json::json!({"op_aanvraag": "00000000-0000-4000-8000-000000000001"});
+        valideer(Soort::Gram, &g).unwrap();
+        g["verwijst"] = serde_json::json!({"op_aanvraag": "g-001"});
+        assert!(valideer(Soort::Gram, &g).is_err());
+        let mut z = gram();
+        z["zaakkenmerk"] = "00000000-0000-4000-8000-000000000001".into();
+        assert!(valideer(Soort::Gram, &z).is_err());
+        let mut z = gram();
+        z.as_object_mut().unwrap().remove("id");
+        assert!(valideer(Soort::Gram, &z).is_err());
     }
 
     #[test]
-    fn gram_zaakkenmerk_alleen_bij_een_zaak() {
-        const Z: &str = "00000000-0000-4000-8000-000000000001";
-        for zaak in ["opent", "volgt"] {
-            valideer(Soort::Gram, &gram(Some(zaak), Some(Z))).unwrap();
-            let fouten = valideer(Soort::Gram, &gram(Some(zaak), None)).unwrap_err();
-            assert!(
-                fouten.iter().any(|f| f.contains("zaakkenmerk")),
-                "{fouten:?}"
-            );
-        }
-        for zaak in [Some("geen"), None] {
-            valideer(Soort::Gram, &gram(zaak, None)).unwrap();
-            assert!(valideer(Soort::Gram, &gram(zaak, Some(Z))).is_err());
-        }
-        assert!(valideer(Soort::Gram, &gram(Some("misschien"), None)).is_err());
-    }
-
-    #[test]
-    fn stage_op_een_decretogram_of_indiening_met_een_zaak() {
-        const Z: &str = "00000000-0000-4000-8000-000000000001";
-        let mut g = gram(Some("opent"), Some(Z));
+    fn stage_op_een_decretogram_indiening_of_handeling() {
+        let mut g = gram();
         g["type"] = "indiening".into();
         g["soort"] = "melding".into();
         g["stage"] = "AANVRAAG".into();
@@ -149,37 +142,35 @@ mod tests {
         // Een executogram heeft geen stage.
         g["type"] = "executogram".into();
         assert!(valideer(Soort::Gram, &g).is_err());
-        // Zonder zaak geen stage.
-        let mut z = gram(None, None);
-        z["stage"] = "BESLUIT".into();
-        assert!(valideer(Soort::Gram, &z).is_err());
-        let stroom = |type_: &str, zaak: &str| {
-            serde_json::json!({"$id": "s", "recording_actor": "a", "chronicle": "k", "events": [{
-                "name": "x", "intake": "portaal", "grondslag": ["r#1"],
-                "type": type_, "soort": "melding", "stage": "AANVRAAG", "zaak": zaak,
-                "fields": {"a": "$external.a"}
-            }]})
-        };
-        valideer(Soort::Stroom, &stroom("indiening", "opent")).unwrap();
-        assert!(valideer(Soort::Stroom, &stroom("indiening", "geen")).is_err());
-        assert!(valideer(Soort::Stroom, &stroom("executogram", "volgt")).is_err());
     }
 
     #[test]
-    fn stroom_zaak_is_opent_volgt_of_geen() {
-        let stroom = |zaak: &str| {
+    fn stroom_verwijst_met_naam_en_naar() {
+        let stroom = |verwijst: Value| {
             serde_json::json!({"$id": "s", "recording_actor": "a", "chronicle": "k", "events": [{
                 "name": "x", "intake": "besluit", "grondslag": ["r#1"],
-                "type": "decretogram", "zaak": zaak, "fields": {"a": "$external.a"}
+                "type": "decretogram", "verwijst": verwijst, "fields": {"a": "$external.a"}
             }]})
         };
-        for zaak in ["opent", "volgt", "geen"] {
-            valideer(Soort::Stroom, &stroom(zaak)).unwrap();
+        for naar in [
+            serde_json::json!("algemene_wet_bestuursrecht#4:1"),
+            serde_json::json!("aanvraag_ontvangen"),
+            serde_json::json!({"stage": "BESLUIT"}),
+        ] {
+            valideer(
+                Soort::Stroom,
+                &stroom(serde_json::json!({"op_aanvraag": {"naar": naar, "verplicht": true}})),
+            )
+            .unwrap();
         }
-        let fouten = valideer(Soort::Stroom, &stroom("misschien")).unwrap_err();
-        assert!(
-            fouten.iter().any(|f| f.starts_with("/events/0/zaak")),
-            "{fouten:?}"
-        );
+        assert!(valideer(
+            Soort::Stroom,
+            &stroom(serde_json::json!({"op_aanvraag": {}}))
+        )
+        .is_err());
+        let mut z = stroom(serde_json::json!({"besluit": {"naar": {"stage": "BESLUIT"}}}));
+        z["events"][0]["zaak"] = "volgt".into();
+        let fouten = valideer(Soort::Stroom, &z).unwrap_err();
+        assert!(fouten.iter().any(|f| f.contains("zaak")), "{fouten:?}");
     }
 }

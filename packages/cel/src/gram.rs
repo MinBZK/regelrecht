@@ -1,5 +1,13 @@
 //! Het gram: een feit zoals een cel het vastlegt
-//! (`schema/chronolex/v0.1.0/gram.json`), met wat een besluit erbij draagt.
+//! (`schema/chronolex/v0.2.0/gram.json`), met wat een besluit erbij draagt.
+//!
+//! Een gram heeft een eigen id (een uuid v7, dat de cel bij het vastleggen
+//! geeft) en verwijst met een naam uit de wettekst naar het gram waar het bij
+//! hoort (`verwijst`: een besluit `op_aanvraag`, een betaling naar het
+//! `besluit`). Er is geen zaak- of besluitkenmerk: een groep volgt uit de
+//! verwijzingen. De wortel van een gram (het gram zonder verwijzing waar het
+//! via zijn verwijzingen op uitkomt, zoals de aanvraag) houdt de kroniek bij in
+//! een index; zij staat niet in het gram.
 //! Hoe een gram uit een stroom en een indiening ontstaat, staat in
 //! [`crate::stroom`].
 //!
@@ -26,12 +34,14 @@ use sha2::{Digest, Sha256};
 
 use crate::datum;
 use crate::schema::{self, Soort};
-use crate::stroom::{Besluit, Zaak};
 
-/// Het vastgelegde gram (`schema/chronolex/v0.1.0/gram.json`).
+/// Het vastgelegde gram (`schema/chronolex/v0.2.0/gram.json`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Gram {
     pub kind: String,
+    /// Het eigen id: een uuid v7, dat de cel bij het vastleggen geeft (onder
+    /// hetzelfde slot als `vastgelegd_op`).
+    pub id: String,
     #[serde(rename = "type")]
     pub type_: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -73,27 +83,10 @@ pub struct Gram {
     /// van voor dit veld, tot [`Gram::vul_vastgelegd_op`] het invult.
     #[serde(default)]
     pub vastgelegd_op: String,
-    /// Uit de stroom: of het gram een zaak opent of volgt. Weggelaten als
-    /// het event geen zaak heeft.
-    #[serde(default, skip_serializing_if = "zonder_zaak")]
-    pub zaak: Zaak,
-    /// Alleen bij een event met een zaak (`zaak: opent` of `volgt`).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub zaakkenmerk: Option<String>,
-    /// Uit de stroom: of het gram in de zaak een besluit opent, volgt of
-    /// wijzigt. Weggelaten als het bij geen besluit hoort (zoals de
-    /// aanvraag, die de zaak opent).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub besluit: Option<Besluit>,
-    /// Alleen bij een gram met `besluit`: het kenmerk van het besluit. Bij
-    /// `opent` en `wijzigt` geeft de cel het (`<zaakkenmerk>/<volgnummer>`),
-    /// bij `volgt` is het dat van het besluit dat het gram volgt.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub besluitkenmerk: Option<String>,
-    /// Alleen bij `besluit: wijzigt`: het kenmerk van het besluit dat dit
-    /// besluit wijzigt (RFC-022 par. 3.1 `is_wijziging_van`).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub wijzigt: Option<String>,
+    /// Naar welke grammen dit gram verwijst, per naam uit de wettekst
+    /// (`op_aanvraag`, `besluit`, `wijzigt`, ...): het id van dat gram.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub verwijst: BTreeMap<String, String>,
     pub stroom: StroomVerwijzing,
     /// Alleen als de cel het gram niet zelf vaststelde: `startstand` is bij
     /// het starten in een lege kroniek geplaatst (zie [`crate::startstand`]).
@@ -113,6 +106,12 @@ pub struct Gram {
     /// elke reductie of elk peil. Geen deel van het gram.
     #[serde(skip)]
     pub tijden: Tijden,
+    /// De wortel van het gram, uit de index van de kroniek: het id van het
+    /// gram zonder verwijzing waarop het via zijn verwijzingen uitkomt (een
+    /// gram zonder verwijzing is zijn eigen wortel). Geen deel van het gram:
+    /// de kroniek vult het in bij het laden en het vastleggen.
+    #[serde(skip)]
+    pub wortel: Option<String>,
 }
 
 /// De gelezen tijden van een gram, elk met de tekst waaruit het gelezen is.
@@ -208,15 +207,86 @@ impl Receipt {
     }
 }
 
-fn zonder_zaak(z: &Zaak) -> bool {
-    !z.heeft_kenmerk()
-}
-
 /// Welke stroomdefinitie een gram bouwde, en welke versie ervan.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StroomVerwijzing {
     pub id: String,
     pub sha256: String,
+}
+
+/// Het voorvoegsel van een filtersleutel op een verwijzing:
+/// `verwijst.<naam>` is het id waarnaar het gram onder die naam verwijst.
+pub const VERWIJST: &str = "verwijst.";
+
+/// Een nieuw id voor een gram: een uuid v7 op het moment `nu` (de klok van
+/// de cel), zodat ids in de tijd oplopen.
+pub fn nieuw_id(nu: DateTime<FixedOffset>) -> String {
+    let ts = uuid::Timestamp::from_unix(
+        uuid::NoContext,
+        u64::try_from(nu.timestamp()).unwrap_or(0),
+        nu.timestamp_subsec_nanos(),
+    );
+    uuid::Uuid::new_v7(ts).to_string()
+}
+
+/// Het vaste id dat een gram uit een kroniek van voor v0.2.0 bij het laden
+/// krijgt: een uuid v5 over `sleutel`, zodat elke lezing hetzelfde id geeft.
+pub fn vast_id(sleutel: &str) -> String {
+    uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, sleutel.as_bytes()).to_string()
+}
+
+/// Maak een gram uit een kroniek van voor v0.2.0 (met `zaak`,
+/// `zaakkenmerk`, `besluit`, `besluitkenmerk`, `wijzigt`) leesbaar: het
+/// krijgt een vast id en verwijzingen. Een gram dat een zaak opende (de
+/// aanvraag), krijgt zijn zaakkenmerk als id; een besluit (opent of wijzigt)
+/// een id uit zijn besluitkenmerk; een ander gram een id uit `bron` (de
+/// kroniek en de regel zelf). Een gram dat een besluit volgde, verwijst er
+/// met `besluit` naar, een wijziging met `wijzigt`, en een ander gram in een
+/// zaak met `zaak` naar het gram dat de zaak opende. Welke naam de wet voor
+/// die laatste verwijzing heeft, weet het oude gram niet; de groep (de
+/// wortel) klopt wel. Waar als er iets te migreren viel.
+pub fn migreer(doc: &mut Value, bron: &str) -> bool {
+    let Some(o) = doc.as_object_mut() else {
+        return false;
+    };
+    if o.contains_key("id") {
+        return false;
+    }
+    let tekst = |o: &mut Map<String, Value>, k: &str| {
+        o.remove(k).and_then(|v| v.as_str().map(str::to_string))
+    };
+    let zaak = tekst(o, "zaak");
+    let zaakkenmerk = tekst(o, "zaakkenmerk");
+    let besluit = tekst(o, "besluit");
+    let besluitkenmerk = tekst(o, "besluitkenmerk");
+    let wijzigt = tekst(o, "wijzigt");
+    let besluit_id = |k: &str| vast_id(&format!("urn:regelrecht:cel:besluitkenmerk:{k}"));
+    let is_besluit = matches!(besluit.as_deref(), Some("opent" | "wijzigt"));
+    let id = match (&zaak, &zaakkenmerk, &besluitkenmerk) {
+        (Some(z), Some(k), _) if z == "opent" => k.clone(),
+        (_, _, Some(k)) if is_besluit => besluit_id(k),
+        _ => vast_id(&format!("urn:regelrecht:cel:gram:{bron}")),
+    };
+    let mut verwijst = Map::new();
+    match (besluit.as_deref(), &besluitkenmerk, &wijzigt) {
+        (Some("volgt"), Some(k), _) => {
+            verwijst.insert("besluit".into(), Value::String(besluit_id(k)));
+        }
+        (Some("wijzigt"), _, Some(w)) => {
+            verwijst.insert("wijzigt".into(), Value::String(besluit_id(w)));
+        }
+        _ => {}
+    }
+    if verwijst.is_empty() && zaak.as_deref() == Some("volgt") {
+        if let Some(z) = zaakkenmerk {
+            verwijst.insert("zaak".into(), Value::String(z));
+        }
+    }
+    o.insert("id".into(), Value::String(id));
+    if !verwijst.is_empty() {
+        o.insert("verwijst".into(), Value::Object(verwijst));
+    }
+    true
 }
 
 impl Gram {
@@ -251,16 +321,16 @@ impl Gram {
     /// `sleutel` geen zo'n veld is: dan is het een veldpad onder `fields`.
     /// `Some(None)` als het gram het veld niet heeft.
     pub fn kenmerk(&self, sleutel: &str) -> Option<Option<&str>> {
+        if let Some(naam) = sleutel.strip_prefix(VERWIJST) {
+            return Some(self.verwijst.get(naam).map(String::as_str));
+        }
         Some(match sleutel {
+            "id" => Some(self.id.as_str()),
+            "wortel" => self.wortel.as_deref(),
             "name" => Some(self.name.as_str()),
             "type" => Some(self.type_.as_str()),
             "soort" => self.soort.as_deref(),
             "stage" => self.stage.as_deref(),
-            "zaak" => Some(self.zaak.als_tekst()),
-            "zaakkenmerk" => self.zaakkenmerk.as_deref(),
-            "besluit" => self.besluit.map(Besluit::als_tekst),
-            "besluitkenmerk" => self.besluitkenmerk.as_deref(),
-            "wijzigt" => self.wijzigt.as_deref(),
             "recording_actor" => Some(self.recording_actor.as_str()),
             "chronicle" => Some(self.chronicle.as_str()),
             "legal_character" => self.legal_character.as_deref(),
@@ -375,11 +445,13 @@ pub fn zet_pad(doel: &mut Map<String, Value>, pad: &str, waarde: Value) {
     }
 }
 
-/// Een gram voor tests: een melding in `test_kroniek` die een zaak opent.
+/// Een gram voor tests: een melding in `test_kroniek` met dit id, zonder
+/// verwijzing (dus zijn eigen wortel).
 #[cfg(test)]
-pub(crate) fn testgram(zaak: &str) -> Gram {
+pub(crate) fn testgram(id: &str) -> Gram {
     Gram {
         kind: "chronolexogram".into(),
+        id: id.into(),
         type_: "indiening".into(),
         soort: Some("melding".into()),
         stage: None,
@@ -396,11 +468,7 @@ pub(crate) fn testgram(zaak: &str) -> Gram {
         op_moment: "2025-03-12T10:14:03+01:00".into(),
         op_moment_grondslag: None,
         vastgelegd_op: "2025-03-12T10:14:05+01:00".into(),
-        zaak: Zaak::Opent,
-        zaakkenmerk: Some(zaak.into()),
-        besluit: None,
-        besluitkenmerk: None,
-        wijzigt: None,
+        verwijst: BTreeMap::new(),
         stroom: StroomVerwijzing {
             id: "test".into(),
             sha256: "a".repeat(64),
@@ -413,7 +481,18 @@ pub(crate) fn testgram(zaak: &str) -> Gram {
         inputs: BTreeMap::new(),
         receipt: None,
         tijden: Tijden::default(),
+        wortel: Some(id.into()),
     }
+}
+
+/// Een gram voor tests dat met `naam` naar `doel` verwijst, met een nieuw
+/// id; de wortel is die van het doel.
+#[cfg(test)]
+pub(crate) fn testvolger(naam: &str, doel: &Gram) -> Gram {
+    let mut g = testgram(&uuid::Uuid::now_v7().to_string());
+    g.verwijst.insert(naam.into(), doel.id.clone());
+    g.wortel = doel.wortel.clone();
+    g
 }
 
 #[cfg(test)]
@@ -421,6 +500,31 @@ pub(crate) fn testgram(zaak: &str) -> Gram {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// Een gram uit een kroniek van voor v0.2.0 krijgt een vast id en
+    /// verwijzingen: de aanvraag haar zaakkenmerk, een besluit een id uit
+    /// zijn besluitkenmerk, en wie het besluit volgt, verwijst ernaar.
+    #[test]
+    fn een_oud_gram_wordt_gemigreerd() {
+        let z = "00000000-0000-4000-8000-000000000001";
+        let mut aanvraag = json!({"name": "a", "zaak": "opent", "zaakkenmerk": z});
+        assert!(migreer(&mut aanvraag, "k:1"));
+        assert_eq!(aanvraag["id"], z);
+        assert!(aanvraag.get("zaak").is_none() && aanvraag.get("verwijst").is_none());
+        let mut besluit = json!({"name": "b", "zaak": "volgt", "zaakkenmerk": z, "besluit": "opent", "besluitkenmerk": format!("{z}/1")});
+        migreer(&mut besluit, "k:2");
+        let mut betaling = json!({"name": "c", "zaak": "volgt", "zaakkenmerk": z, "besluit": "volgt", "besluitkenmerk": format!("{z}/1")});
+        migreer(&mut betaling, "k:3");
+        assert_eq!(betaling["verwijst"]["besluit"], besluit["id"]);
+        let mut verloop = json!({"name": "d", "zaak": "volgt", "zaakkenmerk": z});
+        migreer(&mut verloop, "k:4");
+        assert_eq!(verloop["verwijst"]["zaak"], z);
+        // Een tweede lezing geeft hetzelfde id; een nieuw gram blijft zoals het is.
+        let mut nog = json!({"name": "d", "zaak": "volgt", "zaakkenmerk": z});
+        migreer(&mut nog, "k:4");
+        assert_eq!(nog["id"], verloop["id"]);
+        assert!(!migreer(&mut nog, "k:4"));
+    }
 
     #[test]
     fn zet_pad_maakt_de_objecten() {

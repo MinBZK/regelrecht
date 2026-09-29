@@ -32,25 +32,21 @@ pub struct Vastlegverzoek {
     /// De inhoud (`$external.*`).
     #[serde(default)]
     pub external: Map<String, Value>,
-    /// Bij `zaak: volgt` de zaak die het gram volgt. Bij `zaak: opent` geeft
-    /// de cel het kenmerk.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub zaakkenmerk: Option<String>,
-    /// Bij `besluit: volgt` het besluit dat het gram volgt, bij `besluit:
-    /// wijzigt` het besluit dat het wijzigt. Bij `besluit: opent` geeft de
-    /// cel het kenmerk.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub besluitkenmerk: Option<String>,
+    /// Per verwijzing van het event het id van het gram waarnaar het nieuwe
+    /// gram verwijst (de aanvraag, het besluit). Het id van het nieuwe gram
+    /// geeft de cel.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub verwijst: BTreeMap<String, String>,
     /// Alleen bij een handeling die het proces uitrekende: de invoer met
     /// herkomst en het receipt, en bij een besluit wat het tot besluit maakt.
     /// Het proces draait de engine, dus het proces stelt dit samen.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub besluit: Option<Besluitvelden>,
-    /// Hoeveel grammen de zaak had toen het proces haar las. De cel legt
-    /// alleen vast als dat onder haar slot nog zo is: wat het proces
-    /// uitrekende, gold voor de zaak zoals die toen was.
+    /// Hoeveel grammen de groep van de wortel had toen het proces haar las.
+    /// De cel legt alleen vast als dat onder haar slot nog zo is: wat het
+    /// proces uitrekende, gold voor de groep zoals die toen was.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub zaak_grammen: Option<usize>,
+    pub wortel_grammen: Option<usize>,
 }
 
 /// De velden van een handeling op een gram, naast de stroomvorm (zie
@@ -104,34 +100,32 @@ fn schrijf<T: Serialize>(v: &T) -> Result<Value, TransportFout> {
         .map_err(|e| TransportFout::Json(format!("het verzoek is geen JSON: {e}")))
 }
 
-/// De grammen van een zaak, elk met YAML, zoals de cel ze filtert
-/// (`GET zaken/{zaakkenmerk}`). Een proces leest nooit de hele kroniek: het
-/// filteren is werk van de cel. Een 404: de cel kent de zaak niet.
+/// De grammen met deze wortel, elk met YAML, zoals de cel ze filtert
+/// (`GET zaken/{wortel}`). Een proces leest nooit de hele kroniek: het
+/// filteren is werk van de cel. Een 404: de cel kent de wortel niet.
 pub async fn lees_zaak(
     cel: &dyn Transport,
     id: &str,
-    zaakkenmerk: &str,
+    wortel: &str,
 ) -> Result<Vec<MetYaml>, TransportFout> {
-    let v = cel
-        .haal(&celpad(id, &format!("zaken/{zaakkenmerk}")))
-        .await?;
+    let v = cel.haal(&celpad(id, &format!("zaken/{wortel}"))).await?;
     lees(
         v,
-        &format!("de cel gaf geen lijst grammen voor zaak {zaakkenmerk}"),
+        &format!("de cel gaf geen lijst grammen voor wortel {wortel}"),
     )
 }
 
-/// De stand van een zaak, zoals de cel haar afleidt (de lexostatus
-/// [`ZAAKSTAND`], zie [`Zaakstand`]). Met `eigenaar` (een `$intake`-pad zonder
-/// `$intake.` en een waarde) zegt de cel ook of iemand met die waarde de zaak
-/// kent. Een 404: de cel kent de zaak niet.
+/// De stand van de groep rond een wortel, zoals de cel haar afleidt (de
+/// lexostatus [`ZAAKSTAND`], zie [`Zaakstand`]). Met `eigenaar` (een
+/// `$intake`-pad zonder `$intake.` en een waarde) zegt de cel ook of iemand
+/// met die waarde de groep kent. Een 404: de cel kent de wortel niet.
 pub async fn zaakstand(
     cel: &dyn Transport,
     id: &str,
-    zaakkenmerk: &str,
+    wortel: &str,
     eigenaar: Option<(&str, &str)>,
 ) -> Result<Zaakstand, TransportFout> {
-    let mut query = vec![("zaakkenmerk", zaakkenmerk)];
+    let mut query = vec![("wortel", wortel)];
     if let Some((pad, waarde)) = eigenaar {
         query.push((EIGENAAR_PAD, pad));
         query.push((EIGENAAR, waarde));
@@ -141,7 +135,7 @@ pub async fn zaakstand(
     let v = cel
         .haal(&celpad(id, &format!("lexostatus/{ZAAKSTAND}?{query}")))
         .await?;
-    let l: Lexostatus = lees(v, "de cel gaf geen lexostatus voor de zaak")?;
+    let l: Lexostatus = lees(v, "de cel gaf geen lexostatus voor de wortel")?;
     Zaakstand::uit(&l).map_err(TransportFout::Json)
 }
 

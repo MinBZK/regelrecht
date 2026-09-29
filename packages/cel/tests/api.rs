@@ -377,12 +377,13 @@ async fn indienen_legt_een_gram_vast_per_kvk() {
     );
     let yaml = body["yaml"].as_str().unwrap();
     assert!(
-        yaml.starts_with("kind: chronolexogram\ntype: indiening\nsoort: aanvraag\n"),
+        yaml.starts_with("kind: chronolexogram\nid: ")
+            && yaml.contains("\ntype: indiening\nsoort: aanvraag\n"),
         "{yaml}"
     );
     // Velden in de volgorde van de stroom: kern voor inhoud.
     assert!(yaml.find("kern:").unwrap() < yaml.find("inhoud:").unwrap());
-    let zaak = gram["zaakkenmerk"].as_str().unwrap().to_string();
+    let zaak = gram["id"].as_str().unwrap().to_string();
 
     // Een onvolledige aanvraag wordt ook vastgelegd, in een nieuwe zaak.
     let mut onvolledig = volledig();
@@ -403,7 +404,7 @@ async fn indienen_legt_een_gram_vast_per_kvk() {
         body["gram"]["fields"]["kern"]["aanvrager"]["adres"],
         Value::Null
     );
-    assert_ne!(body["gram"]["zaakkenmerk"], json!(zaak));
+    assert_ne!(body["gram"]["id"], json!(zaak));
 
     // De kroniek en de lexostatussen zijn van de cel, zonder login: tussen
     // een afnemer en de cel is geen beveiligingscontext.
@@ -426,7 +427,7 @@ async fn indienen_legt_een_gram_vast_per_kvk() {
     let (status, lexo, _) = vraag(
         &app,
         "GET",
-        &format!("{INSTANTIE_CEL}/api/lexostatus/aanvraag_inhoud?zaakkenmerk={zaak}"),
+        &format!("{INSTANTIE_CEL}/api/lexostatus/aanvraag_inhoud?wortel={zaak}"),
         None,
         None,
     )
@@ -454,7 +455,7 @@ async fn onbekende_lexostatus() {
     let (status, _, _) = vraag(
         &app,
         "GET",
-        &format!("{INSTANTIE_CEL}/api/lexostatus/bestaat_niet?zaakkenmerk=x"),
+        &format!("{INSTANTIE_CEL}/api/lexostatus/bestaat_niet?wortel=x"),
         Some(&c),
         None,
     )
@@ -1211,7 +1212,7 @@ async fn afnemer_indienen(app: &Router, kvk: &str) -> String {
     // De aanvraag opent de zaak in stage AANVRAAG (RFC-008); de werkvoorraad
     // laat alleen een zaak met stage BESLUIT weg.
     assert_eq!(body["gram"]["stage"], "AANVRAAG");
-    body["gram"]["zaakkenmerk"].as_str().unwrap().to_string()
+    body["gram"]["id"].as_str().unwrap().to_string()
 }
 
 async fn behandelaar(app: &Router) -> String {
@@ -1256,7 +1257,8 @@ fn voeg_gram_toe_op(rt: &Runtime, name: &str, zaak: &str, fields: Value, op_mome
         "chronicle": "test_afnemer", "recording_actor": "test_afnemer",
         "grondslag": ["testregeling_afnemer#3"], "op_moment": op_moment,
         "vastgelegd_op": "2025-03-12T10:14:03+01:00",
-        "zaak": "volgt", "zaakkenmerk": zaak,
+        "id": uuid::Uuid::now_v7().to_string(),
+        "verwijst": {(if stage.is_some() { "op_aanvraag" } else { "aanvraag" }): zaak},
         "stroom": {"id": "test_afnemer_zaakverloop", "sha256": "0".repeat(64)},
         "fields": fields,
     });
@@ -1400,10 +1402,7 @@ async fn werkvoorraad_is_een_lijst_van_zaken_zonder_besluit() {
     );
     let lijst = w["lijst"].as_array().unwrap();
     assert_eq!(lijst.len(), 2);
-    let regel = lijst
-        .iter()
-        .find(|r| r["zaakkenmerk"] == een.as_str())
-        .unwrap();
+    let regel = lijst.iter().find(|r| r["wortel"] == een.as_str()).unwrap();
     assert_eq!(
         regel["velden"],
         json!({"ontvangen_op": "2025-03-12", "aanvrager": "Vereniging Voorbeeld", "kvk": "12345678"})
@@ -1437,7 +1436,7 @@ async fn werkvoorraad_is_een_lijst_van_zaken_zonder_besluit() {
     .await;
     let lijst = w["lijst"].as_array().unwrap();
     assert_eq!(lijst.len(), 1);
-    assert_eq!(lijst[0]["zaakkenmerk"], twee.as_str());
+    assert_eq!(lijst[0]["wortel"], twee.as_str());
 
     // De cellenlijst noemt de werkvoorraad een lijst, met kolommen; de
     // processenlijst zegt wie haar ziet.
@@ -1639,65 +1638,64 @@ async fn zaak_met_proefbesluit_zonder_vastleggen() {
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
+/// Een gram zonder verwijzing is zijn eigen wortel; het id geeft de cel.
+/// Een event met een verwijzing laat het portaal alleen verwijzen naar een
+/// gram waarvan de aanvrager de groep kent, en de cel toetst dat het gram
+/// bestaat.
 #[tokio::test]
-async fn zaak_opent_en_volgt() {
+async fn een_wortel_en_een_verwijzing() {
     let data = tempfile::tempdir().unwrap();
     let app = app(data.path());
     let c = inloggen(&app, "12345678").await;
     let aanvraag = format!("{INSTANTIE}/api/aanvraag");
-    // Een event dat een zaak opent: de cel geeft het kenmerk, het concept niet.
-    let mut met_kenmerk = volledig();
-    met_kenmerk["zaakkenmerk"] = json!("00000000-0000-4000-8000-000000000009");
-    let (status, body, _) = vraag(&app, "POST", &aanvraag, Some(&c), Some(met_kenmerk)).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert!(
-        body["fout"].as_str().unwrap().contains("opent een zaak"),
-        "{body}"
-    );
+    // Een verwijzing die het event niet heeft, weigert de cel.
+    let mut met = volledig();
+    met["verwijst"] = json!({"vorige": "00000000-0000-4000-8000-000000000009"});
+    let (status, body, _) = vraag(&app, "POST", &aanvraag, Some(&c), Some(met)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
     let (status, body, _) = vraag(&app, "POST", &aanvraag, Some(&c), Some(volledig())).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
-    assert_eq!(body["gram"]["zaak"], "opent");
-    let zaak = body["gram"]["zaakkenmerk"].as_str().unwrap().to_string();
+    assert!(body["gram"].get("verwijst").is_none());
+    let zaak = body["gram"]["id"].as_str().unwrap().to_string();
     drop(app);
 
-    // Dezelfde kroniek, nu met een stroom waarin het event een zaak volgt.
+    // Dezelfde kroniek, nu met een stroom waarin de aanvraag mag verwijzen
+    // naar een eerdere aanvraag.
     let opstelling = eigen_opstelling(&[("instantie", &zo)], &[("instantie", &zo)]);
     let stroom = opstelling.path().join("chronicles/test_aanvragen.yaml");
     let tekst = std::fs::read_to_string(&stroom).unwrap();
-    std::fs::write(&stroom, tekst.replace("zaak: opent", "zaak: volgt")).unwrap();
+    std::fs::write(
+        &stroom,
+        tekst.replace(
+            "  - name: aanvraag_ontvangen\n",
+            "  - name: aanvraag_ontvangen\n    verwijst: {vorige: {naar: aanvraag_ontvangen}}\n",
+        ),
+    )
+    .unwrap();
     let app = runtime_op(opstelling.path(), data.path()).unwrap().router;
     let c = inloggen(&app, "12345678").await;
-    let (status, body, _) = vraag(&app, "POST", &aanvraag, Some(&c), Some(volledig())).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert!(
-        body["fout"]
-            .as_str()
-            .unwrap()
-            .contains("geef het zaakkenmerk mee"),
-        "{body}"
-    );
     let mut onbekend = volledig();
-    onbekend["zaakkenmerk"] = json!("00000000-0000-4000-8000-000000000009");
+    onbekend["verwijst"] = json!({"vorige": "00000000-0000-4000-8000-000000000009"});
     let (status, body, _) = vraag(&app, "POST", &aanvraag, Some(&c), Some(onbekend)).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(
-        body["fout"].as_str().unwrap().contains("geen zaak"),
+        body["fout"].as_str().unwrap().contains("geen wortel"),
         "{body}"
     );
     let mut volgt = volledig();
-    volgt["zaakkenmerk"] = json!(zaak);
-    // Een andere KvK kent deze zaak niet: dat weet het proces, niet de cel.
+    volgt["verwijst"] = json!({"vorige": zaak});
+    // Een andere KvK kent deze groep niet: dat weet het proces, niet de cel.
     let ander = inloggen(&app, "87654321").await;
     let (status, body, _) = vraag(&app, "POST", &aanvraag, Some(&ander), Some(volgt.clone())).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(
-        body["fout"].as_str().unwrap().contains("geen zaak"),
+        body["fout"].as_str().unwrap().contains("geen wortel"),
         "{body}"
     );
     let (status, body, _) = vraag(&app, "POST", &aanvraag, Some(&c), Some(volgt)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
-    assert_eq!(body["gram"]["zaak"], "volgt");
-    assert_eq!(body["gram"]["zaakkenmerk"], json!(zaak));
+    assert_eq!(body["gram"]["verwijst"]["vorige"], json!(zaak));
+    assert_ne!(body["gram"]["id"], json!(zaak));
     schema::valideer(Soort::Gram, &body["gram"]).unwrap();
 }
 
@@ -1827,7 +1825,7 @@ async fn een_gebied_zonder_tarief_blijft_leeg() {
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
-    let zaak = body["gram"]["zaakkenmerk"].as_str().unwrap().to_string();
+    let zaak = body["gram"]["id"].as_str().unwrap().to_string();
     let b = behandelaar(&app).await;
     let (_, p, _) = vraag(
         &app,
@@ -1881,8 +1879,8 @@ async fn besluit_nemen_legt_een_decretogram_vast() {
     schema::valideer(Soort::Gram, gram).unwrap();
     assert_eq!(gram["type"], "decretogram");
     assert_eq!(gram["stage"], "BESLUIT");
-    assert_eq!(gram["zaak"], "volgt");
-    assert_eq!(gram["zaakkenmerk"], zaak.as_str());
+    assert_eq!(gram["verwijst"], json!({"op_aanvraag": zaak}));
+    assert_ne!(gram["id"], zaak.as_str());
     assert_eq!(gram["legal_character"], "BESCHIKKING");
     assert_eq!(gram["grondslag"], json!(["testregeling_afnemer#3 lid 1"]));
     assert_eq!(gram["decision_type"], "TOEKENNING");
@@ -1960,7 +1958,7 @@ async fn besluit_nemen_legt_een_decretogram_vast() {
     .await;
     let lijst = w["lijst"].as_array().unwrap();
     assert_eq!(lijst.len(), 1);
-    assert_eq!(lijst[0]["zaakkenmerk"], twee.as_str());
+    assert_eq!(lijst[0]["wortel"], twee.as_str());
     let (_, z, _) = vraag(
         &app,
         "GET",
@@ -2024,7 +2022,8 @@ async fn besluit_nemen_legt_een_decretogram_vast() {
     assert_eq!(status, StatusCode::OK, "{g}");
     let g = g.as_array().unwrap();
     assert_eq!(g.len(), 2);
-    assert!(g.iter().all(|i| i["gram"]["zaakkenmerk"] == zaak.as_str()));
+    assert_eq!(g[0]["gram"]["id"], zaak.as_str());
+    assert_eq!(g[1]["gram"]["verwijst"]["op_aanvraag"], zaak.as_str());
     let (status, _, _) = vraag(
         &app,
         "GET",
@@ -2302,10 +2301,10 @@ async fn de_cel_legt_een_gram_vast_voor_haar_actor() {
     let (status, body) = als_runtime(&rt, "POST", &grammen, verzoek("test_instantie")).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
     schema::valideer(Soort::Gram, &body["gram"]).unwrap();
-    // De cel bouwt het gram uit haar stroom: zij geeft het zaakkenmerk en het
+    // De cel bouwt het gram uit haar stroom: zij geeft het id en het
     // moment.
-    assert_eq!(body["gram"]["zaak"], "opent");
-    assert!(body["gram"]["zaakkenmerk"].is_string());
+    assert!(body["gram"].get("verwijst").is_none());
+    assert!(body["gram"]["id"].is_string());
     assert_eq!(body["gram"]["op_moment"], "2025-03-12T10:14:03+01:00");
     assert_eq!(body["gram"]["recording_actor"], "test_instantie");
     assert!(body["yaml"]
@@ -2351,8 +2350,8 @@ async fn de_cel_reduceert_op_proef_zonder_vast_te_leggen() {
     assert_eq!(status, StatusCode::OK, "{body}");
     // Het gram van het concept, en de reductie met dat gram: het zaakkenmerk
     // van het concept is de input.
-    let zaak = body["gram"]["zaakkenmerk"].as_str().unwrap();
-    assert_eq!(body["lexostatus"]["zaakkenmerk"], zaak);
+    let zaak = body["gram"]["id"].as_str().unwrap();
+    assert_eq!(body["lexostatus"]["wortel"], zaak);
     assert_eq!(body["lexostatus"]["parameters"]["bevat_naam"], json!(true));
     assert_eq!(
         body["lexostatus"]["parameters"]["aanvraagdatum"],
@@ -2452,11 +2451,7 @@ async fn alleen_de_runtime_legt_vast_en_leest() {
     // Er is niets vastgelegd. Lezen vraagt een token: de grammen dragen de
     // identiteit en de intake van wie indiende. Alleen de stroomdefinities
     // zijn open.
-    for pad in [
-        "kroniek",
-        "zaken/z",
-        "lexostatus/aanvraag_inhoud?zaakkenmerk=z",
-    ] {
+    for pad in ["kroniek", "zaken/z", "lexostatus/aanvraag_inhoud?wortel=z"] {
         let uri = format!("{INSTANTIE_CEL}/api/{pad}");
         let (status, fout, _) = vraag(&rt.router, "GET", &uri, None, None).await;
         assert_eq!(status, StatusCode::UNAUTHORIZED, "{pad}: {fout}");
@@ -2805,11 +2800,11 @@ async fn een_eerdere_ontvangst_is_de_aanvraagdatum() {
     assert_eq!(g["op_moment"], "2025-03-05T00:00:00+01:00");
     assert_eq!(g["vastgelegd_op"], "2025-03-12T10:14:03+01:00");
     assert_eq!(g["op_moment_grondslag"], json!(["testregeling_aanvraag#1"]));
-    let zaak = g["zaakkenmerk"].as_str().unwrap();
+    let zaak = g["id"].as_str().unwrap();
     let (status, l, _) = vraag(
         &app,
         "GET",
-        &format!("{INSTANTIE_CEL}/api/lexostatus/aanvraag_inhoud?zaakkenmerk={zaak}"),
+        &format!("{INSTANTIE_CEL}/api/lexostatus/aanvraag_inhoud?wortel={zaak}"),
         None,
         None,
     )
@@ -2954,12 +2949,15 @@ async fn een_oude_kroniek_zonder_vastgelegd_op_laadt() {
     schema::valideer(Soort::Gram, &k[0]["gram"]).unwrap();
 }
 
-/// Een kroniek van voor het besluitkenmerk: een besluit zonder kenmerk laadt,
-/// en de runtime meldt bij het opstarten hoe de kroniek bij te werken is.
+/// Een kroniek van voor chronolex v0.2.0 (met zaak- en besluitkenmerk)
+/// laadt: de aanvraag krijgt haar zaakkenmerk als id, het besluit een vast
+/// id uit zijn besluitkenmerk, en de groep klopt. Een vervolg op dat besluit
+/// verwijst ernaar. De runtime waarschuwt dat het besluit verwijst met de
+/// naam `zaak`, die de wet niet kent.
 #[tokio::test]
-async fn een_oud_besluit_zonder_kenmerk_geeft_een_opstartwaarschuwing() {
+async fn een_oude_kroniek_met_zaak_en_besluitkenmerk_laadt() {
     let data = tempfile::tempdir().unwrap();
-    {
+    let zaak = {
         let app = app(data.path());
         let zaak = afnemer_indienen(&app, "12345678").await;
         let b = behandelaar(&app).await;
@@ -2973,18 +2971,19 @@ async fn een_oud_besluit_zonder_kenmerk_geeft_een_opstartwaarschuwing() {
         )
         .await;
         assert_eq!(status, StatusCode::CREATED, "{body}");
-    }
+        zaak
+    };
     let schoon = runtime_op(&fixtures(), data.path()).unwrap();
     assert!(
         !schoon
             .waarschuwingen()
             .await
             .iter()
-            .any(|w| w.contains("zonder besluitkenmerk")),
-        "een kroniek met kenmerken geeft geen waarschuwing"
+            .any(|w| w.contains("voor chronolex v0.2.0")),
+        "een nieuwe kroniek geeft geen waarschuwing"
     );
     drop(schoon);
-    // Het besluit zoals een runtime van voor het besluitkenmerk het schreef.
+    // De grammen zoals een runtime van voor v0.2.0 ze schreef.
     let pad = data.path().join("test_afnemer/test_afnemer.jsonl");
     let regels: Vec<String> = std::fs::read_to_string(&pad)
         .unwrap()
@@ -2992,8 +2991,19 @@ async fn een_oud_besluit_zonder_kenmerk_geeft_een_opstartwaarschuwing() {
         .map(|r| {
             let mut g: Value = serde_json::from_str(r).unwrap();
             let o = g.as_object_mut().unwrap();
-            o.remove("besluit");
-            o.remove("besluitkenmerk");
+            o.remove("id");
+            match o.remove("verwijst") {
+                None => {
+                    o.insert("zaak".into(), json!("opent"));
+                    o.insert("zaakkenmerk".into(), json!(zaak));
+                }
+                Some(_) => {
+                    o.insert("zaak".into(), json!("volgt"));
+                    o.insert("zaakkenmerk".into(), json!(zaak));
+                    o.insert("besluit".into(), json!("opent"));
+                    o.insert("besluitkenmerk".into(), json!(format!("{zaak}/1")));
+                }
+            }
             g.to_string()
         })
         .collect();
@@ -3002,13 +3012,38 @@ async fn een_oud_besluit_zonder_kenmerk_geeft_een_opstartwaarschuwing() {
     let w = rt.waarschuwingen().await;
     let oud = w
         .iter()
-        .find(|w| w.contains("zonder besluitkenmerk"))
+        .find(|w| w.contains("voor chronolex v0.2.0"))
         .unwrap_or_else(|| panic!("{w:?}"));
-    assert!(oud.contains("cel 'test_afnemer': 1 grammen"), "{oud}");
-    assert!(
-        oud.contains("besluitkenmerk <zaakkenmerk>/<volgnummer>"),
-        "{oud}"
-    );
+    assert!(oud.contains("besluit_genomen"), "{oud}");
+    let app = rt.router;
+    let b = behandelaar(&app).await;
+    let (_, z, _) = vraag(
+        &app,
+        "GET",
+        &format!("{AFNEMER}/api/zaken/{zaak}"),
+        Some(&b),
+        None,
+    )
+    .await;
+    let besluit_id = uuid::Uuid::new_v5(
+        &uuid::Uuid::NAMESPACE_URL,
+        format!("urn:regelrecht:cel:besluitkenmerk:{zaak}/1").as_bytes(),
+    )
+    .to_string();
+    assert_eq!(z["besluiten"][0]["id"], json!(besluit_id), "{z}");
+    // Een tweede besluit op dezelfde aanvraag weigert de cel nog steeds.
+    assert_eq!(z["handelingen"][0]["beschikbaar"], json!(false), "{z}");
+    let (status, body) = handeling(
+        &app,
+        &b,
+        &zaak,
+        "bekendmaken",
+        false,
+        json!({"datum_bekendmaking": "2025-03-12", "bekendgemaakt": true}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(body["gram"]["verwijst"]["besluit"], json!(besluit_id));
 }
 
 // --- Kanalen en rollen als configuratie ---
@@ -3213,11 +3248,11 @@ async fn het_loket_voert_een_eerdere_ontvangst_in() {
         json!({"kanaal": "loket", "kvk_nummer": "12345678", "gemachtigde": "A. Tester", "burgernummer": null})
     );
     // De aanvrager volgt zijn papieren aanvraag: het nummer is van hem.
-    let zaak = g["zaakkenmerk"].as_str().unwrap();
+    let zaak = g["id"].as_str().unwrap();
     let (status, l2, _) = vraag(
         &app,
         "GET",
-        &format!("{INSTANTIE_CEL}/api/lexostatus/aanvraag_inhoud?zaakkenmerk={zaak}"),
+        &format!("{INSTANTIE_CEL}/api/lexostatus/aanvraag_inhoud?wortel={zaak}"),
         None,
         None,
     )
@@ -3495,7 +3530,7 @@ async fn besluit_bekendmaken_en_betalen() {
         "{betalen}"
     );
     assert_eq!(betalen["vastgelegd"], json!(2));
-    assert_eq!(betalen["besluit"], format!("{zaak}/1"));
+    assert_eq!(betalen["besluit"], z["besluiten"][0]["id"]);
     let besluit = &z["besluiten"][0];
     assert_eq!(besluit["handeling"], "besluit");
     assert_eq!(
@@ -3512,7 +3547,7 @@ async fn besluit_bekendmaken_en_betalen() {
     let (_, l, _) = vraag(
         &app,
         "GET",
-        &format!("{AFNEMER_CEL}/api/lexostatus/besluit?zaakkenmerk={zaak}"),
+        &format!("{AFNEMER_CEL}/api/lexostatus/besluit?wortel={zaak}"),
         None,
         None,
     )
@@ -3586,7 +3621,7 @@ async fn twee_gelijktijdige_betalingen() {
     let (_, l, _) = vraag(
         &app,
         "GET",
-        &format!("{AFNEMER_CEL}/api/lexostatus/besluit?zaakkenmerk={zaak}"),
+        &format!("{AFNEMER_CEL}/api/lexostatus/besluit?wortel={zaak}"),
         None,
         None,
     )
@@ -3781,7 +3816,8 @@ async fn een_moment_ligt_niet_voor_de_zaak_of_in_de_toekomst() {
     let (_, p) = handeling(&app, &b, &zaak, "besluit", true, besluit("2025-03-12")).await;
     assert_eq!(p["te_nemen"], json!(true), "{p}");
 
-    // De cel zelf: een gram dat de zaak volgt met een eerdere dag.
+    // De cel zelf: een besluit dat naar de aanvraag verwijst, met een
+    // eerdere dag dan de aanvraag.
     let (status, f) = als_runtime(
         &rt,
         "POST",
@@ -3789,16 +3825,18 @@ async fn een_moment_ligt_niet_voor_de_zaak_of_in_de_toekomst() {
         json!({
             "actor": "test_afnemer",
             "stroom": "test_afnemer_zaakverloop",
-            "event": "betaling_verricht",
-            "external": {"bedrag": 1, "datum_betaling": "2025-03-01"},
-            "zaakkenmerk": zaak,
-            "besluitkenmerk": format!("{zaak}/1"),
+            "event": "besluit_genomen",
+            "external": {"besluitdatum": "2025-03-01"},
+            "verwijst": {"op_aanvraag": zaak},
         }),
     )
     .await;
     assert_eq!(status, StatusCode::CONFLICT, "{f}");
     assert!(
-        f["fout"].as_str().unwrap().contains("ligt voor de zaak"),
+        f["fout"]
+            .as_str()
+            .unwrap()
+            .contains("ligt voor het gram waarnaar het verwijst"),
         "{f}"
     );
 }
@@ -3839,7 +3877,7 @@ async fn de_cel_geeft_de_stand_van_een_zaak() {
             (status, body)
         }
     };
-    let (status, l) = lees(format!("zaakkenmerk={zaak}")).await;
+    let (status, l) = lees(format!("wortel={zaak}")).await;
     assert_eq!(status, StatusCode::OK, "{l}");
     assert_eq!(l["naam"], "zaakstand");
     assert_eq!(l["parameters"], json!({}), "gaat nooit naar de engine");
@@ -3849,10 +3887,13 @@ async fn de_cel_geeft_de_stand_van_een_zaak() {
         z["events"]["test_afnemer_zaakverloop/besluit_genomen"],
         json!(1)
     );
-    // Het besluit is een besluit in de zaak, met een eigen kenmerk; de
-    // aanvraag hoort bij de zaak zelf.
+    // Het besluit is een eigen gram dat naar de aanvraag verwijst; de
+    // aanvraag is de wortel.
     let besluit = &z["besluiten"][0];
-    assert_eq!(besluit["besluitkenmerk"], format!("{zaak}/1"), "{z}");
+    assert!(
+        besluit["id"].is_string() && besluit["id"] != zaak.as_str(),
+        "{z}"
+    );
     assert_eq!(besluit["event"], "besluit_genomen");
     assert_eq!(
         besluit["stages"]["BESLUIT"]["velden"]["vastgesteld_bedrag"],
@@ -3865,18 +3906,18 @@ async fn de_cel_geeft_de_stand_van_een_zaak() {
     assert!(z.get("eigenaar").is_none());
 
     let (_, l) = lees(format!(
-        "zaakkenmerk={zaak}&eigenaar_pad=eherkenning.kvk&eigenaar=12345678"
+        "wortel={zaak}&eigenaar_pad=eherkenning.kvk&eigenaar=12345678"
     ))
     .await;
     assert_eq!(l["extra_velden"]["eigenaar"], json!(true), "{l}");
     let (_, l) = lees(format!(
-        "zaakkenmerk={zaak}&eigenaar_pad=eherkenning.kvk&eigenaar=87654321"
+        "wortel={zaak}&eigenaar_pad=eherkenning.kvk&eigenaar=87654321"
     ))
     .await;
     assert_eq!(l["extra_velden"]["eigenaar"], json!(false), "{l}");
-    let (status, _) = lees("zaakkenmerk=bestaat-niet".into()).await;
+    let (status, _) = lees("wortel=bestaat-niet".into()).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
-    let (status, _) = lees(format!("zaakkenmerk={zaak}&eigenaar=12345678")).await;
+    let (status, _) = lees(format!("wortel={zaak}&eigenaar=12345678")).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 
     // De cel noemt haar bij haar lexostatussen, als lexostatus van de runtime.
@@ -3941,13 +3982,13 @@ async fn inzage_in_de_cellen_via_het_proces() {
     let (status, l, _) = vraag(
         &app,
         "GET",
-        &format!("{AFNEMER}/api/inzage/test_afnemer/lexostatus/aanvraag_inhoud?zaakkenmerk={zaak}"),
+        &format!("{AFNEMER}/api/inzage/test_afnemer/lexostatus/aanvraag_inhoud?wortel={zaak}"),
         Some(&b),
         None,
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{l}");
-    assert_eq!(l["zaakkenmerk"], json!(zaak));
+    assert_eq!(l["wortel"], json!(zaak));
     // Een bron van het proces in deze runtime mag ook; een andere cel niet.
     let (status, _, _) = vraag(
         &app,
@@ -4034,7 +4075,7 @@ async fn toeslag_indienen(app: &Router, maand: &str, geschat_inkomen: i64) -> St
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
-    body["gram"]["zaakkenmerk"].as_str().unwrap().to_string()
+    body["gram"]["id"].as_str().unwrap().to_string()
 }
 
 /// Een handeling in een toeslagzaak; `gebeurd` meldt een feit dat toch
@@ -4133,7 +4174,6 @@ async fn meer_besluiten_in_een_zaak() {
     let app = als_lezer(&rt);
     let zaak = toeslag_indienen(&app, "2025-03-01", 90000).await;
     let b = behandelaar_in(&app, TOESLAG).await;
-    let kenmerk = |n: usize| format!("{zaak}/{n}");
 
     // Voor het voorschot: bekendmaken en betalen wachten op het besluit.
     let (status, f) = toeslag(
@@ -4165,8 +4205,8 @@ async fn meer_besluiten_in_een_zaak() {
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{v}");
-    assert_eq!(v["gram"]["besluit"], "opent");
-    assert_eq!(v["gram"]["besluitkenmerk"], kenmerk(1));
+    assert_eq!(v["gram"]["verwijst"], json!({"op_aanvraag": zaak}));
+    let k1 = v["gram"]["id"].as_str().unwrap().to_string();
     assert_eq!(v["gram"]["fields"]["voorschot"], json!(12000));
     // Een tweede voorschot in dezelfde zaak: geen eigen grondslag.
     let (status, f) = toeslag(
@@ -4189,7 +4229,7 @@ async fn meer_besluiten_in_een_zaak() {
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{bm}");
-    assert_eq!(bm["gram"]["besluitkenmerk"], kenmerk(1));
+    assert_eq!(bm["gram"]["verwijst"]["besluit"], k1.as_str());
     assert_eq!(bm["gram"]["fields"]["einde_bezwaartermijn"], "2025-04-23");
     // Een besluit wordt een keer bekendgemaakt.
     let (status, f) = toeslag(
@@ -4209,7 +4249,7 @@ async fn meer_besluiten_in_een_zaak() {
     let betaling = json!({"bedrag": 12000, "datum_betaling": "2025-03-12"});
     let (status, bt) = toeslag(&app, &b, &zaak, "voorschot_betalen", betaling, false).await;
     assert_eq!(status, StatusCode::CREATED, "{bt}");
-    assert_eq!(bt["gram"]["besluitkenmerk"], kenmerk(1));
+    assert_eq!(bt["gram"]["verwijst"]["besluit"], k1.as_str());
     assert_eq!(
         bt["proef"]["uitkomsten"]["nog_te_betalen_voorschot"],
         json!(0)
@@ -4219,7 +4259,8 @@ async fn meer_besluiten_in_een_zaak() {
     let vaststelling = json!({"vastgesteld_inkomen": 150000, "vaststellingsdatum": "2025-03-12"});
     let (status, vs) = toeslag(&app, &b, &zaak, "vaststellen", vaststelling.clone(), false).await;
     assert_eq!(status, StatusCode::CREATED, "{vs}");
-    assert_eq!(vs["gram"]["besluitkenmerk"], kenmerk(2));
+    let k2 = vs["gram"]["id"].as_str().unwrap().to_string();
+    assert_eq!(vs["gram"]["verwijst"]["op_aanvraag"], zaak.as_str());
     assert_eq!(vs["gram"]["fields"]["vastgestelde_toeslag"], json!(6000));
     // Een tweede vaststelling zonder wijzigingsgrond: de proef zegt het, en
     // de cel weigert zo'n gram zelf ook.
@@ -4238,13 +4279,13 @@ async fn meer_besluiten_in_een_zaak() {
             "stroom": "test_toeslag_zaakverloop",
             "event": "toeslag_vastgesteld",
             "external": {"vastgestelde_toeslag": 1, "vaststellingsdatum": "2025-03-12"},
-            "zaakkenmerk": zaak,
+            "verwijst": {"op_aanvraag": zaak},
         }),
     )
     .await;
     assert_eq!(status, StatusCode::CONFLICT, "{f}");
     assert!(
-        f["fout"].as_str().unwrap().contains("besluit: wijzigt"),
+        f["fout"].as_str().unwrap().contains("verwijzing wijzigt"),
         "{f}"
     );
     // Een gram dat een besluit volgt, noemt een besluit dat in de zaak ligt.
@@ -4254,16 +4295,18 @@ async fn meer_besluiten_in_een_zaak() {
             "stroom": "test_toeslag_zaakverloop",
             "event": "besluit_bekendgemaakt",
             "external": {"datum_bekendmaking": "2025-03-12", "bekendgemaakt": true},
-            "zaakkenmerk": zaak,
         });
         if let Some(b) = besluit {
-            v["besluitkenmerk"] = json!(b);
+            v["verwijst"] = json!({"besluit": b});
         }
         v
     };
     for (besluit, melding) in [
-        (Some(kenmerk(9)), "geen besluit"),
-        (None, "geef het besluitkenmerk mee"),
+        (
+            Some("00000000-0000-4000-8000-000000000009".to_string()),
+            "geen gram",
+        ),
+        (None, "verplicht met 'besluit'"),
     ] {
         let (status, f) = als_runtime(
             &rt,
@@ -4285,7 +4328,7 @@ async fn meer_besluiten_in_een_zaak() {
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{bm}");
-    assert_eq!(bm["gram"]["besluitkenmerk"], kenmerk(2));
+    assert_eq!(bm["gram"]["verwijst"]["besluit"], k2.as_str());
 
     // 3. De wijziging van de vaststelling: een eigen besluit met een eigen
     // grondslag. Zonder nieuwe feiten is er niets te wijzigen.
@@ -4317,11 +4360,10 @@ async fn meer_besluiten_in_een_zaak() {
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{w}");
-    assert_eq!(w["gram"]["besluit"], "wijzigt");
-    assert_eq!(w["gram"]["besluitkenmerk"], kenmerk(3));
-    assert_eq!(w["gram"]["wijzigt"], kenmerk(2));
+    let k3 = w["gram"]["id"].as_str().unwrap().to_string();
+    assert_eq!(w["gram"]["verwijst"], json!({"wijzigt": k2}));
     assert_eq!(w["gram"]["fields"]["vastgestelde_toeslag"], json!(0));
-    assert_eq!(w["proef"]["besluit"]["besluitkenmerk"], kenmerk(2));
+    assert_eq!(w["proef"]["besluit"]["id"], k2.as_str());
     let (status, bm) = toeslag(
         &app,
         &b,
@@ -4332,13 +4374,12 @@ async fn meer_besluiten_in_een_zaak() {
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{bm}");
-    assert_eq!(bm["gram"]["besluitkenmerk"], kenmerk(3));
+    assert_eq!(bm["gram"]["verwijst"]["besluit"], k3.as_str());
 
     // Een handeling handelt op het laatste besluit, tenzij de behandelaar er
     // een noemt: een tweede wijziging kan de oorspronkelijke vaststelling
     // wijzigen. Een besluit waarop zij niet handelt, weigert het proces.
-    let wijzigen =
-        |kenmerk: String| json!({"formulier": wijziging(true), "besluitkenmerk": kenmerk});
+    let wijzigen = |id: &str| json!({"formulier": wijziging(true), "besluit": id});
     let (status, p) = handeling_in(
         &app,
         TOESLAG,
@@ -4350,7 +4391,7 @@ async fn meer_besluiten_in_een_zaak() {
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{p}");
-    assert_eq!(p["besluit"]["besluitkenmerk"], kenmerk(3));
+    assert_eq!(p["besluit"]["id"], k3.as_str());
     let (status, p) = handeling_in(
         &app,
         TOESLAG,
@@ -4358,11 +4399,11 @@ async fn meer_besluiten_in_een_zaak() {
         &zaak,
         "vaststelling_wijzigen",
         true,
-        wijzigen(kenmerk(2)),
+        wijzigen(&k2),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{p}");
-    assert_eq!(p["besluit"]["besluitkenmerk"], kenmerk(2));
+    assert_eq!(p["besluit"]["id"], k2.as_str());
     let (status, p) = handeling_in(
         &app,
         TOESLAG,
@@ -4370,7 +4411,7 @@ async fn meer_besluiten_in_een_zaak() {
         &zaak,
         "vaststelling_wijzigen",
         true,
-        wijzigen(kenmerk(1)),
+        wijzigen(&k1),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{p}");
@@ -4395,7 +4436,8 @@ async fn meer_besluiten_in_een_zaak() {
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{t}");
-    assert_eq!(t["gram"]["besluitkenmerk"], kenmerk(4));
+    let k4 = t["gram"]["id"].as_str().unwrap().to_string();
+    assert_eq!(t["gram"]["verwijst"]["op_aanvraag"], zaak.as_str());
     assert_eq!(t["gram"]["decision_type"], "BETALINGSVERPLICHTING");
     assert_eq!(t["gram"]["fields"]["terug_te_vorderen"], json!(12000));
     let (status, bm) = toeslag(
@@ -4413,7 +4455,7 @@ async fn meer_besluiten_in_een_zaak() {
     let terug = |bedrag: i64| json!({"bedrag": bedrag, "datum_terugbetaling": "2025-03-12"});
     let (status, tb) = toeslag(&app, &b, &zaak, "terugbetalen", terug(5000), false).await;
     assert_eq!(status, StatusCode::CREATED, "{tb}");
-    assert_eq!(tb["gram"]["besluitkenmerk"], kenmerk(4));
+    assert_eq!(tb["gram"]["verwijst"]["besluit"], k4.as_str());
     assert_eq!(
         tb["proef"]["uitkomsten"]["nog_terug_te_betalen"],
         json!(7000)
@@ -4462,7 +4504,7 @@ async fn meer_besluiten_in_een_zaak() {
         ]
     );
     for (i, besluit) in besluiten.iter().enumerate() {
-        assert_eq!(besluit["besluitkenmerk"], kenmerk(i + 1));
+        assert_eq!(besluit["id"], [&k1, &k2, &k3, &k4][i].as_str());
         let r = &besluit["rechtsbescherming"];
         assert_eq!(r["stage"], "BEZWAAR", "{besluit}");
         assert_eq!(
@@ -4490,7 +4532,7 @@ async fn meer_besluiten_in_een_zaak() {
             ]
         );
     }
-    assert_eq!(besluiten[2]["wijzigt"], kenmerk(2));
+    assert_eq!(besluiten[2]["wijzigt"], k2.as_str());
     assert_eq!(
         besluiten[0]["handelingen"],
         json!(["voorschot_bekendmaken", "voorschot_betalen"])
@@ -4505,7 +4547,7 @@ async fn meer_besluiten_in_een_zaak() {
         .iter()
         .find(|h| h["naam"] == "terugbetalen")
         .unwrap();
-    assert_eq!(terugbetalen["besluit"], kenmerk(4));
+    assert_eq!(terugbetalen["besluit"], k4.as_str());
     assert_eq!(terugbetalen["vastgelegd"], json!(2));
     let bedrag = terugbetalen["formulier"]
         .as_array()
@@ -4532,7 +4574,7 @@ async fn meer_besluiten_in_een_zaak() {
     let (status, l, _) = vraag(
         &app,
         "GET",
-        &format!("{TOESLAG_CEL}/api/lexostatus/zaakstand?zaakkenmerk={zaak}"),
+        &format!("{TOESLAG_CEL}/api/lexostatus/zaakstand?wortel={zaak}"),
         None,
         None,
     )

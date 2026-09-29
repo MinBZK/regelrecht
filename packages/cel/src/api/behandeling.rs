@@ -66,19 +66,16 @@ fn weigering(w: Weigering) -> Fout {
 /// De grammen van een zaak, zoals de cel ze geeft; een 404 als de cel de
 /// zaak niet kent. Alleen voor inzage in het dossier: het proces leidt er
 /// niets uit af.
-async fn zaakgrammen(
-    state: &ProcesState,
-    zaakkenmerk: &str,
-) -> Result<Vec<celclient::MetYaml>, Fout> {
-    celclient::lees_zaak(state.cel.as_ref(), state.cel_id(), zaakkenmerk)
+async fn zaakgrammen(state: &ProcesState, wortel: &str) -> Result<Vec<celclient::MetYaml>, Fout> {
+    celclient::lees_zaak(state.cel.as_ref(), state.cel_id(), wortel)
         .await
         .map_err(van_cel)
 }
 
 /// De stand van een zaak, zoals de cel haar afleidt; een 404 als de cel de
 /// zaak niet kent.
-async fn zaakstand(state: &ProcesState, zaakkenmerk: &str) -> Result<Zaakstand, Fout> {
-    celclient::zaakstand(state.cel.as_ref(), state.cel_id(), zaakkenmerk, None)
+async fn zaakstand(state: &ProcesState, wortel: &str) -> Result<Zaakstand, Fout> {
+    celclient::zaakstand(state.cel.as_ref(), state.cel_id(), wortel, None)
         .await
         .map_err(van_cel)
 }
@@ -137,11 +134,11 @@ fn omgeving_met<'a>(
 pub(super) async fn zaak_route(
     State(state): State<ProcesState>,
     headers: HeaderMap,
-    Path(zaakkenmerk): Path<String>,
+    Path(wortel): Path<String>,
 ) -> Result<Json<Value>, Fout> {
     behandelaar(&state, &headers)?;
-    let zaak = zaakstand(&state, &zaakkenmerk).await?;
-    let grammen = zaakgrammen(&state, &zaakkenmerk).await?;
+    let zaak = zaakstand(&state, &wortel).await?;
+    let grammen = zaakgrammen(&state, &wortel).await?;
     let b = behandeling(&state)?;
     let leeg = Opgave::default();
     // De zaakcontext (de lexostatussen van de zaak, de synthese en de
@@ -180,12 +177,12 @@ pub(super) async fn zaak_route(
         let om = omgeving_met(&state, cel.as_ref(), &gedeeld[i].0, &gedeeld[i].1, nu);
         let stand = handeling::stand(&state.proces, h, &zaak);
         let zaak = &zaak;
-        let zaakkenmerk = &zaakkenmerk;
+        let wortel = &wortel;
         let leeg = &leeg;
         async move {
             // Een stage die al ligt of nog niet kan, rekent de zaak niet uit.
             let proef = if stand.beschikbaar {
-                Some(handeling::proef(&om, h, zaakkenmerk, zaak, leeg).await)
+                Some(handeling::proef(&om, h, wortel, zaak, leeg).await)
             } else {
                 None
             };
@@ -250,7 +247,7 @@ pub(super) async fn zaak_route(
         }));
     }
     Ok(Json(json!({
-        "zaakkenmerk": zaakkenmerk,
+        "wortel": wortel,
         "grammen": grammen,
         "procedure": handeling::procedure_van_de_zaak(&state.proces, &zaak),
         "besluiten": handeling::besluiten_in_zaak(&state.proces, &zaak),
@@ -272,13 +269,13 @@ fn weigering_tekst(w: &Weigering) -> String {
 pub(super) async fn proefhandeling_route(
     State(state): State<ProcesState>,
     headers: HeaderMap,
-    Path((zaakkenmerk, naam)): Path<(String, String)>,
+    Path((wortel, naam)): Path<(String, String)>,
     Json(opgave): Json<Opgave>,
 ) -> Result<Json<handeling::Proefhandeling>, Fout> {
     let (i, h) = handeling_met(&state, &naam)?;
     voor_handeling(&state, &headers, h.rol.as_deref())?;
-    let zaak = zaakstand(&state, &zaakkenmerk).await?;
-    handeling::proef(&omgeving(&state, i), h, &zaakkenmerk, &zaak, &opgave)
+    let zaak = zaakstand(&state, &wortel).await?;
+    handeling::proef(&omgeving(&state, i), h, &wortel, &zaak, &opgave)
         .await
         .map(Json)
         .map_err(weigering)
@@ -292,18 +289,18 @@ pub(super) async fn proefhandeling_route(
 pub(super) async fn handeling_route(
     State(state): State<ProcesState>,
     headers: HeaderMap,
-    Path((zaakkenmerk, naam)): Path<(String, String)>,
+    Path((wortel, naam)): Path<(String, String)>,
     Json(opgave): Json<Opgave>,
 ) -> Result<(StatusCode, Json<handeling::Genomen>), Fout> {
     let (i, h) = handeling_met(&state, &naam)?;
     let wie = voor_handeling(&state, &headers, h.rol.as_deref())?;
-    let zaak = zaakstand(&state, &zaakkenmerk).await?;
-    let genomen = handeling::neem(&omgeving(&state, i), h, &zaakkenmerk, &zaak, &opgave, &wie)
+    let zaak = zaakstand(&state, &wortel).await?;
+    let genomen = handeling::neem(&omgeving(&state, i), h, &wortel, &zaak, &opgave, &wie)
         .await
         .map_err(weigering)?;
     tracing::info!(
         proces = %state.proces.id(),
-        zaakkenmerk = %zaakkenmerk,
+        wortel = %wortel,
         handeling = %h.naam,
         stage = genomen.gram.stage.as_deref().unwrap_or("-"),
         "handeling vastgelegd"

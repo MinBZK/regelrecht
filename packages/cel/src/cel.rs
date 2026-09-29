@@ -64,6 +64,13 @@ impl Cel {
         if fouten.is_empty() {
             fouten.extend(wet::vestig(&mut strommen, &service));
         }
+        // De rollen van de events (besluit, volgt een besluit, wortel) volgen
+        // uit hun stage en verwijzingen; elke verwijzing moet naar een event
+        // van de cel kunnen wijzen.
+        if fouten.is_empty() {
+            stroom::leid_rollen_af(&mut strommen);
+            fouten.extend(stroom::controleer_verwijzingen(&strommen));
+        }
         let lexostatussen = reductie::laad(&map.join(&definitie.lexostatussen))
             .map_err(|f| fouten.extend(f))
             .ok();
@@ -138,8 +145,10 @@ impl Cel {
         v
     }
 
-    /// Of een event van de cel een zaak opent of volgt. Zo'n cel biedt de
-    /// lexostatus [`crate::reductie::ZAAKSTAND`] aan.
+    /// Of een event van de cel naar een ander gram verwijst (of een wortel is
+    /// waar een ander naar verwijst). Zo'n cel biedt de lexostatus
+    /// [`crate::reductie::ZAAKSTAND`] aan: de stand van de groep rond een
+    /// wortel.
     pub fn heeft_zaken(&self) -> bool {
         self.strommen
             .iter()

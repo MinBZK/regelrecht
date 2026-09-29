@@ -20,7 +20,7 @@ articles:
     machine_readable:
       execution:
         parameters:
-          - {name: zaakkenmerk, type: string, required: true}
+          - {name: wortel, type: string, required: true}
         input:
           - name: grammen
             type: array
@@ -42,7 +42,7 @@ articles:
                 conditions:
                   - {operation: EQUALS, subject: $g.type, value: indiening}
                   - {operation: EQUALS, subject: $g.soort, value: aanvraag}
-                  - {operation: EQUALS, subject: $g.zaakkenmerk, value: $zaakkenmerk}
+                  - {operation: EQUALS, subject: $g.wortel, value: $wortel}
               body: $g.volgorde
               combine: MAX
           - output: aanvraagdatum

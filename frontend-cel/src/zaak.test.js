@@ -17,19 +17,19 @@ const h = (naam, extra = {}) => ({
 // betaling op het eerste, een besluit dat nog kan, en een feit van de zaak.
 const zaak = {
   besluiten: [
-    { besluitkenmerk: 'z/1', handeling: 'voorschot', op_moment: '2025-03-12T00:00:00+01:00' },
-    { besluitkenmerk: 'z/2', handeling: 'wijzigen', wijzigt: 'z/1' },
+    { id: 'b1', handeling: 'voorschot', op_moment: '2025-03-12T00:00:00+01:00' },
+    { id: 'b2', handeling: 'wijzigen', wijzigt: 'b1' },
   ],
   handelingen: [
     h('voorschot', { soort: { soort: 'besluit' }, stage: 'BESLUIT', vastgelegd: 1, beschikbaar: false }),
-    h('bekendmaken', { soort: { soort: 'vervolg' }, stage: 'BEKENDMAKING', besluit: 'z/1' }),
+    h('bekendmaken', { soort: { soort: 'vervolg' }, stage: 'BEKENDMAKING', besluit: 'b1' }),
     h('betalen', {
-      besluit: 'z/1',
+      besluit: 'b1',
       formulier: [{ naam: 'bedrag', type: 'bedrag', eenheid: 'eurocent' }],
       typen: { nog_te_betalen: { type: 'amount', eenheid: 'eurocent' } },
       proef: { uitkomsten: { nog_te_betalen: 1200 } },
     }),
-    h('wijzigen', { soort: { soort: 'besluit' }, stage: 'BESLUIT', besluit: 'z/2', vastgelegd: 1 }),
+    h('wijzigen', { soort: { soort: 'besluit' }, stage: 'BESLUIT', besluit: 'b2', vastgelegd: 1 }),
     h('terugvorderen', { soort: { soort: 'besluit' }, stage: 'BESLUIT' }),
     h('aanvulling_vragen'),
   ],
@@ -61,8 +61,8 @@ describe('indeling', () => {
 
 describe('teksten', () => {
   it('noemt het besluit, de dag en wat het wijzigt', () => {
-    expect(besluitKop(zaak.besluiten[0])).toBe('besluit z/1, genomen op 2025-03-12');
-    expect(besluitKop(zaak.besluiten[1])).toBe('besluit z/2, wijzigt besluit z/1');
+    expect(besluitKop(zaak.besluiten[0])).toBe('besluit b1, genomen op 2025-03-12');
+    expect(besluitKop(zaak.besluiten[1])).toBe('besluit b2, wijzigt besluit b1');
   });
 
   it('zegt of een handeling kan', () => {

@@ -6,10 +6,10 @@
 //! | Route | Doet |
 //! |---|---|
 //! | `GET /api/kroniek` | met het runtime- of leestoken: de grammen, elk met YAML |
-//! | `GET /api/zaken/{zaakkenmerk}` | met het runtime- of leestoken: de grammen van een zaak, elk met YAML; 404 als de cel de zaak niet kent |
+//! | `GET /api/zaken/{wortel}` | met het runtime- of leestoken: de grammen van een zaak, elk met YAML; 404 als de cel de zaak niet kent |
 //! | `GET /api/lexostatus/{naam}?<input>=...` | met het runtime- of leestoken: een reductie, met de inputs als query; `zaakstand` biedt de runtime aan voor elke cel met een zaak |
 //! | `POST /api/lexostatus/{naam}/proef` | alleen met het runtime-token: `{concept, inputs}`: bouwt het gram in het geheugen en reduceert de kroniek mét dat gram; legt niets vast |
-//! | `POST /api/grammen` | alleen met het runtime-token: `{actor, stroom, event, intake, external, zaakkenmerk?, besluit?, zaak_grammen?}`: bouwt het gram, valideert het, controleert de actor en de zaak en legt het vast |
+//! | `POST /api/grammen` | alleen met het runtime-token: `{actor, stroom, event, intake, external, verwijst?, besluit?, wortel_grammen?}`: bouwt het gram, geeft het een id, valideert het, controleert de actor en de verwijzingen en legt het vast |
 //! | `GET /api/stroom` | de stroomdefinities van de cel, met hun hash |
 //!
 //! Een proces handelt: het informeert, concludeert en laat een cel
@@ -54,9 +54,9 @@
 //! | `GET /api/werkvoorraad` | de lijst-lexostatus van de werkvoorraad, uit de cel |
 //! | `GET /api/inzage/{cel}/kroniek` | de kroniek van een cel die het proces leest ([`inzage`]) |
 //! | `GET /api/inzage/{cel}/lexostatus/{naam}?...` | een lexostatus van zo'n cel |
-//! | `GET /api/zaken/{zaakkenmerk}` | de grammen van de zaak, de procedure, de rechtsbescherming, en per handeling haar formulier, of zij kan, en een proef zonder formulier |
-//! | `POST /api/zaken/{zaakkenmerk}/handelingen/{naam}/proef` | `{formulier}` naar een handeling op proef; niets wordt vastgelegd |
-//! | `POST /api/zaken/{zaakkenmerk}/handelingen/{naam}` | `{formulier, gebeurd?}`: de handeling nemen, of een gebeurd feit melden; de cel legt haar vast |
+//! | `GET /api/zaken/{wortel}` | de grammen van de zaak, de procedure, de rechtsbescherming, en per handeling haar formulier, of zij kan, en een proef zonder formulier |
+//! | `POST /api/zaken/{wortel}/handelingen/{naam}/proef` | `{formulier}` naar een handeling op proef; niets wordt vastgelegd |
+//! | `POST /api/zaken/{wortel}/handelingen/{naam}` | `{formulier, gebeurd?}`: de handeling nemen, of een gebeurd feit melden; de cel legt haar vast |
 //!
 //! Tussen proces en cel is geen beveiligingscontext. Vastleggen en op proef
 //! reduceren mag alleen een proces van deze runtime: het interne transport

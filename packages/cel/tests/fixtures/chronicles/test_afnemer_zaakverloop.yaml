@@ -1,12 +1,12 @@
 ---
-# Fictieve teststroom: het verloop van een zaak bij de afnemer, in dezelfde
-# kroniek als de aanvraag. Elk event volgt de zaak die de aanvraag opende.
+# Fictieve teststroom: het verloop bij de afnemer, in dezelfde kroniek als de
+# aanvraag. Elk event verwijst naar de aanvraag of naar het besluit.
 # Het besluit zelf is een stage-decretogram (stage BESLUIT); de werkvoorraad
 # laat een zaak met zo'n gram weg. Het op_moment van het besluit is de
 # besluitdatum. Daarna: de bekendmaking (stage BEKENDMAKING, een handeling),
 # met de bezwaartermijn die de haak op die stage uitrekent, en de betaling
-# (een executogram dat het besluit uitvoert). Het besluit opent een besluit
-# in de zaak (besluit: opent); de bekendmaking en de betaling volgen het.
+# (een executogram dat het besluit uitvoert). Het besluit verwijst naar de
+# aanvraag (op_aanvraag); de bekendmaking en de betaling naar het besluit.
 $id: test_afnemer_zaakverloop
 recording_actor: test_afnemer
 chronicle: test_afnemer
@@ -16,7 +16,7 @@ events:
     grondslag:
       - testregeling_afnemer#3
     type: executogram
-    zaak: volgt
+    verwijst: {aanvraag: {naar: aanvraag_ontvangen, verplicht: true}}
     fields:
       datum_uitnodiging: $external.datum_uitnodiging
   - name: termijn_opgeschort
@@ -24,7 +24,7 @@ events:
     grondslag:
       - testregeling_afnemer#3
     type: executogram
-    zaak: volgt
+    verwijst: {aanvraag: {naar: aanvraag_ontvangen, verplicht: true}}
     fields:
       dagen: $external.dagen
   - name: besluit_genomen
@@ -33,8 +33,7 @@ events:
       - testregeling_afnemer#3 lid 1   # het besluit, niet de tijdigheid (lid 2)
     type: decretogram
     stage: BESLUIT
-    zaak: volgt
-    besluit: opent                     # het besluit krijgt een eigen kenmerk in de zaak
+    verwijst: {op_aanvraag: {naar: aanvraag_ontvangen, verplicht: true}}
     op_moment:                         # de dag van het besluit, niet die van het vastleggen
       bron: $external.besluitdatum
       grondslag: [testregeling_afnemer#3 lid 1]
@@ -56,8 +55,7 @@ events:
     type: handeling
     soort: bekendmaking
     stage: BEKENDMAKING
-    zaak: volgt
-    besluit: volgt                     # een stage van het besluit
+    verwijst: {besluit: {naar: {stage: BESLUIT}, verplicht: true}}
     op_moment:
       bron: $external.datum_bekendmaking
       grondslag: [testregeling_awb#2]
@@ -76,8 +74,7 @@ events:
       - testregeling_awb#3 lid 1
     type: executogram
     soort: betaling
-    zaak: volgt
-    besluit: volgt                     # voert het besluit uit (RFC-022 par. 3.3)
+    verwijst: {besluit: {naar: {stage: BESLUIT}, verplicht: true}}
     op_moment:
       bron: $external.datum_betaling
       grondslag: [testregeling_awb#3 lid 2]

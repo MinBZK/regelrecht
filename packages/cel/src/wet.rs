@@ -5,9 +5,10 @@
 //! namespace per integratie) twee dingen zeggen:
 //!
 //! - `vestigt`: de feiten die dit artikel doet ontstaan, als event van een
-//!   kroniek: het type, de soort, de stage, of het een zaak of besluit opent
-//!   of volgt, de grondslag, waarom het `op_moment` rechtens telt en welke
-//!   velden het gram draagt. Of het breidt een event uit dat een ander artikel
+//!   kroniek: het type, de soort, de stage, naar welk gram het verwijst
+//!   (`verwijst`, met een naam uit de wettekst: een besluit `op_aanvraag`,
+//!   een betaling naar het `besluit`), de grondslag, waarom het `op_moment`
+//!   rechtens telt en welke velden het gram draagt. Of het breidt een event uit dat een ander artikel
 //!   vestigt (`breidt_uit`), met velden en grondslag erbij: zo vestigt de Awb
 //!   de aanvraag en voegt een bijzondere wet haar inhoud toe.
 //! - `leest`: hoe het artikel zijn eigen parameters uit de kroniek leest, in
@@ -33,7 +34,7 @@ use crate::reductie::{
     Afgeleid, Filter, InputDefinitie, Kies, LexostatusDefinitie, Reductie, WetAanvulling,
 };
 use crate::schema::{self, Soort};
-use crate::stroom::{Besluit, Stroom, Zaak};
+use crate::stroom::{Stroom, Verwijzing};
 
 /// De namespace in `produces.extensions` (RFC-022 §3.2).
 pub const NAMESPACE: &str = "chronolex";
@@ -84,10 +85,11 @@ pub struct Vestiging {
     pub soort: Option<String>,
     #[serde(default)]
     pub stage: Option<String>,
+    /// Naar welk gram een gram van dit event verwijst, per naam uit de
+    /// wettekst (Wpp 107 "besluit op de aanvraag": `op_aanvraag`; Awb 3:41
+    /// "bekendmaking van besluiten": `besluit`), en wat dat gram moet zijn.
     #[serde(default)]
-    pub zaak: Option<Zaak>,
-    #[serde(default)]
-    pub besluit: Option<Besluit>,
+    pub verwijst: BTreeMap<String, Verwijzing>,
     /// De grondslag die het gram draagt. Zonder: het artikel zelf bij een
     /// event, niets bij een uitbreiding.
     #[serde(default)]
@@ -102,6 +104,30 @@ pub struct Vestiging {
     /// bijzondere wet te kennen.
     #[serde(default)]
     pub als: BTreeMap<String, String>,
+}
+
+impl Vestiging {
+    /// De verwijzingen zoals de stroom ze zou noemen, voor het document van
+    /// de stroom (`GET /api/stroom`); `None` zonder verwijzing.
+    fn verwijst_als_json(&self) -> Option<Value> {
+        if self.verwijst.is_empty() {
+            return None;
+        }
+        let mut uit = Map::new();
+        for (naam, v) in &self.verwijst {
+            let naar = match &v.naar {
+                crate::stroom::Naar::Artikel(a) | crate::stroom::Naar::Event(a) => {
+                    Value::String(a.clone())
+                }
+                crate::stroom::Naar::Stage(s) => serde_json::json!({"stage": s}),
+            };
+            uit.insert(
+                naam.clone(),
+                serde_json::json!({"naar": naar, "verplicht": v.verplicht}),
+            );
+        }
+        Some(Value::Object(uit))
+    }
 }
 
 /// Waarom het `op_moment` rechtens telt, en welk gegeven het is. De bron (wie
@@ -147,8 +173,9 @@ pub struct Lezing {
     #[serde(default)]
     pub kies: Option<Kies>,
     /// `dit`: het artikel leest de grammen van het besluit waarvoor het
-    /// gevraagd wordt. De runtime geeft een zaakbron alleen het zaakkenmerk;
-    /// zij leest dus per zaak (een zaak met een besluit geeft hetzelfde).
+    /// gevraagd wordt. De runtime geeft een bron van de groep alleen de
+    /// wortel; zij leest dus per wortel (een wortel met een besluit geeft
+    /// hetzelfde).
     #[serde(default)]
     pub besluit: Option<String>,
     /// Per parameter van dit artikel de afleiding, met optioneel `uit` (welke
@@ -428,11 +455,10 @@ fn vestig_event(
             && (v.type_.is_some()
                 || v.soort.is_some()
                 || v.stage.is_some()
-                || v.zaak.is_some()
-                || v.besluit.is_some())
+                || !v.verwijst.is_empty())
         {
             fouten.push(format!(
-                "{}: een uitbreiding zet geen type, soort, stage, zaak of besluit; dat doet het artikel dat '{naam}' vestigt",
+                "{}: een uitbreiding zet geen type, soort, stage of verwijzing; dat doet het artikel dat '{naam}' vestigt",
                 wa.verwijzing
             ));
         }
@@ -483,6 +509,12 @@ fn vestig_event(
     }
 
     let event = &mut stroom.events[i];
+    if !event.verwijst.is_empty() {
+        fouten.push(
+            "de stroom noemt verwijst, maar het event heeft vestigt: de verwijzingen komen uit de wet"
+                .into(),
+        );
+    }
     // De velden: elk blad van de stroom valt onder een pad van de wet, en
     // elk pad van de wet heeft een blad in de stroom.
     let bladeren: Vec<String> = event.bladeren().into_iter().map(|b| b.pad).collect();
@@ -518,8 +550,7 @@ fn vestig_event(
     event.type_ = type_;
     event.soort = bv.soort.clone();
     event.stage = bv.stage.clone();
-    event.zaak = bv.zaak.unwrap_or_default();
-    event.besluit = bv.besluit;
+    event.verwijst = bv.verwijst.clone();
     event.grondslag = grondslag;
     event.als = als;
 
@@ -538,9 +569,8 @@ fn vestig_event(
         if let Some(s) = &event.stage {
             e.insert("stage".into(), Value::String(s.clone()));
         }
-        e.insert("zaak".into(), Value::String(event.zaak.als_tekst().into()));
-        if let Some(b) = event.besluit {
-            e.insert("besluit".into(), Value::String(b.als_tekst().into()));
+        if let Some(v) = bv.verwijst_als_json() {
+            e.insert("verwijst".into(), v);
         }
         e.insert("grondslag".into(), serde_json::json!(event.grondslag));
         if let Some(o) = e.get_mut("op_moment").and_then(Value::as_object_mut) {
@@ -742,7 +772,7 @@ fn definitie(
     let mut hier = 0usize;
     let mut elders = 0usize;
     let mut top = Filter::new();
-    top.insert("zaakkenmerk".into(), "$zaakkenmerk".into());
+    top.insert("wortel".into(), "$wortel".into());
     if let Some(u) = &lezing.uit {
         match filter_uit(u, events, &waar) {
             Ok(Some(f)) => {
@@ -874,7 +904,7 @@ fn definitie(
     Ok(Some(LexostatusDefinitie {
         name: lexonaam.clone(),
         inputs: vec![InputDefinitie {
-            name: "zaakkenmerk".into(),
+            name: "wortel".into(),
             soort: "string".into(),
         }],
         reduction: Reductie {
@@ -928,8 +958,6 @@ articles:
                 - event: besloten
                   type: decretogram
                   stage: BESLUIT
-                  zaak: volgt
-                  besluit: opent
                   op_moment: {parameter: besluitdatum, grondslag: ['testwet_lezing#1']}
                   velden: uitkomsten
                   als: {vastgesteld_bedrag: bedrag_art1}
@@ -953,8 +981,7 @@ articles:
                 - event: betaald
                   type: executogram
                   soort: betaling
-                  zaak: volgt
-                  besluit: volgt
+                  verwijst: {besluit: {naar: {stage: BESLUIT}, verplicht: true}}
                   velden: [bedrag]
               leest:
                 besluit: dit
@@ -1014,10 +1041,19 @@ events:
         let s = service();
         let mut strommen = vec![stroom("bedrag_art1: $external.bedrag_art1")];
         assert_eq!(vestig(&mut strommen, &s), Vec::<String>::new());
+        crate::stroom::leid_rollen_af(&mut strommen);
         let e = &strommen[0].events[0];
         assert_eq!(e.type_, "decretogram");
         assert_eq!(e.stage.as_deref(), Some("BESLUIT"));
-        assert_eq!(e.besluit, Some(Besluit::Opent));
+        assert_eq!(e.besluit, Some(crate::stroom::Besluit::Opent));
+        assert_eq!(
+            strommen[0].events[1].verwijst["besluit"].naar,
+            crate::stroom::Naar::Stage("BESLUIT".into())
+        );
+        assert_eq!(
+            strommen[0].events[1].besluit,
+            Some(crate::stroom::Besluit::Volgt)
+        );
         assert_eq!(e.grondslag, ["testwet_lezing#1"]);
         assert_eq!(
             e.op_moment.as_ref().unwrap().grondslag,
@@ -1047,6 +1083,7 @@ events:
         let s = service();
         let mut strommen = vec![stroom("bedrag_art1: $external.bedrag_art1")];
         assert!(vestig(&mut strommen, &s).is_empty());
+        crate::stroom::leid_rollen_af(&mut strommen);
         let defs = lexostatussen(&strommen, &s, &[]).unwrap();
         assert_eq!(defs.len(), 1);
         let d = &defs[0];
@@ -1092,7 +1129,7 @@ events:
                 "2025-03-03T10:00:00+01:00",
             ),
         ];
-        let inputs = json!({"zaakkenmerk": "Z1"}).as_object().cloned().unwrap();
+        let inputs = json!({"wortel": "Z1"}).as_object().cloned().unwrap();
         let l = reductie::reduceer(d, &inputs, &grammen).unwrap().unwrap();
         assert_eq!(l.parameters["vastgesteld_bedrag"], json!(100));
         assert_eq!(l.parameters["betaald_bedrag"], json!(50));
@@ -1143,6 +1180,7 @@ events:
         s.load_law(&wet).unwrap();
         let mut strommen = vec![stroom("bedrag_art1: $external.bedrag_art1")];
         assert!(vestig(&mut strommen, &s).is_empty());
+        crate::stroom::leid_rollen_af(&mut strommen);
         let namen: Vec<String> = lexostatussen(&strommen, &s, &[])
             .unwrap()
             .into_iter()
@@ -1156,6 +1194,7 @@ events:
         let s = service();
         let mut strommen = vec![stroom("bedrag_art1: $external.bedrag_art1")];
         assert!(vestig(&mut strommen, &s).is_empty());
+        crate::stroom::leid_rollen_af(&mut strommen);
         let a: WetAanvulling = serde_json::from_value(json!({
             "artikel": "testwet_lezing#1",
             "extra_velden": {"x": {"veld": "bedrag_art1"}}
