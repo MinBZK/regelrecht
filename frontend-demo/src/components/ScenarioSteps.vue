@@ -1,13 +1,13 @@
 <script setup>
 import { computed } from 'vue';
 import { renderStep, stepKeywords } from '../data/gherkinNl.js';
-import { displayCell, emphasiseArguments, hasHeaderRow, isExpectation, keywordColumnWidth } from '../data/scenarioSteps.js';
+import { displayCell, emphasiseArguments, hasHeaderRow, isExpectation, keywordColumnWidth, stepMark } from '../data/scenarioSteps.js';
 import { activeLocale, useI18n } from '../i18n/index.js';
 
 // The steps of a scenario (or of the background) as Gherkin: in order, keyword
 // first, data tables as tables. It shows what the file says and nothing it
 // would take the engine to know; the only marks from a run are pass/fail on
-// the expectations and the error under the step that failed.
+// the expectations, a fail mark on whichever step failed, and its error.
 const props = defineProps({
   steps: { type: Array, required: true },
   // Run status per step, aligned with `steps`: `{ status, error }` or nothing.
@@ -26,10 +26,12 @@ const keywordWidth = computed(() => {
   return keywordColumnWidth(stepKeywords());
 });
 
-function mark(step, index) {
-  const status = result(index)?.status;
-  if (!isExpectation(step) || (status !== 'pass' && status !== 'fail')) return null;
-  return status === 'pass' ? { icon: 'check-mark-circle', color: 'success' } : { icon: 'dismiss-circle', color: 'critical' };
+const mark = (step, index) => stepMark(step, result(index));
+
+/** The supporting text as lines: engine errors carry line breaks worth keeping. */
+function supportingLines(step, index) {
+  const text = supporting(step, index);
+  return text ? String(text).split('\n') : [];
 }
 
 function supporting(step, index) {
@@ -52,13 +54,20 @@ function columns(table) {
 <template>
   <nldd-container gap="8">
     <template v-for="(step, i) in steps" :key="i">
-      <!-- Mark column, keyword column, step text. The keyword column has a
-           fixed width so the step texts line up the way a feature file does. -->
+      <!-- Mark column, keyword column, step text. The keyword column is as wide
+           as the language's longest keyword, so the step texts line up the way
+           a feature file does. -->
       <nldd-container layout="row" gap="8" vertical-alignment="top">
         <nldd-icon-cell v-if="mark(step, i)" :icon="mark(step, i).icon" :color="mark(step, i).color" size="16" vertical-alignment="top"></nldd-icon-cell>
         <nldd-spacer-cell v-else size="16"></nldd-spacer-cell>
         <nldd-text-cell :width="keywordWidth" vertical-alignment="top" color="accent" :text="`**${renderStep(step).keyword}**`"></nldd-text-cell>
-        <nldd-text-cell vertical-alignment="top" :text="emphasiseArguments(renderStep(step).text)" :supporting-text="supporting(step, i)"></nldd-text-cell>
+        <!-- The supporting text goes through the slot, line by line: the
+             attribute collapses the line breaks in an engine error. -->
+        <nldd-text-cell vertical-alignment="top" :text="emphasiseArguments(renderStep(step).text)">
+          <span v-if="supportingLines(step, i).length" slot="supporting-text"
+            ><template v-for="(line, li) in supportingLines(step, i)" :key="li"><br v-if="li" />{{ line }}</template></span
+          >
+        </nldd-text-cell>
       </nldd-container>
       <!-- Indented to the step text by the same two columns as the step row:
            the mark and the keyword. The last cell may shrink, so a wide table

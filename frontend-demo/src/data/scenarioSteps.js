@@ -59,6 +59,42 @@ export function hasHeaderRow(step) {
   return matchStep(step.text)?.entry.id !== 'set_parameters_table';
 }
 
+/**
+ * A run's per-step results, split where the background ends.
+ *
+ * The runner runs the background steps first and records one result per step,
+ * so result `i` of the scenario's own steps is result `backgroundLength + i` of
+ * the run. The view renders the scenario's steps on their own, so it needs
+ * them with that offset taken off, and the background's failure separately
+ * (the background box above the scenarios is shared and shows no run).
+ *
+ * @param {Array<{status: string, error?: string|null}>|undefined} results
+ * @param {number} backgroundLength
+ */
+export function splitRunResults(results, backgroundLength) {
+  const all = results ?? [];
+  const background = all.slice(0, backgroundLength);
+  return {
+    background,
+    scenario: all.slice(backgroundLength),
+    backgroundError: background.find((r) => r.status === 'fail')?.error ?? null,
+  };
+}
+
+/**
+ * The mark a step gets after a run, or null.
+ *
+ * A failed step is marked whatever it is: a data table the runner refused or
+ * a law that would not load stops the scenario there, and that is where the
+ * reader has to look. A pass is only marked on an expectation, since a Given
+ * that "passed" says nothing more than that it was read.
+ */
+export function stepMark(step, result) {
+  if (result?.status === 'fail') return { icon: 'dismiss-circle', color: 'critical' };
+  if (result?.status === 'pass' && isExpectation(step)) return { icon: 'check-mark-circle', color: 'success' };
+  return null;
+}
+
 /** Whether a step is an expectation (a Then step in the grammar), which gets a pass/fail mark after a run. */
 export function isExpectation(step) {
   return matchStep(step.text)?.entry.keyword === 'then';

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { displayCell, emphasiseArguments, hasHeaderRow, isExpectation, keywordColumnWidth } from './scenarioSteps.js';
+import { displayCell, emphasiseArguments, hasHeaderRow, isExpectation, keywordColumnWidth, splitRunResults, stepMark } from './scenarioSteps.js';
 import { stepKeywords } from './gherkinNl.js';
 import { adoptLocale } from '../i18n/index.js';
 
@@ -48,6 +48,52 @@ describe('keywordColumnWidth', () => {
     // Frisian has no keywords of its own and shows the canonical English ones.
     expect(stepKeywords()).toContain('Given');
     expect(keywordColumnWidth(stepKeywords())).toBe('7ch');
+  });
+});
+
+describe('a run, split and marked the way the view shows it', () => {
+  // Two background steps, then the scenario's own: a data step, the When, two Thens.
+  const scenarioSteps = [
+    { keyword: 'Given', text: 'the following "RvIG" data with key "bsn" for law "wet_brp":' },
+    { keyword: 'When', text: 'I evaluate outputs "a, b" of "zorgtoeslagwet"' },
+    { keyword: 'Then', text: 'output "a" is true' },
+    { keyword: 'And', text: 'output "b" equals 1' },
+  ];
+  // What the runner records: one result per step, background first; it stops at the failure.
+  const run = [
+    { status: 'pass', error: null },
+    { status: 'pass', error: null },
+    { status: 'pass', error: null },
+    { status: 'pass', error: null },
+    { status: 'pass', error: null },
+    { status: 'fail', error: 'expected 1\nbut got 2' },
+  ];
+
+  it('lines the results up with the scenario steps, past the background', () => {
+    const { scenario, background, backgroundError } = splitRunResults(run, 2);
+    expect(background).toHaveLength(2);
+    expect(backgroundError).toBeNull();
+    expect(scenario).toHaveLength(scenarioSteps.length);
+    expect(scenarioSteps.map((step, i) => stepMark(step, scenario[i])?.color ?? null)).toEqual([null, null, 'success', 'critical']);
+    expect(scenario[3].error).toBe('expected 1\nbut got 2');
+  });
+
+  it('reports a failed background step apart, with no scenario results after it', () => {
+    const { scenario, backgroundError } = splitRunResults([{ status: 'pass' }, { status: 'fail', error: 'geen peildatum' }], 2);
+    expect(backgroundError).toBe('geen peildatum');
+    expect(scenario).toEqual([]);
+  });
+
+  it('has nothing before a run', () => {
+    expect(splitRunResults(undefined, 2)).toEqual({ background: [], scenario: [], backgroundError: null });
+  });
+
+  it('marks a failed Given or When too, but a pass only on an expectation', () => {
+    expect(stepMark(scenarioSteps[0], { status: 'fail' })?.icon).toBe('dismiss-circle');
+    expect(stepMark(scenarioSteps[1], { status: 'fail' })?.icon).toBe('dismiss-circle');
+    expect(stepMark(scenarioSteps[1], { status: 'pass' })).toBeNull();
+    expect(stepMark(scenarioSteps[2], { status: 'pass' })?.icon).toBe('check-mark-circle');
+    expect(stepMark(scenarioSteps[2], null)).toBeNull();
   });
 });
 

@@ -10,6 +10,7 @@ import { useLocalePath } from '../i18n/useLocalePath.js';
 import { useI18n } from '../i18n/index.js';
 import TraceView from '../components/TraceView.vue';
 import ScenarioSteps from '../components/ScenarioSteps.vue';
+import { splitRunResults } from '../data/scenarioSteps.js';
 
 // Naar een ander tabblad op naam, niet op pad: onder `/en/` leidt een
 // letterlijk Nederlands pad de bezoeker ongemerkt het Nederlandse tabblad in.
@@ -131,7 +132,7 @@ async function run(index) {
   const t0 = performance.now();
   const timings = [];
   const lap = (label, from) => timings.push(`${label} ${(performance.now() - from).toFixed(1)}ms`);
-  let t = performance.now();
+  let startedAt = performance.now();
   let e;
   try {
     e = await prepareScenarioEngine(corpus.value);
@@ -141,7 +142,7 @@ async function run(index) {
     open[index] = true;
     return;
   }
-  lap('engine', t);
+  lap('engine', startedAt);
   const refused = selectedLoadFailure.value;
   if (refused) {
     state.error = `Wet ${refused.id} (${refused.path}) is niet geladen; de engine weigerde: ${refused.message}`;
@@ -149,12 +150,12 @@ async function run(index) {
     open[index] = true;
     return;
   }
-  t = performance.now();
+  startedAt = performance.now();
   e.clearDataSources();
-  lap('clearDataSources', t);
+  lap('clearDataSources', startedAt);
   try {
     for (const step of stepsOf(scenario)) {
-      t = performance.now();
+      startedAt = performance.now();
       const match = matchStep(step.text);
       const record = { status: 'pending', error: null };
       state.steps.push(record);
@@ -176,7 +177,7 @@ async function run(index) {
           await dispatch(ctx, e, entry.action, [...typed, ...entry.literals], table, { loadDependency: async () => {} });
         }
         record.status = 'pass';
-        lap(`step:${entry.action}`, t);
+        lap(`step:${entry.action}`, startedAt);
       } catch (err) {
         record.status = 'fail';
         record.error = String(err?.message ?? err?.error ?? err);
@@ -291,15 +292,19 @@ watch(activeTrace, async (index) => {
   traceSheet.value?.show?.();
 });
 
+/** A scenario's run results, split at the background (see splitRunResults). */
+function runResults(index) {
+  return splitRunResults(runs[index]?.steps, parsed.value?.background?.length ?? 0);
+}
+
 /** The run status of the scenario's own steps, without the background's. */
 function scenarioResults(index) {
-  return runs[index]?.steps?.slice(parsed.value?.background?.length ?? 0) ?? [];
+  return runResults(index).scenario;
 }
 
 /** The error of a failed background step in this scenario's run, if any. */
 function backgroundError(index) {
-  const bg = parsed.value?.background?.length ?? 0;
-  return runs[index]?.steps?.slice(0, bg).find((s) => s.status === 'fail')?.error ?? null;
+  return runResults(index).backgroundError;
 }
 
 const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
@@ -378,7 +383,8 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
             </nldd-container>
             <!-- The background is the shared premise of every scenario below, so it
                  stays in view; only the scenario cards collapse. -->
-            <nldd-container v-if="parsed.background?.length" padding-inline="16" padding-bottom="12">
+            <nldd-container v-if="parsed.background?.length" padding-inline="16" padding-bottom="12" gap="8">
+              <nldd-text-cell color="accent" :text="`**${featureKeywords().Background}:**`"></nldd-text-cell>
               <ScenarioSteps :steps="parsed.background" />
             </nldd-container>
           </nldd-box>
