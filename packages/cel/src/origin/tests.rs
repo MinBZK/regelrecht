@@ -588,7 +588,7 @@ fn the_shape_of_an_origin_at_load_time() {
         );
     assert_eq!(
             error("{waarde: DOSSIER, grondslag: 'een_wet#1', rol: TIJDVAK}"),
-            ["article 1, parameter 'een_feit': rol TIJDVAK with origin DOSSIER: the applicant chooses the window as part of the requested decision order (Awb 4:2 lid 1), so BELANGHEBBENDE"]
+            ["article 1, parameter 'een_feit': rol TIJDVAK with origin DOSSIER: the applicant chooses the window and the decision requested as part of the application (Awb 4:2 lid 1), so BELANGHEBBENDE"]
         );
     assert_eq!(
             error("{waarde: BELANGHEBBENDE, grondslag: een_wet}"),

@@ -22,9 +22,10 @@ fn shape(o: &Origin) -> Vec<String> {
             w.as_str()
         )),
     }
-    if o.rol == Some(OriginRole::Tijdvak) && o.waarde != OriginValue::Belanghebbende {
+    if let Some(rol) = o.rol.filter(|_| o.waarde != OriginValue::Belanghebbende) {
         errors.push(format!(
-            "rol TIJDVAK with origin {}: the applicant chooses the window as part of the requested decision order (Awb 4:2 lid 1), so BELANGHEBBENDE",
+            "rol {} with origin {}: the applicant chooses the window and the decision requested as part of the application (Awb 4:2 lid 1), so BELANGHEBBENDE",
+            rol.as_str(),
             o.waarde.as_str()
         ));
     }

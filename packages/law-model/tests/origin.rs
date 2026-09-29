@@ -138,6 +138,23 @@ fn the_role_of_a_period() {
 }
 
 #[test]
+fn the_role_of_the_decision_requested() {
+    let law = parse(&WET.replace(
+        "grondslag: een_regeling#1 lid 1",
+        "grondslag: een_regeling#1 lid 1\n              rol: GEVRAAGD_BESLUIT",
+    ));
+    let o = law.articles[0].get_parameters()[0]
+        .origin
+        .as_ref()
+        .and_then(Declared::as_valid)
+        .expect("origin");
+    assert_eq!(o.rol, Some(OriginRole::GevraagdBesluit));
+    assert_eq!(OriginRole::GevraagdBesluit.as_str(), "GEVRAAGD_BESLUIT");
+    let yaml = serde_yaml_ng::to_string(&law).expect("serialize");
+    assert!(yaml.contains("rol: GEVRAAGD_BESLUIT"), "{yaml}");
+}
+
+#[test]
 fn origin_survives_a_round_trip() {
     let law = parse(WET);
     let yaml = serde_yaml_ng::to_string(&law).expect("serialize");

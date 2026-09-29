@@ -234,12 +234,16 @@ pub struct Origin {
 
 /// The role of a parameter within the decision requested (RFC-043).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "UPPERCASE")]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum OriginRole {
     /// The period the decision covers, chosen by the applicant as part of
     /// the decision requested (Awb 4:2, first paragraph). Known before the
     /// application is filled in.
     Tijdvak,
+    /// The decision requested (Awb 4:2, first paragraph, under c): fixed by
+    /// the decision the application asks for, as the portal offers it, not
+    /// typed in by the applicant.
+    GevraagdBesluit,
 }
 
 impl OriginRole {
@@ -247,6 +251,7 @@ impl OriginRole {
     pub fn as_str(self) -> &'static str {
         match self {
             OriginRole::Tijdvak => "TIJDVAK",
+            OriginRole::GevraagdBesluit => "GEVRAAGD_BESLUIT",
         }
     }
 }
