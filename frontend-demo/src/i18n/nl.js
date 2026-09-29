@@ -858,7 +858,7 @@ export default {
   'deck.hint.fullscreen': '{f} volledig scherm',
   'scenario.steps.one': '{n} stap',
   'scenario.steps.other': '{n} stappen',
-  'scenario.steps.label': 'Stappen',
+  'scenario.table_for': 'Tabel bij {step}',
   'scenario.files.one': '{n} testbestand',
   'scenario.files.other': '{n} testbestanden',
 
@@ -890,27 +890,12 @@ export default {
   'app.toolbar.label': 'Werkruimte',
   'scenario.trace': 'Trace',
   'scenario.passed': 'Geslaagd',
-  'scenario.step_failed': 'Deze stap is mislukt',
   'scenario.summary.pass': '{n} geslaagd',
   'scenario.summary.fail': '{n} mislukt',
-  // Een opengeklapt scenario, gelezen als gegevens in plaats van als Gherkin.
-  // "niet opgegeven" en "geen" zijn twee verschillende dingen (RFC-036): een
-  // lege cel zegt niets, `null` zegt dat er niets is.
+  // Een lege cel in een datatabel. "niet opgegeven" en "geen" zijn twee
+  // verschillende dingen (RFC-036): een lege cel zegt niets, `null` zegt dat er
+  // niets is.
   'scenario.value.not_stated': 'niet opgegeven',
-  'scenario.given.settings': 'Uitgangspunten',
-  'scenario.given.date': 'Peildatum',
-  'scenario.given.law': 'Geladen wet',
-  'scenario.given.source': 'Gegevens van {org}',
-  'scenario.given.source.for_law': 'Voor {law}, per {key}',
-  'scenario.given.source.key': 'Per {key}',
-  'scenario.when.overline': 'Berekening volgens',
-  'scenario.when.outputs': 'Berekent {outputs}',
-  'scenario.then.label': 'Verwachte uitkomsten',
-  'scenario.then.unknown_for': 'onbekend, want {fact} ontbreekt',
-  'scenario.then.contains': 'bevat {value}',
-  'scenario.then.succeeds': 'De uitvoering slaagt',
-  'scenario.then.fails': 'De uitvoering mislukt',
-  'scenario.then.exact_outputs': 'Precies deze uitkomsten',
   'trace.nav.label': 'Wetten in deze berekening',
   'trace.nav.prev': 'Vorige wet',
   'trace.nav.next': 'Volgende wet',

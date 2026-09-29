@@ -379,7 +379,7 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
             <!-- The background is the shared premise of every scenario below, so it
                  stays in view; only the scenario cards collapse. -->
             <nldd-container v-if="parsed.background?.length" padding-inline="16" padding-bottom="12">
-              <ScenarioSteps :steps="parsed.background" :law="selectedLaw?.id ?? null" />
+              <ScenarioSteps :steps="parsed.background" />
             </nldd-container>
           </nldd-box>
           <nldd-card v-for="(scenario, index) in parsed.scenarios" :key="index" :accessible-label="scenarioTitle(scenario.name)">
@@ -390,7 +390,7 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
                  a button inside a button is invalid and a screen reader would
                  announce only the outer one. -->
             <nldd-container slot="header" padding-inline="12" padding-block="4">
-              <nldd-list>
+              <nldd-list dividers="never">
                 <nldd-list-item :expanded="!!open[index]">
                   <nldd-list-item-segment button disclosure width="full" @click="open[index] = !open[index]">
                     <nldd-icon-cell icon="chevron-right" size="16" color="secondary"></nldd-icon-cell>
@@ -416,7 +416,7 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
             <nldd-container v-if="open[index]" padding-inline="16" padding-bottom="16" gap="12">
               <nldd-banner v-if="runs[index]?.error && !runs[index]?.steps?.length" variant="critical" :text="t('scenario.run_failed')" :supporting-text="runs[index].error"></nldd-banner>
               <nldd-banner v-if="backgroundError(index)" variant="critical" :text="t('scenario.failed.background')" :supporting-text="backgroundError(index)"></nldd-banner>
-              <ScenarioSteps :steps="scenario.steps" :results="scenarioResults(index)" :law="selectedLaw?.id ?? null" />
+              <ScenarioSteps :steps="scenario.steps" :results="scenarioResults(index)" />
             </nldd-container>
           </nldd-card>
           </nldd-container>
