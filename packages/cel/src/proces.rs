@@ -268,6 +268,7 @@ fn voeg_wetbronnen_toe(definitie: &mut ProcesDefinitie, cel: &Cel) {
         .map(|d| SyntheseBron {
             cel: cel.id().to_string(),
             url: None,
+            regeling: None,
             lexostatus: d.name.clone(),
             zaak: true,
             invoer: Default::default(),

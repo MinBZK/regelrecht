@@ -21,6 +21,7 @@ use crate::proces::Proces;
 use crate::reductie::{Lexostatus, Peil, Reductieroute};
 use crate::regelingen;
 use crate::transport::{haal_binnen, Transport, TransportFout};
+use regelrecht_engine::LawExecutionService;
 
 /// Hoe lang een bron mag doen over een antwoord.
 pub const TIJDSLIMIET: Duration = Duration::from_secs(3);
@@ -86,6 +87,94 @@ impl<D: Bronverwijzing> Bron<D> {
         )
         .await?;
         serde_json::from_value(v).map_err(|e| TransportFout::Json(format!("geen lexostatus: {e}")))
+    }
+}
+
+/// Een synthese-bron die geen cel is maar het eigen beleid van de afnemer
+/// (notitie bron en gram-id): het proces vraagt haar als elke bron, en zij
+/// antwoordt met een engine-run van het artikel in plaats van een reductie.
+/// Zo staat de keten "KvK-nummer, dan de naam, dan de aanduiding" in het
+/// beleid van de afnemer (met een gewone `source` naar het beleid van de
+/// beheerder van elk register) en niet in `proces.yaml`. De uitkomsten staan
+/// in de lexostatus als extra velden: invoer voor een latere bron.
+pub struct Beleidsbron {
+    service: Arc<LawExecutionService>,
+    regeling: String,
+    uitkomsten: Vec<String>,
+    naam: String,
+}
+
+impl Beleidsbron {
+    pub fn nieuw(service: Arc<LawExecutionService>, d: &SyntheseBron) -> Self {
+        Self {
+            service,
+            regeling: d.regeling.clone().unwrap_or_default(),
+            uitkomsten: d.extra_velden.clone(),
+            naam: d.lexostatus.clone(),
+        }
+    }
+
+    fn antwoord(&self, pad: &str) -> Result<Value, TransportFout> {
+        let query = pad.split_once('?').map_or("", |(_, q)| q);
+        let paren: Vec<(String, String)> = serde_urlencoded::from_str(query)
+            .map_err(|e| TransportFout::Json(format!("de vraag is niet te lezen: {e}")))?;
+        let mut parameters: BTreeMap<String, Value> = BTreeMap::new();
+        let mut datum = crate::datum::peildatum(&chrono::Local::now().fixed_offset());
+        for (k, v) in paren {
+            match k.as_str() {
+                // Een datum of een moment: de engine leest de regeling op die dag.
+                "peilmoment" => {
+                    datum = match crate::datum::datum_van(&v) {
+                        Some(d) => d.format("%Y-%m-%d").to_string(),
+                        None => crate::datum::peildatum_van(&v).map_err(TransportFout::Json)?,
+                    }
+                }
+                "bekend_op" => {}
+                _ => {
+                    parameters.insert(k, Value::String(v));
+                }
+            }
+        }
+        let uitkomsten: Vec<&str> = self.uitkomsten.iter().map(String::as_str).collect();
+        let e = crate::toets::evalueer(
+            &self.service,
+            &self.regeling,
+            &uitkomsten,
+            &parameters,
+            &datum,
+        );
+        if let Some(f) = &e.fout {
+            return Err(TransportFout::Antwoord {
+                status: 400,
+                fout: format!("{}: {f}", self.naam),
+            });
+        }
+        let l = Lexostatus {
+            extra_velden: e
+                .waarden
+                .into_iter()
+                .filter(|(_, v)| !v.is_null())
+                .collect(),
+            ..Lexostatus::leeg(&self.naam)
+        };
+        serde_json::to_value(l).map_err(|e| TransportFout::Json(e.to_string()))
+    }
+}
+
+impl Transport for Beleidsbron {
+    fn soort(&self) -> &'static str {
+        "beleid"
+    }
+    fn haal<'a>(&'a self, pad: &'a str) -> crate::transport::Antwoord<'a> {
+        let uit = self.antwoord(pad);
+        Box::pin(async move { uit })
+    }
+    fn stuur<'a>(&'a self, pad: &'a str, _body: &'a Value) -> crate::transport::Antwoord<'a> {
+        Box::pin(async move {
+            Err(TransportFout::Json(format!(
+                "{pad}: een beleidsbron legt niets vast"
+            )))
+        })
     }
 }
 

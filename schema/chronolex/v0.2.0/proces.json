@@ -225,13 +225,16 @@
       "type": "object",
       "description": "Een lexostatus van een cel. Zonder url is het transport intern: de cel draait in dezelfde runtime. Met url gaat de vraag over HTTP naar <url>/cellen/<cel>/api/lexostatus/<lexostatus>. Met zaak: true is het een lexostatus van de zaak zelf, in de cel waarin het proces vastlegt, met als enige input zaakkenmerk: het besluit bevraagt haar met het zaakkenmerk en neemt al haar parameters en extra velden over. Zo'n bron noemt geen invoer, parameters of extra velden.",
       "required": [
-        "cel",
         "lexostatus"
       ],
       "additionalProperties": false,
       "properties": {
         "cel": {
           "$ref": "#/definitions/identifier"
+        },
+        "regeling": {
+          "$ref": "#/definitions/identifier",
+          "description": "In plaats van cel: het eigen beleid van de afnemer, door de engine uitgerekend (notitie bron en gram-id). lexostatus is dan het artikel (<regeling>#<artikel>), invoer zijn de parameters en extra_velden de uitkomsten; een register dat dat beleid bevraagt, levert de deployment (CEL_REGISTERS)."
         },
         "url": {
           "type": "string",
@@ -368,7 +371,19 @@
           "invoer",
           "parameters"
         ]
-      }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "cel"
+          ]
+        },
+        {
+          "required": [
+            "regeling"
+          ]
+        }
+      ]
     },
     "rollen": {
       "type": "object",

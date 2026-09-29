@@ -637,7 +637,15 @@ pub struct FormulierVerwijzing {
 /// haar invoer en haar parameters.
 #[derive(Debug, Clone, Deserialize)]
 pub struct SyntheseBron {
+    /// De cel die de lexostatus levert. Leeg bij een bron met `regeling`.
+    #[serde(default)]
     pub cel: String,
+    /// In plaats van een cel: het eigen beleid van de afnemer, door de
+    /// engine uitgerekend (notitie bron en gram-id; zie
+    /// [`crate::synthese::Beleidsbron`]). `lexostatus` is dan het artikel,
+    /// de invoer zijn de parameters en `extra_velden` de uitkomsten.
+    #[serde(default)]
+    pub regeling: Option<String>,
     /// Zonder url: de bron-cel draait in dezelfde runtime (intern transport).
     #[serde(default)]
     pub url: Option<String>,

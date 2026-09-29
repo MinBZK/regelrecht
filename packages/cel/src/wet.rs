@@ -157,6 +157,20 @@ pub enum Velden {
     /// Veldpaden onder `fields` (`inhoud.subsidiejaar`); een pad dekt alles
     /// eronder.
     Lijst(Vec<String>),
+    /// Veldpaden met hun type, zoals Awb 4:87 het bedrag van een betaling
+    /// noemt: `{bedrag: {type: amount, unit: eurocent}}`.
+    Getypeerd(BTreeMap<String, Veldtype>),
+}
+
+/// Het type van een veld van een gram, zoals het vestigende artikel het
+/// noemt.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Veldtype {
+    #[serde(rename = "type")]
+    pub type_: regelrecht_law_model::ParameterType,
+    #[serde(default)]
+    pub unit: Option<String>,
 }
 
 /// Hoe een artikel zijn parameters uit de kroniek leest.
@@ -334,6 +348,7 @@ fn veldpaden(
     Ok(match &v.velden {
         None => Vec::new(),
         Some(Velden::Lijst(l)) => l.clone(),
+        Some(Velden::Getypeerd(m)) => m.keys().cloned().collect(),
         Some(Velden::Trefwoord(t)) if t == "uitkomsten" => uitkomsten(wa.artikel),
         Some(Velden::Trefwoord(t)) if t == "stage" => match stage {
             Some(s) => stagevelden(service, s),
@@ -551,6 +566,14 @@ fn vestig_event(
     event.soort = bv.soort.clone();
     event.stage = bv.stage.clone();
     event.verwijst = bv.verwijst.clone();
+    event.veldtypen = delen
+        .iter()
+        .filter_map(|(_, v, _)| match &v.velden {
+            Some(Velden::Getypeerd(m)) => Some(m.clone()),
+            _ => None,
+        })
+        .flatten()
+        .collect();
     event.grondslag = grondslag;
     event.als = als;
 
@@ -707,6 +730,26 @@ pub fn lexostatussen(
         };
     }
     let wet = artikelen(service)?;
+    // Het type van een parameter die een lezing levert: uit het lezende
+    // artikel, en anders uit het artikel in het corpus dat haar declareert.
+    // Een lezing in beleid (notitie bron en gram-id) levert parameters van een
+    // wetsartikel dat ze zelf niet declareert.
+    let mut alle_typen: BTreeMap<String, String> = BTreeMap::new();
+    for wa in wet.values() {
+        for (n, t) in parametertypen(wa.artikel) {
+            alle_typen.entry(n).or_insert(t);
+        }
+    }
+    for id in service.resolver().list_laws() {
+        let Some(law) = service.resolver().get_law(id) else {
+            continue;
+        };
+        for a in &law.articles {
+            for (n, t) in parametertypen(a) {
+                alle_typen.entry(n).or_insert(t);
+            }
+        }
+    }
     let mut uit = Vec::new();
     let mut fouten = Vec::new();
     let mut geleverd: BTreeMap<String, String> = BTreeMap::new();
@@ -715,7 +758,7 @@ pub fn lexostatussen(
             continue;
         };
         for lezing in leest.lezingen() {
-            match definitie(wa, lezing, &events, aanvullingen) {
+            match definitie(wa, lezing, &events, aanvullingen, &alle_typen) {
                 Ok(None) => {}
                 Ok(Some(d)) => {
                     for p in d.reduction.afleidingen.keys() {
@@ -758,6 +801,7 @@ fn definitie(
     lezing: &Lezing,
     events: &[Celevent<'_>],
     aanvullingen: &[WetAanvulling],
+    alle_typen: &BTreeMap<String, String>,
 ) -> Result<Option<LexostatusDefinitie>, Vec<String>> {
     // De naam: het artikel, of het lid als de lezing er een noemt.
     let lexonaam = match &lezing.lid {
@@ -767,7 +811,12 @@ fn definitie(
     };
     let waar = format!("{lexonaam} (leest)");
     let mut fouten = Vec::new();
-    let typen = parametertypen(wa.artikel);
+    let mut typen = parametertypen(wa.artikel);
+    for p in lezing.parameters.keys() {
+        if let (false, Some(t)) = (typen.contains_key(p), alle_typen.get(p)) {
+            typen.insert(p.clone(), t.clone());
+        }
+    }
     // Per filter: waar het in de cel landt. Geen: niet deze cel.
     let mut hier = 0usize;
     let mut elders = 0usize;

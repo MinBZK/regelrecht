@@ -84,6 +84,11 @@ pub struct Event {
     /// `<naam bij de lezer>: <veld van dit event>`.
     #[serde(skip)]
     pub als: BTreeMap<String, String>,
+    /// Het type van een veld zoals de wet het noemt (`velden: {bedrag: {type:
+    /// amount, unit: eurocent}}` in `vestigt`): het formulier van een feit
+    /// neemt het over als geen lezing het veld leest.
+    #[serde(skip)]
+    pub veldtypen: BTreeMap<String, crate::wet::Veldtype>,
 }
 
 /// Een verwijzing van een event: wat het gram waarnaar een gram van dit

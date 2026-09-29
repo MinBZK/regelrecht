@@ -433,6 +433,16 @@ pub fn zet_formulier(d: &mut ProcesDefinitie, service: &LawExecutionService, cel
     }
 }
 
+/// Of een afleiding de waarde van het veld overneemt (en dus zijn type
+/// heeft), in plaats van er iets van af te leiden.
+fn overneemt(a: &crate::reductie::Afgeleid) -> bool {
+    use crate::reductie::Afleiding as A;
+    matches!(
+        a.afleiding,
+        A::Veld { .. } | A::LaatsteVeld { .. } | A::Som { .. }
+    )
+}
+
 /// Het formulierveld van een feit: het `$external`-veld `sleutel` van het
 /// event, met het type van de parameter die een lexostatus van de cel eruit
 /// afleidt.
@@ -453,31 +463,46 @@ fn feitveld(
         .filter(|b| matches!(&b.binding, Binding::External(s) if s == sleutel))
         .map(|b| b.pad)
         .collect();
-    'zoek: for def in &cel.lexostatussen.lexostatus_definitions {
-        if def.reduction.kroniek != stroom.chronicle {
-            continue;
-        }
-        for (naam, a) in def.alle_afleidingen() {
-            if !a
-                .gelezen_paden()
+    // Eerst een afleiding die het veld overneemt (veld, som), dan een die er
+    // iets van afleidt (een jaar, of het veld gevuld is): het type van de
+    // eerste is dat van het veld zelf.
+    let mut kandidaten: Vec<(&String, &crate::reductie::Afgeleid)> = cel
+        .lexostatussen
+        .lexostatus_definitions
+        .iter()
+        .filter(|d| d.reduction.kroniek == stroom.chronicle)
+        .flat_map(|d| d.alle_afleidingen())
+        .filter(|(_, a)| {
+            a.gelezen_paden()
                 .iter()
                 .any(|p| paden.iter().any(|q| q == *p))
-            {
+        })
+        .collect();
+    kandidaten.sort_by_key(|(_, a)| !overneemt(a));
+    'zoek: for (naam, a) in kandidaten {
+        // De parameter met deze naam, in de grondslag van het event of van de
+        // afleiding.
+        for g in event.grondslag.iter().chain(a.grondslag.iter()) {
+            let Ok(art) = regelingen::artikel(service, g) else {
                 continue;
+            };
+            if let Some(p) = art.get_parameters().iter().find(|p| &p.name == naam) {
+                soort = Some(veldsoort(p.param_type));
+                eenheid = p.type_spec.as_ref().and_then(|t| t.unit.clone());
+                uitleg = p.description.clone();
+                break 'zoek;
             }
-            // De parameter met deze naam, in de grondslag van het event of
-            // van de afleiding.
-            for g in event.grondslag.iter().chain(a.grondslag.iter()) {
-                let Ok(art) = regelingen::artikel(service, g) else {
-                    continue;
-                };
-                if let Some(p) = art.get_parameters().iter().find(|p| &p.name == naam) {
-                    soort = Some(veldsoort(p.param_type));
-                    eenheid = p.type_spec.as_ref().and_then(|t| t.unit.clone());
-                    uitleg = p.description.clone();
-                    break 'zoek;
-                }
-            }
+        }
+    }
+    // Zegt de wet het type van het veld, dan dat (Awb 4:87: het bedrag).
+    if soort.is_none() {
+        if let Some(t) = paden.iter().find_map(|p| event.veldtypen.get(p)) {
+            soort = Some(veldsoort(t.type_));
+            eenheid = t.unit.clone();
+            uitleg = Some(format!(
+                "Het type van dit veld zegt de wet die het feit vestigt ({}).",
+                event.vestigt.join(", ")
+            ));
         }
     }
     let op_moment = event

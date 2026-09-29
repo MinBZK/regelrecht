@@ -183,7 +183,12 @@ impl Runtime {
             for b in proces.definitie.andere_bronnen() {
                 bronnen.push(Bron {
                     definitie: b.clone(),
-                    transport: transport(&b.url)?,
+                    // Het eigen beleid van de afnemer rekent de engine uit
+                    // (notitie bron en gram-id); een cel vraagt het proces.
+                    transport: match &b.regeling {
+                        Some(_) => Arc::new(synthese::Beleidsbron::nieuw(service.clone(), b)),
+                        None => transport(&b.url)?,
+                    },
                 });
             }
             let per_regel = |defs: &[RijenDefinitie]| -> Result<Vec<rijen::Rijen>, Vec<String>> {
@@ -250,6 +255,7 @@ impl Runtime {
             for b in s.bronnen.iter() {
                 // Een intern transport naar een cel die hier niet draait.
                 if b.definitie.url.is_none()
+                    && b.definitie.regeling.is_none()
                     && !self.cellen.iter().any(|c| c.cel.id() == b.definitie.cel)
                 {
                     uit.push(format!(
