@@ -2,13 +2,15 @@
 import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { parseFeature, dispatch, quotedValue, bareValue, traceRoot, ExecutionContext } from '@regelrecht/frontend-shared/gherkin';
-import { matchStep, renderStep, featureKeywords, scenarioTitle } from '../data/gherkinNl.js';
+import { matchStep, featureKeywords, scenarioTitle } from '../data/gherkinNl.js';
 import { serviceInfo } from '../data/loadCorpus.js';
 import { loadFailureFor, loadFailures, prepareScenarioEngine } from '../engine/useDemoEngine.js';
 import { useDemo } from '../store/demoStore.js';
 import { useLocalePath } from '../i18n/useLocalePath.js';
 import { useI18n } from '../i18n/index.js';
 import TraceView from '../components/TraceView.vue';
+import ScenarioSteps from '../components/ScenarioSteps.vue';
+import { splitRunResults } from '../data/scenarioSteps.js';
 
 // Naar een ander tabblad op naam, niet op pad: onder `/en/` leidt een
 // letterlijk Nederlands pad de bezoeker ongemerkt het Nederlandse tabblad in.
@@ -48,16 +50,6 @@ const filtered = computed(() => {
   const list = q ? features.value.filter((f) => `${scenarioTitle(f.title)} ${f.title} ${f.law_path}`.toLowerCase().includes(q)) : features.value;
   return [...list].sort((a, b) => scenarioTitle(a.title).localeCompare(scenarioTitle(b.title)));
 });
-
-// One track per column of the Gherkin table, sized to its content, plus a
-// trailing filler track: the rows span every track, so the filler carries the
-// row dividers to the edge of the box while the cells stay compact. The table
-// is its own horizontal scroll container, so a wide table scrolls instead of
-// squeezing or overflowing the card.
-function dataTableColumns(table) {
-  const width = Math.max(...table.map((row) => row.length));
-  return `repeat(${width}, max-content) 1fr`;
-}
 
 function lawFor(feature) {
   return corpus.value?.laws.find((l) => l.law_path === feature.law_path) ?? null;
@@ -140,7 +132,7 @@ async function run(index) {
   const t0 = performance.now();
   const timings = [];
   const lap = (label, from) => timings.push(`${label} ${(performance.now() - from).toFixed(1)}ms`);
-  let t = performance.now();
+  let startedAt = performance.now();
   let e;
   try {
     e = await prepareScenarioEngine(corpus.value);
@@ -150,7 +142,7 @@ async function run(index) {
     open[index] = true;
     return;
   }
-  lap('engine', t);
+  lap('engine', startedAt);
   const refused = selectedLoadFailure.value;
   if (refused) {
     state.error = `Wet ${refused.id} (${refused.path}) is niet geladen; de engine weigerde: ${refused.message}`;
@@ -158,12 +150,12 @@ async function run(index) {
     open[index] = true;
     return;
   }
-  t = performance.now();
+  startedAt = performance.now();
   e.clearDataSources();
-  lap('clearDataSources', t);
+  lap('clearDataSources', startedAt);
   try {
     for (const step of stepsOf(scenario)) {
-      t = performance.now();
+      startedAt = performance.now();
       const match = matchStep(step.text);
       const record = { status: 'pending', error: null };
       state.steps.push(record);
@@ -185,7 +177,7 @@ async function run(index) {
           await dispatch(ctx, e, entry.action, [...typed, ...entry.literals], table, { loadDependency: async () => {} });
         }
         record.status = 'pass';
-        lap(`step:${entry.action}`, t);
+        lap(`step:${entry.action}`, startedAt);
       } catch (err) {
         record.status = 'fail';
         record.error = String(err?.message ?? err?.error ?? err);
@@ -214,7 +206,7 @@ function failedStepNumber(index) {
 
 function resultTag(index) {
   const r = runs[index];
-  if (r?.status === 'pass') return { color: 'success', text: 'Geslaagd' };
+  if (r?.status === 'pass') return { color: 'success', text: t('scenario.passed') };
   if (r?.status === 'fail') {
     const n = failedStepNumber(index);
     const text = n === 0 ? t('scenario.failed.background') : n ? t('scenario.failed.at_step', { n }) : t('scenario.failed');
@@ -230,9 +222,12 @@ function statusIcon(index) {
   return s === 'pass' ? 'check-mark-circle' : s === 'fail' ? 'dismiss-circle' : s === 'running' ? 'clock' : 'circle-dashed';
 }
 
+// An `nldd-icon` colour, not an icon-cell one: the status icon sits inside the
+// row's disclosure segment, and that segment turns every icon *cell* in it a
+// quarter as the scenario opens. Only the chevron is meant to turn.
 function statusColor(index) {
   const r = runs[index];
-  return r?.status === 'pass' ? 'success' : r?.status === 'fail' ? (r.wip ? 'warning' : 'critical') : 'secondary';
+  return r?.status === 'pass' ? 'success' : r?.status === 'fail' ? (r.wip ? 'warning' : 'critical') : 'secondary-content';
 }
 
 function evaluateWithTrace(ctx, e, lawId, outputs, state) {
@@ -297,10 +292,19 @@ watch(activeTrace, async (index) => {
   traceSheet.value?.show?.();
 });
 
-function stepClass(index, stepIndex) {
-  const r = runs[index];
-  const s = r?.steps?.[stepIndex];
-  return s ? s.status : '';
+/** A scenario's run results, split at the background (see splitRunResults). */
+function runResults(index) {
+  return splitRunResults(runs[index]?.steps, parsed.value?.background?.length ?? 0);
+}
+
+/** The run status of the scenario's own steps, without the background's. */
+function scenarioResults(index) {
+  return runResults(index).scenario;
+}
+
+/** The error of a failed background step in this scenario's run, if any. */
+function backgroundError(index) {
+  return runResults(index).backgroundError;
 }
 
 const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
@@ -375,48 +379,55 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
               <!-- The run summary sits with the feature, next to its title, as the result
                    tag does on each scenario card. In the toolbar it stood between 32px
                    controls; no tag or badge size reaches that height. -->
-              <nldd-tag v-if="summary.pass + summary.fail > 0" :color="summary.fail ? 'critical' : 'success'" :text="`${summary.pass} geslaagd${summary.fail ? `, ${summary.fail} mislukt` : ''}`"></nldd-tag>
+              <nldd-tag v-if="summary.pass + summary.fail > 0" :color="summary.fail ? 'critical' : 'success'" :text="summary.fail ? `${t('scenario.summary.pass', { n: summary.pass })}, ${t('scenario.summary.fail', { n: summary.fail })}` : t('scenario.summary.pass', { n: summary.pass })"></nldd-tag>
             </nldd-container>
             <!-- The background is the shared premise of every scenario below, so it
                  stays in view; only the scenario cards collapse. -->
-            <nldd-container v-if="parsed.background?.length" padding-inline="16" padding-bottom="12">
-              <div class="gherkin">
-                <div><span class="kw">{{ featureKeywords().Background }}:</span></div>
-                <div v-for="(step, i) in parsed.background" :key="`bg-${i}`" class="step">
-                  <span class="kw">{{ renderStep(step).keyword }}</span> {{ renderStep(step).text }}
-                </div>
-              </div>
+            <nldd-container v-if="parsed.background?.length" padding-inline="16" padding-bottom="12" gap="8">
+              <nldd-text-cell color="accent" :text="`**${featureKeywords().Background}:**`"></nldd-text-cell>
+              <ScenarioSteps :steps="parsed.background" />
             </nldd-container>
           </nldd-box>
           <nldd-card v-for="(scenario, index) in parsed.scenarios" :key="index" :accessible-label="scenarioTitle(scenario.name)">
-            <nldd-container slot="header" padding="12" layout="row" gap="12" vertical-alignment="center">
-              <nldd-icon-cell :icon="statusIcon(index)" :color="statusColor(index)"></nldd-icon-cell>
-              <nldd-title-cell size="5" :text="scenarioTitle(scenario.name)" :supporting-text="scenario.tags.join(' ') || undefined"></nldd-title-cell>
-              <!-- One height across the action row: an md tag and xs buttons are both
-                   24px; no tag size matches an sm button. -->
-              <nldd-tag v-if="resultTag(index)" :color="resultTag(index).color" :text="resultTag(index).text"></nldd-tag>
-              <nldd-button size="xs" variant="secondary" start-icon="play" :text="t('scenario.run')" :loading="runs[index]?.status === 'running' || undefined" :disabled="(anyRunning && runs[index]?.status !== 'running') || undefined" @click="runAndShow(index)"></nldd-button>
-              <nldd-button v-if="runs[index]?.traceText" size="xs" variant="neutral-tinted" start-icon="list" :text="t('scenario.trace')" @click="activeTrace = index"></nldd-button>
-              <nldd-icon-button size="xs" variant="neutral-transparent" :icon="open[index] ? 'chevron-up' : 'chevron-down'" :text="open[index] ? 'Stappen verbergen' : 'Stappen tonen'" :expanded="open[index] || undefined" @click="open[index] = !open[index]"></nldd-icon-button>
+            <!-- The whole header opens the scenario, except its buttons. The row is
+                 cut in two: a disclosure segment (status, title, result, chevron)
+                 that toggles and carries aria-expanded, and plain cells holding the
+                 buttons. A row that is a button itself cannot hold "Uitvoeren":
+                 a button inside a button is invalid and a screen reader would
+                 announce only the outer one. -->
+            <nldd-container slot="header" padding-inline="12" padding-block="4">
+              <nldd-list dividers="never">
+                <nldd-list-item :expanded="!!open[index]">
+                  <nldd-list-item-segment button disclosure width="full" @click="open[index] = !open[index]">
+                    <nldd-icon-cell icon="chevron-right" size="16" color="secondary"></nldd-icon-cell>
+                    <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                    <!-- nldd-icon in a cell, not an nldd-icon-cell: the segment turns
+                         every icon cell in it, and only the chevron should turn. -->
+                    <nldd-cell><nldd-icon :name="statusIcon(index)" :color="statusColor(index)" size="24"></nldd-icon></nldd-cell>
+                    <nldd-spacer-cell size="12"></nldd-spacer-cell>
+                    <nldd-title-cell size="5" :text="scenarioTitle(scenario.name)" :supporting-text="scenario.tags.join(' ') || undefined"></nldd-title-cell>
+                    <!-- One height across the action row: an md tag and xs buttons are both
+                         24px; no tag size matches an sm button. -->
+                    <nldd-cell v-if="resultTag(index)"><nldd-tag :color="resultTag(index).color" :text="resultTag(index).text"></nldd-tag></nldd-cell>
+                  </nldd-list-item-segment>
+                  <!-- Spacer cells, as the other list rows in the demo space their
+                       cells: the segment stops at the result tag, and without
+                       them the tag and both buttons touch. -->
+                  <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                  <nldd-cell>
+                    <nldd-button size="xs" variant="secondary" start-icon="play" :text="t('scenario.run')" :loading="runs[index]?.status === 'running' || undefined" :disabled="(anyRunning && runs[index]?.status !== 'running') || undefined" @click="runAndShow(index)"></nldd-button>
+                  </nldd-cell>
+                  <nldd-spacer-cell v-if="runs[index]?.traceText" size="8"></nldd-spacer-cell>
+                  <nldd-cell v-if="runs[index]?.traceText">
+                    <nldd-button size="xs" variant="neutral-tinted" start-icon="list" :text="t('scenario.trace')" @click="activeTrace = index"></nldd-button>
+                  </nldd-cell>
+                </nldd-list-item>
+              </nldd-list>
             </nldd-container>
-            <nldd-container v-if="open[index]" padding-inline="16" padding-bottom="12" gap="12">
+            <nldd-container v-if="open[index]" padding-inline="16" padding-bottom="16" gap="12">
               <nldd-banner v-if="runs[index]?.error && !runs[index]?.steps?.length" variant="critical" :text="t('scenario.run_failed')" :supporting-text="runs[index].error"></nldd-banner>
-              <div class="gherkin">
-                <div v-for="(step, si) in scenario.steps" :key="si" :class="['step', stepClass(index, (parsed.background?.length ?? 0) + si)]">
-                  <span class="kw">{{ renderStep(step).keyword }}</span> {{ renderStep(step).text }}
-                  <nldd-container v-if="step.dataTable" padding-block="4">
-                    <nldd-table :columns="dataTableColumns(step.dataTable)" :accessible-label="t('scenario.table_for', { step: renderStep(step).text })">
-                      <nldd-table-row slot="header">
-                        <nldd-text-cell v-for="(cell, ci) in step.dataTable[0]" :key="ci" size="sm" :text="cell"></nldd-text-cell>
-                      </nldd-table-row>
-                      <nldd-table-row v-for="(row, ri) in step.dataTable.slice(1)" :key="ri">
-                        <nldd-text-cell v-for="(cell, ci) in row" :key="ci" size="sm" :text="cell"></nldd-text-cell>
-                      </nldd-table-row>
-                    </nldd-table>
-                  </nldd-container>
-                  <div v-if="runs[index]?.steps?.[(parsed.background?.length ?? 0) + si]?.error" class="str">✗ {{ runs[index].steps[(parsed.background?.length ?? 0) + si].error }}</div>
-                </div>
-              </div>
+              <nldd-banner v-if="backgroundError(index)" variant="critical" :text="t('scenario.failed.background')" :supporting-text="backgroundError(index)"></nldd-banner>
+              <ScenarioSteps :steps="scenario.steps" :results="scenarioResults(index)" />
             </nldd-container>
           </nldd-card>
           </nldd-container>

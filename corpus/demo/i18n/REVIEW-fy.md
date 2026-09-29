@@ -95,6 +95,11 @@ is: in tekst dêr't men rjochten oan ûntliene kin`.
   presintearjen` zijn, als een samenstelling met `modus` in het Fries te
   technisch leest.
 
+- **De scenarioweergave** (`scenario.value.not_stated`, `scenario.passed`,
+  `scenario.summary.*`). `net opjûn` voor "niet opgegeven" en `Slagge` voor
+  "Geslaagd" zijn afgeleid van woorden die elders in de vertaling staan
+  (`opjûn`, `mislearre`), niet opgezocht.
+
 ## 5. Beelden die in het Fries misschien niet werken
 
 - **`baalje`** (balie), in "de andere kant van de balie". Het woord bestaat,

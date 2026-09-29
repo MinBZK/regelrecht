@@ -139,44 +139,6 @@ body {
   border-radius: 3px;
 }
 
-.gherkin {
-  font-family: var(--primitives-font-family-monospace, monospace);
-  font-size: 0.875rem;
-  line-height: 1.6;
-}
-
-.gherkin .kw {
-  color: var(--primitives-color-donkerblauw-700);
-  font-weight: 600;
-}
-
-/* Engine errors keep their line breaks. pre-wrap stays off the block itself:
- * it inherits into the shadow DOM of the nldd-table under a step and would turn
- * the template whitespace there into blank lines. */
-.gherkin .str {
-  color: var(--primitives-color-groen-700);
-  white-space: pre-wrap;
-}
-
-.gherkin .num {
-  color: var(--primitives-color-oranje-700);
-}
-
-.gherkin .step {
-  padding-left: 2rem;
-}
-
-/* `groen`/`rood`, niet `green`/`red`: de palet-namen zijn Nederlands. Met de
- * Engelse naam bestond het token niet en won stilletjes de hex-fallback, die
- * naast het palet lag en niet met het thema meebewoog. */
-.gherkin .step.pass {
-  border-left: 3px solid var(--primitives-color-groen-600);
-}
-
-.gherkin .step.fail {
-  border-left: 3px solid var(--primitives-color-rood-600);
-}
-
 .trace {
   font-family: var(--primitives-font-family-monospace, monospace);
   font-size: 0.8125rem;

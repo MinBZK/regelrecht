@@ -889,6 +889,13 @@ export default {
   'scenario.outputs': 'Uitkomsten',
   'app.toolbar.label': 'Werkruimte',
   'scenario.trace': 'Trace',
+  'scenario.passed': 'Geslaagd',
+  'scenario.summary.pass': '{n} geslaagd',
+  'scenario.summary.fail': '{n} mislukt',
+  // Een lege cel in een datatabel. "niet opgegeven" en "geen" zijn twee
+  // verschillende dingen (RFC-036): een lege cel zegt niets, `null` zegt dat er
+  // niets is.
+  'scenario.value.not_stated': 'niet opgegeven',
   'trace.nav.label': 'Wetten in deze berekening',
   'trace.nav.prev': 'Vorige wet',
   'trace.nav.next': 'Volgende wet',
