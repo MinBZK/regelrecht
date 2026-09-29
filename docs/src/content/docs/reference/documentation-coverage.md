@@ -73,4 +73,4 @@ When one of these gets a page, move it up into the table above.
 
 Drafts that will owe prose once built:
 
-- **RFC-045 (reduction and synthesis as engine runs)** is a draft and not built. When it lands, [Collections](../concepts/collections) needs the new scope rule, `let`, `empty`, `FIRST`/`LAST` and `RECORD`, and [Cel](../components/cel) needs lexostatuses as regulations in place of the reduction language.
+- **RFC-045 (reduction and synthesis as engine runs)** is a draft and not built. When it lands, [Collections](../concepts/collections) needs the new scope rule, `let`, `empty`, `FIRST`/`LAST` and `RECORD`, and [Cel](../components/cel) needs register queries as articles in the keeper's implementing policy, `source` in the consumer's regulation in place of `synthese` and `rijen`, and gram ids and references in place of `zaakkenmerk`.
