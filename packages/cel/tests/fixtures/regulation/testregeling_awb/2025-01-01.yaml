@@ -5,7 +5,8 @@
 # (een haak op die stage), en een betaling die een besluit uitvoert.
 # Artikel 6 gaat over de terugbetaling van wat bij beschikking is
 # teruggevorderd (naar Awb 4:57), artikel 7 over de wijziging van een
-# vaststelling (naar Awb 4:49): een eigen besluit met een eigen grondslag.
+# vaststelling (naar Awb 4:49): een eigen besluit met een eigen grondslag,
+# artikel 8 over de verrekening van betaalde voorschotten (naar Awb 4:95 lid 4).
 # Geen geldend recht.
 $schema: >-
   https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
@@ -281,3 +282,42 @@ articles:
         actions:
           - output: vaststelling_te_wijzigen
             value: {operation: EQUALS, subject: $nieuwe_feiten, value: true}
+  - number: '8'
+    url: https://example.com/testregeling_awb/8
+    text: >-
+      1. Betaalde voorschotten worden verrekend met de te betalen geldsom.
+      Onverschuldigd betaalde voorschotten kunnen worden teruggevorderd.
+    # Fictief, naar Awb 4:95 lid 4 (notitie bron en gram-id): het beleid van
+    # een verstrekker roept dit artikel aan met een gewone source.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: TOETS
+          decision_type: GEEN_BESLUIT
+        parameters:
+          - name: te_betalen_geldsom
+            type: number
+            required: true
+          - name: betaalde_voorschotten
+            type: number
+            required: true
+        output:
+          - name: te_betalen_na_verrekening
+            type: number
+          - name: onverschuldigd_betaalde_voorschotten
+            type: number
+        actions:
+          - output: te_betalen_na_verrekening
+            value:
+              operation: MAX
+              values:
+                - 0
+                - operation: SUBTRACT
+                  values: [$te_betalen_geldsom, $betaalde_voorschotten]
+          - output: onverschuldigd_betaalde_voorschotten
+            value:
+              operation: MAX
+              values:
+                - 0
+                - operation: SUBTRACT
+                  values: [$betaalde_voorschotten, $te_betalen_geldsom]

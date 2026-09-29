@@ -511,3 +511,262 @@ fn synthese_uit_omgeving() {
     println!("{}: {bedrag}", a["uitkomst"]);
     assert_eq!(bedrag, &a["verwacht"]);
 }
+
+/// Een gram voor de toets van stap 8, zoals een cel het vastlegde.
+fn stap8_gram(
+    id: &str,
+    name: &str,
+    soort: &str,
+    stage: Option<&str>,
+    verwijst: Value,
+    fields: Value,
+    dag: &str,
+) -> Gram {
+    let mut g = json!({
+        "kind": "chronolexogram", "id": id, "type": if stage.is_some() { "decretogram" } else { "executogram" },
+        "soort": soort, "name": name, "chronicle": "test_toeslag", "recording_actor": "test_toeslagdienst",
+        "grondslag": ["testregeling_toeslag#1"], "op_moment": format!("{dag}T10:00:00+01:00"),
+        "vastgelegd_op": format!("{dag}T10:00:00+01:00"), "verwijst": verwijst,
+        "stroom": {"id": "test_toeslag_zaakverloop", "sha256": "0".repeat(64)}, "fields": fields,
+    });
+    if let Some(s) = stage {
+        g["stage"] = json!(s);
+    }
+    serde_json::from_value(g).unwrap()
+}
+
+/// Notitie "bron en gram-id", stap 8, naar de echte tekst: Awb 4:52 lid 1
+/// ("overeenkomstig de subsidievaststelling") leest per besluit, en Awb 4:95
+/// lid 4 ("Betaalde voorschotten worden verrekend met de te betalen
+/// geldsom") verrekent de voorschotten. Een fictieve toeslag: voorschot 500
+/// (betaald), vaststelling 300. Per besluit is op de vaststelling niets
+/// betaald; met de verrekening is er niets meer te betalen en is 200
+/// onverschuldigd, en dat is wat de terugvordering (die naar de vaststelling
+/// verwijst, en zo bij dezelfde aanvraag hoort) terugvordert. Het beleid van
+/// de toeslagdienst voert beide artikelen uit met een gewone source; de
+/// betalingen komen uit zijn eigen administratie (een kroniek als bron).
+#[test]
+fn voorschot_en_vaststelling_per_besluit_met_verrekening() {
+    const BELEID: &str = "testbeleid_toeslagdienst";
+    let id = |n: u32| format!("00000000-0000-4000-8000-{n:012}");
+    let (g101, g110, g111, g120, g130, g131) =
+        (id(101), id(110), id(111), id(120), id(130), id(131));
+    let grammen = vec![
+        stap8_gram(
+            &g101,
+            "aanvraag_ontvangen",
+            "aanvraag",
+            Some("AANVRAAG"),
+            json!({}),
+            json!({}),
+            "2025-03-01",
+        ),
+        stap8_gram(
+            &g110,
+            "voorschot_verleend",
+            "voorschot",
+            Some("BESLUIT"),
+            json!({"op_aanvraag": g101}),
+            json!({"voorschot": 500}),
+            "2025-03-02",
+        ),
+        stap8_gram(
+            &g111,
+            "voorschot_betaald",
+            "betaling",
+            None,
+            json!({"besluit": g110}),
+            json!({"bedrag": 500}),
+            "2025-03-03",
+        ),
+        stap8_gram(
+            &g120,
+            "toeslag_vastgesteld",
+            "vaststelling",
+            Some("BESLUIT"),
+            json!({"op_aanvraag": g101}),
+            json!({"vastgestelde_toeslag": 300}),
+            "2025-03-10",
+        ),
+    ];
+    // De kroniek: de vaststelling hoort via haar verwijzing bij de aanvraag.
+    let dir = tempfile::tempdir().unwrap();
+    let kroniek = regelrecht_cel::kroniek::Kroniek::open(dir.path(), &["test_toeslag"]).unwrap();
+    for g in &grammen {
+        kroniek.voeg_toe(g).unwrap();
+    }
+    assert_eq!(
+        kroniek.lees_wortel(&["test_toeslag"], &g101).unwrap().len(),
+        4
+    );
+
+    let evalueer = |grammen: &[Gram], regeling: &str, uitkomsten: &[&str], p: Value| {
+        let mut corpus = regelrecht_cel::regelingen::laad(&fixtures().join("regulation")).unwrap();
+        corpus
+            .service
+            .load_law(
+                &std::fs::read_to_string(fixtures().join("beleid/testbeleid_toeslagdienst.yaml"))
+                    .unwrap(),
+            )
+            .unwrap();
+        corpus.service.add_data_source(Box::new(
+            lexostatus_engine::KroniekBron::new(BELEID, grammen, "test_toeslag").unwrap(),
+        ));
+        let p: BTreeMap<String, Value> = serde_json::from_value(p).unwrap();
+        let e = regelrecht_cel::toets::evalueer(&corpus.service, regeling, uitkomsten, &p, DATUM);
+        assert!(e.volledig(uitkomsten), "{e:?}");
+        e.waarden
+    };
+    // De administratie: per besluit, en de voorschotten op dezelfde aanvraag.
+    let a = evalueer(
+        &grammen,
+        BELEID,
+        &["betaald_bij_besluit", "betaalde_voorschotten"],
+        json!({"besluit": g120}),
+    );
+    assert_eq!(
+        a["betaald_bij_besluit"],
+        json!(0),
+        "op de vaststelling zelf is niets betaald (4:52 lid 1)"
+    );
+    assert_eq!(
+        a["betaalde_voorschotten"],
+        json!(500),
+        "het voorschot op dezelfde aanvraag (4:95 lid 4)"
+    );
+    // De verplichting: niets meer te betalen, 200 onverschuldigd.
+    let vaststelling =
+        json!({"besluit": g120, "vastgesteld_bedrag": 300, "datum_bekendmaking": "2025-03-11"});
+    let v = evalueer(
+        &grammen,
+        BELEID,
+        &[
+            "nog_te_betalen_verstrekker",
+            "onverschuldigd_betaald_verstrekker",
+        ],
+        vaststelling.clone(),
+    );
+    assert_eq!(v["nog_te_betalen_verstrekker"], json!(0));
+    assert_eq!(v["onverschuldigd_betaald_verstrekker"], json!(200));
+    // Alleen 4:52 per besluit, zonder verrekening, zou 300 te betalen geven:
+    // de dienst zou dan dubbel betalen.
+    let alleen = evalueer(
+        &grammen,
+        "testregeling_awb",
+        &["nog_te_betalen"],
+        json!({"vastgesteld_bedrag": 300, "betaald_bedrag": 0, "datum_bekendmaking": "2025-03-11"}),
+    );
+    assert_eq!(alleen["nog_te_betalen"], json!(300));
+
+    // De terugvordering: een ambtshalve besluit zonder aanvraag, dat met
+    // betreft naar de vaststelling verwijst en zo bij dezelfde aanvraag
+    // hoort; zij vordert terug wat onverschuldigd is. De terugbetaling
+    // verwijst naar de terugvordering en telt niet als betaling op de
+    // vaststelling.
+    let mut verder = grammen.clone();
+    verder.push(stap8_gram(
+        &g130,
+        "terugvordering_vastgesteld",
+        "terugvordering",
+        Some("BESLUIT"),
+        json!({"betreft": g120}),
+        json!({"terug_te_vorderen": v["onverschuldigd_betaald_verstrekker"].clone()}),
+        "2025-03-12",
+    ));
+    verder.push(stap8_gram(
+        &g131,
+        "terugbetaling_ontvangen",
+        "terugbetaling",
+        None,
+        json!({"besluit": g130}),
+        json!({"bedrag": 200}),
+        "2025-03-12",
+    ));
+    for g in &verder[4..] {
+        kroniek.voeg_toe(g).unwrap();
+    }
+    let groep = kroniek.lees_wortel(&["test_toeslag"], &g101).unwrap();
+    assert_eq!(
+        groep.len(),
+        6,
+        "de terugvordering hoort via betreft bij de aanvraag"
+    );
+    assert_eq!(groep[4].gram.wortel.as_deref(), Some(g101.as_str()));
+    let na = evalueer(
+        &verder,
+        BELEID,
+        &["betaald_bij_besluit", "betaalde_voorschotten"],
+        json!({"besluit": g120}),
+    );
+    assert_eq!(na["betaald_bij_besluit"], json!(0));
+    assert_eq!(na["betaalde_voorschotten"], json!(500));
+    // Een ambtshalve besluit zonder voorganger is zijn eigen wortel.
+    let g300 = id(300);
+    kroniek
+        .voeg_toe(&stap8_gram(
+            &g300,
+            "terugvordering_vastgesteld",
+            "terugvordering",
+            Some("BESLUIT"),
+            json!({}),
+            json!({"terug_te_vorderen": 50}),
+            "2025-03-12",
+        ))
+        .unwrap();
+    assert_eq!(
+        kroniek.lees_wortel(&["test_toeslag"], &g300).unwrap().len(),
+        1
+    );
+}
+
+/// Stap 8 voor een corpus buiten deze repo (bijvoorbeeld de variant van een
+/// echte casus), met paden uit de omgeving; zonder `EXP_BETALING` slaat hij
+/// over. `EXP_BETALING`: json `{regulation, grammen (jsonl), beleid,
+/// kroniek, gevallen: [{regeling, uitkomsten, parameters, datum,
+/// verwacht}]}`: het beleid krijgt de grammen als bron van zijn register, en
+/// elk geval moet zijn verwachte uitkomsten geven.
+#[test]
+fn betaling_uit_omgeving() {
+    let Ok(invoer) = std::env::var("EXP_BETALING") else {
+        eprintln!("EXP_BETALING niet gezet: overgeslagen");
+        return;
+    };
+    let v: Value = serde_json::from_str(&invoer).unwrap();
+    let mut corpus =
+        regelrecht_cel::regelingen::laad(Path::new(v["regulation"].as_str().unwrap())).unwrap();
+    let grammen: Vec<Gram> = std::fs::read_to_string(v["grammen"].as_str().unwrap())
+        .unwrap()
+        .lines()
+        .filter(|r| !r.trim().is_empty())
+        .map(|r| serde_json::from_str(r).unwrap())
+        .collect();
+    corpus.service.add_data_source(Box::new(
+        lexostatus_engine::KroniekBron::new(
+            v["beleid"].as_str().unwrap(),
+            &grammen,
+            v["kroniek"].as_str().unwrap(),
+        )
+        .unwrap(),
+    ));
+    for g in v["gevallen"].as_array().unwrap() {
+        let uitkomsten: Vec<&str> = g["uitkomsten"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|u| u.as_str().unwrap())
+            .collect();
+        let p: BTreeMap<String, Value> = serde_json::from_value(g["parameters"].clone()).unwrap();
+        let e = regelrecht_cel::toets::evalueer(
+            &corpus.service,
+            g["regeling"].as_str().unwrap(),
+            &uitkomsten,
+            &p,
+            g["datum"].as_str().unwrap(),
+        );
+        println!("{} {:?}: {:?}", g["regeling"], uitkomsten, e.waarden);
+        assert!(e.volledig(&uitkomsten), "{e:?}");
+        for (k, w) in g["verwacht"].as_object().unwrap() {
+            assert_eq!(&e.waarden[k], w, "{k}");
+        }
+    }
+}

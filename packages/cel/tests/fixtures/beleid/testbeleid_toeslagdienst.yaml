@@ -1,0 +1,143 @@
+---
+# Fictief beleid van een tweede verstrekker, de toeslagdienst (notitie "bron
+# en gram-id", 29-09-2026; besluit Tim 29-09): hoe hij zijn verplichting tot
+# betaling uitvoert. Dezelfde vorm als het beleid van een andere verstrekker:
+# een bevraging van de eigen betalingsadministratie (art. 1) en een artikel
+# dat de fictieve Awb aanroept met een gewone source (art. 2: de betaling per
+# besluit, naar Awb 4:52, en de verrekening van voorschotten, naar Awb 4:95
+# lid 4). Een tweede verstrekker schrijft zijn eigen artikel: geen open_terms
+# op de Awb, dus niets dat botst. Geen geldend recht.
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
+$id: testbeleid_toeslagdienst
+name: Testbeleid toeslagdienst (fictief)
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.com/testbeleid_toeslagdienst
+competent_authority:
+  name: Test toeslagdienst
+  type: INSTANCE
+legal_basis:
+  - {law_id: testregeling_awb, article: '3'}
+  - {law_id: testregeling_awb, article: '8'}
+articles:
+  - number: '1'
+    url: https://example.com/testbeleid_toeslagdienst/1
+    text: >-
+      1. Betaald ter uitvoering van een besluit is de som van de betalingen die
+      naar dat besluit verwijzen. 2. Betaalde voorschotten bij een besluit zijn
+      de betalingen die verwijzen naar een besluit tot verlening van een
+      voorschot op dezelfde aanvraag als dat besluit.
+    machine_readable:
+      execution:
+        parameters:
+          - {name: besluit, type: string, required: true}
+        input:
+          - {name: grammen, type: array, source: {}}
+        output:
+          - {name: betaald_bij_besluit, type: number}
+          - {name: betaalde_voorschotten, type: number}
+        actions:
+          - output: betaald_bij_besluit
+            value:
+              operation: FOREACH
+              collection: $grammen
+              as: p
+              filter:
+                operation: AND
+                conditions:
+                  - {operation: EQUALS, subject: $p.soort, value: betaling}
+                  - {operation: EQUALS, subject: $p.verwijst.besluit, value: $besluit}
+              body: $p.fields.bedrag
+              combine: ADD
+          - output: betaalde_voorschotten
+            value:
+              operation: FOREACH
+              collection: $grammen
+              as: p
+              filter:
+                operation: AND
+                conditions:
+                  - {operation: EQUALS, subject: $p.soort, value: betaling}
+                  - operation: FOREACH
+                    collection: $grammen
+                    as: v
+                    filter:
+                      operation: AND
+                      conditions:
+                        - {operation: EQUALS, subject: $v.id, value: $p.verwijst.besluit}
+                        - {operation: EQUALS, subject: $v.soort, value: voorschot}
+                        - operation: FOREACH
+                          collection: $grammen
+                          as: b
+                          filter:
+                            operation: AND
+                            conditions:
+                              - {operation: EQUALS, subject: $b.id, value: $besluit}
+                              - {operation: EQUALS, subject: $b.verwijst.op_aanvraag, value: $v.verwijst.op_aanvraag}
+                          body: true
+                          combine: OR
+                    body: true
+                    combine: OR
+              body: $p.fields.bedrag
+              combine: ADD
+  - number: '2'
+    url: https://example.com/testbeleid_toeslagdienst/2
+    text: >-
+      De toeslagdienst betaalt een vastgestelde toeslag overeenkomstig de
+      vaststelling (testregeling awb art. 3), met wat hij ter uitvoering van
+      dat besluit al betaalde, en verrekent de betaalde voorschotten (art. 8).
+    machine_readable:
+      execution:
+        parameters:
+          - {name: besluit, type: string, required: true}
+          - {name: vastgesteld_bedrag, type: number, required: true}
+          - {name: datum_bekendmaking, type: date, nullable: true, required: true}
+        input:
+          - name: betaald_bij_besluit
+            type: number
+            source: {regulation: testbeleid_toeslagdienst, output: betaald_bij_besluit, parameters: {besluit: $besluit}}
+          - name: betaalde_voorschotten
+            type: number
+            source: {regulation: testbeleid_toeslagdienst, output: betaalde_voorschotten, parameters: {besluit: $besluit}}
+          - name: nog_te_betalen
+            type: number
+            source:
+              regulation: testregeling_awb
+              output: nog_te_betalen
+              parameters:
+                vastgesteld_bedrag: $vastgesteld_bedrag
+                betaald_bedrag: $betaald_bij_besluit
+                datum_bekendmaking: $datum_bekendmaking
+          - name: onverschuldigd_betaald
+            type: number
+            source:
+              regulation: testregeling_awb
+              output: onverschuldigd_betaald
+              parameters:
+                vastgesteld_bedrag: $vastgesteld_bedrag
+                betaald_bedrag: $betaald_bij_besluit
+                datum_bekendmaking: $datum_bekendmaking
+          - name: te_betalen_na_verrekening
+            type: number
+            source:
+              regulation: testregeling_awb
+              output: te_betalen_na_verrekening
+              parameters: {te_betalen_geldsom: $nog_te_betalen, betaalde_voorschotten: $betaalde_voorschotten}
+          - name: onverschuldigd_betaalde_voorschotten
+            type: number
+            source:
+              regulation: testregeling_awb
+              output: onverschuldigd_betaalde_voorschotten
+              parameters: {te_betalen_geldsom: $nog_te_betalen, betaalde_voorschotten: $betaalde_voorschotten}
+        output:
+          - {name: nog_te_betalen_verstrekker, type: number}
+          - {name: onverschuldigd_betaald_verstrekker, type: number}
+        actions:
+          - output: nog_te_betalen_verstrekker
+            value: $te_betalen_na_verrekening
+          - output: onverschuldigd_betaald_verstrekker
+            value:
+              operation: ADD
+              values: [$onverschuldigd_betaald, $onverschuldigd_betaalde_voorschotten]
