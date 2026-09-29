@@ -2209,9 +2209,10 @@ impl LawExecutionService {
                 read_after_actions: read_after(None),
             };
         };
-        // The requested outputs a void does not exclude, and the outputs a post
-        // hook reads, closed over what they read, where computing an output
-        // also reads what its replacing override declares.
+        // The requested outputs and the outputs a post hook reads, closed over
+        // what they read, where computing an output also reads what its
+        // replacing override declares. An output a void excludes is not
+        // computed for a request or a hook: the law says it does not arise.
         let actions = article
             .get_execution_spec()
             .and_then(|e| e.actions.as_deref())
@@ -2219,8 +2220,8 @@ impl LawExecutionService {
         let wanted: Vec<&str> = requested
             .iter()
             .copied()
-            .filter(|name| !plan.voided.contains(*name))
             .chain(post_hooks.iter().map(String::as_str))
+            .filter(|name| !plan.voided.contains(*name))
             .collect();
         let outputs = crate::demand::required_outputs_with(actions, &wanted, &plan.replacing);
         let read_after_actions = read_after(Some(&outputs));

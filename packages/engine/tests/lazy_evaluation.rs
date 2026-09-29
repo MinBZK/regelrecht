@@ -1730,3 +1730,48 @@ fn a_default_resolves_an_earlier_term_only_where_it_reads_it() {
     let trace = result.trace.as_ref().unwrap().render_box_drawing();
     assert!(!trace.contains("Open term 'basis'"), "{trace}");
 }
+
+#[test]
+fn a_voided_output_is_not_computed_for_a_hook_either() {
+    // A post hook declares a parameter named like the voided entitlement.
+    // Computing the entitlement would read the income, and an explicit null
+    // there is an error; the void keeps it from being computed for the hook
+    // too, so the call for the neighbouring output succeeds.
+    let law = VOIDED.replace(
+        "        parameters:\n          - name: bsn\n",
+        "        produces:\n          legal_character: BESCHIKKING\n        parameters:\n          - name: bsn\n",
+    ) + "  - number: '2'\n    text: Er bestaat geen aanspraak.\n    machine_readable:\n      overrides:\n        - law: lazy_void_two\n          article: '1'\n          output: aanspraak\n          voids: true\n          legal_text_excerpt: bestaat geen aanspraak\n";
+    let hook = r#"
+$id: lazy_void_hook
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Bij het besluit wordt de aanspraak vermeld.
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: BESLUIT
+      execution:
+        parameters:
+          - name: aanspraak
+            type: number
+            required: false
+        output:
+          - name: vermeld
+            type: boolean
+        actions:
+          - output: vermeld
+            value: true
+"#;
+    let mut service = with_null_income(service(30, None));
+    service.load_law(&law).unwrap();
+    service.load_law(hook).unwrap();
+    let result = service
+        .evaluate_law_output("lazy_void_two", "toelichting", bsn(), "2025-01-01")
+        .expect("the voided entitlement is not computed for the hook");
+    assert_eq!(result.outputs["toelichting"], Value::Int(1));
+    assert!(!result.outputs.contains_key("aanspraak"));
+}
