@@ -14,7 +14,9 @@ profiles:
     bsn: '999100001'
     kvk: null
     default_law: {law_path: zorgtoeslagwet, service: TOESLAGEN}
-    default_feature: zorgtoeslagwet
+    # Scenario's: the feature file that opens first, by its path under
+    # regulation/nl. A law can have several, so the law alone is not enough.
+    default_feature: zorgtoeslagwet/scenarios/zorgtoeslagwet_TOESLAGEN-2025-01-01.feature
     # Graaf: the laws that tell this persona's story (detentie -> verzekerd -> zorgtoeslag)
     graph_laws: [penitentiaire_beginselenwet, zvw, zorgtoeslagwet]
     zaaksysteem_service: TOESLAGEN
@@ -67,7 +69,7 @@ profiles:
     default_law:
       law_path: verordening_precariobelasting/gemeenten
       service: GEMEENTE_ROTTERDAM
-    default_feature: verordening_precariobelasting
+    default_feature: verordening_precariobelasting/gemeenten/scenarios/precariobelasting_GEMEENTE_ROTTERDAM-2024-01-01.feature
     # Graaf: the horeca chain in Rotterdam
     graph_laws:
       - alcoholwet/vergunning/rotterdam
