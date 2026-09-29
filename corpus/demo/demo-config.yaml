@@ -494,6 +494,16 @@ expanded_paths:
     - articles.*.machine_readable.execution.output
   algemene_plaatselijke_verordening/exploitatievergunning:
     - articles.*.machine_readable.execution.output
+  awb/bezwaar:
+    # the only article, so it opens straight away
+    - articles.7:1
+    - articles.*.machine_readable.definitions
+    - articles.*.machine_readable.execution.input
+    - articles.*.machine_readable.execution.output
+    # the three requirements for bezwaar (art. 7:1 lid 1)
+    - articles.*.machine_readable.execution.actions.bezwaar_mogelijk.value.conditions.0.value
+    - articles.*.machine_readable.execution.actions.bezwaar_mogelijk.value.conditions.1
+    - articles.*.machine_readable.execution.actions.bezwaar_mogelijk.value.conditions.2.subject
 
 # Nodes on a prepared path that still start folded, because the presenter opens
 # them by hand at that point in the story. What lies below them is prepared all
