@@ -502,15 +502,16 @@ fn establish_event(
     let mut moment_legal_basis: Vec<String> = Vec::new();
     let mut paths: Vec<(String, String)> = Vec::new();
     let mut alias = BTreeMap::new();
+    let mut field_legal_basis: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for (wa, v, is_basis) in &parts {
         let g = match &v.legal_basis {
             Some(g) => g.clone(),
             None if *is_basis => vec![wa.reference.clone()],
             None => Vec::new(),
         };
-        for x in g {
-            if !legal_basis.contains(&x) {
-                legal_basis.push(x);
+        for x in &g {
+            if !legal_basis.contains(x) {
+                legal_basis.push(x.clone());
             }
         }
         for x in v.effective_at.iter().flat_map(|o| o.legal_basis.iter()) {
@@ -519,7 +520,17 @@ fn establish_event(
             }
         }
         match field_paths(service, wa, v, bv.stage.as_deref()) {
-            Ok(p) => paths.extend(p.into_iter().map(|p| (p, wa.reference.clone()))),
+            Ok(p) => {
+                for path in &p {
+                    let entry = field_legal_basis.entry(path.clone()).or_default();
+                    for x in &g {
+                        if !entry.contains(x) {
+                            entry.push(x.clone());
+                        }
+                    }
+                }
+                paths.extend(p.into_iter().map(|p| (p, wa.reference.clone())));
+            }
             Err(f) => errors.push(f),
         }
         alias.extend(v.aliases.clone());
@@ -582,6 +593,7 @@ fn establish_event(
         .flatten()
         .collect();
     event.legal_basis = legal_basis;
+    event.field_legal_basis = field_legal_basis;
     event.aliases = alias;
 
     // The document (`GET /api/stream`) shows the event as it applies.
@@ -1122,6 +1134,78 @@ events:
         assert_eq!(e.aliases["vastgesteld_bedrag"], "bedrag_art1");
         // The document of the stream shows the event as it applies.
         assert_eq!(streams[0].document["events"][0]["type"], "decretogram");
+    }
+
+    /// Each field keeps the legal basis of the establishment or extension that
+    /// declares it; the event carries the union.
+    #[test]
+    fn each_field_keeps_the_legal_basis_that_declares_it() {
+        const FIELDS: &str = r#"
+$id: testwet_velden
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.com/testwet_velden
+articles:
+  - number: '1'
+    text: De instantie ontvangt de akte.
+    url: https://example.com/testwet_velden/1
+    machine_readable:
+      execution:
+        produces:
+          extensions:
+            chronolex:
+              establishes:
+                - event: akte_ontvangen
+                  type: submission
+                  subtype: akte
+  - number: '2'
+    text: "1. De akte vermeldt de dag.\n\n2. Bij de akte hoort een verklaring."
+    url: https://example.com/testwet_velden/2
+    machine_readable:
+      execution:
+        produces:
+          extensions:
+            chronolex:
+              establishes:
+                - extends: akte_ontvangen
+                  legal_basis: ['testwet_velden#2 lid 1']
+                  fields: [datum]
+                - extends: akte_ontvangen
+                  legal_basis: ['testwet_velden#2 lid 2']
+                  fields: [verklaring]
+"#;
+        let mut s = LawExecutionService::new();
+        s.load_law(FIELDS).unwrap();
+        let mut streams = vec![crate::stream::parse(
+            r#"
+$id: test_akten
+recording_actor: test_instantie
+chronicle: test_kroniek
+events:
+  - name: akte_ontvangen
+    establishes: ['testwet_velden#1', 'testwet_velden#2']
+    intake: behandelaar
+    fields: {datum: $external.datum, verklaring: $external.verklaring}
+"#,
+            "test",
+        )
+        .unwrap()];
+        assert_eq!(establish(&mut streams, &s), Vec::<String>::new());
+        let e = &streams[0].events[0];
+        assert_eq!(
+            e.legal_basis,
+            [
+                "testwet_velden#1",
+                "testwet_velden#2 lid 1",
+                "testwet_velden#2 lid 2"
+            ]
+        );
+        assert_eq!(e.field_legal_basis["datum"], ["testwet_velden#2 lid 1"]);
+        assert_eq!(
+            e.field_legal_basis["verklaring"],
+            ["testwet_velden#2 lid 2"]
+        );
     }
 
     #[test]

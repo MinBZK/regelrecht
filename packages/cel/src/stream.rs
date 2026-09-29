@@ -89,6 +89,12 @@ pub struct Event {
     /// it when no reading reads the field.
     #[serde(skip)]
     pub field_types: BTreeMap<String, crate::law::FieldType>,
+    /// The legal basis per field path, from the establishment or extension
+    /// that declares the path (BW 2:318 lid 1 for the date of a fusion deed,
+    /// lid 2 for the notarial statement). `legal_basis` is the union over the
+    /// whole event; the form of a fact shows this one per field.
+    #[serde(skip)]
+    pub field_legal_basis: BTreeMap<String, Vec<String>>,
 }
 
 /// A reference of an event: what the gram that a gram of this event refers

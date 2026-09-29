@@ -524,7 +524,37 @@ fn fact_field(
         columns: None,
         explanation,
         group: None,
-        legal_basis: event.legal_basis.clone(),
+        legal_basis: field_legal_basis(event, &paths, effective_at),
+    }
+}
+
+/// The legal basis of the form field that binds to `paths`: what the article
+/// that declares the path gives as legal basis (a path covers everything
+/// below it). The field that gives the `effective_at` of the gram has the
+/// legal basis of that moment. Otherwise, or when neither carries a legal
+/// basis: that of the whole event.
+fn field_legal_basis(event: &Event, paths: &[String], effective_at: bool) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for leaf in paths {
+        for (path, basis) in &event.field_legal_basis {
+            if leaf == path || leaf.starts_with(&format!("{path}.")) {
+                for x in basis {
+                    if !out.contains(x) {
+                        out.push(x.clone());
+                    }
+                }
+            }
+        }
+    }
+    if out.is_empty() && effective_at {
+        if let Some(b) = &event.effective_at {
+            out = b.legal_basis.clone();
+        }
+    }
+    if out.is_empty() {
+        event.legal_basis.clone()
+    } else {
+        out
     }
 }
 
@@ -624,6 +654,37 @@ articles:
         );
         // A TOETS is not a beschikking: no hooks.
         assert!(hooks_at(&s, "testregeling_bevoegd#1", "BESLUIT").is_empty());
+    }
+
+    /// A form field shows the legal basis of the article that declares its
+    /// path (a path covers what lies below it); the field that gives the
+    /// `effective_at` shows the legal basis of that moment; otherwise the
+    /// field shows that of the event.
+    #[test]
+    fn a_form_field_shows_the_legal_basis_of_its_own_field() {
+        let mut event: Event = serde_yaml_ng::from_str(
+            "name: e\nintake: behandelaar\nlegal_basis: ['w#1', 'w#2 lid 1', 'w#2 lid 2']\ntype: submission\neffective_at: {source: $external.dag, legal_basis: ['w#1 lid 3']}\nfields: {akte: {datum: $external.datum}, verklaring: $external.verklaring, notitie: $external.notitie}\n",
+        )
+        .unwrap();
+        event
+            .field_legal_basis
+            .insert("akte".into(), vec!["w#2 lid 1".into()]);
+        event
+            .field_legal_basis
+            .insert("verklaring".into(), vec!["w#2 lid 2".into()]);
+        assert_eq!(
+            field_legal_basis(&event, &["akte.datum".into()], false),
+            ["w#2 lid 1"]
+        );
+        assert_eq!(
+            field_legal_basis(&event, &["verklaring".into()], false),
+            ["w#2 lid 2"]
+        );
+        assert_eq!(field_legal_basis(&event, &[], true), ["w#1 lid 3"]);
+        assert_eq!(
+            field_legal_basis(&event, &["notitie".into()], false),
+            ["w#1", "w#2 lid 1", "w#2 lid 2"]
+        );
     }
 
     /// An assessment only counts if the article is in the legal basis of the event,
