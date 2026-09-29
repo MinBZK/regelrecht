@@ -95,6 +95,15 @@ is: in tekst dêr't men rjochten oan ûntliene kin`.
   presintearjen` zijn, als een samenstelling met `modus` in het Fries te
   technisch leest.
 
+- **De scenarioweergave** (`scenario.given.*`, `scenario.when.*`,
+  `scenario.then.*`, `scenario.value.not_stated`, `scenario.passed`, `scenario.step_failed`,
+  `scenario.summary.*`). Afgeleid van woorden die elders in de vertaling
+  staan (`opjûn`, `berekkenje`, `útfiering`, `mislearre`, `ûntbrekt`), niet
+  opgezocht. Twijfel zit in de werkwoordsvormen `slagget` en `mislearret` (De
+  útfiering slagget / mislearret), in `Berekkening neffens` voor "Berekening
+  volgens", en in `Laden wet` voor "Geladen wet". `Peildatum`, `Per {key}` en
+  `Stappen` staan er gelijk aan het Nederlands; of dat klopt, is niet gevraagd.
+
 ## 5. Beelden die in het Fries misschien niet werken
 
 - **`baalje`** (balie), in "de andere kant van de balie". Het woord bestaat,
