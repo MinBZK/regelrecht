@@ -92,9 +92,14 @@ fn note_targets_another_law(note: &serde_json::Value, law_id: &str) -> bool {
     }
 }
 
-/// Create a serializer that converts HashMaps to JavaScript objects (not Maps)
+/// Create a serializer that converts HashMaps to JavaScript objects (not Maps),
+/// and an absence (`Value::Null`) to `null`. By default an absence crosses as
+/// `undefined`, which JavaScript reads as "not computed" rather than "there is
+/// none" (RFC-036): a nullable output that is absent has to arrive as `null`.
 fn js_serializer() -> Serializer {
-    Serializer::new().serialize_maps_as_objects(true)
+    Serializer::new()
+        .serialize_maps_as_objects(true)
+        .serialize_missing_as_null(true)
 }
 
 /// Helper to create consistent error JsValues.
