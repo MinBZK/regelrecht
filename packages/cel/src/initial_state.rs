@@ -125,6 +125,7 @@ fn build(text: &str, streams: &[Stream]) -> Result<Gram, String> {
         },
         provenance: Some(PROVENANCE.into()),
         fields: row.fields,
+        field_provenance: BTreeMap::new(),
         inputs: BTreeMap::new(),
         receipt: None,
         times: Default::default(),

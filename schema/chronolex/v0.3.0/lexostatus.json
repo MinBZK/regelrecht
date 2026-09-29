@@ -1,0 +1,725 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.3.0/lexostatus.json",
+  "title": "Cell configuration with lexostatus definitions v0.3.0",
+  "description": "The lexostatuses a cell offers and how each is reduced from the cell's own chronicle (RFC-022 sec. 4.1, provisional there). reduction uses filter and, where needed, pick to choose a gram, and uses derivations to derive the parameters of an article: a derivation on the chosen gram (field, year_of, period_of, filled, equals, table, moment), or a derivation over the grams that pass its own filter (exists, sum, pick with field, year_of, period_of or contains). With group_by: root (and, where needed, without) the lexostatus is a list with one row per root. extra_fields supplies values that are not parameters and do not go to the engine.",
+  "type": "object",
+  "required": [
+    "cell",
+    "lexostatus_definitions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "cell": {
+      "$ref": "#/definitions/identifier"
+    },
+    "description": {
+      "type": "string"
+    },
+    "law": {
+      "type": "array",
+      "description": "Additions to the lexostatuses that the law reads in this cell (produces.extensions.chronolex.reads of an article; the lexostatus is named after the article). Only extra fields: what the cell passes along as input for a later source, not a parameter. The parameters are in the law.",
+      "items": {
+        "type": "object",
+        "required": [
+          "article",
+          "extra_fields"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "article": {
+            "$ref": "#/definitions/legal_basis",
+            "description": "The reading article, <regulation>#<article>."
+          },
+          "extra_fields": {
+            "type": "object",
+            "description": "Values that are not parameters, such as an input for a synthesis source. They are kept separately in the lexostatus and never go to the engine.",
+            "propertyNames": {
+              "pattern": "^[a-z_][a-z0-9_]*$"
+            },
+            "additionalProperties": {
+              "$ref": "#/definitions/derivation"
+            }
+          }
+        }
+      }
+    },
+    "lexostatus_definitions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/lexostatus"
+      }
+    }
+  },
+  "definitions": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "field_path": {
+      "type": "string",
+      "description": "Path to a field under the gram's fields, with dots between the levels.",
+      "pattern": "^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)*$"
+    },
+    "column": {
+      "type": "string",
+      "pattern": "^[a-z_][a-z0-9_]*$"
+    },
+    "lexostatus": {
+      "type": "object",
+      "required": [
+        "name",
+        "inputs",
+        "reduction"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "$ref": "#/definitions/identifier"
+        },
+        "description": {
+          "type": "string"
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "type"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "description": "as_of and known_at are the reference point of a query (GET lexostatus), not inputs.",
+                "allOf": [
+                  {
+                    "$ref": "#/definitions/identifier"
+                  },
+                  {
+                    "not": {
+                      "enum": [
+                        "as_of",
+                        "known_at"
+                      ]
+                    }
+                  }
+                ]
+              },
+              "type": {
+                "enum": [
+                  "string",
+                  "number",
+                  "boolean",
+                  "date"
+                ]
+              }
+            }
+          }
+        },
+        "reduction": {
+          "$ref": "#/definitions/reduction"
+        }
+      }
+    },
+    "reduction": {
+      "type": "object",
+      "required": [
+        "chronicle",
+        "derivations"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "chronicle": {
+          "$ref": "#/definitions/identifier"
+        },
+        "filter": {
+          "$ref": "#/definitions/filter"
+        },
+        "group_by": {
+          "enum": [
+            "root"
+          ],
+          "description": "Turns the lexostatus into a list: one row per root (the gram without a reference that the others lead to via refers_to, such as the application). A root counts if at least one of its grams passes the filter; pick and the derivations then work per root, over its grams. A list is for the consumer and never goes to the engine; the derivations are then columns, not parameters."
+        },
+        "without": {
+          "$ref": "#/definitions/filter",
+          "description": "Only with group_by: a root stays in the list only if none of its grams passes this filter, for example without a gram of stage BESLUIT."
+        },
+        "pick": {
+          "enum": [
+            "latest"
+          ],
+          "description": "Which gram counts if there are several: latest is the gram with the latest effective_at, and with equal effective_at the latest recorded_at (a correction is a new gram). Without pick, no gram is chosen, and every derivation can only work over a set of grams."
+        },
+        "derivations": {
+          "type": "object",
+          "description": "Per parameter of an article under the legal_basis of the event or of the derivation itself: how it follows from the gram. May be empty if extra_fields does supply something: a lexostatus that only supplies columns for a per-row synthesis supplies no parameter.",
+          "propertyNames": {
+            "pattern": "^[a-z_][a-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/definitions/derivation"
+          }
+        },
+        "extra_fields": {
+          "type": "object",
+          "description": "Values that are not parameters, such as an input for a synthesis source. They are kept separately in the lexostatus and never go to the engine.",
+          "propertyNames": {
+            "pattern": "^[a-z_][a-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/definitions/derivation"
+          }
+        }
+      },
+      "dependencies": {
+        "without": [
+          "group_by"
+        ]
+      }
+    },
+    "derivation": {
+      "oneOf": [
+        {
+          "description": "The value of the field. Empty or absent: the parameter is omitted.",
+          "type": "object",
+          "required": [
+            "field"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "field": {
+              "$ref": "#/definitions/field_path"
+            },
+            "legal_basis": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "What this derivation rests on: the article that asks for the fact, or the article that carries the reading (such as the register the cell keeps: no gram means no). The name of a parameter derivation is a parameter of an article from the event's legal_basis or from this legal_basis. On startup: every article is loaded and the paragraph (lid) exists.",
+              "items": {
+                "$ref": "#/definitions/legal_basis"
+              }
+            }
+          }
+        },
+        {
+          "description": "The year of a date field (YYYY-MM-DD). No date: the parameter is omitted.",
+          "type": "object",
+          "required": [
+            "year_of"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "year_of": {
+              "$ref": "#/definitions/field_path"
+            },
+            "legal_basis": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "What this derivation rests on: the article that asks for the fact, or the article that carries the reading (such as the register the cell keeps: no gram means no). The name of a parameter derivation is a parameter of an article from the event's legal_basis or from this legal_basis. On startup: every article is loaded and the paragraph (lid) exists.",
+              "items": {
+                "$ref": "#/definitions/legal_basis"
+              }
+            }
+          }
+        },
+        {
+          "description": "The period in which a date field (YYYY-MM-DD) of the chosen gram falls, as the first day of that period (YYYY-MM-DD): a month, a quarter or a year. This makes a window a date the engine can read. No date: the parameter is omitted.",
+          "type": "object",
+          "required": [
+            "period_of"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "period_of": {
+              "$ref": "#/definitions/field_path"
+            },
+            "period": {
+              "enum": [
+                "year",
+                "quarter",
+                "month"
+              ],
+              "description": "The period: year, quarter or month. Without it, the runtime takes, on startup, the temporal.period_type (year, month) of the parameter named after the derivation from the legal_basis (RFC-001): the regulation then says which period it is."
+            },
+            "legal_basis": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "What this derivation rests on: the article that asks for the fact, or the article that carries the reading (such as the register the cell keeps: no gram means no). The name of a parameter derivation is a parameter of an article from the event's legal_basis or from this legal_basis. On startup: every article is loaded and the paragraph (lid) exists.",
+              "items": {
+                "$ref": "#/definitions/legal_basis"
+              }
+            }
+          }
+        },
+        {
+          "description": "True if the field is filled (not absent, not null, not an empty string, not an empty list).",
+          "type": "object",
+          "required": [
+            "filled"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "filled": {
+              "$ref": "#/definitions/field_path"
+            },
+            "legal_basis": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "What this derivation rests on: the article that asks for the fact, or the article that carries the reading (such as the register the cell keeps: no gram means no). The name of a parameter derivation is a parameter of an article from the event's legal_basis or from this legal_basis. On startup: every article is loaded and the paragraph (lid) exists.",
+              "items": {
+                "$ref": "#/definitions/legal_basis"
+              }
+            }
+          }
+        },
+        {
+          "description": "True if the field has that value. Empty or absent: the parameter is omitted.",
+          "type": "object",
+          "required": [
+            "equals"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "equals": {
+              "type": "object",
+              "required": [
+                "field",
+                "value"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "field": {
+                  "$ref": "#/definitions/field_path"
+                },
+                "value": {
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean"
+                  ]
+                }
+              }
+            },
+            "legal_basis": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "What this derivation rests on: the article that asks for the fact, or the article that carries the reading (such as the register the cell keeps: no gram means no). The name of a parameter derivation is a parameter of an article from the event's legal_basis or from this legal_basis. On startup: every article is loaded and the paragraph (lid) exists.",
+              "items": {
+                "$ref": "#/definitions/legal_basis"
+              }
+            }
+          }
+        },
+        {
+          "description": "True if the table has at least one row and every row has that column filled; with only_where, only the rows in which that column is true count.",
+          "type": "object",
+          "required": [
+            "table",
+            "each_row"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "table": {
+              "$ref": "#/definitions/field_path"
+            },
+            "each_row": {
+              "$ref": "#/definitions/column"
+            },
+            "only_where": {
+              "$ref": "#/definitions/column"
+            },
+            "legal_basis": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "What this derivation rests on: the article that asks for the fact, or the article that carries the reading (such as the register the cell keeps: no gram means no). The name of a parameter derivation is a parameter of an article from the event's legal_basis or from this legal_basis. On startup: every article is loaded and the paragraph (lid) exists.",
+              "items": {
+                "$ref": "#/definitions/legal_basis"
+              }
+            }
+          }
+        },
+        {
+          "description": "True if at least one row of the table has that column set to true.",
+          "type": "object",
+          "required": [
+            "table",
+            "one_row"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "table": {
+              "$ref": "#/definitions/field_path"
+            },
+            "one_row": {
+              "$ref": "#/definitions/column"
+            },
+            "legal_basis": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "What this derivation rests on: the article that asks for the fact, or the article that carries the reading (such as the register the cell keeps: no gram means no). The name of a parameter derivation is a parameter of an article from the event's legal_basis or from this legal_basis. On startup: every article is loaded and the paragraph (lid) exists.",
+              "items": {
+                "$ref": "#/definitions/legal_basis"
+              }
+            }
+          }
+        },
+        {
+          "description": "The date of a moment of the gram itself: effective_at is when the fact legally applies or took place (for an application, the receipt), recorded_at is when the cell recorded it.",
+          "type": "object",
+          "required": [
+            "moment"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "moment": {
+              "enum": [
+                "effective_at",
+                "recorded_at"
+              ]
+            },
+            "legal_basis": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "What this derivation rests on: the article that asks for the fact, or the article that carries the reading (such as the register the cell keeps: no gram means no). The name of a parameter derivation is a parameter of an article from the event's legal_basis or from this legal_basis. On startup: every article is loaded and the paragraph (lid) exists.",
+              "items": {
+                "$ref": "#/definitions/legal_basis"
+              }
+            }
+          }
+        },
+        {
+          "description": "Over the grams that pass the filter: true if there is at least one. No gram is false: the cell speaks only about its own chronicle. With filled, only a gram in which that field is filled counts (not absent, not null, not an empty string, not an empty list).",
+          "type": "object",
+          "required": [
+            "exists"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "filter": {
+              "$ref": "#/definitions/filter"
+            },
+            "exists": {
+              "const": true
+            },
+            "filled": {
+              "$ref": "#/definitions/field_path"
+            },
+            "legal_basis": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "What this derivation rests on: the article that asks for the fact, or the article that carries the reading (such as the register the cell keeps: no gram means no). The name of a parameter derivation is a parameter of an article from the event's legal_basis or from this legal_basis. On startup: every article is loaded and the paragraph (lid) exists.",
+              "items": {
+                "$ref": "#/definitions/legal_basis"
+              }
+            }
+          }
+        },
+        {
+          "description": "Over the grams that pass the filter: one row per gram with these fields, in chronicle order. A field a gram lacks is null. No gram is an empty list. For a table, such as the rows of an election result; use it as an extra field, not as a parameter.",
+          "type": "object",
+          "required": [
+            "collect"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "filter": {
+              "$ref": "#/definitions/filter"
+            },
+            "collect": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/definitions/field_path"
+              }
+            },
+            "legal_basis": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "What this derivation rests on: the article that asks for the fact, or the article that carries the reading (such as the register the cell keeps: no gram means no). The name of a parameter derivation is a parameter of an article from the event's legal_basis or from this legal_basis. On startup: every article is loaded and the paragraph (lid) exists.",
+              "items": {
+                "$ref": "#/definitions/legal_basis"
+              }
+            }
+          }
+        },
+        {
+          "description": "Over the grams that pass the filter: the sum of this numeric field. No gram is zero.",
+          "type": "object",
+          "required": [
+            "sum"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "filter": {
+              "$ref": "#/definitions/filter"
+            },
+            "sum": {
+              "$ref": "#/definitions/field_path"
+            },
+            "legal_basis": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "What this derivation rests on: the article that asks for the fact, or the article that carries the reading (such as the register the cell keeps: no gram means no). The name of a parameter derivation is a parameter of an article from the event's legal_basis or from this legal_basis. On startup: every article is loaded and the paragraph (lid) exists.",
+              "items": {
+                "$ref": "#/definitions/legal_basis"
+              }
+            }
+          }
+        },
+        {
+          "description": "Over the grams that pass the filter: the date of a moment (effective_at or recorded_at) of the gram with the latest effective_at. No gram: the value of no_gram, and without no_gram the parameter is omitted. This lets a per-case list read the moment of a specific gram, such as the receipt of the application, while it also reads other grams of the case.",
+          "type": "object",
+          "required": [
+            "pick",
+            "moment"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "filter": {
+              "$ref": "#/definitions/filter"
+            },
+            "pick": {
+              "enum": [
+                "latest"
+              ]
+            },
+            "moment": {
+              "enum": [
+                "effective_at",
+                "recorded_at"
+              ]
+            },
+            "no_gram": {
+              "type": [
+                "null",
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "The value if no gram passes the filter: the reading of absence within the cell's own chronicle, for example null for the date of something that did not happen. Without no_gram, the parameter is then omitted."
+            },
+            "legal_basis": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "What this derivation rests on: the article that asks for the fact, or the article that carries the reading (such as the register the cell keeps: no gram means no). The name of a parameter derivation is a parameter of an article from the event's legal_basis or from this legal_basis. On startup: every article is loaded and the paragraph (lid) exists.",
+              "items": {
+                "$ref": "#/definitions/legal_basis"
+              }
+            }
+          }
+        },
+        {
+          "description": "Over the grams that pass the filter: the value of field in the gram with the latest effective_at. An empty field: the parameter is omitted. No gram: the value of no_gram, and without no_gram the parameter is omitted.",
+          "type": "object",
+          "required": [
+            "pick",
+            "field"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "filter": {
+              "$ref": "#/definitions/filter"
+            },
+            "pick": {
+              "enum": [
+                "latest"
+              ]
+            },
+            "field": {
+              "$ref": "#/definitions/field_path"
+            },
+            "no_gram": {
+              "type": [
+                "null",
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "The value if no gram passes the filter: the reading of absence within the cell's own chronicle, for example null for the date of something that did not happen. Without no_gram, the parameter is then omitted."
+            },
+            "legal_basis": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "What this derivation rests on: the article that asks for the fact, or the article that carries the reading (such as the register the cell keeps: no gram means no). The name of a parameter derivation is a parameter of an article from the event's legal_basis or from this legal_basis. On startup: every article is loaded and the paragraph (lid) exists.",
+              "items": {
+                "$ref": "#/definitions/legal_basis"
+              }
+            }
+          }
+        },
+        {
+          "description": "Over the grams that pass the filter: the year of the date field in the gram with the latest effective_at. No date: the parameter is omitted. No gram: the value of no_gram, and without no_gram the parameter is omitted.",
+          "type": "object",
+          "required": [
+            "pick",
+            "year_of"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "filter": {
+              "$ref": "#/definitions/filter"
+            },
+            "pick": {
+              "enum": [
+                "latest"
+              ]
+            },
+            "year_of": {
+              "$ref": "#/definitions/field_path"
+            },
+            "no_gram": {
+              "type": [
+                "null",
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "The value if no gram passes the filter: the reading of absence within the cell's own chronicle. Without no_gram, the parameter is then omitted."
+            },
+            "legal_basis": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "What this derivation rests on: the article that asks for the fact, or the article that carries the reading (such as the register the cell keeps: no gram means no). The name of a parameter derivation is a parameter of an article from the event's legal_basis or from this legal_basis. On startup: every article is loaded and the paragraph (lid) exists.",
+              "items": {
+                "$ref": "#/definitions/legal_basis"
+              }
+            }
+          }
+        },
+        {
+          "description": "Over the grams that pass the filter: the period in which a date field of the latest gram falls, as the first day of that period (see period_of on the chosen gram).",
+          "type": "object",
+          "required": [
+            "pick",
+            "period_of"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "filter": {
+              "$ref": "#/definitions/filter"
+            },
+            "pick": {
+              "enum": [
+                "latest"
+              ]
+            },
+            "period_of": {
+              "$ref": "#/definitions/field_path"
+            },
+            "period": {
+              "enum": [
+                "year",
+                "quarter",
+                "month"
+              ],
+              "description": "The period: year, quarter or month. Without it, the runtime takes, on startup, the temporal.period_type (year, month) of the parameter named after the derivation from the legal_basis (RFC-001): the regulation then says which period it is."
+            },
+            "no_gram": {
+              "type": [
+                "null",
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "The value if no gram passes the filter: the reading of absence within the cell's own chronicle. Without no_gram, the parameter is then omitted."
+            },
+            "legal_basis": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "What this derivation rests on: the article that asks for the fact, or the article that carries the reading (such as the register the cell keeps: no gram means no). The name of a parameter derivation is a parameter of an article from the event's legal_basis or from this legal_basis. On startup: every article is loaded and the paragraph (lid) exists.",
+              "items": {
+                "$ref": "#/definitions/legal_basis"
+              }
+            }
+          }
+        },
+        {
+          "description": "Over the grams that pass the filter: true if the list field contains.field in the latest gram contains the value. No gram is false.",
+          "type": "object",
+          "required": [
+            "pick",
+            "contains"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "filter": {
+              "$ref": "#/definitions/filter"
+            },
+            "pick": {
+              "enum": [
+                "latest"
+              ]
+            },
+            "contains": {
+              "type": "object",
+              "required": [
+                "field",
+                "value"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "field": {
+                  "$ref": "#/definitions/field_path"
+                },
+                "value": {
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean"
+                  ]
+                }
+              }
+            },
+            "legal_basis": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "What this derivation rests on: the article that asks for the fact, or the article that carries the reading (such as the register the cell keeps: no gram means no). The name of a parameter derivation is a parameter of an article from the event's legal_basis or from this legal_basis. On startup: every article is loaded and the paragraph (lid) exists.",
+              "items": {
+                "$ref": "#/definitions/legal_basis"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "filter": {
+      "type": "object",
+      "description": "Equality on the gram. The keys id, root, name, type, subtype, stage, recording_actor, chronicle, legal_character, decision_type, regulation and competent_authority are fields of the gram itself (root from the cell's index), and refers_to.<name> is the id the gram refers to under that name; any other key is a field path under fields. A value $<input> comes from the lexostatus inputs. The fixed values of name, type and subtype identify the event or events.",
+      "propertyNames": {
+        "$ref": "#/definitions/field_path"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minProperties": 1
+    },
+    "legal_basis": {
+      "type": "string",
+      "description": "<regulation-$id>#<article-number>, optionally with ' lid <n>', as for an event (stream.json).",
+      "pattern": "^[a-z][a-z0-9_]*#[A-Za-z0-9]([A-Za-z0-9:._ -]*[A-Za-z0-9])?( lid [0-9]+[a-z]?)?$"
+    }
+  }
+}

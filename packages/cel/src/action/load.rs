@@ -417,6 +417,8 @@ pub fn set_form(d: &mut ProcessDefinition, service: &LawExecutionService, cell: 
                             explanation: None,
                             group: None,
                             legal_basis: Vec::new(),
+                            optional: false,
+                            supplied: None,
                         }
                     })
                     .collect()
@@ -461,7 +463,7 @@ fn fact_field(
     let paths: Vec<String> = event
         .leaves()
         .into_iter()
-        .filter(|b| matches!(&b.binding, Binding::External(s) if s == key))
+        .filter(|b| matches!(&b.binding, Binding::External(s) | Binding::Supplied(s) if s == key))
         .map(|b| b.path)
         .collect();
     // First a derivation that takes over the field (field, sum), then one that
@@ -502,10 +504,9 @@ fn fact_field(
             ));
         }
     }
-    let effective_at = event
-        .effective_at
-        .as_ref()
-        .is_some_and(|b| matches!(b.binding(), Binding::External(s) if s == key));
+    let effective_at = event.effective_at.as_ref().is_some_and(
+        |b| matches!(b.binding(), Binding::External(s) | Binding::Supplied(s) if s == key),
+    );
     if kind.is_none() && effective_at {
         kind = Some("date".into());
         explanation = event.effective_at.as_ref().map(|b| {
@@ -525,6 +526,8 @@ fn fact_field(
         explanation,
         group: None,
         legal_basis: field_legal_basis(event, &paths, effective_at),
+        optional: false,
+        supplied: None,
     }
 }
 

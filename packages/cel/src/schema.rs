@@ -1,4 +1,4 @@
-//! The JSON schemas from `schema/chronolex/v0.2.0/`, embedded at build
+//! The JSON schemas from `schema/chronolex/v0.3.0/`, embedded at build
 //! time. The files are the source; this module compiles them once.
 
 use std::sync::LazyLock;
@@ -6,11 +6,11 @@ use std::sync::LazyLock;
 use jsonschema::Validator;
 use serde_json::Value;
 
-const STREAM: &str = include_str!("../../../schema/chronolex/v0.2.0/stream.json");
-const LEXOSTATUS: &str = include_str!("../../../schema/chronolex/v0.2.0/lexostatus.json");
-const GRAM: &str = include_str!("../../../schema/chronolex/v0.2.0/gram.json");
-const CELL: &str = include_str!("../../../schema/chronolex/v0.2.0/cell.json");
-const PROCESS: &str = include_str!("../../../schema/chronolex/v0.2.0/process.json");
+const STREAM: &str = include_str!("../../../schema/chronolex/v0.3.0/stream.json");
+const LEXOSTATUS: &str = include_str!("../../../schema/chronolex/v0.3.0/lexostatus.json");
+const GRAM: &str = include_str!("../../../schema/chronolex/v0.3.0/gram.json");
+const CELL: &str = include_str!("../../../schema/chronolex/v0.3.0/cell.json");
+const PROCESS: &str = include_str!("../../../schema/chronolex/v0.3.0/process.json");
 
 /// Which of the schemas.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

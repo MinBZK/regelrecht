@@ -2,10 +2,17 @@
 //! from what comes in.
 //!
 //! A field of an event binds to `$intake.<path>` (who and by which route: the
-//! receiving channel) or to `$external.<path>` (the content as submitted), or
-//! is a constant of the stream. Fields may be nested, and an `$external`
+//! receiving channel), to `$external.<path>` (the content as submitted), to
+//! `$supplied.<field>` (what the receiving channel supplies, such as the login
+//! or a register the portal queried, and otherwise the content as submitted),
+//! or is a constant of the stream. Fields may be nested, and an `$external`
 //! value may feed more than one field. A table field
 //! (`{table: $external.<path>, columns: [...]}`) declares its columns.
+//!
+//! An event that names its establishing article (`establishes`) holds only
+//! the registration; its fields and their bindings come from the law
+//! ([`crate::law`], note "het gram uit de wet", 29-09-2026): a field is input
+//! by default, and only an origin makes it otherwise.
 //!
 //! What a submission passes under `external` must fit the shape the stream
 //! declares ([`Shape`]): an unknown field or an unknown column is refused,
@@ -46,9 +53,17 @@ pub struct Event {
     /// in the law, see [`crate::law`]). Then `type`, `subtype`, `stage`,
     /// `refers_to`, `legal_basis` and the legal basis of `effective_at` come
     /// from the law; the runtime fills them in when loading the cell, before
-    /// anything else reads the event.
-    #[serde(default)]
+    /// anything else reads the event. In the stream one article (the one that
+    /// establishes the event) or a list; after loading, every article that
+    /// takes part: the one that establishes it, the ones that extend it and
+    /// the ones that hook onto its stage.
+    #[serde(default, deserialize_with = "one_or_many")]
     pub establishes: Vec<String>,
+    /// The decisions an application asks for (`requests` in the law, such as
+    /// Wpp 102 "subsidie aanvragen": the decision of art. 107). Filled in from
+    /// the law; not in the YAML.
+    #[serde(skip)]
+    pub requests: Vec<String>,
     #[serde(default)]
     pub legal_basis: Vec<String>,
     #[serde(rename = "type", default)]
@@ -76,7 +91,10 @@ pub struct Event {
     /// of recording.
     #[serde(default)]
     pub effective_at: Option<EffectiveAtBinding>,
-    /// The field tree, in document order (a YAML mapping preserves it).
+    /// The field tree, in document order (a YAML mapping preserves it). With
+    /// `establishes` the runtime derives it from the law; the stream then
+    /// leaves it out.
+    #[serde(default)]
     pub fields: serde_yaml_ng::Mapping,
     #[serde(default)]
     pub not_reduced: Vec<NotReduced>,
@@ -95,6 +113,29 @@ pub struct Event {
     /// whole event; the form of a fact shows this one per field.
     #[serde(skip)]
     pub field_legal_basis: BTreeMap<String, Vec<String>>,
+    /// Per field, how the law declares it (see [`crate::law::FieldDef`]): the
+    /// article, whether by establishing, extending or a hook, the type and
+    /// the origin in force. Empty for an event without `establishes`.
+    #[serde(skip)]
+    pub field_defs: Vec<crate::law::FieldDef>,
+    /// The fields a register may fill in beforehand, per field the policy
+    /// output that knows it (see [`crate::law::Prefill`]).
+    #[serde(skip)]
+    pub prefill: BTreeMap<String, crate::law::Prefill>,
+}
+
+/// `establishes` as one article or a list.
+fn one_or_many<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Raw {
+        One(String),
+        Many(Vec<String>),
+    }
+    Ok(match Raw::deserialize(d)? {
+        Raw::One(s) => vec![s],
+        Raw::Many(v) => v,
+    })
 }
 
 /// A reference of an event: what the gram that a gram of this event refers
@@ -331,24 +372,33 @@ pub enum EventAttribute<'a> {
 pub struct EffectiveAtBinding {
     /// `$intake.<path>` or `$external.<path>`.
     pub source: String,
-    /// From the law if the event has `establishes`.
+    /// From the law if the event has `establishes`: why the stated moment
+    /// counts.
     #[serde(default)]
     pub legal_basis: Vec<String>,
+    /// From the law: why the moment of recording counts when nothing states
+    /// another (a portal application is received when the portal records it).
+    /// Empty: the gram then carries no legal basis for its moment.
+    #[serde(skip)]
+    pub legal_basis_recorded: Vec<String>,
 }
 
 impl EffectiveAtBinding {
     /// The source as a [`Binding`]: the schema allows only `$intake` and
     /// `$external`.
     pub fn binding(&self) -> Binding {
-        match self.source.strip_prefix("$intake.") {
-            Some(r) => Binding::Intake(r.to_string()),
-            None => Binding::External(
-                self.source
-                    .strip_prefix("$external.")
-                    .unwrap_or(&self.source)
-                    .to_string(),
-            ),
+        if let Some(r) = self.source.strip_prefix("$intake.") {
+            return Binding::Intake(r.to_string());
         }
+        if let Some(r) = self.source.strip_prefix(SUPPLIED_BINDING) {
+            return Binding::Supplied(r.to_string());
+        }
+        Binding::External(
+            self.source
+                .strip_prefix("$external.")
+                .unwrap_or(&self.source)
+                .to_string(),
+        )
     }
 }
 
@@ -366,6 +416,11 @@ pub enum Binding {
     Intake(String),
     /// `$external.<path>`: the content as submitted.
     External(String),
+    /// `$supplied.<field>`: what the receiving channel supplies under
+    /// `$intake.supplied.<field>` (the login, a register the portal queried),
+    /// and otherwise the content as submitted under `<field>`. The gram
+    /// records where the value came from.
+    Supplied(String),
     /// `{table: $external.<path>, columns: [...]}`: a list of rows with the
     /// declared columns.
     Table {
@@ -502,6 +557,8 @@ impl Event {
                     Y::String(text) => {
                         if let Some(r) = text.strip_prefix("$intake.") {
                             Binding::Intake(r.to_string())
+                        } else if let Some(r) = text.strip_prefix(SUPPLIED_BINDING) {
+                            Binding::Supplied(r.to_string())
                         } else if let Some(r) = text.strip_prefix("$external.") {
                             Binding::External(r.to_string())
                         } else {
@@ -604,7 +661,9 @@ impl Event {
             .map(|b| b.binding)
             .chain(self.effective_at.as_ref().map(EffectiveAtBinding::binding))
             .filter_map(|b| match b {
-                Binding::External(source) => Some((source, Shape::Value)),
+                Binding::External(source) | Binding::Supplied(source) => {
+                    Some((source, Shape::Value))
+                }
                 Binding::Table { source, columns } => Some((source, Shape::Table(columns))),
                 _ => None,
             })
@@ -786,6 +845,7 @@ pub fn build_gram(
     }
 
     let mut fields = Map::new();
+    let mut field_provenance = BTreeMap::new();
     for leaf in event.leaves() {
         let value = match &leaf.binding {
             Binding::Intake(source_path) => intake_value(submission, source_path)
@@ -803,6 +863,11 @@ pub fn build_gram(
                 as_table(at_path(submission.external, source), columns)
             }
             Binding::Constant(w) => w.clone(),
+            Binding::Supplied(name) => {
+                let (value, provenance) = supplied_value(event, submission, name, &leaf.path)?;
+                field_provenance.insert(leaf.path.clone(), provenance);
+                value
+            }
         };
         set_path(&mut fields, &leaf.path, value);
     }
@@ -834,11 +899,82 @@ pub fn build_gram(
         },
         provenance: None,
         fields,
+        field_provenance,
         inputs: BTreeMap::new(),
         receipt: None,
         times: Default::default(),
         root: None,
     })
+}
+
+/// The prefix of a binding to what the receiving channel supplies.
+pub const SUPPLIED_BINDING: &str = "$supplied.";
+
+/// The key under `$intake` where the receiving channel puts what it supplies,
+/// per field: `{value, source, legal_basis}`.
+pub const SUPPLIED: &str = "supplied";
+
+/// The value of a `$supplied` field and where it came from: what the
+/// receiving channel supplies under `$intake.supplied.<name>`, and otherwise
+/// what was submitted under `<name>`. A submitted value that differs from a
+/// supplied one is refused: the login and the register the policy names are
+/// not for the submitter to change.
+fn supplied_value(
+    event: &Event,
+    submission: &Submission<'_>,
+    name: &str,
+    path: &str,
+) -> Result<(Value, crate::gram::FieldProvenance), String> {
+    let submitted = at_path(submission.external, name)
+        .cloned()
+        .unwrap_or(Value::Null);
+    let supplied = submission
+        .intake
+        .get(SUPPLIED)
+        .and_then(|s| s.get(name))
+        .filter(|s| s.get("value").is_some_and(|w| !w.is_null()));
+    match supplied {
+        Some(s) => {
+            let value = s.get("value").cloned().unwrap_or(Value::Null);
+            let source = s
+                .get("source")
+                .and_then(Value::as_str)
+                .unwrap_or("channel")
+                .to_string();
+            if !submitted.is_null() && submitted != value {
+                return Err(format!(
+                    "field '{path}' is supplied by the {source} ({value}); the submission may not change it ({submitted})"
+                ));
+            }
+            let legal_basis = s
+                .get("legal_basis")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect();
+            Ok((
+                value,
+                crate::gram::FieldProvenance {
+                    source,
+                    legal_basis,
+                },
+            ))
+        }
+        None => Ok((
+            submitted,
+            crate::gram::FieldProvenance {
+                source: if event.type_ == "submission" {
+                    "applicant"
+                } else {
+                    "handler"
+                }
+                .into(),
+                legal_basis: Vec::new(),
+            },
+        )),
+    }
 }
 
 /// Whether the references the process passes fit the event: every name is a
@@ -896,6 +1032,12 @@ pub fn bound_moment<'e>(
     let value = match b.binding() {
         Binding::Intake(path) => intake.and_then(|i| at_path(i, &path)),
         Binding::External(path) => at_path(external, &path),
+        Binding::Supplied(path) => intake
+            .and_then(|i| i.get(SUPPLIED))
+            .and_then(|s| s.get(&path))
+            .and_then(|s| s.get("value"))
+            .filter(|w| !w.is_null())
+            .or_else(|| at_path(external, &path)),
         _ => None,
     };
     let Some(text) = value.filter(|w| !w.is_null()) else {
@@ -923,7 +1065,14 @@ fn effective_at_of(
     let now = submission.recorded_at;
     let intake = submission.intake.as_object();
     let Some((moment, b)) = bound_moment(event, intake, submission.external, *now.offset())? else {
-        return Ok((now, None));
+        // Nothing states another moment: the recording counts, with the
+        // legal basis the law gives for that, if it gives one.
+        let recorded = event
+            .effective_at
+            .as_ref()
+            .map(|b| b.legal_basis_recorded.clone())
+            .filter(|g| !g.is_empty());
+        return Ok((now, recorded));
     };
     if moment > now {
         return Err(format!(
@@ -997,14 +1146,29 @@ mod tests {
         assert_eq!(s.events[0].legal_basis, vec!["testregeling_aanvraag#1"]);
     }
 
+    /// Since chronolex v0.3.0 the schema no longer knows the core of an
+    /// application (Awb 4:2 lid 1): the law gives it (note "het gram uit de
+    /// wet"). A stream that names its own fields may leave it out.
     #[test]
-    fn application_without_fixed_core_fails_on_the_schema() {
+    fn the_schema_no_longer_fixes_the_core_of_an_application() {
         let text = STREAM.replace("        dagtekening: $external.dagtekening\n", "");
-        let error = parse(&text, "t").unwrap_err();
-        assert!(
-            error.iter().any(|f| f.contains("/events/0/fields/core")),
-            "{error:?}"
-        );
+        parse(&text, "t").unwrap();
+    }
+
+    /// An event with `establishes` names no fields: the law gives them. An
+    /// event without names them.
+    #[test]
+    fn fields_only_without_establishes() {
+        let only_registration = "$id: s\nrecording_actor: a\nchronicle: k\nevents:\n  - {name: x, establishes: 'r#1', intake: portal}\n";
+        let s = parse(only_registration, "t").unwrap();
+        assert_eq!(s.events[0].establishes, ["r#1"]);
+        assert!(s.events[0].fields.is_empty());
+        let error = parse(
+            "$id: s\nrecording_actor: a\nchronicle: k\nevents:\n  - {name: x, intake: portal, type: act}\n",
+            "t",
+        )
+        .unwrap_err();
+        assert!(error.iter().any(|f| f.contains("fields")), "{error:?}");
     }
 
     #[test]
@@ -1288,9 +1452,7 @@ mod tests {
         );
         let error = parse(&text, "t").unwrap_err();
         assert!(
-            error
-                .iter()
-                .any(|f| f.contains("/events/0/fields/content/organen")),
+            error.iter().any(|f| f.contains("/events/0/fields/content")),
             "{error:?}"
         );
     }

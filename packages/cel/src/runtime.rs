@@ -56,10 +56,12 @@ impl Runtime {
         let service = Arc::new(corpus.service);
         let loaded = Arc::new(corpus.regulations);
         let dirs = cell_dirs(&config.cells_path).map_err(|e| vec![e])?;
+        // The shape of an event follows from the law as it applies today.
+        let today = clock().date_naive();
         let mut loaded_cells: Vec<Cell> = Vec::new();
         let mut errors = Vec::new();
         for map in &dirs {
-            match Cell::load(map, service.clone()) {
+            match Cell::load_on(map, service.clone(), Some(today)) {
                 Ok(c) => loaded_cells.push(c),
                 Err(f) => errors.extend(f),
             }

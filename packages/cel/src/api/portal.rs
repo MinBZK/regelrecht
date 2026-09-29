@@ -30,11 +30,20 @@ fn portal_event(state: &ProcessState) -> Result<(&stream::Stream, &stream::Event
 
 /// The fields of the application form: the `$external` fields of the event
 /// in the stream of the cell, with labels and order from the form of the
-/// process.
-pub(super) async fn form_route(State(state): State<ProcessState>) -> Result<Json<Value>, Error> {
+/// process. For a logged-in applicant, what the channel supplies and what a
+/// register fills in beforehand comes with each field (`supplied`): the
+/// portal shows it as filled in automatically.
+pub(super) async fn form_route(
+    State(state): State<ProcessState>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, Error> {
     let (stream, event) = portal_event(&state)?;
     let form = state.process.form.as_ref();
-    let fields = crate::form::fields(event, form).map_err(internal)?;
+    let mut fields = crate::form::fields(event, form).map_err(internal)?;
+    if let Ok(session) = logged_in(&state, &headers) {
+        let intake = portal_intake(&state, event, &session);
+        crate::form::with_supplied(&mut fields, &intake);
+    }
     Ok(Json(json!({
         "cell": state.cell_id(),
         "stream": stream.document,
@@ -62,6 +71,28 @@ fn owner_of<'s>(state: &ProcessState, session: &'s Session) -> Option<(String, &
     let path = k.owner_path(&session.channel)?;
     let value = session.fields.get(k.owner.as_ref()?)?;
     Some((path, value.as_str()))
+}
+
+/// What the portal passes under `$intake` for the applicant: the channel and
+/// its fields, what the channel supplies to the application (with the day of
+/// submission) and what a register fills in beforehand.
+fn portal_intake(state: &ProcessState, event: &stream::Event, session: &Session) -> Value {
+    let mut intake = channel::intake(
+        &event.intake,
+        state.process.definition.channels_with(Routes::Portal),
+        Some((&session.channel, &session.fields)),
+    );
+    let today = (state.clock)().date_naive();
+    if let Some(k) = state.process.definition.channels.get(&session.channel) {
+        channel::supply(&mut intake, k, &session.fields, Some(today));
+    }
+    channel::prefill(
+        &mut intake,
+        event,
+        &state.process.service,
+        &today.format("%Y-%m-%d").to_string(),
+    );
+    intake
 }
 
 /// The request to the cell for a draft of the applicant. If the event refers
@@ -105,11 +136,7 @@ async fn request_for(
         actor: state.process.definition.actor.clone(),
         stream: stream.id.clone(),
         event: event.name.clone(),
-        intake: channel::intake(
-            &event.intake,
-            state.process.definition.channels_with(Routes::Portal),
-            Some((&session.channel, &session.fields)),
-        ),
+        intake: portal_intake(state, event, session),
         external: concept.external.clone(),
         refers_to: concept.refers_to.clone(),
         decision: None,

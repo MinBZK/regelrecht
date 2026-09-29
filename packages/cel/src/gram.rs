@@ -1,5 +1,5 @@
 //! The gram: a fact as a cell records it
-//! (`schema/chronolex/v0.2.0/gram.json`), with what a decision carries along.
+//! (`schema/chronolex/v0.3.0/gram.json`), with what a decision carries along.
 //!
 //! A gram has its own id (a uuid v7, which the cell assigns when recording)
 //! and refers, with a name from the law text, to the gram it belongs to
@@ -37,7 +37,7 @@ use sha2::{Digest, Sha256};
 use crate::date;
 use crate::schema::{self, Kind};
 
-/// The recorded gram (`schema/chronolex/v0.2.0/gram.json`).
+/// The recorded gram (`schema/chronolex/v0.3.0/gram.json`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Gram {
     pub kind: String,
@@ -93,6 +93,12 @@ pub struct Gram {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provenance: Option<String>,
     pub fields: Map<String, Value>,
+    /// Per field that the receiving channel could supply (`$supplied` in the
+    /// stream), where its value came from this time: the login, a register
+    /// the policy names, or whoever submitted it (note "het gram uit de wet":
+    /// the law puts the field in the gram, the provenance may differ per time).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub field_provenance: BTreeMap<String, FieldProvenance>,
     /// For every action the engine computed (a decision, a follow-up or a
     /// fact with outputs): every parameter that took part, with its value and
     /// its provenance (RFC-013 `accepted_values`).
@@ -168,6 +174,16 @@ pub struct ActingActor {
     /// own authority.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mandate: Option<String>,
+}
+
+/// Where the value of a `$supplied` field came from.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FieldProvenance {
+    /// `channel`, `register`, `applicant` or `handler`.
+    pub source: String,
+    /// Why that source may supply the field.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub legal_basis: Vec<String>,
 }
 
 /// An accepted input of a decision: a value with its provenance.
@@ -414,6 +430,7 @@ pub(crate) fn test_gram(id: &str) -> Gram {
             .as_object()
             .cloned()
             .unwrap_or_default(),
+        field_provenance: BTreeMap::new(),
         inputs: BTreeMap::new(),
         receipt: None,
         times: Times::default(),

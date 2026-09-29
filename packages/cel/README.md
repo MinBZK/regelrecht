@@ -45,7 +45,7 @@ just cel          # runtime op :7170, frontend op :7171, op de fixtures
 | `CELL_READ_TOKEN_SOURCES` | Optioneel: de basis-urls (komma's ertussen) van de runtimes die het leestoken delen; alleen een bron met zo'n url krijgt het mee over HTTP. |
 
 ```yaml
-# <CELLS_PATH>/<map>/cell.yaml, schema schema/chronolex/v0.2.0/cell.json
+# <CELLS_PATH>/<map>/cell.yaml, schema schema/chronolex/v0.3.0/cell.json
 id: <cel-id>                      # routes onder /cells/<id>/api/
 recording_actor: <actor>          # elke stroom van de cel heeft deze actor
 streams: [<pad>, ...]             # stroombestanden of mappen, relatief aan deze map
@@ -54,7 +54,7 @@ initial_state: <pad>              # optioneel: grammen voor een lege kroniek
 ```
 
 ```yaml
-# <PROCESSES_PATH>/<map>/process.yaml, schema schema/chronolex/v0.2.0/process.json
+# <PROCESSES_PATH>/<map>/process.yaml, schema schema/chronolex/v0.3.0/process.json
 id: <proces-id>                   # routes onder /processes/<id>/api/
 actor: <actor>                    # recording_actor van elke stroom waarin het vastlegt
 origin_check: strict              # optioneel; strict: een parameter zonder origin is een fout (standaard lenient)

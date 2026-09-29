@@ -650,7 +650,10 @@ fn case_state(
         event
             .leaves()
             .into_iter()
-            .filter(|b| b.binding == stream::Binding::Intake(path.to_string()))
+            .filter(|b| {
+                b.binding == stream::Binding::Intake(path.to_string())
+                    || b.binding == stream::Binding::Supplied(path.to_string())
+            })
             .map(|b| b.path)
             .collect()
     };

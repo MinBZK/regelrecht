@@ -64,7 +64,7 @@ use delivery::{beforehand_known, supplier, SupplierOutcome, Suppliers};
 pub use shape::{overwrites, parameter, validate, Overwrites};
 
 /// The type of a gram an interested party submits (RFC-022 par. 1,
-/// `schema/chronolex/v0.2.0/stream.json`): what the applicant provides.
+/// `schema/chronolex/v0.3.0/stream.json`): what the applicant provides.
 const SUBMISSION: &str = "submission";
 
 /// The origin in force for a parameter, and where it is stated.

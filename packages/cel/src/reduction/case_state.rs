@@ -303,6 +303,7 @@ mod tests {
             },
             provenance: None,
             fields: fields.as_object().unwrap().clone(),
+            field_provenance: BTreeMap::new(),
             inputs: BTreeMap::new(),
             receipt: None,
             times: Default::default(),

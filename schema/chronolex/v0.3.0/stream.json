@@ -1,0 +1,316 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.3.0/stream.json",
+  "title": "Stream definition (chronicle-stream) v0.3.0",
+  "description": "Which facts a cell records, by which actor, in which chronicle. v0.3.0 (note 'het gram uit de wet', 29-09-2026): an event that names the article that establishes it (establishes) carries only the registration: which cell records the fact and through which intake. Type, subtype, stage, references, legal basis, the fields and their bindings follow from the law: the establishing article, the articles that extend the event (extends, by event name) and the articles that hook onto its stage (hooks on the legal character of the decision requested, RFC-007/008). A field is input by default ($external); only an origin in the law or the policy makes it otherwise (a constant for the decision requested, $supplied for what the channel or a register supplies). An event without establishes names everything itself, as in v0.2.0. The fixed core of an application (Awb 4:2 lid 1) is no longer in this schema: it comes from the law.",
+  "type": "object",
+  "required": [
+    "$id",
+    "recording_actor",
+    "chronicle",
+    "events"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "$id": {
+      "$ref": "#/definitions/identifier"
+    },
+    "description": {
+      "type": "string"
+    },
+    "recording_actor": {
+      "$ref": "#/definitions/identifier",
+      "description": "The actor that records the fact (the operator of the cell), not the competent_authority."
+    },
+    "chronicle": {
+      "$ref": "#/definitions/identifier",
+      "description": "The chronicle that the events of this stream end up in."
+    },
+    "events": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/event"
+      }
+    }
+  },
+  "definitions": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "legal_basis": {
+      "type": "string",
+      "description": "<regulation-$id>#<article-number>, optionally with ' lid <n>': for example een_wet#12, een_wet#4:2, een_wet#A 1 (an article number may contain a space) or een_wet#102 lid 1. An article can contain more than one application or action; the paragraph (lid) points to the right one. The check on parameters stays per article.",
+      "pattern": "^[a-z][a-z0-9_]*#[A-Za-z0-9]([A-Za-z0-9:._ -]*[A-Za-z0-9])?( lid [0-9]+[a-z]?)?$"
+    },
+    "field_path": {
+      "type": "string",
+      "description": "Path to a field of the gram, with dots between the levels.",
+      "pattern": "^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)*$"
+    },
+    "binding": {
+      "type": "string",
+      "description": "Where the value comes from: $intake.<path> (the intake channel: who, and by which route), $external.<path> (the content as submitted), or $supplied.<field> (supplied by the receiving channel, such as the login or a register the portal queried, and otherwise as submitted; the gram records per such field where it came from).",
+      "pattern": "^\\$(intake|external|supplied)\\.[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)*$"
+    },
+    "table": {
+      "type": "object",
+      "description": "A table field: a list of rows from $external.<path>, each with the declared columns. A submission with a column not listed here is rejected; a missing column ends up in the gram as null.",
+      "required": [
+        "table",
+        "columns"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "table": {
+          "type": "string",
+          "pattern": "^\\$external\\.[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)*$"
+        },
+        "columns": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_][a-z0-9_]*$"
+          }
+        }
+      }
+    },
+    "fields": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z_][a-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "$ref": "#/definitions/binding"
+          },
+          {
+            "$ref": "#/definitions/constant"
+          },
+          {
+            "$ref": "#/definitions/table"
+          },
+          {
+            "$ref": "#/definitions/fields"
+          }
+        ]
+      }
+    },
+    "event": {
+      "type": "object",
+      "required": [
+        "name",
+        "intake"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "$ref": "#/definitions/identifier"
+        },
+        "description": {
+          "type": "string"
+        },
+        "intake": {
+          "$ref": "#/definitions/identifier",
+          "description": "The channel through which the fact enters the cell."
+        },
+        "establishes": {
+          "description": "The articles that establish this event: where the law says this fact comes into being (the shape of the gram) and the articles that extend that shape. The runtime finds the articles that extend the event (extends: <event>) and those that hook onto its stage (extends: {stage}) itself; a stream may list them, but need not.",
+          "oneOf": [
+            {
+              "$ref": "#/definitions/legal_basis"
+            },
+            {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/definitions/legal_basis"
+              }
+            }
+          ]
+        },
+        "legal_basis": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/definitions/legal_basis"
+          }
+        },
+        "type": {
+          "$ref": "#/definitions/identifier",
+          "description": "The chronolexogram type. An open vocabulary (RFC-022 sec. 1), for example executogram or submission."
+        },
+        "subtype": {
+          "$ref": "#/definitions/identifier",
+          "description": "The subtype within the type, for example aanvraag, aangifte or melding for a submission."
+        },
+        "stage": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z_]*$",
+          "description": "The stage of which this event is a step, in the vocabulary of RFC-008: for a decretogram the stage that the decision is (BESLUIT), for a submission the stage it opens (AANVRAAG), for an act the stage it brings about (BEKENDMAKING: the sending, Awb 3:41). Only on a decretogram, a submission or an act. A decision passes through each stage once: the cell rejects a second gram with the same stage that refers to the same decision, and also a second decision of the same event that refers to the same gram (an amendment refers with amends)."
+        },
+        "refers_to": {
+          "$ref": "#/definitions/refers_to"
+        },
+        "effective_at": {
+          "type": "object",
+          "description": "Binds the gram's effective_at (when the fact legally applies or took place) to a submitted value: a date (YYYY-MM-DD, the start of that day) or a moment with a time zone. This way the stream says, per event, who supplies the legal moment. To $external: the acting actor, as part of the act (the date of a decision, the day of notification under Awb 3:41, the day of payment). To $intake: the intake channel, when the submitter may not choose the moment themselves (the counter sets a date stamp, not the aanvrager). Always with a legal_basis, and within limits: not later than the recording, and for a gram that follows a case not on a day before the latest effective_at in that case; otherwise the cell rejects it. If the value is absent, effective_at is the moment of recording (recorded_at). Without this binding that is always the case. With establishes the law says which moment counts and the runtime derives the binding: a parameter or a field of the event binds to itself, a moment without either (the receipt, Awb 4:13) to $intake.received_at, which the counter supplies and the portal does not (then it is the moment of recording).",
+          "required": [],
+          "additionalProperties": false,
+          "properties": {
+            "source": {
+              "$ref": "#/definitions/binding"
+            },
+            "legal_basis": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "Why this moment legally counts, for example the receipt of the application (Awb 4:13). The gram carries it as effective_at_legal_basis.",
+              "items": {
+                "$ref": "#/definitions/legal_basis"
+              }
+            }
+          }
+        },
+        "fields": {
+          "$ref": "#/definitions/fields"
+        },
+        "not_reduced": {
+          "type": "array",
+          "description": "Fields that do not feed any parameter of an article under the legal basis, each with the reason why they are recorded anyway. A path also covers everything below it.",
+          "items": {
+            "type": "object",
+            "required": [
+              "field",
+              "reason"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "field": {
+                "$ref": "#/definitions/field_path"
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "submission"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "subtype"
+            ]
+          }
+        },
+        {
+          "if": {
+            "not": {
+              "required": [
+                "establishes"
+              ]
+            }
+          },
+          "then": {
+            "required": [
+              "fields"
+            ]
+          }
+        }
+      ]
+    },
+    "constant": {
+      "description": "A fixed value, the same for every gram of this stream. A string starting with $ is a binding, not a constant.",
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^[^$]"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        }
+      ]
+    },
+    "leaf": {
+      "oneOf": [
+        {
+          "$ref": "#/definitions/binding"
+        },
+        {
+          "$ref": "#/definitions/constant"
+        }
+      ]
+    },
+    "refers_to": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "Which gram a gram of this event refers to, per name from the law text (on_application: Wpp 107 'besluit op de aanvraag'; application: Awb 4:5 'de aanvraag aan te vullen'; decision: Awb 3:41, 4:87; amends: Awb 4:48-4:50; concerns: Awb 4:57). On recording, the process supplies the id per name; the cell checks that the gram exists and matches to. The root of the new gram is that of the gram it refers to. Without a reference, a gram is itself a root.",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "to"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "to": {
+            "description": "What the referenced gram must be: an article that establishes it (<regulation>#<article>), an event name, or {stage: <STAGE>}.",
+            "oneOf": [
+              {
+                "$ref": "#/definitions/legal_basis"
+              },
+              {
+                "$ref": "#/definitions/identifier"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "stage"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "stage": {
+                    "type": "string",
+                    "pattern": "^[A-Z][A-Z_]*$"
+                  }
+                }
+              }
+            ]
+          },
+          "required": {
+            "type": "boolean",
+            "default": false,
+            "description": "Whether the process must supply the reference. Without it, the reference is optional: a gram without a reference is a root."
+          }
+        }
+      }
+    }
+  }
+}

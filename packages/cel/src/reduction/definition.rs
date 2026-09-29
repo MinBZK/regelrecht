@@ -1,5 +1,5 @@
 //! The lexostatus definitions: what the `lexostatuses.yaml` of a cell declares
-//! (`schema/chronolex/v0.2.0/lexostatus.json`), and what the checks at
+//! (`schema/chronolex/v0.3.0/lexostatus.json`), and what the checks at
 //! startup ask about them. Execution is in [`super`].
 
 use std::collections::BTreeMap;
@@ -11,7 +11,7 @@ use serde_json::Value;
 use crate::load;
 use crate::schema::Kind;
 
-/// The lexostatus definitions of a cell (`schema/chronolex/v0.2.0/lexostatus.json`).
+/// The lexostatus definitions of a cell (`schema/chronolex/v0.3.0/lexostatus.json`).
 #[derive(Debug, Clone, Deserialize)]
 pub struct Lexostatuses {
     pub cell: String,

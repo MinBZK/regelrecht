@@ -7,6 +7,8 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use chrono::NaiveDate;
+
 use regelrecht_engine::LawExecutionService;
 
 use crate::config::CellDefinition;
@@ -36,18 +38,30 @@ impl Cell {
     /// Load a cell from its directory and check it. Every error is returned,
     /// not only the first, and every error names the cell.
     pub fn load(map: &Path, service: Arc<LawExecutionService>) -> Result<Self, Vec<String>> {
+        Self::load_on(map, service, None)
+    }
+
+    /// Load a cell with the law as it applies on `date`: the shape of an
+    /// event follows from the version of each regulation in force then (the
+    /// newest without a date). The runtime loads on the day it starts.
+    pub fn load_on(
+        map: &Path,
+        service: Arc<LawExecutionService>,
+        date: Option<NaiveDate>,
+    ) -> Result<Self, Vec<String>> {
         let name = map
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
         let definition = CellDefinition::load(map).map_err(|f| with_cell(&name, f))?;
-        Self::load_definition(definition, map, service)
+        Self::load_definition(definition, map, service, date)
     }
 
     fn load_definition(
         definition: CellDefinition,
         map: &Path,
         service: Arc<LawExecutionService>,
+        date: Option<NaiveDate>,
     ) -> Result<Self, Vec<String>> {
         let id = definition.id.clone();
         let error = |f: Vec<String>| with_cell(&id, f);
@@ -62,7 +76,7 @@ impl Cell {
         // What the law says about the events (`establishes`), before anything
         // that reads the events.
         if errors.is_empty() {
-            errors.extend(law::establish(&mut streams, &service));
+            errors.extend(law::establish(&mut streams, &service, date));
         }
         // The roles of the events (decision, follows a decision, root) follow
         // from their stage and references; every reference must be able to

@@ -1,5 +1,6 @@
 //! The law as the source of the gram shape and the reduction (proposal
-//! "lexostatus in de wet", 28-09-2026).
+//! "lexostatus in de wet", 28-09-2026; note "het gram uit de wet",
+//! 29-09-2026).
 //!
 //! An article can say two things in `produces.extensions.chronolex`
 //! (RFC-022 §3.2: one namespace per integration):
@@ -7,36 +8,47 @@
 //! - `establishes`: the facts this article brings into being, as an event of a
 //!   chronicle: the type, the subtype, the stage, which gram it refers to
 //!   (`refers_to`, with a name from the law text: a decision `on_application`,
-//!   a payment to the `decision`), the legal basis, why the `effective_at`
-//!   counts in law and which fields the gram carries. Or it extends an event
-//!   that another article establishes (`extends`), adding fields and legal
-//!   basis: this is how the Awb establishes the application and a specific
-//!   law adds its content.
+//!   a payment to the `decision`), which decision an application asks for
+//!   (`requests`), the legal basis, why the `effective_at` counts in law and
+//!   which fields the gram carries. Or it extends an event that another
+//!   article establishes (`extends: <event>`), adding fields and legal basis.
+//!   Or it applies to every event at a stage of a procedure (`extends:
+//!   {stage: <STAGE>}`), the way a hook of RFC-007 does: the article declares
+//!   a hook on that stage, with the legal character of the decision the event
+//!   is about. That is how the Awb applies itself: Awb 4:1, 4:2 lid 1 and 4:13
+//!   hook onto (BESCHIKKING, AANVRAAG) and give every application for a
+//!   decision its type, its core fields and its moment of receipt, without
+//!   the specific law naming the Awb.
 //! - `reads`: how the article reads its own parameters from the chronicle, in
 //!   the vocabulary of the reduction ([`crate::reduction`]). That is a
 //!   lexostatus "from the requested perspective" (position paper): the
 //!   perspective is the article that asks. It is named after the article
 //!   (`<regulation>#<article>`).
 //!
-//! A stream names per event which articles establish it (`establishes:`) and
-//! holds only the registration: intake, the binding of each field, the source
-//! of `effective_at`. [`establish`] fills in the rest from the law and checks
-//! the fields against the law. [`lexostatuses`] turns every reading article
-//! whose facts lie in the cell into a lexostatus definition, which then goes
-//! through the same checks and the same reduction as a definition from
-//! `cell.yaml`.
+//! A stream names per event the article that establishes it (`establishes:`)
+//! and holds only the registration: which cell records the fact, and through
+//! which intake. [`establish`] finds the articles that extend the event or
+//! hook onto its stage, and derives the rest: the fields with their type and
+//! origin, and how each binds. A field is input by default (`$external`); only
+//! an origin says otherwise (the decision requested is fixed, what the channel
+//! or a register supplies binds to `$supplied`). [`lexostatuses`] turns every
+//! reading article whose facts lie in the cell into a lexostatus definition,
+//! which then goes through the same checks and the same reduction as a
+//! definition from `cell.yaml`.
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use regelrecht_engine::{Article, LawExecutionService};
-use serde::Deserialize;
+use chrono::NaiveDate;
+use regelrecht_engine::{Article, ArticleBasedLaw, LawExecutionService};
+use regelrecht_law_model::{Declared, Origin, OriginOverride, OriginRole, OriginValue};
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::reduction::{
     Derived, Filter, InputDefinition, LawSupplement, LexostatusDefinition, Pick, Reduction,
 };
 use crate::schema::{self, Kind};
-use crate::stream::{Reference, Stream};
+use crate::stream::{EffectiveAtBinding, Reference, Stream, SUPPLIED_BINDING};
 
 /// The namespace in `produces.extensions` (RFC-022 §3.2).
 pub const NAMESPACE: &str = "chronolex";
@@ -70,6 +82,15 @@ impl Reads {
     }
 }
 
+/// What an extension extends: an event by name, or every event at a stage of
+/// a procedure (with a hook of the article on that stage).
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(untagged)]
+pub enum Extends {
+    Event(String),
+    Stage { stage: String },
+}
+
 /// A fact that an article establishes, or the extension of a fact that
 /// another article establishes.
 #[derive(Debug, Clone, Deserialize)]
@@ -78,22 +99,30 @@ pub struct Establishment {
     /// The event this article establishes (the name in the chronicle).
     #[serde(default)]
     pub event: Option<String>,
-    /// The event that another article establishes and that this article extends.
+    /// The event (by name) or the stage (every event at that stage, through
+    /// a hook of this article) that this article extends.
     #[serde(default)]
-    pub extends: Option<String>,
+    pub extends: Option<Extends>,
     #[serde(default, rename = "type")]
     pub type_: Option<String>,
     #[serde(default)]
     pub subtype: Option<String>,
     #[serde(default)]
     pub stage: Option<String>,
+    /// The decisions an application asks for (Wpp 102 lid 1 "kan subsidie
+    /// aanvragen": the decision of art. 107). Their legal character chooses
+    /// the procedure, the first stage of that procedure is the stage of the
+    /// event (AANVRAAG), and the hooks on that stage apply.
+    #[serde(default)]
+    pub requests: Vec<String>,
     /// Which gram a gram of this event refers to, per name from the law text
     /// (Wpp 107 "besluit op de aanvraag": `on_application`; Awb 3:41
     /// "bekendmaking van besluiten": `decision`), and what that gram must be.
     #[serde(default)]
     pub refers_to: BTreeMap<String, Reference>,
     /// The legal basis the gram carries. Without one: the article itself for
-    /// an event, nothing for an extension.
+    /// an event, for an extension the legal basis of the origin of each
+    /// field it declares.
     #[serde(default)]
     pub legal_basis: Option<Vec<String>>,
     #[serde(default)]
@@ -103,9 +132,39 @@ pub struct Establishment {
     /// Name bridge: under which name another article reads a field of this
     /// gram (`<name at the reader>: <field of the gram>`). This is how Awb 4:52
     /// reads "het vastgestelde bedrag" without knowing the name of the output
-    /// of the specific law.
+    /// of the specific law. If both names are fields of the event, they are
+    /// one field with both legal bases (one question: Wpp 102 lid 3 onder a
+    /// asks the statutory name, Awb 4:2 lid 1 the name of the applicant).
     #[serde(default)]
     pub aliases: BTreeMap<String, String>,
+    /// Fields a register may fill in beforehand: per field the output of the
+    /// policy that knows it (the policy of the competent authority that says
+    /// it fetches the data itself, such as the statutory name from the
+    /// commercial register). Where the register knows nothing, the applicant
+    /// fills it in.
+    #[serde(default)]
+    pub prefill: BTreeMap<String, PrefillLaw>,
+}
+
+/// Where a field can be filled in beforehand: an output of a regulation (by
+/// default the regulation of the article that says so).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PrefillLaw {
+    #[serde(default)]
+    pub regulation: Option<String>,
+    pub output: String,
+}
+
+/// A field a register may fill in beforehand, as the portal runs it: the
+/// output of the regulation, with the legal basis of the policy that says
+/// so. The parameters of the article of that output come from what the
+/// channel supplies, by name.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Prefill {
+    pub regulation: String,
+    pub output: String,
+    pub legal_basis: Vec<String>,
 }
 
 impl Establishment {
@@ -130,11 +189,25 @@ impl Establishment {
         }
         Some(Value::Object(out))
     }
+
+    fn extends_event(&self) -> Option<&str> {
+        match &self.extends {
+            Some(Extends::Event(e)) => Some(e),
+            _ => None,
+        }
+    }
+
+    fn extends_stage(&self) -> Option<&str> {
+        match &self.extends {
+            Some(Extends::Stage { stage }) => Some(stage),
+            _ => None,
+        }
+    }
 }
 
 /// Why the `effective_at` counts in law, and which piece of data it is. The
-/// source (who provides it, `$external` or `$intake`) is in the stream: that
-/// is registration.
+/// runtime derives the binding: a parameter or a field binds to itself, a
+/// moment without either (the receipt, Awb 4:13) to `$intake.received_at`.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EffectiveAtLaw {
@@ -145,6 +218,21 @@ pub struct EffectiveAtLaw {
     #[serde(default)]
     pub field: Option<String>,
     pub legal_basis: Vec<String>,
+    /// Only when the moment is stated (the counter gives the day of the date
+    /// stamp), or only when nothing states it and the recording counts (the
+    /// portal). Without it: always.
+    #[serde(default)]
+    pub only: Option<MomentSource>,
+}
+
+/// Which moment a legal basis of `effective_at` is about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MomentSource {
+    /// A submitted value states the moment.
+    Stated,
+    /// Nothing states it: the moment of recording counts.
+    Recorded,
 }
 
 /// The fields of a gram: a list of field paths, or a keyword.
@@ -155,13 +243,27 @@ pub enum Fields {
     /// decision outputs). `stage`: what the stage of the procedure requires
     /// (`requires`, RFC-008) and the outputs of the hooks on that stage
     /// (RFC-007), such as the objection period of Awb 6:8 on publication.
+    /// `parameters`: the parameters of this article that the applicant or
+    /// the channel supplies (origin BELANGHEBBENDE or KANAAL), with their
+    /// type and origin, such as the core of an application in Awb 4:2 lid 1.
     Keyword(String),
     /// Field paths under `fields` (`content.subsidiejaar`); a path covers
     /// everything below it.
     List(Vec<String>),
+    /// Named parameters of this article, with their type and origin:
+    /// `{parameters: [subsidiejaar, statutaire_naam]}`.
+    Selection(Selection),
     /// Field paths with their type, as Awb 4:87 names the amount of a
-    /// payment: `{bedrag: {type: amount, unit: eurocent}}`.
+    /// payment: `{bedrag: {type: amount, unit: eurocent}}`, optionally with
+    /// the columns of a table and an origin.
     Typed(BTreeMap<String, FieldType>),
+}
+
+/// Named parameters of an article as fields.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Selection {
+    pub parameters: Vec<String>,
 }
 
 /// The type of a field of a gram, as the establishing article names it.
@@ -172,6 +274,69 @@ pub struct FieldType {
     pub type_: regelrecht_law_model::ParameterType,
     #[serde(default)]
     pub unit: Option<String>,
+    /// For a table: its columns.
+    #[serde(default)]
+    pub columns: Option<Vec<String>>,
+    /// Who supplies the field (RFC-043); without it the field is input.
+    #[serde(default)]
+    pub origin: Option<Origin>,
+}
+
+/// How a field came into the gram: from the article that establishes the
+/// event, from one that extends it by name, or from one that hooks onto its
+/// stage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Via {
+    Establishes,
+    Extends,
+    Hook,
+}
+
+/// A field of an event as the law declares it. The document of the stream
+/// (`GET /api/stream`) and the form show it per field: which article, how
+/// (establishes, extends or through a hook), the type and the origin.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct FieldDef {
+    pub name: String,
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub type_: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unit: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub columns: Option<Vec<String>>,
+    /// The origin in force: from the law, or from the policy that takes part
+    /// in the event (`origins`, RFC-043).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub origin: Option<Origin>,
+    /// The article of the policy whose `origins` gives the origin in force.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub origin_policy: Option<String>,
+    /// `required: false` in the law (RFC-036): the applicant may leave it
+    /// out, and the form says so (Awb 4:4 lid 2).
+    pub optional: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub legal_basis: Vec<String>,
+    /// The article that declares the field (`<regulation>#<article>`).
+    pub declared_by: String,
+    pub via: Via,
+}
+
+impl FieldDef {
+    /// Whether the channel supplies the field (origin KANAAL in force).
+    pub fn from_channel(&self) -> bool {
+        self.origin
+            .as_ref()
+            .is_some_and(|o| o.waarde == OriginValue::Kanaal)
+    }
+
+    /// Whether the field is the decision requested (`rol: GEVRAAGD_BESLUIT`).
+    pub fn is_requested_decision(&self) -> bool {
+        self.origin
+            .as_ref()
+            .is_some_and(|o| o.rol == Some(OriginRole::GevraagdBesluit))
+    }
 }
 
 /// How an article reads its parameters from the chronicle.
@@ -211,6 +376,7 @@ pub struct LawReading {
 pub struct LawArticle<'s> {
     /// `<regulation>#<article>`.
     pub reference: String,
+    pub regulation: &'s ArticleBasedLaw,
     pub article: &'s Article,
     pub chronolex: Chronolex,
 }
@@ -226,16 +392,31 @@ fn block(article: &Article) -> Option<&Value> {
         .get(NAMESPACE)
 }
 
-/// Every article in the corpus with a chronolex block, by reference. A block
-/// that cannot be read is an error naming the article.
+/// The version of a regulation that applies on `date` (the newest without a
+/// date, or when none applies yet).
+fn version<'s>(
+    service: &'s LawExecutionService,
+    id: &str,
+    date: Option<NaiveDate>,
+) -> Option<&'s ArticleBasedLaw> {
+    let resolver = service.resolver();
+    resolver
+        .get_law_for_date(id, date)
+        .or_else(|| resolver.get_law(id))
+}
+
+/// Every article in the corpus with a chronolex block, by reference, in the
+/// version that applies on `date` (the newest without one). A block that
+/// cannot be read is an error naming the article.
 pub fn articles(
     service: &LawExecutionService,
+    date: Option<NaiveDate>,
 ) -> Result<BTreeMap<String, LawArticle<'_>>, Vec<String>> {
     let resolver = service.resolver();
     let mut out = BTreeMap::new();
     let mut errors = Vec::new();
     for id in resolver.list_laws() {
-        let Some(law) = resolver.get_law(id) else {
+        let Some(law) = version(service, id, date) else {
             continue;
         };
         for article in &law.articles {
@@ -247,6 +428,7 @@ pub fn articles(
                         reference.clone(),
                         LawArticle {
                             reference,
+                            regulation: law,
                             article,
                             chronolex,
                         },
@@ -276,26 +458,50 @@ fn outputs(article: &Article) -> Vec<String> {
         .collect()
 }
 
+/// A type as the law writes it (`date`, `number`, ...).
+fn type_text(t: regelrecht_law_model::ParameterType) -> String {
+    serde_json::to_value(t)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_string))
+        .unwrap_or_default()
+}
+
 /// The parameters of an article with their type (`date`, `number`, ...).
 fn parameter_types(article: &Article) -> BTreeMap<String, String> {
     article
-        .get_execution_spec()
-        .and_then(|e| e.parameters.as_ref())
-        .into_iter()
-        .flatten()
-        .map(|p| {
-            let t = serde_json::to_value(p.param_type)
-                .ok()
-                .and_then(|v| v.as_str().map(str::to_string))
-                .unwrap_or_default();
-            (p.name.clone(), t)
-        })
+        .get_parameters()
+        .iter()
+        .map(|p| (p.name.clone(), type_text(p.param_type)))
         .collect()
 }
 
+/// Whether the article declares a hook on this stage, for this legal
+/// character (any, if the event does not know it or the hook names none).
+fn hooks_onto(article: &Article, stage: &str, legal_character: Option<&str>) -> bool {
+    article
+        .machine_readable
+        .as_ref()
+        .and_then(|m| m.hooks.as_ref())
+        .is_some_and(|h| {
+            h.iter().any(|h| {
+                h.applies_to.stage.as_deref() == Some(stage)
+                    && match (legal_character, h.applies_to.legal_character.as_deref()) {
+                        (Some(lc), Some(of_hook)) => lc == of_hook,
+                        _ => true,
+                    }
+            })
+        })
+}
+
 /// What a stage requires: `requires` of that stage in a procedure (RFC-008)
-/// and the outputs of the articles with a hook on that stage (RFC-007).
-fn stage_fields(service: &LawExecutionService, stage: &str) -> Vec<String> {
+/// and the outputs of the articles with a hook on that stage (RFC-007), for
+/// the legal character if the event knows it.
+fn stage_fields(
+    service: &LawExecutionService,
+    stage: &str,
+    legal_character: Option<&str>,
+    date: Option<NaiveDate>,
+) -> Vec<String> {
     let resolver = service.resolver();
     let mut out: Vec<String> = Vec::new();
     let mut add = |n: String| {
@@ -304,10 +510,15 @@ fn stage_fields(service: &LawExecutionService, stage: &str) -> Vec<String> {
         }
     };
     for id in resolver.list_laws() {
-        let Some(law) = resolver.get_law(id) else {
+        let Some(law) = version(service, id, date) else {
             continue;
         };
-        for p in law.procedure.iter().flatten() {
+        for p in law
+            .procedure
+            .iter()
+            .flatten()
+            .filter(|p| legal_character.is_none_or(|lc| p.applies_to.legal_character == lc))
+        {
             for s in p.stages.iter().filter(|s| s.name == stage) {
                 for r in s.requires.iter().flatten() {
                     add(r.name.clone());
@@ -316,19 +527,11 @@ fn stage_fields(service: &LawExecutionService, stage: &str) -> Vec<String> {
         }
     }
     for id in resolver.list_laws() {
-        let Some(law) = resolver.get_law(id) else {
+        let Some(law) = version(service, id, date) else {
             continue;
         };
         for article in &law.articles {
-            let hooks = article
-                .machine_readable
-                .as_ref()
-                .and_then(|m| m.hooks.as_ref())
-                .is_some_and(|h| {
-                    h.iter()
-                        .any(|h| h.applies_to.stage.as_deref() == Some(stage))
-                });
-            if hooks {
+            if hooks_onto(article, stage, legal_character) {
                 for o in outputs(article) {
                     add(o);
                 }
@@ -338,46 +541,73 @@ fn stage_fields(service: &LawExecutionService, stage: &str) -> Vec<String> {
     out
 }
 
-/// The field paths an establishment declares.
-fn field_paths(
-    service: &LawExecutionService,
-    wa: &LawArticle<'_>,
-    v: &Establishment,
-    stage: Option<&str>,
-) -> Result<Vec<String>, String> {
-    Ok(match &v.fields {
-        None => Vec::new(),
-        Some(Fields::List(l)) => l.clone(),
-        Some(Fields::Typed(m)) => m.keys().cloned().collect(),
-        Some(Fields::Keyword(t)) if t == "outputs" => outputs(wa.article),
-        Some(Fields::Keyword(t)) if t == "stage" => match stage {
-            Some(s) => stage_fields(service, s),
-            None => {
-                return Err(format!(
-                    "{}: fields: stage, but the event has no stage",
-                    wa.reference
-                ))
-            }
-        },
-        Some(Fields::Keyword(t)) => {
-            return Err(format!(
-                "{}: fields '{t}' is not a list and not a keyword (outputs, stage)",
-                wa.reference
-            ))
-        }
-    })
+/// The article behind a reference, in the version of `date`.
+fn article_of<'s>(
+    service: &'s LawExecutionService,
+    reference: &str,
+    date: Option<NaiveDate>,
+) -> Result<&'s Article, String> {
+    let b = crate::regulations::parse(reference)?;
+    version(service, b.regulation, date)
+        .and_then(|l| l.find_article_by_number(b.article))
+        .ok_or_else(|| format!("'{reference}' is not a loaded article"))
 }
 
-/// Fill in the events with `establishes` from the law, and check them. An
-/// error names the stream, the event and the article.
-pub fn establish(streams: &mut [Stream], service: &LawExecutionService) -> Vec<String> {
+/// What an application asks for decides its stage and the hooks that apply:
+/// the legal character of the decisions requested, and the first stage of
+/// the procedure for it (RFC-008: AANVRAAG). `None` stage: that procedure has
+/// no stages, or none is loaded (a regulation of general scope, for which
+/// Awb 4:2 does not apply). More than one legal character is an error until
+/// there is a real case for it.
+fn requested(
+    service: &LawExecutionService,
+    requests: &[String],
+    date: Option<NaiveDate>,
+) -> Result<(Option<String>, Option<String>), String> {
+    let mut characters: BTreeSet<String> = BTreeSet::new();
+    for r in requests {
+        let a = article_of(service, r, date).map_err(|f| format!("requests: {f}"))?;
+        let lc = a
+            .get_produces()
+            .and_then(|p| p.legal_character.clone())
+            .ok_or_else(|| {
+                format!("requests: '{r}' produces no legal character, so it is no decision")
+            })?;
+        characters.insert(lc);
+    }
+    let lc = match characters.into_iter().collect::<Vec<_>>()[..] {
+        [] => return Ok((None, None)),
+        [ref one] => one.clone(),
+        ref more => {
+            return Err(format!(
+                "requests: decisions of more than one legal character ({}): the hooks of each would all apply",
+                more.join(", ")
+            ))
+        }
+    };
+    let stage = service
+        .resolver()
+        .find_procedure(&lc, None)
+        .and_then(|p| p.stages.first())
+        .map(|s| s.name.clone());
+    Ok((Some(lc), stage))
+}
+
+/// Fill in the events with `establishes` from the law, in the version that
+/// applies on `date` (the newest without one), and check them. An error names
+/// the stream, the event and the article.
+pub fn establish(
+    streams: &mut [Stream],
+    service: &LawExecutionService,
+    date: Option<NaiveDate>,
+) -> Vec<String> {
     if !streams
         .iter()
         .any(|s| s.events.iter().any(|e| !e.establishes.is_empty()))
     {
         return Vec::new();
     }
-    let law = match articles(service) {
+    let law = match articles(service, date) {
         Ok(w) => w,
         Err(f) => return f,
     };
@@ -388,19 +618,21 @@ pub fn establish(streams: &mut [Stream], service: &LawExecutionService) -> Vec<S
                 continue;
             }
             let where_ = format!("stream '{}', event '{}'", stream.id, stream.events[i].name);
-            match establish_event(stream, i, &law, service) {
+            match establish_event(stream, i, &law, service, date) {
                 Ok(()) => {}
                 Err(f) => errors.extend(f.into_iter().map(|f| format!("{where_}: {f}"))),
             }
         }
         if errors.is_empty() {
-            // The filled-in document must pass the schema like a stream
-            // without `establishes`.
+            // The filled-in document must pass the schema like any stream;
+            // what the runtime adds for the reader is not part of it.
             let mut copy = stream.document.clone();
             if let Some(events) = copy.get_mut("events").and_then(Value::as_array_mut) {
                 for e in events {
                     if let Some(o) = e.as_object_mut() {
-                        o.remove("establishes");
+                        o.remove("requests");
+                        o.remove("field_sources");
+                        o.remove("prefill");
                     }
                 }
             }
@@ -415,17 +647,259 @@ pub fn establish(streams: &mut [Stream], service: &LawExecutionService) -> Vec<S
     errors
 }
 
+/// One contribution of an article to an event.
+struct Part<'a, 's> {
+    law: &'a LawArticle<'s>,
+    establishment: &'a Establishment,
+    via: Via,
+}
+
+impl Part<'_, '_> {
+    fn is_basis(&self) -> bool {
+        self.via == Via::Establishes
+    }
+
+    /// The legal basis this part states: its own, the article for the
+    /// establishing one, otherwise none.
+    fn legal_basis(&self) -> Vec<String> {
+        match &self.establishment.legal_basis {
+            Some(g) => g.clone(),
+            None if self.is_basis() => vec![self.law.reference.clone()],
+            None => Vec::new(),
+        }
+    }
+}
+
+fn push_new(to: &mut Vec<String>, from: &[String]) {
+    for x in from {
+        if !to.contains(x) {
+            to.push(x.clone());
+        }
+    }
+}
+
+/// The fields a part declares.
+fn part_fields(
+    service: &LawExecutionService,
+    part: &Part<'_, '_>,
+    stage: Option<&str>,
+    legal_character: Option<&str>,
+    date: Option<NaiveDate>,
+) -> Result<Vec<FieldDef>, String> {
+    let article = part.law.article;
+    let reference = &part.law.reference;
+    let stated = part.legal_basis();
+    let def = |name: String| FieldDef {
+        name,
+        type_: None,
+        unit: None,
+        columns: None,
+        origin: None,
+        origin_policy: None,
+        optional: false,
+        description: None,
+        legal_basis: stated.clone(),
+        declared_by: reference.clone(),
+        via: part.via,
+    };
+    let from_parameter = |p: &regelrecht_law_model::Parameter| {
+        let origin = p.origin.as_ref().and_then(Declared::as_valid).cloned();
+        let mut legal_basis = stated.clone();
+        if let Some(o) = &origin {
+            push_new(&mut legal_basis, std::slice::from_ref(&o.grondslag));
+        }
+        FieldDef {
+            type_: Some(type_text(p.param_type)),
+            unit: p.type_spec.as_ref().and_then(|t| t.unit.clone()),
+            origin,
+            optional: p.required == Some(false),
+            description: p.description.clone(),
+            legal_basis,
+            ..def(p.name.clone())
+        }
+    };
+    Ok(match &part.establishment.fields {
+        None => Vec::new(),
+        Some(Fields::List(l)) => l.iter().cloned().map(def).collect(),
+        Some(Fields::Typed(m)) => m
+            .iter()
+            .map(|(name, t)| {
+                let mut legal_basis = stated.clone();
+                if let Some(o) = &t.origin {
+                    push_new(&mut legal_basis, std::slice::from_ref(&o.grondslag));
+                }
+                FieldDef {
+                    type_: Some(type_text(t.type_)),
+                    unit: t.unit.clone(),
+                    columns: t.columns.clone(),
+                    origin: t.origin.clone(),
+                    legal_basis,
+                    ..def(name.clone())
+                }
+            })
+            .collect(),
+        Some(Fields::Selection(s)) => {
+            let mut out = Vec::new();
+            for name in &s.parameters {
+                let p = article
+                    .get_parameters()
+                    .iter()
+                    .find(|p| &p.name == name)
+                    .ok_or_else(|| {
+                        format!("{reference}: fields names parameter '{name}', which the article does not have")
+                    })?;
+                out.push(from_parameter(p));
+            }
+            out
+        }
+        Some(Fields::Keyword(t)) if t == "parameters" => article
+            .get_parameters()
+            .iter()
+            .filter(|p| {
+                p.origin
+                    .as_ref()
+                    .and_then(Declared::as_valid)
+                    .is_some_and(|o| {
+                        matches!(o.waarde, OriginValue::Belanghebbende | OriginValue::Kanaal)
+                    })
+            })
+            .map(from_parameter)
+            .collect(),
+        Some(Fields::Keyword(t)) if t == "outputs" => {
+            let spec = article.get_execution_spec();
+            outputs(article)
+                .into_iter()
+                .map(|o| {
+                    let out = spec
+                        .and_then(|e| e.output.as_ref())
+                        .into_iter()
+                        .flatten()
+                        .find(|x| x.name == o);
+                    FieldDef {
+                        type_: out.map(|x| type_text(x.output_type)),
+                        unit: out
+                            .and_then(|x| x.type_spec.as_ref())
+                            .and_then(|t| t.unit.clone()),
+                        ..def(o)
+                    }
+                })
+                .collect()
+        }
+        Some(Fields::Keyword(t)) if t == "stage" => match stage {
+            Some(s) => stage_fields(service, s, legal_character, date)
+                .into_iter()
+                .map(def)
+                .collect(),
+            None => return Err(format!("{reference}: fields: stage, but the event has no stage")),
+        },
+        Some(Fields::Keyword(t)) => {
+            return Err(format!(
+                "{reference}: fields '{t}' is not a list and not a keyword (outputs, stage, parameters)"
+            ))
+        }
+    })
+}
+
+/// The overrides of an origin by the policy that takes part in the event,
+/// per (regulation, parameter): `origins` of the article (RFC-043).
+fn origins_of(parts: &[Part<'_, '_>]) -> BTreeMap<(String, String), (Origin, String)> {
+    let mut out = BTreeMap::new();
+    for p in parts {
+        let Some(origins) = p
+            .law
+            .article
+            .machine_readable
+            .as_ref()
+            .and_then(|m| m.origins.as_ref())
+        else {
+            continue;
+        };
+        for o in origins
+            .iter()
+            .filter_map(Declared::<OriginOverride>::as_valid)
+        {
+            out.insert(
+                (o.regulation.clone(), o.parameter.clone()),
+                (o.origin.clone(), p.law.reference.clone()),
+            );
+        }
+    }
+    out
+}
+
+/// Set a binding at a path of a YAML mapping, creating the branches.
+fn set_yaml(map: &mut serde_yaml_ng::Mapping, path: &str, value: serde_yaml_ng::Value) {
+    use serde_yaml_ng::Value as Y;
+    match path.split_once('.') {
+        None => {
+            map.insert(Y::String(path.to_string()), value);
+        }
+        Some((head, rest)) => {
+            let entry = map
+                .entry(Y::String(head.to_string()))
+                .or_insert_with(|| Y::Mapping(serde_yaml_ng::Mapping::new()));
+            if !entry.is_mapping() {
+                *entry = Y::Mapping(serde_yaml_ng::Mapping::new());
+            }
+            if let Y::Mapping(m) = entry {
+                set_yaml(m, rest, value);
+            }
+        }
+    }
+}
+
+/// The binding of a field, derived from its origin: the decision requested
+/// is fixed, a table binds its rows, what the channel or a register supplies
+/// binds to `$supplied`, and everything else is input (`$external`).
+fn binding_of(
+    f: &FieldDef,
+    requests: &[String],
+    prefilled: bool,
+) -> Result<serde_yaml_ng::Value, String> {
+    use serde_yaml_ng::Value as Y;
+    if f.is_requested_decision() {
+        if requests.is_empty() {
+            return Err(format!(
+                "field '{}' is the decision requested (rol GEVRAAGD_BESLUIT), but the event requests no decision (requests)",
+                f.name
+            ));
+        }
+        return Ok(Y::String(requests.join(", ")));
+    }
+    if let Some(columns) = &f.columns {
+        let mut m = serde_yaml_ng::Mapping::new();
+        m.insert(
+            Y::String("table".into()),
+            Y::String(format!("$external.{}", f.name)),
+        );
+        m.insert(
+            Y::String("columns".into()),
+            Y::Sequence(columns.iter().cloned().map(Y::String).collect()),
+        );
+        return Ok(Y::Mapping(m));
+    }
+    Ok(Y::String(if f.from_channel() || prefilled {
+        format!("{SUPPLIED_BINDING}{}", f.name)
+    } else {
+        format!("$external.{}", f.name)
+    }))
+}
+
 fn establish_event(
     stream: &mut Stream,
     i: usize,
     law: &BTreeMap<String, LawArticle<'_>>,
     service: &LawExecutionService,
+    date: Option<NaiveDate>,
 ) -> Result<(), Vec<String>> {
     let name = stream.events[i].name.clone();
+    let listed = stream.events[i].establishes.clone();
     let mut errors = Vec::new();
-    // Per article in the order of the stream: the establishment or extension.
-    let mut parts: Vec<(&LawArticle<'_>, &Establishment, bool)> = Vec::new();
-    for r in &stream.events[i].establishes {
+
+    // The article that establishes the event, among those the stream names;
+    // a listed article must take part.
+    let mut parts: Vec<Part<'_, '_>> = Vec::new();
+    for r in &listed {
         let Some(wa) = law.get(r) else {
             errors.push(format!(
                 "article '{r}' is not loaded or has no produces.extensions.{NAMESPACE}"
@@ -435,10 +909,13 @@ fn establish_event(
         let mut found = false;
         for v in &wa.chronolex.establishes {
             if v.event.as_deref() == Some(name.as_str()) {
-                parts.push((wa, v, true));
+                parts.push(Part {
+                    law: wa,
+                    establishment: v,
+                    via: Via::Establishes,
+                });
                 found = true;
-            } else if v.extends.as_deref() == Some(name.as_str()) {
-                parts.push((wa, v, false));
+            } else if v.extends_event() == Some(name.as_str()) {
                 found = true;
             }
         }
@@ -448,11 +925,9 @@ fn establish_event(
             ));
         }
     }
-    let basis: Vec<&(&LawArticle<'_>, &Establishment, bool)> =
-        parts.iter().filter(|d| d.2).collect();
-    let basis = match basis[..] {
-        [b] => b,
-        [] => {
+    let basis = match parts.len() {
+        1 => 0,
+        0 => {
             errors.push(format!(
                 "none of the articles in establishes establishes '{name}' itself (event: {name})"
             ));
@@ -463,79 +938,258 @@ fn establish_event(
             return Err(errors);
         }
     };
-    for (wa, v, is_basis) in &parts {
+    let bv = parts[basis].establishment;
+    let bwa = parts[basis].law;
+    if !bv.requests.is_empty() && bv.stage.is_some() {
+        errors.push(format!(
+            "{}: an application takes its stage from the decision it requests; name requests or stage, not both",
+            bwa.reference
+        ));
+    }
+    let (legal_character, stage) = match requested(service, &bv.requests, date) {
+        Ok((lc, s)) => (lc, bv.stage.clone().or(s)),
+        Err(f) => {
+            errors.push(format!("{}: {f}", bwa.reference));
+            (None, bv.stage.clone())
+        }
+    };
+
+    // The hooks on the stage (the general law that applies itself), then the
+    // extensions by name (the specific law and the policy), each in the order
+    // of the corpus. The legal basis of the gram follows this order: the
+    // establishing article first.
+    if let Some(s) = stage.as_deref() {
+        for wa in law.values() {
+            for v in &wa.chronolex.establishes {
+                if v.extends_stage() != Some(s) {
+                    continue;
+                }
+                if !hooks_onto(wa.article, s, None) {
+                    errors.push(format!(
+                        "{}: extends {{stage: {s}}}, but the article declares no hook on stage {s}",
+                        wa.reference
+                    ));
+                } else if hooks_onto(wa.article, s, legal_character.as_deref()) {
+                    parts.push(Part {
+                        law: wa,
+                        establishment: v,
+                        via: Via::Hook,
+                    });
+                }
+            }
+        }
+    }
+
+    for wa in law.values() {
+        for v in &wa.chronolex.establishes {
+            if v.extends_event() == Some(name.as_str()) {
+                parts.push(Part {
+                    law: wa,
+                    establishment: v,
+                    via: Via::Extends,
+                });
+            }
+        }
+    }
+    for p in &parts {
+        let v = p.establishment;
+        let wa = p.law;
         if v.event.is_some() && v.extends.is_some() {
             errors.push(format!(
                 "{}: event and extends at the same time",
                 wa.reference
             ));
         }
-        if !is_basis
-            && (v.type_.is_some()
-                || v.subtype.is_some()
-                || v.stage.is_some()
-                || !v.refers_to.is_empty())
+        if !p.is_basis() && (v.stage.is_some() || !v.refers_to.is_empty() || !v.requests.is_empty())
         {
             errors.push(format!(
-                "{}: an extension sets no type, subtype, stage or reference; the article that establishes '{name}' does that",
+                "{}: an extension sets no stage, reference or decision requested; the article that establishes '{name}' does that",
                 wa.reference
             ));
         }
-        if let Some(p) = v.effective_at.as_ref().and_then(|o| o.parameter.as_ref()) {
-            if !parameter_types(wa.article).contains_key(p) {
+        if p.via == Via::Extends && (v.type_.is_some() || v.subtype.is_some()) {
+            errors.push(format!(
+                "{}: an extension by name sets no type or subtype; the article that establishes '{name}' or a hook on its stage does that",
+                wa.reference
+            ));
+        }
+        if let Some(q) = v.effective_at.as_ref().and_then(|o| o.parameter.as_ref()) {
+            if !parameter_types(wa.article).contains_key(q) {
                 errors.push(format!(
-                    "{}: effective_at.parameter '{p}' is not a parameter of this article",
+                    "{}: effective_at.parameter '{q}' is not a parameter of this article",
                     wa.reference
                 ));
             }
         }
     }
-    let (bwa, bv, _) = basis;
-    let Some(type_) = bv.type_.clone() else {
+
+    // Type and subtype: from the establishing article, or from a hook on the
+    // stage (Awb 4:1: an application is a submission of subtype aanvraag).
+    let mut type_: Option<(String, &str)> = None;
+    let mut subtype: Option<(String, &str)> = None;
+    for p in &parts {
+        for (slot, value) in [
+            (&mut type_, &p.establishment.type_),
+            (&mut subtype, &p.establishment.subtype),
+        ] {
+            let Some(value) = value else { continue };
+            match slot {
+                None => *slot = Some((value.clone(), &p.law.reference)),
+                Some((earlier, by)) if earlier != value => errors.push(format!(
+                    "{} says '{value}', {by} '{earlier}'",
+                    p.law.reference
+                )),
+                Some(_) => {}
+            }
+        }
+    }
+    let Some((type_, _)) = type_ else {
         errors.push(format!(
-            "{}: establishes '{name}' without a type",
+            "{}: establishes '{name}' without a type, and no hook on its stage gives one",
             bwa.reference
         ));
         return Err(errors);
     };
+
+    // The fields, per part; a field declared twice keeps both legal bases.
     let mut legal_basis: Vec<String> = Vec::new();
-    let mut moment_legal_basis: Vec<String> = Vec::new();
-    let mut paths: Vec<(String, String)> = Vec::new();
-    let mut alias = BTreeMap::new();
-    let mut field_legal_basis: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    for (wa, v, is_basis) in &parts {
-        let g = match &v.legal_basis {
-            Some(g) => g.clone(),
-            None if *is_basis => vec![wa.reference.clone()],
-            None => Vec::new(),
-        };
-        for x in &g {
-            if !legal_basis.contains(x) {
-                legal_basis.push(x.clone());
-            }
-        }
-        for x in v.effective_at.iter().flat_map(|o| o.legal_basis.iter()) {
-            if !moment_legal_basis.contains(x) {
-                moment_legal_basis.push(x.clone());
-            }
-        }
-        match field_paths(service, wa, v, bv.stage.as_deref()) {
-            Ok(p) => {
-                for path in &p {
-                    let entry = field_legal_basis.entry(path.clone()).or_default();
-                    for x in &g {
-                        if !entry.contains(x) {
-                            entry.push(x.clone());
+    let mut defs: Vec<FieldDef> = Vec::new();
+    let mut aliases: BTreeMap<String, String> = BTreeMap::new();
+    let mut prefill: BTreeMap<String, Prefill> = BTreeMap::new();
+    let mut moments: Vec<(&EffectiveAtLaw, &str)> = Vec::new();
+    for p in &parts {
+        push_new(&mut legal_basis, &p.legal_basis());
+        match part_fields(
+            service,
+            p,
+            stage.as_deref(),
+            legal_character.as_deref(),
+            date,
+        ) {
+            Ok(fs) => {
+                for f in fs {
+                    push_new(&mut legal_basis, &f.legal_basis);
+                    match defs.iter_mut().find(|d| d.name == f.name) {
+                        Some(d) => {
+                            push_new(&mut d.legal_basis, &f.legal_basis);
+                            if d.type_.is_none() {
+                                d.type_ = f.type_;
+                                d.unit = f.unit;
+                            }
                         }
+                        None => defs.push(f),
                     }
                 }
-                paths.extend(p.into_iter().map(|p| (p, wa.reference.clone())));
             }
             Err(f) => errors.push(f),
         }
-        alias.extend(v.aliases.clone());
+        aliases.extend(p.establishment.aliases.clone());
+        for (field, w) in &p.establishment.prefill {
+            let mut g = p.legal_basis();
+            if g.is_empty() {
+                g.push(p.law.reference.clone());
+            }
+            prefill.insert(
+                field.clone(),
+                Prefill {
+                    regulation: w
+                        .regulation
+                        .clone()
+                        .unwrap_or_else(|| p.law.regulation.id.clone()),
+                    output: w.output.clone(),
+                    legal_basis: g,
+                },
+            );
+        }
+        if let Some(m) = &p.establishment.effective_at {
+            moments.push((m, &p.law.reference));
+        }
     }
-    for x in legal_basis.iter().chain(&moment_legal_basis) {
+    // The origin in force: the policy that takes part in the event may
+    // override the origin a field has in the law (RFC-043 `origins`).
+    let overrides = origins_of(&parts);
+    for d in &mut defs {
+        let regulation = d
+            .declared_by
+            .split_once('#')
+            .map_or("", |(r, _)| r)
+            .to_string();
+        if let Some((o, by)) = overrides.get(&(regulation, d.name.clone())) {
+            push_new(&mut d.legal_basis, std::slice::from_ref(&o.grondslag));
+            push_new(&mut legal_basis, std::slice::from_ref(&o.grondslag));
+            d.origin = Some(o.clone());
+            d.origin_policy = Some(by.clone());
+        }
+    }
+    // One question, two legal bases: an alias between two fields of the
+    // event makes them one field, and a reader of either name reads it.
+    for (reader, field) in &aliases {
+        let Some(k) = defs.iter().position(|d| &d.name == reader) else {
+            continue;
+        };
+        if !defs.iter().any(|d| &d.name == field) {
+            continue;
+        }
+        let gone = defs.remove(k);
+        if let Some(d) = defs.iter_mut().find(|d| &d.name == field) {
+            push_new(&mut d.legal_basis, &gone.legal_basis);
+            d.optional = d.optional && gone.optional;
+        }
+    }
+    for (field, w) in &prefill {
+        if !defs.iter().any(|d| &d.name == field) {
+            errors.push(format!(
+                "prefill names '{field}', which is not a field of the event"
+            ));
+        }
+        if service
+            .resolver()
+            .get_article_by_output(&w.regulation, &w.output, date)
+            .is_none()
+        {
+            errors.push(format!(
+                "prefill of '{field}': regulation '{}' has no output '{}'",
+                w.regulation, w.output
+            ));
+        }
+    }
+    let mut moment_legal_basis: Vec<String> = Vec::new();
+    let mut recorded_legal_basis: Vec<String> = Vec::new();
+    let mut moment_of: Option<(String, &str)> = None;
+    for (m, by) in &moments {
+        match m.only {
+            None => {
+                push_new(&mut moment_legal_basis, &m.legal_basis);
+                push_new(&mut recorded_legal_basis, &m.legal_basis);
+            }
+            Some(MomentSource::Stated) => push_new(&mut moment_legal_basis, &m.legal_basis),
+            Some(MomentSource::Recorded) => push_new(&mut recorded_legal_basis, &m.legal_basis),
+        }
+        let data = m.parameter.clone().or_else(|| m.field.clone());
+        if let Some(d) = data {
+            match &moment_of {
+                Some((earlier, other)) if *earlier != d => errors.push(format!(
+                    "{by} names '{d}' as the moment, {other} '{earlier}'"
+                )),
+                Some(_) => {}
+                None => moment_of = Some((d, by)),
+            }
+        }
+    }
+    // Only a recorded-moment basis that adds something to the stated one
+    // says anything of its own.
+    if recorded_legal_basis == moment_legal_basis
+        || !moments
+            .iter()
+            .any(|(m, _)| m.only == Some(MomentSource::Recorded))
+    {
+        recorded_legal_basis.clear();
+    }
+    for x in legal_basis
+        .iter()
+        .chain(&moment_legal_basis)
+        .chain(&recorded_legal_basis)
+    {
         if let Err(f) = crate::regulations::valid(service, x) {
             errors.push(f);
         }
@@ -548,55 +1202,113 @@ fn establish_event(
                 .into(),
         );
     }
-    // The fields: every leaf of the stream falls under a path of the law, and
-    // every path of the law has a leaf in the stream.
-    let leaves: Vec<String> = event.leaves().into_iter().map(|b| b.path).collect();
-    let under = |leaf: &str, path: &str| leaf == path || leaf.starts_with(&format!("{path}."));
-    for b in &leaves {
-        if !paths.iter().any(|(p, _)| under(b, p)) {
-            errors.push(format!(
-                "field '{b}' is in the stream, but no article in establishes declares it"
-            ));
+    let derived = event.fields.is_empty();
+    if derived {
+        // The bindings follow from the law: the stream holds only the
+        // registration.
+        let mut fields = serde_yaml_ng::Mapping::new();
+        for d in &defs {
+            match binding_of(d, &bv.requests, prefill.contains_key(&d.name)) {
+                Ok(b) => set_yaml(&mut fields, &d.name, b),
+                Err(f) => errors.push(f),
+            }
+        }
+        event.fields = fields;
+    } else {
+        // A stream that still names its fields: every leaf falls under a
+        // field of the law, and every field of the law has a leaf.
+        let leaves: Vec<String> = event.leaves().into_iter().map(|b| b.path).collect();
+        let under = |leaf: &str, path: &str| leaf == path || leaf.starts_with(&format!("{path}."));
+        for b in &leaves {
+            if !defs.iter().any(|d| under(b, &d.name)) {
+                errors.push(format!(
+                    "field '{b}' is in the stream, but no article in establishes declares it"
+                ));
+            }
+        }
+        for d in &defs {
+            if !leaves.iter().any(|b| under(b, &d.name)) {
+                errors.push(format!(
+                    "{} declares field '{}', but the stream does not bind it",
+                    d.declared_by, d.name
+                ));
+            }
         }
     }
-    for (p, r) in &paths {
-        if !leaves.iter().any(|b| under(b, p)) {
-            errors.push(format!(
-                "{r} declares field '{p}', but the stream does not bind it"
-            ));
+    let has_moment = !moment_legal_basis.is_empty() || !recorded_legal_basis.is_empty();
+    match (&mut event.effective_at, has_moment) {
+        (Some(o), true) => {
+            o.legal_basis = moment_legal_basis.clone();
+            o.legal_basis_recorded = recorded_legal_basis.clone();
         }
-    }
-    match (&mut event.effective_at, moment_legal_basis.is_empty()) {
-        (Some(o), false) => o.legal_basis = moment_legal_basis.clone(),
-        (Some(_), true) => errors.push(
+        (Some(_), false) => errors.push(
             "the stream binds effective_at, but the law does not say why that moment counts in law (effective_at.legal_basis)"
                 .into(),
         ),
-        (None, false) => errors.push(
-            "the law names an effective_at, but the stream does not bind it (effective_at.source)".into(),
-        ),
-        (None, true) => {}
+        (None, true) => {
+            // The moment binds to its data item as that is bound (a
+            // parameter or a field of the event), otherwise to what the
+            // receiving channel states: the counter gives the day of receipt,
+            // the portal gives none and the recording counts.
+            let source = match &moment_of {
+                Some((d, _)) => match event.leaves().into_iter().find(|b| &b.path == d) {
+                    Some(b) => match b.binding {
+                        crate::stream::Binding::Supplied(s) => format!("{SUPPLIED_BINDING}{s}"),
+                        crate::stream::Binding::Intake(s) => format!("$intake.{s}"),
+                        crate::stream::Binding::External(s) => format!("$external.{s}"),
+                        _ => format!("$external.{d}"),
+                    },
+                    None => format!("$external.{d}"),
+                },
+                None => format!("$intake.{RECEIVED_AT}"),
+            };
+            event.effective_at = Some(EffectiveAtBinding {
+                source,
+                legal_basis: moment_legal_basis.clone(),
+                legal_basis_recorded: recorded_legal_basis.clone(),
+            });
+        }
+        (None, false) => {}
     }
     if !errors.is_empty() {
         return Err(errors);
     }
+    let mut establishes: Vec<String> = vec![bwa.reference.clone()];
+    for p in &parts {
+        push_new(&mut establishes, std::slice::from_ref(&p.law.reference));
+    }
     event.type_ = type_;
-    event.subtype = bv.subtype.clone();
-    event.stage = bv.stage.clone();
+    event.subtype = subtype.map(|(s, _)| s);
+    event.stage = stage;
     event.refers_to = bv.refers_to.clone();
-    event.field_types = parts
+    event.requests = bv.requests.clone();
+    event.establishes = establishes;
+    event.field_types = defs
         .iter()
-        .filter_map(|(_, v, _)| match &v.fields {
-            Some(Fields::Typed(m)) => Some(m.clone()),
-            _ => None,
+        .filter_map(|d| {
+            let t = serde_json::from_value(Value::String(d.type_.clone()?)).ok()?;
+            Some((
+                d.name.clone(),
+                FieldType {
+                    type_: t,
+                    unit: d.unit.clone(),
+                    columns: d.columns.clone(),
+                    origin: d.origin.clone(),
+                },
+            ))
         })
-        .flatten()
         .collect();
     event.legal_basis = legal_basis;
-    event.field_legal_basis = field_legal_basis;
-    event.aliases = alias;
+    event.field_legal_basis = defs
+        .iter()
+        .map(|d| (d.name.clone(), d.legal_basis.clone()))
+        .collect();
+    event.aliases = aliases;
+    event.prefill = prefill;
+    event.field_defs = defs;
 
-    // The document (`GET /api/stream`) shows the event as it applies.
+    // The document (`GET /api/stream`) shows the event as it applies, with
+    // per field where it comes from in the law.
     if let Some(e) = stream
         .document
         .get_mut("events")
@@ -604,6 +1316,7 @@ fn establish_event(
         .and_then(Value::as_object_mut)
     {
         let event = &stream.events[i];
+        e.insert("establishes".into(), serde_json::json!(event.establishes));
         e.insert("type".into(), Value::String(event.type_.clone()));
         if let Some(s) = &event.subtype {
             e.insert("subtype".into(), Value::String(s.clone()));
@@ -615,12 +1328,42 @@ fn establish_event(
             e.insert("refers_to".into(), v);
         }
         e.insert("legal_basis".into(), serde_json::json!(event.legal_basis));
-        if let Some(o) = e.get_mut("effective_at").and_then(Value::as_object_mut) {
-            o.insert("legal_basis".into(), serde_json::json!(moment_legal_basis));
+        if !event.requests.is_empty() {
+            e.insert("requests".into(), serde_json::json!(event.requests));
+        }
+        if derived && !event.fields.is_empty() {
+            e.insert(
+                "fields".into(),
+                serde_json::to_value(&event.fields).unwrap_or(Value::Null),
+            );
+        }
+        if let Some(b) = &event.effective_at {
+            let mut o = Map::new();
+            o.insert("source".into(), Value::String(b.source.clone()));
+            if !b.legal_basis.is_empty() {
+                o.insert("legal_basis".into(), serde_json::json!(b.legal_basis));
+            }
+            e.insert("effective_at".into(), Value::Object(o));
+        }
+        if !event.field_defs.is_empty() {
+            e.insert(
+                "field_sources".into(),
+                serde_json::to_value(&event.field_defs).unwrap_or(Value::Null),
+            );
+        }
+        if !event.prefill.is_empty() {
+            e.insert(
+                "prefill".into(),
+                serde_json::to_value(&event.prefill).unwrap_or(Value::Null),
+            );
         }
     }
     Ok(())
 }
+
+/// The path under `$intake` where the receiving channel states the moment of
+/// receipt, if it does (the counter: the day of the date stamp).
+pub const RECEIVED_AT: &str = "received_at";
 
 /// An event of the cell: the stream and the event.
 struct CellEvent<'a> {
@@ -752,7 +1495,7 @@ pub fn lexostatuses(
             None => Ok(Vec::new()),
         };
     }
-    let law = articles(service)?;
+    let law = articles(service, None)?;
     // The type of a parameter that a reading supplies: from the reading
     // article, and otherwise from the article in the corpus that declares it.
     // A reading in policy (note "bron en gram-id") supplies parameters of a
@@ -1112,7 +1855,7 @@ events:
     fn the_law_fills_in_the_event() {
         let s = service();
         let mut streams = vec![stream("bedrag_art1: $external.bedrag_art1")];
-        assert_eq!(establish(&mut streams, &s), Vec::<String>::new());
+        assert_eq!(establish(&mut streams, &s, None), Vec::<String>::new());
         crate::stream::derive_roles(&mut streams);
         let e = &streams[0].events[0];
         assert_eq!(e.type_, "decretogram");
@@ -1191,7 +1934,7 @@ events:
             "test",
         )
         .unwrap()];
-        assert_eq!(establish(&mut streams, &s), Vec::<String>::new());
+        assert_eq!(establish(&mut streams, &s, None), Vec::<String>::new());
         let e = &streams[0].events[0];
         assert_eq!(
             e.legal_basis,
@@ -1214,11 +1957,11 @@ events:
         let mut streams = vec![stream(
             "bedrag_art1: $external.bedrag_art1, notitie: $external.notitie",
         )];
-        let f = establish(&mut streams, &s);
+        let f = establish(&mut streams, &s, None);
         assert!(f.iter().any(|f| f.contains("field 'notitie'")), "{f:?}");
         // And the other way around: an output the stream does not bind.
         let mut streams = vec![stream("notitie: $external.notitie")];
-        let f = establish(&mut streams, &s);
+        let f = establish(&mut streams, &s, None);
         assert!(f.iter().any(|f| f.contains("'bedrag_art1'")), "{f:?}");
     }
 
@@ -1226,7 +1969,7 @@ events:
     fn the_reading_article_becomes_a_lexostatus_the_engine_reads_the_same_way() {
         let s = service();
         let mut streams = vec![stream("bedrag_art1: $external.bedrag_art1")];
-        assert!(establish(&mut streams, &s).is_empty());
+        assert!(establish(&mut streams, &s, None).is_empty());
         crate::stream::derive_roles(&mut streams);
         let defs = lexostatuses(&streams, &s, &[]).unwrap();
         assert_eq!(defs.len(), 1);
@@ -1323,7 +2066,7 @@ events:
         let mut s = LawExecutionService::new();
         s.load_law(&law).unwrap();
         let mut streams = vec![stream("bedrag_art1: $external.bedrag_art1")];
-        assert!(establish(&mut streams, &s).is_empty());
+        assert!(establish(&mut streams, &s, None).is_empty());
         crate::stream::derive_roles(&mut streams);
         let names: Vec<String> = lexostatuses(&streams, &s, &[])
             .unwrap()
@@ -1337,7 +2080,7 @@ events:
     fn a_supplement_to_an_unknown_article_is_an_error() {
         let s = service();
         let mut streams = vec![stream("bedrag_art1: $external.bedrag_art1")];
-        assert!(establish(&mut streams, &s).is_empty());
+        assert!(establish(&mut streams, &s, None).is_empty());
         crate::stream::derive_roles(&mut streams);
         let a: LawSupplement = serde_json::from_value(json!({
             "article": "testwet_lezing#1",
@@ -1346,5 +2089,278 @@ events:
         .unwrap();
         let f = lexostatuses(&streams, &s, &[a]).unwrap_err();
         assert!(f[0].contains("testwet_lezing#1"), "{f:?}");
+    }
+
+    /// A fictitious general law that applies itself to every application for
+    /// a decision (a hook on the stage AANVRAAG), a specific law that
+    /// establishes two applications (one for a decision, one for a
+    /// regulation of general scope) and a policy that makes the channel
+    /// supply the signature.
+    const GENERAL: &str = r#"
+$id: testwet_algemeen
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.com/testwet_algemeen
+procedure:
+  - id: beschikking
+    default: true
+    applies_to: {legal_character: BESCHIKKING}
+    stages: [{name: AANVRAAG}, {name: BESLUIT}]
+articles:
+  - number: '1'
+    text: "1. De aanvraag wordt ondertekend en bevat de naam van de aanvrager en de gevraagde beschikking.\n\n2. De aanvraag telt vanaf de ontvangst."
+    url: https://example.com/testwet_algemeen/1
+    machine_readable:
+      hooks:
+        - hook_point: pre_actions
+          applies_to: {legal_character: BESCHIKKING, stage: AANVRAAG}
+      execution:
+        produces:
+          legal_character: TOETS
+          decision_type: GEEN_BESLUIT
+          extensions:
+            chronolex:
+              establishes:
+                - extends: {stage: AANVRAAG}
+                  type: submission
+                  subtype: aanvraag
+                  fields: parameters
+                  effective_at: {legal_basis: ['testwet_algemeen#1 lid 2']}
+        parameters:
+          - {name: naam_aanvrager, type: string, required: false, origin: {waarde: BELANGHEBBENDE, grondslag: 'testwet_algemeen#1 lid 1'}}
+          - {name: gevraagde_beschikking, type: string, required: false, origin: {waarde: BELANGHEBBENDE, grondslag: 'testwet_algemeen#1 lid 1', rol: GEVRAAGD_BESLUIT}}
+          - {name: ondertekening, type: string, required: false, origin: {waarde: BELANGHEBBENDE, grondslag: 'testwet_algemeen#1 lid 1'}}
+          - {name: interne_notitie, type: string, required: false}
+"#;
+
+    const SPECIFIC: &str = r#"
+$id: testwet_bijzonder
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.com/testwet_bijzonder
+articles:
+  - number: '1'
+    text: De vereniging kan een bijdrage aanvragen; de aanvraag bevat haar statutaire naam.
+    url: https://example.com/testwet_bijzonder/1
+    machine_readable:
+      execution:
+        produces:
+          legal_character: TOETS
+          decision_type: GEEN_BESLUIT
+          extensions:
+            chronolex:
+              establishes:
+                - event: bijdrage_aangevraagd
+                  requests: ['testwet_bijzonder#2']
+                  fields: {parameters: [statutaire_naam]}
+                  aliases: {naam_aanvrager: statutaire_naam}
+        parameters:
+          - {name: statutaire_naam, type: string, required: false, origin: {waarde: BELANGHEBBENDE, grondslag: 'testwet_bijzonder#1'}}
+  - number: '2'
+    text: De instantie besluit op de aanvraag.
+    url: https://example.com/testwet_bijzonder/2
+    machine_readable:
+      execution:
+        produces: {legal_character: BESCHIKKING, decision_type: TOEKENNING}
+        output: [{name: bijdrage, type: number}]
+        actions: [{output: bijdrage, value: 100}]
+  - number: '3'
+    text: Ieder kan de instantie verzoeken een regeling vast te stellen.
+    url: https://example.com/testwet_bijzonder/3
+    machine_readable:
+      execution:
+        produces:
+          legal_character: TOETS
+          decision_type: GEEN_BESLUIT
+          extensions:
+            chronolex:
+              establishes:
+                - event: regeling_verzocht
+                  type: submission
+                  subtype: verzoek
+                  requests: ['testwet_bijzonder#4']
+                  fields: [onderwerp]
+  - number: '4'
+    text: De instantie stelt de regeling vast.
+    url: https://example.com/testwet_bijzonder/4
+    machine_readable:
+      execution:
+        produces: {legal_character: BESLUIT_VAN_ALGEMENE_STREKKING, decision_type: ALGEMEEN_VERBINDEND_VOORSCHRIFT}
+        output: [{name: vastgesteld, type: boolean}]
+        actions: [{output: vastgesteld, value: true}]
+"#;
+
+    const POLICY: &str = r#"
+$id: testbeleid_haak
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.com/testbeleid_haak
+competent_authority: {name: De instantie}
+articles:
+  - number: '1'
+    text: Via het portaal ondertekent wie inlogt, en legt het portaal het nummer van de vereniging vast.
+    url: https://example.com/testbeleid_haak/1
+    machine_readable:
+      origins:
+        - regulation: testwet_algemeen
+          parameter: ondertekening
+          origin: {waarde: KANAAL, grondslag: 'testbeleid_haak#1'}
+      execution:
+        produces:
+          legal_character: TOETS
+          decision_type: GEEN_BESLUIT
+          extensions:
+            chronolex:
+              establishes:
+                - extends: bijdrage_aangevraagd
+                  fields:
+                    nummer: {type: string, origin: {waarde: KANAAL, grondslag: 'testbeleid_haak#1'}}
+"#;
+
+    fn composed(general: &str) -> (Vec<Stream>, Vec<String>) {
+        let mut s = LawExecutionService::new();
+        for t in [general, SPECIFIC, POLICY] {
+            s.load_law(t).unwrap();
+        }
+        let mut streams = vec![crate::stream::parse(
+            "$id: test_bijdragen\nrecording_actor: test_instantie\nchronicle: test_kroniek\nevents:\n  - {name: bijdrage_aangevraagd, establishes: 'testwet_bijzonder#1', intake: portaal}\n  - {name: regeling_verzocht, establishes: 'testwet_bijzonder#3', intake: portaal}\n",
+            "test",
+        )
+        .unwrap()];
+        let errors = establish(&mut streams, &s, None);
+        (streams, errors)
+    }
+
+    fn binding(e: &crate::stream::Event, field: &str) -> Option<crate::stream::Binding> {
+        e.leaves()
+            .into_iter()
+            .find(|b| b.path == field)
+            .map(|b| b.binding)
+    }
+
+    /// The gram of an application is the sum of what the articles say about
+    /// it: the specific law establishes it and names the decision it asks
+    /// for; the general law hooks onto the stage of that decision and gives
+    /// the type, its fields and the moment; the policy that takes part
+    /// makes the channel supply the signature. The stream names none of it.
+    #[test]
+    fn the_general_law_applies_itself_to_an_application() {
+        use crate::stream::Binding;
+        let (streams, errors) = composed(GENERAL);
+        assert_eq!(errors, Vec::<String>::new());
+        let e = &streams[0].events[0];
+        assert_eq!(e.type_, "submission");
+        assert_eq!(e.subtype.as_deref(), Some("aanvraag"));
+        assert_eq!(e.stage.as_deref(), Some("AANVRAAG"));
+        assert_eq!(
+            e.establishes,
+            [
+                "testwet_bijzonder#1",
+                "testwet_algemeen#1",
+                "testbeleid_haak#1"
+            ]
+        );
+        // A field is input by default ...
+        assert_eq!(
+            binding(e, "statutaire_naam"),
+            Some(Binding::External("statutaire_naam".into()))
+        );
+        // ... the decision requested is fixed by what the law requests ...
+        assert_eq!(
+            binding(e, "gevraagde_beschikking"),
+            Some(Binding::Constant(json!("testwet_bijzonder#2")))
+        );
+        // ... and what the channel supplies, by the origin in force (the
+        // policy overrides the law) or in the law itself, binds to $supplied.
+        assert_eq!(
+            binding(e, "ondertekening"),
+            Some(Binding::Supplied("ondertekening".into()))
+        );
+        assert_eq!(
+            binding(e, "nummer"),
+            Some(Binding::Supplied("nummer".into()))
+        );
+        // A parameter without origin is no field; one question, two legal
+        // bases: the name of the applicant is the statutory name.
+        assert_eq!(binding(e, "interne_notitie"), None);
+        assert_eq!(binding(e, "naam_aanvrager"), None);
+        assert_eq!(
+            e.field_legal_basis["statutaire_naam"],
+            ["testwet_bijzonder#1", "testwet_algemeen#1 lid 1"]
+        );
+        assert_eq!(e.aliases["naam_aanvrager"], "statutaire_naam");
+        // The moment is the receipt: the counter states it, otherwise the
+        // recording counts.
+        let m = e.effective_at.as_ref().unwrap();
+        assert_eq!(m.source, "$intake.received_at");
+        assert_eq!(m.legal_basis, ["testwet_algemeen#1 lid 2"]);
+        // The document of the stream says per field where it comes from.
+        let sources = streams[0].document["events"][0]["field_sources"]
+            .as_array()
+            .unwrap();
+        let via: Vec<(&str, &str)> = sources
+            .iter()
+            .map(|f| (f["name"].as_str().unwrap(), f["via"].as_str().unwrap()))
+            .collect();
+        assert!(via.contains(&("ondertekening", "hook")), "{via:?}");
+        assert!(via.contains(&("nummer", "extends")), "{via:?}");
+        assert!(via.contains(&("statutaire_naam", "establishes")), "{via:?}");
+    }
+
+    /// Awb 4:2 applies to an application for a decision (beschikking), not
+    /// to a request for a regulation of general scope: that decision has no
+    /// procedure with a stage AANVRAAG, so no hook applies, and the request
+    /// gets only what its own article gives it.
+    #[test]
+    fn a_request_for_a_regulation_of_general_scope_gets_no_awb_4_2() {
+        let (streams, errors) = composed(GENERAL);
+        assert_eq!(errors, Vec::<String>::new());
+        let e = &streams[0].events[1];
+        assert_eq!(e.stage, None);
+        assert_eq!(e.subtype.as_deref(), Some("verzoek"));
+        assert_eq!(e.establishes, ["testwet_bijzonder#3"]);
+        let fields: Vec<String> = e.leaves().into_iter().map(|b| b.path).collect();
+        assert_eq!(fields, ["onderwerp"]);
+    }
+
+    /// A field added to the general law reaches every application without a
+    /// change to the stream (the version that applies on the date).
+    #[test]
+    fn a_new_field_in_the_general_law_reaches_the_application() {
+        let general = GENERAL.replace(
+            "          - {name: interne_notitie",
+            "          - {name: telefoon_aanvrager, type: string, required: false, origin: {waarde: BELANGHEBBENDE, grondslag: 'testwet_algemeen#1 lid 1'}}\n          - {name: interne_notitie",
+        );
+        assert_ne!(general, GENERAL);
+        let (streams, errors) = composed(&general);
+        assert_eq!(errors, Vec::<String>::new());
+        assert_eq!(
+            binding(&streams[0].events[0], "telefoon_aanvrager"),
+            Some(crate::stream::Binding::External(
+                "telefoon_aanvrager".into()
+            ))
+        );
+        assert_eq!(binding(&streams[0].events[1], "telefoon_aanvrager"), None);
+    }
+
+    /// An article that extends a stage says so with a hook on that stage; an
+    /// extension by name sets no type.
+    #[test]
+    fn an_extension_of_a_stage_needs_a_hook() {
+        let without_hook = GENERAL.replace(
+            "      hooks:\n        - hook_point: pre_actions\n          applies_to: {legal_character: BESCHIKKING, stage: AANVRAAG}\n",
+            "",
+        );
+        assert_ne!(without_hook, GENERAL);
+        let (_, errors) = composed(&without_hook);
+        assert!(
+            errors
+                .iter()
+                .any(|f| f.contains("declares no hook on stage AANVRAAG")),
+            "{errors:?}"
+        );
     }
 }

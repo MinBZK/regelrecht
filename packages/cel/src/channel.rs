@@ -50,7 +50,22 @@ pub struct ChannelDefinition {
     /// which means and on behalf of whom someone logs in (`<regulation>#<article>`).
     #[serde(default)]
     pub legal_basis: Vec<String>,
+    /// What the channel supplies to an application, per field of the gram:
+    /// a field of the channel (`kvk_nummer: kvk`), the route it came in by
+    /// (`$channel`) or, through the portal only, the day it was submitted
+    /// (`$submitted_on`). A field with origin KANAAL in force binds to what
+    /// the channel supplies (note "het gram uit de wet"); the channel's
+    /// `legal_basis` is why it may.
+    #[serde(default)]
+    pub supplies: BTreeMap<String, String>,
 }
+
+/// In `supplies`: the route the application came in by (`$intake.channel`).
+pub const SUPPLY_CHANNEL: &str = "$channel";
+
+/// In `supplies`: the day the portal records the application. Not at the
+/// counter: there the one who enters it states what the application says.
+pub const SUPPLY_SUBMITTED_ON: &str = "$submitted_on";
 
 /// An identification field of a channel.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -163,11 +178,15 @@ impl ChannelDefinition {
     }
 
     /// The path under `$intake` of the owner field, if the channel names
-    /// one.
+    /// one; if the channel supplies it to a field of the gram, that field.
     pub fn owner_path(&self, id: &str) -> Option<String> {
-        self.owner
-            .as_ref()
-            .map(|e| format!("{}.{e}", self.intake_prefix(id)))
+        let owner = self.owner.as_ref()?;
+        Some(
+            match self.supplies.iter().find(|(_, from)| *from == owner) {
+                Some((field, _)) => field.clone(),
+                None => format!("{}.{owner}", self.intake_prefix(id)),
+            },
+        )
     }
 
     /// Validate the input of a login: every field is present, as text, and
@@ -297,6 +316,96 @@ pub fn intake<'a>(
     Value::Object(out)
 }
 
+/// Put under `$intake.supplied` what the channel of the applicant supplies,
+/// per field of the gram: `{value, source: channel, legal_basis}`. The day of
+/// submission only with `submitted_on` (the portal, not the counter).
+pub fn supply(
+    intake: &mut Value,
+    k: &ChannelDefinition,
+    fields: &BTreeMap<String, String>,
+    submitted_on: Option<chrono::NaiveDate>,
+) {
+    let route = intake
+        .get("channel")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let Some(m) = intake.as_object_mut() else {
+        return;
+    };
+    let supplied = m
+        .entry(crate::stream::SUPPLIED)
+        .or_insert_with(|| Value::Object(Map::new()));
+    let Some(supplied) = supplied.as_object_mut() else {
+        return;
+    };
+    for (field, from) in &k.supplies {
+        let value = match from.as_str() {
+            SUPPLY_CHANNEL => route.clone(),
+            SUPPLY_SUBMITTED_ON => submitted_on.map(|d| d.format("%Y-%m-%d").to_string()),
+            f => fields.get(f).cloned(),
+        };
+        if let Some(value) = value {
+            supplied.insert(
+                field.clone(),
+                serde_json::json!({"value": value, "source": "channel", "legal_basis": k.legal_basis}),
+            );
+        }
+    }
+}
+
+/// Fill in beforehand what a register knows (`prefill` in the law, such as
+/// the statutory name from the commercial register): the engine runs the
+/// output of the policy on `date`, with as parameters what the channel
+/// supplies, by name. A value goes under `$intake.supplied` with `source:
+/// register`; without a value (the register does not know it, or a
+/// parameter is missing) the applicant fills the field in.
+pub fn prefill(intake: &mut Value, event: &Event, service: &LawExecutionService, date: &str) {
+    if event.prefill.is_empty() {
+        return;
+    }
+    let known: BTreeMap<String, Value> = intake
+        .get(crate::stream::SUPPLIED)
+        .and_then(Value::as_object)
+        .into_iter()
+        .flatten()
+        .filter_map(|(k, v)| Some((k.clone(), v.get("value")?.clone())))
+        .collect();
+    let mut found = Map::new();
+    for (field, p) in &event.prefill {
+        if known.contains_key(field) {
+            continue;
+        }
+        let Some(article) =
+            service
+                .resolver()
+                .get_article_by_output(&p.regulation, &p.output, None)
+        else {
+            continue;
+        };
+        let parameters: BTreeMap<String, Value> = article
+            .get_parameters()
+            .iter()
+            .filter_map(|q| Some((q.name.clone(), known.get(&q.name)?.clone())))
+            .collect();
+        let e =
+            crate::assessment::evaluate(service, &p.regulation, &[&p.output], &parameters, date);
+        if let Some(value) = e.values.get(&p.output).filter(|v| !v.is_null()) {
+            found.insert(
+                field.clone(),
+                serde_json::json!({"value": value, "source": "register", "legal_basis": p.legal_basis}),
+            );
+        }
+    }
+    if let Some(m) = intake.as_object_mut() {
+        let supplied = m
+            .entry(crate::stream::SUPPLIED)
+            .or_insert_with(|| Value::Object(Map::new()));
+        if let Some(s) = supplied.as_object_mut() {
+            s.extend(found);
+        }
+    }
+}
+
 /// The paths under `$intake` the portal supplies: `channel` and the fields
 /// of every channel of a role with routes `portal` or `counter`. The counter
 /// identifies the applicant with the fields of a portal channel.
@@ -399,6 +508,32 @@ pub fn check_process(
             errors.push(
                 "counter: no portal channel to identify the applicant with; give a role routes: [portal]".into(),
             );
+        }
+    }
+    // A field with origin KANAAL in force: every portal channel supplies it,
+    // from a field of its own or a keyword.
+    if let Some(e) = portal_event {
+        for (id, k) in d.channels_with(Routes::Portal) {
+            for f in e.field_defs.iter().filter(|f| f.from_channel()) {
+                if !k.supplies.contains_key(&f.name) {
+                    errors.push(format!(
+                        "channel '{id}': field '{}' of event '{}' has origin KANAAL ({}), but the channel does not supply it (supplies)",
+                        f.name,
+                        e.name,
+                        f.legal_basis.join(", ")
+                    ));
+                }
+            }
+        }
+    }
+    for (id, k) in &d.channels {
+        for (field, from) in &k.supplies {
+            let own = k.fields.iter().any(|v| &v.name == from);
+            if !own && from != SUPPLY_CHANNEL && from != SUPPLY_SUBMITTED_ON {
+                errors.push(format!(
+                    "channel '{id}': supplies '{field}' from '{from}', which is no field of the channel and not {SUPPLY_CHANNEL} or {SUPPLY_SUBMITTED_ON}"
+                ));
+            }
         }
     }
     if portal_event.is_some_and(|e| e.case == Case::Follows) {

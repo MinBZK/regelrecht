@@ -13,7 +13,9 @@
 //!    stream declares for that field. A derivation on the chosen gram
 //!    requires a lexostatus that picks a gram (`pick`).
 //! 3. No orphan field: every field of an event is read by a derivation or a
-//!    filter, or is listed with a reason in `not_reduced`.
+//!    filter, or is listed with a reason in `not_reduced`. A field the law
+//!    declares (an event with `establishes`) is recorded because the law says
+//!    so: unread, it is a warning, not an error.
 //! 4. No name collision: a parameter gets only one derivation.
 //! 5. (Dropped with chronolex v0.2.0: every gram has a root, so a filter on
 //!    `root` or `group_by: root` can select any event.)
@@ -419,12 +421,27 @@ fn orphan_fields(streams: &[Stream], lexostatuses: &Lexostatuses, errors: &mut V
                     .not_reduced
                     .iter()
                     .any(|n| covered(&leaf.path, &n.field));
-                if !by_derivation && !excepted {
-                    errors.push(format!(
-                        "orphan field '{}' in event '{}' (stream '{}'): no derivation reads it and it is not in not_reduced",
-                        leaf.path, event.name, stream.id
-                    ));
+                if by_derivation || excepted {
+                    continue;
                 }
+                // A field the law declares is recorded because the law says
+                // so, read or not (note "het gram uit de wet"): a warning,
+                // not a reason not to start.
+                if event
+                    .field_defs
+                    .iter()
+                    .any(|d| covered(&leaf.path, &d.name))
+                {
+                    tracing::warn!(
+                        field = %leaf.path, event = %event.name, stream = %stream.id,
+                        "field with a legal basis that no derivation reads"
+                    );
+                    continue;
+                }
+                errors.push(format!(
+                    "orphan field '{}' in event '{}' (stream '{}'): no derivation reads it and it is not in not_reduced",
+                    leaf.path, event.name, stream.id
+                ));
             }
         }
     }

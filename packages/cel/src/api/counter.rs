@@ -115,6 +115,16 @@ pub(super) async fn counter_submit(
     }
 
     let mut intake = channel::intake("counter", channels.iter().copied(), Some((kid, &fields)));
+    // What the channel of the applicant supplies (not the day of
+    // submission: the application states its own date), and what a register
+    // fills in beforehand.
+    channel::supply(&mut intake, k, &fields, None);
+    channel::prefill(
+        &mut intake,
+        event,
+        &state.process.service,
+        &now.date_naive().format("%Y-%m-%d").to_string(),
+    );
     if let Value::Object(m) = &mut intake {
         crate::gram::set_path(m, &path, Value::String(input.received_at.clone()));
         m.insert(

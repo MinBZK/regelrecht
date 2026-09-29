@@ -204,7 +204,11 @@ impl Process {
             return None;
         };
         event.leaves().into_iter().find_map(|b| match b.binding {
-            Binding::External(key) if b.path == path && !key.contains('.') => Some(key),
+            Binding::External(key) | Binding::Supplied(key)
+                if b.path == path && !key.contains('.') =>
+            {
+                Some(key)
+            }
             _ => None,
         })
     }

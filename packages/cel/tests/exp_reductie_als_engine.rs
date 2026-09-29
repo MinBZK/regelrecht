@@ -44,7 +44,7 @@ fn grams_of(cell_dir: &Path, extra: &[Value]) -> (CellDefinition, Vec<Gram>) {
     // `EXP_REGULATION` the corpus that contains that law.
     if let Ok(path) = std::env::var("EXP_REGULATION") {
         let corpus = regelrecht_cel::regulations::load(Path::new(&path)).unwrap();
-        let errors = regelrecht_cel::law::establish(&mut streams, &corpus.service);
+        let errors = regelrecht_cel::law::establish(&mut streams, &corpus.service, None);
         assert!(errors.is_empty(), "{errors:?}");
     }
     stream::derive_roles(&mut streams);

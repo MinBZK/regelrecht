@@ -2,8 +2,12 @@
 //! submission passes via `$external`.
 //!
 //! The form never determines behavior. A field the form does not know gets
-//! its field name as its label and goes last; a field of the form that the
-//! stream does not know is skipped.
+//! its label from the law (the part after "Naam:" in the description of its
+//! parameter) or its field name, and goes last; a field of the form that the
+//! stream does not know is skipped. What the law says about a field (its
+//! legal basis, whether the applicant may leave it out) comes with it, and so
+//! does, for a logged-in applicant, what the channel or a register supplies
+//! (note "het gram uit de wet": the form only keeps the presentation).
 //!
 //! The form document deliberately keeps its Dutch vocabulary (it is a dossier
 //! document that other tools read as well); the runtime translates it at the
@@ -90,6 +94,30 @@ pub struct Field {
     /// What the field rests on, as `<regulation>#<article>` (optionally with a paragraph).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub legal_basis: Vec<String>,
+    /// The law says the applicant may leave it out (`required: false`, RFC-036):
+    /// the form says "(niet verplicht)" (Awb 4:4 lid 2).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub optional: bool,
+    /// What the channel or a register supplies for this field, for the
+    /// logged-in applicant: `{value, source, legal_basis}`. The portal shows
+    /// it as filled in automatically; the submission may not change it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub supplied: Option<Value>,
+}
+
+/// Add to the fields what `intake` supplies (`$intake.supplied`), per field.
+pub fn with_supplied(fields: &mut [Field], intake: &Value) {
+    let Some(supplied) = intake
+        .get(crate::stream::SUPPLIED)
+        .and_then(Value::as_object)
+    else {
+        return;
+    };
+    for f in fields {
+        if let Some(s) = supplied.get(&f.name) {
+            f.supplied = Some(s.clone());
+        }
+    }
 }
 
 /// A name made readable, as the label of a field without a label or of a
@@ -158,6 +186,8 @@ impl FieldDoc {
             explanation: self.explanation,
             group: group.cloned(),
             legal_basis: legal_basis_from(self.legal_basis.as_ref()),
+            optional: false,
+            supplied: None,
         }
     }
 }
@@ -293,8 +323,39 @@ pub fn fields(event: &Event, form: Option<&Form>) -> Result<Vec<Field>, String> 
                 explanation: None,
                 group: None,
                 legal_basis: Vec::new(),
+                optional: false,
+                supplied: None,
             });
         }
+    }
+    // What the law says per field: the label if the form has none, the
+    // legal basis if the form names none, and whether it may be left out.
+    for field in &mut out {
+        let Some(d) = event.field_defs.iter().find(|d| d.name == field.name) else {
+            continue;
+        };
+        if field.label == field.name {
+            field.label = match d.description.as_deref().filter(|t| t.contains("Naam:")) {
+                Some(t) => crate::origin::label_from(t),
+                None => readable(&field.name),
+            };
+        }
+        if field.legal_basis.is_empty() {
+            field.legal_basis = d.legal_basis.clone();
+        }
+        if field.kind.is_none() {
+            field.kind = d.type_.as_deref().map(|t| match t {
+                "string" => "text".to_string(),
+                "boolean" => "yes_no".to_string(),
+                "amount" => "amount".to_string(),
+                other => other.to_string(),
+            });
+            field.unit = d.unit.clone();
+        }
+        field.optional = d.optional
+            && d.origin
+                .as_ref()
+                .is_some_and(|o| o.waarde == regelrecht_law_model::OriginValue::Belanghebbende);
     }
     // Whether a field is a table is determined by the stream: otherwise the
     // screen shows an input that the cell refuses on submission.

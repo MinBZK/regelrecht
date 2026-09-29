@@ -142,7 +142,7 @@ impl Config {
     }
 }
 
-/// A cell definition (`schema/chronolex/v0.2.0/cell.json`): only what the
+/// A cell definition (`schema/chronolex/v0.3.0/cell.json`): only what the
 /// cell itself does. Recording (the streams), keeping (the chronicles) and
 /// reducing (the lexostatuses).
 #[derive(Debug, Clone, Deserialize)]
@@ -155,7 +155,7 @@ pub struct CellDefinition {
     pub initial_state: Option<String>,
 }
 
-/// A process definition (`schema/chronolex/v0.2.0/process.json`): who acts
+/// A process definition (`schema/chronolex/v0.3.0/process.json`): who acts
 /// and how. Informing (synthesis, assessment, offer), concluding (the
 /// decision) and having a cell record.
 #[derive(Debug, Clone, Deserialize)]
