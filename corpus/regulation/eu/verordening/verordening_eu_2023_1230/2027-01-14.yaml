@@ -28,12 +28,12 @@ articles:
       ook voorschriften vastgesteld voor het vrije verkeer van producten die binnen het toepassingsgebied
       van deze verordening vallen, in de Unie.
     url: https://eur-lex.europa.eu/legal-content/NL/TXT/?uri=CELEX:32023R1230#art_1
-  - number: '2'
+  - number: '2.1'
     text: >-
       **Toepassingsgebied**
 
 
-      1. Deze verordening is van toepassing op machines en de volgende verwante producten:
+      Deze verordening is van toepassing op machines en de volgende verwante producten:
       a) verwisselbare uitrustingsstukken; b) veiligheidscomponenten; c) hijs- en hefgereedschappen;
       d) kettingen, kabels en banden; e) verwijderbare mechanische overbrengingssystemen.
       Deze verordening is ook van toepassing op niet voltooide machines. Voor de toepassing
@@ -41,9 +41,133 @@ articles:
       en niet voltooide machines samen aangeduid als “producten die binnen het toepassingsgebied
       van deze verordening vallen” of “binnen het toepassingsgebied van deze verordening vallende
       producten”.
-
-
-      2. Deze verordening is niet van toepassing op: a) veiligheidscomponenten die bestemd
+    url: https://eur-lex.europa.eu/legal-content/NL/TXT/?uri=CELEX:32023R1230#art_2
+    machine_readable:
+      execution:
+        input:
+          - name: is_machine
+            type: boolean
+            description: Eerste alinea, "machines", zoals gedefinieerd in artikel 3, punt 1.
+            source:
+              output: is_machine
+          - name: is_verwisselbaar_uitrustingsstuk
+            type: boolean
+            description: Onderdeel a, zoals gedefinieerd in artikel 3, punt 2.
+            source:
+              output: is_verwisselbaar_uitrustingsstuk
+          - name: is_veiligheidscomponent
+            type: boolean
+            description: Onderdeel b, zoals gedefinieerd in artikel 3, punt 3.
+            source:
+              output: is_veiligheidscomponent
+          - name: is_hijs_of_hefgereedschap
+            type: boolean
+            description: Onderdeel c, zoals gedefinieerd in artikel 3, punt 5.
+            source:
+              output: is_hijs_of_hefgereedschap
+          - name: is_ketting
+            type: boolean
+            description: Onderdeel d, "kettingen", zoals gedefinieerd in artikel 3, punt 6.
+            source:
+              output: is_ketting
+          - name: is_kabel
+            type: boolean
+            description: Onderdeel d, "kabels", zoals gedefinieerd in artikel 3, punt 7.
+            source:
+              output: is_kabel
+          - name: is_band
+            type: boolean
+            description: Onderdeel d, "banden", zoals gedefinieerd in artikel 3, punt 8.
+            source:
+              output: is_band
+          - name: is_verwijderbare_mechanische_overbrengingsinrichting
+            type: boolean
+            description: >-
+              Onderdeel e, "verwijderbare mechanische overbrengingssystemen", zoals gedefinieerd
+              in artikel 3, punt 9. De Nederlandse tekst gebruikt twee woorden voor één begrip:
+              "overbrengingssysteem" hier, in bijlage I, deel A, en in bijlage III, punt 3.4.7,
+              en "overbrengingsinrichting" in de definitie. De Engelse tekst gebruikt op al
+              die plaatsen "removable mechanical transmission device", en bijlage III, punt
+              3.4.7, herhaalt onder het woord "systemen" de elementen van punt 9. Alle taalversies
+              zijn gelijkelijk authentiek, dus de definitie geldt ook voor onderdeel e.
+            source:
+              output: is_verwijderbare_mechanische_overbrengingsinrichting
+          - name: is_niet_voltooide_machine
+            type: boolean
+            description: Tweede alinea, zoals gedefinieerd in artikel 3, punt 10.
+            source:
+              output: is_niet_voltooide_machine
+        output:
+          - name: is_verwant_product
+            type: boolean
+            description: >-
+              Het product is een van de verwante producten die de eerste alinea in de onderdelen
+              a tot en met e opsomt.
+          - name: is_machine_of_verwant_product
+            type: boolean
+            description: >-
+              Eerste alinea: de verordening is van toepassing op het product als machine of
+              als verwant product.
+          - name: is_product_binnen_toepassingsgebied
+            type: boolean
+            description: >-
+              Derde alinea: het product is een machine, een verwant product of een niet voltooide
+              machine, samen aangeduid als "producten die binnen het toepassingsgebied van
+              deze verordening vallen".
+        actions:
+          - output: is_verwant_product
+            value:
+              operation: OR
+              conditions:
+                - $is_verwisselbaar_uitrustingsstuk
+                - $is_veiligheidscomponent
+                - $is_hijs_of_hefgereedschap
+                - $is_ketting
+                - $is_kabel
+                - $is_band
+                - $is_verwijderbare_mechanische_overbrengingsinrichting
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '2'
+              paragraph: '1'
+              explanation: >-
+                "de volgende verwante producten: a) verwisselbare uitrustingsstukken; b) veiligheidscomponenten;
+                c) hijs- en hefgereedschappen; d) kettingen, kabels en banden; e) verwijderbare
+                mechanische overbrengingssystemen". De begrippen komen uit artikel 3, punten
+                2 tot en met 9. Voor onderdeel e heet het begrip in de definitie van punt 9
+                "overbrengingsinrichting"; zie de beschrijving van die input.
+          - output: is_machine_of_verwant_product
+            value:
+              operation: OR
+              conditions:
+                - $is_machine
+                - $is_verwant_product
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '2'
+              paragraph: '1'
+              explanation: >-
+                Eerste alinea: "Deze verordening is van toepassing op machines en de volgende
+                verwante producten".
+          - output: is_product_binnen_toepassingsgebied
+            value:
+              operation: OR
+              conditions:
+                - $is_machine_of_verwant_product
+                - $is_niet_voltooide_machine
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '2'
+              paragraph: '1'
+              explanation: >-
+                Tweede alinea: "ook van toepassing op niet voltooide machines". Derde alinea:
+                machines, de verwante producten van de eerste alinea en niet voltooide machines
+                worden "samen aangeduid als producten die binnen het toepassingsgebied van deze
+                verordening vallen". Die aanduiding noemt alleen deze drie groepen; de uitsluitingen
+                van lid 2 staan er niet in.
+  - number: '2.2'
+    text: >-
+      Deze verordening is niet van toepassing op: a) veiligheidscomponenten die bestemd
       zijn om identieke componenten te vervangen en die geleverd zijn door de fabrikant van
       de oorspronkelijke machine, het oorspronkelijke verwante product of de oorspronkelijke
       niet voltooide machine; b) specifiek voor kermissen of amusementsparken bestemd materieel;
@@ -82,6 +206,755 @@ articles:
       vi) elektromotoren; q) de volgende elektrische hoogspanningsproducten: i) schakelmaterieel
       en besturingsapparatuur; ii) transformators.
     url: https://eur-lex.europa.eu/legal-content/NL/TXT/?uri=CELEX:32023R1230#art_2
+    machine_readable:
+      markings:
+        - about: het bereik van "deze verordening is niet van toepassing op" over alle bepalingen van de verordening
+          reason: >-
+            Lid 2 neemt de genoemde producten weg uit elke bepaling van de verordening, ook uit
+            een bepaling die artikel 2 niet noemt. De vorm die het dichtst komt is een source-binding:
+            een artikel dat verordening_van_toepassing zelf opvraagt, zoals artikel 25, lid 1,
+            is aan dit lid gebonden. Een bepaling die later uitvoerbaar wordt zonder die binding,
+            rekent ook voor een uitgesloten product. Een materieel toepassingsgebied op het niveau
+            van het document, zoals valid_from dat in de tijd geeft, heeft geen veld.
+          resolution: model
+          resolved_by: >-
+            Een materieel toepassingsgebied op documentniveau, naast valid_from, dat de engine
+            vóór elke bepaling van het document toetst en dat verwijst naar de output die het
+            bepaalt (hier verordening_van_toepassing).
+          target: []
+          legal_text_excerpt: Deze verordening is niet van toepassing op
+          accepted: false
+        - about: >-
+            de uitsluiting van luchtvaartproducten voor zover Verordening (EU) 2018/1139 de relevante
+            essentiële eisen bestrijkt
+          reason: >-
+            Onderdeel f sluit een luchtvaartproduct uit "voor zover" Verordening (EU) 2018/1139
+            betrekking heeft op de relevante essentiële gezondheids- en veiligheidseisen van
+            deze verordening. Voor de eisen die 2018/1139 niet bestrijkt, blijft deze verordening
+            op hetzelfde product van toepassing. Het model kent de toepasselijkheid als één booleaanse
+            uitkomst per product. Het sluit het product daarom alleen uit als 2018/1139 op alle
+            relevante eisen betrekking heeft. Bestrijkt 2018/1139 een deel van de eisen, dan
+            is de verordening volgens het model op het hele product van toepassing, ook voor
+            de eisen die 2018/1139 wel bestrijkt en die onderdeel f wegneemt.
+          resolution: model
+          resolved_by: >-
+            Een toepasselijkheid per essentiële gezondheids- en veiligheidseis van bijlage III,
+            zodat een uitsluiting een deel van de eisen kan wegnemen en de rest laat staan.
+          target: []
+          legal_text_excerpt: >-
+            voor zover Verordening (EU) 2018/1139 betrekking heeft op de relevante essentiële
+            gezondheids- en veiligheidseisen van deze verordening
+          accepted: false
+      execution:
+        parameters:
+          - name: bestemd_om_identieke_componenten_te_vervangen
+            type: boolean
+            required: false
+            description: Onderdeel a. De veiligheidscomponent is bestemd om identieke componenten te vervangen.
+          - name: geleverd_door_fabrikant_van_oorspronkelijk_product
+            type: boolean
+            required: false
+            description: >-
+              Onderdeel a. De component is geleverd door de fabrikant van de oorspronkelijke
+              machine, het oorspronkelijke verwante product of de oorspronkelijke niet voltooide
+              machine.
+          - name: specifiek_bestemd_voor_kermissen_of_amusementsparken
+            type: boolean
+            required: false
+            description: Onderdeel b. Het materieel is specifiek voor kermissen of amusementsparken bestemd.
+          - name: speciaal_ontworpen_voor_gebruik_in_kerninstallatie
+            type: boolean
+            required: false
+            description: Onderdeel c. Speciaal ontworpen voor gebruik binnen een kerninstallatie.
+          - name: gebruikt_in_kerninstallatie
+            type: boolean
+            required: false
+            description: Onderdeel c. Wordt gebruikt in een kerninstallatie.
+          - name: overeenstemming_kan_nucleaire_veiligheid_ondermijnen
+            type: boolean
+            required: false
+            description: >-
+              Onderdeel c. De overeenstemming van het product met deze verordening kan de nucleaire
+              veiligheid van die installatie ondermijnen.
+          - name: is_wapen
+            type: boolean
+            required: false
+            description: Onderdeel d. Het product is een wapen; vuurwapens zijn daarbij inbegrepen.
+          - name: is_middel_voor_vervoer_door_lucht_over_water_of_via_spoor
+            type: boolean
+            required: false
+            description: Onderdeel e. Het product is een middel voor vervoer door de lucht, over het water of via het spoor.
+          - name: gemonteerd_op_vervoermiddel_door_lucht_over_water_of_via_spoor
+            type: boolean
+            required: false
+            description: Onderdeel e, uitzondering. De machine is op zo'n vervoermiddel gemonteerd.
+          - name: is_luchtvaartproduct_onderdeel_of_apparatuur
+            type: boolean
+            required: false
+            description: Onderdeel f. Het product is een luchtvaartproduct, -onderdeel of -apparatuur.
+          - name: verordening_2018_1139_heeft_betrekking_op_alle_relevante_eisen
+            type: boolean
+            required: false
+            description: >-
+              Onderdeel f. Verordening (EU) 2018/1139 heeft betrekking op alle relevante essentiële
+              gezondheids- en veiligheidseisen van deze verordening voor dit product. Dat is een
+              vergelijking tussen de twee verordeningen die geen van beide als uitkomst geeft.
+              Het woord "alle" staat niet in de tekst: het is de vorm die het model aan "voor
+              zover" geeft; zie de markering.
+          - name: is_motorvoertuig_of_aanhangwagen
+            type: boolean
+            required: false
+            description: Onderdeel g. Het product is een motorvoertuig of een aanhangwagen daarvan.
+          - name: is_voertuigdeel_voor_motorvoertuig_of_aanhangwagen
+            type: boolean
+            required: false
+            description: >-
+              Onderdeel g. Het product is een systeem, onderdeel, technische eenheid, voertuigdeel
+              of uitrustingsstuk dat voor motorvoertuigen of aanhangwagens is ontworpen en gebouwd.
+          - name: gemonteerd_op_motorvoertuig_of_aanhangwagen
+            type: boolean
+            required: false
+            description: Onderdeel g, uitzondering. De machine is op zo'n voertuig gemonteerd.
+          - name: is_twee_of_driewielig_voertuig_of_vierwieler
+            type: boolean
+            required: false
+            description: Onderdeel h. Het product is een twee- of driewielig voertuig of een vierwieler.
+          - name: is_voertuigdeel_voor_twee_of_driewielig_voertuig_of_vierwieler
+            type: boolean
+            required: false
+            description: >-
+              Onderdeel h. Het product is een systeem, onderdeel, technische eenheid, voertuigdeel
+              of uitrustingsstuk dat voor zulke voertuigen is ontworpen en gebouwd.
+          - name: gemonteerd_op_twee_of_driewielig_voertuig_of_vierwieler
+            type: boolean
+            required: false
+            description: Onderdeel h, uitzondering. De machine is op zo'n voertuig gemonteerd.
+          - name: is_landbouw_of_bosbouwtrekker
+            type: boolean
+            required: false
+            description: Onderdeel i. Het product is een landbouw- of bosbouwtrekker.
+          - name: is_voertuigdeel_voor_landbouw_of_bosbouwtrekker
+            type: boolean
+            required: false
+            description: >-
+              Onderdeel i. Het product is een systeem, onderdeel, technische eenheid, voertuigdeel
+              of uitrustingsstuk dat voor zulke trekkers is ontworpen en gebouwd.
+          - name: gemonteerd_op_landbouw_of_bosbouwtrekker
+            type: boolean
+            required: false
+            description: Onderdeel i, uitzondering. De machine is op zo'n trekker gemonteerd.
+          - name: is_motorvoertuig_uitsluitend_bestemd_voor_wedstrijden
+            type: boolean
+            required: false
+            description: Onderdeel j. Het product is een motorvoertuig dat uitsluitend bestemd is voor wedstrijden.
+          - name: is_zeeschip_of_mobiele_offshore_eenheid
+            type: boolean
+            required: false
+            description: Onderdeel k. Het product is een zeeschip of een mobiele offshore-eenheid.
+          - name: geinstalleerd_aan_boord_van_zeeschip_of_offshore_eenheid
+            type: boolean
+            required: false
+            description: Onderdeel k. De machine is aan boord van zo'n schip of eenheid geïnstalleerd.
+          - name: specifiek_ontworpen_en_gebouwd_voor_militaire_of_politiedoeleinden
+            type: boolean
+            required: false
+            description: Onderdeel l.
+          - name: specifiek_ontworpen_en_gebouwd_voor_onderzoek_voor_tijdelijk_gebruik_in_laboratoria
+            type: boolean
+            required: false
+            description: >-
+              Onderdeel m. Specifiek ontworpen en gebouwd voor onderzoeksdoeleinden voor tijdelijk
+              gebruik in laboratoria.
+          - name: is_mijnlift
+            type: boolean
+            required: false
+            description: Onderdeel n.
+          - name: voor_verplaatsen_van_kunstenaars_tijdens_optreden
+            type: boolean
+            required: false
+            description: Onderdeel o. Voor het verplaatsen van kunstenaars tijdens een optreden.
+          - name: is_huishoudelijk_apparaat_voor_huishoudelijk_gebruik
+            type: boolean
+            required: false
+            description: Onderdeel p, punt i. Een huishoudelijk apparaat dat voor huishoudelijk gebruik is bestemd.
+          - name: is_elektronisch_bedienbaar_meubel
+            type: boolean
+            required: false
+            description: Onderdeel p, punt i. Het product is een elektronisch bedienbaar meubel.
+          - name: is_audio_of_videoapparatuur
+            type: boolean
+            required: false
+            description: Onderdeel p, punt ii.
+          - name: is_apparatuur_voor_informatietechnologie
+            type: boolean
+            required: false
+            description: Onderdeel p, punt iii. Apparatuur die wordt gebruikt in de informatietechnologie.
+          - name: is_gewone_kantoormachine
+            type: boolean
+            required: false
+            description: Onderdeel p, punt iv.
+          - name: is_additieve_drukmachine_voor_driedimensionale_producten
+            type: boolean
+            required: false
+            description: Onderdeel p, punt iv, uitzondering.
+          - name: is_schakelmaterieel_of_besturingsapparatuur
+            type: boolean
+            required: false
+            description: >-
+              Onderdeel p, punt v, en onderdeel q, punt i. Het product is schakelmaterieel of
+              besturingsapparatuur; de spanning bepalen is_voor_laagspanning en is_elektrisch_hoogspanningsproduct.
+          - name: is_voor_laagspanning
+            type: boolean
+            required: false
+            description: Onderdeel p, punt v. Het schakelmaterieel of de besturingsapparatuur is voor laagspanning.
+          - name: is_elektromotor
+            type: boolean
+            required: false
+            description: Onderdeel p, punt vi.
+          - name: is_elektrisch_hoogspanningsproduct
+            type: boolean
+            required: false
+            description: >-
+              Onderdeel q. Het product is een elektrisch hoogspanningsproduct. De verordening
+              zegt niet waar hoogspanning begint; het model neemt geen grens over.
+          - name: is_transformator
+            type: boolean
+            required: false
+            description: Onderdeel q, punt ii.
+        input:
+          - name: is_machine
+            type: boolean
+            description: >-
+              "Machines" in de onderdelen e, g, h, i en k, en "de definitie van machines in het
+              kader van deze verordening" in onderdeel f: artikel 3, punt 1.
+            source:
+              output: is_machine
+          - name: is_veiligheidscomponent
+            type: boolean
+            description: Onderdeel a, zoals gedefinieerd in artikel 3, punt 3.
+            source:
+              output: is_veiligheidscomponent
+          - name: is_machine_of_verwant_product
+            type: boolean
+            description: >-
+              "Machines en verwante producten" (onderdeel c) en "machines of verwante producten"
+              (onderdelen l, m en o): artikel 2, lid 1, eerste alinea.
+            source:
+              output: is_machine_of_verwant_product
+          - name: is_product_binnen_toepassingsgebied
+            type: boolean
+            description: Artikel 2, lid 1, derde alinea.
+            source:
+              output: is_product_binnen_toepassingsgebied
+          - name: valt_binnen_toepassingsgebied_verordening_2018_1139
+            type: boolean
+            description: >-
+              Onderdeel f. Het product valt binnen het toepassingsgebied van Verordening (EU)
+              2018/1139: die verordening is erop van toepassing, met haar eigen uitsluitingen.
+              Dat stelt zij zelf vast, in de output die deze verordening voor zichzelf verordening_van_toepassing
+              noemt.
+            source:
+              regulation: verordening_eu_2018_1139
+              output: verordening_van_toepassing
+          - name: valt_binnen_toepassingsgebied_verordening_2018_858
+            type: boolean
+            description: Onderdeel g. Het product valt binnen het toepassingsgebied van Verordening (EU) 2018/858.
+            source:
+              regulation: verordening_eu_2018_858
+              output: verordening_van_toepassing
+          - name: valt_binnen_toepassingsgebied_verordening_168_2013
+            type: boolean
+            description: Onderdeel h. Het product valt binnen het toepassingsgebied van Verordening (EU) nr. 168/2013.
+            source:
+              regulation: verordening_eu_168_2013
+              output: verordening_van_toepassing
+          - name: valt_binnen_toepassingsgebied_verordening_167_2013
+            type: boolean
+            description: Onderdeel i. Het product valt binnen het toepassingsgebied van Verordening (EU) nr. 167/2013.
+            source:
+              regulation: verordening_eu_167_2013
+              output: verordening_van_toepassing
+          - name: valt_binnen_toepassingsgebied_richtlijn_2014_35
+            type: boolean
+            description: Onderdeel p. Het product valt binnen het toepassingsgebied van Richtlijn 2014/35/EU.
+            source:
+              regulation: richtlijn_2014_35_eu
+              output: richtlijn_van_toepassing
+          - name: valt_binnen_toepassingsgebied_richtlijn_2014_53
+            type: boolean
+            description: Onderdeel p. Het product valt binnen het toepassingsgebied van Richtlijn 2014/53/EU.
+            source:
+              regulation: richtlijn_2014_53_eu
+              output: richtlijn_van_toepassing
+        output:
+          - name: uitgesloten_onderdeel_a
+            type: boolean
+            description: Onderdeel a, vervangende veiligheidscomponenten van de oorspronkelijke fabrikant.
+          - name: uitgesloten_onderdeel_b
+            type: boolean
+            description: Onderdeel b, materieel voor kermissen of amusementsparken.
+          - name: uitgesloten_onderdeel_c
+            type: boolean
+            description: Onderdeel c, kerninstallaties.
+          - name: uitgesloten_onderdeel_d
+            type: boolean
+            description: Onderdeel d, wapens.
+          - name: uitgesloten_onderdeel_e
+            type: boolean
+            description: Onderdeel e, vervoermiddelen door de lucht, over het water en via het spoor.
+          - name: uitgesloten_onderdeel_f
+            type: boolean
+            nullable: true
+            description: Onderdeel f, luchtvaartproducten; zie de markering.
+          - name: uitgesloten_onderdeel_g
+            type: boolean
+            nullable: true
+            description: Onderdeel g, motorvoertuigen en aanhangwagens (Verordening (EU) 2018/858).
+          - name: uitgesloten_onderdeel_h
+            type: boolean
+            nullable: true
+            description: Onderdeel h, twee- of driewielige voertuigen en vierwielers (Verordening (EU) nr. 168/2013).
+          - name: uitgesloten_onderdeel_i
+            type: boolean
+            nullable: true
+            description: Onderdeel i, landbouw- en bosbouwtrekkers (Verordening (EU) nr. 167/2013).
+          - name: uitgesloten_onderdeel_j
+            type: boolean
+            description: Onderdeel j, motorvoertuigen uitsluitend voor wedstrijden.
+          - name: uitgesloten_onderdeel_k
+            type: boolean
+            description: Onderdeel k, zeeschepen en mobiele offshore-eenheden.
+          - name: uitgesloten_onderdeel_l
+            type: boolean
+            description: Onderdeel l, militaire of politiedoeleinden.
+          - name: uitgesloten_onderdeel_m
+            type: boolean
+            description: Onderdeel m, onderzoek in laboratoria.
+          - name: uitgesloten_onderdeel_n
+            type: boolean
+            description: Onderdeel n, mijnliften.
+          - name: uitgesloten_onderdeel_o
+            type: boolean
+            description: Onderdeel o, verplaatsen van kunstenaars.
+          - name: uitgesloten_onderdeel_p
+            type: boolean
+            nullable: true
+            description: Onderdeel p, elektrische en elektronische producten (Richtlijn 2014/35/EU of 2014/53/EU).
+          - name: uitgesloten_onderdeel_q
+            type: boolean
+            description: Onderdeel q, elektrische hoogspanningsproducten.
+          - name: zonder_andere_regeling_uitgesloten
+            type: boolean
+            description: >-
+              Het product valt onder een onderdeel van lid 2 dat alleen feiten van het product
+              leest: a tot en met e, j tot en met o, of q.
+          - name: uitgesloten_op_grond_van_lid_2
+            type: boolean
+            description: Het product valt onder een of meer van de onderdelen a tot en met q van lid 2.
+          - name: verordening_van_toepassing
+            type: boolean
+            description: >-
+              De verordening is op het product van toepassing: het is een product dat binnen het
+              toepassingsgebied valt (lid 1) en het valt onder geen onderdeel van lid 2.
+        actions:
+          - output: uitgesloten_onderdeel_a
+            value:
+              operation: AND
+              conditions:
+                - $bestemd_om_identieke_componenten_te_vervangen
+                - $geleverd_door_fabrikant_van_oorspronkelijk_product
+                - $is_veiligheidscomponent
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '2'
+              paragraph: '2'
+              explanation: >-
+                Onderdeel a: "veiligheidscomponenten die bestemd zijn om identieke componenten
+                te vervangen en die geleverd zijn door de fabrikant van de oorspronkelijke machine,
+                het oorspronkelijke verwante product of de oorspronkelijke niet voltooide machine".
+          - output: uitgesloten_onderdeel_b
+            value: $specifiek_bestemd_voor_kermissen_of_amusementsparken
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '2'
+              paragraph: '2'
+              explanation: >-
+                Onderdeel b: "specifiek voor kermissen of amusementsparken bestemd materieel". Het
+                onderdeel noemt elk materieel, ook een niet voltooide machine.
+          - output: uitgesloten_onderdeel_c
+            value:
+              operation: AND
+              conditions:
+                - operation: OR
+                  conditions:
+                    - $speciaal_ontworpen_voor_gebruik_in_kerninstallatie
+                    - $gebruikt_in_kerninstallatie
+                - $overeenstemming_kan_nucleaire_veiligheid_ondermijnen
+                - $is_machine_of_verwant_product
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '2'
+              paragraph: '2'
+              explanation: >-
+                Onderdeel c: "machines en verwante producten die speciaal zijn ontworpen voor
+                gebruik binnen of die gebruikt worden in een kerninstallatie en waarvan de overeenstemming
+                met deze verordening de nucleaire veiligheid van die installatie kan ondermijnen".
+                Niet voltooide machines noemt het onderdeel niet.
+          - output: uitgesloten_onderdeel_d
+            value: $is_wapen
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '2'
+              paragraph: '2'
+              explanation: 'Onderdeel d: "wapens, met inbegrip van vuurwapens".'
+          - output: uitgesloten_onderdeel_e
+            value:
+              operation: AND
+              conditions:
+                - $is_middel_voor_vervoer_door_lucht_over_water_of_via_spoor
+                - operation: NOT
+                  value:
+                    operation: AND
+                    conditions:
+                      - $gemonteerd_op_vervoermiddel_door_lucht_over_water_of_via_spoor
+                      - $is_machine
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '2'
+              paragraph: '2'
+              explanation: >-
+                Onderdeel e: "middelen voor vervoer door de lucht, over het water en via het
+                spoor, met uitzondering van machines die op die vervoermiddelen zijn gemonteerd".
+                De uitzondering noemt machines, geen verwante producten.
+          - output: uitgesloten_onderdeel_j
+            value: $is_motorvoertuig_uitsluitend_bestemd_voor_wedstrijden
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '2'
+              paragraph: '2'
+              explanation: 'Onderdeel j: "motorvoertuigen die uitsluitend bestemd zijn voor wedstrijden".'
+          - output: uitgesloten_onderdeel_k
+            value:
+              operation: OR
+              conditions:
+                - $is_zeeschip_of_mobiele_offshore_eenheid
+                - operation: AND
+                  conditions:
+                    - $geinstalleerd_aan_boord_van_zeeschip_of_offshore_eenheid
+                    - $is_machine
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '2'
+              paragraph: '2'
+              explanation: >-
+                Onderdeel k: "zeeschepen en mobiele offshore-eenheden, alsmede machines die
+                aan boord van dergelijke schepen of eenheden zijn geïnstalleerd". "Alsmede"
+                voegt de machines aan boord toe aan de uitsluiting; verwante producten aan boord
+                noemt het onderdeel niet.
+          - output: uitgesloten_onderdeel_l
+            value:
+              operation: AND
+              conditions:
+                - $specifiek_ontworpen_en_gebouwd_voor_militaire_of_politiedoeleinden
+                - $is_machine_of_verwant_product
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '2'
+              paragraph: '2'
+              explanation: >-
+                Onderdeel l: "machines of verwante producten die specifiek zijn ontworpen en
+                gebouwd voor militaire of politiedoeleinden".
+          - output: uitgesloten_onderdeel_m
+            value:
+              operation: AND
+              conditions:
+                - $specifiek_ontworpen_en_gebouwd_voor_onderzoek_voor_tijdelijk_gebruik_in_laboratoria
+                - $is_machine_of_verwant_product
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '2'
+              paragraph: '2'
+              explanation: >-
+                Onderdeel m: "machines of verwante producten die specifiek zijn ontworpen en
+                gebouwd voor onderzoeksdoeleinden voor tijdelijk gebruik in laboratoria".
+          - output: uitgesloten_onderdeel_n
+            value: $is_mijnlift
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '2'
+              paragraph: '2'
+              explanation: 'Onderdeel n: "mijnliften".'
+          - output: uitgesloten_onderdeel_o
+            value:
+              operation: AND
+              conditions:
+                - $voor_verplaatsen_van_kunstenaars_tijdens_optreden
+                - $is_machine_of_verwant_product
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '2'
+              paragraph: '2'
+              explanation: >-
+                Onderdeel o: "machines of verwante producten voor het verplaatsen van kunstenaars
+                tijdens een optreden".
+          - output: uitgesloten_onderdeel_q
+            value:
+              operation: AND
+              conditions:
+                - $is_elektrisch_hoogspanningsproduct
+                - operation: OR
+                  conditions:
+                    - $is_schakelmaterieel_of_besturingsapparatuur
+                    - $is_transformator
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '2'
+              paragraph: '2'
+              explanation: >-
+                Onderdeel q: "de volgende elektrische hoogspanningsproducten: i) schakelmaterieel
+                en besturingsapparatuur; ii) transformators".
+          - output: zonder_andere_regeling_uitgesloten
+            value:
+              operation: OR
+              conditions:
+                - $uitgesloten_onderdeel_a
+                - $uitgesloten_onderdeel_b
+                - $uitgesloten_onderdeel_c
+                - $uitgesloten_onderdeel_d
+                - $uitgesloten_onderdeel_e
+                - $uitgesloten_onderdeel_j
+                - $uitgesloten_onderdeel_k
+                - $uitgesloten_onderdeel_l
+                - $uitgesloten_onderdeel_m
+                - $uitgesloten_onderdeel_n
+                - $uitgesloten_onderdeel_o
+                - $uitgesloten_onderdeel_q
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '2'
+              paragraph: '2'
+              explanation: >-
+                De onderdelen van lid 2 die geen toepassingsgebied van een andere EU-regeling
+                lezen. Zie de uitleg bij uitgesloten_op_grond_van_lid_2.
+          - output: uitgesloten_onderdeel_f
+            value:
+              operation: IF
+              cases:
+                - when: $zonder_andere_regeling_uitgesloten
+                  then: null
+                - when:
+                    operation: AND
+                    conditions:
+                      - $is_luchtvaartproduct_onderdeel_of_apparatuur
+                      - $is_machine
+                      - $verordening_2018_1139_heeft_betrekking_op_alle_relevante_eisen
+                  then: $valt_binnen_toepassingsgebied_verordening_2018_1139
+              default: false
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '2'
+              paragraph: '2'
+              explanation: >-
+                Onderdeel f: "luchtvaartproducten, -onderdelen en -apparatuur die binnen het
+                toepassingsgebied van Verordening (EU) 2018/1139 [...] en de definitie van machines
+                in het kader van deze verordening vallen, voor zover Verordening (EU) 2018/1139
+                betrekking heeft op de relevante essentiële gezondheids- en veiligheidseisen
+                van deze verordening". De voorwaarden gelden samen, als een EN. Het toepassingsgebied
+                van 2018/1139 komt uit die verordening en wordt pas gelezen als de andere voorwaarden
+                vaststaan; is een ervan onbekend, dan is het onderdeel onbekend. Wat "voor zover"
+                van de uitsluiting maakt, staat in de markering.
+          - output: uitgesloten_onderdeel_g
+            value:
+              operation: IF
+              cases:
+                - when: $zonder_andere_regeling_uitgesloten
+                  then: null
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: OR
+                        conditions:
+                          - $is_motorvoertuig_of_aanhangwagen
+                          - $is_voertuigdeel_voor_motorvoertuig_of_aanhangwagen
+                      - operation: NOT
+                        value:
+                          operation: AND
+                          conditions:
+                            - $gemonteerd_op_motorvoertuig_of_aanhangwagen
+                            - $is_machine
+                  then: $valt_binnen_toepassingsgebied_verordening_2018_858
+              default: false
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '2'
+              paragraph: '2'
+              explanation: >-
+                Onderdeel g: motorvoertuigen en aanhangwagens, en de systemen, onderdelen, technische
+                eenheden, voertuigdelen en uitrustingsstukken die daarvoor zijn ontworpen en
+                gebouwd, "die binnen het toepassingsgebied vallen van Verordening (EU) 2018/858,
+                met uitzondering van machines die op die voertuigen zijn gemonteerd". Het product
+                en de bijzin gelden samen, als een EN; het toepassingsgebied van 2018/858 wordt
+                pas gelezen als vaststaat dat het product onder de opsomming valt en geen gemonteerde
+                machine is.
+          - output: uitgesloten_onderdeel_h
+            value:
+              operation: IF
+              cases:
+                - when: $zonder_andere_regeling_uitgesloten
+                  then: null
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: OR
+                        conditions:
+                          - $is_twee_of_driewielig_voertuig_of_vierwieler
+                          - $is_voertuigdeel_voor_twee_of_driewielig_voertuig_of_vierwieler
+                      - operation: NOT
+                        value:
+                          operation: AND
+                          conditions:
+                            - $gemonteerd_op_twee_of_driewielig_voertuig_of_vierwieler
+                            - $is_machine
+                  then: $valt_binnen_toepassingsgebied_verordening_168_2013
+              default: false
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '2'
+              paragraph: '2'
+              explanation: >-
+                Onderdeel h: twee- of driewielige voertuigen en vierwielers, en de onderdelen
+                die daarvoor zijn ontworpen en gebouwd, "die binnen het toepassingsgebied van
+                Verordening (EU) nr. 168/2013 vallen, met uitzondering van machines die op die
+                voertuigen zijn gemonteerd". Opgebouwd als onderdeel g.
+          - output: uitgesloten_onderdeel_i
+            value:
+              operation: IF
+              cases:
+                - when: $zonder_andere_regeling_uitgesloten
+                  then: null
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: OR
+                        conditions:
+                          - $is_landbouw_of_bosbouwtrekker
+                          - $is_voertuigdeel_voor_landbouw_of_bosbouwtrekker
+                      - operation: NOT
+                        value:
+                          operation: AND
+                          conditions:
+                            - $gemonteerd_op_landbouw_of_bosbouwtrekker
+                            - $is_machine
+                  then: $valt_binnen_toepassingsgebied_verordening_167_2013
+              default: false
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '2'
+              paragraph: '2'
+              explanation: >-
+                Onderdeel i: landbouw- en bosbouwtrekkers, en de onderdelen die daarvoor zijn
+                ontworpen en gebouwd, "die binnen het toepassingsgebied van Verordening (EU)
+                nr. 167/2013 vallen, met uitzondering van machines die op die trekkers zijn gemonteerd".
+                Opgebouwd als onderdeel g.
+          - output: uitgesloten_onderdeel_p
+            value:
+              operation: IF
+              cases:
+                - when: $zonder_andere_regeling_uitgesloten
+                  then: null
+                - when:
+                    operation: OR
+                    conditions:
+                      - operation: AND
+                        conditions:
+                          - $is_huishoudelijk_apparaat_voor_huishoudelijk_gebruik
+                          - operation: NOT
+                            value: $is_elektronisch_bedienbaar_meubel
+                      - $is_audio_of_videoapparatuur
+                      - $is_apparatuur_voor_informatietechnologie
+                      - operation: AND
+                        conditions:
+                          - $is_gewone_kantoormachine
+                          - operation: NOT
+                            value: $is_additieve_drukmachine_voor_driedimensionale_producten
+                      - operation: AND
+                        conditions:
+                          - $is_schakelmaterieel_of_besturingsapparatuur
+                          - $is_voor_laagspanning
+                      - $is_elektromotor
+                  then:
+                    operation: OR
+                    conditions:
+                      - $valt_binnen_toepassingsgebied_richtlijn_2014_35
+                      - $valt_binnen_toepassingsgebied_richtlijn_2014_53
+              default: false
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '2'
+              paragraph: '2'
+              explanation: >-
+                Onderdeel p: de producten van de punten i tot en met vi, "voor zover zij binnen
+                het toepassingsgebied van Richtlijn 2014/35/EU of Richtlijn 2014/53/EU vallen".
+                "Voor zover" heeft hier het product als onderwerp ("zij") en werkt als voorwaarde:
+                een product valt binnen het toepassingsgebied van een richtlijn of niet. Punt
+                i sluit elektronisch bedienbare meubels uit, punt iv additieve drukmachines voor
+                driedimensionale producten. De richtlijnen worden pas gelezen als vaststaat dat
+                het product onder een van de punten valt.
+          - output: uitgesloten_op_grond_van_lid_2
+            value:
+              operation: IF
+              cases:
+                - when: $zonder_andere_regeling_uitgesloten
+                  then: true
+              default:
+                operation: OR
+                conditions:
+                  - operation: EQUALS
+                    subject: $uitgesloten_onderdeel_f
+                    value: true
+                  - operation: EQUALS
+                    subject: $uitgesloten_onderdeel_g
+                    value: true
+                  - operation: EQUALS
+                    subject: $uitgesloten_onderdeel_h
+                    value: true
+                  - operation: EQUALS
+                    subject: $uitgesloten_onderdeel_i
+                    value: true
+                  - operation: EQUALS
+                    subject: $uitgesloten_onderdeel_p
+                    value: true
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '2'
+              paragraph: '2'
+              explanation: >-
+                Aanhef: "Deze verordening is niet van toepassing op:" gevolgd door de onderdelen
+                a tot en met q. Eén onderdeel volstaat, en daarom telt de volgorde waarin ze
+                worden bekeken niet voor de uitkomst. Het model bekijkt eerst de onderdelen die
+                alleen feiten van het product lezen, en pas als geen daarvan geldt de onderdelen
+                f, g, h, i en p, die het toepassingsgebied van een andere EU-regeling lezen. Zo
+                vraagt een raceauto (onderdeel j) niet om Verordening (EU) 2018/858, die nog
+                niet in het corpus staat. De onderdelen f, g, h, i en p geven in dat geval
+                zelf geen oordeel (null): dat een ander onderdeel al volstaat, zegt niets over
+                de vraag of het product ook onder de andere regeling valt.
+          - output: verordening_van_toepassing
+            value:
+              operation: AND
+              conditions:
+                - $is_product_binnen_toepassingsgebied
+                - operation: NOT
+                  value: $uitgesloten_op_grond_van_lid_2
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '2'
+              paragraph: '2'
+              explanation: >-
+                Lid 1 zegt op welke producten de verordening van toepassing is, lid 2 op welke
+                zij "niet van toepassing" is. Van toepassing is zij dus op een product van lid 1
+                dat onder geen onderdeel van lid 2 valt. Lid 2 is geen afwijking "in afwijking van"
+                lid 1, maar een beperking ervan; de aanduiding van lid 1, derde alinea, blijft
+                daardoor ongewijzigd.
   - number: '3'
     text: >-
       **Definities**
@@ -204,6 +1077,482 @@ articles:
       gebruiker”: natuurlijke persoon die in het kader van zijn of haar beroepsactiviteit
       of werk een machine of verwant product gebruikt of bedient.
     url: https://eur-lex.europa.eu/legal-content/NL/TXT/?uri=CELEX:32023R1230#art_3
+    machine_readable:
+      markings:
+        - about: een begrip dat het beoordeelde product kenmerkt naar een ander product
+          reason: >-
+            Punt 3 noemt een component een veiligheidscomponent als het een component is "van
+            een product dat binnen het toepassingsgebied van deze verordening valt". Dat is de
+            uitkomst van artikel 2, lid 1, maar voor een ander product dan het product dat wordt
+            beoordeeld. Punt 1, onder d) ("samenstel van machines als bedoeld in de punten a),
+            b) en c)"), punt 2 ("een machine of een landbouw- of bosbouwtrekker"), punt 9 ("een
+            andere machine of een verwant product") en punt 10 ("andere, al dan niet voltooide,
+            machines") hebben dezelfde vorm. Een uitvoering
+            beoordeelt één product, dat alleen bestaat als de feiten die de aanroeper als parameters
+            meegeeft. Een verwijzing naar een uitkomst van deze verordening binnen hetzelfde
+            document krijgt diezelfde parameters, en de engine herkent een uitkomst die al wordt
+            berekend aan zijn naam, niet aan het product waarvoor hij wordt gevraagd. Een tweede
+            product kan dus niet worden aangewezen, en het model neemt het oordeel over dat andere
+            product als feit van de aanroeper aan.
+          resolution: model
+          resolved_by: >-
+            Een productsleutel als parameter, waarop de feiten van een product uit een bron komen,
+            zodat een definitie de uitkomst van deze verordening voor een ander product kan opvragen
+            met de sleutel van dat product, zoals een wet de gegevens van een partner opvraagt
+            met diens bsn.
+          target: []
+          legal_text_excerpt: van een product dat binnen het toepassingsgebied van deze verordening valt
+          accepted: false
+        - about: inrichting en afscherming worden als één product beschouwd
+          reason: >-
+            Punt 9 bepaalt dat een overbrengingsinrichting die samen met een afscherming in de
+            handel wordt gebracht, met die afscherming "als één product" wordt beschouwd. Dat
+            is een fictie over wat het product is. Het model beoordeelt één product dat de
+            aanroeper met zijn feiten beschrijft, en kent geen vorm waarin twee dingen samen
+            één product worden, zodat de feiten van de afscherming meetellen bij die van de
+            inrichting.
+          resolution: model
+          resolved_by: >-
+            Een vorm waarin een product uit samengestelde delen bestaat, met een regel die zegt
+            wanneer die delen als één product gelden.
+          target: []
+          legal_text_excerpt: moeten de inrichting en de afscherming als één product worden beschouwd
+          accepted: false
+      # Dit artikel telt 36 punten. Uitvoerbaar zijn de punten 1 tot en met 10: de begrippen
+      # die artikel 2, lid 1, leest. De punten 11 tot en met 36 (in de handel brengen, fabrikant,
+      # importeur, conformiteitsbeoordeling, aangemelde instantie en verder) leest geen van de
+      # uitvoerbare artikelen van dit bestand; ze krijgen een model zodra een artikel dat ze
+      # gebruikt, er een krijgt. De punten 24, 26, 27 en 31 zijn definities door verwijzing
+      # naar Verordening (EG) nr. 765/2008 en Verordening (EU) 2019/1020, en worden dan een
+      # binding naar die regelingen.
+      execution:
+        parameters:
+          - name: samenstel_met_ten_minste_een_beweegbaar_onderdeel
+            type: boolean
+            required: false
+            description: >-
+              Punt 1, onder a en e. Het product is een samenstel van onderling verbonden onderdelen
+              of componenten waarvan er ten minste één kan bewegen.
+          - name: voorzien_van_of_bestemd_voor_aandrijfsysteem
+            type: boolean
+            required: false
+            description: >-
+              Punt 1, onder a. Het samenstel is voorzien van, of bestemd om te worden voorzien
+              van, een aandrijfsysteem.
+          - name: aandrijfsysteem_op_basis_van_rechtstreekse_spierkracht
+            type: boolean
+            required: false
+            description: >-
+              Punt 1, onder a. Het aandrijfsysteem werkt op basis van rechtstreeks gebruikte
+              menselijke of dierlijke spierkracht.
+          - name: samengevoegd_voor_bepaalde_toepassing
+            type: boolean
+            required: false
+            description: Punt 1, onder a. De onderdelen worden samengevoegd voor een bepaalde toepassing.
+          - name: samenstel_als_a_waaraan_slechts_montage_of_aansluitcomponenten_ontbreken
+            type: boolean
+            required: false
+            description: >-
+              Punt 1, onder b. Een samenstel als bedoeld in punt a, waaraan slechts de componenten
+              voor de montage op de plaats van gebruik of voor de aansluiting op kracht- of aandrijfbronnen
+              ontbreken.
+          - name: gereed_voor_montage_en_functioneert_alleen_na_montage_op_vervoermiddel_of_in_gebouw
+            type: boolean
+            required: false
+            description: >-
+              Punt 1, onder c. Het samenstel is gereed voor montage en kan alleen in deze staat
+              functioneren na montage op een vervoermiddel of montage in een gebouw of bouwwerk.
+          - name: samenstel_van_machines_dat_als_een_geheel_functioneert
+            type: boolean
+            required: false
+            description: >-
+              Punt 1, onder d. Een samenstel van machines als bedoeld in de punten a, b en c,
+              of van niet voltooide machines, dat teneinde tot hetzelfde resultaat te komen zodanig
+              is opgesteld en wordt bestuurd dat het als één geheel functioneert. Of de delen
+              machines zijn, stelt de aanroeper vast; zie de markering.
+          - name: in_samenhang_bestemd_voor_heffen_van_lasten
+            type: boolean
+            required: false
+            description: Punt 1, onder e. De onderdelen zijn in hun samenhang bestemd voor het heffen van lasten.
+          - name: enige_krachtbron_is_rechtstreeks_uitgeoefende_menselijke_spierkracht
+            type: boolean
+            required: false
+            description: Punt 1, onder e.
+          - name: samenstel_als_a_tot_en_met_e_waarop_enkel_software_ontbreekt
+            type: boolean
+            required: false
+            description: >-
+              Punt 1, onder f. Een samenstel als bedoeld in de punten a tot en met e waarop enkel
+              de software voor de specifieke, door de fabrikant bedoelde toepassing ervan ontbreekt.
+          - name: door_bediener_gekoppeld_aan_machine_of_trekker_voor_andere_of_nieuwe_functie
+            type: boolean
+            required: false
+            description: >-
+              Punt 2. Een inrichting die na inbedrijfstelling van een machine of een landbouw-
+              of bosbouwtrekker door de bediener hieraan wordt gekoppeld om deze een andere of
+              nieuwe functie te geven.
+          - name: is_gereedschap
+            type: boolean
+            required: false
+            description: Punt 2, "mits het uitrustingsstuk geen gereedschap is".
+          - name: component_van_product_binnen_toepassingsgebied
+            type: boolean
+            required: false
+            description: >-
+              Punt 3. Een fysieke of digitale component, met inbegrip van software, van een product
+              dat binnen het toepassingsgebied van deze verordening valt. Dat andere product beoordeelt
+              de aanroeper; zie de markering.
+          - name: functie_van_beschermende_maatregel_tegen_risico
+            type: boolean
+            required: false
+            description: >-
+              Punt 4. De functie waarvoor de component is ontworpen of bedoeld, is een functie
+              van een beschermende maatregel die ontworpen is om een risico weg te nemen of, indien
+              dat niet mogelijk is, te verminderen.
+          - name: uitval_kan_tot_toename_van_risico_leiden
+            type: boolean
+            required: false
+            description: Punt 4. Uitval van die functie zou tot een toename van dat risico kunnen leiden.
+          - name: afzonderlijk_in_de_handel_gebracht
+            type: boolean
+            required: false
+            description: Punten 3 en 5. Het product wordt afzonderlijk in de handel gebracht.
+          - name: niet_of_verkeerd_functioneren_brengt_veiligheid_van_personen_in_gevaar
+            type: boolean
+            required: false
+            description: Punt 3.
+          - name: niet_nodig_voor_werking_van_dat_product
+            type: boolean
+            required: false
+            description: Punt 3.
+          - name: door_gewone_componenten_vervangbaar_om_product_te_doen_werken
+            type: boolean
+            required: false
+            description: Punt 3.
+          - name: niet_vast_verbonden_onderdeel_voor_hijsen_of_heffen_van_last
+            type: boolean
+            required: false
+            description: >-
+              Punt 5. Een niet vast met de hijs- of hefmachine verbonden onderdeel of uitrustingsstuk
+              voor het hijsen of heffen van een last.
+          - name: aangebracht_tussen_machine_en_last_of_op_last
+            type: boolean
+            required: false
+            description: Punt 5. Wordt tussen de machine en de last of op de last zelf aangebracht.
+          - name: bestemd_om_integrerend_deel_van_last_uit_te_maken
+            type: boolean
+            required: false
+            description: Punt 5.
+          - name: is_strop_of_component_daarvan
+            type: boolean
+            required: false
+            description: Punt 5, "met inbegrip van stroppen en componenten daarvan".
+          - name: is_ketting_als_voorwerp
+            type: boolean
+            required: false
+            description: Punt 6. Het voorwerp is een ketting.
+          - name: is_kabel_als_voorwerp
+            type: boolean
+            required: false
+            description: Punt 7. Het voorwerp is een kabel.
+          - name: is_band_als_voorwerp
+            type: boolean
+            required: false
+            description: Punt 8. Het voorwerp is een band.
+          - name: ontworpen_en_geproduceerd_voor_hijs_en_hefdoeleinden
+            type: boolean
+            required: false
+            description: >-
+              Punten 6, 7 en 8. Ontworpen en geproduceerd voor hijs- en hefdoeleinden als onderdeel
+              van hijs- of hefmachines of van hijs- of hefgereedschap.
+          - name: verwijderbare_component_voor_krachtoverbrenging
+            type: boolean
+            required: false
+            description: Punt 9. Het product is een verwijderbare component voor krachtoverbrenging.
+          - name: tussen_machine_met_eigen_aandrijving_of_trekker_en_andere_machine_of_verwant_product
+            type: boolean
+            required: false
+            description: >-
+              Punt 9. De krachtoverbrenging loopt tussen een machine met eigen aandrijving of
+              een trekker en een andere machine of een verwant product. Of dat andere product
+              een machine of verwant product is, neemt het model als feit aan; zie de markering
+              over een begrip dat naar een ander product verwijst.
+          - name: verbindt_bij_eerste_vaste_aslager
+            type: boolean
+            required: false
+            description: Punt 9. De component verbindt die twee bij de eerste vaste aslager.
+          - name: kan_niet_zelfstandig_bepaalde_toepassing_realiseren
+            type: boolean
+            required: false
+            description: Punt 10.
+          - name: slechts_bedoeld_om_te_worden_ingebouwd_om_machine_te_vormen
+            type: boolean
+            required: false
+            description: >-
+              Punt 10. Slechts bedoeld om te worden ingebouwd in of te worden samengebouwd met
+              andere, al dan niet voltooide, machines of uitrusting om een machine te vormen.
+        output:
+          - name: machine_onder_a
+            type: boolean
+            description: Punt 1, onder a.
+          - name: machine_onder_b
+            type: boolean
+            description: Punt 1, onder b.
+          - name: machine_onder_c
+            type: boolean
+            description: Punt 1, onder c.
+          - name: machine_onder_e
+            type: boolean
+            description: Punt 1, onder e.
+          - name: is_machine
+            type: boolean
+            description: Punt 1, "machine".
+          - name: is_verwisselbaar_uitrustingsstuk
+            type: boolean
+            description: Punt 2.
+          - name: is_veiligheidsfunctie
+            type: boolean
+            description: Punt 4, voor de functie waarvoor de component is ontworpen of bedoeld.
+          - name: is_veiligheidscomponent
+            type: boolean
+            description: Punt 3.
+          - name: is_hijs_of_hefgereedschap
+            type: boolean
+            description: Punt 5.
+          - name: is_ketting
+            type: boolean
+            description: Punt 6, "kettingen".
+          - name: is_kabel
+            type: boolean
+            description: Punt 7, "kabels".
+          - name: is_band
+            type: boolean
+            description: Punt 8, "banden".
+          - name: is_verwijderbare_mechanische_overbrengingsinrichting
+            type: boolean
+            description: Punt 9.
+          - name: is_niet_voltooide_machine
+            type: boolean
+            description: Punt 10.
+        actions:
+          - output: machine_onder_a
+            value:
+              operation: AND
+              conditions:
+                - $samenstel_met_ten_minste_een_beweegbaar_onderdeel
+                - $voorzien_van_of_bestemd_voor_aandrijfsysteem
+                - operation: NOT
+                  value: $aandrijfsysteem_op_basis_van_rechtstreekse_spierkracht
+                - $samengevoegd_voor_bepaalde_toepassing
+                - operation: NOT
+                  value: $kan_niet_zelfstandig_bepaalde_toepassing_realiseren
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '3'
+              explanation: >-
+                Punt 1, onder a: "samenstel, voorzien van of bestemd om te worden voorzien van
+                een aandrijfsysteem – maar niet op basis van rechtstreeks gebruikte menselijke
+                of dierlijke spierkracht –, van onderling verbonden onderdelen of componenten
+                waarvan er ten minste één kan bewegen, en die samengevoegd worden voor een bepaalde
+                toepassing". Punt 10 zegt dat een samenstel "nog geen machine vormt, aangezien
+                het niet zelfstandig een bepaalde toepassing kan realiseren". Een samenstel dat
+                dat niet kan, is daarom geen machine onder a, ook niet als het voor een toepassing
+                is samengevoegd. Via punt 1, onder c, dat naar a verwijst, geldt dat daar ook.
+          - output: machine_onder_b
+            value: $samenstel_als_a_waaraan_slechts_montage_of_aansluitcomponenten_ontbreken
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '3'
+              explanation: >-
+                Punt 1, onder b: een samenstel als bedoeld in punt a, waaraan slechts de componenten
+                voor montage of aansluiting ontbreken. Omdat die componenten ontbreken, voldoet
+                het samenstel zelf niet aan punt a; het is een eigen feit.
+          - output: machine_onder_c
+            value:
+              operation: AND
+              conditions:
+                - operation: OR
+                  conditions:
+                    - $machine_onder_a
+                    - $machine_onder_b
+                - $gereed_voor_montage_en_functioneert_alleen_na_montage_op_vervoermiddel_of_in_gebouw
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '3'
+              explanation: >-
+                Punt 1, onder c: "samenstel als bedoeld in de punten a) en b) dat gereed is voor
+                montage en dat alleen in deze staat kan functioneren na montage op een vervoermiddel
+                of montage in een gebouw of bouwwerk".
+          - output: machine_onder_e
+            value:
+              operation: AND
+              conditions:
+                - $samenstel_met_ten_minste_een_beweegbaar_onderdeel
+                - $in_samenhang_bestemd_voor_heffen_van_lasten
+                - $enige_krachtbron_is_rechtstreeks_uitgeoefende_menselijke_spierkracht
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '3'
+              explanation: >-
+                Punt 1, onder e: "samenstel van onderling verbonden onderdelen of componenten
+                waarvan er ten minste één kan bewegen, die in hun samenhang bestemd zijn voor
+                het heffen van lasten en waarvan de enige krachtbron rechtsreeks uitgeoefende
+                menselijke spierkracht is".
+          - output: is_machine
+            value:
+              operation: OR
+              conditions:
+                - $machine_onder_a
+                - $machine_onder_b
+                - $machine_onder_c
+                - $samenstel_van_machines_dat_als_een_geheel_functioneert
+                - $machine_onder_e
+                - $samenstel_als_a_tot_en_met_e_waarop_enkel_software_ontbreekt
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '3'
+              explanation: >-
+                Punt 1: een machine is een samenstel als bedoeld in een van de onderdelen a tot
+                en met f. Onderdeel d (samenstel van machines of niet voltooide machines dat als
+                één geheel functioneert) en onderdeel f (samenstel als bedoeld in a tot en met
+                e waarop enkel de software ontbreekt) zijn feiten van de aanroeper.
+          - output: is_verwisselbaar_uitrustingsstuk
+            value:
+              operation: AND
+              conditions:
+                - $door_bediener_gekoppeld_aan_machine_of_trekker_voor_andere_of_nieuwe_functie
+                - operation: NOT
+                  value: $is_gereedschap
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '3'
+              explanation: >-
+                Punt 2: "inrichting die na inbedrijfstelling van een machine of een landbouw-
+                of bosbouwtrekker door de bediener hieraan wordt gekoppeld om deze een andere
+                of nieuwe functie te geven, mits het uitrustingsstuk geen gereedschap is".
+          - output: is_veiligheidsfunctie
+            value:
+              operation: AND
+              conditions:
+                - $functie_van_beschermende_maatregel_tegen_risico
+                - $uitval_kan_tot_toename_van_risico_leiden
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '3'
+              explanation: >-
+                Punt 4: "functie van een beschermende maatregel die ontworpen is om een risico
+                weg te nemen of, indien dat niet mogelijk is, te verminderen, en die, indien zij
+                uitvalt, tot een toename van dat risico zou kunnen leiden".
+          - output: is_veiligheidscomponent
+            value:
+              operation: AND
+              conditions:
+                - $component_van_product_binnen_toepassingsgebied
+                - $is_veiligheidsfunctie
+                - $afzonderlijk_in_de_handel_gebracht
+                - $niet_of_verkeerd_functioneren_brengt_veiligheid_van_personen_in_gevaar
+                - operation: OR
+                  conditions:
+                    - $niet_nodig_voor_werking_van_dat_product
+                    - $door_gewone_componenten_vervangbaar_om_product_te_doen_werken
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '3'
+              explanation: >-
+                Punt 3: "fysieke of digitale component, met inbegrip van software, van een product
+                dat binnen het toepassingsgebied van deze verordening valt, die ontworpen of bedoeld
+                is om een veiligheidsfunctie te vervullen en die afzonderlijk in de handel wordt
+                gebracht, waarvan het niet of verkeerd functioneren de veiligheid van personen
+                in gevaar brengt, maar die niet nodig is voor de werking van dat product, of die
+                door gewone componenten kan worden vervangen om dat product te doen werken". De
+                "of" staat tussen de twee laatste bijzinnen; de veiligheidsfunctie komt uit punt
+                4.
+          - output: is_hijs_of_hefgereedschap
+            value:
+              operation: OR
+              conditions:
+                - operation: AND
+                  conditions:
+                    - $niet_vast_verbonden_onderdeel_voor_hijsen_of_heffen_van_last
+                    - operation: OR
+                      conditions:
+                        - $aangebracht_tussen_machine_en_last_of_op_last
+                        - $bestemd_om_integrerend_deel_van_last_uit_te_maken
+                    - $afzonderlijk_in_de_handel_gebracht
+                - $is_strop_of_component_daarvan
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '3'
+              explanation: >-
+                Punt 5: een niet vast verbonden onderdeel of uitrustingsstuk voor het hijsen of
+                heffen van een last "dat tussen de machine en de last of op de last zelf wordt
+                aangebracht dan wel bestemd is om een integrerend deel van de last uit te maken
+                en dat afzonderlijk in de handel wordt gebracht, met inbegrip van stroppen en
+                componenten daarvan".
+          - output: is_ketting
+            value:
+              operation: AND
+              conditions:
+                - $is_ketting_als_voorwerp
+                - $ontworpen_en_geproduceerd_voor_hijs_en_hefdoeleinden
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '3'
+              explanation: >-
+                Punt 6: "kettingen die zijn ontworpen en geproduceerd voor hijs- en hefdoeleinden
+                als onderdeel van hijs- of hefmachines of van hijs- of hefgereedschap".
+          - output: is_kabel
+            value:
+              operation: AND
+              conditions:
+                - $is_kabel_als_voorwerp
+                - $ontworpen_en_geproduceerd_voor_hijs_en_hefdoeleinden
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '3'
+              explanation: 'Punt 7: "kabels die zijn ontworpen en geproduceerd voor hijs- en hefdoeleinden [...]".'
+          - output: is_band
+            value:
+              operation: AND
+              conditions:
+                - $is_band_als_voorwerp
+                - $ontworpen_en_geproduceerd_voor_hijs_en_hefdoeleinden
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '3'
+              explanation: 'Punt 8: "banden die zijn ontworpen en geproduceerd voor hijs- en hefdoeleinden [...]".'
+          - output: is_verwijderbare_mechanische_overbrengingsinrichting
+            value:
+              operation: AND
+              conditions:
+                - $verwijderbare_component_voor_krachtoverbrenging
+                - $tussen_machine_met_eigen_aandrijving_of_trekker_en_andere_machine_of_verwant_product
+                - $verbindt_bij_eerste_vaste_aslager
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '3'
+              explanation: >-
+                Punt 9: "een verwijderbare component voor krachtoverbrenging tussen een machine
+                met eigen aandrijving of een trekker en een andere machine of een verwant product
+                door ze te verbinden bij de eerste vaste aslager". De tweede helft van punt 9,
+                over inrichting en afscherming als één product, staat in een markering.
+          - output: is_niet_voltooide_machine
+            value:
+              operation: AND
+              conditions:
+                - operation: NOT
+                  value: $is_machine
+                - $kan_niet_zelfstandig_bepaalde_toepassing_realiseren
+                - $slechts_bedoeld_om_te_worden_ingebouwd_om_machine_te_vormen
+            legal_basis:
+              law: Verordening (EU) 2023/1230
+              article: '3'
+              explanation: >-
+                Punt 10: "samenstel dat nog geen machine vormt, aangezien het niet zelfstandig
+                een bepaalde toepassing kan realiseren, en dat slechts is bedoeld om te worden
+                ingebouwd in of te worden samengebouwd met andere, al dan niet voltooide, machines
+                of uitrusting om een machine te vormen". "Nog geen machine" is de ontkenning van
+                punt 1.
   - number: '4'
     text: >-
       **Vrij verkeer**
@@ -1184,6 +2533,23 @@ articles:
               output: procedures_lid_4
               parameters:
                 categorie_bijlage_i: $categorie_bijlage_i
+          - name: is_machine_of_verwant_product
+            type: boolean
+            description: >-
+              Artikel 2, lid 1, eerste alinea. De feiten over het product zijn dezelfde feiten
+              die de aanroeper voor dit artikel meegeeft; zie verordening_van_toepassing.
+            source:
+              output: is_machine_of_verwant_product
+          - name: verordening_van_toepassing
+            type: boolean
+            description: >-
+              Artikel 2, lid 2. Deze binding en de vorige noemen geen parameters: de feiten over
+              het product (ruim zestig, uit de artikelen 2 en 3) gaan ongewijzigd mee, omdat een
+              verwijzing binnen deze verordening alle parameters van de aanroep doorgeeft. Een
+              scenario rekent de uitsluiting van een wapen hier vanaf die feiten uit, zodat een
+              engine die dat anders gaat doen, niet stil een verkeerde uitkomst geeft.
+            source:
+              output: verordening_van_toepassing
         output:
           - name: toegestane_conformiteitsbeoordelingsprocedures
             type: array
@@ -1193,17 +2559,34 @@ articles:
               18 bedoelde persoon, er een toepast. Codes: A (interne productiecontrole, bijlage
               VI), B+C (EU-typeonderzoek, bijlage VII, gevolgd door conformiteit met het type
               op basis van interne productiecontrole, bijlage VIII), H (volledige kwaliteitsborging,
-              bijlage IX), G (eenheidskeuring, bijlage X).
+              bijlage IX), G (eenheidskeuring, bijlage X). Geen uitkomst (null) voor een product
+              dat geen machine of verwant product is, of waarop de verordening volgens artikel
+              2 niet van toepassing is.
         actions:
           - output: toegestane_conformiteitsbeoordelingsprocedures
             value:
               operation: IF
               cases:
-                - when: $lid_2_van_toepassing
+                - when:
+                    operation: AND
+                    conditions:
+                      - $lid_2_van_toepassing
+                      - $is_machine_of_verwant_product
+                      - $verordening_van_toepassing
                   then: $procedures_lid_2
-                - when: $lid_3_van_toepassing
+                - when:
+                    operation: AND
+                    conditions:
+                      - $lid_3_van_toepassing
+                      - $is_machine_of_verwant_product
+                      - $verordening_van_toepassing
                   then: $procedures_lid_3
-                - when: $lid_4_van_toepassing
+                - when:
+                    operation: AND
+                    conditions:
+                      - $lid_4_van_toepassing
+                      - $is_machine_of_verwant_product
+                      - $verordening_van_toepassing
                   then: $procedures_lid_4
               default: null
             legal_basis:
@@ -1215,7 +2598,12 @@ articles:
                 in de leden 2, 3 en 4 genoemde procedures toe. Welk lid geldt, volgt uit de
                 plaats van de categorie in bijlage I. Is de opgegeven categorie geen punt
                 van bijlage I en ook niet "geen", dan geldt geen van de leden en is er geen
-                uitkomst (null).
+                uitkomst (null). Het opschrift ("voor machines en verwante producten") en de
+                leden 2 tot en met 4 ("de categorie machines of verwante producten") beperken
+                het artikel tot de groep van artikel 2, lid 1, eerste alinea; een niet voltooide
+                machine krijgt hier geen procedure. Artikel 2, lid 2, zegt dat "deze verordening",
+                en dus ook dit artikel, niet van toepassing is op de daar genoemde producten;
+                zo'n product krijgt evenmin een procedure (null).
   - number: '25.2'
     text: >-
       Als de categorie machines of verwante producten in bijlage I, deel A, is opgenomen,

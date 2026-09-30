@@ -12,6 +12,17 @@ Continuous integration runs on every push to `main` and every pull request via `
 - **Formatting** - `just format` (rustfmt check)
 - **Linting** - `just lint` (clippy)
 - **YAML validation** - yamllint + schema validation on corpus files
+- **Cross-law integrity** - `script/cross-law-integriteit.py` fails on a
+  `source` binding that is misplaced or points at an output the target law does
+  not produce, on an `implements` that points at nothing, and on the other
+  classes its docstring lists. A binding onto a law that is not in the corpus
+  fails too, unless `corpus/niet-geoogst.yaml` names that law: then it is
+  reported as `NIET-GEOOGST` and shown as a warning on the run. An `$id` that the
+  list does not name is treated as a typo. An entry in the list turns the check
+  red once the law is in the corpus or no binding reads it any more, so the list
+  keeps saying what is actually missing. A target law that is in the corpus but
+  has no `machine_readable` yet is reported as `NIET-GEINTERPRETEERD` and does
+  not fail either
 - **Pre-commit hooks** - trailing whitespace, end-of-file, merge conflicts
 
 ### Tests (on Rust changes)

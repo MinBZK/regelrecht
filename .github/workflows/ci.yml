@@ -68,6 +68,9 @@ jobs:
               - packages/frontend-shared/**
               - bdd/**
               - corpus/regulation/**
+              # De lijst van wetten die een binding leest maar die nog niet geoogst
+              # zijn; de cross-law-poort leest hem.
+              - corpus/niet-geoogst.yaml
               # De demo-wetten en -scenario's: gevalideerd en gedraaid als bucket demo.
               - corpus/demo/**
               - schema/**
@@ -355,6 +358,9 @@ jobs:
       # Fail-closed gate over the corpus: MISPLACED / DANGLING / PLAIN-PARAM
       # source bindings and IMPL-DANGLING / IMPL-NO-DATE implements declarations
       # are all modelling errors. The script exits non-zero on any finding.
+      # A binding onto a law that corpus/niet-geoogst.yaml lists as not harvested
+      # yet is NIET-GEOOGST: reported as a warning, not failing (a state of the
+      # corpus, not a modelling error). Any other unknown $id stays red.
       - name: Check cross-law binding integrity
         run: |
           python3 script/cross-law-integriteit.py corpus/regulation

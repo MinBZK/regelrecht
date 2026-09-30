@@ -1,0 +1,28 @@
+---
+# Wetten die een binding in corpus/regulation leest, maar die nog niet in het
+# corpus staan. script/cross-law-integriteit.py meldt zo'n binding als
+# NIET-GEOOGST in plaats van hem rood te laten worden; een binding op een $id
+# die hier niet staat, is een tikfout tot het tegendeel blijkt.
+#
+# Een regel die niet meer klopt, laat de controle rood worden: staat de wet
+# inmiddels in het corpus, of leest geen binding hem meer, haal de regel dan weg.
+# De lijst zegt dus altijd wat er nu ontbreekt.
+
+verordening_eu_2018_1139:
+  naam: Verordening (EU) 2018/1139 (gemeenschappelijke regels op het gebied van burgerluchtvaart)
+  celex: 32018R1139
+verordening_eu_2018_858:
+  naam: Verordening (EU) 2018/858 (goedkeuring van en markttoezicht op motorvoertuigen)
+  celex: 32018R0858
+verordening_eu_168_2013:
+  naam: Verordening (EU) nr. 168/2013 (twee- of driewielige voertuigen en vierwielers)
+  celex: 32013R0168
+verordening_eu_167_2013:
+  naam: Verordening (EU) nr. 167/2013 (landbouw- en bosbouwvoertuigen)
+  celex: 32013R0167
+richtlijn_2014_35_eu:
+  naam: Richtlijn 2014/35/EU (elektrisch materiaal binnen bepaalde spanningsgrenzen)
+  celex: 32014L0035
+richtlijn_2014_53_eu:
+  naam: Richtlijn 2014/53/EU (radioapparatuur)
+  celex: 32014L0053

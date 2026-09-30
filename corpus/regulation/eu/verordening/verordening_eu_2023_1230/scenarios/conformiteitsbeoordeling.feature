@@ -11,6 +11,11 @@ Feature: Welke conformiteitsbeoordelingsprocedure geldt (artikel 25 en bijlage I
   draaien daarom in de modus "warn", die de uitdrukbare logica uitvoert; de
   laatste twee laten zien wat de markering in de andere modi doet.
 
+  Artikel 25, lid 1, geeft alleen een procedure voor een machine of verwant
+  product waarop de verordening volgens artikel 2 van toepassing is. Die
+  feiten staan in toepassingsgebied.feature; hier gaat het om de indeling in
+  bijlage I, en het laatste scenario laat zien dat lid 1 op artikel 2 wacht.
+
   Background:
     Given the calculation date is "2027-01-14"
     Given the untranslatable mode is "warn"
@@ -83,3 +88,11 @@ Feature: Welke conformiteitsbeoordelingsprocedure geldt (artikel 25 en bijlage I
     When I evaluate "lid_2_van_toepassing" of "verordening_eu_2023_1230"
     Then the execution succeeds
     Then output "lid_2_van_toepassing" is tainted as untranslatable
+
+  Scenario: Zonder de feiten van artikel 2 is de procedure onbekend
+    Given the following parameters:
+      | categorie_bijlage_i                                  | A.3   |
+      | vervaardigd_volgens_normen_die_alle_eisen_bestrijken | false |
+    When I evaluate "toegestane_conformiteitsbeoordelingsprocedures" of "verordening_eu_2023_1230"
+    Then the execution succeeds
+    Then output "toegestane_conformiteitsbeoordelingsprocedures" is unknown for lack of "is_wapen"

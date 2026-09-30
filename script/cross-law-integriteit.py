@@ -8,7 +8,9 @@ Verifies that every cross-law source binding is REAL and RESOLVABLE:
                field, so the binding is silently dropped at parse time and the
                value is treated as a plain direct parameter. Cross-law never fires.
   DANGLING   - a `source: {regulation, output}` whose target law does not produce
-               that output (engine fails at resolution: "variable not found").
+               that output (engine fails at resolution: "variable not found"), or
+               whose target law is not in the corpus and not listed as expected
+               either (a typo in the `$id` lands here).
   PLAIN-PARAM- an input whose description references another regulation
                ("conceptueel", "forward naar", "tijdelijk als directe parameter")
                but has no `source:` block at all.
@@ -21,8 +23,23 @@ Verifies that every cross-law source binding is REAL and RESOLVABLE:
                for EVERY calculation date, silently overriding the correct
                version. Implementing regulations must be dated.
 
-All findings are MODELLING ERRORS, never engine limitations. Exit code != 0 if
-any are found (usable as a CI gate).
+  NIET-GEOOGST - reported, not failing. A binding onto a law that is not in the
+               corpus yet and IS listed in niet-geoogst.yaml (next to the corpus
+               root, or --niet-geoogst FILE). That is a state of the corpus, not a
+               modelling error (law-generate: "write the binding and leave it
+               standing"; the pipeline calls it outside-corpus). The engine answers
+               LawNotFound until the law is harvested.
+  NIET-GEINTERPRETEERD - reported, not failing. The target law is in the corpus
+               but has no machine_readable at all yet, so it produces no output
+               (the pipeline's NotYetInterpreted). A target that does have a model
+               but lacks the output stays DANGLING.
+  STALE      - an entry in niet-geoogst.yaml whose law is in the corpus now, or
+               that no binding reads any more. The list says what is missing; an
+               entry that is no longer true fails, so the list cannot drift.
+
+The failing classes are MODELLING ERRORS, never engine limitations. Exit code != 0
+if any are found (usable as a CI gate). The two reported classes never fail; in
+GitHub Actions they are also printed as ::warning:: so they show on the run.
 
 ONE STATE PER LAW, CHOSEN BY DATE. A law with several `valid_from` states shares
 one `$id`. Until now the loader kept whichever file glob happened to yield last,
@@ -41,9 +58,10 @@ that the law has ended, rather than silently reading a predecessor the engine
 would never use.
 
 Usage:  python3 cross-law-integriteit.py [corpus_root] [--peildatum YYYY-MM-DD]
-        (defaults: regulation, today)
+                                        [--niet-geoogst FILE]
+        (defaults: regulation, today, <corpus_root>/../niet-geoogst.yaml)
 """
-import sys, glob, datetime
+import sys, glob, datetime, os
 
 try:
     import yaml
@@ -53,6 +71,13 @@ except ImportError:
 
 args = [a for a in sys.argv[1:]]
 peildatum = datetime.date.today().isoformat()
+niet_geoogst_pad = None
+for i, a in enumerate(list(args)):
+    if a.startswith('--niet-geoogst'):
+        niet_geoogst_pad = a.split('=', 1)[1] if '=' in a else args[i + 1]
+        args = [x for j, x in enumerate(args)
+                if j != i and not (j == i + 1 and '=' not in a)]
+        break
 for i, a in enumerate(list(args)):
     if a.startswith('--peildatum'):
         peildatum = a.split('=', 1)[1] if '=' in a else args[i + 1]
@@ -60,6 +85,14 @@ for i, a in enumerate(list(args)):
                 if j != i and not (j == i + 1 and '=' not in a)]
         break
 root = args[0] if args else 'regulation'
+if niet_geoogst_pad is None:
+    niet_geoogst_pad = os.path.join(os.path.dirname(os.path.abspath(root)), 'niet-geoogst.yaml')
+verwacht = {}
+if os.path.exists(niet_geoogst_pad):
+    verwacht = yaml.safe_load(open(niet_geoogst_pad)) or {}
+    if not isinstance(verwacht, dict):
+        sys.stderr.write(f'{niet_geoogst_pad}: verwacht een mapping van $id naar gegevens\n')
+        sys.exit(2)
 
 
 def _valid_from(doc):
@@ -125,6 +158,8 @@ open_terms_idx = {lid: declared_open_terms(doc) for lid, doc in laws.items()}
 # parameters that FEED a binding's parameters-mapping (e.g. an upstream data field).
 PLAIN_MARKERS = ('conceptueel', 'tijdelijk als directe parameter')
 misplaced, dangling, plain, ok = [], [], [], 0
+niet_geoogst, niet_geinterpreteerd, stale = [], [], []
+gelezen_verwacht = set()
 impl_dangling, impl_nodate = [], []
 
 for lid, doc in laws.items():
@@ -181,12 +216,30 @@ for lid, doc in laws.items():
                 else:
                     ok += 1
             else:
-                if reg not in law_outputs or (out is not None and out not in law_outputs[reg]):
+                if reg not in law_outputs:
+                    # Only a law the list names counts as "not harvested yet"; any
+                    # other unknown $id is treated as a typo and stays red.
+                    if reg in verwacht:
+                        gelezen_verwacht.add(reg)
+                        niet_geoogst.append(f'{lid} art {num}: {reg}.{out} (wet niet in corpus)')
+                    else:
+                        dangling.append(f'{lid} art {num}: {reg}.{out}: wet niet in corpus en '
+                                        f'niet genoemd in {os.path.basename(niet_geoogst_pad)}')
+                elif not law_outputs[reg]:
+                    niet_geinterpreteerd.append(f'{lid} art {num}: {reg}.{out} (wet in corpus, nog geen machine_readable)')
+                elif out is not None and out not in law_outputs[reg]:
                     dangling.append(f'{lid} art {num}: {reg}.{out} bestaat niet in doelwet')
                 else:
                     ok += 1
 
+for reg in sorted(verwacht):
+    if reg in laws:
+        stale.append(f'{reg}: staat nu in het corpus; haal hem uit {os.path.basename(niet_geoogst_pad)}')
+    elif reg not in gelezen_verwacht:
+        stale.append(f'{reg}: geen binding leest deze wet; haal hem uit {os.path.basename(niet_geoogst_pad)}')
+
 print(f'clean={ok} misplaced={len(misplaced)} dangling={len(dangling)} '
+      f'niet-geoogst={len(niet_geoogst)} niet-geinterpreteerd={len(niet_geinterpreteerd)} stale={len(stale)} '
       f'plain-param={len(plain)} impl-dangling={len(impl_dangling)} impl-no-date={len(impl_nodate)}')
 # Show which state was consulted wherever there was a choice. A silent choice is
 # what made the old loader dangerous: the reader could not see that the check had
@@ -203,10 +256,18 @@ for x in misplaced:
     print('  MISPLACED', x)
 for x in dangling:
     print('  DANGLING', x)
+in_actions = os.environ.get('GITHUB_ACTIONS') == 'true'
+for label, items in (('NIET-GEOOGST', niet_geoogst), ('NIET-GEINTERPRETEERD', niet_geinterpreteerd)):
+    for x in items:
+        print(f'  {label}', x)
+        if in_actions:
+            print(f'::warning title=Cross-law {label}::{x}')
+for x in stale:
+    print('  STALE', x)
 for x in plain:
     print('  PLAIN', x)
 for x in impl_dangling:
     print('  IMPL-DANGLING', x)
 for x in impl_nodate:
     print('  IMPL-NO-DATE', x)
-sys.exit(1 if (misplaced or dangling or plain or impl_dangling or impl_nodate) else 0)
+sys.exit(1 if (misplaced or dangling or plain or impl_dangling or impl_nodate or stale) else 0)

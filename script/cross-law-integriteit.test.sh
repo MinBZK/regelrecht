@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Dekt de toestandskeuze van script/cross-law-integriteit.py.
+# Dekt de toestandskeuze van script/cross-law-integriteit.py, en wat er gebeurt
+# met een binding op een wet die niet (volledig) in het corpus staat.
 #
 # Waarom juist dit: een wet met meerdere `valid_from`-toestanden deelt één `$id`.
 # De loader hield eerder wat glob toevallig als laatste opleverde, dus de controle
@@ -143,6 +144,74 @@ else
     pass=$((pass + 1))
     printf '  ok   op valid_to zelf nog in werking\n'
 fi
+
+# 9. Een binding op een wet die niet in het corpus staat. Staat die wet in
+#    niet-geoogst.yaml, dan is het een stand van het corpus en geen modelleerfout
+#    (law-generate: "write the binding and leave it standing"; de pipeline noemt
+#    dit outside-corpus): gemeld, niet rood. Staat hij er niet in, dan is het een
+#    tikfout tot het tegendeel blijkt, en rood. De lijst zelf mag niet verouderen:
+#    een regel voor een wet die er nu wel is, of die niemand meer leest, is rood.
+lezer() { # $1 = map, $2 = doel-$id, $3 = doel-output
+    mkdir -p "$1"
+    cat >"$1/2026-01-01.yaml" <<YAML
+\$id: lezer
+valid_from: '2026-01-01'
+articles:
+  - number: '1'
+    machine_readable:
+      execution:
+        input:
+          - name: waarde
+            type: boolean
+            source:
+              regulation: $2
+              output: $3
+        output:
+          - name: gelezen
+YAML
+}
+verwacht() { # $1 = bestand, $2.. = $id's
+    local f="$1"; shift
+    : >"$f"
+    for id in "$@"; do printf '%s:\n  naam: %s\n' "$id" "$id" >>"$f"; done
+}
+leeg="$tmp/leeg-niet-geoogst.yaml"; : >"$leeg"
+
+c4="$tmp/niet-geoogst"
+lezer "$c4/lezer" nog_niet_geoogst uitkomst
+verwacht "$tmp/lijst-c4.yaml" nog_niet_geoogst
+check "niet-geoogste wet uit de lijst → gemeld, niet rood" 0 "niet-geoogst=1 " "$c4" --peildatum 2026-06-01 --niet-geoogst "$tmp/lijst-c4.yaml"
+check "niet-geoogste wet staat in de uitvoer" 0 "NIET-GEOOGST.*nog_niet_geoogst.uitkomst" "$c4" --peildatum 2026-06-01 --niet-geoogst "$tmp/lijst-c4.yaml"
+check "onbekende wet buiten de lijst → tikfout, rood" 1 "dangling=1 " "$c4" --peildatum 2026-06-01 --niet-geoogst "$leeg"
+
+c7="$tmp/lijst-verouderd"
+doelwet "$c7/doelwet" 2020-01-01 nee
+lezer "$c7/lezer" doelwet uitkomst
+verwacht "$tmp/lijst-c7.yaml" doelwet
+check "wet in de lijst staat inmiddels in het corpus → stale, rood" 1 "STALE doelwet: staat nu in het corpus" "$c7" --peildatum 2026-06-01 --niet-geoogst "$tmp/lijst-c7.yaml"
+verwacht "$tmp/lijst-c7b.yaml" niemand_leest_mij
+check "wet in de lijst die niemand leest → stale, rood" 1 "STALE niemand_leest_mij: geen binding" "$c7" --peildatum 2026-06-01 --niet-geoogst "$tmp/lijst-c7b.yaml"
+
+c8="$tmp/niet-geinterpreteerd"
+mkdir -p "$c8/kaal"
+cat >"$c8/kaal/2020-01-01.yaml" <<'YAML'
+$id: kaal
+valid_from: '2020-01-01'
+articles:
+  - number: '1'
+    text: alleen tekst
+YAML
+lezer "$c8/lezer" kaal uitkomst
+check "doelwet zonder machine_readable → niet-geinterpreteerd, niet rood" 0 "niet-geinterpreteerd=1 " "$c8" --peildatum 2026-06-01 --niet-geoogst "$leeg"
+
+c5="$tmp/output-mist"
+doelwet "$c5/doelwet" 2020-01-01 nee
+lezer "$c5/lezer" doelwet bestaat_niet
+check "doelwet met model, output ontbreekt → dangling" 1 "dangling=1" "$c5" --peildatum 2026-06-01 --niet-geoogst "$leeg"
+c6="$tmp/output-klopt"
+doelwet "$c6/doelwet" 2020-01-01 nee
+lezer "$c6/lezer" doelwet uitkomst
+check "doelwet aanwezig, output bestaat → groen" 0 "dangling=0 niet-geoogst=0" "$c6" --peildatum 2026-06-01 --niet-geoogst "$leeg"
 
 echo ""
 echo "$pass geslaagd, $fail mislukt"
