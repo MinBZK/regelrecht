@@ -72,8 +72,8 @@ pub use error::{EngineError, ExternalError, Result};
 pub use operations::{evaluate_value, execute_operation, ValueResolver};
 pub use receipt::ExecutionReceipt;
 pub use resolver::{
-    DeclarationKind, DeclarationNotInForce, DeclarationsFromOtherVersion, DelegationRefusal,
-    ImplementationLookup, ProcedureMiss, RuleResolver,
+    DecisionOn, DeclarationKind, DeclarationNotInForce, DeclarationsFromOtherVersion,
+    DelegationRefusal, HookEntry, ImplementationLookup, ProcedureMiss, RuleResolver,
 };
 pub use service::{ExecutionOutcome, LawExecutionService, LawInfo, ServiceProvider, StageState};
 pub use trace::{PathNode, TraceBuilder};
