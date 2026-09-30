@@ -159,7 +159,6 @@ impl<'l> RuleContext<'l> {
         })
     }
 
-    /// Resolve declared inputs and open terms on first read (RFC-043).
     /// What output `name`, just computed as `value`, becomes: see
     /// [`LazyInputs::replace_output`]. `None` for a bare context.
     pub(crate) fn replaced_output(&self, name: &str, value: &Value) -> Option<Result<Value>> {
@@ -167,6 +166,7 @@ impl<'l> RuleContext<'l> {
         lazy.replace_output(name, value, &self.outputs)
     }
 
+    /// Resolve declared inputs and open terms on first read (RFC-043).
     pub(crate) fn set_lazy(&mut self, lazy: &'l dyn LazyInputs) {
         self.lazy = Some(LazyHook(lazy));
     }

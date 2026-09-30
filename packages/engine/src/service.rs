@@ -249,8 +249,18 @@ impl<'a> ResolutionContext<'a> {
     /// What is held back for a base read, as a cycle-key suffix: empty when
     /// nothing is, so ordinary keys are unchanged.
     fn held_back_suffix(&self) -> String {
-        let mut held: Vec<&str> = self.held_back.iter().map(String::as_str).collect();
+        Self::suffix_of(self.held_back.iter().map(String::as_str))
+    }
+
+    /// [`Self::held_back_suffix`], as it will be once `extra` is held back too.
+    fn held_back_suffix_with(&self, extra: &[String]) -> String {
+        Self::suffix_of(self.held_back.iter().chain(extra).map(String::as_str))
+    }
+
+    fn suffix_of<'k>(keys: impl Iterator<Item = &'k str>) -> String {
+        let mut held: Vec<&str> = keys.collect();
         held.sort_unstable();
+        held.dedup();
         held.iter().map(|key| format!("\0held:{key}")).collect()
     }
 
@@ -2948,8 +2958,20 @@ impl LawExecutionService {
         // `apply_overrides` does not run it a second time.
         let replaced_in_actions: RefCell<BTreeMap<String, Option<OutputProvenance>>> =
             RefCell::new(BTreeMap::new());
+        let article_outputs: BTreeSet<String> = crate::demand::action_outputs(article)
+            .map(str::to_string)
+            .collect();
         let replace = |name: &str, value: &Value, outputs: &BTreeMap<String, Value>| {
             let declared = demand.replacing.get(name)?;
+            // An override that declares an output this article has not set
+            // yet cannot run here; it runs after the last action, as it did
+            // before replacements moved into the action loop.
+            let pending = declared.iter().any(|param| {
+                param != name && !outputs.contains_key(param) && article_outputs.contains(param)
+            });
+            if pending {
+                return None;
+            }
             // What the override declares, of this article's inputs, is
             // resolved for it before it runs.
             if let Err(e) = lazy.resolve_names(declared) {
@@ -3592,7 +3614,7 @@ impl LawExecutionService {
                 output_name,
                 source.parameters.as_ref(),
                 context,
-                base_of.as_deref(),
+                &base_of,
                 res_ctx,
             )?;
 
@@ -3622,7 +3644,14 @@ impl LawExecutionService {
             // Cycle detection: check if this internal output is already being
             // resolved. Use \0 as separator to prevent key collisions, and an
             // "internal:" prefix to keep keys distinct from external references.
-            let internal_key = format!("internal:{}\0{}", law.id, output_name);
+            // What is held back for a base read is part of the key: the
+            // held-back evaluation is another resolution (RFC-044).
+            let internal_key = format!(
+                "internal:{}\0{}{}",
+                law.id,
+                output_name,
+                res_ctx.held_back_suffix()
+            );
             if res_ctx.is_visited(&internal_key) {
                 res_ctx.trace_set_message(format!(
                     "Circular internal reference detected: {}#{} is already being resolved",
@@ -3798,16 +3827,18 @@ impl LawExecutionService {
         }
     }
 
-    /// The key under which `article` is held back when it reads an output of
+    /// The keys under which `article` is held back when it reads an output of
     /// `regulation` that it changes itself, so the read is the value it
-    /// departs from:
+    /// departs from; both when it does both:
     ///
     /// - it replaces that very output ("in afwijking van", RFC-007), or
-    /// - it fills in an open term of the article producing that output
-    ///   ("gelet op", RFC-003): the read gets what the law gives without this
-    ///   filling, which is its default or the next implementation.
+    /// - it fills in an open term of that law ("gelet op", RFC-003): any read
+    ///   of the law gets what it gives without this filling, which is the
+    ///   default or the next implementation. Law-wide, because an output of
+    ///   another article can depend on the term as much as the output of the
+    ///   article declaring it.
     ///
-    /// `None` for every other read, and for a void: an output that does not
+    /// Empty for every other read, and for a void: an output that does not
     /// arise has no value to depart from, and reading it yields the void with
     /// its ground (RFC-041).
     fn read_as_base(
@@ -3817,24 +3848,31 @@ impl LawExecutionService {
         regulation: &str,
         output: &str,
         res_ctx: &ResolutionContext<'_>,
-    ) -> Option<String> {
-        let target =
-            self.resolver
-                .get_article_by_output(regulation, output, res_ctx.reference_date())?;
+    ) -> Vec<String> {
+        let mut held = Vec::new();
+        let fills_in = article
+            .get_implements()
+            .is_some_and(|decls| decls.iter().any(|d| d.law == regulation));
+        if fills_in {
+            held.push(implementation_key(&law.id, &article.number));
+        }
+        // Only an article that declares overrides pays for the lookup of the
+        // article producing the output: this runs on every sourced input.
         let replaces = article.get_overrides().is_some_and(|decls| {
-            decls.iter().any(|d| {
-                !d.voids && d.law == regulation && d.article == target.number && d.output == output
-            })
+            let replacing: Vec<_> = decls
+                .iter()
+                .filter(|d| !d.voids && d.law == regulation && d.output == output)
+                .collect();
+            !replacing.is_empty()
+                && self
+                    .resolver
+                    .get_article_by_output(regulation, output, res_ctx.reference_date())
+                    .is_some_and(|target| replacing.iter().any(|d| d.article == target.number))
         });
         if replaces {
-            return Some(override_key(&law.id, &article.number));
+            held.push(override_key(&law.id, &article.number));
         }
-        let fills_in = article.get_implements().is_some_and(|decls| {
-            decls
-                .iter()
-                .any(|d| d.law == regulation && d.article == target.number)
-        });
-        fills_in.then(|| implementation_key(&law.id, &article.number))
+        held
     }
 
     /// Internal method for external input resolution with depth tracking.
@@ -3851,7 +3889,7 @@ impl LawExecutionService {
             output,
             source_parameters,
             context,
-            None,
+            &[],
             res_ctx,
         )
         .map(|resolution| resolution.value)
@@ -3860,8 +3898,8 @@ impl LawExecutionService {
     /// [`Self::resolve_external_input_internal`], also reporting whether the
     /// target was skipped for a required parameter that named nobody.
     ///
-    /// `base_of` names the override or implementation (as [`override_key`] or
-    /// [`implementation_key`]) whose own article is reading the output it
+    /// `base_of` names the overrides and implementations (as [`override_key`]
+    /// and [`implementation_key`]) whose own article is reading the output it
     /// replaces or fills in. That read is the value it departs from, not the
     /// one it produces: the target is evaluated with it held back, under its
     /// own cycle key, so it is not a cycle when that output is being resolved
@@ -3872,18 +3910,37 @@ impl LawExecutionService {
         output: &str,
         source_parameters: Option<&BTreeMap<String, String>>,
         context: &RuleContext,
-        base_of: Option<&str>,
+        base_of: &[String],
         res_ctx: &mut ResolutionContext<'_>,
     ) -> Result<ExternalResolution> {
-        // Check for circular reference before proceeding
-        let key = match base_of {
-            Some(_) => format!("{}#{}@base", regulation, output),
-            None => format!("{}#{}", regulation, output),
+        // Check for circular reference before proceeding. Every key carries
+        // what is held back, so an evaluation inside a base read is not
+        // mistaken for one outside it. A base read is keyed on what it holds
+        // back, together with what already is: a
+        // second base read of the same output inside the first one, by
+        // another override or implementation, is another resolution, and a
+        // base read re-entering itself is still caught.
+        let key = if base_of.is_empty() {
+            format!("{}#{}{}", regulation, output, res_ctx.held_back_suffix())
+        } else {
+            format!(
+                "{}#{}{}",
+                regulation,
+                output,
+                res_ctx.held_back_suffix_with(base_of)
+            )
         };
         if res_ctx.is_visited(&key) {
+            // The key is internal (a base read carries what it holds back);
+            // the message names the output.
+            let base = if base_of.is_empty() {
+                ""
+            } else {
+                " (base read)"
+            };
             return Err(EngineError::CircularReference(format!(
-                "Circular cross-law reference detected: {} is already being resolved",
-                key
+                "Circular cross-law reference detected: {regulation}#{output}{base} is \
+                 already being resolved"
             )));
         }
 
@@ -4005,21 +4062,23 @@ impl LawExecutionService {
 
         // Enter cross-law resolution scope
         res_ctx.enter(key.clone());
-        let newly_suppressed = base_of.is_some_and(|ovr| {
+        if !base_of.is_empty() {
             res_ctx.trace_set_message(format!(
-                "Base value: the reading article's own override or implementation is held back for {key}"
+                "Base value of {regulation}.{output}: the reading article's own override or \
+                 implementation is held back"
             ));
-            res_ctx.held_back.insert(ovr.to_string())
-        });
+        }
+        let newly_held: Vec<&String> = base_of
+            .iter()
+            .filter(|held| res_ctx.held_back.insert((*held).clone()))
+            .collect();
 
         // Execute the target article
         let result = self.evaluate_law_output_internal(regulation, output, target_params, res_ctx);
 
         // Leave scope (even on error, for correct cycle tracking)
-        if newly_suppressed {
-            if let Some(ovr) = base_of {
-                res_ctx.held_back.remove(ovr);
-            }
+        for held in newly_held {
+            res_ctx.held_back.remove(held);
         }
         res_ctx.leave(&key);
 
@@ -4679,7 +4738,7 @@ articles:
     /// the override fires on a read of the statute or is asked directly, and
     /// the override is applied once, not again to its own input. A later
     /// action of the overridden article reads the replaced value, like every
-    /// other reader does.
+    /// other reader does, and a base value never reaches the cache.
     #[test]
     fn an_override_reading_what_it_overrides_gets_the_base_value() {
         let wet = r#"
@@ -4771,11 +4830,17 @@ articles:
             type: number
           - name: kaas_vandaag
             type: number
+          - name: samen
+            type: number
         actions:
           - output: boterhammen_vandaag
             value: $wettelijk_aantal
           - output: kaas_vandaag
             value: $kaas
+          - output: samen
+            value:
+              operation: ADD
+              values: [$kaas, $wettelijk_aantal]
 "#;
         let mut service = LawExecutionService::new();
         service.load_law(wet).unwrap();
@@ -4786,6 +4851,10 @@ articles:
             ("boterhammen_vandaag", false, 2),
             ("kaas_vandaag", true, 4),
             ("kaas_vandaag", false, 2),
+            // The kaas read makes a base read of aantal_boterhammen (2); the
+            // read after it must not be served that value from the cache.
+            ("samen", true, 8),
+            ("samen", false, 4),
             ("aantal_boterhammen", true, 4),
             ("aantal_boterhammen", false, 2),
         ] {
@@ -4897,6 +4966,500 @@ articles:
                 "{law}.{output} (honger={honger})"
             );
         }
+    }
+
+    /// A law with an open term (default 2), for the stacked base-read tests.
+    const BOTERHAMMENWET_OPEN: &str = r#"
+$id: boterhammenwet
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Men eet twee boterhammen, tenzij anders is bepaald.
+    machine_readable:
+      open_terms:
+        - id: aantal_boterhammen
+          type: number
+          required: true
+          default:
+            actions:
+              - output: aantal_boterhammen
+                value: 2
+      execution:
+        output:
+          - name: aantal_boterhammen
+            type: number
+        actions:
+          - output: aantal_boterhammen
+            value: $aantal_boterhammen
+"#;
+
+    /// An article of `id` on `layer` that declares `relation` (an `overrides`
+    /// or `implements` block) and yields `operation` applied to what it reads
+    /// of `boterhammenwet.aantal_boterhammen` (`$basis`), under `output`.
+    fn reading_rule(
+        id: &str,
+        layer: &str,
+        relation: &str,
+        output: &str,
+        operation: &str,
+    ) -> String {
+        format!(
+            r#"
+$id: {id}
+regulatory_layer: {layer}
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Regel die leest waar hij van afwijkt.
+    machine_readable:
+{relation}
+      execution:
+        input:
+          - name: basis
+            type: number
+            source:
+              regulation: boterhammenwet
+              output: aantal_boterhammen
+        output:
+          - name: {output}
+            type: number
+        actions:
+          - output: {output}
+            value:
+{operation}
+"#
+        )
+    }
+
+    const IMPLEMENTS_AANTAL: &str = "      implements:
+        - law: boterhammenwet
+          article: '1'
+          open_term: aantal_boterhammen";
+    const DOUBLE_BASIS: &str = "              operation: MULTIPLY
+              values: [2, $basis]";
+    const BASIS_PLUS_ONE: &str = "              operation: ADD
+              values: [$basis, 1]";
+
+    /// Two implementations of one open term, both reading the law they fill
+    /// in: the winner's base read is the law with the runner-up's filling,
+    /// whose own base read is the default. Stacked base reads of the same
+    /// output are not a cycle.
+    #[test]
+    fn stacked_base_reads_of_one_output_are_not_a_cycle() {
+        let mut service = LawExecutionService::new();
+        service.load_law(BOTERHAMMENWET_OPEN).unwrap();
+        service
+            .load_law(&reading_rule(
+                "regeling_boterhammen",
+                "MINISTERIELE_REGELING",
+                IMPLEMENTS_AANTAL,
+                "aantal_boterhammen",
+                DOUBLE_BASIS,
+            ))
+            .unwrap();
+        service
+            .load_law(&reading_rule(
+                "beleid_boterhammen",
+                "BELEIDSREGEL",
+                IMPLEMENTS_AANTAL,
+                "aantal_boterhammen",
+                BASIS_PLUS_ONE,
+            ))
+            .unwrap();
+
+        // Default 2, the policy adds one (3), the regulation ranks higher
+        // and doubles what the law says without it (6).
+        let result = service
+            .evaluate_law_output(
+                "boterhammenwet",
+                "aantal_boterhammen",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("aantal_boterhammen"),
+            Some(&Value::Int(6))
+        );
+    }
+
+    /// An override and an implementation on the same article, both reading
+    /// base, asked through the overriding law: the override departs from the
+    /// filled-in law (3), the filling from the default (2).
+    #[test]
+    fn an_override_and_an_implementation_both_reading_base() {
+        let overriding = format!(
+            "{}  - number: '2'
+    text: Het aantal van vandaag.
+    machine_readable:
+      execution:
+        input:
+          - name: aantal
+            type: number
+            source:
+              regulation: boterhammenwet
+              output: aantal_boterhammen
+        output:
+          - name: vandaag
+            type: number
+        actions:
+          - output: vandaag
+            value: $aantal
+",
+            reading_rule(
+                "beleid_boterhammen",
+                "BELEIDSREGEL",
+                "      overrides:
+        - law: boterhammenwet
+          article: '1'
+          output: aantal_boterhammen",
+                "aantal_boterhammen",
+                DOUBLE_BASIS,
+            )
+        );
+        let mut service = LawExecutionService::new();
+        service.load_law(BOTERHAMMENWET_OPEN).unwrap();
+        service
+            .load_law(&reading_rule(
+                "regeling_boterhammen",
+                "MINISTERIELE_REGELING",
+                IMPLEMENTS_AANTAL,
+                "aantal_boterhammen",
+                BASIS_PLUS_ONE,
+            ))
+            .unwrap();
+        service.load_law(&overriding).unwrap();
+
+        let result = service
+            .evaluate_law_output(
+                "beleid_boterhammen",
+                "vandaag",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+        assert_eq!(result.outputs.get("vandaag"), Some(&Value::Int(6)));
+    }
+
+    /// An overridden output assigned twice is replaced after its last
+    /// assignment: an action between the two reads the first assignment, an
+    /// action after them reads the replaced value.
+    #[test]
+    fn an_output_assigned_twice_is_replaced_after_its_last_assignment() {
+        let wet = r#"
+$id: boterhammenwet
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Men eet een boterham, en daarna twee.
+    machine_readable:
+      execution:
+        output:
+          - name: aantal_boterhammen
+            type: number
+          - name: tussenstand
+            type: number
+          - name: plakjes_kaas
+            type: number
+        actions:
+          - output: aantal_boterhammen
+            value: 1
+          - output: tussenstand
+            value: $aantal_boterhammen
+          - output: aantal_boterhammen
+            value: 2
+          - output: plakjes_kaas
+            value: $aantal_boterhammen
+"#;
+        let beleid = format!(
+            "{}  - number: '2'
+    text: Wat de wet zegt, gelezen binnen dit beleid.
+    machine_readable:
+      execution:
+        input:
+          - name: tussen
+            type: number
+            source:
+              regulation: boterhammenwet
+              output: tussenstand
+          - name: kaas
+            type: number
+            source:
+              regulation: boterhammenwet
+              output: plakjes_kaas
+        output:
+          - name: gelezen
+            type: number
+        actions:
+          - output: gelezen
+            value:
+              operation: ADD
+              values:
+                - operation: MULTIPLY
+                  values: [100, $tussen]
+                - $kaas
+",
+            reading_rule(
+                "beleid_boterhammen",
+                "WET",
+                "      overrides:
+        - law: boterhammenwet
+          article: '1'
+          output: aantal_boterhammen",
+                "aantal_boterhammen",
+                DOUBLE_BASIS,
+            )
+        );
+        let mut service = LawExecutionService::new();
+        service.load_law(wet).unwrap();
+        service.load_law(&beleid).unwrap();
+        // tussenstand 1 (before the last assignment), plakjes_kaas 4.
+        let result = service
+            .evaluate_law_output(
+                "beleid_boterhammen",
+                "gelezen",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+        assert_eq!(result.outputs.get("gelezen"), Some(&Value::Int(104)));
+    }
+
+    /// An article that both fills in an open term of a law and overrides an
+    /// output of it reads that law without either: both are held back.
+    #[test]
+    fn an_article_that_implements_and_overrides_holds_back_both() {
+        let wet = format!(
+            "{}  - number: '2'
+    text: Op elke boterham een plak.
+    machine_readable:
+      execution:
+        input:
+          - name: aantal
+            type: number
+            source:
+              output: aantal_boterhammen
+        output:
+          - name: plakjes
+            type: number
+        actions:
+          - output: plakjes
+            value: $aantal
+",
+            BOTERHAMMENWET_OPEN
+        );
+        let beleid = r#"
+$id: beleid_boterhammen
+regulatory_layer: BELEIDSREGEL
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Een boterham meer dan er plakjes zijn, en twee plakjes per boterham.
+    machine_readable:
+      implements:
+        - law: boterhammenwet
+          article: '1'
+          open_term: aantal_boterhammen
+      overrides:
+        - law: boterhammenwet
+          article: '2'
+          output: plakjes
+      execution:
+        input:
+          - name: basis
+            type: number
+            source:
+              regulation: boterhammenwet
+              output: plakjes
+        output:
+          - name: aantal_boterhammen
+            type: number
+          - name: plakjes
+            type: number
+        actions:
+          - output: aantal_boterhammen
+            value:
+              operation: ADD
+              values: [$basis, 1]
+          - output: plakjes
+            value:
+              operation: MULTIPLY
+              values: [$basis, 2]
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(&wet).unwrap();
+        service.load_law(beleid).unwrap();
+        // plakjes without the filling and without the override: the
+        // default (2), so one sandwich more is 3.
+        let result = service
+            .evaluate_law_output(
+                "beleid_boterhammen",
+                "aantal_boterhammen",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("aantal_boterhammen"),
+            Some(&Value::Int(3))
+        );
+    }
+
+    /// An override that declares an output its target article sets later
+    /// runs after the article's last action, where that output exists.
+    #[test]
+    fn an_override_declaring_a_later_output_runs_after_the_actions() {
+        let wet = r#"
+$id: wet_a
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: A is twee, B is tien.
+    machine_readable:
+      execution:
+        output:
+          - name: a
+            type: number
+          - name: b
+            type: number
+        actions:
+          - output: a
+            value: 2
+          - output: b
+            value: 10
+"#;
+        let beleid = r#"
+$id: beleid_a
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: In afwijking daarvan is A gelijk aan B.
+    machine_readable:
+      overrides:
+        - law: wet_a
+          article: '1'
+          output: a
+      execution:
+        parameters:
+          - name: b
+            type: number
+            required: true
+        output:
+          - name: a
+            type: number
+        actions:
+          - output: a
+            value: $b
+  - number: '2'
+    text: A volgens de wet.
+    machine_readable:
+      execution:
+        input:
+          - name: a
+            type: number
+            source:
+              regulation: wet_a
+              output: a
+        output:
+          - name: gelezen
+            type: number
+        actions:
+          - output: gelezen
+            value: $a
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(wet).unwrap();
+        service.load_law(beleid).unwrap();
+        let result = service
+            .evaluate_law_output("beleid_a", "gelezen", BTreeMap::new(), "2025-01-01")
+            .unwrap();
+        assert_eq!(result.outputs.get("gelezen"), Some(&Value::Int(10)));
+    }
+
+    /// An implementation reads the whole law it fills in without itself, not
+    /// only the article declaring the term: an output of another article that
+    /// depends on the term is a base read too.
+    #[test]
+    fn an_implementation_reads_the_whole_law_without_itself() {
+        let wet = format!(
+            "{}  - number: '2'
+    text: Op elke boterham gaat een plak ham.
+    machine_readable:
+      execution:
+        input:
+          - name: aantal
+            type: number
+            source:
+              output: aantal_boterhammen
+        output:
+          - name: plakken_ham
+            type: number
+        actions:
+          - output: plakken_ham
+            value: $aantal
+",
+            BOTERHAMMENWET_OPEN
+        );
+        let beleid = r#"
+$id: beleid_boterhammen
+regulatory_layer: BELEIDSREGEL
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Twee keer zoveel als er plakken ham zijn.
+    machine_readable:
+      implements:
+        - law: boterhammenwet
+          article: '1'
+          open_term: aantal_boterhammen
+      execution:
+        input:
+          - name: ham
+            type: number
+            source:
+              regulation: boterhammenwet
+              output: plakken_ham
+        output:
+          - name: aantal_boterhammen
+            type: number
+        actions:
+          - output: aantal_boterhammen
+            value:
+              operation: MULTIPLY
+              values: [2, $ham]
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(&wet).unwrap();
+        service.load_law(beleid).unwrap();
+        let result = service
+            .evaluate_law_output(
+                "boterhammenwet",
+                "aantal_boterhammen",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("aantal_boterhammen"),
+            Some(&Value::Int(4))
+        );
+
+        // The same through the article that reads the term's output: its
+        // internal reference is entered again inside the base read, which is
+        // another resolution and not a cycle.
+        let result = service
+            .evaluate_law_output(
+                "boterhammenwet",
+                "plakken_ham",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+        assert_eq!(result.outputs.get("plakken_ham"), Some(&Value::Int(4)));
     }
 
     #[test]

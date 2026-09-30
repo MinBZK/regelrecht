@@ -140,6 +140,27 @@ This distinction is legal, not technical. *"Bestaat geen aanspraak"* is not an e
 
 An override of another law's output applies only inside an execution that the overriding law started, as above. An article overriding an output of **its own** law is a different claim: there is no other law to protect from, so it applies whenever that law runs. Without that, the outcome would depend on the route in, and an amount the statute says does not arise would still be handed out when a third law read the output directly. `voids` is what exposed this, but the rule is about same-law versus cross-law and holds for a replacement too. See [RFC-041](/rfcs/rfc-041) for the amendment it makes to the contextual-law rule.
 
+### Reading the value an override departs from
+
+A special rule often states its departure in terms of the general rule: a policy saying that a person who is hungry eats *twice as many* sandwiches as the law says. The overriding article then reads the very output it replaces:
+
+```yaml
+overrides:
+  - law: boterhammenwet
+    article: '1'
+    output: aantal_boterhammen
+execution:
+  input:
+    - name: wettelijk_aantal
+      source:
+        regulation: boterhammenwet
+        output: aantal_boterhammen
+```
+
+That read is the general rule's value, computed with this override held back, and the override applies once. The same holds for an article that `implements` an open term of a law and reads that law: it reads the law without its own filling, which is the next implementation or the `default`. A `voids` override is not included: reading a voided output still yields the void.
+
+A replacing override takes effect where the overridden article sets the output, so the article's own later actions read the replaced value, like every other reader. An override that needs an output the article sets later runs after the article's last action instead. See [RFC-044](/rfcs/rfc-044).
+
 ### How overrides differ from IoC
 
 | | IoC (`open_terms` + `implements`) | Overrides |

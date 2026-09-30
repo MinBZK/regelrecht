@@ -51,6 +51,7 @@ A reader meets these constructs in a law file or a running service whatever the 
 | RFC-038 | Callable is not presentable | Backlog: [Schema](./schema) lists the `RECHTSPOSITIE` value it added; the entry-point rule itself has no page |
 | RFC-040 | The schema documents itself | [Schema](./schema) |
 | RFC-041 | A void is not scoped like a replacement | [Voiding an output](../concepts/hooks-and-reactive-execution#voiding-an-output) |
+| RFC-044 | A rule reads the value it departs from | [Reading the value an override departs from](../concepts/hooks-and-reactive-execution#reading-the-value-an-override-departs-from), [Inversion of Control](../concepts/inversion-of-control#an-implementation-that-reads-the-law-it-fills-in) |
 
 ## Backlog
 

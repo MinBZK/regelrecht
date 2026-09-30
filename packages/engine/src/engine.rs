@@ -478,17 +478,22 @@ impl<'a> ArticleEngine<'a> {
             let is_last_write = !actions[index + 1..]
                 .iter()
                 .any(|a| a.output.as_deref() == Some(output_name.as_str()));
-            let value = match context
-                .replaced_output(output_name, &value)
-                .filter(|_| is_last_write)
-            {
+            let replaced = if is_last_write {
+                context.replaced_output(output_name, &value)
+            } else {
+                None
+            };
+            let value = match replaced {
                 None => value,
                 Some(Ok(replaced)) => {
+                    // The action node keeps the value the article computed,
+                    // which is what the override departs from; the override
+                    // node nested under it carries the replaced value.
                     if tracing_active {
                         context.trace_set_message(format!(
-                            "Computing {output_name}, replaced by a lex specialis override"
+                            "Computing {output_name} = {value}, replaced by a lex specialis \
+                             override: {replaced}"
                         ));
-                        context.trace_set_result(replaced.clone());
                     }
                     replaced
                 }

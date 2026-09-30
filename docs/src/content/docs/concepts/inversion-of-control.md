@@ -109,6 +109,10 @@ machine_readable:
 
 When executing for a person in Diemen (parameters include `gemeente_code: GM0384`), the engine uses Diemen's percentages. For a municipality without an ordinance, the Participation Act's default applies.
 
+## An implementation that reads the law it fills in
+
+An implementation can state its value in terms of the law it fills in: a policy saying that a person who is hungry eats twice what the law says. The implementing article then reads an output of that law, which depends on the very term it fills. That read is the law without this filling: the next implementation, or the `default` when there is none. The filling then applies once, whether the law or the implementing regulation is asked. See [RFC-044](/rfcs/rfc-044).
+
 ## Conflict resolution
 
 When multiple regulations implement the same open term, the engine resolves conflicts using two rules from legal theory:

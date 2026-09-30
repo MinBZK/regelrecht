@@ -91,6 +91,8 @@ input:
 
 The engine detects circular references (law A needs law B which needs law A) and raises an error. A `MAX_CROSS_LAW_DEPTH` limit of 20 prevents runaway chains.
 
+One loop is not an error: a rule that reads the value it departs from. An override reading the output it replaces, or an implementation reading the law whose open term it fills, gets that value without itself. See [Reading the value an override departs from](./hooks-and-reactive-execution#reading-the-value-an-override-departs-from) and [RFC-044](/rfcs/rfc-044).
+
 ## Further reading
 
 - [Law Format](./law-format) - full structure of a law YAML file
