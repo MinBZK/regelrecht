@@ -52,13 +52,13 @@ A portal tile can explain its outcome in plain language, as the "waarom?" link i
 
 The feature is off until the presenter unlocks it with a password under Demo in the menu. The password is kept in `localStorage` under its own key (`rr-demo-why-password`), so resetting the demo leaves it in place. The server checks it on every request; the browser only passes it on.
 
-The model runs through the Claude Code CLI, in a small Node server (`frontend-demo/server/why.mjs`) that nginx reaches on `127.0.0.1:7401` inside the same container. A subscription token from `claude setup-token` only works through that CLI, which is why this is a server and not a call from the browser. The server gives the CLI no tools and no settings, allows three explanations at a time, and stops the model when the visitor closes the sheet.
+The model runs through the Claude Code CLI, in a small Node server (`frontend-demo/server/why.mjs`) that nginx reaches on `127.0.0.1:7401` inside the same container. A subscription token from `claude setup-token` only works through that CLI, which is why this is a server and not a call from the browser. The server gives the CLI no tools and no settings, allows three explanations at a time, and stops the model when the visitor closes the sheet. It does not lock out after wrong guesses, because a lockout shared by every caller would let one script keep the presenter out; instead it refuses to start with a password shorter than 16 characters.
 
 Without a server behind `/api/why` the app does not show the feature at all: no menu item, no button. That is the case for a plain `just demo` and for a deployment without the variables below.
 
 | Variable | Purpose |
 |----------|---------|
-| `DEMO_WHY_PASSWORD` | The password that unlocks the button. Without it the server does not start |
+| `DEMO_WHY_PASSWORD` | The password that unlocks the button, at least 16 characters. Without it the server does not start |
 | `CLAUDE_CODE_OAUTH_TOKEN` | Token for the Claude Code CLI (from `claude setup-token`) |
 | `ANTHROPIC_API_KEY` | Alternative to the token: a Console key, billed per call |
 | `DEMO_WHY_MODEL` | Model alias for the CLI, default `sonnet` |
@@ -68,7 +68,7 @@ Without a server behind `/api/why` the app does not show the feature at all: no 
 ```bash
 just demo              # builds the WASM engine, starts Vite on :7400 and opens the browser
 just dev-demo          # the same, without opening the browser
-just demo-why          # the "why" backend on :7401, with your own Claude login; password "lokaal"
+just demo-why          # the "why" backend on :7401, with your own Claude login; password "lokaal-demo-wachtwoord"
 ```
 
 Vite forwards `/api/why` to `just demo-why`, so run the two side by side to try the explanation.

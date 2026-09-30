@@ -310,7 +310,7 @@ demo: wasm-build
 # with CLAUDE_CODE_OAUTH_TOKEN / ANTHROPIC_API_KEY when set. Unlock the button in
 # the demo menu with the password below.
 [doc("Start the demo's 'why' backend (needs the Claude Code CLI)")]
-demo-why password="lokaal":
+demo-why password="lokaal-demo-wachtwoord":
     DEMO_WHY_PASSWORD="${DEMO_WHY_PASSWORD:-{{password}}}" node frontend-demo/server/why.mjs
 
 # Run the demo frontend locally without opening a browser (same server as `demo`)

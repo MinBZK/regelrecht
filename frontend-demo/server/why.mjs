@@ -26,7 +26,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn, execFile } from 'node:child_process';
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { randomBytes, scrypt, scryptSync, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { buildRequest } from './prompt.mjs';
 
@@ -40,14 +40,28 @@ const ENV_WHITELIST = [
   'DISABLE_AUTOUPDATER', 'CLAUDE_CODE_SKIP_PROMPT_HISTORY',
 ];
 
-function digest(value) {
-  return createHash('sha256').update(String(value)).digest();
-}
+/**
+ * The shortest password the server starts with. There is no lockout after
+ * wrong guesses: one shared across callers lets a single script keep the
+ * presenter out for as long as it runs, and behind the platform's ingress
+ * there is no caller address to scope one to. The length does the work a
+ * lockout would: at 16 characters, guessing over the network is hopeless.
+ */
+export const MIN_PASSWORD_LENGTH = 16;
 
-/** Constant-time: comparing the hashes keeps the length out of the timing too. */
-export function passwordMatches(given, expected) {
-  if (!given || !expected) return false;
-  return timingSafeEqual(digest(given), digest(expected));
+/**
+ * A password checker. Both sides go through scrypt with a salt drawn at start,
+ * so the comparison is constant-time and every guess costs the guesser a key
+ * derivation; the expected key is derived once.
+ */
+export function passwordChecker(expected) {
+  const salt = randomBytes(16);
+  const want = scryptSync(String(expected), salt, 32);
+  return (given) =>
+    new Promise((resolve) => {
+      if (!given) return resolve(false);
+      scrypt(String(given), salt, 32, (err, got) => resolve(!err && timingSafeEqual(got, want)));
+    });
 }
 
 function childEnv() {
@@ -107,8 +121,6 @@ export function parseCliLine(line) {
  * @param {string} [options.model]
  * @param {number} [options.maxConcurrent]  CLI processes at once, on one subscription
  * @param {number} [options.timeoutMs]
- * @param {number} [options.maxFailures]  wrong passwords per window before all are refused
- * @param {number} [options.failureWindowMs]
  * @param {number} [options.wrongPasswordDelayMs]
  */
 export function createWhyServer({
@@ -117,37 +129,26 @@ export function createWhyServer({
   model = 'sonnet',
   maxConcurrent = 3,
   timeoutMs = 180_000,
-  maxFailures = 30,
-  failureWindowMs = 60_000,
   wrongPasswordDelayMs = 500,
 }) {
   if (!password) throw new Error('a password is required: without one the button is open to everyone');
   let running = 0;
-  // Wrong guesses in the last minute, over both endpoints and every caller.
-  // Past the limit every password is refused for the rest of that minute,
-  // the right one too: a limit that only turned wrong guesses away would tell
-  // a guesser which one was right. A presenter locked out waits a minute.
-  let failures = [];
+  const matches = passwordChecker(password);
 
-  /** @returns {Promise<'ok' | 'wrong' | 'locked'>} */
+  /** @returns {Promise<'ok' | 'wrong'>} */
   async function checkPassword(req) {
-    const now = Date.now();
-    failures = failures.filter((t) => now - t < failureWindowMs);
-    if (failures.length >= maxFailures) return 'locked';
-    if (passwordMatches(req.headers['x-demo-password'], password)) return 'ok';
-    failures.push(now);
-    // A pause on a wrong guess makes guessing slow, and costs a right one nothing.
+    if (await matches(req.headers['x-demo-password'])) return 'ok';
+    // A pause on a wrong guess makes guessing slower, and costs a right one nothing.
     await new Promise((r) => setTimeout(r, wrongPasswordDelayMs));
     return 'wrong';
   }
-  function refuse(res, verdict) {
-    if (verdict === 'locked') return sendJson(res, 429, { error: 'too many wrong passwords, try again in a minute' });
+  function refuse(res) {
     return sendJson(res, 401, { error: 'wrong password' });
   }
 
   async function explain(req, res) {
     const verdict = await checkPassword(req);
-    if (verdict !== 'ok') return refuse(res, verdict);
+    if (verdict !== 'ok') return refuse(res);
     if (running >= maxConcurrent) return sendJson(res, 429, { error: 'too many explanations at once' });
 
     const { json, tooLarge } = await readBody(req);
@@ -260,7 +261,7 @@ export function createWhyServer({
       if (url.pathname === '/api/why' && req.method === 'GET') return sendJson(res, 200, { available: true });
       if (url.pathname === '/api/why/check' && req.method === 'POST') {
         const verdict = await checkPassword(req);
-        if (verdict !== 'ok') return refuse(res, verdict);
+        if (verdict !== 'ok') return refuse(res);
         res.writeHead(204).end();
         return;
       }
@@ -285,6 +286,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const password = process.env.DEMO_WHY_PASSWORD;
   if (!password) {
     console.error('why: DEMO_WHY_PASSWORD is not set; refusing to start an open endpoint');
+    process.exit(1);
+  }
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    console.error(`why: DEMO_WHY_PASSWORD is shorter than ${MIN_PASSWORD_LENGTH} characters; a short one can be guessed`);
     process.exit(1);
   }
   const claudeBin = process.env.CLAUDE_BIN ?? 'claude';

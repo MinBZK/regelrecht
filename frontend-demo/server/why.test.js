@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createWhyServer, parseCliLine, passwordMatches } from './why.mjs';
+import { createWhyServer, parseCliLine, passwordChecker } from './why.mjs';
 import { buildRequest, MAX_TRACE_CHARS, systemPrompt } from './prompt.mjs';
 
 // A stand-in for the Claude CLI: it echoes what it was asked in the stream-json
@@ -72,11 +72,12 @@ const post = (base, pathname, payload, password = 'geheim') =>
   });
 
 describe('the password', () => {
-  it('matches only itself', () => {
-    expect(passwordMatches('geheim', 'geheim')).toBe(true);
-    expect(passwordMatches('geheim2', 'geheim')).toBe(false);
-    expect(passwordMatches('', 'geheim')).toBe(false);
-    expect(passwordMatches(undefined, 'geheim')).toBe(false);
+  it('matches only itself', async () => {
+    const matches = passwordChecker('geheim');
+    expect(await matches('geheim')).toBe(true);
+    expect(await matches('geheim2')).toBe(false);
+    expect(await matches('')).toBe(false);
+    expect(await matches(undefined)).toBe(false);
   });
 
   it('is required to build a server at all', () => {
@@ -88,13 +89,6 @@ describe('the password', () => {
       expect((await post(base, '/api/why/check', {}, 'geheim')).status).toBe(204);
       expect((await post(base, '/api/why/check', {}, 'fout')).status).toBe(401);
       expect((await post(base, '/api/why/check', {}, null)).status).toBe(401);
-    }));
-
-  it('refuses every password, the right one too, after too many wrong ones', () =>
-    withServer({ maxFailures: 3 }, async (base) => {
-      for (let i = 0; i < 3; i++) expect((await post(base, '/api/why/check', {}, 'fout')).status).toBe(401);
-      expect((await post(base, '/api/why/check', {}, 'geheim')).status).toBe(429);
-      expect((await post(base, '/api/why', body, 'geheim')).status).toBe(429);
     }));
 
   it('guards the explanation itself, not only the check', () =>
