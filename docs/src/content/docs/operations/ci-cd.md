@@ -12,7 +12,8 @@ Continuous integration runs on every push to `main` and every pull request via `
 - **Formatting** - `just format` (rustfmt check)
 - **Linting** - `just lint` (clippy)
 - **YAML validation** - yamllint + schema validation on corpus files
-- **Pre-commit hooks** - trailing whitespace, end-of-file, merge conflicts
+- **Pre-commit hooks** - trailing whitespace, end-of-file, merge conflicts,
+  and licence information for every file (`reuse lint`, from `REUSE.toml`)
 
 ### Tests (on Rust changes)
 
