@@ -305,6 +305,14 @@ demo: wasm-build
       esac ) &
     cd frontend-demo && npm run dev -- --port 7400 --strictPort --host 0.0.0.0
 
+# The backend behind the demo's "why" button, on :7401, next to `just demo`
+# (Vite proxies /api/why to it). Runs the Claude Code CLI with your own login, or
+# with CLAUDE_CODE_OAUTH_TOKEN / ANTHROPIC_API_KEY when set. Unlock the button in
+# the demo menu with the password below.
+[doc("Start the demo's 'why' backend (needs the Claude Code CLI)")]
+demo-why password="lokaal-demo-wachtwoord":
+    DEMO_WHY_PASSWORD="${DEMO_WHY_PASSWORD:-{{password}}}" node frontend-demo/server/why.mjs
+
 # Run the demo frontend locally without opening a browser (same server as `demo`)
 dev-demo: wasm-build
     cd frontend-demo && npm run dev -- --port 7400 --strictPort --host 0.0.0.0
