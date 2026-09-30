@@ -1,5 +1,6 @@
 <script setup>
 import { onMounted, ref, watch } from 'vue';
+import { toRgb } from '../lib/cssColor.js';
 
 // A ```mermaid block. Mermaid is large (~1 MB), so it is imported only when a
 // slide actually has a diagram, and initialised once.
@@ -16,10 +17,15 @@ let mermaidPromise = null;
 let counter = 0;
 
 /**
- * A palette token as a plain rgb() string. The tokens are `light-dark(…)`
- * expressions, which mermaid cannot parse; a probe element with the deck's
- * `color-scheme: light` lets the browser resolve them to the light side, the
- * side the deck always uses.
+ * A palette token as a plain rgb() string, the only kind mermaid can read.
+ * Two steps, because the token is neither:
+ * - it is a `light-dark(…)` expression; a probe element with the deck's
+ *   `color-scheme: light` lets the browser resolve it to the light side, the
+ *   side the deck always uses;
+ * - the resolved colour comes back in oklch, the space the design system
+ *   defines its primitives in, which mermaid rejects ("Unsupported color
+ *   format"); toRgb converts it to sRGB.
+ * When either step yields nothing, the hex fallback is used.
  */
 function token(name, fallback) {
   const probe = document.createElement('span');
@@ -27,7 +33,7 @@ function token(name, fallback) {
   document.body.appendChild(probe);
   const v = getComputedStyle(probe).color;
   probe.remove();
-  return v || fallback;
+  return (v && toRgb(v)) || fallback;
 }
 
 function loadMermaid() {
