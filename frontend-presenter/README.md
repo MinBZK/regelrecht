@@ -46,8 +46,29 @@ Gewone **markdown**: alinea's, lijsten, tabellen, citaten.
 law: wet_op_de_zorgtoeslag      # $id, de mapnaam in de corpus
 article: '2'
 date: 2025-01-01                # optioneel; nieuwste versie op of vóór deze datum
-show: [tekst, definities, invoer, uitvoer, regels]   # standaard: tekst
-leden: [1, 2]                   # optioneel; alleen deze leden van de tekst
+```
+````
+
+Zonder meer toont het blok de artikeltekst. Welk deel van het artikel in beeld komt, kies je met ankers. Dat zijn namen die al in de YAML staan en geen paden als `actions[2]`, zodat een anker blijft kloppen als er iets bij komt:
+
+| Anker | Toont |
+| --- | --- |
+| `uitvoer: hoogte_zorgtoeslag` | alleen de regels voor deze uitvoer (één naam of een lijst) |
+| `invoer: [toetsingsinkomen, bsn]` | alleen deze invoervelden en parameters |
+| `definities: [percentage_toetsingsinkomen]` | alleen deze vaste waarden |
+| `leden: [1, 2]` | alleen deze leden van de wettekst |
+| `markeer: [standaardpremie]` | licht deze namen op, in tabellen en in de regels waar ze in staan |
+| `show: [tekst, definities, invoer, uitvoer, regels]` | precies deze onderdelen, ook naast ankers |
+
+Zonder `show` neemt een anker zijn eigen onderdeel mee: `uitvoer` de regels, `invoer` de invoertabel, `leden` de tekst. Een naam die het artikel niet heeft, staat als melding op de dia, zodat een typefout opvalt.
+
+Een wet die niet in de corpus staat, zoals een variant of een wetsvoorstel, zet je als YAML in de deck-map en haal je op met `bestand:` in plaats van `law:`:
+
+````md
+```wet
+bestand: zorgtoeslag-variant.yaml
+article: '2'
+uitvoer: hoogte_zorgtoeslag
 ```
 ````
 

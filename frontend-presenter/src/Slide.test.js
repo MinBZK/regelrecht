@@ -13,6 +13,7 @@ vi.mock('./lib/api.js', () => {
       index ??= indexCorpus([path.resolve(import.meta.dirname, '../../corpus/regulation')]);
       return lookupArticle(index, q);
     },
+    clearWetCache: () => {},
   };
 });
 
@@ -63,5 +64,16 @@ describe('Slide', () => {
   it('renders one line per paragraph on a statement slide', () => {
     const w = mount(Slide, { ...opts, props: { src: '---\nkind: statement\n---\n\nEen **twee**.\n\nDrie.\n' } });
     expect(w.findAll('.statement-line').map((l) => l.text())).toEqual(['Een twee.', 'Drie.']);
+  });
+
+  it('shows only the anchored rule, lights up a name and warns about a typo', async () => {
+    const src = "# Art 2\n\n```wet\nlaw: wet_op_de_zorgtoeslag\narticle: '2'\ndate: 2025-01-01\nuitvoer: heeft_recht_op_zorgtoeslag\nmarkeer: [vermogen_onder_grens, vermogen_ondr_grens]\n```\n";
+    const w = mount(Slide, { ...opts, props: { src } });
+    await flushPromises();
+    const card = w.find('.wet');
+    expect(card.find('.wet-text').exists()).toBe(false);
+    expect(card.findAll('.rule').map((r) => r.find('.rule-out').text())).toEqual(['heeft recht op zorgtoeslag']);
+    expect(card.findAll('.rule-tree li.lit').map((li) => li.text())).toEqual([expect.stringContaining('vermogen onder grens')]);
+    expect(card.find('.wet-warnings').text()).toBe('markeer "vermogen_ondr_grens" komt in dit artikel niet voor');
   });
 });

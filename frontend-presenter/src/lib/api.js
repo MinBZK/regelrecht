@@ -20,9 +20,15 @@ export const writeFile = (deck, file, content, mtime) => call(`/api/decks/${enc(
 export const createSlide = (deck, after) => call(`/api/decks/${enc(deck)}`, json('POST', { after }));
 
 const wetCache = new Map();
-/** Cached per law/article/date; `clearWetCache` runs when the corpus changes on disk. */
-export function fetchArticle({ law, article, date }) {
-  const q = new URLSearchParams({ law, article: article ?? '', date: date ?? '' });
+/**
+ * One article, from the corpus (`law`) or from a law YAML in the deck folder
+ * (`deck` + `file`). Cached per query; `clearWetCache` runs when a deck or the
+ * corpus changes on disk.
+ */
+export function fetchArticle({ law, article, date, deck, file }) {
+  const q = file
+    ? new URLSearchParams({ deck, file, article: article ?? '' })
+    : new URLSearchParams({ law, article: article ?? '', date: date ?? '' });
   const key = q.toString();
   if (!wetCache.has(key)) {
     const p = call(`/api/wet?${key}`);

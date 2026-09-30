@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue';
 import Slide from './Slide.vue';
 import * as api from './lib/api.js';
 import { appendBlock, normalize, replaceRange, setYamlKey } from './lib/slideDoc.js';
@@ -16,6 +16,10 @@ const emit = defineEmits(['go', 'close']);
 
 const deck = ref(null);
 const loadError = ref(null);
+// For wet blocks: which deck a `bestand:` is relative to, and a counter that
+// goes up when a law file may have changed, so the blocks fetch it again.
+const wetVersion = ref(0);
+provide('presenter:deck', { name: computed(() => props.name), wetVersion });
 const editing = ref(false);
 const status = ref('');
 let statusTimer = null;
@@ -148,11 +152,15 @@ function onKey(e) {
 // A change on disk (from an editor next to the browser) reloads the deck. Our
 // own writes come through here too; they load the same text, so nothing moves.
 function onDeckChanged({ deck: changed }) {
-  if (changed === props.name) load();
+  if (changed !== props.name) return;
+  // A law YAML in the deck folder may be what changed.
+  api.clearWetCache();
+  wetVersion.value++;
+  load();
 }
 function onCorpusChanged() {
   api.clearWetCache();
-  load();
+  wetVersion.value++;
 }
 
 onMounted(() => {

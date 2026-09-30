@@ -27,7 +27,7 @@ export function renderBlock(block) {
     let error = null;
     try {
       spec = yaml.load(token.text) ?? {};
-      if (!spec.law) error = 'Een wet-blok heeft ten minste `law:` nodig.';
+      if (!spec.law && !spec.bestand) error = 'Een wet-blok heeft `law:` (uit de corpus) of `bestand:` (uit de deck-map) nodig.';
     } catch (e) {
       error = `Ongeldige YAML in wet-blok: ${e.reason ?? e.message}`;
     }

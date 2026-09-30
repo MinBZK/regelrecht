@@ -411,6 +411,27 @@ body {
   color: var(--ink-85);
   font-style: italic;
 }
+/* `markeer:` in a wet block: the row or rule a name appears in, in the
+   deck's accent yellow, so the speaker can point at it without a laser. */
+.wet tr.lit > *,
+.wet .rule-tree li.lit,
+.wet .rule-out.lit,
+.wet .num.lit {
+  background: color-mix(in srgb, var(--primitives-color-donkergeel-200) 38%, transparent);
+}
+.wet .rule-tree li.lit {
+  box-shadow: inset 3px 0 0 var(--primitives-color-donkergeel-200);
+  border-radius: 4px;
+}
+/* An anchor that names something the article does not have. */
+.wet-warnings {
+  margin: 0;
+  padding: 0.5em 0.8em 0.5em 1.8em;
+  border-radius: 6px;
+  background: var(--primitives-color-donkergeel-50);
+  color: var(--primitives-color-coolgray-900);
+  font-size: 0.85em;
+}
 .mermaid-svg {
   display: flex;
   justify-content: center;

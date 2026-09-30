@@ -13,6 +13,7 @@ import * as yaml from 'js-yaml';
 
 const SLIDE_RE = /^[^/\\]+\.md$/;
 const DATE_FILE_RE = /^(\d{4}-\d{2}-\d{2})\.yaml$/;
+const LAW_FILE_RE = /^[^/\\]+\.ya?ml$/;
 
 export class ApiError extends Error {
   constructor(status, message) {
@@ -182,7 +183,43 @@ export function lookupArticle(index, { law, article, date }) {
   const entry = index.get(law);
   if (!entry) throw new ApiError(404, `Wet niet gevonden in de corpus: ${law}`);
   const version = pickVersion(entry.versions, date || new Date().toISOString().slice(0, 10));
-  const doc = yaml.load(fs.readFileSync(path.join(entry.dir, `${version}.yaml`), 'utf8'));
+  const file = path.join(entry.dir, `${version}.yaml`);
+  return articleOf(parseLaw(file, `${law} (${version})`), article, law, version);
+}
+
+/**
+ * A law YAML placed in the deck folder next to the slides, for a variant or a
+ * bill that is not in the corpus. Same rules as the slide files: a plain name
+ * inside the deck folder, and not deck.yaml.
+ */
+export function resolveDeckLaw(decksRoot, deck, file) {
+  const deckDir = resolveDeckDir(decksRoot, deck);
+  if (typeof file !== 'string' || !LAW_FILE_RE.test(file) || file === 'deck.yaml') {
+    throw new ApiError(400, `Geen wet-bestand: ${file}`);
+  }
+  const full = path.resolve(deckDir, file);
+  if (path.dirname(full) !== deckDir) throw new ApiError(400, `Pad buiten de deck-map: ${file}`);
+  if (!fs.existsSync(full)) throw new ApiError(404, `${file} staat niet in de deck-map`);
+  return full;
+}
+
+export function lookupDeckArticle(decksRoot, { deck, file, article }) {
+  const full = resolveDeckLaw(decksRoot, deck, file);
+  const doc = parseLaw(full, file);
+  return articleOf(doc, article, doc?.$id ?? file, doc?.valid_from ?? file);
+}
+
+function parseLaw(file, label) {
+  try {
+    const doc = yaml.load(fs.readFileSync(file, 'utf8'));
+    if (!doc || typeof doc !== 'object') throw new Error('geen YAML-document');
+    return doc;
+  } catch (e) {
+    throw new ApiError(422, `${label} is geen geldige YAML: ${e.reason ?? e.message}`);
+  }
+}
+
+function articleOf(doc, article, law, version) {
   const art = (doc.articles ?? []).find((a) => String(a.number) === String(article));
   if (article != null && article !== '' && !art) throw new ApiError(404, `Artikel ${article} niet gevonden in ${law} (${version})`);
   return {
@@ -269,6 +306,9 @@ export function presenterApi({ decksRoot, corpusRoots }) {
           }
           if (parts[0] === 'wet' && req.method === 'GET') {
             const q = url.searchParams;
+            if (q.get('file')) {
+              return send(res, 200, lookupDeckArticle(decksRoot, { deck: q.get('deck'), file: q.get('file'), article: q.get('article') }));
+            }
             return send(res, 200, lookupArticle(getCorpus(), { law: q.get('law'), article: q.get('article'), date: q.get('date') }));
           }
           next();

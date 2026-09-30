@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createSlide, indexCorpus, listDecks, lookupArticle, pickVersion, readDeck, resolveDeckFile, writeDeckFile } from './presenterApi.js';
+import { createSlide, indexCorpus, listDecks, lookupArticle, lookupDeckArticle, pickVersion, readDeck, resolveDeckFile, writeDeckFile } from './presenterApi.js';
 
 let tmp;
 let decks;
@@ -116,5 +116,33 @@ describe('corpus lookup', () => {
     const index = indexCorpus([path.resolve(import.meta.dirname, '../../corpus/regulation')]);
     const { article } = lookupArticle(index, { law: 'wet_op_de_zorgtoeslag', article: '2', date: '2025-01-01' });
     expect(article.machine_readable.execution.input.length).toBeGreaterThan(0);
+  });
+});
+
+describe('law YAML in the deck folder', () => {
+  beforeEach(() => {
+    fs.writeFileSync(path.join(decks, 'demo', 'variant.yaml'), "$id: variant\nname: Variantwet\nvalid_from: '2027-01-01'\narticles:\n  - number: '1'\n    text: nieuw\n");
+    fs.writeFileSync(path.join(decks, 'demo', 'kapot.yaml'), 'articles: [\n');
+    fs.writeFileSync(path.join(decks, 'demo', 'deck.yaml'), 'title: T\n');
+  });
+
+  it('reads an article from a law file next to the slides', () => {
+    expect(lookupDeckArticle(decks, { deck: 'demo', file: 'variant.yaml', article: '1' })).toMatchObject({
+      law: { id: 'variant', name: 'Variantwet', valid_from: '2027-01-01' },
+      article: { text: 'nieuw' },
+    });
+  });
+
+  it.each([['../geheim.yaml'], ['sub/x.yaml'], ['deck.yaml'], ['01-titel.md'], ['/etc/x.yaml']])('refuses %s', (file) => {
+    expect(() => lookupDeckArticle(decks, { deck: 'demo', file, article: '1' })).toThrow(expect.objectContaining({ status: 400 }));
+  });
+
+  it('says so when the file is missing or broken', () => {
+    expect(() => lookupDeckArticle(decks, { deck: 'demo', file: 'weg.yaml', article: '1' })).toThrow(expect.objectContaining({ status: 404 }));
+    expect(() => lookupDeckArticle(decks, { deck: 'demo', file: 'kapot.yaml', article: '1' })).toThrow(expect.objectContaining({ status: 422 }));
+  });
+
+  it('does not list a law file as a slide', () => {
+    expect(readDeck(decks, 'demo').slides.map((s) => s.file)).toEqual(['01-titel.md', '02-verder.md']);
   });
 });
