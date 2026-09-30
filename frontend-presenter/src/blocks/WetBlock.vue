@@ -4,7 +4,8 @@ import { fetchArticle } from '../lib/api.js';
 import { renderHtml } from '../lib/renderMarkdown.js';
 import { directRefs, selectArticle } from '../lib/wetView.js';
 import { OPERATION_LABELS, buildOperationTree } from '@editor-utils/operationTree.js';
-import { humanize, formatValue } from '@editor-utils/outputFormat.js';
+import { humanize } from '@editor-utils/outputFormat.js';
+import { formatInUnit } from '../lib/format.js';
 
 // A ```wet block: one article, in words instead of YAML.
 //   law: wet_op_de_zorgtoeslag   ($id, the folder name in the corpus), or
@@ -57,17 +58,7 @@ const textHtml = computed(() => {
   return renderHtml(parts.join('\n\n'));
 });
 
-const EURO = new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' });
-const PCT = new Intl.NumberFormat('nl-NL', { style: 'percent', maximumFractionDigits: 3 });
-/** A literal from the YAML in the unit it declares; eurocent is shown as euros. */
-function literal(value, unit) {
-  if (typeof value === 'number') {
-    if (unit === 'eurocent') return EURO.format(value / 100);
-    if (unit === 'euro') return EURO.format(value);
-    if (unit === 'ratio') return PCT.format(value);
-  }
-  return formatValue(value);
-}
+const literal = formatInUnit;
 const unitOf = (field) => field?.type_spec?.unit ?? null;
 
 const definitions = computed(() =>

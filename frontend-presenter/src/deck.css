@@ -432,6 +432,103 @@ body {
   color: var(--primitives-color-coolgray-900);
   font-size: 0.85em;
 }
+/* ── Reken block: an engine run on the slide ───────────────────────────── */
+.reken {
+  display: flex;
+  flex-direction: column;
+  gap: calc(1.1 * var(--slide-unit));
+}
+/* The outcome is the point of the slide, so it reads larger than the rest. */
+.reken-outputs {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 1.35em;
+}
+.reken-outputs th,
+.reken-outputs td {
+  text-align: left;
+  padding: 0.3em 1em 0.3em 0;
+  border-bottom: 1px solid var(--primitives-color-coolgray-150);
+}
+.reken-outputs th {
+  font-weight: 600;
+}
+.reken-outputs .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--primitives-color-lintblauw-750);
+}
+.reken h4 {
+  margin: 0 0 0.3em;
+  font-size: 0.75em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--primitives-color-coolgray-600);
+}
+.reken-checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.9em;
+}
+.reken-checks li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2em 0.5em;
+  padding: 0.15em 0;
+}
+.reken-mark {
+  font-weight: 700;
+  width: 1em;
+}
+.reken-checks .passed .reken-mark {
+  color: var(--primitives-color-lintblauw-750);
+}
+.reken-checks .failed {
+  color: var(--primitives-color-coolgray-900);
+  font-weight: 600;
+}
+.reken-msg {
+  flex-basis: 100%;
+  padding-left: 1.5em;
+  font-weight: 400;
+  color: var(--primitives-color-coolgray-700);
+}
+/* The trace can run to hundreds of nodes; it scrolls inside the card. */
+.reken-trace {
+  max-height: 40vh;
+  overflow-y: auto;
+  font-size: 0.85em;
+}
+.trace-node {
+  padding-left: 1.1em;
+}
+.reken-trace > .trace-node {
+  padding-left: 0;
+}
+.trace-node summary,
+.trace-leaf {
+  display: flex;
+  gap: 0.5em;
+  align-items: baseline;
+  padding: 0.1em 0;
+}
+.trace-node summary {
+  cursor: pointer;
+}
+.trace-type {
+  min-width: 6.5em;
+  font-size: 0.85em;
+  font-weight: 600;
+  color: var(--primitives-color-lintblauw-750);
+}
+.trace-result {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--primitives-color-coolgray-700);
+}
 .mermaid-svg {
   display: flex;
   justify-content: center;

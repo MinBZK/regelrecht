@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createSlide, indexCorpus, listDecks, lookupArticle, lookupDeckArticle, pickVersion, readDeck, resolveDeckFile, writeDeckFile } from './presenterApi.js';
+import { createSlide, indexCorpus, listDecks, lookupArticle, lookupDeckArticle, readAllLaws, readFeature, readLawVersions, pickVersion, readDeck, resolveDeckFile, writeDeckFile } from './presenterApi.js';
 
 let tmp;
 let decks;
@@ -144,5 +144,88 @@ describe('law YAML in the deck folder', () => {
 
   it('does not list a law file as a slide', () => {
     expect(readDeck(decks, 'demo').slides.map((s) => s.file)).toEqual(['01-titel.md', '02-verder.md']);
+  });
+});
+
+describe('scenarios and law versions for the reken block', () => {
+  let index;
+  beforeEach(() => {
+    const dir = path.join(tmp, 'corpus', 'nl', 'wet', 'voorbeeldwet');
+    fs.mkdirSync(path.join(dir, 'scenarios'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '2024-01-01.yaml'), "$id: voorbeeldwet\nvalid_from: '2024-01-01'\n");
+    fs.writeFileSync(path.join(dir, '2025-01-01.yaml'), "$id: voorbeeldwet\nvalid_from: '2025-01-01'\n");
+    fs.writeFileSync(path.join(dir, 'scenarios', 'recht.feature'), 'Feature: Recht\n');
+    fs.writeFileSync(path.join(decks, 'demo', 'eigen.feature'), 'Feature: Eigen casus\n');
+    fs.writeFileSync(path.join(decks, 'demo', 'variant.yaml'), "$id: voorbeeldwet\nvalid_from: '2025-01-01'\n# variant\n");
+    fs.writeFileSync(path.join(decks, 'demo', 'andere.yaml'), '$id: iets_anders\n');
+    index = indexCorpus([path.join(tmp, 'corpus')]);
+  });
+
+  it('reads a scenario next to a law, or one in the deck folder', () => {
+    expect(readFeature(index, decks, { feature: 'voorbeeldwet/recht.feature' }).text).toBe('Feature: Recht\n');
+    expect(readFeature(index, decks, { feature: 'eigen.feature', deck: 'demo' }).text).toBe('Feature: Eigen casus\n');
+  });
+
+  it.each([
+    ['voorbeeldwet/../../geheim.md'],
+    ['voorbeeldwet/recht.yaml'],
+    ['a/b/c.feature'],
+    ['../eigen.feature'],
+    ['eigen.md'],
+  ])('refuses scenario %s', (feature) => {
+    expect(() => readFeature(index, decks, { feature, deck: 'demo' })).toThrow(expect.objectContaining({ status: 400 }));
+  });
+
+  it('reports a missing scenario or law as 404', () => {
+    expect(() => readFeature(index, decks, { feature: 'bestaatniet/x.feature' })).toThrow(expect.objectContaining({ status: 404 }));
+    expect(() => readFeature(index, decks, { feature: 'voorbeeldwet/weg.feature' })).toThrow(expect.objectContaining({ status: 404 }));
+  });
+
+  it('gives every corpus version, then the deck files with the same $id', () => {
+    const { versions } = readLawVersions(index, decks, { law: 'voorbeeldwet', deck: 'demo' });
+    expect(versions.map((v) => v.source)).toEqual(['corpus 2024-01-01', 'corpus 2025-01-01', 'variant.yaml']);
+    expect(readLawVersions(index, decks, { law: 'voorbeeldwet' }).versions).toHaveLength(2);
+  });
+
+  it('finds a law that only exists in the deck folder, and 404s one that exists nowhere', () => {
+    expect(readLawVersions(index, decks, { law: 'iets_anders', deck: 'demo' }).versions.map((v) => v.source)).toEqual(['andere.yaml']);
+    expect(() => readLawVersions(index, decks, { law: 'nergens', deck: 'demo' })).toThrow(expect.objectContaining({ status: 404 }));
+  });
+});
+
+describe('corpus index by $id', () => {
+  beforeEach(() => {
+    const gm = path.join(tmp, 'corpus', 'nl', 'gemeentelijke_verordening', 'amsterdam', 'apv_erfgrens');
+    fs.mkdirSync(gm, { recursive: true });
+    fs.writeFileSync(path.join(gm, '2025-01-01.yaml'), "---\n$id: apv_erfgrens_amsterdam\nvalid_from: '2025-01-01'\n");
+    const wet = path.join(tmp, 'corpus', 'nl', 'wet', 'hoofdwet');
+    fs.mkdirSync(wet, { recursive: true });
+    fs.writeFileSync(path.join(wet, '2025-01-01.yaml'), "$id: hoofdwet\nvalid_from: '2025-01-01'\n");
+    const poc = path.join(tmp, 'poc', 'hoofdwet');
+    fs.mkdirSync(poc, { recursive: true });
+    fs.writeFileSync(path.join(poc, '2025-01-01.yaml'), "$id: hoofdwet\n# poc-variant\n");
+    fs.writeFileSync(path.join(decks, 'demo', 'eigen.yaml'), "$id: hoofdwet\nvalid_from: '2025-01-01'\n# deck\n");
+  });
+
+  it('finds a law by the $id in its file, and by its folder name as an alias', () => {
+    const index = indexCorpus([path.join(tmp, 'corpus')]);
+    expect(index.get('apv_erfgrens_amsterdam').id).toBe('apv_erfgrens_amsterdam');
+    expect(index.get('apv_erfgrens').id).toBe('apv_erfgrens_amsterdam');
+  });
+
+  it('lets the first root win when two roots have the same $id', () => {
+    const index = indexCorpus([path.join(tmp, 'corpus'), path.join(tmp, 'poc')]);
+    expect(index.get('hoofdwet').dir).toBe(path.join(tmp, 'corpus', 'nl', 'wet', 'hoofdwet'));
+  });
+
+  it('gives the reken engine every law of the main root, then the deck laws last', () => {
+    const root = path.join(tmp, 'corpus');
+    const index = indexCorpus([root, path.join(tmp, 'poc')]);
+    const all = readAllLaws(index, decks, { deck: 'demo', root }).versions;
+    expect(all.map((v) => `${v.law} ${v.source}`).sort()).toEqual(
+      ['apv_erfgrens_amsterdam corpus 2025-01-01', 'hoofdwet corpus 2025-01-01', 'hoofdwet eigen.yaml'].sort(),
+    );
+    expect(all.at(-1)).toMatchObject({ law: 'hoofdwet', source: 'eigen.yaml' });
+    expect(all.some((v) => v.text.includes('poc-variant'))).toBe(false);
   });
 });

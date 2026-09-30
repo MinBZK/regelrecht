@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue';
 import Slide from './Slide.vue';
 import * as api from './lib/api.js';
+import { resetDeckEngine } from './engine/engine.js';
 import { appendBlock, normalize, replaceRange, setYamlKey } from './lib/slideDoc.js';
 
 // The deck: one folder, one slide per markdown file. Navigation and the footer
@@ -151,15 +152,24 @@ function onKey(e) {
 
 // A change on disk (from an editor next to the browser) reloads the deck. Our
 // own writes come through here too; they load the same text, so nothing moves.
-function onDeckChanged({ deck: changed }) {
+function onDeckChanged({ deck: changed, file = '' }) {
   if (changed !== props.name) return;
-  // A law YAML in the deck folder may be what changed.
-  api.clearWetCache();
-  wetVersion.value++;
+  if (/\.ya?ml$/.test(file) && file !== 'deck.yaml') {
+    // A law YAML in the deck folder: fetch wet blocks again and give reken
+    // blocks a fresh engine that loads the new version.
+    api.clearWetCache();
+    resetDeckEngine(props.name);
+    wetVersion.value++;
+  } else if (file.endsWith('.feature')) {
+    // A scenario of the deck's own: run the reken blocks again.
+    wetVersion.value++;
+  }
+  // A slide or deck.yaml (our own saves too) needs only the text again.
   load();
 }
 function onCorpusChanged() {
   api.clearWetCache();
+  resetDeckEngine(props.name);
   wetVersion.value++;
 }
 

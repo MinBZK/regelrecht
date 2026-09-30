@@ -3,6 +3,7 @@ import { computed, nextTick, ref } from 'vue';
 import { renderBlock, renderInline } from './lib/renderMarkdown.js';
 import WetBlock from './blocks/WetBlock.vue';
 import MermaidBlock from './blocks/MermaidBlock.vue';
+import RekenBlock from './blocks/RekenBlock.vue';
 
 // One top-level markdown block of a slide. In edit mode a click turns it into
 // a textarea with the block's own markdown source; blur or ⌘/Ctrl+Enter saves
@@ -86,6 +87,8 @@ function onKey(e) {
   >
     <WetBlock v-if="piece.kind === 'wet' && !piece.error" :spec="piece.spec" />
     <p v-else-if="piece.kind === 'wet'" class="block-error">{{ piece.error }}</p>
+    <RekenBlock v-else-if="piece.kind === 'reken' && !piece.error" :spec="piece.spec" />
+    <p v-else-if="piece.kind === 'reken'" class="block-error">{{ piece.error }}</p>
     <MermaidBlock v-else-if="piece.kind === 'mermaid'" :source="piece.source" />
     <component :is="inline ? 'span' : 'div'" v-else class="block-html" v-html="piece.html"></component>
   </component>

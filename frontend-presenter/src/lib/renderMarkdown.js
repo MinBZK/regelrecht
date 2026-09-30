@@ -3,8 +3,8 @@
  * text (frontend/src/composables/useArticleMarkdown.js): marked, then DOMPurify,
  * because a slide can hold any HTML its author pasted in.
  *
- * Code blocks in the languages `wet` and `mermaid` are not rendered as code:
- * they become a `{ kind: 'wet' | 'mermaid' }` piece that Slide.vue replaces with
+ * Code blocks in the languages `wet`, `reken` and `mermaid` are not rendered as
+ * code: they become a `{ kind: 'wet' | 'reken' | 'mermaid' }` piece that Slide.vue replaces with
  * a component. That is why rendering goes per block and not per document: a Vue
  * component cannot sit inside a v-html string.
  */
@@ -12,7 +12,7 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import * as yaml from 'js-yaml';
 
-export const COMPONENT_LANGS = new Set(['wet', 'mermaid']);
+export const COMPONENT_LANGS = new Set(['wet', 'reken', 'mermaid']);
 
 export function sanitize(html) {
   return DOMPurify.sanitize(html);
@@ -23,6 +23,14 @@ export function renderBlock(block) {
   const { token } = block;
   if (token.type === 'code' && COMPONENT_LANGS.has(token.lang)) {
     if (token.lang === 'mermaid') return { kind: 'mermaid', source: token.text };
+    if (token.lang === 'reken') {
+      try {
+        const spec = yaml.load(token.text) ?? {};
+        return { kind: 'reken', spec, error: spec.scenario ? null : 'Een reken-blok heeft `scenario:` nodig: wet/bestand.feature, of een .feature in de deck-map.' };
+      } catch (e) {
+        return { kind: 'reken', spec: null, error: `Ongeldige YAML in reken-blok: ${e.reason ?? e.message}` };
+      }
+    }
     let spec = null;
     let error = null;
     try {

@@ -150,10 +150,19 @@ export function createSlide(decksRoot, deck, after) {
   return writeDeckFile(decksRoot, deck, fits[Math.floor(fits.length / 2)], NEW_SLIDE, null);
 }
 
-/** Every folder under the corpus roots that holds `<date>.yaml` law files, by $id (folder name). */
+/**
+ * Every folder under the corpus roots that holds `<date>.yaml` law files, by
+ * the law's `$id`. The `$id` is read from the file, not taken from the folder
+ * name: most laws sit in a folder of that name, but not all (a municipal
+ * regulation lives under `gemeentelijke_verordening/amsterdam/apv_erfgrens/`
+ * with `$id: apv_erfgrens_amsterdam`). The folder name is kept as an alias for
+ * the wet block, when it differs and names no other law. An earlier root wins
+ * on a clash, so corpus/regulation comes before corpus-poc.
+ */
 export function indexCorpus(corpusRoots) {
   const index = new Map();
-  const walk = (dir, depth) => {
+  const aliases = [];
+  const walk = (dir, depth, root) => {
     if (depth > 7) return;
     let entries;
     try {
@@ -162,15 +171,29 @@ export function indexCorpus(corpusRoots) {
       return;
     }
     const dated = entries.filter((e) => e.isFile() && DATE_FILE_RE.test(e.name));
-    if (dated.length && !index.has(path.basename(dir))) {
-      index.set(path.basename(dir), { dir, versions: dated.map((e) => e.name.match(DATE_FILE_RE)[1]).sort() });
+    if (dated.length) {
+      const versions = dated.map((e) => e.name.match(DATE_FILE_RE)[1]).sort();
+      const id = readId(path.join(dir, `${versions[versions.length - 1]}.yaml`)) ?? path.basename(dir);
+      if (!index.has(id)) index.set(id, { id, dir, versions, root });
+      if (id !== path.basename(dir)) aliases.push([path.basename(dir), id]);
     }
     for (const e of entries) {
-      if (e.isDirectory() && !e.name.startsWith('.') && e.name !== 'node_modules') walk(path.join(dir, e.name), depth + 1);
+      if (e.isDirectory() && !e.name.startsWith('.') && e.name !== 'node_modules') walk(path.join(dir, e.name), depth + 1, root);
     }
   };
-  for (const root of corpusRoots) walk(root, 0);
+  for (const root of corpusRoots) walk(root, 0, root);
+  for (const [alias, id] of aliases) if (!index.has(alias)) index.set(alias, index.get(id));
   return index;
+}
+
+/** `$id` of a law file, read from its top lines without parsing the whole YAML. */
+function readId(file) {
+  try {
+    const head = fs.readFileSync(file, 'utf8').slice(0, 4096);
+    return head.match(/^\$id:\s*['"]?([^'"\s#]+)/m)?.[1] ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /** The newest version on or before `date` (ISO), or the oldest one when all are later. */
@@ -234,6 +257,87 @@ function articleOf(doc, article, law, version) {
   };
 }
 
+const FEATURE_RE = /^[^/\\]+\.feature$/;
+
+/**
+ * A scenario file. `law/file.feature` is a file in that law's `scenarios/`
+ * folder in the corpus; a bare `file.feature` is a file in the deck folder,
+ * for a case of your own.
+ */
+export function readFeature(index, decksRoot, { feature, deck }) {
+  if (typeof feature !== 'string' || !feature) throw new ApiError(400, 'scenario ontbreekt');
+  const parts = feature.split('/');
+  let full;
+  if (parts.length === 1) {
+    if (!FEATURE_RE.test(feature)) throw new ApiError(400, `Geen feature-bestand: ${feature}`);
+    const deckDir = resolveDeckDir(decksRoot, deck);
+    full = path.join(deckDir, feature);
+  } else if (parts.length === 2) {
+    const [law, file] = parts;
+    if (!/^[A-Za-z0-9_-]+$/.test(law)) throw new ApiError(400, `Geen wet-id: ${law}`);
+    if (!FEATURE_RE.test(file)) throw new ApiError(400, `Geen feature-bestand: ${file}`);
+    const entry = index.get(law);
+    if (!entry) throw new ApiError(404, `Wet niet gevonden in de corpus: ${law}`);
+    full = path.join(entry.dir, 'scenarios', file);
+  } else {
+    throw new ApiError(400, `Schrijf het scenario als wet/bestand.feature of bestand.feature: ${feature}`);
+  }
+  if (!fs.existsSync(full)) throw new ApiError(404, `Scenario-bestand niet gevonden: ${feature}`);
+  return { feature, text: fs.readFileSync(full, 'utf8') };
+}
+
+/** The law YAMLs in a deck folder with their `$id`, in name order. */
+function deckLaws(decksRoot, deck) {
+  if (!deck) return [];
+  const deckDir = resolveDeckDir(decksRoot, deck);
+  if (!fs.existsSync(deckDir)) return [];
+  return fs
+    .readdirSync(deckDir)
+    .sort()
+    .filter((f) => LAW_FILE_RE.test(f) && f !== 'deck.yaml')
+    .map((file) => ({ file, id: readId(path.join(deckDir, file)), text: fs.readFileSync(path.join(deckDir, file), 'utf8') }))
+    .filter((l) => l.id);
+}
+
+const corpusVersions = (entry) =>
+  entry.versions.map((v) => ({ law: entry.id, source: `corpus ${v}`, text: fs.readFileSync(path.join(entry.dir, `${v}.yaml`), 'utf8') }));
+
+/**
+ * The laws for a reken block's engine, the way the Rust BDD runner loads them:
+ * every law of the main corpus (the first root), each in every version, so a
+ * law that implements, overrides or is pulled in by the law under test is
+ * there without the scenario naming it. The engine picks the version by
+ * calculation date; filtering on date here would drop versions it needs.
+ * The deck's own law YAMLs come last, so a variant replaces the corpus
+ * version with the same `valid_from`.
+ */
+export function readAllLaws(index, decksRoot, { deck, root }) {
+  const seen = new Set();
+  const laws = [];
+  for (const entry of index.values()) {
+    if (entry.root !== root || seen.has(entry.id)) continue;
+    seen.add(entry.id);
+    laws.push(...corpusVersions(entry));
+  }
+  for (const l of deckLaws(decksRoot, deck)) laws.push({ law: l.id, source: l.file, text: l.text });
+  return { versions: laws };
+}
+
+/**
+ * One law in every version, for a law outside the main corpus that a
+ * scenario loads by name (a corpus-poc law, or one from PRESENTER_CORPUS),
+ * followed by the deck's own YAMLs with that `$id`.
+ */
+export function readLawVersions(index, decksRoot, { law, deck }) {
+  const entry = index.get(law);
+  const versions = entry ? corpusVersions(entry) : [];
+  for (const l of deckLaws(decksRoot, deck)) if (l.id === law) versions.push({ law, source: l.file, text: l.text });
+  if (!versions.length) throw new ApiError(404, `Wet niet gevonden: ${law}`);
+  return { law, versions };
+}
+
+const WASM_FILES = { 'regelrecht_engine.js': 'text/javascript', 'regelrecht_engine_bg.wasm': 'application/wasm' };
+
 /**
  * The JSON body of a request. Anything but `application/json` is refused: a
  * page on another site can send a form POST to localhost without a preflight,
@@ -263,8 +367,11 @@ function send(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
-/** The Vite plugin. Options: `decksRoot`, `corpusRoots` (absolute paths). */
-export function presenterApi({ decksRoot, corpusRoots }) {
+/**
+ * The Vite plugin. Options: `decksRoot`, `corpusRoots` and `wasmDir`
+ * (absolute paths); `wasmDir` holds the engine that `just wasm-build` makes.
+ */
+export function presenterApi({ decksRoot, corpusRoots, wasmDir }) {
   let corpus = null;
   const getCorpus = () => (corpus ??= indexCorpus(corpusRoots));
 
@@ -277,8 +384,8 @@ export function presenterApi({ decksRoot, corpusRoots }) {
       const onChange = (file) => {
         const abs = path.resolve(file);
         if (abs.startsWith(path.resolve(decksRoot) + path.sep)) {
-          const deck = path.relative(decksRoot, abs).split(path.sep)[0];
-          server.ws.send({ type: 'custom', event: 'presenter:deck-changed', data: { deck } });
+          const [deck, ...rest] = path.relative(decksRoot, abs).split(path.sep);
+          server.ws.send({ type: 'custom', event: 'presenter:deck-changed', data: { deck, file: rest.join('/') } });
         } else if (corpusRoots.some((r) => abs.startsWith(path.resolve(r) + path.sep))) {
           corpus = null;
           server.ws.send({ type: 'custom', event: 'presenter:corpus-changed', data: {} });
@@ -287,6 +394,20 @@ export function presenterApi({ decksRoot, corpusRoots }) {
       server.watcher.on('change', onChange);
       server.watcher.on('add', onChange);
       server.watcher.on('unlink', onChange);
+
+      // The engine, served from the build output instead of copied: two copies
+      // of a 2 MB build drift, and `just wasm-build` already writes this one.
+      server.middlewares.use('/wasm/pkg', (req, res, next) => {
+        const name = new URL(req.url, 'http://x').pathname.replace(/^\//, '');
+        if (!Object.hasOwn(WASM_FILES, name)) return next();
+        const full = path.join(wasmDir, name);
+        if (!fs.existsSync(full)) {
+          return send(res, 404, { error: `De engine is nog niet gebouwd (${name} ontbreekt). Draai eerst: just wasm-build` });
+        }
+        res.setHeader('Content-Type', WASM_FILES[name]);
+        res.setHeader('Cache-Control', 'no-cache');
+        fs.createReadStream(full).pipe(res);
+      });
 
       server.middlewares.use('/api', async (req, res, next) => {
         try {
@@ -310,6 +431,16 @@ export function presenterApi({ decksRoot, corpusRoots }) {
               return send(res, 200, lookupDeckArticle(decksRoot, { deck: q.get('deck'), file: q.get('file'), article: q.get('article') }));
             }
             return send(res, 200, lookupArticle(getCorpus(), { law: q.get('law'), article: q.get('article'), date: q.get('date') }));
+          }
+          if (parts[0] === 'scenario' && req.method === 'GET') {
+            const q = url.searchParams;
+            return send(res, 200, readFeature(getCorpus(), decksRoot, { feature: q.get('feature'), deck: q.get('deck') }));
+          }
+          if (parts[0] === 'laws' && parts.length === 1 && req.method === 'GET') {
+            return send(res, 200, readAllLaws(getCorpus(), decksRoot, { deck: url.searchParams.get('deck'), root: corpusRoots[0] }));
+          }
+          if (parts[0] === 'laws' && parts.length === 2 && req.method === 'GET') {
+            return send(res, 200, readLawVersions(getCorpus(), decksRoot, { law: parts[1], deck: url.searchParams.get('deck') }));
           }
           next();
         } catch (err) {

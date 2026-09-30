@@ -74,6 +74,23 @@ uitvoer: hoogte_zorgtoeslag
 
 Gezocht wordt in `corpus/regulation` en `corpus-poc`. Extra mappen geef je mee met `PRESENTER_CORPUS=/pad:/ander/pad`. De labels van de operaties en de opmaak van waarden komen uit de editor (`frontend/src/utils/`), zodat een regel hier hetzelfde leest als daar.
 
+### Berekening
+
+````md
+```reken
+scenario: wet_op_de_zorgtoeslag/eligibility.feature   # wet/bestand in de scenarios-map van die wet
+naam: Meerderjarige met actieve polis heeft recht op zorgtoeslag
+uitvoer: [hoogte_zorgtoeslag]    # optioneel: welke uitkomsten in beeld komen
+spoor: true                      # optioneel: het rekenspoor, per stap uit te klappen
+```
+````
+
+Het blok draait één scenario uit een `.feature`-bestand op de engine, in de browser. De casus is dus de casus van het scenario: dezelfde gegevens als de test in CI. Onder "Verwacht volgens het scenario" staat per `Then`-stap of de uitkomst klopt. Een scenario met `@wip` wordt als zodanig aangeduid.
+
+- `scenario: eigen.feature` (zonder map) leest een scenario uit de deck-map, voor een eigen casus in dezelfde Gherkin-vorm.
+- Een wet-YAML in de deck-map met hetzelfde `$id` als een wet uit de corpus gaat na de corpusversies de engine in, en vervangt de versie met dezelfde `valid_from`. Zo reken je een variant door met hetzelfde scenario.
+- De engine is de WASM-build van `just wasm-build` (in `frontend/public/wasm/pkg`, of `PRESENTER_WASM=/pad`). Is die er niet, dan zegt het blok dat.
+
 ### Stroomschema
 
 ````md
@@ -83,7 +100,7 @@ flowchart LR
 ```
 ````
 
-Mermaid wordt pas geladen op een dia die een diagram heeft.
+Mermaid en de engine worden pas geladen op een dia die ze gebruikt.
 
 ## Toetsen
 
@@ -100,3 +117,11 @@ In de bewerkmodus klik je op een blok om de markdown ervan te bewerken. Blur of 
 ## Eigen CSS
 
 Het design system heeft geen presentatiecomponent, dus de dia's zijn eigen CSS (`src/deck.css`), net als in `frontend-demo`. De kleuren zijn design-system-tokens. Knoppen, toetsen en de decklijst zijn `nldd-*`-componenten.
+
+Eigen opmaak, en waarom:
+
+- **De dia's**: de typografische ladder en het blauwe vlak van het demo-dek, plus opmaak voor gewone markdown. Schaalt mee met de breedte van de dia; de design-system-componenten hebben vaste maten.
+- **De lichte kaart** voor wet-, reken- en mermaid-blokken: tabellen en diagrammen zijn op donkerblauw slecht leesbaar.
+- **Tabellen, lijsten en het rekenspoor in die kaarten** zijn gewone `<table>`, `<ul>` en `<details>`, geen `nldd-table`: die schaalt niet mee met de dia. Hetzelfde geldt voor het naam-veld en het bewerk-tekstvak.
+- **`markeer:`** licht rijen op in het accentgeel van het dek; de uitkomst van een reken-blok staat groter dan de rest.
+- **De bewerkmodus**: de rand om een bewerkbaar blok en het tekstvak.
