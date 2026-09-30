@@ -162,7 +162,8 @@ Wet: wet_op_de_zorgtoeslag
 This line is optional, because most PRs touch no law and requiring it would
 produce the same empty box as a reasonless `geen`. Present, it has to resolve:
 the gate rejects an id that is not in the corpus, and renders each one as a link
-to the law on wetten.overheid.nl in the check's summary. The URL comes from the
+to the published text in the check's summary: wetten.overheid.nl for a Dutch law,
+EUR-Lex for an EU regulation. The URL comes from the
 law file's own `url` (falling back to `bwb_id`), so it cannot drift from the
 corpus. Do not write the link yourself, and never invent a BWB number: name the
 `$id` and let the gate resolve it.

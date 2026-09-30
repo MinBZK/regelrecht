@@ -21,7 +21,8 @@
 # Die regel is optioneel — de meeste PR's raken geen wet, en hem verplichten zou
 # net zo'n leeg vakje opleveren als een `geen` zonder reden. Staat hij er, dan
 # moet hij kloppen: de waarde is het `$id` van een wet in corpus/regulation, en
-# de poort zet er in de samenvatting een link bij naar wetten.overheid.nl.
+# de poort zet er in de samenvatting een link bij naar de bekendgemaakte tekst
+# (wetten.overheid.nl, of EUR-Lex voor een EU-verordening).
 # Daarmee is een genoemde wet aanklikbaar in plaats van een string die je zelf
 # moet opzoeken, en is een typefout meteen zichtbaar in plaats van pas als
 # iemand de wet probeert te vinden.

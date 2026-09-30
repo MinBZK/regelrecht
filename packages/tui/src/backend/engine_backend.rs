@@ -123,7 +123,8 @@ fn engine_thread(
 
 fn load_corpus(service: &mut LawExecutionService, project_root: &Path) -> usize {
     let candidates = [
-        project_root.join("corpus/regulation/nl"),
+        // The whole of corpus/regulation, not nl/ alone: EU regulations live
+        // in eu/ beside it.
         project_root.join("corpus/regulation"),
         project_root.join("corpus/central/nl"),
         project_root.join("corpus/central"),

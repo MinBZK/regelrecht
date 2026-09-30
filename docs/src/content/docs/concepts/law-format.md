@@ -9,9 +9,13 @@ This page explains how such a file is put together and why it looks the way it d
 
 ## File organization
 
-A file's place in the corpus says what kind of instrument it is and when its text took effect:
+A file's place in the corpus says what kind of instrument it is and when its text took effect. Dutch regulations sit under `nl/`, EU regulations under `eu/`:
 
 ```
+corpus/regulation/eu/
+└── verordening/                      # EU regulations
+    └── machineverordening/
+        └── 2027-01-14.yaml
 corpus/regulation/nl/
 ├── wet/                              # Formal laws (wetten)
 │   ├── wet_op_de_zorgtoeslag/
@@ -277,11 +281,11 @@ The Regeling standaardpremie then declares under `implements` that it fills this
 
 A `machine_readable` section can hold more than a calculation. `hooks` let an article react to a decision another law produces, `overrides` let a special provision set aside a general one, and `markings` record where the logic could not follow the text exactly. Each has its own concept page: [Hooks and Reactive Execution](/concepts/hooks-and-reactive-execution) and [Markings](/concepts/markings).
 
-The examples on this page are written to schema v0.5.x, because the corpus is. Schema v0.7.0 added `markings` (the new name for `untranslatables`), `declares`, `placement` and `voids`, and no corpus law uses any of them yet: the real laws are all on v0.5.x and still carry `untranslatables`, and the one file on v0.7.0 is the synthetic `test_date_operations`, which needs its date operations. Read the [Schema Reference](/reference/schema) for the v0.7.0 fields; do not look for them in the corpus.
+The examples on this page are written to schema v0.5.x, because the corpus is. Schema v0.7.0 added `markings` (the new name for `untranslatables`), `declares`, `placement` and `voids`. The Dutch laws are all on v0.5.x and still carry `untranslatables`. Two files are on v0.7.x: the synthetic `test_date_operations`, which needs its date operations, and the Machineverordening, whose articles 25 and 54 and annex I use `markings` and `declares`. Read the [Schema Reference](/reference/schema) for the v0.7.0 fields.
 
 ## Corpus contents
 
-The corpus spans three regulatory layers: national law (`WET`) makes up most of it, with a few ministerial regulations and municipal by-laws that exercise delegation and the local layer. Next to the real laws, `corpus/regulation/nl/wet/` holds synthetic laws in the `test_*` directories. They are not Dutch law: each one isolates a corner of the language (null semantics, scoped sources, collections, date operations) for the engine-conformance BDD bucket, which needs a law that tests one feature rather than a statute that mixes many.
+National law (`WET`) makes up most of the corpus, with a few ministerial regulations and municipal by-laws that exercise delegation and the local layer. One EU regulation (`EU_VERORDENING`) sits beside them: Regulation (EU) 2023/1230 on machinery, identified by its `celex_nummer` instead of a BWB id, with its Dutch text taken from EUR-Lex. Its first executable part is the choice of conformity assessment procedure in article 25 and annex I. There is no harvester for EUR-Lex yet, so the file was built by hand from the Publications Office's XHTML. Next to the real laws, `corpus/regulation/nl/wet/` holds synthetic laws in the `test_*` directories. They are not Dutch law: each one isolates a corner of the language (null semantics, scoped sources, collections, date operations) for the engine-conformance BDD bucket, which needs a law that tests one feature rather than a statute that mixes many.
 
 This page gives no counts, because they change with every harvest. The authoritative set is [`corpus/regulation/`](https://github.com/MinBZK/regelrecht/tree/main/corpus/regulation) itself. To count files per layer, run `grep -rh '^regulatory_layer:' corpus/regulation/ | sort | uniq -c` from the repository root. That counts versions, not laws: each version of a law is its own file, named after its `valid_from` date, in the law's directory.
 

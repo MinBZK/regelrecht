@@ -1,6 +1,7 @@
 //! Regulation loader for BDD tests
 //!
-//! Loads all YAML regulation files from the corpus/regulation/nl directory.
+//! Loads all YAML regulation files under corpus/regulation, for every
+//! jurisdiction (`nl/`, `eu/`).
 
 use crate::common::regulation_base_path;
 use regelrecht_engine::{EngineError, LawExecutionService};
@@ -8,10 +9,11 @@ use walkdir::WalkDir;
 
 /// Load all regulation YAML files into the service.
 ///
-/// Scans the `corpus/regulation/nl/` directory (or `REGULATION_PATH` env var base)
-/// and loads all `.yaml` files found.
+/// Scans the `corpus/regulation/` directory (or the `REGULATION_PATH` env var)
+/// and loads all `.yaml` files found. A scenario may reference an EU
+/// regulation as well as a Dutch law, so the walk is not limited to `nl/`.
 pub fn load_all_regulations(service: &mut LawExecutionService) -> Result<usize, EngineError> {
-    let regulation_dir = regulation_base_path().join("nl");
+    let regulation_dir = regulation_base_path();
 
     if !regulation_dir.exists() {
         return Err(EngineError::LoadError(format!(

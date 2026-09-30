@@ -57,7 +57,8 @@ pub fn extract_metadata(content: &str) -> LawMetadata {
 /// Find the corpus regulation directory by checking common locations.
 fn find_regulation_dir(project_root: &Path) -> Option<PathBuf> {
     let candidates = [
-        project_root.join("corpus/regulation/nl"),
+        // The whole of corpus/regulation, not nl/ alone: EU regulations live
+        // in eu/ beside it.
         project_root.join("corpus/regulation"),
         project_root.join("corpus/central/nl"),
         project_root.join("corpus/central"),
@@ -90,4 +91,35 @@ pub fn corpus_yaml_files(project_root: &Path) -> Vec<PathBuf> {
         })
         .map(|e| e.path().to_path_buf())
         .collect()
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    fn repo_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(2)
+            .expect("repository root")
+            .to_path_buf()
+    }
+
+    #[test]
+    fn corpus_includes_eu_regulations() {
+        let files = corpus_yaml_files(&repo_root());
+        assert!(
+            files
+                .iter()
+                .any(|p| p.ends_with("nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml")),
+            "a Dutch law under nl/ should be found"
+        );
+        assert!(
+            files
+                .iter()
+                .any(|p| p.ends_with("eu/verordening/machineverordening/2027-01-14.yaml")),
+            "an EU regulation under eu/ should be found"
+        );
+    }
 }
