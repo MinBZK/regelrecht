@@ -3856,19 +3856,21 @@ impl LawExecutionService {
         if fills_in {
             held.push(implementation_key(&law.id, &article.number));
         }
-        // Only an article that declares overrides pays for the lookup of the
-        // article producing the output: this runs on every sourced input.
-        let replaces = article.get_overrides().is_some_and(|decls| {
-            let replacing: Vec<_> = decls
-                .iter()
-                .filter(|d| !d.voids && d.law == regulation && d.output == output)
-                .collect();
-            !replacing.is_empty()
-                && self
-                    .resolver
-                    .get_article_by_output(regulation, output, res_ctx.reference_date())
-                    .is_some_and(|target| replacing.iter().any(|d| d.article == target.number))
-        });
+        // Only an article that replaces this output pays for the lookup of
+        // the article producing it: this runs on every sourced input.
+        let replacing: Vec<_> = article
+            .get_overrides()
+            .into_iter()
+            .flatten()
+            .filter(|d| !d.voids && d.law == regulation && d.output == output)
+            .collect();
+        if replacing.is_empty() {
+            return held;
+        }
+        let replaces = self
+            .resolver
+            .get_article_by_output(regulation, output, res_ctx.reference_date())
+            .is_some_and(|target| replacing.iter().any(|d| d.article == target.number));
         if replaces {
             held.push(override_key(&law.id, &article.number));
         }
