@@ -252,9 +252,9 @@ body {
   <div class="slide image-slide">
     <div class="h">Cross-law structuur in beeld</div>
     <div class="image-wrap">
-      <img src="financieel-cv-graph-detail-alle-7.png" alt="Detail-graph van alle zeven Financieel CV-regelingen met cross-law verwijzingen en untranslatables">
+      <img src="financieel-cv-graph-detail-alle-7.png" alt="Detail-graph van alle zeven Financieel CV-regelingen met de cross-law verwijzingen tussen de wetten">
     </div>
-    <div class="image-caption">Alle zeven regelingen met onderlinge verwijzingen en untranslatables-annotaties</div>
+    <div class="image-caption">Alle zeven regelingen met hun onderlinge verwijzingen. Diagram van vóór de schema-migratie van 22 september; de annotaties heten sindsdien markings en open terms.</div>
   </div>
 
   <!-- 5. Eén regeling grondig -->
@@ -270,8 +270,8 @@ body {
         <div class="cell-body">Vijf jaar (lid 1) of <b>onbeperkt</b> bij banenafspraak (lid 2; gemodelleerd als sentinel −1).</div>
       </div>
       <div class="cell">
-        <div class="cell-label">Untranslatables</div>
-        <div class="cell-body">Drie expliciet gemarkeerd. <b>Plekken waar de wettekst de engine te boven gaat.</b></div>
+        <div class="cell-label">Markings en open terms</div>
+        <div class="cell-body"><b>Vier markings</b> (het formaat heeft er geen vorm voor) en <b>één open term</b> (de vijfjaarstermijn bij opvolgende dienstverbanden, die het UWV per geval invult).</div>
       </div>
       <div class="cell">
         <div class="cell-label">Awb-hooks</div>
@@ -298,7 +298,7 @@ body {
       </div>
       <div class="cell">
         <div class="cell-label">Geautomatiseerd uitvoerbaar</div>
-        <div class="cell-body"><b>103 van 103 scenarios geslaagd</b> via <code>just bdd</code>.</div>
+        <div class="cell-body">Beide persona's draaien end-to-end via <code>just bdd</code>. <b>Het aantal scenario's wordt opnieuw vastgesteld</b> na de schema-migratie van 22 september.</div>
       </div>
     </div>
   </div>
@@ -337,8 +337,8 @@ body {
         <div class="cell-body">Per regeling: welke passages bevatten rekenvoorbeelden? <b>De engine dient dezelfde uitkomst te leveren.</b></div>
       </div>
       <div class="cell">
-        <div class="cell-label">Untranslatables</div>
-        <div class="cell-body">De vijfjaarstermijn-onderbreking bij NRP, de evenredigheidsregel bij LKS. <b>Welke onderdelen behoren tot beleid?</b></div>
+        <div class="cell-label">Open normen</div>
+        <div class="cell-body">De vijfjaarstermijn bij opvolgende dienstverbanden (NRP), de sectornorm onder de evenredigheidsregel (LKS). <b>Wie vult ze in, en waar is dat vastgelegd?</b></div>
       </div>
       <div class="cell">
         <div class="cell-label">Dataminimalisatie</div>
@@ -411,7 +411,7 @@ body {
 
 <div id="nav">
   <button id="bp">← Vorige</button>
-  <span id="counter">1 / 13</span>
+  <span id="counter"></span>
   <button id="bn">Volgende →</button>
 </div>
 <div id="dots"></div>
@@ -430,6 +430,8 @@ body {
     (function(idx){ d.addEventListener('click', function(){ go(idx); }); })(i);
     dotsEl.appendChild(d);
   }
+
+  counterEl.textContent = '1 / ' + total;
 
   function go(n) {
     slides[cur].classList.remove('active');

@@ -1,0 +1,538 @@
+<title>Juristvalidatie Financieel CV</title>
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  /* Rijksoverheid donkerblauw, vlak. Geen verloop. */
+  --ground: #154273;
+  --ink: #ffffff;
+  --ink-dim: rgba(255,255,255,0.74);
+  --ink-faint: rgba(255,255,255,0.48);
+  --fill: rgba(255,255,255,0.07);
+  --line: rgba(255,255,255,0.20);
+
+  /* Bronaanduiding. Gedempt; de kleur draagt informatie, geen nadruk. */
+  --uwv: #a8c4e6;
+  --gem: #e6cba8;
+  --wg:  #aed4c4;
+  --reg: #c9b8dd;
+  --gap: #e0aaaa;
+  --bd:  #d9c98f;
+
+  --ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+html, body { height: 100%; }
+body { font-family: var(--ui); background: var(--ground); color: var(--ink); overflow: hidden; }
+.deck { width: 100%; height: 100%; position: relative; }
+
+.slide {
+  position: absolute; inset: 0; display: none;
+  flex-direction: column; align-items: center; justify-content: center;
+  text-align: left;
+  padding: 5vw max(16px, 7vw);
+  background: var(--ground);
+}
+.slide.active { display: flex; }
+
+/* Titel */
+.title-main { font-size: clamp(36px, 6.5vw, 82px); font-weight: 400; letter-spacing: -0.01em; line-height: 1.05; margin-bottom: 0.3em; text-wrap: balance; }
+.title-sub { font-size: clamp(15px, 2.2vw, 30px); font-weight: 300; color: var(--ink-dim); }
+.title-footer {
+  position: absolute; bottom: 6%; left: max(16px, 6%); right: max(16px, 6%);
+  display: flex; justify-content: space-between; gap: 12px; font-size: clamp(12px, 1.4vw, 18px);
+  color: var(--ink-dim); border-top: 1px solid var(--line); padding-top: 0.8em;
+}
+
+/* Tekst */
+.h { font-size: clamp(20px, 3.2vw, 44px); font-weight: 700; letter-spacing: -0.005em; margin-bottom: 0.55em; text-wrap: balance; align-self: flex-start; }
+.h.tight { margin-bottom: 0.3em; }
+.p { font-size: clamp(15px, 2.1vw, 28px); font-weight: 300; line-height: 1.6; align-self: flex-start; max-width: 62ch; }
+.p b { font-weight: 700; }
+.p.dim { font-size: clamp(12px, 1.5vw, 20px); color: var(--ink-dim); margin-top: 0.6em; line-height: 1.5; }
+
+/* Rasters */
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1vw; width: 100%; margin-top: 0.5em; }
+.grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.cell { background: var(--fill); border-left: 2px solid var(--line); padding: 1.2vw 1.4vw; }
+.cell-label { font-size: clamp(9px, 0.92vw, 13px); font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-faint); margin-bottom: 0.5em; }
+.cell-body { font-size: clamp(12px, 1.45vw, 20px); font-weight: 300; line-height: 1.5; }
+.cell-body b { font-weight: 700; }
+
+/* Gronden-matrix */
+.matrix { width: 100%; display: flex; flex-direction: column; gap: 0.35vw; margin-top: 0.3em; }
+.row { display: grid; grid-template-columns: minmax(78px, 8.5%) 1fr minmax(130px, 21%); gap: 0.8vw; align-items: start; background: var(--fill); padding: 0.6vw 1vw; }
+.row.excl { border-left: 2px solid var(--gap); }
+.row.missing { background: transparent; border: 1px dashed var(--line); }
+.grond { font-weight: 700; font-size: clamp(12px, 1.4vw, 19px); font-variant-numeric: tabular-nums; }
+.grond small { display: block; font-weight: 300; font-size: 0.72em; color: var(--ink-faint); }
+.expr { display: flex; flex-wrap: wrap; gap: 0.3vw 0.45vw; align-items: center; }
+.chip { font-family: var(--mono); font-size: clamp(9px, 1.02vw, 14px); padding: 0.18em 0.5em; border: 1px solid currentColor; white-space: nowrap; }
+.chip.uwv { color: var(--uwv); } .chip.gem { color: var(--gem); }
+.chip.wg { color: var(--wg); } .chip.reg { color: var(--reg); }
+.chip.gap { color: var(--gap); border-style: dashed; }
+.op { font-size: clamp(9px, 1vw, 14px); font-weight: 400; color: var(--ink-faint); }
+
+/* Rechten per grond */
+.rechten { display: flex; flex-wrap: wrap; gap: 0.25vw 0.3vw; align-items: center; }
+.recht { font-size: clamp(8.5px, 0.95vw, 13px); font-weight: 700; letter-spacing: 0.03em; padding: 0.18em 0.45em; background: rgba(255,255,255,0.86); color: #154273; white-space: nowrap; }
+.recht.vw { background: transparent; color: var(--ink-dim); border: 1px dashed var(--line); font-weight: 400; }
+.recht.geen { background: transparent; color: var(--gap); border: 1px dashed var(--gap); font-weight: 400; }
+.matrix-head { display: grid; grid-template-columns: minmax(78px, 8.5%) 1fr minmax(130px, 21%); gap: 0.8vw; padding: 0 1vw 0.15em; font-size: clamp(8.5px, 0.9vw, 12px); font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-faint); }
+
+.legend { display: flex; flex-wrap: wrap; gap: 0.5em 1.3em; margin-top: 0.8em; font-size: clamp(10px, 1.2vw, 16px); color: var(--ink-dim); }
+.legend span { display: inline-flex; align-items: center; gap: 0.4em; }
+.swatch { width: 0.7em; height: 0.7em; border: 1px solid currentColor; }
+.sw-uwv { color: var(--uwv); } .sw-gem { color: var(--gem); }
+.sw-wg { color: var(--wg); } .sw-reg { color: var(--reg); } .sw-gap { color: var(--gap); }
+.sw-bd { color: var(--bd); }
+
+/* Stelselschema */
+.schema-slide { justify-content: flex-start; padding-top: 3.5vw; }
+.schema { width: 100%; display: flex; flex-direction: column; gap: 0.35vw; }
+.band-label { font-size: clamp(8.5px, 0.9vw, 12px); font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-faint); margin-bottom: 0.35em; }
+.ingangen { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.5vw; }
+.ing { background: var(--fill); border-left: 2px solid currentColor; padding: 0.6vw 0.8vw; color: var(--ink); }
+.ing.gem { border-left-color: var(--gem); } .ing.uwv { border-left-color: var(--uwv); } .ing.reg { border-left-color: var(--reg); }
+.ing b { font-size: clamp(11px, 1.3vw, 18px); font-weight: 700; display: block; }
+.ing small { display: block; font-weight: 300; font-size: clamp(8.5px, 0.98vw, 13px); color: var(--ink-dim); line-height: 1.4; margin-top: 0.25em; }
+.pijl { text-align: center; color: var(--ink-faint); font-size: clamp(11px, 1.3vw, 17px); line-height: 1; padding: 0.15em 0; }
+.register { background: rgba(255,255,255,0.86); color: #154273; padding: 0.6vw 1vw; }
+.register b { font-size: clamp(12px, 1.5vw, 21px); font-weight: 700; display: block; }
+.register small { display: block; font-weight: 400; font-size: clamp(8.5px, 0.98vw, 13px); line-height: 1.4; margin-top: 0.2em; }
+.uitkomsten { display: grid; grid-template-columns: minmax(0, 0.86fr) minmax(0, 1.14fr); gap: 0.7vw; }
+.kolom { display: flex; flex-direction: column; gap: 0.35vw; }
+.kolom-kop { font-size: clamp(8.5px, 0.95vw, 13px); font-weight: 700; color: var(--ink-dim); padding-bottom: 0.2em; border-bottom: 1px solid var(--line); margin-bottom: 0.15em; }
+.reg-kaart { background: var(--fill); border-left: 2px solid var(--line); padding: 0.55vw 0.8vw; }
+.reg-kaart.gem-rand { border-left-color: var(--gem); } .reg-kaart.uwv-rand { border-left-color: var(--uwv); }
+.reg-naam { font-size: clamp(10.5px, 1.24vw, 17px); font-weight: 700; }
+.reg-naam .via { font-weight: 300; font-size: 0.82em; color: var(--ink-faint); }
+.reg-grond { font-family: var(--mono); font-size: clamp(8px, 0.9vw, 12px); color: var(--ink-faint); margin: 0.15em 0 0.3em; }
+.reg-rekenvorm { font-size: clamp(9px, 1.05vw, 14px); font-weight: 300; line-height: 1.45; color: var(--ink-dim); }
+.vorm { display: inline-block; font-weight: 700; color: var(--ink); background: rgba(255,255,255,0.12); padding: 0.1em 0.4em; margin-right: 0.35em; font-size: 0.94em; }
+.instantie { display: flex; flex-wrap: wrap; gap: 0.2em 0.35em; margin: 0.2em 0 0.3em; }
+.org { font-size: clamp(8px, 0.92vw, 12px); font-weight: 700; letter-spacing: 0.02em; padding: 0.12em 0.4em; border: 1px solid currentColor; white-space: nowrap; }
+.org.gem { color: var(--gem); } .org.uwv { color: var(--uwv); }
+.org.wg { color: var(--wg); } .org.bd { color: var(--bd); } .org.raad { color: var(--reg); }
+.org em { font-style: normal; font-weight: 300; color: var(--ink-faint); }
+
+@media (max-width: 640px) {
+  .ingangen, .uitkomsten { grid-template-columns: 1fr; gap: 8px; }
+  .schema-slide { overflow-y: auto; }
+}
+
+/* Beslispunten */
+.punten { width: 100%; display: flex; flex-direction: column; gap: 0.35vw; margin-top: 0.3em; }
+.punt { display: grid; grid-template-columns: minmax(46px, 5%) 1fr; gap: 1vw; background: var(--fill); padding: 0.6vw 1vw; align-items: baseline; }
+.punt .id { font-weight: 700; font-variant-numeric: tabular-nums; font-size: clamp(12px, 1.4vw, 19px); }
+.punt .txt { font-size: clamp(11px, 1.36vw, 18px); font-weight: 300; line-height: 1.45; }
+.punt .txt em { font-style: normal; color: var(--ink-faint); }
+.punt.kandidaat { border-left: 2px solid var(--gap); }
+
+/* Afbeeldingen */
+.image-slide { padding: 4vw max(16px, 4vw) 8vw; justify-content: flex-start; }
+.image-slide .h { font-size: clamp(18px, 2.8vw, 36px); margin-bottom: 0.4em; }
+.image-wrap { flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; min-height: 0; }
+.image-slide img { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; background: #fff; padding: 1.2vw; }
+.image-caption { font-size: clamp(11px, 1.3vw, 17px); color: var(--ink-dim); margin-top: 0.7em; }
+
+/* Navigatie */
+#nav { position: fixed; bottom: 4%; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; align-items: center; z-index: 99; }
+#nav button { background: rgba(255,255,255,0.12); border: 1px solid var(--line); color: var(--ink); padding: 6px 16px; font-size: 13px; font-family: inherit; cursor: pointer; }
+#nav button:hover { background: rgba(255,255,255,0.22); }
+#nav button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+#counter { color: var(--ink-faint); font-size: 13px; min-width: 56px; text-align: center; font-variant-numeric: tabular-nums; }
+#dots { position: fixed; bottom: 4.4%; right: 3%; display: flex; gap: 5px; z-index: 99; }
+.dot { width: 6px; height: 6px; background: rgba(255,255,255,0.22); cursor: pointer; border: 0; padding: 0; }
+.dot.on { background: rgba(255,255,255,0.85); }
+.dot:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+@media (max-width: 640px) {
+  .grid, .grid.three { grid-template-columns: 1fr; gap: 8px; }
+  .cell { padding: 10px 12px; }
+  .row, .punt { grid-template-columns: 1fr; gap: 6px; }
+  .matrix, .punten { gap: 6px; }
+  .matrix-head, #dots { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="deck" id="deck">
+
+  <div class="slide active">
+    <div class="title-main">Hoeveel krijgt deze werkgever?</div>
+    <div class="title-sub">Juristvalidatie Financieel CV</div>
+    <div class="title-footer">
+      <span>24 september 2026</span>
+      <span>Bureau Architectuur, BZK</span>
+    </div>
+  </div>
+
+  <div class="slide">
+    <div class="h tight">Doel en opbrengst</div>
+    <div class="p" style="margin-bottom:0.7em">Vaststellen welke normen een kenbare vindplaats hebben, zodat de bedragen berekenbaar worden.</div>
+    <div class="p dim" style="margin-top:0;margin-bottom:0.8em">Het model kan vaststellen wie recht heeft. Hoeveel iemand krijgt, nog niet. Onder elk bedrag zit een norm waarnaar niemand kan verwijzen; dat is dezelfde vaststelling, twee keer.</div>
+    <div class="grid">
+      <div class="cell">
+        <div class="cell-label">Na afloop, 1</div>
+        <div class="cell-body"><b>Eén bedrag</b> voor de casus, of de reden waarom het niet te bepalen is.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Na afloop, 2</div>
+        <div class="cell-body"><b>Een kaart van 23 normen</b>: welke een bron hebben, met naam, en welke niet.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Na afloop, 3</div>
+        <div class="cell-body"><b>Vier classificaties</b> bevestigd of verworpen. Bepaalt of er een wetgevingsnotitie komt.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Na afloop, 4</div>
+        <div class="cell-body"><b>Een inwinlijst</b>: de regelgeving die op grond van vandaag kan worden opgehaald.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="slide">
+    <div class="h tight">Uitkomst fideliteitsaudit september 2026</div>
+    <div class="p dim" style="margin-top:0;margin-bottom:0.8em">Het model is per artikel en per lid vergeleken met de letter van de wettekst.</div>
+    <div class="grid">
+      <div class="cell">
+        <div class="cell-label">Uitkomst</div>
+        <div class="cell-body">Ruim <b>zestig afwijkingen</b> tussen model en wettekst: ontbrekende uitsluitingen, weggevallen datumvoorwaarden, termijnen die niet worden berekend, en voorwaarden die de wet niet stelt.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Aard van de afwijkingen</div>
+        <div class="cell-body">Alle artikelteksten zijn woordelijk gelijk aan de geldende versie. De afwijkingen betreffen <b>de vertaling naar formules</b>. Herstel daarvan is werk voor de desk.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Reden voor vermelding</div>
+        <div class="cell-body">Zonder deze vermelding zou een bevestiging betrekking hebben op een model waarvan de afwijkingen bij de opstellers bekend zijn.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Reikwijdte van vandaag</div>
+        <div class="cell-body">De vragen van vandaag staan <b>los van die zestig</b>. Het betreft normen waarover de wettekst zelf niet beslist; die blijven bestaan na herstel.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="slide">
+    <div class="h tight">Waarom het veld untranslatables is afgeschaft</div>
+    <div class="p dim" style="margin-top:0;margin-bottom:0.8em">In eerdere rondes stonden 64 <b>untranslatables</b> in de zeven wetten, alle met <code>accepted: true</code>. Schema v0.7.0 kent dat veld sinds 22 september niet meer. Vier redenen, vastgelegd in RFC-031.</div>
+    <div class="grid">
+      <div class="cell">
+        <div class="cell-label">Reden 1</div>
+        <div class="cell-body"><b>Vier velden voor hetzelfde moment.</b> <code>untranslatables</code>, <code>norm_gaps</code>, <code>enables</code> en <code>open_terms</code> beschreven alle vier het moment waarop een artikel niet geheel in logica opgaat. Welk veld werd gebruikt, was een keuze per artikel.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Reden 2</div>
+        <div class="cell-body"><b>Eén veld voor twee soorten zaken.</b> Een tekortkoming van het formaat en een norm die de wet elders belegt stonden door elkaar. De eerste is werk voor de desk, de tweede een vraag aan wetgever of uitvoerder. Zolang beide hetzelfde heetten, had geen van beide een adressaat.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Reden 3</div>
+        <div class="cell-body"><b>Wat wegviel werd niet benoemd.</b> Het veld <code>blocks</code>, dat moest aangeven welke uitkomst verloren gaat, was leeg in 39 van de 39 gemeten gevallen. Het heeft die vraag geen enkele keer beantwoord.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Reden 4</div>
+        <div class="cell-body"><b><code>accepted: true</code> was een zelfverleende vrijstelling.</b> Alle 64 droegen die markering. De vaststelling dat iets niet te modelleren is, werd daarmee door de opsteller zelf afgedaan en kwam nergens terug.</div>
+      </div>
+    </div>
+    <div class="legend" style="margin-top:0.8em"><span>Gevolg: elk item krijgt een adressaat. Dat maakt de 23 vragen van vandaag stelbaar.</span></div>
+  </div>
+
+  <div class="slide">
+    <div class="h tight">Waar de 64 untranslatables zijn gebleven</div>
+    <div class="p dim" style="margin-top:0;margin-bottom:0.8em">De 64 zijn eerst vier-weg geclassificeerd en daarna omgezet naar de twee velden die v0.7.0 wel kent.</div>
+    <div class="matrix">
+      <div class="row">
+        <div class="grond">21<small>markeringen</small></div>
+        <div class="expr"><span class="op">Het formaat heeft geen vorm voor de constructie. Samenloop tussen regelingen, termijnen met alternatieve startpunten, samentelling over dienstverbanden heen.</span></div>
+        <div class="rechten"><span class="recht vw">blijft staan</span></div>
+      </div>
+      <div class="row">
+        <div class="grond">23<small>open termen</small></div>
+        <div class="expr"><span class="op">De inhoud wordt elders ingevuld. Dit zijn de normen van blad 2. Zeventien ervan noemen een <b>gezag dat per geval oordeelt</b> zonder dat de wet een regeling aanwijst.</span></div>
+        <div class="rechten"><span class="recht">blad 2</span></div>
+      </div>
+      <div class="row">
+        <div class="grond">20<small>verwijderd</small></div>
+        <div class="expr"><span class="op">Passen in geen van beide velden: vier vertaalfouten en zestien scope- en procedurenotities. Vastgelegd in de documenten.</span></div>
+        <div class="rechten"><span class="recht vw">naar de docs</span></div>
+      </div>
+      <div class="row excl">
+        <div class="grond">&mdash;<small>let op</small></div>
+        <div class="expr"><span class="op">Een open term wordt door de motor <b>alleen als symbool gedeclareerd</b>. Een bevestiging over een open term legt vandaag nog niets vast in de uitvoering.</span></div>
+        <div class="rechten"><span class="recht geen">geen werking</span></div>
+      </div>
+    </div>
+    <div class="legend" style="margin-top:0.8em"><span>Grondslag: RFC-031. Indeling volgens de vier-weg-classificatie van de desk-methode. Vastgelegd in schema-migratie.md.</span></div>
+  </div>
+
+  <div class="slide">
+    <div class="h tight">Doelgroepregister banenafspraak: gronden en rechten</div>
+<div class="matrix-head"><div>Grond</div><div>Welke variabelen, in welke combinatie</div><div>Recht bij deze grond</div></div>
+    <div class="matrix">
+
+      <div class="row excl">
+        <div class="grond">Chapeau<small>uitsluiting</small></div>
+        <div class="expr">
+          <span class="op">NIET</span>
+          <span class="chip gem">is_uitgesloten_beschut_werk_pwet_10b</span>
+          <span class="op">&mdash; staat in lid 1 en lid 6, <b>niet in lid 2</b>; het model past hem op alle gronden toe</span>
+        </div>
+        <div class="rechten">
+          <span class="recht">NRP</span>
+          <span class="recht geen">geen LKV</span>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="grond">lid 1 a<small>Pwet + loonwaarde</small></div>
+        <div class="expr"><span class="chip gem">is_pwet_lks_toegeleid_met_uwv_loonwaarde_vaststelling</span></div>
+        <div class="rechten">
+          <span class="recht">LKV</span><span class="recht">NRP</span><span class="recht">LKS</span>
+          <span class="recht">begeleiding</span><span class="recht vw">JC / WPA</span><span class="recht vw">PP</span>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="grond">lid 1 b<small>Wsw</small></div>
+        <div class="expr"><span class="chip uwv">is_wsw_geindiceerd_of_oude_indicatie</span></div>
+        <div class="rechten">
+          <span class="recht">LKV</span><span class="recht">NRP</span>
+          <span class="recht geen">niet bij Wsw art. 2</span>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="grond">lid 1 c<small>Wajong</small></div>
+        <div class="expr">
+          <span class="chip uwv">heeft_wajong_arbeidsondersteuning_of_uitkering</span>
+          <span class="op">EN (</span>
+          <span class="op">NIET</span>
+          <span class="chip uwv">heeft_wajong_duurzaam_geen_mogelijkheden</span>
+          <span class="op">OF</span>
+          <span class="chip wg">verricht_arbeid_in_dienstbetrekking</span>
+          <span class="op">)</span>
+        </div>
+        <div class="rechten">
+          <span class="recht">LKV</span><span class="recht">NRP</span><span class="recht">LDP</span>
+          <span class="recht">JC / WPA</span><span class="recht vw">PP</span>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="grond">lid 1 d<small>AMvB-indicatie</small></div>
+        <div class="expr">
+          <span class="chip uwv">voldoet_aan_amvb_indicatie_38b_1_d</span>
+          <span class="op">— open term, de AMvB bestaat niet in het corpus</span>
+        </div>
+        <div class="rechten"><span class="recht">LKV</span><span class="recht">NRP</span></div>
+      </div>
+
+      <div class="row">
+        <div class="grond">lid 1 e<small>eigen verzoek</small></div>
+        <div class="expr"><span class="chip uwv">is_pwet_toegeleid_met_uwv_wml_vaststelling_eigen_verzoek</span></div>
+        <div class="rechten">
+          <span class="recht">LKV</span><span class="recht">NRP</span>
+          <span class="recht vw">LKS</span><span class="recht vw">JC / WPA</span><span class="recht vw">PP</span>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="grond">lid 1 f<small>overgangsrecht</small></div>
+        <div class="expr">
+          <span class="chip reg">was_arbeidsbeperkte_lid_1_b_of_c_op_of_na_2013_01_01</span>
+          <span class="op">EN NIET</span>
+          <span class="chip uwv">was_lid_1_c_en_nu_wajong_duurzaam_geen_mogelijkheden</span>
+        </div>
+        <div class="rechten"><span class="recht">LKV</span><span class="recht">NRP</span></div>
+      </div>
+
+      <div class="row missing">
+        <div class="grond">lid 1 g<small>IVA + experiment</small></div>
+        <div class="expr">
+          <span class="chip gap">geen variabele</span>
+          <span class="op">— vereist een experiment-AMvB op grond van Wet SUWI artikel 82a</span>
+        </div>
+        <div class="rechten"><span class="recht geen">slapend</span></div>
+      </div>
+
+      <div class="row">
+        <div class="grond">lid 2<small>UWV-oordeel</small></div>
+        <div class="expr">
+          <span class="chip uwv">is_jonggehandicapt_uwv_oordeel_lid_2</span>
+          <span class="op">— beoordelingsregels bij AMvB, lid 3</span>
+        </div>
+        <div class="rechten"><span class="recht">LKV</span><span class="recht">NRP</span></div>
+      </div>
+
+      <div class="row">
+        <div class="grond">lid 6<small>blijfgrond</small></div>
+        <div class="expr">
+          <span class="chip reg">was_arbeidsbeperkte_lid_1_of_2</span>
+          <span class="op">EN</span>
+          <span class="chip uwv">registratie_nog_niet_geeindigd</span>
+        </div>
+        <div class="rechten">
+          <span class="recht">LKV</span><span class="recht">NRP</span>
+          <span class="recht vw">zolang registratie loopt</span>
+        </div>
+      </div>
+
+    </div>
+<div class="legend">
+      <span><i class="swatch sw-uwv"></i> UWV — oordeel, registratie of historie</span>
+      <span><i class="swatch sw-gem"></i> Gemeente of college</span>
+      <span><i class="swatch sw-wg"></i> Werkgever of loonaangifte</span>
+      <span><i class="swatch sw-reg"></i> Doelgroepregister zelf</span>
+      <span><i class="swatch sw-gap"></i> Ontbreekt</span>
+    </div>
+  </div>
+
+  <div class="slide schema-slide">
+    <div class="h tight">Hoe je bij een regeling terechtkomt, en wie erover gaat</div>
+    <div class="p dim" style="margin-top:0;margin-bottom:0.6em">Het doelgroepregister is een gemeenschappelijke doorgang, geen gemeenschappelijk recht. Twee regelingen hangen aan de lijst; de rest hangt aan de wet waarlangs iemand er kwam. Achter elke regeling staat een ander bestuursorgaan.</div>
+
+    <div class="schema">
+
+      <div class="band">
+        <div class="band-label">1 — Waarlangs iemand binnenkomt, en wie het vaststelt</div>
+        <div class="ingangen">
+          <div class="ing gem">
+            <b>Participatiewet</b>
+            <div class="instantie"><span class="org gem">College van burgemeester en wethouders</span><span class="org uwv">UWV <em>toetst</em></span></div>
+            <small>Het college leidt toe en stelt de loonwaarde vast, of het UWV stelt vast dat het minimumloon niet haalbaar is — Wfsv 38b lid 1 a en e</small>
+          </div>
+          <div class="ing uwv">
+            <b>Wajong</b>
+            <div class="instantie"><span class="org uwv">UWV</span></div>
+            <small>Recht op arbeidsondersteuning of uitkering — Wfsv 38b lid 1 c</small>
+          </div>
+          <div class="ing uwv">
+            <b>Wsw</b>
+            <div class="instantie"><span class="org uwv">UWV <em>indicatie</em></span><span class="org gem">Gemeente <em>uitvoering</em></span></div>
+            <small>Indicatie, of een nog geldende beschikking van vóór 2015 — Wfsv 38b lid 1 b</small>
+          </div>
+          <div class="ing reg">
+            <b>Overige gronden</b>
+            <div class="instantie"><span class="org uwv">UWV</span></div>
+            <small>AMvB-indicatie (d), overgangsrecht (f), IVA met experiment (g), UWV-oordeel (lid 2)</small>
+          </div>
+        </div>
+      </div>
+
+      <div class="pijl"><span>&darr;</span></div>
+
+      <div class="band">
+        <div class="band-label">2 — De lijst</div>
+        <div class="register">
+          <b>Doelgroepregister banenafspraak &mdash; het UWV houdt de registratie</b>
+          <small>Wfsv 38b bepaalt wie arbeidsbeperkte is, 38d regelt de registratie zelf. Het college levert de gegevens over zijn eigen vaststellingen aan.</small>
+        </div>
+      </div>
+
+      <div class="pijl"><span>&darr;</span></div>
+
+      <div class="band">
+        <div class="band-label">3 — Wat eruit volgt, en wie beslist en betaalt</div>
+        <div class="uitkomsten">
+
+          <div class="kolom lijst">
+            <div class="kolom-kop">Aan de lijst — voor iedereen gelijk</div>
+            <div class="reg-kaart">
+              <div class="reg-naam">Loonkostenvoordeel banenafspraak</div>
+              <div class="reg-grond">Wtl artikel 2.10 en 2.13, berekening 4.1</div>
+              <div class="instantie"><span class="org wg">Werkgever <em>verzoekt in de loonaangifte</em></span><span class="org uwv">UWV <em>beoordeelt en berekent</em></span><span class="org bd">Belastingdienst <em>keert uit</em></span></div>
+              <div class="reg-rekenvorm"><span class="vorm">Uurtarief met jaardak</span> € 1,01 per verloond uur, ten hoogste € 2.000 per jaar. Onafhankelijk van loonwaarde.</div>
+            </div>
+            <div class="reg-kaart">
+              <div class="reg-naam">No-riskpolis</div>
+              <div class="reg-grond">Ziektewet artikel 29b</div>
+              <div class="instantie"><span class="org uwv">UWV <em>betaalt het ziekengeld</em></span></div>
+              <div class="reg-rekenvorm"><span class="vorm">Risico-overname</span> Geen bedrag vooraf. Wordt de werknemer ziek, dan betaalt het UWV 70% van het dagloon in plaats van de werkgever (lid 5).</div>
+            </div>
+          </div>
+
+          <div class="kolom wet">
+            <div class="kolom-kop">Aan de wet van binnenkomst — verschilt per route</div>
+            <div class="reg-kaart gem-rand">
+              <div class="reg-naam">Loonkostensubsidie <span class="via">via de Participatiewet</span></div>
+              <div class="reg-grond">Participatiewet artikel 10c en 10d</div>
+              <div class="instantie"><span class="org gem">College van burgemeester en wethouders <em>stelt vast, verleent en betaalt</em></span></div>
+              <div class="reg-rekenvorm"><span class="vorm">Verschil</span> Minimumloon plus vakantiebijslag en werkgeverslasten, min de loonwaarde; ten hoogste 70% van die grondslag (lid 4). Zonder loonwaardevaststelling: 50% plat over de eerste zes maanden (lid 5).</div>
+            </div>
+            <div class="reg-kaart uwv-rand">
+              <div class="reg-naam">Loondispensatie <span class="via">via de Wajong</span></div>
+              <div class="reg-grond">Wajong artikel 2:20</div>
+              <div class="instantie"><span class="org uwv">UWV <em>verlaagt de loonaanspraak</em></span></div>
+              <div class="reg-rekenvorm"><span class="vorm">Vrijstelling</span> Het UWV verlaagt de loonaanspraak naar evenredigheid. Er stroomt geen geld naar de werkgever; die hoeft minder te betalen.</div>
+            </div>
+            <div class="reg-kaart">
+              <div class="reg-naam">Jobcoaching en werkplekaanpassing <span class="via">drie deuren</span></div>
+              <div class="reg-grond">Participatiewet 10 &middot; Wajong 2:22 &middot; Wet WIA 35</div>
+              <div class="instantie"><span class="org gem">College van B en W <em>Pwet 10</em></span><span class="org uwv">UWV <em>Wajong 2:22 en WIA 35</em></span></div>
+              <div class="reg-rekenvorm"><span class="vorm">Voorziening zonder bedrag</span> De wet noemt geen bedrag en geen tarief; het bestuursorgaan bepaalt de omvang per geval. Wet WIA 35 lid 4 sluit uit wie het langs de Participatiewet of de Wajong krijgt.</div>
+            </div>
+            <div class="reg-kaart gem-rand">
+              <div class="reg-naam">Beschut werk en begeleiding op de werkplek <span class="via">via de Participatiewet</span></div>
+              <div class="reg-grond">Participatiewet artikel 10b en 10da</div>
+              <div class="instantie"><span class="org gem">College van B en W <em>biedt aan</em></span><span class="org uwv">UWV <em>adviseert, 10b lid 2</em></span><span class="org raad">Gemeenteraad <em>verordening</em></span></div>
+              <div class="reg-rekenvorm"><span class="vorm">Aanspraak zonder bedrag</span> Het college moet de voorziening beschut werk aanbieden zolang het aantal van lid 4 of 5 niet is gerealiseerd. De invulling staat in de gemeentelijke verordening.</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <div class="legend" style="margin-top:0.5em">
+      <span><i class="swatch sw-gem"></i> College van burgemeester en wethouders &mdash; het dagelijks bestuur, beslist per geval</span>
+      <span><i class="swatch sw-uwv"></i> UWV</span>
+      <span><i class="swatch sw-bd"></i> Belastingdienst</span>
+      <span><i class="swatch sw-wg"></i> Werkgever</span>
+      <span><i class="swatch sw-reg"></i> Gemeenteraad &mdash; stelt de regels, bij verordening</span>
+    </div>
+  </div>
+</div>
+
+<div id="nav">
+  <button id="bp" type="button">Vorige</button>
+  <span id="counter"></span>
+  <button id="bn" type="button">Volgende</button>
+</div>
+<div id="dots"></div>
+
+<script>
+(function () {
+  var slides = document.querySelectorAll('.slide');
+  var dotsEl = document.getElementById('dots');
+  var counterEl = document.getElementById('counter');
+  var cur = 0, total = slides.length;
+  for (var i = 0; i < total; i++) {
+    var d = document.createElement('button');
+    d.type = 'button';
+    d.className = i === 0 ? 'dot on' : 'dot';
+    d.setAttribute('aria-label', 'Naar blad ' + (i + 1));
+    (function (idx) { d.addEventListener('click', function () { go(idx); }); })(i);
+    dotsEl.appendChild(d);
+  }
+  function go(n) {
+    slides[cur].classList.remove('active');
+    dotsEl.children[cur].classList.remove('on');
+    cur = (n % total + total) % total;
+    slides[cur].classList.add('active');
+    dotsEl.children[cur].classList.add('on');
+    counterEl.textContent = (cur + 1) + ' / ' + total;
+  }
+  counterEl.textContent = '1 / ' + total;
+  document.getElementById('bn').addEventListener('click', function () { go(cur + 1); });
+  document.getElementById('bp').addEventListener('click', function () { go(cur - 1); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); go(cur + 1); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); go(cur - 1); }
+    else if (e.key === 'Home') { e.preventDefault(); go(0); }
+    else if (e.key === 'End') { e.preventDefault(); go(total - 1); }
+  });
+})();
+</script>

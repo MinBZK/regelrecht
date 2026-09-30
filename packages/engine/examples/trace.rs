@@ -47,12 +47,20 @@ fn main() {
 
     let mut service = LawExecutionService::new();
 
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let regulation_dir = Path::new(manifest_dir)
-        .parent()
-        .and_then(|p| p.parent())
-        .map(|p| p.join("corpus").join("regulation").join("nl"))
-        .expect("Could not find regulation directory");
+    // REGULATION_PATH is de variabele waarmee de BDD-suite het corpus kiest. Zonder
+    // die variabele las dit voorbeeld altijd het corpus van de repo zelf, zodat een
+    // trace van een trajectcorpus niet te maken was.
+    let regulation_dir = match std::env::var("REGULATION_PATH") {
+        Ok(p) if !p.is_empty() => std::path::PathBuf::from(p),
+        _ => {
+            let manifest_dir = env!("CARGO_MANIFEST_DIR");
+            Path::new(manifest_dir)
+                .parent()
+                .and_then(|p| p.parent())
+                .map(|p| p.join("corpus").join("regulation").join("nl"))
+                .expect("Could not find regulation directory")
+        }
+    };
 
     let mut count = 0;
     for entry in WalkDir::new(&regulation_dir)

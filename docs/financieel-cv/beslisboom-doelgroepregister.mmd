@@ -1,0 +1,69 @@
+flowchart TD
+  classDef vraag fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#000;
+  classDef opname fill:#c8e6c9,stroke:#388e3c,stroke-width:2px,color:#000;
+  classDef geen fill:#ffcdd2,stroke:#c62828,stroke-width:2px,color:#000;
+  classDef gat fill:#fafafa,stroke:#9e9e9e,stroke-width:2px,stroke-dasharray: 6 4,color:#616161;
+
+  START(["Persoon met een arbeidsbeperking"])
+  CH{"<b>Chapeau lid 1 en lid 6</b><br/>Heeft het college vastgesteld dat betrokkene<br/>uitsluitend in een beschutte omgeving<br/>mogelijkheden heeft?<br/><i>Pwet 10b lid 1</i>"}:::vraag
+  UIT["<b>Geen opname</b><br/>Beschut werk sluit het register uit.<br/>Wel no-riskpolis via ZW 29b lid 2 f"]:::geen
+
+  A{"<b>a</b><br/>Pwet-toeleiding of LKS op grond van 10d lid 2,<br/>plus UWV-vaststelling geen WML,<br/>of collegeloonwaarde onder WML"}:::vraag
+  OA["<b>Opname, grond a</b><br/>pwet_lks_uwv_loonwaarde"]:::opname
+
+  B{"<b>b</b><br/>Wsw-indicatie, of een nog geldende<br/>indicatiebeschikking Wsw artikel 11<br/>zoals dat luidde op 31-12-2014"}:::vraag
+  OB["<b>Opname, grond b</b><br/>wsw"]:::opname
+
+  C{"<b>c</b><br/>Recht op Wajong-arbeidsondersteuning<br/>of Wajong-uitkering"}:::vraag
+  C2{"Duurzaam geen mogelijkheden<br/>tot arbeidsparticipatie?"}:::vraag
+  C3{"Verricht betrokkene arbeid<br/>in dienstbetrekking?"}:::vraag
+  OC["<b>Opname, grond c</b><br/>wajong"]:::opname
+
+  D{"<b>d</b><br/>Voldoet aan een bij of krachtens AMvB<br/>vastgestelde indicatie"}:::vraag
+  OD["<b>Opname, grond d</b><br/>amvb_38b_1_d"]:::opname
+
+  E{"<b>e</b><br/>Pwet-toeleiding, plus UWV-vaststelling<br/>geen WML op eigen verzoek"}:::vraag
+  OE["<b>Opname, grond e</b><br/>pwet_uwv_wml_eigen_verzoek"]:::opname
+
+  F{"<b>f</b><br/>Was op of na 1-1-2013 een persoon<br/>onder b of c, en op 1-5-2015 niet meer"}:::vraag
+  F2{"Uitzondering: viel onder c en heeft<br/>inmiddels duurzaam geen mogelijkheden?"}:::vraag
+  OF["<b>Opname, grond f</b><br/>overgangsrecht_38b_1_f"]:::opname
+
+  G{"<b>g</b><br/>Recht op IVA-uitkering, waarbij bij wijze<br/>van experiment loondispensatie is ingezet<br/><i>Wet SUWI artikel 82a lid 1</i>"}:::gat
+  OG["<b>Opname, grond g</b><br/>ontbreekt in het model"]:::gat
+
+  L2{"<b>lid 2</b><br/>UWV-oordeel: belemmering door ziekte of gebrek<br/>ontstaan voor het 18e jaar of tijdens de studie,<br/>en zonder voorziening geen WML"}:::vraag
+  OL2["<b>Opname, grond lid 2</b><br/>jonggehandicapt_uwv_oordeel"]:::opname
+
+  L6{"<b>lid 6 blijfgrond</b><br/>Voldeed eerder aan lid 1 of lid 2,<br/>en de opname in de registratie<br/>is nog niet geeindigd"}:::vraag
+  OL6["<b>Opname, blijfgrond lid 6</b><br/>de eerdere grond blijft gelden"]:::opname
+
+  NOP["<b>Geen opname</b><br/>grond_opname_doelgroepregister = geen"]:::geen
+
+  START --> CH
+  CH -- ja --> UIT
+  CH -- nee --> A
+  A -- ja --> OA
+  A -- nee --> B
+  B -- ja --> OB
+  B -- nee --> C
+  C -- nee --> D
+  C -- ja --> C2
+  C2 -- nee --> OC
+  C2 -- ja --> C3
+  C3 -- ja --> OC
+  C3 -- nee --> D
+  D -- ja --> OD
+  D -- nee --> E
+  E -- ja --> OE
+  E -- nee --> F
+  F -- nee --> G
+  F -- ja --> F2
+  F2 -- nee --> OF
+  F2 -- ja --> G
+  G -- ja --> OG
+  G -- nee --> L2
+  L2 -- ja --> OL2
+  L2 -- nee --> L6
+  L6 -- ja --> OL6
+  L6 -- nee --> NOP

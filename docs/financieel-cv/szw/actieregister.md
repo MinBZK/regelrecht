@@ -82,7 +82,7 @@ RVO-demobranch, de SZW-jurist
 | 4.1 | Bijvraag beantwoord: een Wajonger is niet automatisch categorie b (arbeidsgehandicapt), de categorie is banenafspraak | SZW | gedaan | 2026-08-20 | Antwoord gegeven als parameterwijziging in de editor; doorgetrokken naar de asserties in merge `b0dd3fbe670` |
 | 4.2 | Sadees LKV-bedrag corrigeren van €5.075,20 naar €1.680,64 | ons | gedaan | 2026-09-09 | `financieel_cv_sadee.feature` op de merge-branch; demo-zichtbaar, vooraf te melden |
 | 4.3 | Editor-commits van deelnemers meenemen in de feedbacklus | ons | open | — | Deze feedback stond drie weken op een branch waar niemand naar keek, terwijl de vraag als onbeantwoord genoteerd stond |
-| 4.4 | Hoofdvraag: klopt "hoogste bedrag wint" (Wtl art. 4.1 lid 3) als voorrangsregel? | SZW-jurist | open | — | Staat op de agenda voor de vervolgsessie, punt 5; de MvT zwijgt erover |
+| 4.4 | Hoofdvraag: klopt "hoogste bedrag wint" (Wtl art. 4.1 lid 3) als voorrangsregel? | ons | afgedaan | 2026-09-30 | Geen juristvraag: de wettekst beslist het. Lid 3 maximeert op de hoogste berekende tegemoetkoming en geeft bij gelijke hoogte de eerstgenoemde; het model volgt die letter (`hoogte_lkv_per_jaar_eurocent`, `categorie_lkv`). Sinds 4.2 valt Sadee bovendien in één categorie |
 
 ---
 
@@ -98,4 +98,3 @@ RVO-demobranch, de SZW-jurist
 | 2.8 | Samenloop proefplaatsing ↔ LKS | open |
 | 3.4 | Drie aanvaarde LKV-bepalingen als disclaimer tonen | belegd bij de presentatielaag (2.6) |
 | 4.3 | Editor-commits meenemen in de feedbacklus | open |
-| 4.4 | Voorrangsregel "hoogste bedrag wint" bevestigen | open, bij de SZW-jurist |
