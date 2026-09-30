@@ -2,7 +2,7 @@
 
 All examples below pass `just validate` against the latest schema.
 
-## Example 1: Simple Constant (direct value assignment)
+## Example 1. Simple Constant (direct value assignment)
 
 **Legal Text:**
 ```
@@ -25,7 +25,7 @@ machine_readable:
 
 ---
 
-## Example 2: Eligibility Check (AND with comparisons)
+## Example 2. Eligibility Check (AND with comparisons)
 
 **Legal Text:**
 ```
@@ -94,10 +94,12 @@ machine_readable:
 - `AND` uses `conditions` array
 - Comparisons use `subject` (must be `$variable`) + `value`
 - Action uses `value:` pattern (not top-level `operation:`)
+- The bindings here are illustrative. Before you copy one, read the target law in
+  the corpus and check that it really produces an output by that name
 
 ---
 
-## Example 3: Internal Reference Between Articles
+## Example 3. Internal Reference Between Articles
 
 **Article 2** references article 3's output:
 ```yaml
@@ -181,7 +183,7 @@ machine_readable:
 
 ---
 
-## Example 4: Complex Nested Calculation
+## Example 4. Complex Nested Calculation
 
 From the actual zorgtoeslag law (simplified):
 
@@ -262,12 +264,12 @@ machine_readable:
 - Action uses `value:` wrapper with nested `operation: MAX` + `values: [...]`
 - Operations nest deeply: MAX → SUBTRACT → MULTIPLY → IF
 - Each nested operation is a full operation object
-- No `subject`/`value` on arithmetic — only `values` array
+- No `subject`/`value` on arithmetic, only a `values` array
 - IF uses `cases`/`default` everywhere
 
 ---
 
-## Example 5: Open Terms — Higher Law (IoC declaration)
+## Example 5. Open Terms, Higher Law (IoC declaration)
 
 When a law delegates a value to a lower regulation ("bij ministeriële regeling"),
 the higher law declares an `open_term`:
@@ -279,7 +281,7 @@ machine_readable:
     - id: standaardpremie
       type: amount
       required: true
-      delegated_to: minister
+      delegated_to: Onze Minister
       delegation_type: MINISTERIELE_REGELING
       legal_basis: artikel 4 Wet op de zorgtoeslag
   execution:
@@ -302,7 +304,7 @@ machine_readable:
 
 ---
 
-## Example 6: Open Terms — Lower Regulation (IoC implementation)
+## Example 6. Open Terms, Lower Regulation (IoC implementation)
 
 The lower regulation registers as implementing the open term:
 
@@ -337,7 +339,137 @@ machine_readable:
 
 ---
 
-## Example 7: IF with Multiple Cases (replaces SWITCH)
+## Example 7. A Marking Next to a Full Model
+
+Article 1 of the Wet op de zorgtoeslag, the begrippenlijst. Its onderdelen are as
+translatable as this corpus gets: "Onze Minister" is a literal, "zorgverzekering"
+and "premie" are definitions by reference, "verzekerde" is three cross-law
+categories with a leeftijdsgrens and one exception, "drempelinkomen" is a sum
+over the minimumloon. Every one of them is modelled below.
+
+The sentence above them is not translatable at all. "In deze wet **en de daarop
+berustende bepalingen**" gives the definitions a reach past this document: they
+govern the wording of every regulation resting on this law, whether or not that
+regulation refers to them. The format has the opposite direction only, a `source`
+binding written by the document that reads. So the entry carries the model and
+the marking, and the marking takes nothing away from the model.
+
+```yaml
+machine_readable:
+  endpoint: is_verzekerde
+  markings:
+    - about: het bereik van de begripsbepalingen over de daarop berustende bepalingen
+      reason: >-
+        De begrippen van dit artikel beheersen ook het woordgebruik van elke regeling
+        die op deze wet berust, zonder dat die regeling ernaar verwijst. Het model kent
+        alleen de omgekeerde richting: een document leest een ander document via een
+        source-binding die het zelf schrijft. Een bereik dat geldt zonder dat de andere
+        kant het aanroept, heeft geen veld en geen bewerking.
+      resolution: model
+      resolved_by: >-
+        Een vorm waarin de begripsbepalingen van een wet in bereik komen bij het
+        uitvoeren van een regeling die op die wet berust, afgeleid uit de legal_basis
+        die de regeling zelf declareert.
+      target: []
+      legal_text_excerpt: In deze wet en de daarop berustende bepalingen wordt, tenzij anders is geregeld, verstaan onder
+      accepted: false
+  definitions:
+    zorgverzekering:
+      value: de schadeverzekering, bedoeld in artikel 1, onder d, van de Zorgverzekeringswet
+      description: >-
+        Onderdeel b. Begripsbepaling door verwijzing: waar deze wet "zorgverzekering"
+        gebruikt, geldt het begrip van de Zorgverzekeringswet. De bepaling stelt zelf
+        geen waarde vast.
+  execution:
+    parameters:
+      - name: bsn
+        type: string
+        required: true
+      - name: peildatum
+        type: date
+        required: true
+      - name: geboortedatum
+        type: date
+        required: true
+    input:
+      - name: is_verzekerde_zorgverzekeringswet
+        type: boolean
+        description: 'Onderdeel c, eerste categorie: de persoon, bedoeld in artikel 1, onder f'
+        source:
+          regulation: zorgverzekeringswet
+          output: is_verzekerde
+          parameters:
+            bsn: $bsn
+      - name: zijn_rechten_uit_zorgverzekering_opgeschort
+        type: boolean
+        description: 'Onderdeel c, uitzondering: de verzekerde, bedoeld in artikel 24, eerste of derde lid'
+        source:
+          regulation: zorgverzekeringswet
+          output: rechten_uit_zorgverzekering_opgeschort
+          parameters:
+            bsn: $bsn
+    output:
+      - name: onze_minister
+        type: string
+      - name: is_verzekerde
+        type: boolean
+    actions:
+      - output: onze_minister
+        value: Onze Minister van Volksgezondheid, Welzijn en Sport
+        legal_basis:
+          law: Wet op de zorgtoeslag
+          article: '1'
+          paragraph: '1'
+          explanation: >-
+            Onderdeel a wijst Onze Minister aan. De aanhef laat toe dat een andere regeling
+            dit begrip opzijzet ("tenzij anders is geregeld"); die verdringing wordt door
+            die regeling zelf als override verklaard en niet hier.
+      - output: achttiende_verjaardag
+        value:
+          operation: DATE_ADD
+          date: $geboortedatum
+          years: 18
+      - output: eerste_dag_kalendermaand_verzekerde
+        value:
+          operation: DATE_ADD
+          date:
+            operation: START_OF
+            date: $achttiende_verjaardag
+            in: month
+          months: 1
+      - output: is_verzekerde
+        value:
+          operation: AND
+          conditions:
+            - operation: EQUALS
+              subject: $is_verzekerde_zorgverzekeringswet
+              value: true
+            - operation: GREATER_THAN_OR_EQUAL
+              subject: $peildatum
+              value: $eerste_dag_kalendermaand_verzekerde
+            - operation: NOT
+              value: $zijn_rechten_uit_zorgverzekering_opgeschort
+```
+
+**Key points:**
+- The marking and the model answer different words in the same entry. Neither is
+  the price of the other, and an entry that carries only one of the two is
+  incomplete in whichever direction it left out.
+- `target: []` because the marking blocks nothing. Every output this entry
+  declares is computed; what is missing is the reach of the words, not a value.
+- `reason` names the shape that comes closest, the `source` binding, and says
+  where it falls short. Without that a reader cannot tell whether the wish in
+  `resolved_by` is earned.
+- "Tenzij anders is geregeld" gets no marking. A displacement is declared by the
+  regulation that departs, so `overrides` covers it, and the clause is recorded
+  in the `legal_basis.explanation` of the definitions it qualifies.
+- A reference to a law that has not been harvested is still a binding. Whether
+  the Zorgverzekeringswet is in the corpus is a state of the corpus and does not
+  belong in this file.
+
+---
+
+## Example 8. IF with Multiple Cases (replaces SWITCH)
 
 ```yaml
 actions:
@@ -376,9 +508,9 @@ actions:
 
 ---
 
-## Example 8: AGE Operation
+## Example 9. AGE Operation
 
-From Wet open overheid — calculating how old a document is:
+From Wet open overheid, calculating how old a document is:
 
 ```yaml
 actions:
@@ -398,13 +530,13 @@ actions:
 - AGE calculates complete years between two dates
 - Works for any "age" calculation, not just people (document age, policy age, etc.)
 - Uses `date_of_birth` and `reference_date` (not subject/value)
-- `$peildatum` must be declared as a parameter — it is NOT a built-in
+- `$peildatum` must be declared as a parameter, it is NOT a built-in
 
 ---
 
-## Example 9: DATE_ADD Operation (deadline calculations)
+## Example 10. DATE_ADD Operation (deadline calculations)
 
-From AWB article 6:8 — calculating appeal deadlines:
+From AWB article 6:8, calculating appeal deadlines:
 
 ```yaml
 machine_readable:
@@ -453,9 +585,9 @@ machine_readable:
 
 ---
 
-## Example 10: Hooks Pattern (AWB cross-cutting concern)
+## Example 11. Hooks Pattern (AWB cross-cutting concern)
 
-From AWB article 3:46 — motivation requirement:
+From AWB article 3:46, the motivation requirement:
 
 ```yaml
 machine_readable:
@@ -482,9 +614,9 @@ machine_readable:
 
 ---
 
-## Example 11: Overrides Pattern (lex specialis)
+## Example 12. Overrides Pattern (lex specialis)
 
-From Vreemdelingenwet 2000 article 69 — overriding the standard AWB appeal deadline:
+From Vreemdelingenwet 2000 article 69, overriding the standard AWB appeal deadline:
 
 ```yaml
 machine_readable:
@@ -515,7 +647,7 @@ de termijn voor het indienen van een bezwaar- of beroepschrift vier weken.
 
 ---
 
-## Example 12: NOT Operation (negation patterns)
+## Example 13. NOT Operation (negation patterns)
 
 ```yaml
 # Simple negation of a variable
@@ -562,7 +694,7 @@ actions:
 
 ---
 
-## Example 13: MvT Passage to Gherkin Scenario
+## Example 14. MvT Passage to Gherkin Scenario
 
 Shows how to convert a Memorie van Toelichting passage into a BDD scenario.
 
@@ -580,7 +712,7 @@ Zorgtoeslag = €2.112 - €379,20 = €1.732,80
 
 **Generated Gherkin scenario:**
 ```gherkin
-Feature: Zorgtoeslag — scenarios uit Memorie van Toelichting
+Feature: Zorgtoeslag, scenarios uit Memorie van Toelichting
   Testscenario's afgeleid uit de Memorie van Toelichting bij de
   Wet op de zorgtoeslag (kst-30912-3).
 
@@ -610,17 +742,17 @@ Feature: Zorgtoeslag — scenarios uit Memorie van Toelichting
 **Key points:**
 - Each scenario traces back to a specific MvT passage with `# Bron:` comment
 - Monetary inputs are in eurocent (€20.000 = 2000000)
-- Expected outputs are ALWAYS in eurocent (€1.732,80 = 173280) — never use euro with decimals
+- Expected outputs are ALWAYS in eurocent (€1.732,80 = 173280), never euro with decimals
 - When/Then steps use concrete law names (not placeholders like `{law_name}`)
 - The scenario uses existing Given/When/Then steps, not new ones
-- Do NOT invent scenarios — only use what the legislature provided
+- Do NOT invent scenarios, only use what the legislature provided
 
 ---
 
 ## Common Mistakes and Fixes
 
-### Mistake 1: Wrong IF syntax (v0.4.0 style)
-**Wrong (v0.4.0 — removed):**
+### Mistake 1. Wrong IF syntax (v0.4.0 style)
+**Wrong (v0.4.0, removed):**
 ```yaml
 operation: IF
 when:
@@ -643,7 +775,7 @@ cases:
 default: 0
 ```
 
-### Mistake 2: Using SWITCH (removed in v0.5.1)
+### Mistake 2. Using SWITCH (removed in v0.5.1)
 **Wrong:**
 ```yaml
 operation: SWITCH
@@ -662,7 +794,7 @@ cases:
 default: 0
 ```
 
-### Mistake 3: Using url instead of regulation for source
+### Mistake 3. Using url instead of regulation for source
 **Wrong:**
 ```yaml
 source:
@@ -678,7 +810,7 @@ source:
     bsn: $bsn
 ```
 
-### Mistake 4: Using subject/value for arithmetic
+### Mistake 4. Using subject/value for arithmetic
 **Wrong:**
 ```yaml
 operation: SUBTRACT
@@ -694,7 +826,7 @@ values:
   - $korting
 ```
 
-### Mistake 5: Using values for logical operations
+### Mistake 5. Using values for logical operations
 **Wrong:**
 ```yaml
 operation: AND
@@ -713,7 +845,7 @@ conditions:
     value: true
 ```
 
-### Mistake 6: Using SUBTRACT_DATE for age (removed in v0.5.1)
+### Mistake 6. Using SUBTRACT_DATE for age (removed in v0.5.1)
 **Wrong:**
 ```yaml
 operation: SUBTRACT_DATE
@@ -729,7 +861,7 @@ date_of_birth: $geboortedatum
 reference_date: $peildatum
 ```
 
-### Mistake 7: Using CONCAT (removed in v0.5.1)
+### Mistake 7. Using CONCAT (removed in v0.5.1)
 **Wrong:**
 ```yaml
 operation: CONCAT
@@ -746,7 +878,7 @@ values:
   - $wet_naam
 ```
 
-### Mistake 8: Using NOT_EQUALS, NOT_IN, NOT_NULL (removed in v0.5.1)
+### Mistake 8. Using NOT_EQUALS, NOT_IN, NOT_NULL (removed in v0.5.1)
 **Wrong:**
 ```yaml
 operation: NOT_EQUALS
@@ -763,7 +895,7 @@ value:
   value: "ACTIEF"
 ```
 
-### Mistake 9: Wrong monetary type
+### Mistake 9. Wrong monetary type
 **Wrong:**
 ```yaml
 output:
@@ -780,7 +912,7 @@ output:
       unit: eurocent
 ```
 
-### Mistake 10: Treating $referencedate as a built-in
+### Mistake 10. Treating $referencedate as a built-in
 **Wrong (not declaring it):**
 ```yaml
 execution:
@@ -808,7 +940,7 @@ execution:
         reference_date: $referencedate
 ```
 
-### Mistake 11: Missing $ prefix on variable
+### Mistake 11. Missing $ prefix on variable
 **Wrong:**
 ```yaml
 subject: toetsingsinkomen

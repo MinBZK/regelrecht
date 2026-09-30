@@ -1,0 +1,1360 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.6/schema/v0.5.6/schema.json
+$id: wet_studiefinanciering_2000
+regulatory_layer: WET
+publication_date: '2000-06-29'
+valid_from: '2025-01-01'
+bwb_id: BWBR0011453
+url: https://wetten.overheid.nl/BWBR0011453/2026-01-01
+name: Wet studiefinanciering 2000
+competent_authority:
+  name: Minister van Onderwijs, Cultuur en Wetenschap
+# Machine-uitvoerbare modellering van de terugbetaling van studieschulden
+# (hoofdstuk 6, hoofdstuk 10a en het overgangsrecht in hoofdstuk 12), ten
+# behoeve van de OCW/DUO-casus terugbetaalregimes. De vier regimes uit de
+# Stand van de Uitvoering OCW 2026 ontstaan hier uit cohortroutering:
+#   SF35        = huidig hoofdstuk 6
+#   SF15_NIEUW  = pre-2023 redactie hoofdstuk 6, geconserveerd via 12.32/12.14
+#   SF15_OUD    = hoofdstuk 10a (pre-2009-cohort)
+#   SF15_LLLK   = levenlanglerenkrediet, artikel 6.19
+# Inhoud PDF-first (Stand van de Uitvoering); structuur volgt de wet.
+articles:
+  # ---------------------------------------------------------------- 1.1
+  - number: '1.1'
+    text: >-
+      peiljaar: tweede jaar voorafgaand aan het jaar waarin het studiejaar
+      aanvangt dan wel waarvoor de draagkracht in de zin van hoofdstuk 6
+      wordt vastgesteld; (...) belastbaar minimumloon: een bij of krachtens
+      algemene maatregel van bestuur vast te stellen bedrag, afgeleid van
+      het totaal van het minimumloon en de minimumvakantiebijslag, bedoeld
+      in artikel 7, eerste lid, van de Wet minimumloon en
+      minimumvakantiebijslag.
+    url: https://wetten.overheid.nl/BWBR0011453/2026-01-01#Hoofdstuk1_Artikel1.1
+    machine_readable:
+      open_terms:
+        - id: belastbaar_minimumloon
+          type: amount
+          required: true
+          delegated_to: regering
+          delegation_type: AMVB
+          legal_basis: artikel 1.1, eerste lid, Wet studiefinanciering 2000
+          description: >-
+            Belastbaar minimumloon per jaar; vastgesteld in artikel 2 van
+            het Besluit studiefinanciering 2000 (108% van het twaalfvoud
+            van het WML-maandbedrag van januari van het berekeningsjaar)
+      execution:
+        output:
+          - name: belastbaar_minimumloon
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: belastbaar_minimumloon
+            value: $belastbaar_minimumloon
+
+  # ---------------------------------------------------------------- 6.3
+  - number: '6.3'
+    text: >-
+      Onze Minister stelt jaarlijks uiterlijk in december een
+      rentepercentage vast dat gelijk is aan het gemiddeld effectief
+      rendement van de openbare lening, uitgegeven door de Staat der
+      Nederlanden, met een gemiddelde resterende looptijd van 5 jaren. Het
+      rentepercentage wordt vastgesteld op nul indien deze minder dan nul
+      procent bedraagt.
+    url: https://wetten.overheid.nl/BWBR0011453/2026-01-01#Hoofdstuk6_Artikel6.3
+    machine_readable:
+      open_terms:
+        - id: rentepercentage_sf15
+          type: number
+          required: true
+          delegated_to: minister
+          delegation_type: MINISTERIELE_REGELING
+          legal_basis: artikel 6.3 Wet studiefinanciering 2000
+          description: >-
+            Jaarlijks vastgesteld rentepercentage voor leningen onder de
+            15-jaarsregimes (SF15-oud en SF15-nieuw)
+        - id: rentepercentage_sf35
+          type: number
+          required: true
+          delegated_to: minister
+          delegation_type: MINISTERIELE_REGELING
+          legal_basis: artikel 6.3 Wet studiefinanciering 2000
+          description: >-
+            Jaarlijks vastgesteld rentepercentage voor het 35-jaarsregime
+            en het levenlanglerenkrediet
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: terugbetaalregime
+            type: string
+            source:
+              output: terugbetaalregime
+        output:
+          - name: rentepercentage_sf15
+            type: number
+            type_spec:
+              unit: ratio
+          - name: rentepercentage_sf35
+            type: number
+            type_spec:
+              unit: ratio
+          - name: rentepercentage
+            type: number
+            type_spec:
+              unit: ratio
+            description: Rentepercentage dat voor deze debiteur geldt
+        actions:
+          - output: rentepercentage_sf15
+            value: $rentepercentage_sf15
+          - output: rentepercentage_sf35
+            value: $rentepercentage_sf35
+          - output: rentepercentage
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: IN
+                    subject: $terugbetaalregime
+                    values:
+                      - SF35
+                      - SF15_LLLK
+                  then: $rentepercentage_sf35
+              default: $rentepercentage_sf15
+
+  # ---------------------------------------------------------------- 6.7
+  - number: '6.7'
+    text: >-
+      De aflosfase beslaat behoudens toepassing van artikel 6.9, derde lid,
+      35 kalenderjaren. Deze periode wordt verlengd met het aantal maanden
+      dat gebruik is gemaakt van de aflosvrije periode. Op aanvraag wordt
+      de terugbetaling voor ten hoogste 5 kalenderjaren opgeschort.
+    url: https://wetten.overheid.nl/BWBR0011453/2026-01-01#Hoofdstuk6_Artikel6.7
+    machine_readable:
+      definitions:
+        aflosfase_maanden_sf35:
+          value: 420
+          type: number
+          description: 35 kalenderjaren, uitgedrukt in maanden
+        aflosvrij_max_maanden:
+          value: 60
+          type: number
+          description: Ten hoogste 5 kalenderjaren opschorting (jokerjaren)
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: terugbetaalregime
+            type: string
+            source:
+              output: terugbetaalregime
+          - name: aflosfase_maanden_sf15_oud
+            type: number
+            source:
+              output: aflosfase_maanden_sf15_oud
+          - name: aflosfase_maanden_sf15_nieuw
+            type: number
+            source:
+              output: aflosfase_maanden_sf15_nieuw
+          - name: aflosfase_maanden_lllk
+            type: number
+            source:
+              output: aflosfase_maanden_lllk
+        output:
+          - name: terugbetaalperiode_maanden
+            type: number
+            description: Duur van de aflosfase in maanden voor deze debiteur
+          - name: aflosvrije_periode_toegestaan
+            type: boolean
+            description: >-
+              Of opschorting (aflosvrije periode / jokerjaren) mogelijk is;
+              het levenlanglerenkrediet kent deze mogelijkheid niet volgens
+              de Stand van de Uitvoering OCW 2026 (artikel 6.19 zondert
+              artikel 6.7, tweede lid, niet expliciet uit; audit-punt)
+          - name: aflosvrije_periode_max_maanden
+            type: number
+        actions:
+          - output: terugbetaalperiode_maanden
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $terugbetaalregime
+                    value: SF15_OUD
+                  then: $aflosfase_maanden_sf15_oud
+                - when:
+                    operation: EQUALS
+                    subject: $terugbetaalregime
+                    value: SF15_NIEUW
+                  then: $aflosfase_maanden_sf15_nieuw
+                - when:
+                    operation: EQUALS
+                    subject: $terugbetaalregime
+                    value: SF15_LLLK
+                  then: $aflosfase_maanden_lllk
+              default: $aflosfase_maanden_sf35
+          - output: aflosvrije_periode_toegestaan
+            value:
+              operation: NOT
+              value:
+                operation: EQUALS
+                subject: $terugbetaalregime
+                value: SF15_LLLK
+          - output: aflosvrije_periode_max_maanden
+            value: $aflosvrij_max_maanden
+
+  # ---------------------------------------------------------------- 6.9
+  - number: '6.9'
+    text: >-
+      Onze Minister stelt de termijnbetalingen vast. Deze worden zodanig
+      vastgesteld dat de gehele schuld met rente binnen de aflosfase wordt
+      afgelost (annuïtair). De termijnbetaling bedraagt ten minste € 60
+      per jaar, onderscheidenlijk ten minste € 545 per jaar voor leningen
+      onder de 15-jaarsregimes (artikel 6.9 zoals dit luidde vóór de Wet
+      herinvoering basisbeurs hoger onderwijs; artikel 10a.6).
+    url: https://wetten.overheid.nl/BWBR0011453/2026-01-01#Hoofdstuk6_Artikel6.9
+    machine_readable:
+      definitions:
+        minimum_jaarbedrag_sf35:
+          value: 6000
+          type: amount
+          type_spec:
+            unit: eurocent
+          description: Minimumtermijn per jaar, 35-jaarsregime (€ 60)
+        minimum_jaarbedrag_sf15:
+          value: 54500
+          type: amount
+          type_spec:
+            unit: eurocent
+          description: >-
+            Minimumtermijn per jaar, 15-jaarsregimes en
+            levenlanglerenkrediet (€ 545)
+        maanden_per_jaar:
+          value: 12
+          type: number
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: restschuld
+            type: amount
+            required: true
+            description: Actuele studieschuld in eurocent
+          - name: resterende_maanden
+            type: number
+            required: true
+            description: Resterende maanden van de aflosfase
+          - name: discontofactor
+            type: number
+            required: true
+            description: >-
+              (1 + maandrente)^-resterende_maanden. De engine kent geen
+              machtsverheffen; de aanroepende applicatie berekent deze
+              factor uit het rentepercentage en de resterende maanden.
+              TODO: vervangen door een POWER-operatie zodra de engine die
+              ondersteunt.
+        input:
+          - name: terugbetaalregime
+            type: string
+            source:
+              output: terugbetaalregime
+          - name: rentepercentage
+            type: number
+            source:
+              output: rentepercentage
+        output:
+          - name: wettelijk_maandbedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: >-
+              Annuïtaire termijnbetaling per maand over de resterende
+              aflosfase, ten minste het wettelijke minimum
+        actions:
+          - output: wettelijk_maandbedrag
+            operation: MAX
+            values:
+              - operation: ROUND
+                precision: 0
+                value:
+                  operation: IF
+                  cases:
+                    - when:
+                        operation: EQUALS
+                        subject: $rentepercentage
+                        value: 0
+                      then:
+                        operation: DIVIDE
+                        values:
+                          - $restschuld
+                          - $resterende_maanden
+                  default:
+                    operation: DIVIDE
+                    values:
+                      - operation: MULTIPLY
+                        values:
+                          - $restschuld
+                          - operation: DIVIDE
+                            values:
+                              - $rentepercentage
+                              - $maanden_per_jaar
+                      - operation: SUBTRACT
+                        values:
+                          - 1
+                          - $discontofactor
+              - operation: ROUND
+                precision: 0
+                value:
+                  operation: DIVIDE
+                  values:
+                    - operation: IF
+                      cases:
+                        - when:
+                            operation: EQUALS
+                            subject: $terugbetaalregime
+                            value: SF35
+                          then: $minimum_jaarbedrag_sf35
+                      default: $minimum_jaarbedrag_sf15
+                    - $maanden_per_jaar
+
+  # ---------------------------------------------------------------- 6.10
+  - number: '6.10'
+    text: >-
+      Maatstaf voor de vaststelling van de draagkracht van de debiteur is
+      zijn toetsingsinkomen, alsmede dat van zijn partner, in het peiljaar.
+      De draagkrachtvrije voet is gelijk aan 143% van het belastbaar
+      minimumloon voor een debiteur met partner of een debiteur zonder
+      partner die een ouder is, en 100% van het belastbaar minimumloon
+      voor overige debiteuren. De draagkracht is 4% van het inkomen boven
+      de draagkrachtvrije voet. Indien de draagkracht lager is dan de
+      vastgestelde termijn, betaalt de debiteur het bedrag van zijn
+      draagkracht.
+    url: https://wetten.overheid.nl/BWBR0011453/2026-01-01#Hoofdstuk6_Artikel6.10
+    machine_readable:
+      definitions:
+        draagkrachtpercentage_sf35:
+          value: 0.04
+          type: number
+          type_spec:
+            unit: ratio
+          description: 4% van het inkomen boven de draagkrachtvrije voet
+        voet_ratio_partner_of_ouder_sf35:
+          value: 1.43
+          type: number
+          type_spec:
+            unit: ratio
+          description: 143% van het belastbaar minimumloon
+        voet_ratio_overig_sf35:
+          value: 1.00
+          type: number
+          type_spec:
+            unit: ratio
+          description: 100% van het belastbaar minimumloon
+        maanden_per_jaar:
+          value: 12
+          type: number
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: belastbaar_minimumloon
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              output: belastbaar_minimumloon
+          - name: heeft_partner
+            type: boolean
+            source:
+              description: Of de debiteur een partner heeft (personas-databron)
+          - name: huishoudtype
+            type: string
+            source:
+              description: >-
+                Huishoudtype: alleenstaand, alleenstaand_met_kind, paar of
+                paar_met_kind (personas-databron)
+          - name: draagkrachtinkomen
+            type: amount
+            source:
+              output: draagkrachtinkomen
+          - name: wettelijk_maandbedrag
+            type: amount
+            source:
+              output: wettelijk_maandbedrag
+          - name: terugbetaalregime
+            type: string
+            source:
+              output: terugbetaalregime
+          - name: draagkrachtmeting_van_toepassing
+            type: boolean
+            source:
+              output: draagkrachtmeting_van_toepassing
+          - name: draagkrachtvrije_voet_sf15_oud
+            type: amount
+            source:
+              output: draagkrachtvrije_voet_sf15_oud
+          - name: termijn_naar_draagkracht_sf15_oud
+            type: amount
+            source:
+              output: termijn_naar_draagkracht_sf15_oud
+          - name: draagkrachtvrije_voet_sf15_nieuw
+            type: amount
+            source:
+              output: draagkrachtvrije_voet_sf15_nieuw
+          - name: termijn_naar_draagkracht_sf15_nieuw
+            type: amount
+            source:
+              output: termijn_naar_draagkracht_sf15_nieuw
+          - name: draagkrachtvrije_voet_lllk
+            type: amount
+            source:
+              output: draagkrachtvrije_voet_lllk
+          - name: termijn_naar_draagkracht_lllk
+            type: amount
+            source:
+              output: termijn_naar_draagkracht_lllk
+        output:
+          - name: draagkrachtvrije_voet_sf35
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: termijn_naar_draagkracht_sf35
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: draagkrachtvrije_voet
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Draagkrachtvrije voet voor het regime van deze debiteur
+          - name: termijn_naar_draagkracht
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: >-
+              Maandelijkse termijn naar draagkracht voor het regime van
+              deze debiteur
+          - name: te_betalen_maandbedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: >-
+              Wat de debiteur daadwerkelijk per maand betaalt: het laagste
+              van de wettelijke termijn en de termijn naar draagkracht,
+              mits een draagkrachtmeting van toepassing is
+        actions:
+          - output: draagkrachtvrije_voet_sf35
+            operation: ROUND
+            precision: 0
+            value:
+              operation: MULTIPLY
+              values:
+                - operation: IF
+                  cases:
+                    - when:
+                        operation: OR
+                        conditions:
+                          - operation: EQUALS
+                            subject: $heeft_partner
+                            value: true
+                          - operation: EQUALS
+                            subject: $huishoudtype
+                            value: alleenstaand_met_kind
+                      then: $voet_ratio_partner_of_ouder_sf35
+                  default: $voet_ratio_overig_sf35
+                - $belastbaar_minimumloon
+          - output: termijn_naar_draagkracht_sf35
+            operation: ROUND
+            precision: 0
+            value:
+              operation: DIVIDE
+              values:
+                - operation: MULTIPLY
+                  values:
+                    - $draagkrachtpercentage_sf35
+                    - operation: MAX
+                      values:
+                        - 0
+                        - operation: SUBTRACT
+                          values:
+                            - $draagkrachtinkomen
+                            - $draagkrachtvrije_voet_sf35
+                - $maanden_per_jaar
+          - output: draagkrachtvrije_voet
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $terugbetaalregime
+                    value: SF15_OUD
+                  then: $draagkrachtvrije_voet_sf15_oud
+                - when:
+                    operation: EQUALS
+                    subject: $terugbetaalregime
+                    value: SF15_NIEUW
+                  then: $draagkrachtvrije_voet_sf15_nieuw
+                - when:
+                    operation: EQUALS
+                    subject: $terugbetaalregime
+                    value: SF15_LLLK
+                  then: $draagkrachtvrije_voet_lllk
+              default: $draagkrachtvrije_voet_sf35
+          - output: termijn_naar_draagkracht
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $terugbetaalregime
+                    value: SF15_OUD
+                  then: $termijn_naar_draagkracht_sf15_oud
+                - when:
+                    operation: EQUALS
+                    subject: $terugbetaalregime
+                    value: SF15_NIEUW
+                  then: $termijn_naar_draagkracht_sf15_nieuw
+                - when:
+                    operation: EQUALS
+                    subject: $terugbetaalregime
+                    value: SF15_LLLK
+                  then: $termijn_naar_draagkracht_lllk
+              default: $termijn_naar_draagkracht_sf35
+          - output: te_betalen_maandbedrag
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $draagkrachtmeting_van_toepassing
+                    value: true
+                  then:
+                    operation: MIN
+                    values:
+                      - $wettelijk_maandbedrag
+                      - $termijn_naar_draagkracht
+              default: $wettelijk_maandbedrag
+
+  # ---------------------------------------------------------------- 6.12
+  - number: '6.12'
+    text: >-
+      Op aanvraag van de debiteur wordt voor de vaststelling van de
+      draagkracht in plaats van het peiljaar uitgegaan van het eerste jaar
+      voorafgaand aan het jaar waarvoor de draagkracht wordt vastgesteld,
+      dan wel dat jaar zelf, indien sprake is van een vermindering van het
+      toetsingsinkomen van ten minste 15% ten opzichte van het peiljaar.
+    url: https://wetten.overheid.nl/BWBR0011453/2026-01-01#Hoofdstuk6_Artikel6.12
+    machine_readable:
+      definitions:
+        maximale_inkomensratio_bij_verlegging:
+          value: 0.85
+          type: number
+          type_spec:
+            unit: ratio
+          description: >-
+            Vermindering van ten minste 15%: het actuele toetsingsinkomen
+            is ten hoogste 85% van dat in het peiljaar
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: peiljaarverlegging_toegepast
+            type: boolean
+            required: true
+            description: Of de debiteur om verlegging van het peiljaar vraagt
+          - name: partner_meetellen
+            type: boolean
+            required: true
+            description: >-
+              Of het inkomen van de partner wordt meegeteld; zie artikel
+              10a.11 voor de mogelijkheid dit niet te doen (SF15-oud)
+        input:
+          - name: toetsingsinkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              description: Toetsingsinkomen in het peiljaar, t-2 (personas-databron)
+          - name: toetsingsinkomen_actueel
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              description: >-
+                Toetsingsinkomen in het jaar waarvoor draagkracht wordt
+                vastgesteld (personas-databron)
+          - name: toetsingsinkomen_partner
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              description: Toetsingsinkomen van de partner (personas-databron)
+          - name: heeft_partner
+            type: boolean
+            source:
+              description: Of de debiteur een partner heeft (personas-databron)
+        output:
+          - name: peiljaarverlegging_mogelijk
+            type: boolean
+            description: >-
+              Of aan de 15%-inkomensdalingseis voor peiljaarverlegging is
+              voldaan
+          - name: gehanteerd_toetsingsinkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: draagkrachtinkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: >-
+              Toetsingsinkomen van debiteur en, tenzij artikel 10a.11 is
+              toegepast, van de partner (artikel 6.10, eerste lid)
+        actions:
+          - output: peiljaarverlegging_mogelijk
+            value:
+              operation: LESS_THAN_OR_EQUAL
+              subject: $toetsingsinkomen_actueel
+              value:
+                operation: MULTIPLY
+                values:
+                  - $maximale_inkomensratio_bij_verlegging
+                  - $toetsingsinkomen
+          - output: gehanteerd_toetsingsinkomen
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: EQUALS
+                        subject: $peiljaarverlegging_toegepast
+                        value: true
+                      - operation: EQUALS
+                        subject: $peiljaarverlegging_mogelijk
+                        value: true
+                  then: $toetsingsinkomen_actueel
+              default: $toetsingsinkomen
+          - output: draagkrachtinkomen
+            value:
+              operation: ADD
+              values:
+                - $gehanteerd_toetsingsinkomen
+                - operation: IF
+                  cases:
+                    - when:
+                        operation: AND
+                        conditions:
+                          - operation: EQUALS
+                            subject: $heeft_partner
+                            value: true
+                          - operation: EQUALS
+                            subject: $partner_meetellen
+                            value: true
+                      then: $toetsingsinkomen_partner
+                  default: 0
+
+  # ---------------------------------------------------------------- 6.16
+  - number: '6.16'
+    text: >-
+      De schuld die resteert bij het einde van de aflosfase, gaat op dat
+      ogenblik teniet. De schuld gaat eveneens teniet bij het overlijden
+      van de debiteur.
+    url: https://wetten.overheid.nl/BWBR0011453/2026-01-01#Hoofdstuk6_Artikel6.16
+    machine_readable:
+      execution:
+        output:
+          - name: kwijtschelding_van_toepassing
+            type: boolean
+            description: >-
+              De restschuld gaat teniet bij het einde van de aflosfase.
+              Let op: bij toepassing van artikel 10a.11 (partnerinkomen
+              niet meetellen) wordt de aflosfase telkens verlengd, waardoor
+              dit einde kan opschuiven tot het overlijden.
+        actions:
+          - output: kwijtschelding_van_toepassing
+            value: true
+
+  # ---------------------------------------------------------------- 6.19
+  - number: '6.19'
+    text: >-
+      In afwijking van paragraaf 6.1 beslaat de aflosfase voor het
+      levenlanglerenkrediet een periode van 15 kalenderjaren, bedraagt de
+      termijnbetaling ten minste € 545, en bedraagt de draagkrachtvrije
+      voet 120% van het belastbaar minimumloon voor een debiteur met
+      partner of een debiteur zonder partner die een ouder is,
+      onderscheidenlijk 84% voor overige debiteuren. De draagkracht is 12%
+      van het inkomen boven de draagkrachtvrije voet.
+    url: https://wetten.overheid.nl/BWBR0011453/2026-01-01#Hoofdstuk6_Artikel6.19
+    machine_readable:
+      definitions:
+        aflosfase_maanden:
+          value: 180
+          type: number
+          description: 15 kalenderjaren, uitgedrukt in maanden
+        draagkrachtpercentage_lllk:
+          value: 0.12
+          type: number
+          type_spec:
+            unit: ratio
+        voet_ratio_partner_of_ouder_lllk:
+          value: 1.20
+          type: number
+          type_spec:
+            unit: ratio
+        voet_ratio_overig_lllk:
+          value: 0.84
+          type: number
+          type_spec:
+            unit: ratio
+        maanden_per_jaar:
+          value: 12
+          type: number
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: belastbaar_minimumloon
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              output: belastbaar_minimumloon
+          - name: heeft_partner
+            type: boolean
+            source:
+              description: Personas-databron
+          - name: huishoudtype
+            type: string
+            source:
+              description: Personas-databron
+          - name: draagkrachtinkomen
+            type: amount
+            source:
+              output: draagkrachtinkomen
+        output:
+          - name: aflosfase_maanden_lllk
+            type: number
+          - name: draagkrachtvrije_voet_lllk
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: termijn_naar_draagkracht_lllk
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: aflosfase_maanden_lllk
+            value: $aflosfase_maanden
+          - output: draagkrachtvrije_voet_lllk
+            operation: ROUND
+            precision: 0
+            value:
+              operation: MULTIPLY
+              values:
+                - operation: IF
+                  cases:
+                    - when:
+                        operation: OR
+                        conditions:
+                          - operation: EQUALS
+                            subject: $heeft_partner
+                            value: true
+                          - operation: EQUALS
+                            subject: $huishoudtype
+                            value: alleenstaand_met_kind
+                      then: $voet_ratio_partner_of_ouder_lllk
+                  default: $voet_ratio_overig_lllk
+                - $belastbaar_minimumloon
+          - output: termijn_naar_draagkracht_lllk
+            operation: ROUND
+            precision: 0
+            value:
+              operation: DIVIDE
+              values:
+                - operation: MULTIPLY
+                  values:
+                    - $draagkrachtpercentage_lllk
+                    - operation: MAX
+                      values:
+                        - 0
+                        - operation: SUBTRACT
+                          values:
+                            - $draagkrachtinkomen
+                            - $draagkrachtvrije_voet_lllk
+                - $maanden_per_jaar
+
+  # ---------------------------------------------------------------- 10a.1
+  - number: 10a.1
+    text: >-
+      Dit hoofdstuk is uitsluitend van toepassing op debiteuren die voor
+      het studiejaar 2009–2010 voor het eerst studiefinanciering
+      ontvingen, tenzij zij een aanvraag hebben ingediend als bedoeld in
+      artikel 10a.2. (Routering naar SF15-nieuw volgt uit de artikelen
+      12.32 en 12.14, vierde lid: conservering van de terugbetaalregels
+      zoals die luidden vóór de Wet herinvoering basisbeurs hoger
+      onderwijs, onderscheidenlijk vóór het studievoorschot.)
+    url: https://wetten.overheid.nl/BWBR0011453/2026-01-01#Hoofdstuk10a_Artikel10a.1
+    machine_readable:
+      definitions:
+        cohortgrens_sf15_oud:
+          value: 2009
+          type: number
+          description: >-
+            Eerste studiefinanciering vóór studiejaar 2009-2010 (artikel
+            10a.1; vereenvoudigd tot kalenderjaargrens)
+        cohortgrens_sf15_nieuw_mbo:
+          value: 2023
+          type: number
+          description: >-
+            Mbo-cohortgrens Wet herinvoering basisbeurs (artikel 12.32;
+            vereenvoudigd tot kalenderjaargrens)
+        cohortgrens_sf15_nieuw_ho:
+          value: 2015
+          type: number
+          description: >-
+            Ho-cohortgrens studievoorschot (artikel 12.14; vereenvoudigd
+            tot kalenderjaargrens)
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: overstap_aangevraagd
+            type: boolean
+            required: true
+            description: >-
+              Of de debiteur de overstap van artikel 10a.2 heeft
+              aangevraagd
+        input:
+          - name: is_levenlanglerenkrediet
+            type: boolean
+            source:
+              description: Personas-databron
+          - name: eerste_studiefinanciering_jaar
+            type: number
+            source:
+              description: >-
+                Kalenderjaar waarin voor het eerst studiefinanciering werd
+                ontvangen (personas-databron)
+          - name: onderwijssoort
+            type: string
+            source:
+              description: mbo, hbo of wo (personas-databron)
+          - name: overstap_doelregime
+            type: string
+            source:
+              output: overstap_doelregime
+        output:
+          - name: terugbetaalregime
+            type: string
+            description: 'SF15_OUD, SF15_NIEUW, SF15_LLLK of SF35'
+        actions:
+          - output: terugbetaalregime
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $is_levenlanglerenkrediet
+                    value: true
+                  then: SF15_LLLK
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: LESS_THAN
+                        subject: $eerste_studiefinanciering_jaar
+                        value: $cohortgrens_sf15_oud
+                      - operation: EQUALS
+                        subject: $overstap_aangevraagd
+                        value: true
+                  then: $overstap_doelregime
+                - when:
+                    operation: LESS_THAN
+                    subject: $eerste_studiefinanciering_jaar
+                    value: $cohortgrens_sf15_oud
+                  then: SF15_OUD
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: EQUALS
+                        subject: $onderwijssoort
+                        value: mbo
+                      - operation: LESS_THAN
+                        subject: $eerste_studiefinanciering_jaar
+                        value: $cohortgrens_sf15_nieuw_mbo
+                  then: SF15_NIEUW
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $onderwijssoort
+                          value: mbo
+                      - operation: LESS_THAN
+                        subject: $eerste_studiefinanciering_jaar
+                        value: $cohortgrens_sf15_nieuw_ho
+                  then: SF15_NIEUW
+              default: SF35
+
+  # ---------------------------------------------------------------- 10a.2
+  - number: 10a.2
+    text: >-
+      Een debiteur op wie dit hoofdstuk van toepassing is, kan vóór de
+      aanvang van de aflosfase een aanvraag indienen om paragraaf 6.1 op
+      hem van toepassing te laten zijn.
+    url: https://wetten.overheid.nl/BWBR0011453/2026-01-01#Hoofdstuk10a_Artikel10a.2
+    machine_readable:
+      definitions:
+        doelregime_bij_overstap:
+          value: SF35
+          type: string
+          description: >-
+            Onder huidig recht leidt de overstap naar paragraaf 6.1 (het
+            35-jaarsregime). Beleidsvarianten kunnen dit wijzigen in
+            SF15_NIEUW (Stand van de Uitvoering, mogelijke aanpassing a).
+      execution:
+        output:
+          - name: overstap_doelregime
+            type: string
+        actions:
+          - output: overstap_doelregime
+            value: $doelregime_bij_overstap
+
+  # ---------------------------------------------------------------- 10a.4
+  - number: 10a.4
+    text: >-
+      De aflosfase beslaat behoudens toepassing van artikel 10a.6, derde
+      lid, 15 kalenderjaren volgend op de aanloopfase. Deze periode wordt
+      verlengd indien artikel 10a.11, tweede lid, van toepassing is.
+    url: https://wetten.overheid.nl/BWBR0011453/2026-01-01#Hoofdstuk10a_Artikel10a.4
+    machine_readable:
+      definitions:
+        aflosfase_maanden:
+          value: 180
+          type: number
+          description: 15 kalenderjaren, uitgedrukt in maanden
+        maximale_aflosfase_maanden:
+          value: 0
+          type: number
+          description: >-
+            Absoluut maximum op de (door artikel 10a.11 verlengde) aflosfase,
+            in maanden; 0 betekent geen maximum. Onder huidig recht bestaat
+            geen maximum; de verkende aanpassing b uit de Stand van de
+            Uitvoering zou hier bijvoorbeeld 480 (40 jaar) van maken.
+      execution:
+        output:
+          - name: aflosfase_maanden_sf15_oud
+            type: number
+          - name: maximale_aflosfase_maanden_sf15_oud
+            type: number
+        actions:
+          - output: aflosfase_maanden_sf15_oud
+            value: $aflosfase_maanden
+          - output: maximale_aflosfase_maanden_sf15_oud
+            value: $maximale_aflosfase_maanden
+
+  # ---------------------------------------------------------------- 10a.7
+  - number: 10a.7
+    text: >-
+      Indien de debiteur niet in staat is de vastgestelde termijnbetaling
+      te voldoen, kan hij een aanvraag indienen om zijn draagkracht vast
+      te stellen. (Voor debiteuren onder hoofdstuk 6 wordt de draagkracht
+      ambtshalve — automatisch — vastgesteld.)
+    url: https://wetten.overheid.nl/BWBR0011453/2026-01-01#Hoofdstuk10a_Artikel10a.7
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: draagkracht_aangevraagd
+            type: boolean
+            required: true
+            description: >-
+              Of de debiteur een draagkrachtmeting heeft aangevraagd
+              (alleen relevant onder hoofdstuk 10a)
+        input:
+          - name: terugbetaalregime
+            type: string
+            source:
+              output: terugbetaalregime
+        output:
+          - name: draagkrachtmeting_van_toepassing
+            type: boolean
+            description: >-
+              Of de termijn naar draagkracht voor deze debiteur wordt
+              toegepast: automatisch onder hoofdstuk 6, op aanvraag onder
+              hoofdstuk 10a
+        actions:
+          # BELEIDSVARIANT a3: de draagkracht wordt ook onder hoofdstuk
+          # 10a ambtshalve (automatisch) vastgesteld.
+          - output: draagkrachtmeting_van_toepassing
+            value: true
+
+  # ---------------------------------------------------------------- 10a.8
+  - number: 10a.8
+    text: >-
+      Maatstaf voor de vaststelling van de draagkracht is het
+      toetsingsinkomen in het tweede jaar voorafgaande aan het jaar
+      waarvoor de draagkracht wordt vastgesteld. Het resterende inkomen
+      boven de draagkrachtvrije voet wordt verdeeld in 2 schijven ter
+      grootte van de helft van de draagkrachtvrije voet alsmede een derde
+      schijf ter grootte van 260% van het belastbare minimumloon
+      verminderd met de draagkrachtvrije voet en de eerste en de tweede
+      schijf. De draagkracht van de debiteur uit inkomen is 7,9% van de
+      eerste schijf plus 15,8% van de tweede schijf plus 23,7% van de
+      derde schijf plus 30% van het meerdere.
+    url: https://wetten.overheid.nl/BWBR0011453/2026-01-01#Hoofdstuk10a_Artikel10a.8
+    machine_readable:
+      definitions:
+        voet_ratio_alleenstaand_sf15_oud:
+          value: 0.84
+          type: number
+          type_spec:
+            unit: ratio
+          description: >-
+            Draagkrachtvrije voet alleenstaande zonder kind: 50% van het
+            belastbaar minimumloon (vereenvoudiging van de
+            heffingskortingssystematiek in het tweede lid, conform de
+            Stand van de Uitvoering OCW 2026)
+        voet_ratio_overig_sf15_oud:
+          value: 1.20
+          type: number
+          type_spec:
+            unit: ratio
+          description: 'Draagkrachtvrije voet overige debiteuren: 100%'
+        schijfbreedte_ratio:
+          value: 0.5
+          type: number
+          type_spec:
+            unit: ratio
+          description: Eerste en tweede schijf zijn elk de helft van de voet
+        derde_schijf_bovengrens_ratio:
+          value: 2.60
+          type: number
+          type_spec:
+            unit: ratio
+          description: Derde schijf loopt tot 260% van het belastbaar minimumloon
+        percentage_schijf_1:
+          value: 0.079
+          type: number
+          type_spec:
+            unit: ratio
+        percentage_schijf_2:
+          value: 0.158
+          type: number
+          type_spec:
+            unit: ratio
+        percentage_schijf_3:
+          value: 0.237
+          type: number
+          type_spec:
+            unit: ratio
+        percentage_meerdere:
+          value: 0.30
+          type: number
+          type_spec:
+            unit: ratio
+        draagkrachtpercentage_sf15_oud:
+          value: 0.12
+          type: number
+          type_spec:
+            unit: ratio
+          description: >-
+            BELEIDSVARIANT a3: vlak draagkrachtpercentage conform SF15-nieuw
+            in plaats van de schijvensystematiek
+        maanden_per_jaar:
+          value: 12
+          type: number
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: belastbaar_minimumloon
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              output: belastbaar_minimumloon
+          - name: huishoudtype
+            type: string
+            source:
+              description: Personas-databron
+          - name: draagkrachtinkomen
+            type: amount
+            source:
+              output: draagkrachtinkomen
+        output:
+          - name: draagkrachtvrije_voet_sf15_oud
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: sf15_oud_resterend_inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Inkomen boven de draagkrachtvrije voet
+          - name: sf15_oud_schijfbreedte
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Breedte van de eerste en tweede schijf (halve voet)
+          - name: sf15_oud_derde_schijfbreedte
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: termijn_naar_draagkracht_sf15_oud
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: draagkrachtvrije_voet_sf15_oud
+            operation: ROUND
+            precision: 0
+            value:
+              operation: MULTIPLY
+              values:
+                - operation: IF
+                  cases:
+                    - when:
+                        operation: EQUALS
+                        subject: $huishoudtype
+                        value: alleenstaand
+                      then: $voet_ratio_alleenstaand_sf15_oud
+                  default: $voet_ratio_overig_sf15_oud
+                - $belastbaar_minimumloon
+          - output: sf15_oud_resterend_inkomen
+            operation: MAX
+            values:
+              - 0
+              - operation: SUBTRACT
+                values:
+                  - $draagkrachtinkomen
+                  - $draagkrachtvrije_voet_sf15_oud
+          - output: sf15_oud_schijfbreedte
+            operation: ROUND
+            precision: 0
+            value:
+              operation: MULTIPLY
+              values:
+                - $schijfbreedte_ratio
+                - $draagkrachtvrije_voet_sf15_oud
+          - output: sf15_oud_derde_schijfbreedte
+            operation: MAX
+            values:
+              - 0
+              - operation: SUBTRACT
+                values:
+                  - operation: ROUND
+                    precision: 0
+                    value:
+                      operation: MULTIPLY
+                      values:
+                        - $derde_schijf_bovengrens_ratio
+                        - $belastbaar_minimumloon
+                  - $draagkrachtvrije_voet_sf15_oud
+                  - $sf15_oud_schijfbreedte
+                  - $sf15_oud_schijfbreedte
+          # BELEIDSVARIANT a3: de schijvensystematiek is vervangen door
+          # de draagkrachtberekening van SF15-nieuw (12% van het inkomen
+          # boven de draagkrachtvrije voet).
+          - output: termijn_naar_draagkracht_sf15_oud
+            operation: ROUND
+            precision: 0
+            value:
+              operation: DIVIDE
+              values:
+                - operation: MULTIPLY
+                  values:
+                    - $draagkrachtpercentage_sf15_oud
+                    - $sf15_oud_resterend_inkomen
+                - $maanden_per_jaar
+
+  # ---------------------------------------------------------------- 10a.11
+  - number: 10a.11
+    text: >-
+      Bij de bepaling van de draagkracht wordt geen rekening gehouden met
+      het inkomen van de partner indien een van beiden hiertoe een
+      aanvraag indient. Voor ieder jaar dat geen rekening wordt gehouden
+      met het inkomen van de partner, wordt de aflosfase verlengd met een
+      jaar.
+    url: https://wetten.overheid.nl/BWBR0011453/2026-01-01#Hoofdstuk10a_Artikel10a.11
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: partner_meetellen
+            type: boolean
+            required: true
+        input:
+          - name: terugbetaalregime
+            type: string
+            source:
+              output: terugbetaalregime
+          - name: heeft_partner
+            type: boolean
+            source:
+              description: Personas-databron
+        output:
+          - name: partner_opt_out_mogelijk
+            type: boolean
+            description: >-
+              De keuze om het partnerinkomen niet mee te tellen bestaat
+              alleen onder hoofdstuk 10a (SF15-oud)
+          - name: partner_opt_out_verlengt_aflosfase
+            type: boolean
+            description: >-
+              Of de aflosfase dit jaar met een jaar wordt verlengd omdat
+              het partnerinkomen niet wordt meegeteld
+        actions:
+          - output: partner_opt_out_mogelijk
+            value:
+              operation: EQUALS
+              subject: $terugbetaalregime
+              value: SF15_OUD
+          - output: partner_opt_out_verlengt_aflosfase
+            value:
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $terugbetaalregime
+                  value: SF15_OUD
+                - operation: EQUALS
+                  subject: $heeft_partner
+                  value: true
+                - operation: EQUALS
+                  subject: $partner_meetellen
+                  value: false
+
+  # ---------------------------------------------------------------- 12.32
+  - number: '12.32'
+    text: >-
+      In afwijking van de artikelen 6.3, 6.7, 6.9, 6.10 en 6.14 blijven
+      deze artikelen zoals deze luidden voor het tijdstip van
+      inwerkingtreding van de Wet herinvoering basisbeurs hoger onderwijs
+      van toepassing op een debiteur met een schuld uit een lening
+      beroepsonderwijs die uitsluitend voor dat tijdstip
+      studiefinanciering beroepsonderwijs ontving. (Voor het hoger
+      onderwijs geldt via artikel 12.14, vierde lid, dat de lening van
+      een vóór 1 september 2015 begonnen student wordt aangemerkt als een
+      lening beroepsonderwijs, tenzij artikel 10a.1 van toepassing is.)
+      De geconserveerde regels: aflosfase 15 kalenderjaren,
+      draagkrachtvrije voet 120% onderscheidenlijk 84% van het belastbaar
+      minimumloon, draagkracht 12% van het inkomen boven de voet.
+    url: https://wetten.overheid.nl/BWBR0011453/2026-01-01#Hoofdstuk12_Artikel12.32
+    machine_readable:
+      definitions:
+        aflosfase_maanden:
+          value: 180
+          type: number
+          description: 15 kalenderjaren, uitgedrukt in maanden
+        draagkrachtpercentage_sf15_nieuw:
+          value: 0.12
+          type: number
+          type_spec:
+            unit: ratio
+        voet_ratio_partner_of_ouder_sf15_nieuw:
+          value: 1.20
+          type: number
+          type_spec:
+            unit: ratio
+        voet_ratio_overig_sf15_nieuw:
+          value: 0.84
+          type: number
+          type_spec:
+            unit: ratio
+        maanden_per_jaar:
+          value: 12
+          type: number
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: belastbaar_minimumloon
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              output: belastbaar_minimumloon
+          - name: heeft_partner
+            type: boolean
+            source:
+              description: Personas-databron
+          - name: huishoudtype
+            type: string
+            source:
+              description: Personas-databron
+          - name: draagkrachtinkomen
+            type: amount
+            source:
+              output: draagkrachtinkomen
+        output:
+          - name: aflosfase_maanden_sf15_nieuw
+            type: number
+          - name: draagkrachtvrije_voet_sf15_nieuw
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: termijn_naar_draagkracht_sf15_nieuw
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: aflosfase_maanden_sf15_nieuw
+            value: $aflosfase_maanden
+          - output: draagkrachtvrije_voet_sf15_nieuw
+            operation: ROUND
+            precision: 0
+            value:
+              operation: MULTIPLY
+              values:
+                - operation: IF
+                  cases:
+                    - when:
+                        operation: OR
+                        conditions:
+                          - operation: EQUALS
+                            subject: $heeft_partner
+                            value: true
+                          - operation: EQUALS
+                            subject: $huishoudtype
+                            value: alleenstaand_met_kind
+                      then: $voet_ratio_partner_of_ouder_sf15_nieuw
+                  default: $voet_ratio_overig_sf15_nieuw
+                - $belastbaar_minimumloon
+          - output: termijn_naar_draagkracht_sf15_nieuw
+            operation: ROUND
+            precision: 0
+            value:
+              operation: DIVIDE
+              values:
+                - operation: MULTIPLY
+                  values:
+                    - $draagkrachtpercentage_sf15_nieuw
+                    - operation: MAX
+                      values:
+                        - 0
+                        - operation: SUBTRACT
+                          values:
+                            - $draagkrachtinkomen
+                            - $draagkrachtvrije_voet_sf15_nieuw
+                - $maanden_per_jaar

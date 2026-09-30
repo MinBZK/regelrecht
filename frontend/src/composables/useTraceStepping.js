@@ -43,7 +43,11 @@ export function useTraceStepping({ result, nodes, edges, rootLawId, outputName }
   // rebuild a Set of all node ids and rescan the full edge array, which
   // dominated profiling on heavy laws (O(steps × (edges + nodes))).
   const steps = computed(() => {
-    const trace = result.value?.trace;
+    // The engine hands back a trace document, `{trace_version, root}`
+    // (RFC-039); the stepper walks steps. A bare step still works, so a trace
+    // recorded before the envelope renders unchanged.
+    const doc = result.value?.trace;
+    const trace = doc?.root ?? doc;
     if (!trace || !rootLawId.value) return [];
     const flat = flattenTraceSteps(trace, rootLawId.value);
     const ns = nodes.value || [];

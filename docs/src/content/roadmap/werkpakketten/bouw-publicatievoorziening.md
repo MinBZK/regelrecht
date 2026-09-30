@@ -1,0 +1,37 @@
+---
+id: bouw-publicatievoorziening
+titel: Bouw publicatievoorziening
+faseId: hoe
+disciplineId: techniek
+prioriteit: ''
+omvang: ''
+categorie: ''
+capability: publiceren
+capaciteit: ''
+toelichting: |-
+  Waar "Verkenning publicatievoorziening" onderzoekt hoe publicatie,
+  versiebeheer en het register van specificaties moeten werken — en dat
+  verkent met een prototype — bouwt dit werkpakket de productierijpe
+  publicatievoorziening zelf: de daadwerkelijke implementatie die op basis
+  van de verkenning en het prototype in gebruik genomen kan worden.
+volgorde: 2000
+onderzoeksvragen:
+  - Welke onderdelen van het prototype uit "Verkenning publicatievoorziening"
+    kunnen direct worden doorontwikkeld naar een productierijpe
+    implementatie, en welke moeten opnieuw ontworpen worden?
+  - Hoe wordt de publicatievoorziening geïntegreerd met de bestaande keten
+    (harvester, editor, engine), zodat een gepubliceerde specificatie
+    automatisch beschikbaar komt voor uitvoering?
+  - Welke beheerorganisatie en operationele processen zijn nodig om de
+    publicatievoorziening en het register in productie te draaien (updates,
+    monitoring, toegang)?
+  - Hoe wordt de schaalbaarheid en betrouwbaarheid van het register
+    (immutable opslag, digest-lookup) geborgd bij productiegebruik door
+    meerdere instanties?
+onderzoek: ''
+bouw: ''
+rfcs: []
+afhankelijkVan:
+  - verkenning-publicatievoorziening
+samenhangIds: []
+---

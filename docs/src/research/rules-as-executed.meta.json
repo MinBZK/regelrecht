@@ -1,0 +1,20 @@
+{
+  "kind": "Position paper",
+  "title": "Rules as Executed",
+  "subtitle": "Publishing Machine-Executable Law to Rebalance the Powers",
+  "authors": [
+    "Eelco Hotting",
+    "Anne Schuth"
+  ],
+  "affiliation": "Dutch Ministry of the Interior and Kingdom Relations",
+  "emails": [
+    "eelco.hotting@minbzk.nl",
+    "anne.schuth@minbzk.nl"
+  ],
+  "note": "Equal contribution. The authors are now with the Dutch Digital Service, Ministry of Economic Affairs and Climate. The work was done at the Ministry of the Interior and Kingdom Relations.",
+  "date": "2026-08-31",
+  "date_display": "31 August 2026",
+  "doi": "10.5281/zenodo.22201094",
+  "abstract": "Government law execution is formalized in software, but that software is not published. This deepens the executive’s structural advantage in the separation of powers: it alone can see how operative law is applied, while Parliament, courts, and citizens cannot verify, review, or predict its application. This paper proposes that law execution be published as machine-executable specifications in a restricted, declarative format designed to be readable by legal professionals. Such a format must be limited to a small set of operations designed to guarantee termination and to support version management, attestation, and formal analysis. The published specification is the one that decides cases: each decision records the version it ran and the inputs it ran on, so its recipient can re-execute the published rule and see whether the outcome is the one it yields. Determinism makes the outcome checkable. The signed trace fixes the inputs but not their truth; that requires binding an input to the source authoritative for it, where one exists. The specification computes a default: a departure replaces a computed value with one from another source, and a reader can establish that it was made, on what ground, and by whom. A reference implementation demonstrates feasibility. We argue that publication of executable law restores the precondition for constitutional oversight, each actor within its own office: the recipient of a decision and the court can re-execute that case, auditors with lawful access to the data can do so across a population, and Parliament and the public can read and analyze the rule itself, with no case data at all. The paper develops the constitutional argument, the required properties of the format, the implications for each constitutional actor, and the research agenda this approach requires.",
+  "abstract_lead": "Government law execution is formalized in software, but that software is not published. This deepens the executive’s structural advantage in the separation of powers: it alone can see how operative law is applied, while Parliament, courts, and citizens cannot verify, review, or predict its application. This paper proposes that law execution be published as machine-executable specifications in a restricted, declarative format designed to be readable by legal professionals."
+}

@@ -1,0 +1,143 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.6/schema/v0.5.6/schema.json
+$id: duo_werkinstructie_afloscapaciteit_nibud
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2026-01-01'
+valid_from: '2026-01-01'
+url: https://zelfjeschuldenregelen.nibud.nl/schulden
+name: >-
+  Werkinstructie redelijke afloscapaciteit (Nibud-referentiebudgetten)
+competent_authority:
+  name: Dienst Uitvoering Onderwijs
+articles:
+  # GEEN WET. Dit document vangt de budgetteringsbenadering waarmee DUO en
+  # het Nibud in beeld brengen hoeveel iemand redelijkerwijs per maand kan
+  # aflossen (Stand van de Uitvoering OCW 2026, hoofdstuk 2, voetnoot 12/13:
+  # de Nibud-budgetteringstool en bedragen uit een werkinstructie van DUO).
+  # De normbedragen hieronder zijn demo-kalibraties op basis van de openbare
+  # Nibud-referentiebudgetten; de echte werkinstructie is niet openbaar.
+  - number: '1'
+    url: https://zelfjeschuldenregelen.nibud.nl/schulden
+    text: >-
+      De redelijke afloscapaciteit per maand is het netto maandinkomen van
+      het huishouden verminderd met de referentie-uitgaven voor het
+      huishoudtype volgens de Nibud-referentiebudgetten, doch ten minste
+      nihil. Voor de omrekening van het toetsingsinkomen (bruto, per jaar)
+      naar netto maandinkomen wordt een forfaitaire verhouding gehanteerd.
+    machine_readable:
+      definitions:
+        netto_ratio:
+          value: 0.72
+          type: number
+          type_spec:
+            unit: ratio
+          description: Forfaitaire bruto-nettoverhouding (demo-kalibratie)
+        referentie_uitgaven_alleenstaand:
+          value: 185000
+          type: amount
+          type_spec:
+            unit: eurocent
+          description: Referentie-uitgaven per maand, alleenstaande zonder kind
+        referentie_uitgaven_alleenstaand_met_kind:
+          value: 235000
+          type: amount
+          type_spec:
+            unit: eurocent
+          description: Referentie-uitgaven per maand, alleenstaande met kind(eren)
+        referentie_uitgaven_paar:
+          value: 275000
+          type: amount
+          type_spec:
+            unit: eurocent
+          description: Referentie-uitgaven per maand, paar zonder kind
+        referentie_uitgaven_paar_met_kind:
+          value: 330000
+          type: amount
+          type_spec:
+            unit: eurocent
+          description: Referentie-uitgaven per maand, paar met kind(eren)
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+            description: Burgerservicenummer van de debiteur
+        input:
+          - name: toetsingsinkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              description: Toetsingsinkomen van de debiteur (per jaar, bruto)
+          - name: toetsingsinkomen_partner
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              description: Toetsingsinkomen van de partner (per jaar, bruto)
+          - name: huishoudtype
+            type: string
+            source:
+              description: >-
+                Huishoudtype: alleenstaand, alleenstaand_met_kind, paar of
+                paar_met_kind
+        output:
+          - name: netto_maandinkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Netto maandinkomen van het huishouden (forfaitair)
+          - name: referentie_uitgaven
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Nibud-referentie-uitgaven voor het huishoudtype
+          - name: redelijke_afloscapaciteit_per_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: >-
+              Wat het huishouden redelijkerwijs per maand kan aflossen
+        actions:
+          - output: netto_maandinkomen
+            operation: ROUND
+            precision: 0
+            value:
+              operation: DIVIDE
+              values:
+                - operation: MULTIPLY
+                  values:
+                    - operation: ADD
+                      values:
+                        - $toetsingsinkomen
+                        - $toetsingsinkomen_partner
+                    - $netto_ratio
+                - 12
+          - output: referentie_uitgaven
+            value:
+              operation: IF
+              cases:
+              - when:
+                  operation: EQUALS
+                  subject: $huishoudtype
+                  value: alleenstaand_met_kind
+                then: $referentie_uitgaven_alleenstaand_met_kind
+              - when:
+                  operation: EQUALS
+                  subject: $huishoudtype
+                  value: paar
+                then: $referentie_uitgaven_paar
+              - when:
+                  operation: EQUALS
+                  subject: $huishoudtype
+                  value: paar_met_kind
+                then: $referentie_uitgaven_paar_met_kind
+              default: $referentie_uitgaven_alleenstaand
+          - output: redelijke_afloscapaciteit_per_maand
+            operation: MAX
+            values:
+              - 0
+              - operation: SUBTRACT
+                values:
+                  - $netto_maandinkomen
+                  - $referentie_uitgaven

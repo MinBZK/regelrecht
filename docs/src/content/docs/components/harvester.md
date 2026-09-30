@@ -44,8 +44,17 @@ The harvester uses an extensible **registry system** for XML element handling:
 |-------------|----------|----------|
 | **Inline** | `nadruk`, `extref`, `intref`, `al` | Pass through with text |
 | **Structural** | `lid`, `lidnr`, `lijst`, `li` | Manage numbering, recurse |
-| **Skip** | `meta-data`, `jci`, `redactie`, `plaatje` | Excluded from output |
+| **Skip** | `meta-data`, `jci`, `kop`, `brondata` | Excluded from output |
 | **Passthrough** | `sup`, `sub` | Extract without special handling |
+| **Marker** | `plaatje`, `illustratie`, `formule` | Text where there is any, otherwise `[formule niet in tekst beschikbaar]` |
+
+The marker matters more than it looks. The BWB XML states some norms as a
+picture: artikel 22a Participatiewet puts the whole kostendelersnorm formula in
+an `<illustratie>`. Those elements used to be skipped, so the sentence that
+introduces the formula ended on its colon and the norm vanished with nothing to
+show it had. An incomplete article then read as a complete one. The harvester
+still cannot render an image, but it no longer drops it in silence, and a
+`<formule>` carrying a readable fallback keeps that text.
 
 ### Dutch Law Hierarchy
 

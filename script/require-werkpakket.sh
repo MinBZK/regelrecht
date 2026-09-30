@@ -1,0 +1,412 @@
+#!/usr/bin/env bash
+# Merge-poort: elke pull request noemt het werkpakket waaraan hij bijdraagt.
+#
+# De roadmap op /roadmap zegt wat er te doen is; de pull requests zeggen wat er
+# gedaan wordt. Die twee stonden los van elkaar. Het werd met de hand overbrugd
+# ("werkpakket werkwijze wetsontwikkeling uitgewerkt", #1409): dezelfde
+# verwijzing, elke keer anders geschreven en door niets te controleren. Deze
+# poort maakt er één vorm van die een mens leest en een script kan oogsten.
+#
+# De vorm is een trailer, onderaan de body:
+#
+#     Werkpakket: referentie-casus-i
+#     Werkpakket: referentie-casus-i, effect-over-tijd
+#     Werkpakket: geen — losse typefout in de docs
+#
+# Raakt de PR een wet uit het corpus, dan mag daar een `Wet:`-regel bij:
+#
+#     Wet: wet_op_de_zorgtoeslag
+#     Wet: wet_op_de_zorgtoeslag, algemene_wet_bestuursrecht
+#
+# Die regel is optioneel — de meeste PR's raken geen wet, en hem verplichten zou
+# net zo'n leeg vakje opleveren als een `geen` zonder reden. Staat hij er, dan
+# moet hij kloppen: de waarde is het `$id` van een wet in corpus/regulation, en
+# de poort zet er in de samenvatting een link bij naar wetten.overheid.nl.
+# Daarmee is een genoemde wet aanklikbaar in plaats van een string die je zelf
+# moet opzoeken, en is een typefout meteen zichtbaar in plaats van pas als
+# iemand de wet probeert te vinden.
+#
+# Trailer-vormig met opzet, en niet "ergens een slug in de tekst". Een trailer
+# staat op zijn eigen regel, is met één grep te vinden, overleeft het kopiëren
+# van een PR-body naar een merge-commit, en laat zich later uit `git log`
+# oogsten zonder dat er iets aan deze poort hoeft te veranderen. Dat laatste is
+# het doel achter het doel: commits en PR's per werkpakket kunnen optellen.
+#
+# `geen` moet een reden dragen. Zonder die eis is het een leeg vakje dat je
+# zonder nadenken invult, en dan meet de poort of iemand een regel kan plakken
+# in plaats van of hij de vraag heeft gesteld. De reden is het hele punt.
+#
+# Wat de poort als feit behandelt, haalt zij zelf op. Uit de omgeving komen
+# alleen de coördinaten (repository, PR-nummer); de body, de auteur en of dit
+# een fork is komen van de API. Anders zou `IS_DEPENDABOT: true` in een
+# env-blok van de workflow — geschreven door de auteur van de PR die hier
+# beoordeeld wordt — genoeg zijn om eronderuit te komen.
+#
+# Waarom dit wél blokkeert en `docs/scripts/check-roadmap-rfcs.mjs` niet: dat
+# script eist dat iemand een wérkpakket bijwerkt, en zou dus af werk tegenhouden
+# tot de roadmap is bijgetrokken — redactionele achterstand, die je oploopt
+# zonder het te merken. Deze poort vraagt één regel in de body die je toch aan
+# het schrijven bent, en accepteert een onderbouwd `geen`. Er is niets om op
+# achter te lopen.
+#
+# Wat dit niet dekt: deze job staat in het workflowbestand dat de PR meebrengt.
+# Wie de job vervangt door `run: true` is groen zonder dat dit script draait.
+# Sluiten kan alleen met een regel buiten de pull request om (een ruleset of
+# CODEOWNERS over .github/workflows/**), net als bij de review-poort.
+set -uo pipefail
+
+: "${REPO:?REPO is verplicht}"
+: "${PR_NUMBER:?PR_NUMBER is verplicht}"
+
+# De map met werkpakketten, als checkout van de base-branch. De poort toetst
+# tegen wat er op main staat plus wat deze PR toevoegt; zie hieronder.
+WERKPAKKETTEN_DIR="${WERKPAKKETTEN_DIR:-docs/src/content/roadmap/werkpakketten}"
+
+# Het corpus, om een genoemde wet aan te toetsen en er een link van te maken.
+CORPUS_DIR="${CORPUS_DIR:-corpus/regulation}"
+
+GITHUB_OUTPUT="${GITHUB_OUTPUT:-/dev/null}"
+GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/null}"
+
+readonly TITEL='Werkpakket genoemd'
+
+summary() { printf '%s\n' "$1" >>"$GITHUB_STEP_SUMMARY"; }
+output() { printf '%s=%s\n' "$1" "$2" >>"$GITHUB_OUTPUT"; }
+
+# De roadmap, waar een werkpakket zijn eigen pagina heeft. De slug ís het
+# laatste deel van die URL, dus een genoemd werkpakket is aanklikbaar te maken
+# zonder dat daar iets voor opgezocht hoeft te worden.
+ROADMAP_URL="${ROADMAP_URL:-https://regelrecht.rijks.app/roadmap/werkpakket}"
+
+# Regels die `green` onder de melding zet, als markdown-link. Gevuld door
+# lees_wetten en door het pad dat de werkpakketten vaststelt.
+wet_regels=''
+werkpakket_regels=''
+
+# De annotatie blijft platte tekst: GitHub rendert geen markdown in een
+# ::notice::. De links horen daarom in de samenvatting, waar dat wel kan.
+green() {
+    echo "::notice title=${TITEL}::$1"
+    summary "### Werkpakket: in orde"
+    summary ""
+    summary "$1"
+    if [ -n "$werkpakket_regels" ]; then
+        summary ""
+        summary "**Werkpakketten op de roadmap**"
+        summary ""
+        printf '%s\n' "$werkpakket_regels" >>"$GITHUB_STEP_SUMMARY"
+    fi
+    if [ -n "$wet_regels" ]; then
+        summary ""
+        summary "**Wetten die deze pull request raakt**"
+        summary ""
+        printf '%s\n' "$wet_regels" >>"$GITHUB_STEP_SUMMARY"
+    fi
+    exit 0
+}
+
+blocked() {
+    echo "::error title=${TITEL}::$1"
+    summary "### Werkpakket: niet genoemd"
+    summary ""
+    summary "$1"
+    exit 1
+}
+
+# Een leesfout is geen uitspraak over de PR. Hij blokkeert wel: doorlaten zou
+# groen geven over iets wat de poort niet gezien heeft.
+unreadable() {
+    echo "::error title=${TITEL}::$1"
+    summary "### Werkpakket: niet vast te stellen"
+    summary ""
+    summary "$1"
+    exit 1
+}
+
+gh_stderr=$(mktemp "${TMPDIR:-/tmp}/werkpakket-gate-stderr.XXXXXX")
+trap 'rm -f "$gh_stderr"' EXIT
+
+if ! pr=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" 2>"$gh_stderr"); then
+    unreadable "Pull request ${PR_NUMBER} in ${REPO} is niet op te halen, dus of er een werkpakket genoemd wordt valt niet vast te stellen. Draai deze job opnieuw. Foutmelding: $(tr '\n' ' ' <"$gh_stderr")"
+fi
+
+pr_field() { jq -r "${1} // \"\"" <<<"$pr"; }
+
+body=$(pr_field '.body')
+auteur=$(pr_field '.user.login')
+
+# Dependabot opent werk dat bij geen werkpakket hoort en langs een eigen route
+# loopt (claude-dependabot.yml). Een kwart van de PR's van de laatste honderd
+# kwam daarvandaan; die allemaal een `geen — dependency-bump` laten schrijven
+# maakt de regel tot ruis.
+if [ "$auteur" = 'dependabot[bot]' ]; then
+    green "Deze PR komt van Dependabot. Een versie-bump hoort bij geen werkpakket, dus de eis geldt hier niet."
+fi
+
+# Een fork-PR kan de roadmap niet kennen zoals wij hem kennen, en de
+# bijdragerichtlijn zegt dat externe PR's doorgaans niet gemerged worden maar
+# een issue opleveren. Hem laten stranden op een vormeis helpt niemand.
+if [ "$(pr_field '.head.repo.full_name')" != "$REPO" ]; then
+    green "Deze PR komt uit een fork. De werkpakket-eis geldt voor het werk van het team zelf."
+fi
+
+# De geldige slugs: wat op de base-branch staat plus wat deze PR toevoegt.
+#
+# De base-checkout is het anker — hij kan niet door de PR herschreven worden.
+# Maar een PR die een nieuw werkpakket toevoegt én eraan werkt moet zichzelf
+# kunnen noemen, dus komen de bestandsnamen uit de PR erbij. Dat is geen gat:
+# een slug verzinnen om hier langs te komen betekent een werkpakket aan de
+# roadmap toevoegen, en dat staat zichtbaar in de diff.
+if [ ! -d "$WERKPAKKETTEN_DIR" ]; then
+    unreadable "De map met werkpakketten (${WERKPAKKETTEN_DIR}) is er niet, dus welke slugs geldig zijn valt niet vast te stellen."
+fi
+
+geldig=$(find "$WERKPAKKETTEN_DIR" -maxdepth 1 -name '*.md' -exec basename {} .md \; | sort -u)
+
+if ! bestanden=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}/files" --paginate --jq '.[].filename' 2>"$gh_stderr"); then
+    unreadable "De bestandslijst van pull request ${PR_NUMBER} is niet op te halen, dus een werkpakket dat deze PR zelf toevoegt zou ten onrechte als onbekend gelden. Draai deze job opnieuw. Foutmelding: $(tr '\n' ' ' <"$gh_stderr")"
+fi
+
+# Verankerd aan het echte pad, en niet aan de mapnaam alleen.
+#
+# Op `(^|/)werkpakketten/` zou een bestand op een wíllekeurig pad dat toevallig
+# zo'n map heeft — `ergens/anders/werkpakketten/verzonnen-slug.md` — een slug
+# geldig maken zonder dat de roadmap wordt aangeraakt. Dat holt de redenering
+# hierboven uit: die leunt erop dat een verzonnen slug een werkpakket aan de
+# roadmap toevoegt en dus door `assertReferencesResolve` heen moet, en dat geldt
+# alleen voor bestanden die de docs-build ook echt leest.
+#
+# Apart van WERKPAKKETTEN_DIR, want dat is in de tests een absoluut tijdelijk
+# pad terwijl de API repo-relatieve paden teruggeeft. Deze variabele beschrijft
+# wat de API zegt.
+WERKPAKKETTEN_PAD="${WERKPAKKETTEN_PAD:-docs/src/content/roadmap/werkpakketten}"
+toegevoegd=$(grep -E "^${WERKPAKKETTEN_PAD}/[^/]+\.md$" <<<"$bestanden" |
+    sed -E 's#.*/##; s#\.md$##' | sort -u)
+geldig=$(printf '%s\n%s\n' "$geldig" "$toegevoegd" | grep -v '^$' | sort -u)
+
+if [ -z "$geldig" ]; then
+    unreadable "Er zijn geen werkpakketten gevonden in ${WERKPAKKETTEN_DIR}, dus de genoemde slug valt nergens aan te toetsen."
+fi
+
+# De optionele `Wet:`-regel. Hij wordt vóór het werkpakket gelezen, zodat een
+# foute wet ook gemeld wordt op een PR die verder in orde is: anders zou de
+# poort bij het eerste groene pad al weg zijn.
+#
+# Elke waarde is het `$id` van een wet, en dat is ook de naam van de map waarin
+# zijn versies staan. Daarom volstaat de mapnaam om te toetsen en hoeft de poort
+# geen yaml te lezen.
+# De laatste `<Naam>:`-regel in de body die géén voorbeeld is.
+#
+# Een codeblok telt niet mee. Een pull request die de vorm van deze regel
+# documenteert — de template, een stuk CLAUDE.md, een uitleg aan een collega —
+# zet die voorbeelden in een ``` -blok, en zonder deze regel zou het laatste
+# voorbeeld de echte trailer overstemmen. De poort blokkeerde dan op een regel
+# die de auteur niet als trailer bedoeld had, met een slug uit de documentatie
+# in de foutmelding. Vier spaties inspringen is dezelfde markdown-afspraak.
+#
+# script/linkify-werkpakket.sh kiest zijn regel op precies dezelfde manier;
+# lopen die twee uiteen, dan herschrijft de bot een andere regel dan de poort
+# leest. \r eraf, want GitHub levert de body met CRLF aan.
+trailer() {
+    printf '%s' "$body" | tr -d '\r' | awk -v naam="$1" '
+        BEGIN { patroon = "^[[:space:]]*" tolower(naam) "[[:space:]]*:" }
+        /^[[:space:]]*```/ { in_fence = !in_fence; next }
+        in_fence { next }
+        /^    / { next }
+        tolower($0) ~ patroon { laatste = $0 }
+        END { if (laatste != "") print laatste }
+    '
+}
+
+# Het nieuwste versiebestand van een wet, of niets als `$id` geen wet aanwijst.
+#
+# -maxdepth 4: corpus/regulation/<land>/<soort>/<wet>/, en een gemeentelijke
+# verordening zit precies op die diepte.
+wet_bestand() {
+    local dir
+    for dir in $(find "$CORPUS_DIR" -mindepth 1 -maxdepth 4 -type d -name "$1"); do
+        # Het hoogste versienummer is de laatste versie; `sort | tail -1` op
+        # datumnamen (2025-01-01.yaml) geeft die.
+        local nieuwste
+        nieuwste=$(ls "$dir"/*.yaml 2>/dev/null | sort | tail -1)
+        if [ -n "$nieuwste" ]; then
+            printf '%s' "$nieuwste"
+            return 0
+        fi
+    done
+    return 1
+}
+
+lees_wetten() {
+    local regel waarde ruw id bestand onbekend=() gevonden=() bestanden_per_id=()
+    regel=$(trailer 'Wet')
+    [ -n "$regel" ] || return 0
+
+    waarde=$(sed -E 's/^[[:space:]]*[Ww]et[[:space:]]*:[[:space:]]*//' <<<"$regel")
+    # Net als bij het werkpakket: een met de hand geschreven markdown-link telt
+    # als zijn linktekst, zodat `Wet: [wet_op_de_zorgtoeslag](https://…)` niet
+    # als onbekende wet blokkeert.
+    waarde=$(sed -E 's/\[([^]]*)\]\([^)]*\)/\1/g' <<<"$waarde")
+
+    if [ ! -d "$CORPUS_DIR" ]; then
+        unreadable "De regel \`${regel}\` noemt een wet, maar het corpus (${CORPUS_DIR}) is er niet, dus die wet valt nergens aan te toetsen."
+    fi
+
+    local -a genoemd=()
+    IFS=',' read -ra genoemd <<<"$waarde"
+    for ruw in ${genoemd[@]+"${genoemd[@]}"}; do
+        id=$(printf '%s' "$ruw" | tr -d '[:space:]')
+        id=${id//\`/}
+        [ -n "$id" ] || continue
+        # Eerst de vorm, dan pas zoeken. `find -name` neemt een glob, dus een
+        # `*` zou anders de eerste de beste map matchen en er een link met het
+        # label `*` van maken: de poort zou dan iets bevestigen wat niet waar
+        # is. Een `$id` is per schema kleine letters, cijfers en liggende
+        # streepjes, dus alles daarbuiten is geen wet maar een patroon.
+        if ! printf '%s' "$id" | grep -qE '^[a-z0-9_]+$'; then
+            onbekend+=("$id")
+            continue
+        fi
+        # Een wet is een map met versiebestanden erin, niet zomaar een map.
+        # `corpus/regulation/nl/wet/` en `…/<wet>/scenarios/` bestaan ook, en op
+        # "bestaat de map" zou `Wet: scenarios` groen geven en in de
+        # samenvatting belanden als een wet die deze PR raakt. Dat is precies de
+        # valse bevestiging die deze regel hoort te voorkomen. Het bestand is
+        # meteen wat de link levert, dus het wordt hier één keer opgezocht.
+        bestand=$(wet_bestand "$id")
+        if [ -n "$bestand" ]; then
+            gevonden+=("$id")
+            bestanden_per_id+=("${id}=${bestand}")
+        else
+            onbekend+=("$id")
+        fi
+    done
+
+    if [ ${#onbekend[@]} -gt 0 ]; then
+        local lijst
+        lijst=$(printf '`%s`, ' "${onbekend[@]}" | sed 's/, $//')
+        blocked "Deze pull request noemt een wet die niet in het corpus staat: ${lijst}. Gebruik het \`\$id\` van de wet, zoals de mapnaam in ${CORPUS_DIR}/ hem geeft (bijvoorbeeld \`wet_op_de_zorgtoeslag\`)."
+    fi
+
+    [ ${#gevonden[@]} -gt 0 ] || return 0
+
+    # De link komt uit de wet zelf: `url` wijst naar de geldende tekst op
+    # wetten.overheid.nl. Staat hij er niet, dan valt de poort terug op het
+    # BWB-nummer, en anders op de naam alleen. Een verzonnen URL is erger dan
+    # geen: een link die naar de verkeerde wet wijst wordt geloofd.
+    local url bwb paar
+    for id in "${gevonden[@]}"; do
+        # Het bestand is bij het toetsen al gevonden; hier alleen weer opzoeken
+        # in plaats van de schijf nog eens af te lopen.
+        bestand=''
+        for paar in "${bestanden_per_id[@]}"; do
+            [ "${paar%%=*}" = "$id" ] && bestand="${paar#*=}" && break
+        done
+        url=''
+        if [ -n "$bestand" ] && [ -f "$bestand" ]; then
+            url=$(sed -nE 's/^url:[[:space:]]*//p' "$bestand" | head -1 | tr -d '"'"'")
+            if [ -z "$url" ]; then
+                bwb=$(sed -nE 's/^bwb_id:[[:space:]]*//p' "$bestand" | head -1 | tr -d '"'"'")
+                [ -n "$bwb" ] && url="https://wetten.overheid.nl/${bwb}"
+            fi
+        fi
+        if [ -n "$url" ]; then
+            wet_regels="${wet_regels}- [${id}](${url})"$'\n'
+        else
+            wet_regels="${wet_regels}- ${id}"$'\n'
+        fi
+    done
+
+    output 'wetten' "$(printf '%s,' "${gevonden[@]}" | sed 's/,$//')"
+}
+
+lees_wetten
+
+# De trailer, op zijn eigen regel. De laatste telt als er meerdere staan: een
+# body wordt van boven naar beneden bijgewerkt, dus onderaan staat de nieuwste.
+regel=$(trailer 'Werkpakket')
+
+if [ -z "$regel" ]; then
+    blocked "Deze pull request noemt geen werkpakket. Zet onderaan de omschrijving een regel \`Werkpakket: <slug>\` met het werkpakket waaraan hij bijdraagt, of \`Werkpakket: geen — <reden>\` als het werk bij geen enkel werkpakket hoort. De slugs staan in ${WERKPAKKETTEN_DIR}/ en op /roadmap."
+fi
+
+waarde=$(sed -E 's/^[[:space:]]*[Ww]erkpakket[[:space:]]*:[[:space:]]*//' <<<"$regel")
+
+# Een markdown-link telt als zijn linktekst: `[slug](url)` wordt `slug`.
+#
+# Dat moet, want script/linkify-werkpakket.sh schrijft de kale slug in de body
+# om naar precies die vorm. Zonder deze regel zou die herschrijving de volgende
+# run van de poort rood maken op een PR die niets verkeerd doet — de poort zou
+# dan haar eigen bot afkeuren. Het accepteert meteen de met de hand geschreven
+# linkvorm.
+waarde=$(sed -E 's/\[([^]]*)\]\([^)]*\)/\1/g' <<<"$waarde")
+
+# `geen` met een reden erachter. Het scheidingsteken mag een kort of lang
+# streepje zijn of een dubbele punt: wie de regel met de hand typt moet niet op
+# een teken struikelen dat zijn toetsenbord niet makkelijk geeft.
+# `geen` moet een woord op zichzelf zijn. Met `[[:space:]]*` voor het streepje
+# zou `geen-werkpakket-bestaat` ook matchen: een echte slug die met "geen-"
+# begint werd dan stilzwijgend als ontheffing gelezen en nooit aan de roadmap
+# getoetst. Een streepje telt daarom alleen als er een spatie voor staat; een
+# dubbele punt mag er wel direct tegenaan, want die komt in een slug niet voor.
+if grep -qiE '^geen([[:space:]]*$|[[:space:]]+[-—:]|[[:space:]]*:)' <<<"$waarde"; then
+    reden=$(sed -E 's/^[Gg]een([[:space:]]+[-—:]|[[:space:]]*:)?[[:space:]]*//' <<<"$waarde")
+    if [ -z "${reden//[[:space:]]/}" ]; then
+        blocked "Deze pull request zegt \`Werkpakket: geen\` zonder reden. Schrijf op waarom dit werk bij geen enkel werkpakket hoort, bijvoorbeeld \`Werkpakket: geen — losse typefout in de docs\`. De reden is waar het om gaat: zonder is het een vakje dat zichzelf invult."
+    fi
+    output 'werkpakketten' ''
+    output 'reden' "$reden"
+    green "Deze pull request hoort bij geen werkpakket, en zegt waarom: ${reden}"
+fi
+
+# Kommagescheiden; één PR mag aan meer dan één werkpakket bijdragen.
+# `genoemd=()` vooraf, want een lege waarde laat `read -ra` de array ongemoeid
+# en onder `set -u` is een lege array uitvouwen dan een fout in plaats van een
+# lege lijst.
+genoemd=()
+IFS=',' read -ra genoemd <<<"$waarde"
+
+onbekend=()
+gevonden=()
+for ruw in ${genoemd[@]+"${genoemd[@]}"}; do
+    slug=$(printf '%s' "$ruw" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+    slug=${slug//\`/}
+    [ -n "$slug" ] || continue
+    if grep -qxF "$slug" <<<"$geldig"; then
+        gevonden+=("$slug")
+    else
+        onbekend+=("$slug")
+    fi
+done
+
+if [ ${#onbekend[@]} -gt 0 ]; then
+    # Een suggestie erbij: een poort die alleen "nee" zegt laat de ander zoeken.
+    # De dichtstbijzijnde op gedeelde woorddelen, niet op letterafstand: slugs
+    # zijn samengesteld uit woorden en `referentie-casus-ii` hoort bij
+    # `referentie-casus-i` te landen.
+    suggesties=''
+    for slug in "${onbekend[@]}"; do
+        kop=${slug%%-*}
+        # Een lege kop (de slug begon met een streepje) zou met `grep -F ""`
+        # élke slug matchen en drie willekeurige suggesties opleveren. `--`
+        # ervoor, want een kop die met een streepje begint leest grep als optie.
+        dichtbij=''
+        [ -n "$kop" ] && dichtbij=$(grep -F -- "$kop" <<<"$geldig" | head -3 |
+            tr '\n' '@' | sed 's/@$//; s/@/, /g')
+        [ -n "$dichtbij" ] && suggesties="${suggesties} Bedoelde je bij \`${slug}\`: ${dichtbij}?"
+    done
+    lijst=$(printf '`%s`, ' "${onbekend[@]}" | sed 's/, $//')
+    blocked "Deze pull request noemt een werkpakket dat niet bestaat: ${lijst}.${suggesties} Kijk in ${WERKPAKKETTEN_DIR}/ of op /roadmap welke slugs er zijn."
+fi
+
+if [ ${#gevonden[@]} -eq 0 ]; then
+    blocked "De regel \`${regel}\` noemt geen werkpakket. Zet er een slug achter, of \`geen — <reden>\`."
+fi
+
+for slug in "${gevonden[@]}"; do
+    werkpakket_regels="${werkpakket_regels}- [${slug}](${ROADMAP_URL}/${slug})"$'\n'
+done
+
+output 'werkpakketten' "$(printf '%s,' "${gevonden[@]}" | sed 's/,$//')"
+output 'reden' ''
+green "Deze pull request draagt bij aan: $(printf '`%s`, ' "${gevonden[@]}" | sed 's/, $//')."

@@ -40,6 +40,9 @@ pub struct RegelrechtWorld {
     pub note_result: Option<MatchResult>,
     /// Generic data sources for canonical steps: source name -> (key field, rows)
     pub data_sources: BTreeMap<String, (String, Vec<BTreeMap<String, Value>>)>,
+    /// Data sources bound to one law: (law id, source name, key field, rows).
+    /// Registered with `register_dict_source_for_law` at evaluation time.
+    pub scoped_data_sources: Vec<(String, String, String, Vec<BTreeMap<String, Value>>)>,
     /// Outputs requested by the last canonical `evaluate`/`evaluate_outputs`
     pub requested_outputs: Vec<String>,
     /// Feature file and scenario the runner is currently in (set by the
@@ -90,6 +93,7 @@ impl RegelrechtWorld {
             note_selector: None,
             note_result: None,
             data_sources: BTreeMap::new(),
+            scoped_data_sources: Vec::new(),
             requested_outputs: Vec::new(),
             feature_name: String::new(),
             scenario_name: String::new(),

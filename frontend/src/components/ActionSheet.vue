@@ -130,7 +130,7 @@ onUnmounted(() => {
 
         <!-- Section A: Bovenliggende operaties -->
         <template v-if="parentOperations.length">
-          <nldd-list variant="box" arrow-navigation>
+          <nldd-list variant="box-tinted">
             <!-- Back/up navigation - clickable parent rows with a
                  chevron-left, identical in view and edit: click any
                  ancestor to jump up one or more levels. -->
@@ -170,7 +170,7 @@ onUnmounted(() => {
              (literal or $VAR reference). Mirror OperationSettings' Titel +
              Waarde layout so the sheet body isn't blank and the user sees
              which action they're looking at. -->
-        <nldd-list v-if="directValue" variant="box">
+        <nldd-list v-if="directValue" variant="box-tinted">
           <nldd-list-item size="md">
             <nldd-text-cell text="Output" :width="editable ? '120px' : 'fit-content'"></nldd-text-cell>
             <nldd-spacer-cell size="12"></nldd-spacer-cell>

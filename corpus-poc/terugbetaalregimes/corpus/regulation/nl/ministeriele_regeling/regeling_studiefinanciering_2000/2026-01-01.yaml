@@ -1,0 +1,60 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.6/schema/v0.5.6/schema.json
+$id: regeling_studiefinanciering_2000
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2025-12-09'
+valid_from: '2026-01-01'
+bwb_id: BWBR0011595
+url: https://wetten.overheid.nl/BWBR0011595/2026-01-01
+name: Regeling studiefinanciering 2000
+competent_authority:
+  name: Minister van Onderwijs, Cultuur en Wetenschap
+legal_basis:
+  - law_id: wet_studiefinanciering_2000
+    article: '6.3'
+articles:
+  # VEREENVOUDIGING: de rentepercentages worden in werkelijkheid jaarlijks
+  # vastgesteld in een afzonderlijke Staatscourant-regeling (2026:
+  # Stcrt. 2025, 39853, o.g.v. artikel 6.3 WSF 2000). Voor deze casus zijn
+  # ze als artikel in de Regeling studiefinanciering 2000 gemodelleerd; zie
+  # de fidelity-audit-TODO in de README.
+  # 2026: 2,29% (SF15-regimes) en 2,33% (SF35 en levenlanglerenkrediet),
+  # Stand van de Uitvoering OCW 2026, tabel hoofdstuk 2.
+  - number: '5.0'
+    text: >-
+      Het rentepercentage, bedoeld in artikel 6.3 van de wet, bedraagt voor
+      het kalenderjaar 2026: 2,29 voor leningen waarop een
+      terugbetalingsperiode van 15 jaren van toepassing is, en 2,33 voor
+      leningen waarop een terugbetalingsperiode van 35 jaren van toepassing
+      is dan wel die als levenlanglerenkrediet zijn verstrekt.
+    url: https://wetten.overheid.nl/BWBR0011595/2026-01-01
+    machine_readable:
+      implements:
+        - law: wet_studiefinanciering_2000
+          article: '6.3'
+          open_term: rentepercentage_sf15
+          gelet_op: Gelet op artikel 6.3 van de Wet studiefinanciering 2000
+        - law: wet_studiefinanciering_2000
+          article: '6.3'
+          open_term: rentepercentage_sf35
+          gelet_op: Gelet op artikel 6.3 van de Wet studiefinanciering 2000
+      execution:
+        output:
+          - name: rentepercentage_sf15
+            type: number
+            type_spec:
+              unit: ratio
+            description: >-
+              Rentepercentage studieschulden 15-jaarsregimes, kalenderjaar 2026
+          - name: rentepercentage_sf35
+            type: number
+            type_spec:
+              unit: ratio
+            description: >-
+              Rentepercentage studieschulden 35-jaarsregime en
+              levenlanglerenkrediet, kalenderjaar 2026
+        actions:
+          - output: rentepercentage_sf15
+            value: 0.0229
+          - output: rentepercentage_sf35
+            value: 0.0233

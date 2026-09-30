@@ -22,7 +22,7 @@ use uuid::Uuid;
 use regelrecht_shared::RegulatoryLayer;
 
 use crate::document_convert::{extension_for, try_deterministic_convert, Upload};
-use crate::enrich::{run_llm_subprocess, EnrichConfig, EnrichPayload};
+use crate::enrich::{run_llm_subprocess, EnrichConfig, EnrichPayload, SessionAction};
 use crate::error::{PipelineError, Result};
 use crate::job_queue::{self, CreateJobRequest};
 use crate::models::{Job, JobType, Priority};
@@ -125,7 +125,23 @@ impl LawStructurer for LlmLawStructurer {
         config: &EnrichConfig,
         allow_bash: bool,
     ) -> Result<()> {
-        run_llm_subprocess(&config.provider, prompt, None, work_dir, config, allow_bash).await
+        // Structuring a law is one call of its own; no window shares it.
+        run_llm_subprocess(
+            &config.provider,
+            prompt,
+            None,
+            work_dir,
+            config,
+            // Nothing extra withheld: `allow_bash` already decides the shell,
+            // and this lane reads no skill that could ask for more.
+            crate::enrich::ToolPolicy {
+                allow_bash,
+                deny: &[],
+            },
+            SessionAction::Cold,
+        )
+        .await
+        .map(|_| ())
     }
 }
 
@@ -445,6 +461,7 @@ pub async fn chain_enrich_and_complete(
     // feature-file detection in execute_enrich.
     let yaml_path = format!("laws/{}/law.yaml", law.meta.law_id);
     let enrich_payload = EnrichPayload {
+        pass: Default::default(),
         law_id: law.meta.law_id.clone(),
         yaml_path: yaml_path.clone(),
         provider: ctx.provider.clone(),
@@ -457,6 +474,8 @@ pub async fn chain_enrich_and_complete(
         new_law: Some(true),
         chunk_articles: None,
         skip_mvt: None,
+        // Queue payload: the session belongs to the run, not to the row.
+        session: None,
     };
     let payload_json = serde_json::to_value(&enrich_payload)
         .map_err(|e| PipelineError::Enrich(format!("serialize enrich payload: {e}")))?;

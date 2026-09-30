@@ -1,0 +1,181 @@
+---
+# Organisations that appear in the demo: the executing service of a law
+# (`service` in the law YAML) and the owners of register tables (bindings).
+# `logo` refers to frontend-demo/public/logos/<logo>.png; organisations without
+# a logo file fall back to their abbreviation.
+services:
+  ACICT:
+    name: Adviescollege ICT-toetsing
+  ANVS:
+    name: Autoriteit Nucleaire Veiligheid en Stralingsbescherming
+    logo: ANVS
+  AWB:
+    name: Algemene wet bestuursrecht
+  BELASTINGDIENST:
+    name: Belastingdienst
+    logo: BELASTINGDIENST
+  CBS:
+    name: Centraal Bureau voor de Statistiek
+    logo: CBS
+  CJIB:
+    name: Centraal Justitieel Incassobureau
+    logo: CJIB
+  DJI:
+    name: Dienst Justitiële Inrichtingen
+    logo: DJI
+  DOUANE:
+    name: Douane
+    logo: DOUANE
+  DUO:
+    name: Dienst Uitvoering Onderwijs
+    logo: DUO
+  GEMEENTE_AMSTERDAM:
+    name: Gemeente Amsterdam
+    logo: GEMEENTE_AMSTERDAM
+  GEMEENTE_ROTTERDAM:
+    name: Gemeente Rotterdam
+    logo: GEMEENTE_ROTTERDAM
+  IND:
+    name: Immigratie- en Naturalisatiedienst
+    logo: IND
+  JenV:
+    name: Ministerie van Justitie en Veiligheid
+    logo: JenV
+  JUSTID:
+    name: Justitiële Informatiedienst
+    logo: JUSTID
+  KADASTER:
+    name: Kadaster
+    logo: KADASTER
+  KIESRAAD:
+    name: Kiesraad
+    logo: KIESRAAD
+  KVK:
+    name: Kamer van Koophandel
+    logo: KVK
+  LBB:
+    name: Landelijk Bureau Bibob
+  NATIONAAL_ARCHIEF:
+    name: Nationaal Archief
+  NOTARIAAT:
+    name: Notariaat
+  NVWA:
+    name: Nederlandse Voedsel- en Warenautoriteit
+    logo: NVWA
+  PENSIOENFONDS:
+    name: Pensioenfonds
+  RECHTSPRAAK:
+    name: De Rechtspraak
+  RVO:
+    name: Rijksdienst voor Ondernemend Nederland
+    logo: RVO
+  RVZ:
+    name: Register verzekerden zorgverzekering
+  RvIG:
+    name: Rijksdienst voor Identiteitsgegevens
+    logo: RvIG
+  SVB:
+    name: Sociale Verzekeringsbank
+    logo: SVB
+  SVH:
+    name: Stichting Vakbekwaamheid Horeca
+  SZW:
+    name: Ministerie van Sociale Zaken en Werkgelegenheid
+    logo: SZW
+  TOESLAGEN:
+    name: Dienst Toeslagen
+    logo: TOESLAGEN
+  UWV:
+    name: UWV
+    logo: UWV
+  VWS:
+    name: Ministerie van Volksgezondheid, Welzijn en Sport
+    logo: VWS
+
+# Which organisation executes which law. This is a deployment choice, not
+# something the statute says: GEMEENTE_ROTTERDAM is the municipality this demo
+# picked, NOTARIAAT is a profession. It drives logos, graph colours, grouping
+# and the "Bron: ..." line under a value, never who is competent to decide.
+# That question is `competent_authority` on the article, and it is a smaller
+# set: only the articles that actually produce a beschikking (RFC-002).
+# Keyed by law `$id`; every version of a law shares one executing service.
+laws:
+  alcoholwet/register_sociale_hygiene: SVH
+  alcoholwet/vergunning: VWS
+  alcoholwet/vergunning/rotterdam: GEMEENTE_ROTTERDAM
+  algemene_kinderbijslagwet: SVB
+  algemene_nabestaandenwet: SVB
+  algemene_ouderdomswet: SVB
+  algemene_ouderdomswet/leeftijdsbepaling: SVB
+  algemene_ouderdomswet_gegevens: SVB
+  algemene_plaatselijke_verordening/exploitatievergunning: GEMEENTE_ROTTERDAM
+  algemene_plaatselijke_verordening/ontheffingspas_geluid: GEMEENTE_ROTTERDAM
+  algemene_plaatselijke_verordening/terrassen: GEMEENTE_ROTTERDAM
+  algemene_wet_bestuursrecht: AWB
+  archiefwet/openbaarheid: NATIONAAL_ARCHIEF
+  archiefwet/overbrenging: NATIONAAL_ARCHIEF
+  archiefwet/vernietiging: NATIONAAL_ARCHIEF
+  awb/beroep: JenV
+  awb/bezwaar: JenV
+  belastingdienst_vermogen: BELASTINGDIENST
+  besluit_basisveiligheidsnormen_stralingsbescherming: ANVS
+  besluit_bijstandverlening_zelfstandigen: SZW
+  besluit_kerninstallaties: ANVS
+  burgerlijk_wetboek_beschermingsbewind: RECHTSPRAAK
+  burgerlijk_wetboek_curatele: RECHTSPRAAK
+  burgerlijk_wetboek_executeur: NOTARIAAT
+  burgerlijk_wetboek_gezag: RvIG
+  burgerlijk_wetboek_handelingsonbekwaamheid: RECHTSPRAAK
+  burgerlijk_wetboek_mentorschap: RECHTSPRAAK
+  burgerlijk_wetboek_minderjarigheid: RvIG
+  burgerlijk_wetboek_volmacht: NOTARIAAT
+  faillissementswet_curator: RECHTSPRAAK
+  faillissementswet_wsnp_bewindvoerder: RECHTSPRAAK
+  handelsregisterwet: KVK
+  handelsregisterwet/bedrijfsgegevens: KVK
+  handelsregisterwet/jaarrekening: KVK
+  kernenergiewet: ANVS
+  kieswet: KIESRAAD
+  machtigingenwet: KVK
+  omgevingswet/energiebesparing/informatieplicht: RVO
+  omgevingswet/werkgebonden_personenmobiliteit: RVO
+  omgevingswet/werkgebonden_personenmobiliteit/gegevens: RVO
+  participatiewet/aio: SVB
+  participatiewet/bijstand: SZW
+  participatiewet/bijstand/amsterdam: GEMEENTE_AMSTERDAM
+  penitentiaire_beginselenwet: DJI
+  pensioenwet: PENSIOENFONDS
+  uwv_toetsingsinkomen: UWV
+  uwv_werkgegevens: UWV
+  verordening_precariobelasting: GEMEENTE_ROTTERDAM
+  vreemdelingenwet: IND
+  warenwet/haccp: NVWA
+  warenwet/meldplicht: NVWA
+  werkloosheidswet: UWV
+  wet_adviescollege_ict_toetsing: ACICT
+  wet_bag: KADASTER
+  wet_bibob: LBB
+  wet_brp: RvIG
+  wet_brp/laa: RvIG
+  wet_brp/terugmelding/belastingdienst: BELASTINGDIENST
+  wet_brp/terugmelding/cjib: CJIB
+  wet_brp/terugmelding/toeslagen: TOESLAGEN
+  wet_forensische_zorg: DJI
+  wet_inkomstenbelasting: BELASTINGDIENST
+  wet_inkomstenbelasting/toetsingsinkomen: UWV
+  wet_kinderopvang: TOESLAGEN
+  wet_op_de_accijns/accijnsplicht_alcohol: DOUANE
+  wet_op_de_huurtoeslag: TOESLAGEN
+  wet_op_het_centraal_bureau_voor_de_statistiek: CBS
+  wet_op_het_kindgebonden_budget: TOESLAGEN
+  wet_structuur_uitvoeringsorganisatie_werk_en_inkomen: UWV
+  wet_studiefinanciering: DUO
+  wet_werk_en_inkomen_naar_arbeidsvermogen: UWV
+  wetboek_van_strafrecht: JUSTID
+  wgbo_vertegenwoordiger: RvIG
+  ziektewet: UWV
+  zorgtoeslagwet: TOESLAGEN
+  zorgtoeslagwet/regelingen/regeling_vaststelling_standaardpremie_en_bestuursrechtelijke_premies: VWS
+  zorgverzekeringswet/bijdrage: BELASTINGDIENST
+  zvw: RVZ
+  zvw/werkgeversbijdrage: BELASTINGDIENST

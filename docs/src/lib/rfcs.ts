@@ -44,6 +44,8 @@ export interface RfcLink {
   id: string
   /** Descriptive title, e.g. "Uniform Operation Syntax" */
   title: string
+  /** `short_title` when set, else the title — the label shown in a nav list */
+  shortTitle: string
   /** Site-relative link, e.g. "/rfcs/rfc-004" */
   link: string
 }
@@ -206,6 +208,7 @@ export function rfcRelations(): Map<
     num: r.num,
     id: r.id,
     title: r.title,
+    shortTitle: r.shortTitle,
     link: r.link,
   })
 

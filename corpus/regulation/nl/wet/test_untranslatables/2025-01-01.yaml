@@ -77,14 +77,23 @@ articles:
   - number: '4'
     url: https://example.com/test_untranslatables/4
     text: >-
-      De som van alle deeltoeslagen wordt berekend. Dit artikel
-      is geaccepteerd als onvertaalbaar.
+      De deeltoeslagen worden naar redelijkheid vastgesteld en opgeteld. Dit
+      artikel is geaccepteerd als onvertaalbaar.
     machine_readable:
+      # Deze onvertaalbaarheid zat vroeger op het optellen zelf, met
+      # "suggestion: Add SUM/FOREACH operation to engine". Die operatie bestaat
+      # sinds RFC-016, dus die reden klopte niet meer. Wat overblijft is een
+      # open norm, en dat is waar RFC-012 voor is: geen ontbrekende operatie
+      # maar een oordeel dat de engine niet kan maken.
       untranslatables:
-        - construct: som van alle deeltoeslagen
-          reason: Aggregation over variable-length collections is not supported
-          suggestion: Add SUM/FOREACH operation to engine
-          legal_text_excerpt: De som van alle deeltoeslagen wordt berekend
+        - construct: naar redelijkheid vaststellen van een deeltoeslag
+          reason: >-
+            An open norm requiring judgement; the engine cannot determine what
+            is reasonable in a given case.
+          suggestion: >-
+            Requires a human decision, or a lower regulation filling the norm in
+            via open_terms (RFC-003).
+          legal_text_excerpt: De deeltoeslagen worden naar redelijkheid vastgesteld
           accepted: true
       execution:
         output:

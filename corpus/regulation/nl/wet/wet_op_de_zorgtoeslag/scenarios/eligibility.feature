@@ -36,7 +36,7 @@ Feature: Zorgtoeslag eligibility
     When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
     Then the execution succeeds
     Then output "heeft_recht_op_zorgtoeslag" is true
-    Then output "hoogte_zorgtoeslag" equals 209692
+    Then output "hoogte_zorgtoeslag" equals 157731
 
   # NB: Engine currently returns true for minors — age check was removed (#375)
   # because AWIR Art 10 (verzekeringsplicht vs meeverzekerd) is not yet modeled.
@@ -95,7 +95,7 @@ Feature: Zorgtoeslag eligibility
     When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
     Then the execution succeeds
     Then output "heeft_recht_op_zorgtoeslag" is true
-    Then output "hoogte_zorgtoeslag" equals 210821
+    Then output "hoogte_zorgtoeslag" equals 157731
 
   Scenario: Student met studiefinanciering heeft recht op zorgtoeslag
     Given the following "personal_data" data with key "bsn":
@@ -129,7 +129,7 @@ Feature: Zorgtoeslag eligibility
     When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
     Then the execution succeeds
     Then output "heeft_recht_op_zorgtoeslag" is true
-    Then output "hoogte_zorgtoeslag" equals 210916
+    Then output "hoogte_zorgtoeslag" equals 157731
 
   # NB: Gezamenlijk toetsingsinkomen is NOT YET implemented (#377).
   # Expected amount reflects applicant income only, not combined partner income.
@@ -163,7 +163,7 @@ Feature: Zorgtoeslag eligibility
     When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
     Then the execution succeeds
     Then output "heeft_recht_op_zorgtoeslag" is true
-    Then output "hoogte_zorgtoeslag" equals 272845
+    Then output "hoogte_zorgtoeslag" equals 208750
 
   # NB: Toetsingsinkomen excludes box3 — Art 5.2a forfaitair rendement is not
   # yet implemented (#383). Only box1 income counts toward the toeslag amount.
@@ -193,7 +193,7 @@ Feature: Zorgtoeslag eligibility
     When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
     Then the execution succeeds
     Then output "heeft_recht_op_zorgtoeslag" is true
-    Then output "hoogte_zorgtoeslag" equals 173280
+    Then output "hoogte_zorgtoeslag" equals 157731
 
   Scenario: Verdragsinschrijving geeft verzekeringsdekking bij inactieve polis
     Given the following "personal_data" data with key "bsn":
@@ -221,7 +221,7 @@ Feature: Zorgtoeslag eligibility
     When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
     Then the execution succeeds
     Then output "heeft_recht_op_zorgtoeslag" is true
-    Then output "hoogte_zorgtoeslag" equals 210726
+    Then output "hoogte_zorgtoeslag" equals 157731
 
   # === Standaardpremie (regeling_standaardpremie) ===
 
@@ -334,4 +334,68 @@ Feature: Zorgtoeslag eligibility
     When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
     Then the execution succeeds
     Then output "heeft_recht_op_zorgtoeslag" is true
-    Then output "hoogte_zorgtoeslag" equals 210726
+    Then output "hoogte_zorgtoeslag" equals 157731
+
+  # De afbouwtak van artikel 2 lid 3: boven het drempelinkomen loopt de
+  # zorgtoeslag terug met 13,700% van het meerdere. Zonder een scenario hier
+  # bleef onopgemerkt dat de wet inkomensonafhankelijk was geworden (#1429):
+  # elk inkomen onder de grens gaf hetzelfde bedrag, en alle scenario's zaten
+  # onder die grens. Deze twee liggen er bewust boven.
+  Scenario: Inkomen boven het drempelinkomen bouwt de zorgtoeslag af
+    Given the following "personal_data" data with key "bsn":
+      | bsn       | geboortedatum | verblijfsadres | land_verblijf |
+      | 999993653 | 1990-01-01    | Amsterdam      | NEDERLAND     |
+    Given the following "relationship_data" data with key "bsn":
+      | bsn       | partnerschap_type | partner_bsn |
+      | 999993653 | GEEN              | null        |
+    Given the following "insurance" data with key "bsn":
+      | bsn       | polis_status | verdragsinschrijving |
+      | 999993653 | ACTIEF       | false                |
+    Given the following "box1" data with key "bsn":
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
+      | 999993653 | 3000000                   | 0                         | 0                     | 0                               | 0            | 0                   |
+    Given the following "box2" data with key "bsn":
+      | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
+      | 999993653 | 0                   | 0                      |
+    Given the following "box3" data with key "bsn":
+      | bsn       | spaargeld | beleggingen | onroerend_goed | schulden |
+      | 999993653 | 0         | 0           | 0              | 0        |
+    Given the following "detenties" data with key "bsn":
+      | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
+      | 999993653 | null           | null            | null     | null                 |
+    Given parameter "bsn" is "999993653"
+    When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
+    Then the execution succeeds
+    Then output "heeft_recht_op_zorgtoeslag" is true
+    Then output "hoogte_zorgtoeslag" equals 133084
+
+  # Bij de inkomensgrens is de normpremie gelijk aan de standaardpremie en
+  # houdt het recht op. Voor 2025 ligt die grens op 39.719 euro, het bedrag dat
+  # VWS publiceert; dat de berekening daar op nul uitkomt is de controle.
+  Scenario: Boven de inkomensgrens bestaat geen recht op zorgtoeslag
+    Given the following "personal_data" data with key "bsn":
+      | bsn       | geboortedatum | verblijfsadres | land_verblijf |
+      | 999993653 | 1990-01-01    | Amsterdam      | NEDERLAND     |
+    Given the following "relationship_data" data with key "bsn":
+      | bsn       | partnerschap_type | partner_bsn |
+      | 999993653 | GEEN              | null        |
+    Given the following "insurance" data with key "bsn":
+      | bsn       | polis_status | verdragsinschrijving |
+      | 999993653 | ACTIEF       | false                |
+    Given the following "box1" data with key "bsn":
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
+      | 999993653 | 4500000                   | 0                         | 0                     | 0                               | 0            | 0                   |
+    Given the following "box2" data with key "bsn":
+      | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
+      | 999993653 | 0                   | 0                      |
+    Given the following "box3" data with key "bsn":
+      | bsn       | spaargeld | beleggingen | onroerend_goed | schulden |
+      | 999993653 | 0         | 0           | 0              | 0        |
+    Given the following "detenties" data with key "bsn":
+      | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
+      | 999993653 | null           | null            | null     | null                 |
+    Given parameter "bsn" is "999993653"
+    When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
+    Then the execution succeeds
+    Then output "heeft_recht_op_zorgtoeslag" is false
+    Then output "hoogte_zorgtoeslag" equals 0

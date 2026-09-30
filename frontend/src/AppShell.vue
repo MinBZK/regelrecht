@@ -9,6 +9,8 @@ import SettingsSheet from './components/SettingsSheet.vue';
 import { useAuth } from './composables/useAuth.js';
 import { useGithubAuth } from './composables/useGithubAuth.js';
 import { useTrajects } from './composables/useTrajects.js';
+import { useColorScheme } from './composables/useColorScheme.js';
+import { useSettingsSections } from './composables/useSettingsSections.js';
 import { useAddActions } from './composables/useAddActions.js';
 import {
   lastHomePath,
@@ -62,6 +64,28 @@ function goToHarvesting() {
   router.push("/harvesting");
 }
 const { activeTrajectRef } = useTrajects();
+
+// Het kleurschema zit als submenu in dit menu en niet meer in de
+// instellingen-sheet: het is iets dat je even omzet, geen instelling die je
+// opzoekt. De radio's laten meteen zien welke aanstaat, wat een sheet pas na
+// openen doet.
+const { colorScheme, setColorScheme } = useColorScheme();
+const colorSchemeOptions = [
+  ['auto', 'Systeem', 'display'],
+  ['light', 'Licht', 'light-mode'],
+  ['dark', 'Donker', 'dark-mode'],
+];
+// `select` draagt geen payload; de gekozen waarde staat op het item zelf.
+function onColorSchemeSelect(e) {
+  const value = e.target?.getAttribute?.('value');
+  if (value) setColorScheme(value);
+}
+
+// Zonder Weergave houdt de sheet alleen secties over die achter een rol of een
+// omgevingsinstelling zitten. Is er niets van over, dan hoort het menu-item er
+// ook niet te staan: een "Instellingen" dat een lege sheet opent is erger dan
+// geen "Instellingen".
+const { hasContent: settingsHasContent } = useSettingsSections();
 // Universele "Toevoegen"-knop: vuurt intenties die LibraryView oppakt.
 const { triggerAddLaw, triggerNewWerkdoc, triggerUploadWerkdoc, triggerInviteMembers } = useAddActions();
 
@@ -79,19 +103,32 @@ function openSupport() {
   nextTick(() => supportSheet.value?.show?.());
 }
 
-// Rejecting a proposal resolves the review task and throws the seeded edit
-// away, so it asks first. Owned here because the Verwerp button lives in the
-// changes bar; EditorView keeps the actual reject logic.
+// Rejecting a proposal throws the seeded edit away, so it asks first. Owned
+// here because the Verwerp button lives in the changes bar; EditorView keeps
+// the actual reject logic.
 const rejectConfirm = ref(null);
 function confirmReject() {
   rejectConfirm.value?.hide();
   editorActions.value?.reject?.();
 }
 
+// "Rond af, neem de rest niet over" sluit de hele verrijking af zonder de
+// resterende onderdelen te bekijken - destructiever dan één verwerping, dus
+// die vraagt het ook eerst.
+const rejectRestConfirm = ref(null);
+function confirmRejectRest() {
+  rejectRestConfirm.value?.hide();
+  editorActions.value?.rejectRest?.();
+}
+
 // In review mode the bar decides on a proposal, not on your own edits, so the
-// labels say so. Outside review "Opslaan" stays what it always was.
+// labels say so. Outside review "Opslaan" stays what it always was. Het
+// oordeel gaat over één onderdeel van de verrijking en schrijft nog niets weg,
+// dus "Neem over" en niet "Sla op" - er wordt pas geschreven als alle
+// onderdelen beoordeeld zijn.
 const inReview = computed(() => !!editorChanges.value?.review);
-const saveLabel = computed(() => (inReview.value ? 'Sla voorstel op' : 'Opslaan'));
+const saveLabel = computed(() => (inReview.value ? 'Neem voorstel over' : 'Opslaan'));
+const canRejectRest = computed(() => !!editorChanges.value?.reviewCanRejectRest);
 
 // Not dismissible: the notice explains what Verwerp and Opslaan below it refer
 // to, so hiding it would leave two decision buttons without their subject. It
@@ -292,8 +329,8 @@ function onTabDismiss(e) {
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar size="md" navigation>
-                <nldd-tab-bar-item :selected="isLibraryRoute || undefined" :href="isLibraryRoute ? undefined : libraryTabHref" @click.prevent="isLibraryRoute || router.push(libraryTabTarget)" text="Home"></nldd-tab-bar-item>
-                <nldd-tab-bar-item :selected="!isLibraryRoute || undefined" :href="authenticated && isLibraryRoute ? editorTabHref : undefined" @click.prevent="onEditorTab" @pointerdown.capture="onLoginTriggerPointerdown" text="Editor"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :current="isLibraryRoute || undefined" :href="isLibraryRoute ? undefined : libraryTabHref" @click.prevent="isLibraryRoute || router.push(libraryTabTarget)" text="Home"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :current="!isLibraryRoute || undefined" :href="authenticated && isLibraryRoute ? editorTabHref : undefined" @click.prevent="onEditorTab" @pointerdown.capture="onLoginTriggerPointerdown" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <nldd-toolbar-item v-if="lastSavedPr" slot="end">
@@ -353,21 +390,30 @@ function onTabDismiss(e) {
                 <nldd-menu slot="popup">
                   <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
                   <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Account aanvragen" icon="new-account" @click="goToAccountRequest"></nldd-menu-item>
-                  <nldd-container v-if="!authLoading && authenticated" slot="header" padding-inline="16">
-                    <nldd-list variant="simple" no-dividers>
-                      <nldd-list-item>
-                        <nldd-text-cell :text="person?.name || person?.email">
-                        <span v-if="person?.name || showGithubLine" slot="supporting-text">
-                          <template v-if="person?.name">{{ person?.email }}</template>
-                          <br v-if="person?.name && showGithubLine">
-                          <template v-if="showGithubLine">GitHub: {{ githubStatus.github_login }}</template>
-                        </span>
-                      </nldd-text-cell>
-                      </nldd-list-item>
-                    </nldd-list>
+                  <nldd-container v-if="!authLoading && authenticated" slot="header" padding-inline="16" padding-block="12">
+                    <nldd-identity :text="person?.name || person?.email">
+                      <span v-if="person?.name || showGithubLine" slot="supporting-text">
+                        <template v-if="person?.name">{{ person?.email }}</template>
+                        <br v-if="person?.name && showGithubLine">
+                        <template v-if="showGithubLine">GitHub: {{ githubStatus.github_login }}</template>
+                      </span>
+                    </nldd-identity>
                   </nldd-container>
                   <nldd-menu-divider v-if="!authLoading && oidcConfigured && !authenticated"></nldd-menu-divider>
-                  <nldd-menu-item text="Instellingen" icon="gear" @click="openSettings"></nldd-menu-item>
+                  <nldd-menu-item text="Weergave" icon="appearance">
+                    <nldd-menu @select="onColorSchemeSelect">
+                      <nldd-menu-item
+                        v-for="[value, label, icon] in colorSchemeOptions"
+                        :key="value"
+                        type="radio"
+                        :value="value"
+                        :text="label"
+                        :icon="icon"
+                        :selected="colorScheme === value || undefined"
+                      ></nldd-menu-item>
+                    </nldd-menu>
+                  </nldd-menu-item>
+                  <nldd-menu-item v-if="settingsHasContent" text="Instellingen" icon="gear" @click="openSettings"></nldd-menu-item>
                   <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="harvest" @click.stop="goToHarvesting"></nldd-menu-item>
                   <nldd-menu-divider></nldd-menu-divider>
                   <nldd-menu-item text="Over RegelRecht" icon="info" @click="openAbout"></nldd-menu-item>
@@ -390,8 +436,8 @@ function onTabDismiss(e) {
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar size="md" navigation>
-                <nldd-tab-bar-item :selected="isLibraryRoute || undefined" :href="isLibraryRoute ? undefined : libraryTabHref" @click.prevent="isLibraryRoute || router.push(libraryTabTarget)" text="Home"></nldd-tab-bar-item>
-                <nldd-tab-bar-item :selected="!isLibraryRoute || undefined" :href="authenticated && isLibraryRoute ? editorTabHref : undefined" @click.prevent="onEditorTab" @pointerdown.capture="onLoginTriggerPointerdown" text="Editor"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :current="isLibraryRoute || undefined" :href="isLibraryRoute ? undefined : libraryTabHref" @click.prevent="isLibraryRoute || router.push(libraryTabTarget)" text="Home"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :current="!isLibraryRoute || undefined" :href="authenticated && isLibraryRoute ? editorTabHref : undefined" @click.prevent="onEditorTab" @pointerdown.capture="onLoginTriggerPointerdown" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="center" min-width="240px" width="33%" max-width="480px">
@@ -452,21 +498,30 @@ function onTabDismiss(e) {
                 <nldd-menu slot="popup">
                   <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
                   <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Account aanvragen" icon="new-account" @click="goToAccountRequest"></nldd-menu-item>
-                  <nldd-container v-if="!authLoading && authenticated" slot="header" padding-inline="16">
-                    <nldd-list variant="simple" no-dividers>
-                      <nldd-list-item>
-                        <nldd-text-cell :text="person?.name || person?.email">
-                        <span v-if="person?.name || showGithubLine" slot="supporting-text">
-                          <template v-if="person?.name">{{ person?.email }}</template>
-                          <br v-if="person?.name && showGithubLine">
-                          <template v-if="showGithubLine">GitHub: {{ githubStatus.github_login }}</template>
-                        </span>
-                      </nldd-text-cell>
-                      </nldd-list-item>
-                    </nldd-list>
+                  <nldd-container v-if="!authLoading && authenticated" slot="header" padding-inline="16" padding-block="12">
+                    <nldd-identity :text="person?.name || person?.email">
+                      <span v-if="person?.name || showGithubLine" slot="supporting-text">
+                        <template v-if="person?.name">{{ person?.email }}</template>
+                        <br v-if="person?.name && showGithubLine">
+                        <template v-if="showGithubLine">GitHub: {{ githubStatus.github_login }}</template>
+                      </span>
+                    </nldd-identity>
                   </nldd-container>
                   <nldd-menu-divider v-if="!authLoading && oidcConfigured && !authenticated"></nldd-menu-divider>
-                  <nldd-menu-item text="Instellingen" icon="gear" @click="openSettings"></nldd-menu-item>
+                  <nldd-menu-item text="Weergave" icon="appearance">
+                    <nldd-menu @select="onColorSchemeSelect">
+                      <nldd-menu-item
+                        v-for="[value, label, icon] in colorSchemeOptions"
+                        :key="value"
+                        type="radio"
+                        :value="value"
+                        :text="label"
+                        :icon="icon"
+                        :selected="colorScheme === value || undefined"
+                      ></nldd-menu-item>
+                    </nldd-menu>
+                  </nldd-menu-item>
+                  <nldd-menu-item v-if="settingsHasContent" text="Instellingen" icon="gear" @click="openSettings"></nldd-menu-item>
                   <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="harvest" @click.stop="goToHarvesting"></nldd-menu-item>
                   <nldd-menu-divider></nldd-menu-divider>
                   <nldd-menu-item text="Over RegelRecht" icon="info" @click="openAbout"></nldd-menu-item>
@@ -584,6 +639,12 @@ function onTabDismiss(e) {
                       destructive
                       @select="editorActions?.discard?.()"
                     ></nldd-menu-item>
+                    <nldd-menu-item
+                      v-if="canRejectRest"
+                      text="Rond af, neem de rest niet over"
+                      destructive
+                      @select="rejectRestConfirm?.show()"
+                    ></nldd-menu-item>
                   </nldd-menu>
                 </nldd-icon-button>
               </nldd-button-bar>
@@ -606,6 +667,13 @@ function onTabDismiss(e) {
                 text="Maak alle wijzigingen ongedaan"
                 destructive
                 @select="editorActions?.discard?.()"
+              ></nldd-menu-item>
+              <nldd-menu-item
+                v-if="canRejectRest"
+                slot="overflow"
+                text="Rond af, neem de rest niet over"
+                destructive
+                @select="rejectRestConfirm?.show()"
               ></nldd-menu-item>
             </nldd-toolbar-item>
             <!-- Review-modus zet de beslissing hier. Twee losse toolbar-items,
@@ -678,8 +746,8 @@ function onTabDismiss(e) {
           <nldd-toolbar size="lg">
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar navigation>
-                <nldd-tab-bar-item :selected="isLibraryRoute || undefined" :href="isLibraryRoute ? undefined : libraryTabHref" @click.prevent="isLibraryRoute || router.push(libraryTabTarget)" icon="home" text="Home"></nldd-tab-bar-item>
-                <nldd-tab-bar-item :selected="!isLibraryRoute || undefined" :href="authenticated && isLibraryRoute ? editorTabHref : undefined" @click.prevent="onEditorTab" @pointerdown.capture="onLoginTriggerPointerdown" icon="edit" text="Editor"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :current="isLibraryRoute || undefined" :href="isLibraryRoute ? undefined : libraryTabHref" @click.prevent="isLibraryRoute || router.push(libraryTabTarget)" icon="home" text="Home"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :current="!isLibraryRoute || undefined" :href="authenticated && isLibraryRoute ? editorTabHref : undefined" @click.prevent="onEditorTab" @pointerdown.capture="onLoginTriggerPointerdown" icon="edit" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
@@ -727,21 +795,30 @@ function onTabDismiss(e) {
                 <nldd-menu slot="popup">
                   <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Inloggen" icon="login" @click="login()"></nldd-menu-item>
                   <nldd-menu-item v-if="!authLoading && oidcConfigured && !authenticated" text="Account aanvragen" icon="new-account" @click="goToAccountRequest"></nldd-menu-item>
-                  <nldd-container v-if="!authLoading && authenticated" slot="header" padding-inline="16">
-                    <nldd-list variant="simple" no-dividers>
-                      <nldd-list-item>
-                        <nldd-text-cell :text="person?.name || person?.email">
-                        <span v-if="person?.name || showGithubLine" slot="supporting-text">
-                          <template v-if="person?.name">{{ person?.email }}</template>
-                          <br v-if="person?.name && showGithubLine">
-                          <template v-if="showGithubLine">GitHub: {{ githubStatus.github_login }}</template>
-                        </span>
-                      </nldd-text-cell>
-                      </nldd-list-item>
-                    </nldd-list>
+                  <nldd-container v-if="!authLoading && authenticated" slot="header" padding-inline="16" padding-block="12">
+                    <nldd-identity :text="person?.name || person?.email">
+                      <span v-if="person?.name || showGithubLine" slot="supporting-text">
+                        <template v-if="person?.name">{{ person?.email }}</template>
+                        <br v-if="person?.name && showGithubLine">
+                        <template v-if="showGithubLine">GitHub: {{ githubStatus.github_login }}</template>
+                      </span>
+                    </nldd-identity>
                   </nldd-container>
                   <nldd-menu-divider v-if="!authLoading && oidcConfigured && !authenticated"></nldd-menu-divider>
-                  <nldd-menu-item text="Instellingen" icon="gear" @click="openSettings"></nldd-menu-item>
+                  <nldd-menu-item text="Weergave" icon="appearance">
+                    <nldd-menu @select="onColorSchemeSelect">
+                      <nldd-menu-item
+                        v-for="[value, label, icon] in colorSchemeOptions"
+                        :key="value"
+                        type="radio"
+                        :value="value"
+                        :text="label"
+                        :icon="icon"
+                        :selected="colorScheme === value || undefined"
+                      ></nldd-menu-item>
+                    </nldd-menu>
+                  </nldd-menu-item>
+                  <nldd-menu-item v-if="settingsHasContent" text="Instellingen" icon="gear" @click="openSettings"></nldd-menu-item>
                   <nldd-menu-item v-if="canViewHarvesting" text="Harvester" icon="harvest" @click.stop="goToHarvesting"></nldd-menu-item>
                   <nldd-menu-divider></nldd-menu-divider>
                   <nldd-menu-item text="Over RegelRecht" icon="info" @click="openAbout"></nldd-menu-item>
@@ -796,6 +873,27 @@ function onTabDismiss(e) {
       variant="destructive"
       text="Verwerp voorstel"
       @click="confirmReject"
+    ></nldd-button>
+  </nldd-modal-dialog>
+
+  <nldd-modal-dialog
+    ref="rejectRestConfirm"
+    variant="alert"
+    icon="exclamation-triangle"
+    text="Verrijking afronden?"
+    supporting-text="Wat je al hebt overgenomen wordt weggeschreven; alle onderdelen die je nog niet hebt beoordeeld worden niet overgenomen en gaan verloren."
+  >
+    <nldd-button
+      slot="actions"
+      variant="primary"
+      text="Verder beoordelen"
+      @click="rejectRestConfirm?.hide()"
+    ></nldd-button>
+    <nldd-button
+      slot="actions"
+      variant="destructive"
+      text="Rond af"
+      @click="confirmRejectRest"
     ></nldd-button>
   </nldd-modal-dialog>
 </template>

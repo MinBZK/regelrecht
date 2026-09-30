@@ -1,0 +1,62 @@
+---
+/*
+ * Research overview: papers and other research output around RegelRecht.
+ * Intro left, cards right: a paper carries a kind, its authors, a date and the
+ * opening of its abstract, which is more than a list row can carry. The card is
+ * the same LinkCard the landing page renders for this paper.
+ */
+import Base from '~/layouts/Base.astro';
+import LinkCard from '~/components/LinkCard.astro';
+import paper from '~/research/rules-as-executed.meta.json';
+
+const pathname = '/research/';
+
+interface ResearchItem {
+  title: string;
+  meta: string;
+  text: string;
+  href: string;
+  linkLabel: string;
+}
+
+const items: ResearchItem[] = [
+  {
+    title: `${paper.title}: ${paper.subtitle}`,
+    meta: `${paper.kind} • ${paper.authors.join(' and ')} • ${paper.date_display}`,
+    // Opening of the abstract, verbatim (generated with the paper HTML).
+    text: paper.abstract_lead,
+    href: '/research/rules-as-executed',
+    linkLabel: 'position paper',
+  },
+];
+---
+
+<Base
+  lang="en"
+  kind="docs"
+  pathname={pathname}
+  title="Research · RegelRecht"
+  description="Research output around RegelRecht: papers on machine-executable law."
+>
+  <nldd-one-third-two-thirds-section
+    sm-padding-bottom="32"
+    md-padding-bottom="64"
+    lg-padding-bottom="96"
+  >
+    <nldd-container slot="left">
+      <nldd-title size="2">
+        <h1>Research</h1>
+      </nldd-title>
+      <nldd-spacer />
+      <nldd-rich-text>
+        <p>
+          Research output around RegelRecht: the thinking behind publishing
+          machine-executable law, written up for an academic audience.
+        </p>
+      </nldd-rich-text>
+    </nldd-container>
+    <nldd-collection slot="right" layout="grid" item-width="320px">
+      {items.map((item) => <LinkCard lang="en" tinted headingLevel={2} {...item} />)}
+    </nldd-collection>
+  </nldd-one-third-two-thirds-section>
+</Base>

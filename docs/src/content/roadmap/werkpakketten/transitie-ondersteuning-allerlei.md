@@ -1,0 +1,25 @@
+---
+id: transitie-ondersteuning-allerlei
+titel: Transitie-ondersteuning allerlei
+faseId: hoe
+disciplineId: transitie-ondersteuning
+prioriteit: ''
+omvang: ''
+categorie: bar
+capability: ''
+capaciteit: ''
+toelichting: |-
+  Bijscholing. Creëren van nieuwe rollen. Organisatieverandering.
+  Training van professionals in de nieuwe methodieken en tools.
+  Schalen van individuele opleidingen naar communities of practice. De 'Doing' en 'Learning' communities worden het primaire kanaal voor kennisdeling.
+volgorde: 1000
+onderzoek: ''
+bouw: ''
+rfcs: []
+onderzoeksvragen:
+  - vraag: >-
+      Hoe kan weerstand in organisaties worden voorkomen of worden beperkt door
+      een goede transitie te ondersteunen?
+    paper: sec:resistance
+samenhangIds: []
+---

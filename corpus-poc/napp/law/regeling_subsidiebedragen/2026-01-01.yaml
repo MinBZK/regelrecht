@@ -1,0 +1,194 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.2/schema/v0.5.2/schema.json
+$id: regeling_subsidiebedragen_politieke_partijen
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2025-12-15'
+valid_from: '2026-01-01'
+bwb_id: BWBR0000001
+url: https://wetten.overheid.nl/BWBR0000001/2026-01-01
+name: Regeling subsidiebedragen politieke partijen 2026
+# Werknaam: deze bedragen worden in de praktijk jaarlijks bij ministeriele
+# regeling vastgesteld en geindexeerd. Hier los gehouden van de wet (IoC),
+# zodat indexatie of de definitieve bedragen vervangbaar zijn zonder de wet
+# te raken. Het basisbedrag, het bedrag per kamerzetel en het ledenbudget
+# komen uit de indicatieve cijfers bij het wetsvoorstel (mei 2025); de
+# bedragen voor de neveninstellingen zijn eigen aannames in de orde van
+# grootte van de huidige Wfpp. De decentrale bedragen staan in het (fictieve)
+# Besluit subsidiëring decentrale politieke partijen (AMvB, art. 26 Wpp).
+legal_basis:
+  - law_id: wet_op_de_politieke_partijen
+    article: '14'
+
+articles:
+  # --- Onderdeel a: de politieke partij zelf ---
+  - number: '1'
+    text: |-
+      Het basisbedrag voor een politieke partij bedraagt voor het
+      kalenderjaar 2026: EUR 232.831.
+    url: https://wetten.overheid.nl/BWBR0000001/2026-01-01
+    machine_readable:
+      implements:
+        - law: wet_op_de_politieke_partijen
+          article: '14'
+          open_term: basisbedrag
+          gelet_op: Gelet op artikel 14 van de Wet op de politieke partijen
+      execution:
+        output:
+          - name: basisbedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: basisbedrag
+            value: 23283100
+
+  - number: '2'
+    text: |-
+      Het bedrag per kamerzetel bedraagt voor het kalenderjaar 2026:
+      EUR 69.938.
+    url: https://wetten.overheid.nl/BWBR0000001/2026-01-01
+    machine_readable:
+      implements:
+        - law: wet_op_de_politieke_partijen
+          article: '14'
+          open_term: bedrag_per_kamerzetel
+          gelet_op: Gelet op artikel 14 van de Wet op de politieke partijen
+      execution:
+        output:
+          - name: bedrag_per_kamerzetel
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: bedrag_per_kamerzetel
+            value: 6993800
+
+  - number: '3'
+    text: |-
+      Het totaalbedrag voor de betalende leden (het ledenbudget) bedraagt
+      voor het kalenderjaar 2026: EUR 2.594.017. Dit bedrag wordt naar rato
+      van de opgegeven ledentallen verdeeld over de politieke partijen
+      waaraan subsidie wordt verstrekt.
+    url: https://wetten.overheid.nl/BWBR0000001/2026-01-01
+    machine_readable:
+      implements:
+        - law: wet_op_de_politieke_partijen
+          article: '14'
+          open_term: ledenbudget
+          gelet_op: Gelet op artikel 14 van de Wet op de politieke partijen
+      execution:
+        output:
+          - name: ledenbudget
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: ledenbudget
+            value: 259401700
+
+  # --- Onderdeel b: politiek-wetenschappelijk instituut ---
+  - number: '4'
+    text: |-
+      Het basisbedrag ten behoeve van het politiek-wetenschappelijk
+      instituut bedraagt EUR 128.323; het bedrag per kamerzetel EUR 12.971.
+    url: https://wetten.overheid.nl/BWBR0000001/2026-01-01
+    machine_readable:
+      implements:
+        - law: wet_op_de_politieke_partijen
+          article: '14'
+          open_term: basisbedrag_wetenschappelijk_instituut
+          gelet_op: Gelet op artikel 14 van de Wet op de politieke partijen
+        - law: wet_op_de_politieke_partijen
+          article: '14'
+          open_term: bedrag_per_kamerzetel_wetenschappelijk_instituut
+          gelet_op: Gelet op artikel 14 van de Wet op de politieke partijen
+      execution:
+        output:
+          - name: basisbedrag_wetenschappelijk_instituut
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: bedrag_per_kamerzetel_wetenschappelijk_instituut
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: basisbedrag_wetenschappelijk_instituut
+            value: 12832300
+          - output: bedrag_per_kamerzetel_wetenschappelijk_instituut
+            value: 1297100
+
+  # --- Onderdeel c: politieke jongerenorganisatie ---
+  - number: '5'
+    text: |-
+      Het basisbedrag ten behoeve van de politieke jongerenorganisatie
+      bedraagt EUR 12.971; het bedrag per kamerzetel EUR 2.594; het vaste
+      bedrag per lid van de jongerenorganisatie EUR 2,50.
+    url: https://wetten.overheid.nl/BWBR0000001/2026-01-01
+    machine_readable:
+      implements:
+        - law: wet_op_de_politieke_partijen
+          article: '14'
+          open_term: basisbedrag_jongerenorganisatie
+          gelet_op: Gelet op artikel 14 van de Wet op de politieke partijen
+        - law: wet_op_de_politieke_partijen
+          article: '14'
+          open_term: bedrag_per_kamerzetel_jongerenorganisatie
+          gelet_op: Gelet op artikel 14 van de Wet op de politieke partijen
+        - law: wet_op_de_politieke_partijen
+          article: '14'
+          open_term: bedrag_per_lid_jongerenorganisatie
+          gelet_op: Gelet op artikel 14 van de Wet op de politieke partijen
+      execution:
+        output:
+          - name: basisbedrag_jongerenorganisatie
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: bedrag_per_kamerzetel_jongerenorganisatie
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: bedrag_per_lid_jongerenorganisatie
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: basisbedrag_jongerenorganisatie
+            value: 1297100
+          - output: bedrag_per_kamerzetel_jongerenorganisatie
+            value: 259400
+          - output: bedrag_per_lid_jongerenorganisatie
+            value: 250
+
+  # --- Onderdeel d: instelling voor buitenlandse activiteiten ---
+  - number: '6'
+    text: |-
+      Het basisbedrag ten behoeve van de instelling voor buitenlandse
+      activiteiten bedraagt EUR 25.000; het bedrag per kamerzetel EUR 1.297.
+    url: https://wetten.overheid.nl/BWBR0000001/2026-01-01
+    machine_readable:
+      implements:
+        - law: wet_op_de_politieke_partijen
+          article: '14'
+          open_term: basisbedrag_buitenland
+          gelet_op: Gelet op artikel 14 van de Wet op de politieke partijen
+        - law: wet_op_de_politieke_partijen
+          article: '14'
+          open_term: bedrag_per_kamerzetel_buitenland
+          gelet_op: Gelet op artikel 14 van de Wet op de politieke partijen
+      execution:
+        output:
+          - name: basisbedrag_buitenland
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: bedrag_per_kamerzetel_buitenland
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: basisbedrag_buitenland
+            value: 2500000
+          - output: bedrag_per_kamerzetel_buitenland
+            value: 129700

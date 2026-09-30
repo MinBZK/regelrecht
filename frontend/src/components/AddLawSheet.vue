@@ -321,7 +321,7 @@ defineExpose({ show });
           </template>
 
           <!-- Resultaatrijen: promoten (centraal corpus) of ophalen (BWB). -->
-          <nldd-list v-if="hasRows" variant="box">
+          <nldd-list v-if="hasRows" variant="box-tinted">
             <!-- Centrale-corpus-treffers: promoten naar het traject. -->
             <nldd-list-item
               v-for="law in sortedLaws"

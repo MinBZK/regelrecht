@@ -1,0 +1,123 @@
+---
+/*
+ * "Rules as Executed" position paper, rendered in full. Everything under
+ * src/research/ is generated from the paper's LaTeX source by convert-html.py
+ * (pandoc + citeproc; glossary first-use expansion, numbered sections), which
+ * lives next to that source in the research repository: the body HTML, the
+ * outline headings, and the meta JSON with title, authors, date and DOI that
+ * this page, the research index and the landing tile all read. This page only
+ * wraps that output in the site chrome. The typeset PDF is archived on Zenodo
+ * under the DOI and is the authoritative version; the button links there.
+ */
+import Base from '~/layouts/Base.astro';
+import DocsOutline from '~/components/DocsOutline.astro';
+import paperHtml from '~/research/rules-as-executed.html?raw';
+import headings from '~/research/rules-as-executed.headings.json';
+import meta from '~/research/rules-as-executed.meta.json';
+import '~/styles/research.css';
+
+const pathname = '/research/rules-as-executed';
+const title = `${meta.title} · RegelRecht`;
+const authors = meta.authors.join(' and ');
+const description =
+  `${meta.kind} by ${authors}: publish law execution as machine-executable ` +
+  'specifications, so that decisions can be re-executed and rules analyzed.';
+const doiUrl = `https://doi.org/${meta.doi}`;
+
+// Every issue the "Discuss this passage" button (Base.astro) opens carries the
+// contribution:paper label from the issue form, and names the paper in its
+// Paper field. The label alone would list feedback on every paper; the quoted
+// title narrows it to this one, and also catches issues filed by hand from the
+// issue chooser as long as the paper is named. Open and closed both show:
+// a closed thread is still part of the discussion of a frozen paper.
+const discussionUrl =
+  'https://github.com/MinBZK/regelrecht/issues?q=' +
+  encodeURIComponent(
+    `is:issue label:contribution:paper "${meta.title}" sort:updated-desc`
+  );
+---
+
+<Base
+  lang="en"
+  kind="docs"
+  pathname={pathname}
+  title={title}
+  description={description}
+>
+  <nldd-sidebar-section
+    no-collapse
+    sidebar-label="On this page"
+    sm-padding-bottom="32"
+    md-padding-bottom="64"
+    lg-padding-bottom="96"
+  >
+    <nldd-title slot="header" size="1">
+      <h1>{meta.title}</h1>
+      <p slot="subtitle">{meta.subtitle}</p>
+    </nldd-title>
+    {/*
+      The sidebar carries what belongs to the paper as a whole: where to get it,
+      where to discuss it, and where you are in it.
+    */}
+    <nldd-container slot="sidebar" padding="16">
+      <nldd-button-group>
+        <nldd-button
+          href={doiUrl}
+          text="PDF on Zenodo"
+          end-icon="external-link"
+          target="_blank"
+          rel="noopener"
+          variant="secondary"
+        ></nldd-button>
+        <nldd-button
+          href={discussionUrl}
+          text="Discussion on GitHub"
+          start-icon="comment"
+          target="_blank"
+          rel="noopener"
+          variant="secondary"
+        ></nldd-button>
+      </nldd-button-group>
+      <nldd-spacer size="8" />
+      {/*
+       * The selection affordance (Base.astro) is invisible until text is
+       * selected, so nothing on the page says it exists; this line does.
+       */}
+      <nldd-text size="sm" color="secondary">
+        Select a passage in the paper to start a discussion about it.
+      </nldd-text>
+      <nldd-spacer size="12" />
+      <DocsOutline headings={headings} />
+    </nldd-container>
+    <nldd-rich-text centered>
+      <p>
+        <strong>{authors}</strong><br />
+        <em>{meta.affiliation}</em><br />
+        {
+          meta.emails.map((email, i) => (
+            <Fragment>
+              {i > 0 && ' · '}
+              <a href={`mailto:${email}`}>{email}</a>
+            </Fragment>
+          ))
+        }<br />
+        {meta.kind}, {meta.date_display}<br />
+        <a href={doiUrl}>doi:{meta.doi}</a>
+      </p>
+      <p><small>{meta.note}</small></p>
+    </nldd-rich-text>
+    <nldd-spacer size="24" />
+    {/*
+     * The paper body is a rich-text of its own, so it carries the whole of the
+     * paper and nothing else: data-discuss-paper turns on the selection
+     * affordance in Base.astro, where selecting text offers "Discuss this
+     * passage" and the value names the paper in the issue title. A selection in
+     * the byline above (authors, emails, DOI) does not offer it. Its headings,
+     * paragraphs and figures are children of that grid, so the rhythm and the
+     * column each one belongs in come from the design system.
+     */}
+    <nldd-rich-text centered data-discuss-paper={meta.title}>
+      <Fragment set:html={paperHtml} />
+    </nldd-rich-text>
+  </nldd-sidebar-section>
+</Base>

@@ -1,0 +1,119 @@
+---
+/*
+ * One table of schema fields, built on the design system's table.
+ *
+ * nldd-table owns the surface, the dividers, the column tracks and the
+ * horizontal scrolling (it is its own scroll container, so no wrapper is
+ * needed), and it drops to a two-column layout on a narrow screen through
+ * sm-columns + hide-below. That is why this is a real component rather than a
+ * hand-rolled <table>: all of that came for free.
+ *
+ * Each row carries a build-time `data-zoek` haystack; the filter on the page
+ * toggles a class on rows that do not match and never touches style directly.
+ *
+ * Descriptions arrive as HTML (RFC references already linked by
+ * lib/schema-reference.ts, which escapes the text first), hence set:html.
+ */
+import type { Field } from '~/lib/schema-reference';
+
+interface Props {
+  fields: Field[];
+  /** Names the table for assistive technology; role="table" needs one. */
+  label: string;
+}
+
+const { fields, label } = Astro.props;
+---
+
+<nldd-table
+  class="rr-schema-table"
+  accessible-label={label}
+  background="tinted"
+  columns="minmax(180px, 0.6fr) minmax(140px, 0.5fr) minmax(280px, 1.4fr)"
+  sm-columns="minmax(140px, 1fr) minmax(200px, 1.6fr)"
+>
+  <nldd-table-row slot="header">
+    <nldd-cell width="full"><nldd-text weight="bold">Field</nldd-text></nldd-cell>
+    <nldd-cell width="full" hide-below="md">
+      <nldd-text weight="bold">Type</nldd-text>
+    </nldd-cell>
+    <nldd-cell width="full"><nldd-text weight="bold">Description</nldd-text></nldd-cell>
+  </nldd-table-row>
+
+  {
+    fields.map((field) => (
+      <nldd-table-row class="rr-schema-row" data-zoek={field.zoek}>
+        <nldd-cell width="full" vertical-alignment="top">
+          <nldd-container layout="wrap" gap="4" class="rr-schema-name">
+            <code>{field.name}</code>
+            {field.required && (
+              <nldd-tag size="sm" color="accent" text="required" />
+            )}
+            {/* Marks a field carried from the common set, so a kind's table
+                can be the complete list without hiding what is its own. */}
+            {field.inherited && (
+              <nldd-tag size="sm" color="neutral" text="common" />
+            )}
+            {/* On a narrow screen the Type column is dropped, so the type
+                rides along under the name rather than disappearing. */}
+            <nldd-text size="sm" color="secondary" class="rr-schema-type-inline">
+              {field.refAnchor ? (
+                <a href={`#${field.refAnchor}`}>{field.type}</a>
+              ) : (
+                field.type
+              )}
+            </nldd-text>
+          </nldd-container>
+        </nldd-cell>
+
+        <nldd-cell width="full" vertical-alignment="top" hide-below="md">
+          {field.refAnchor ? (
+            <a href={`#${field.refAnchor}`}><code>{field.type}</code></a>
+          ) : (
+            <code>{field.type}</code>
+          )}
+        </nldd-cell>
+
+        <nldd-cell width="full" vertical-alignment="top">
+          <nldd-container gap="8">
+            {field.description && <nldd-text set:html={field.description} />}
+
+            {field.enum && field.enum.length > 0 && (
+              <nldd-container layout="wrap" gap="4">
+                {field.enum.map((v) => (
+                  <nldd-tag size="sm" color="neutral" text={v} />
+                ))}
+              </nldd-container>
+            )}
+
+            {field.default !== undefined && (
+              <nldd-text size="sm" color="secondary">
+                Defaults to <code>{JSON.stringify(field.default)}</code>.
+              </nldd-text>
+            )}
+
+            {/* The format a value must match. Worth showing next to the
+                example: a published `gemeente_code` example of "0363" against
+                `^GM[0-9]{4}$` shipped once, and it would have been visible
+                here. */}
+            {field.pattern && (
+              <nldd-text size="sm" color="secondary">
+                Must match <code>{field.pattern}</code>.
+              </nldd-text>
+            )}
+
+            {field.examples.map((ex) => (
+              <nldd-code-viewer language="yaml" variant="box-base">{ex}</nldd-code-viewer>
+            ))}
+
+            {field.concept && (
+              <nldd-link href={field.concept.href} size="sm">
+                {field.concept.label}
+              </nldd-link>
+            )}
+          </nldd-container>
+        </nldd-cell>
+      </nldd-table-row>
+    ))
+  }
+</nldd-table>

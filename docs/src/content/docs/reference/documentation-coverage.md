@@ -24,9 +24,11 @@ The table below is **enforced**: `docs/scripts/check-rfc-coverage.mjs` reads the
 | RFC-012 | Untranslatables | [Untranslatables](../concepts/untranslatables) |
 | RFC-013 | Execution provenance | [Execution Provenance](../concepts/execution-provenance) |
 | RFC-014 | Conformance suite | [Conformance](./conformance) |
+| RFC-016 | Collection operations | [Collections](../concepts/collections) |
 | RFC-018 | Note infrastructure | [Notes and Annotations](../concepts/notes-and-annotations) |
 | RFC-019 | Law end dates | [Temporal Validity and Dates](../concepts/temporal-and-dates) |
 | RFC-021 | Date comparison | [Temporal Validity and Dates](../concepts/temporal-and-dates) |
+| RFC-039 | Addressable execution traces | [Traceability](../concepts/traceability), which still describes the pre-RFC-039 shape; see the backlog |
 
 RFC-000 (the RFC process) is documented by [rfc-000](/rfcs/rfc-000) itself; the contributing guide links to it.
 
@@ -38,6 +40,7 @@ Accepted RFCs whose design rationale is not yet written up as prose:
 
 Built features that work but are thin or absent in the docs, roughly in priority order:
 
+- **Trace shape after RFC-039**: [Traceability](../concepts/traceability) and [Engine](../components/engine) describe the trace as the bare root step, and an engine now returns a `{trace_version, root}` document whose steps carry an address and an anchor. Both pages predate that and need rewriting against the published format.
 - **Editor collaboration**: trajects (create, invite members, roles, session branches) have a full backend and UI but no user-facing guide.
 - **Editor views**: the law-graph visualization with trace stepping, and the AI-suggestion panel, are gated behind feature flags and undocumented.
 - **WASM API surface**: the JavaScript bindings (`execute`, `executeWithTrace`, `executeMultiple`, `resolveNote`, `registerDataSource`, …) are an integration point with no reference page.

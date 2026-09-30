@@ -1,0 +1,34 @@
+---
+id: infrastructuur-voor-lokale-ai
+titel: Infrastructuur voor lokale AI
+faseId: wat
+disciplineId: transitie-ondersteuning
+prioriteit: hoog
+omvang: ''
+categorie: ''
+capability: ''
+capaciteit: ''
+toelichting: |-
+  Rekenkracht is een randvoorwaarde voor het werk aan de taal. "Specificaties
+  III" vindt de gaten in de specificatie door de enricher op grote hoeveelheden
+  wetgeving te laten lopen, en herhaalt die ronde na elke aanpassing. Zonder
+  capaciteit om dat te draaien blijft dat werkpakket staan.
+
+  De keten draait nu op twee routes: een rijksvoorziening met een gehost model,
+  en een persoonlijk abonnement bij een aanbieder. Geen van beide is een basis om
+  op te plannen. Dit werkpakket moet een voorziening opleveren waarop we rondes
+  kunnen draaien zonder dat wetgeving en tussenresultaten het eigen beheer
+  verlaten.
+volgorde: 5000
+onderzoeksvragen:
+  - Hoeveel rekenkracht vraagt één ronde over een corpus van deze omvang, en hoe
+    vaak willen we die ronde herhalen?
+  - Welke modellen komen in aanmerking, en welke draaien in eigen beheer?
+  - Wat mag de keten verlaten? Wetgeving is openbaar, tussenresultaten en
+    prompts zijn dat niet per se.
+onderzoek: open
+bouw: deels
+rfcs: []
+samenhangIds:
+  - specificaties-iii-gaten-vinden-met-de-enricher
+---

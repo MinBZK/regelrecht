@@ -10,25 +10,28 @@
 use serde::{Deserialize, Serialize};
 
 /// Re-export the canonical document-model value types from the law-model crate.
-pub use regelrecht_law_model::{Operation, ParameterType, RegulatoryLayer, Value};
+pub use regelrecht_law_model::{
+    MissingFact, MissingKind, Operation, ParameterType, RegulatoryLayer, TypeSpec, Value,
+};
 
-/// How the engine handles articles with `untranslatables` annotations (RFC-012).
+/// How the engine handles an article that flags a construct (RFC-012).
 ///
-/// Controls runtime behavior when an article declares legal constructs that
-/// cannot be faithfully expressed with the current engine operation set.
+/// Controls runtime behavior when an article declares a construct that cannot
+/// be faithfully expressed. Both channels count: `untranslatables` on schema
+/// v0.5.x and `markings` from v0.7.0 onwards.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum UntranslatableMode {
-    /// Hard error on any unaccepted untranslatable. Accepted ones execute partial logic.
+    /// Hard error on any unaccepted flagged construct. Accepted ones execute partial logic.
     #[default]
     Error,
-    /// Execute partial logic. Outputs from articles with untranslatables carry an
+    /// Execute partial logic. Outputs from articles that flag a construct carry an
     /// `UNTRANSLATABLE` taint that propagates through downstream operations (like NaN).
     Propagate,
     /// Execute partial logic, log warning in trace. No taint propagation.
     Warn,
     /// Execute partial logic silently. Only valid for entries with `accepted: true` —
-    /// unaccepted untranslatables still error.
+    /// unaccepted ones still error.
     Ignore,
 }
 
@@ -114,6 +117,10 @@ pub enum ResolveType {
     DataSource,
     /// Value resolved via open term implementation (IoC)
     OpenTerm,
+    /// The delegating law's default for an open term, taken because the
+    /// implementing regulation returned null for this case (RFC-036: the
+    /// implementation is silent, no deviation was granted)
+    OpenTermSilent,
     /// Value resolved via lifecycle hook (RFC-007)
     Hook,
     /// Value resolved via lex specialis override (RFC-007)

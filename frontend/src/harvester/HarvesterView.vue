@@ -84,7 +84,7 @@ function goToLibrary() {
                 v-for="tab in tabs"
                 :key="tab.key"
                 :text="tab.label"
-                :selected="activeTab === tab.key ? '' : undefined"
+                :current="activeTab === tab.key ? '' : undefined"
                 @click="router.push(tab.route)"
               ></nldd-tab-bar-item>
             </nldd-tab-bar>

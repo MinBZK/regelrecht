@@ -19,7 +19,7 @@ import { useTasks } from '../composables/useTasks.js';
 import { isPrioriteit } from '../lib/taskCategories.js';
 
 defineProps({
-  selected: { type: Boolean, default: false },
+  current: { type: Boolean, default: false },
 });
 
 const { tasks } = useTasks();
@@ -33,7 +33,7 @@ const prioriteitCount = computed(() => tasks.value.filter(isPrioriteit).length);
 </script>
 
 <template>
-  <nldd-list-item size="md" button :selected="selected || undefined">
+  <nldd-list-item size="md" button :current="current || undefined">
     <nldd-icon-cell size="20"><nldd-icon name="tasks"></nldd-icon></nldd-icon-cell>
     <nldd-spacer-cell size="8"></nldd-spacer-cell>
     <nldd-text-cell text="Taken"></nldd-text-cell>

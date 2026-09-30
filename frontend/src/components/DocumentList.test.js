@@ -33,12 +33,12 @@ describe('DocumentList', () => {
     expect(wrapper.emitted('select')[0]).toEqual(['beleid.md']);
   });
 
-  it('marks the selected document row', () => {
+  it('marks the open document row as current', () => {
     const wrapper = mountList({ selectedPath: 'beleid.md' });
-    const selected = wrapper
+    const current = wrapper
       .findAll('nldd-list-item')
-      .filter((i) => i.attributes('selected') !== undefined);
-    expect(selected).toHaveLength(1);
+      .filter((i) => i.attributes('current') !== undefined);
+    expect(current).toHaveLength(1);
   });
 
   it('shows a chevron trailing icon (in-place select)', () => {

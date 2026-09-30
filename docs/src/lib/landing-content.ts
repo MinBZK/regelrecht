@@ -6,6 +6,21 @@
  * The EN strings are a translation kept in the same government register.
  */
 
+import paper from '~/research/rules-as-executed.meta.json';
+
+// The position paper's title, authors and date come from the generated
+// meta JSON next to its HTML, so a regenerated paper cannot drift from
+// the tile that announces it.
+const paperTitle = `${paper.title}: ${paper.subtitle}`;
+const paperAuthors = paper.authors.join(' & ');
+function paperDate(locale: string): string {
+  return new Intl.DateTimeFormat(locale, {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(new Date(`${paper.date}T00:00:00`));
+}
+
 export interface NavLink {
   label: string
   href: string
@@ -24,8 +39,10 @@ export interface LandingContent {
     jobs: string
     signup: string
     docs: string
+    research: string
+    roadmap: string
   }
-  hero: { title: string; intro: string; cta: string }
+  hero: { title: string; intro: string }
   whatIsIt: { title: string; lede: string; cards: { h: string; p: string }[] }
   whyImportant: {
     title: string
@@ -52,11 +69,25 @@ export interface LandingContent {
       p: string
       bullets: string[]
       reverse?: boolean
+      // Set where the screenshot shows a screen a reader can actually open.
+      // The editor has none: it sits behind a login.
+      link?: NavLink
     }[]
   }
   innovation: {
     title: string
     cards: { meta: string; h: string; p: string }[]
+  }
+  research: {
+    title: string
+    lede: string
+    items: {
+      title: string
+      meta: string
+      text: string
+      href: string
+      linkLabel: string
+    }[]
   }
   references: {
     title: string
@@ -67,6 +98,16 @@ export interface LandingContent {
       href: string
       linkLabel: string
     }[]
+  }
+  // The roadmap teaser. `fases` carries only the prose per fase; the names,
+  // subtitles and counts come from the roadmap's own config and content, so
+  // the landing page cannot drift from the page it links to.
+  roadmap: {
+    title: string
+    lede: string
+    werkpakkettenLabel: (n: number) => string
+    ctaLabel: string
+    fases: Record<string, string>
   }
   faq: { title: string; items: { q: string; a: string; link?: NavLink }[] }
   jobs: {
@@ -100,7 +141,6 @@ export interface LandingContent {
     pageTitle: string
     metaDescription: string
     noscript: string
-    legend: string
     radioYes: string
     radioNo: string
     emailLabel: string
@@ -149,12 +189,13 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       jobs: 'Werken bij',
       signup: 'Aanmelden',
       docs: 'Documentatie',
+      research: 'Onderzoek',
+      roadmap: 'Roadmap',
     },
     hero: {
       title: 'Van wet naar digitale werking',
       intro:
         'RegelRecht verkent of wetgeving als uitvoerbare code geschreven kan worden, zodat verschillende organisaties dezelfde wet ook hetzelfde toepassen en burgers kunnen volgen hoe een besluit tot stand komt.',
-      cta: 'Verken de mogelijkheden',
     },
     whatIsIt: {
       title: 'Wetten uitvoeren zonder te programmeren',
@@ -285,7 +326,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           meta: 'Wat-als-analyse',
           link: {
             label: 'Live demo',
-            href: 'https://ui.lac.apps.digilab.network/simulation',
+            href: 'https://demo.regelrecht.rijks.app/simulatie',
           },
           text: 'Een omgeving waarin de gevolgen van nieuwe wetgeving doorgerekend zouden kunnen worden, voordat ze in werking treden. Bedoeld om maatschappelijke impact en onbedoelde effecten zichtbaar te maken.',
         },
@@ -301,7 +342,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       lede: 'Wat zouden de mogelijkheden van het RegelRecht-ecosysteem kunnen zijn? Een paar denkrichtingen voor transparante regeltoepassing, wetgevingstesting en de werkomgeving van de juridische experts zelf.',
       cases: [
         {
-          img: '/burger-nl-screenshot.png',
+          img: '/portaal-screenshot.png',
           alt: 'Schermafbeelding van een persoonlijk regeldashboard: een lijst met toeslagen en uitkeringen waarbij per regel de herkomst in de wet wordt getoond.',
           h: 'Persoonlijk regeldashboard',
           p: 'Wat als burgers op één plek al hun toeslagen, uitkeringen en verplichtingen zouden kunnen zien? Elke regel zou dan traceerbaar kunnen zijn terug naar de machine-uitvoerbare wetgeving, met volledige transparantie over hoe besluiten tot stand komen.',
@@ -310,6 +351,10 @@ export const content: Record<'nl' | 'en', LandingContent> = {
             'Volledige traceerbaarheid: kan een pad van wet naar persoonlijke situatie gelegd worden?',
             'Proactieve communicatie: kunnen burgers automatisch geïnformeerd worden bij regelwijzigingen?',
           ],
+          link: {
+            label: 'Bekijk in de demo',
+            href: 'https://demo.regelrecht.rijks.app/portaal',
+          },
         },
         {
           img: '/simulatie-screenshot.png',
@@ -323,6 +368,10 @@ export const content: Record<'nl' | 'en', LandingContent> = {
             'Kwaliteitscontrole: kunnen inconsistenties vóór implementatie worden gedetecteerd?',
           ],
           reverse: true,
+          link: {
+            label: 'Bekijk in de demo',
+            href: 'https://demo.regelrecht.rijks.app/simulatie',
+          },
         },
         {
           img: '/editor-notities-screenshot.png',
@@ -349,6 +398,19 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           meta: 'In samenwerking met Dienst Toeslagen',
           h: 'Modern rekenhart als bouwsteen voor de hele overheid',
           p: "Kunnen we een algemeen rekenhart voor de overheid ontwikkelen? Dit project verkent hoe zo'n systeem zou kunnen helpen bij het uitvoeren van complexe regelingen voor burgers en bedrijven, bijvoorbeeld bij het berekenen van toeslagen.",
+        },
+      ],
+    },
+    research: {
+      title: 'Onderzoek',
+      lede: 'De verkenning roept vragen op die verder reiken dan techniek: wat het voor de verhouding tussen de staatsmachten betekent als wetsuitvoering publiek en narekenbaar wordt, en welke juridische status een uitvoerbare specificatie heeft. Dat denkwerk schrijven we op voor een academisch publiek, zodat juristen en bestuurskundigen het kunnen toetsen en aanscherpen.',
+      items: [
+        {
+          title: paperTitle,
+          meta: `${paper.kind} • ${paperAuthors} • ${paperDate('nl-NL')}`,
+          text: 'Het paper betoogt dat de overheid haar wetsuitvoering moet publiceren als machine-uitvoerbare specificatie, waarbij elk besluit vastlegt met welke versie het is genomen. Wie een besluit ontvangt, kan het narekenen, en het parlement kan de regel zelf analyseren.',
+          href: '/research/rules-as-executed',
+          linkLabel: 'position paper (Engels)',
         },
       ],
     },
@@ -429,6 +491,29 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           linkLabel: 'PDF',
         },
       ],
+    },
+    roadmap: {
+      title: 'Waar dit heen gaat',
+      lede: 'Het werk is verdeeld over vijf fases, van het vastleggen van de basis tot het borgen ervan in de staande praktijk. Elk werkpakket benoemt wat er moet gebeuren, wie eraan werkt en welke vragen nog open staan. De eerste fases zijn uitgewerkt; de latere staan er wel, maar zijn nog niet in werkpakketten verdeeld.',
+      // A fase with nothing in it yet is a real state of the roadmap, not an
+      // omission: the later fases are named but not broken down. Saying that
+      // beats printing "0 werkpakketten", which reads as an empty plan.
+      werkpakkettenLabel: (n) =>
+        n === 0
+          ? 'Nog niet uitgewerkt'
+          : n === 1
+            ? '1 werkpakket'
+            : `${n} werkpakketten`,
+      ctaLabel: 'Bekijk de roadmap',
+      fases: {
+        wat: 'Vastleggen wat machine-leesbare wetgeving is, en wat ze moet kunnen.',
+        'wat-fase-2':
+          'Uitzoeken waar de aanpak houdt en waar ze breekt, met onderzoek per rechtsgebied.',
+        hoe: 'De gereedschappen bouwen waarmee juristen en uitvoerders het werk zelf kunnen doen.',
+        waar: 'Beleggen waar dit thuishoort: bij welke organisaties, onder welke afspraken.',
+        garantie:
+          'Zorgen dat het blijft kloppen als wetten veranderen en mensen wisselen.',
+      },
     },
     faq: {
       title: 'Veelgestelde vragen',
@@ -535,7 +620,9 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         { label: 'GitHub-repository', href: GITHUB },
         { label: 'Hoe het werkt', href: '/#how-it-works' },
         { label: 'Op de hoogte blijven', href: SIGNUP_NL_PATH },
+        { label: 'Roadmap', href: '/roadmap' },
         { label: 'Documentatie (Engels)', href: '/docs/' },
+        { label: 'Onderzoek (Engels)', href: '/research/' },
       ],
       partOf: [
         'Bureau Architectuur',
@@ -547,7 +634,6 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       metaDescription: 'Laat je gegevens achter als je updates wilt ontvangen of wilt meedenken over de juridische validatie van RegelRecht.',
       noscript:
         'Dit formulier heeft JavaScript nodig. Stuur in plaats daarvan een e-mail naar regelrecht@minbzk.nl.',
-      legend: 'Wil je meedenken over de juridische validatie?',
       radioYes: 'Ja, ik wil meedenken en updates ontvangen',
       radioNo: 'Nee, alleen updates ontvangen',
       emailLabel: 'E-mailadres',
@@ -592,12 +678,13 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       jobs: 'Join us',
       signup: 'Sign up',
       docs: 'Documentation',
+      research: 'Research',
+      roadmap: 'Roadmap',
     },
     hero: {
       title: 'From statute to digital execution',
       intro:
         'RegelRecht explores whether legislation can be written as executable code, so that different organisations apply the same law the same way and citizens can follow how a decision is reached.',
-      cta: 'Explore the possibilities',
     },
     whatIsIt: {
       title: 'Running laws without programming',
@@ -728,7 +815,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           meta: 'What-if analysis',
           link: {
             label: 'Live demo',
-            href: 'https://ui.lac.apps.digilab.network/simulation',
+            href: 'https://demo.regelrecht.rijks.app/simulatie',
           },
           text: 'An environment where the consequences of new legislation could be modelled before it takes effect, to surface societal impact and unintended effects.',
         },
@@ -744,7 +831,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       lede: 'What could the RegelRecht ecosystem make possible? A handful of directions for transparent rule application, legislative testing, and the working environment of the legal experts themselves.',
       cases: [
         {
-          img: '/burger-nl-screenshot.png',
+          img: '/portaal-screenshot.png',
           alt: 'Screenshot of a personal rules dashboard: a list of benefits and allowances where each rule shows its origin in the law.',
           h: 'Personal rules dashboard',
           p: 'What if citizens could see all their benefits, allowances and obligations in one place? Every rule could then be traceable back to the machine-executable legislation, with full transparency about how decisions are reached.',
@@ -753,6 +840,10 @@ export const content: Record<'nl' | 'en', LandingContent> = {
             'Full traceability: can a path be drawn from law to personal situation?',
             'Proactive communication: can citizens be informed automatically when rules change?',
           ],
+          link: {
+            label: 'See it in the demo',
+            href: 'https://demo.regelrecht.rijks.app/portaal',
+          },
         },
         {
           img: '/simulatie-screenshot.png',
@@ -766,6 +857,10 @@ export const content: Record<'nl' | 'en', LandingContent> = {
             'Quality control: can inconsistencies be detected before implementation?',
           ],
           reverse: true,
+          link: {
+            label: 'See it in the demo',
+            href: 'https://demo.regelrecht.rijks.app/simulatie',
+          },
         },
         {
           img: '/editor-notities-screenshot.png',
@@ -792,6 +887,19 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           meta: 'In collaboration with Dienst Toeslagen',
           h: 'A modern calculation core as a building block for government',
           p: 'Can we develop a general calculation core for government? This project explores how such a system could help execute complex schemes for citizens and businesses, for example when calculating allowances.',
+        },
+      ],
+    },
+    research: {
+      title: 'Research',
+      lede: 'This exploration raises questions that reach beyond technology: what it means for the balance between the branches of government when law execution becomes public and checkable, and what legal status an executable specification has. We write that up for an academic audience, so that legal and public-administration scholars can test and sharpen it.',
+      items: [
+        {
+          title: paperTitle,
+          meta: `${paper.kind} • ${paperAuthors} • ${paperDate('en-GB')}`,
+          text: 'The paper argues that government should publish its law execution as machine-executable specifications, with every decision recording the version that produced it. The recipient of a decision can then recompute it, and Parliament can analyze the rule itself.',
+          href: '/research/rules-as-executed',
+          linkLabel: 'position paper',
         },
       ],
     },
@@ -872,6 +980,26 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           linkLabel: 'PDF',
         },
       ],
+    },
+    roadmap: {
+      title: 'Where this is going',
+      lede: 'The work is split across five phases, from setting down the basics to embedding them in everyday practice. Each work package states what needs to happen, who is working on it and which questions are still open. The early phases are worked out; the later ones are named but not yet broken down. The roadmap itself is in Dutch.',
+      werkpakkettenLabel: (n) =>
+        n === 0
+          ? 'Not yet broken down'
+          : n === 1
+            ? '1 work package'
+            : `${n} work packages`,
+      ctaLabel: 'View the roadmap (Dutch)',
+      fases: {
+        wat: 'Setting down what machine-readable legislation is, and what it has to be able to do.',
+        'wat-fase-2':
+          'Working out where the approach holds and where it breaks, with research per area of law.',
+        hoe: 'Building the tools that let lawyers and implementing bodies do the work themselves.',
+        waar: 'Establishing where this belongs: which organisations, under which agreements.',
+        garantie:
+          'Making sure it keeps holding up as laws change and people move on.',
+      },
     },
     faq: {
       title: 'Frequently asked questions',
@@ -977,7 +1105,9 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         { label: 'GitHub repository', href: GITHUB },
         { label: 'How it works', href: '/en/#how-it-works' },
         { label: 'Stay informed', href: SIGNUP_EN_PATH },
+        { label: 'Roadmap (Dutch)', href: '/roadmap' },
         { label: 'Documentation', href: '/docs/' },
+        { label: 'Research', href: '/research/' },
       ],
       partOf: [
         'Bureau Architectuur',
@@ -989,7 +1119,6 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       metaDescription: 'Leave your details to receive updates, or to help think about the legal validation of RegelRecht.',
       noscript:
         'This form needs JavaScript. Please send an email to regelrecht@minbzk.nl instead.',
-      legend: 'Want to help think about the legal validation?',
       radioYes: 'Yes, I want to help think along and receive updates',
       radioNo: 'No, only receive updates',
       emailLabel: 'Email address',

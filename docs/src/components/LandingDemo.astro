@@ -1,0 +1,277 @@
+---
+/*
+ * The scrollytelling demo: one law in its several forms, revealed one by one as
+ * the visitor scrolls.
+ *
+ * The statute, the YAML, the memorandum and the scenario are read from the
+ * repository at build time (see ~/lib/landing-demo). The execution is not: the
+ * engine runs the scenario in the visitor's browser when this panel comes into
+ * view (~/scripts/landing-run.ts), so the trace on screen is one that happened
+ * on their machine rather than a recording of one that happened on ours.
+ *
+ * No framework: the docs site ships no UI-framework integration, so this is
+ * plain custom elements plus an IntersectionObserver. Without JS the four
+ * read-from-the-repository panels are simply visible, and the run panel says it
+ * needs JavaScript instead of showing a stand-in.
+ */
+import { demo } from '~/lib/landing-demo';
+import LandingWipe from './LandingWipe.astro';
+
+interface Props {
+  lang: 'nl' | 'en';
+}
+const { lang } = Astro.props;
+
+const nl = {
+  title: 'Van wettekst naar digitale werking',
+  lede: 'Sleep de lijn om te zien wat er tussen de Wet op de zorgtoeslag en een uitgerekend bedrag zit. Onderaan rekent de engine het scenario echt uit.',
+  steps: [
+    { tag: 'Wettekst', h: 'Wat de wet zegt', p: 'Artikel 3, eerste lid van de Wet op de zorgtoeslag: wie te veel vermogen heeft, krijgt geen toeslag. De tekst die iedereen kan opzoeken.' },
+    { tag: 'Machineleesbaar', h: 'Wat de machine leest', p: 'Hetzelfde artikel, uitvoerbaar. De bedragen uit de wettekst staan er letterlijk in, en het vermogen zelf wordt bij een andere wet opgehaald.' },
+    { tag: 'Toelichting', h: 'Waarom het er zo staat', p: 'De wetgever aan het woord, letterlijk uit de parlementaire stukken.' },
+    { tag: 'Scenario', h: 'Hoe we het controleren', p: 'De wetgever rekent de zorgtoeslag zelf voor in de Kamerstukken. Die tabel is hier een uitvoerbaar scenario: dezelfde formule, nagerekend tot op de euro. Valt het om, dan is de wet veranderd of klopt de uitvoering niet meer.' },
+    { tag: 'Uitvoering', h: 'De engine rekent', p: 'Precies dat scenario, uitgevoerd op de machine-uitvoerbare wet hierboven. Wat je hieronder ziet gebeuren, gebeurt nu: de engine draait in deze browser, op jouw machine.' },
+  ],
+  runLabel: 'Uitvoeren',
+  resultLabel: 'Zorgtoeslag per jaar',
+  beforeRun: 'De engine en de wetten worden opgehaald; het scenario draait hier, in je browser.',
+  noScript: 'Hiervoor is JavaScript nodig: de engine draait in je eigen browser, niet op een server.',
+  replay: 'Opnieuw uitvoeren',
+  runLoading: 'Engine laden…',
+  runLive: 'Zojuist uitgevoerd in je browser:',
+  runSlow: 'Hierboven vertraagd afgespeeld, anders was het voorbij voor je het zag.',
+  runFailed: 'Uitvoeren lukte niet. Het scenario staat in de repository en draait ook met `just bdd`.',
+  slider: 'Sleep of scroll om de wettekst en de machineleesbare regel over elkaar te schuiven.',
+  slider2: 'Sleep of scroll om de toelichting en het scenario over elkaar te schuiven.',
+  sliderLeft: 'Wettekst',
+  sliderRight: 'Machineleesbaar',
+  sourceLaw: 'Bron: wetten.overheid.nl',
+};
+
+const en = {
+  title: 'From statute text to digital execution',
+  lede: 'Drag the divider to see what sits between the Dutch Healthcare Allowance Act and an amount worked out. At the bottom the engine runs the scenario for real.',
+  steps: [
+    { tag: 'Statute', h: 'What the law says', p: 'Article 3, first paragraph of the Wet op de zorgtoeslag: too much capital means no allowance. The text anyone can look up.' },
+    { tag: 'Machine-readable', h: 'What the machine reads', p: 'The same article, executable. The amounts from the statute appear literally, and the capital itself is fetched from another law.' },
+    { tag: 'Memorandum', h: 'Why it reads that way', p: 'The legislature in its own words, quoted from the parliamentary papers.' },
+    { tag: 'Scenario', h: 'How we check it', p: 'The legislature works the allowance out itself in the parliamentary papers. That table is an executable scenario here: the same formula, checked to the euro. If it breaks, either the law moved or the execution no longer matches it.' },
+    { tag: 'Execution', h: 'The engine runs', p: 'That very scenario, executed against the machine-executable law above. What you see happening below is happening now: the engine runs in this browser, on your machine.' },
+  ],
+  runLabel: 'Run',
+  resultLabel: 'Allowance per year',
+  beforeRun: 'Fetching the engine and the laws; the scenario runs here, in your browser.',
+  noScript: 'This needs JavaScript: the engine runs in your own browser, not on a server.',
+  replay: 'Run again',
+  runLoading: 'Loading the engine…',
+  runLive: 'Just executed in your browser:',
+  runSlow: 'Played back slowly above; at full speed it would be over before you saw it.',
+  runFailed: 'The run failed. The scenario is in the repository and also runs with `just bdd`.',
+  slider: 'Drag or scroll to wipe between the statute and the machine-readable rule.',
+  slider2: 'Drag or scroll to wipe between the memorandum and the scenario.',
+  sliderLeft: 'Statute',
+  sliderRight: 'Machine-readable',
+  sourceLaw: 'Source: wetten.overheid.nl',
+};
+
+const t = lang === 'en' ? en : nl;
+
+//
+// A cross-law step is named `other_law#output`, and its anchor says where the
+// engine was when it made the call, which is this law's article 2 every time.
+// Showing that anchor on every row would repeat one fact nine times and read
+// as though every value came from article 2. The law being consulted is the
+// half before the `#`, so that is what the row names; the plain article
+// reference is left to the steps that have no other law to name.
+const LAW_LABELS: Record<string, { nl: string; en: string }> = {
+  zorgverzekeringswet: { nl: 'Zorgverzekeringswet', en: 'Health Insurance Act' },
+  wet_op_de_zorgtoeslag: { nl: 'Wet op de zorgtoeslag', en: 'Healthcare Allowance Act' },
+  algemene_wet_inkomensafhankelijke_regelingen: {
+    nl: 'Awir',
+    en: 'Awir (income-related schemes)',
+  },
+  wet_inkomstenbelasting_2001: { nl: 'Wet inkomstenbelasting 2001', en: 'Income Tax Act 2001' },
+};
+
+/**
+ * Short tags for the kinds of step.
+ *
+ * Kept in the engine's own words rather than translated: this panel is the
+ * machine's account of what it did, and `xlaw` says something
+ * `kruisverwijzing` does not. The keys are the serialised `node_type` values;
+ * the values are spelled out further than the engine's terminal renderer does
+ * (`resolve` where it prints `res`, `article` where it prints `art`), because
+ * a visitor here reads them once rather than scanning a column of them.
+ */
+const KINDS: Record<string, string> = {
+  article: 'article',
+  cross_law_reference: 'xlaw',
+  resolve: 'resolve',
+  action: 'action',
+  operation: 'op',
+  open_term_resolution: 'open_term',
+  hook_resolution: 'hook',
+  override_resolution: 'override',
+  requirement: 'req',
+  cached: 'cached',
+};
+const humanise = (id: string) => id.replace(/_/g, ' ');
+
+// The labels the browser needs once it has a trace to render. They are passed
+// as data rather than used here: there is nothing to label until the engine has
+// run, and that happens in the visitor's browser.
+const labels = JSON.stringify({
+  laws: Object.fromEntries(
+    Object.entries(LAW_LABELS).map(([id, v]) => [id, v[lang] ?? humanise(id)]),
+  ),
+  kinds: KINDS,
+});
+---
+
+<nldd-simple-section
+  id="demo"
+  background="tinted"
+  sm-padding-block="32"
+  md-padding-block="64"
+  lg-padding-block="96"
+>
+  <nldd-title size="2">
+    <h2>{t.title}</h2>
+  </nldd-title>
+  <nldd-spacer size="8" />
+  <nldd-rich-text>
+    <p>{t.lede}</p>
+  </nldd-rich-text>
+  <nldd-spacer size="32" />
+
+  <rr-scrolly
+    class="rr-scrolly"
+    data-labels={labels}
+    data-lang={lang}
+    data-t-loading={t.runLoading}
+    data-t-live={t.runLive}
+    data-t-slow={t.runSlow}
+    data-t-failed={t.runFailed}
+  >
+    {/* 1 + 2: the wipe between prose and YAML */}
+    <article class="rr-beat" data-beat="0">
+      <p class="rr-beat__tag">{t.steps[0].tag} &rarr; {t.steps[1].tag}</p>
+      <nldd-title size="3"><h3>{t.steps[0].h}</h3></nldd-title>
+      <nldd-rich-text><p>{t.steps[0].p}</p></nldd-rich-text>
+      <nldd-spacer size="16" />
+
+      <LandingWipe
+        label={t.slider}
+        leftLabel={t.sliderLeft}
+        rightLabel={t.sliderRight}
+      >
+        {/* nldd-code-viewer brings the syntax highlighting, the copy button,
+            its own keyboard-reachable scroll region and the theme handling.
+            `wrap` matters here: without it the YAML scrolls sideways under the
+            wipe, and a line that is half-covered must not reflow. */}
+        <nldd-code-viewer slot="under" language="yaml" variant="simple" wrap>{demo.yaml}</nldd-code-viewer>
+        <nldd-blockquote slot="over" cite={demo.lawUrl}>
+          <p>{demo.prose}</p>
+          <span slot="attribution">
+            <a href={demo.lawUrl} rel="noreferrer">{t.sourceLaw}</a>
+          </span>
+        </nldd-blockquote>
+      </LandingWipe>
+    </article>
+
+    {/* 3 + 4: the second wipe, memorandum over scenario.
+        Mirrored on purpose: the first wipe uncovers to the right, this one to
+        the left. The pair then reads as the same move made twice, from either
+        side, rather than as one gesture repeated. */}
+    <article class="rr-beat" data-beat="1">
+      <p class="rr-beat__tag">{t.steps[2].tag} &rarr; {t.steps[3].tag}</p>
+      <nldd-title size="3"><h3>{t.steps[2].h}</h3></nldd-title>
+      <nldd-rich-text><p>{t.steps[3].p}</p></nldd-rich-text>
+      <nldd-spacer size="16" />
+
+      {/* Taller than the first: the scenario runs to some 610 pixels, just over
+          a 30rem frame, so a little more room means no vertical scrolling at
+          all on a screen that has it. The YAML in the first wipe is several
+          times longer and scrolls whatever height it is given. */}
+      <LandingWipe
+        direction="rtl"
+        height="39rem"
+        label={t.slider2}
+        leftLabel={t.steps[3].tag}
+        rightLabel={t.steps[2].tag}
+      >
+        {/* Gherkin is one of the languages the viewer highlights. No `wrap`:
+            the data tables are aligned on their pipes and reflowing them would
+            destroy the alignment, so this one scrolls sideways instead. */}
+        <nldd-code-viewer slot="under" language="gherkin" variant="simple">{demo.gherkin}</nldd-code-viewer>
+        {/* The citation links to the published document, like the statute
+            quotation above does. It is a quotation from the parliamentary
+            papers, so it has to be checkable; and both the citation and the
+            link come out of the same annotation, so they cannot drift apart. */}
+        <nldd-blockquote slot="over" cite={demo.memorandumUrl}>
+          <p>{demo.memorandum}</p>
+          <span slot="attribution">
+            <a href={demo.memorandumUrl} rel="noreferrer">{demo.memorandumCitation}</a>
+          </span>
+        </nldd-blockquote>
+      </LandingWipe>
+    </article>
+
+    {/* 5: the run */}
+    <article class="rr-beat rr-beat--wide" data-beat="3">
+      <p class="rr-beat__tag">{t.steps[4].tag}</p>
+      <nldd-title size="3"><h3>{t.steps[4].h}</h3></nldd-title>
+      <nldd-rich-text><p>{t.steps[4].p}</p></nldd-rich-text>
+      <nldd-spacer size="16" />
+
+      <nldd-card background="base" accessible-label={t.steps[4].h}>
+        <div class="rr-run" data-run>
+          <p class="rr-run__status" data-run-status aria-live="polite">{t.runLabel}</p>
+
+          <div
+            class="rr-run__steps-scroll"
+            tabindex="0"
+            role="region"
+            aria-label={t.steps[4].h}
+            data-steps-scroll
+          >
+          {/* Empty until the engine has run. A trace rendered as a trace:
+              monospace, indented by the nesting the engine reports. nldd-list
+              is deliberately not used here (reported to the user): its rows are
+              made for readable records, and this is a machine's own account,
+              where the alignment of the columns is what makes it scannable. */}
+          <ol class="rr-trace"></ol>
+          <p class="rr-run__empty" data-empty>{t.beforeRun}</p>
+          {/* Without JS the button never appears, so say why rather than leave
+              an empty frame. */}
+          <noscript><p class="rr-run__empty">{t.noScript}</p></noscript>
+          </div>
+
+          <nldd-spacer size="16" />
+
+          <p class="rr-run__result">
+            <span>{t.resultLabel}</span>
+            <output class="rr-run__amount" data-amount-out></output>
+          </p>
+          <nldd-rich-text>
+            <p class="rr-run__facts" data-facts></p>
+          </nldd-rich-text>
+          <nldd-spacer size="8" />
+          {/* `text` rather than slotted content: the default slot is not the
+              label slot, so plain text between the tags renders nothing. */}
+          <nldd-button
+            variant="secondary"
+            size="sm"
+            text={t.replay}
+            data-replay
+            hidden
+          />
+        </div>
+      </nldd-card>
+    </article>
+  </rr-scrolly>
+</nldd-simple-section>
+
+<script>
+  import '~/scripts/landing-demo.ts';
+</script>

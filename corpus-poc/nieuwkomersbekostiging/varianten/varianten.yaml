@@ -1,0 +1,63 @@
+# Beleidsvarianten van deze casus.
+#
+# Geexporteerd uit de git-branches variant/* van de oorspronkelijke
+# PoC-repo. Elke variant is een set wetsbestanden die de basisbestanden
+# uit deze casus vervangen: `bestanden` bevat het pad relatief aan de
+# casusmap, en dat pad is tegelijk het basisbestand dat wordt vervangen
+# (varianten/<id>/<pad> hoort bij <pad>).
+varianten:
+  - id: "nk-1-ambtshalve-po"
+    titel: "Variant nk-1: ambtshalve toekenning in het po (OCW-besluit per 2028)"
+    toelichting: |-
+      Nieuwe versie van de regeling bekostiging WPO en WEC per 1 januari 2028: DUO
+      stelt de aanvullende bekostiging per peildatum ambtshalve vast uit het
+      register onderwijsdeelnemers (art. 34 lid 2, 6 en 8); alleen het oordeel bij
+      ambigue verblijfstitels en onderwijsnummers blijft handmatig. Voorwaarde uit
+      de OCW-factsheet: gedeeltelijke gelijktrekking van de bedragen, hier
+      budgetneutraal (aanname): eerste jaar asielzoeker 11.500 en overige
+      vreemdeling 7.700 euro, tweede jaar ongewijzigd.
+
+      Uitvoeringslast vanaf 2028: aanvraag, beoordeling en At-correctie vervallen;
+      daarvoor in de plaats een geautomatiseerde vaststelling met uitvalcontrole
+      bij DUO en een lichtere controle bij de school. De IT-investering staat aan.
+      Tot 2028 reproduceert de kolom het huidige recht.
+    bestanden:
+      - "corpus/regulation/nl/ministeriele_regeling/regeling_bekostiging_wpo_en_wec/2028-01-01.yaml"
+      - "data/handelingen.yaml"
+  - id: "nk-2-een-definitie-po"
+    titel: "Variant nk-2: één definitie van nieuwkomer in het po, volledige gelijktrekking (per 2028)"
+    toelichting: |-
+      Nieuwe versie per 1 januari 2028 waarin het onderscheid asielzoeker/overige
+      vreemdeling vervalt: elke vreemdeling met een verblijfstitel uit de tabel
+      van artikel 34, tiende lid, ook de codes waarover nu het bevoegd gezag
+      oordeelt, is nieuwkomer voor één jaar tegen één bedrag van 10.500 euro per
+      leerling per jaar (aanname: budgetneutraal bij 45 procent asielzoekers).
+      Artikel 35, het tweede jaar, vervalt. Het bepalen van de categorie voor
+      tabblad 2 en 3 vervalt vanaf 2028; het beleidstraject staat als eenmalige
+      post aan.
+    bestanden:
+      - "corpus/regulation/nl/ministeriele_regeling/regeling_bekostiging_wpo_en_wec/2028-01-01.yaml"
+      - "data/handelingen.yaml"
+  - id: "nk-3-harmonisatie-po-vo"
+    titel: "Variant nk-3: het po volgt de systematiek van het vo (per 2028)"
+    toelichting: |-
+      Nieuwe versie per 1 januari 2028 met de vo-systematiek voor het po: één
+      definitie (elke vreemdeling met een verblijfstitel uit de tabel, ook de
+      ambigue codes), twee jaar voor iedereen, de vo-bedragen per kwartaal
+      (3.909,08 in het eerste en 1.426,33 in het tweede jaar), ambtshalve
+      vaststelling met validatie door de accountant en geen drempel.
+      Vereenvoudiging: eerste en tweede categorie naar de teldatum 1 oktober zijn
+      benaderd als eerste en tweede jaar na de eerste inschrijving. Vanaf 2028
+      wordt het po-proces het vo-proces (ROD-uitlezing, accountantsvalidatie).
+    bestanden:
+      - "corpus/regulation/nl/ministeriele_regeling/regeling_bekostiging_wpo_en_wec/2028-01-01.yaml"
+      - "data/handelingen.yaml"
+  - id: "nk-4-drempel-weg"
+    titel: "Variant nk-4: de drempel van vier nieuwkomers per school vervalt (per 2028)"
+    toelichting: |-
+      Nieuwe versie per 1 januari 2028 waarin artikel 34, tweede lid, spreekt van
+      ten minste één asielzoeker of overige vreemdeling. Scholen met één tot drie
+      nieuwkomers, die nu in de cijfers ontbreken, krijgen daarmee ook eerste
+      opvang bekostigd. Tweede jaar en sbo-drempel ongewijzigd.
+    bestanden:
+      - "corpus/regulation/nl/ministeriele_regeling/regeling_bekostiging_wpo_en_wec/2028-01-01.yaml"

@@ -68,7 +68,7 @@ describe('core grammar patterns match their canonical example lines', () => {
     { line: 'output "x" is false', action: 'assert_boolean' },
     { line: 'output "x" equals 42', action: 'assert_equals' },
     { line: 'output "x" equals "hello"', action: 'assert_equals' },
-    { line: 'output "x" is null', action: 'assert_null' },
+    { line: 'output "x" is absent', action: 'assert_null' },
     { line: 'output "x" contains "sub"', action: 'assert_contains' },
   ];
 
