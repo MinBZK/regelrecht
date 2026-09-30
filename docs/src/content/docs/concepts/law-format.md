@@ -14,7 +14,7 @@ A file's place in the corpus says what kind of instrument it is and when its tex
 ```
 corpus/regulation/eu/
 └── verordening/                      # EU regulations
-    └── machineverordening/
+    └── verordening_eu_2023_1230/
         └── 2027-01-14.yaml
 corpus/regulation/nl/
 ├── wet/                              # Formal laws (wetten)
@@ -37,7 +37,7 @@ corpus/regulation/nl/
             └── 2015-01-01.yaml
 ```
 
-The directory name is the law's `$id`, and the file name is the date the version took effect. A law that changes gets a new file beside the old one rather than an edit to it, because a decision taken in 2024 has to be recomputable against the 2024 text. [Temporal Validity and Dates](/concepts/temporal-and-dates#which-version-is-in-force) explains how the engine picks the version in force on a given date.
+The directory name is the law's `$id`, and the file name is the date the version took effect. For a Dutch regulation the `$id` follows its citeertitel (`wet_op_de_zorgtoeslag`). An EU act has no citeertitel, so its `$id` follows the way it is cited, in the order of that citation: Verordening (EU) 2023/1230 is `verordening_eu_2023_1230`, Verordening (EU) nr. 168/2013 is `verordening_eu_168_2013`, and Richtlijn 2014/35/EU is `richtlijn_2014_35_eu`. A popular name such as "Machineverordening" goes in the text of the page, not in the `$id`, because two acts can share a popular name while their numbers cannot collide. A law that changes gets a new file beside the old one rather than an edit to it, because a decision taken in 2024 has to be recomputable against the 2024 text. [Temporal Validity and Dates](/concepts/temporal-and-dates#which-version-is-in-force) explains how the engine picks the version in force on a given date.
 
 ## A worked example
 

@@ -118,7 +118,7 @@ mod tests {
         assert!(
             files
                 .iter()
-                .any(|p| p.ends_with("eu/verordening/machineverordening/2027-01-14.yaml")),
+                .any(|p| p.ends_with("eu/verordening/verordening_eu_2023_1230/2027-01-14.yaml")),
             "an EU regulation under eu/ should be found"
         );
     }

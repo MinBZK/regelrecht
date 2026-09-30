@@ -17,49 +17,49 @@ Feature: Welke conformiteitsbeoordelingsprocedure geldt (artikel 25 en bijlage I
 
   Scenario: Hefbrug voor voertuigen valt onder bijlage I, deel A
     Given parameter "categorie_bijlage_i" is "A.3"
-    When I evaluate "lid_2_van_toepassing" of "machineverordening"
+    When I evaluate "lid_2_van_toepassing" of "verordening_eu_2023_1230"
     Then the execution succeeds
     Then output "lid_2_van_toepassing" is true
 
   Scenario: Veiligheidscomponent met machinaal leren valt onder bijlage I, deel A
     Given parameter "categorie_bijlage_i" is "A.5"
-    When I evaluate "in_bijlage_i_deel_a" of "machineverordening"
+    When I evaluate "in_bijlage_i_deel_a" of "verordening_eu_2023_1230"
     Then the execution succeeds
     Then output "in_bijlage_i_deel_a" is true
 
   Scenario: Cirkelzaag met vast zaagblad en vast tafelblad valt onder deel B, lid 3
     Given parameter "categorie_bijlage_i" is "B.1.1"
-    When I evaluate "lid_3_van_toepassing" of "machineverordening"
+    When I evaluate "lid_3_van_toepassing" of "verordening_eu_2023_1230"
     Then the execution succeeds
     Then output "lid_3_van_toepassing" is true
 
   Scenario: Punt 1 van deel B is zelf geen categorie, alleen de subpunten
     Given parameter "categorie_bijlage_i" is "B.1"
-    When I evaluate "in_bijlage_i_deel_b" of "machineverordening"
+    When I evaluate "in_bijlage_i_deel_b" of "verordening_eu_2023_1230"
     Then the execution succeeds
     Then output "in_bijlage_i_deel_b" is false
 
   Scenario: Een hefbrug valt niet onder lid 3
     Given parameter "categorie_bijlage_i" is "A.3"
-    When I evaluate "lid_3_van_toepassing" of "machineverordening"
+    When I evaluate "lid_3_van_toepassing" of "verordening_eu_2023_1230"
     Then the execution succeeds
     Then output "lid_3_van_toepassing" is false
 
   Scenario: Een categorie buiten bijlage I valt onder lid 4
     Given parameter "categorie_bijlage_i" is "geen"
-    When I evaluate "lid_4_van_toepassing" of "machineverordening"
+    When I evaluate "lid_4_van_toepassing" of "verordening_eu_2023_1230"
     Then the execution succeeds
     Then output "lid_4_van_toepassing" is true
 
   Scenario: Een categorie uit deel B valt niet onder lid 4
     Given parameter "categorie_bijlage_i" is "B.14"
-    When I evaluate "lid_4_van_toepassing" of "machineverordening"
+    When I evaluate "lid_4_van_toepassing" of "verordening_eu_2023_1230"
     Then the execution succeeds
     Then output "lid_4_van_toepassing" is false
 
   Scenario: Een tikfout in de categorie leidt niet tot interne productiecontrole
     Given parameter "categorie_bijlage_i" is "A3"
-    When I evaluate "lid_4_van_toepassing" of "machineverordening"
+    When I evaluate "lid_4_van_toepassing" of "verordening_eu_2023_1230"
     Then the execution succeeds
     Then output "lid_4_van_toepassing" is false
 
@@ -67,19 +67,19 @@ Feature: Welke conformiteitsbeoordelingsprocedure geldt (artikel 25 en bijlage I
     Given the following parameters:
       | categorie_bijlage_i                                  | A3    |
       | vervaardigd_volgens_normen_die_alle_eisen_bestrijken | false |
-    When I evaluate "toegestane_conformiteitsbeoordelingsprocedures" of "machineverordening"
+    When I evaluate "toegestane_conformiteitsbeoordelingsprocedures" of "verordening_eu_2023_1230"
     Then the execution succeeds
     Then output "toegestane_conformiteitsbeoordelingsprocedures" is absent
 
   Scenario: Zonder acceptatie van de markering weigert de engine deel A
     Given the untranslatable mode is "error"
     Given parameter "categorie_bijlage_i" is "A.3"
-    When I evaluate "in_bijlage_i_deel_a" of "machineverordening"
+    When I evaluate "in_bijlage_i_deel_a" of "verordening_eu_2023_1230"
     Then the execution fails with "Untranslatable construct"
 
   Scenario: De markering op deel A werkt door in de keuze van het lid
     Given the untranslatable mode is "propagate"
     Given parameter "categorie_bijlage_i" is "A.3"
-    When I evaluate "lid_2_van_toepassing" of "machineverordening"
+    When I evaluate "lid_2_van_toepassing" of "verordening_eu_2023_1230"
     Then the execution succeeds
     Then output "lid_2_van_toepassing" is tainted as untranslatable

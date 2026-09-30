@@ -1,7 +1,7 @@
 ---
 $schema: >-
   https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.1/schema/v0.7.1/schema.json
-$id: machineverordening
+$id: verordening_eu_2023_1230
 name: Verordening (EU) 2023/1230 betreffende machines
 officiele_titel: >-
   Verordening (EU) 2023/1230 van het Europees Parlement en de Raad van 14 juni 2023 betreffende
