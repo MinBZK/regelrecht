@@ -30,9 +30,11 @@ Verifies that every cross-law source binding is REAL and RESOLVABLE:
                standing"; the pipeline calls it outside-corpus). The engine answers
                LawNotFound until the law is harvested.
   NIET-GEINTERPRETEERD - reported, not failing. The target law is in the corpus
-               but has no machine_readable at all yet, so it produces no output
-               (the pipeline's NotYetInterpreted). A target that does have a model
-               but lacks the output stays DANGLING.
+               but none of its states produces any output yet: it has been
+               harvested and not interpreted (the pipeline's NotYetInterpreted).
+               When any state of the target has outputs, a missing one stays
+               DANGLING, also when the state in force is a new text-only version:
+               then a working chain has broken, and that must not pass.
   STALE      - an entry in niet-geoogst.yaml whose law is in the corpus now, or
                that no binding reads any more. The list says what is missing; an
                entry that is no longer true fails, so the list cannot drift.
@@ -59,7 +61,8 @@ would never use.
 
 Usage:  python3 cross-law-integriteit.py [corpus_root] [--peildatum YYYY-MM-DD]
                                         [--niet-geoogst FILE]
-        (defaults: regulation, today, <corpus_root>/../niet-geoogst.yaml)
+        (defaults: regulation, today, and <corpus>/niet-geoogst.yaml when the
+         corpus root is <corpus>/regulation; for any other root, no list)
 """
 import sys, glob, datetime, os
 
@@ -86,9 +89,13 @@ for i, a in enumerate(list(args)):
         break
 root = args[0] if args else 'regulation'
 if niet_geoogst_pad is None:
-    niet_geoogst_pad = os.path.join(os.path.dirname(os.path.abspath(root)), 'niet-geoogst.yaml')
+    # The list belongs to corpus/regulation. Another root (corpus/demo, a traject
+    # corpus) does not read these laws, and would report every entry as STALE.
+    rootpad = os.path.abspath(root)
+    niet_geoogst_pad = (os.path.join(os.path.dirname(rootpad), 'niet-geoogst.yaml')
+                        if os.path.basename(rootpad) == 'regulation' else '')
 verwacht = {}
-if os.path.exists(niet_geoogst_pad):
+if niet_geoogst_pad and os.path.exists(niet_geoogst_pad):
     verwacht = yaml.safe_load(open(niet_geoogst_pad)) or {}
     if not isinstance(verwacht, dict):
         sys.stderr.write(f'{niet_geoogst_pad}: verwacht een mapping van $id naar gegevens\n')
@@ -137,6 +144,9 @@ def action_outputs(doc):
 
 
 law_outputs = {lid: action_outputs(doc) for lid, doc in laws.items()}
+# Whether any state of a law produces outputs. NIET-GEINTERPRETEERD asks this of
+# the law as a whole, not of the state in force (see the docstring).
+ooit_outputs = {lid: any(action_outputs(d) for _, d in versies) for lid, versies in toestanden.items()}
 
 
 def declared_open_terms(doc):
@@ -224,9 +234,9 @@ for lid, doc in laws.items():
                         niet_geoogst.append(f'{lid} art {num}: {reg}.{out} (wet niet in corpus)')
                     else:
                         dangling.append(f'{lid} art {num}: {reg}.{out}: wet niet in corpus en '
-                                        f'niet genoemd in {os.path.basename(niet_geoogst_pad)}')
-                elif not law_outputs[reg]:
-                    niet_geinterpreteerd.append(f'{lid} art {num}: {reg}.{out} (wet in corpus, nog geen machine_readable)')
+                                        f'niet genoemd in {os.path.basename(niet_geoogst_pad) or "niet-geoogst.yaml"}')
+                elif not ooit_outputs[reg]:
+                    niet_geinterpreteerd.append(f'{lid} art {num}: {reg}.{out} (wet in corpus, levert nog geen outputs)')
                 elif out is not None and out not in law_outputs[reg]:
                     dangling.append(f'{lid} art {num}: {reg}.{out} bestaat niet in doelwet')
                 else:

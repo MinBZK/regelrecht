@@ -85,8 +85,8 @@ articles:
             description: >-
               Onderdeel e, "verwijderbare mechanische overbrengingssystemen", zoals gedefinieerd
               in artikel 3, punt 9. De Nederlandse tekst gebruikt twee woorden voor één begrip:
-              "overbrengingssysteem" hier, in bijlage I, deel A, en in bijlage III, punt 3.4.7,
-              en "overbrengingsinrichting" in de definitie. De Engelse tekst gebruikt op al
+              "overbrengingssysteem" hier, in bijlage I, deel A, in bijlage II, punt 1, en in
+              bijlage III, punt 3.4.7, en "overbrengingsinrichting" in de definitie. De Engelse tekst gebruikt op al
               die plaatsen "removable mechanical transmission device", en bijlage III, punt
               3.4.7, herhaalt onder het woord "systemen" de elementen van punt 9. Alle taalversies
               zijn gelijkelijk authentiek, dus de definitie geldt ook voor onderdeel e.
@@ -505,19 +505,30 @@ articles:
           - name: uitgesloten_onderdeel_f
             type: boolean
             nullable: true
-            description: Onderdeel f, luchtvaartproducten; zie de markering.
+            description: >-
+              Onderdeel f, luchtvaartproducten; zie de markering. Null als een onderdeel zonder andere regeling het product
+              al uitsluit: dan is dit onderdeel niet beoordeeld.
           - name: uitgesloten_onderdeel_g
             type: boolean
             nullable: true
-            description: Onderdeel g, motorvoertuigen en aanhangwagens (Verordening (EU) 2018/858).
+            description: >-
+              Onderdeel g, motorvoertuigen en aanhangwagens (Verordening (EU) 2018/858). Null
+              als een onderdeel zonder andere regeling het product
+              al uitsluit: dan is dit onderdeel niet beoordeeld.
           - name: uitgesloten_onderdeel_h
             type: boolean
             nullable: true
-            description: Onderdeel h, twee- of driewielige voertuigen en vierwielers (Verordening (EU) nr. 168/2013).
+            description: >-
+              Onderdeel h, twee- of driewielige voertuigen en vierwielers (Verordening (EU) nr.
+              168/2013). Null als een onderdeel zonder andere regeling het product
+              al uitsluit: dan is dit onderdeel niet beoordeeld.
           - name: uitgesloten_onderdeel_i
             type: boolean
             nullable: true
-            description: Onderdeel i, landbouw- en bosbouwtrekkers (Verordening (EU) nr. 167/2013).
+            description: >-
+              Onderdeel i, landbouw- en bosbouwtrekkers (Verordening (EU) nr. 167/2013). Null
+              als een onderdeel zonder andere regeling het product
+              al uitsluit: dan is dit onderdeel niet beoordeeld.
           - name: uitgesloten_onderdeel_j
             type: boolean
             description: Onderdeel j, motorvoertuigen uitsluitend voor wedstrijden.
@@ -539,7 +550,10 @@ articles:
           - name: uitgesloten_onderdeel_p
             type: boolean
             nullable: true
-            description: Onderdeel p, elektrische en elektronische producten (Richtlijn 2014/35/EU of 2014/53/EU).
+            description: >-
+              Onderdeel p, elektrische en elektronische producten (Richtlijn 2014/35/EU of
+              2014/53/EU). Null als een onderdeel zonder andere regeling het product
+              al uitsluit: dan is dit onderdeel niet beoordeeld.
           - name: uitgesloten_onderdeel_q
             type: boolean
             description: Onderdeel q, elektrische hoogspanningsproducten.
@@ -740,15 +754,18 @@ articles:
             value:
               operation: IF
               cases:
-                - when: $zonder_andere_regeling_uitgesloten
-                  then: null
                 - when:
                     operation: AND
                     conditions:
                       - $is_luchtvaartproduct_onderdeel_of_apparatuur
                       - $is_machine
                       - $verordening_2018_1139_heeft_betrekking_op_alle_relevante_eisen
-                  then: $valt_binnen_toepassingsgebied_verordening_2018_1139
+                  then:
+                    operation: IF
+                    cases:
+                      - when: $zonder_andere_regeling_uitgesloten
+                        then: null
+                    default: $valt_binnen_toepassingsgebied_verordening_2018_1139
               default: false
             legal_basis:
               law: Verordening (EU) 2023/1230
@@ -767,8 +784,6 @@ articles:
             value:
               operation: IF
               cases:
-                - when: $zonder_andere_regeling_uitgesloten
-                  then: null
                 - when:
                     operation: AND
                     conditions:
@@ -782,7 +797,12 @@ articles:
                           conditions:
                             - $gemonteerd_op_motorvoertuig_of_aanhangwagen
                             - $is_machine
-                  then: $valt_binnen_toepassingsgebied_verordening_2018_858
+                  then:
+                    operation: IF
+                    cases:
+                      - when: $zonder_andere_regeling_uitgesloten
+                        then: null
+                    default: $valt_binnen_toepassingsgebied_verordening_2018_858
               default: false
             legal_basis:
               law: Verordening (EU) 2023/1230
@@ -800,8 +820,6 @@ articles:
             value:
               operation: IF
               cases:
-                - when: $zonder_andere_regeling_uitgesloten
-                  then: null
                 - when:
                     operation: AND
                     conditions:
@@ -815,7 +833,12 @@ articles:
                           conditions:
                             - $gemonteerd_op_twee_of_driewielig_voertuig_of_vierwieler
                             - $is_machine
-                  then: $valt_binnen_toepassingsgebied_verordening_168_2013
+                  then:
+                    operation: IF
+                    cases:
+                      - when: $zonder_andere_regeling_uitgesloten
+                        then: null
+                    default: $valt_binnen_toepassingsgebied_verordening_168_2013
               default: false
             legal_basis:
               law: Verordening (EU) 2023/1230
@@ -830,8 +853,6 @@ articles:
             value:
               operation: IF
               cases:
-                - when: $zonder_andere_regeling_uitgesloten
-                  then: null
                 - when:
                     operation: AND
                     conditions:
@@ -845,7 +866,12 @@ articles:
                           conditions:
                             - $gemonteerd_op_landbouw_of_bosbouwtrekker
                             - $is_machine
-                  then: $valt_binnen_toepassingsgebied_verordening_167_2013
+                  then:
+                    operation: IF
+                    cases:
+                      - when: $zonder_andere_regeling_uitgesloten
+                        then: null
+                    default: $valt_binnen_toepassingsgebied_verordening_167_2013
               default: false
             legal_basis:
               law: Verordening (EU) 2023/1230
@@ -860,8 +886,6 @@ articles:
             value:
               operation: IF
               cases:
-                - when: $zonder_andere_regeling_uitgesloten
-                  then: null
                 - when:
                     operation: OR
                     conditions:
@@ -883,10 +907,15 @@ articles:
                           - $is_voor_laagspanning
                       - $is_elektromotor
                   then:
-                    operation: OR
-                    conditions:
-                      - $valt_binnen_toepassingsgebied_richtlijn_2014_35
-                      - $valt_binnen_toepassingsgebied_richtlijn_2014_53
+                    operation: IF
+                    cases:
+                      - when: $zonder_andere_regeling_uitgesloten
+                        then: null
+                    default:
+                      operation: OR
+                      conditions:
+                        - $valt_binnen_toepassingsgebied_richtlijn_2014_35
+                        - $valt_binnen_toepassingsgebied_richtlijn_2014_53
               default: false
             legal_basis:
               law: Verordening (EU) 2023/1230
@@ -902,42 +931,38 @@ articles:
                 het product onder een van de punten valt.
           - output: uitgesloten_op_grond_van_lid_2
             value:
-              operation: IF
-              cases:
-                - when: $zonder_andere_regeling_uitgesloten
-                  then: true
-              default:
-                operation: OR
-                conditions:
-                  - operation: EQUALS
-                    subject: $uitgesloten_onderdeel_f
-                    value: true
-                  - operation: EQUALS
-                    subject: $uitgesloten_onderdeel_g
-                    value: true
-                  - operation: EQUALS
-                    subject: $uitgesloten_onderdeel_h
-                    value: true
-                  - operation: EQUALS
-                    subject: $uitgesloten_onderdeel_i
-                    value: true
-                  - operation: EQUALS
-                    subject: $uitgesloten_onderdeel_p
-                    value: true
+              operation: OR
+              conditions:
+                - $zonder_andere_regeling_uitgesloten
+                - operation: EQUALS
+                  subject: $uitgesloten_onderdeel_f
+                  value: true
+                - operation: EQUALS
+                  subject: $uitgesloten_onderdeel_g
+                  value: true
+                - operation: EQUALS
+                  subject: $uitgesloten_onderdeel_h
+                  value: true
+                - operation: EQUALS
+                  subject: $uitgesloten_onderdeel_i
+                  value: true
+                - operation: EQUALS
+                  subject: $uitgesloten_onderdeel_p
+                  value: true
             legal_basis:
               law: Verordening (EU) 2023/1230
               article: '2'
               paragraph: '2'
               explanation: >-
                 Aanhef: "Deze verordening is niet van toepassing op:" gevolgd door de onderdelen
-                a tot en met q. Eén onderdeel volstaat, en daarom telt de volgorde waarin ze
-                worden bekeken niet voor de uitkomst. Het model bekijkt eerst de onderdelen die
-                alleen feiten van het product lezen, en pas als geen daarvan geldt de onderdelen
-                f, g, h, i en p, die het toepassingsgebied van een andere EU-regeling lezen. Zo
-                vraagt een raceauto (onderdeel j) niet om Verordening (EU) 2018/858, die nog
-                niet in het corpus staat. De onderdelen f, g, h, i en p geven in dat geval
-                zelf geen oordeel (null): dat een ander onderdeel al volstaat, zegt niets over
-                de vraag of het product ook onder de andere regeling valt.
+                a tot en met q. Eén onderdeel volstaat. De onderdelen f, g, h, i en p lezen
+                het toepassingsgebied van een andere EU-regeling, en doen dat alleen als hun
+                eigen feiten vaststaan en geen onderdeel zonder andere regeling het product al
+                uitsluit. Zo vraagt een raceauto (onderdeel j) niet om Verordening (EU)
+                2018/858, die nog niet in het corpus staat. Zo'n onderdeel geeft dan zelf geen
+                oordeel (null): dat een ander onderdeel al volstaat, zegt niets over de vraag
+                of het product ook onder de andere regeling valt. Een onderdeel telt daarom
+                alleen mee als het uitdrukkelijk true is.
           - output: verordening_van_toepassing
             value:
               operation: AND
@@ -1119,12 +1144,16 @@ articles:
           legal_text_excerpt: moeten de inrichting en de afscherming als één product worden beschouwd
           accepted: false
       # Dit artikel telt 36 punten. Uitvoerbaar zijn de punten 1 tot en met 10: de begrippen
-      # die artikel 2, lid 1, leest. De punten 11 tot en met 36 (in de handel brengen, fabrikant,
-      # importeur, conformiteitsbeoordeling, aangemelde instantie en verder) leest geen van de
-      # uitvoerbare artikelen van dit bestand; ze krijgen een model zodra een artikel dat ze
-      # gebruikt, er een krijgt. De punten 24, 26, 27 en 31 zijn definities door verwijzing
-      # naar Verordening (EG) nr. 765/2008 en Verordening (EU) 2019/1020, en worden dan een
-      # binding naar die regelingen.
+      # die artikel 2, lid 1, leest. De punten 11 tot en met 36 hebben nog geen model. Een
+      # paar ervan gebruiken de uitvoerbare artikelen wel, maar dan als feit dat de aanroeper
+      # vaststelt: "in de handel brengen" (punt 12) en "inbedrijfstelling" (punt 13) in de
+      # punten 2, 3 en 5 hierboven, "fabrikant" (punt 18) in artikel 2, lid 2, onder a, en
+      # "essentiële gezondheids- en veiligheidseisen" (punt 14) en "geharmoniseerde norm"
+      # (punt 24) in artikel 25, lid 3. Zo'n feit wordt een binding naar dit artikel zodra
+      # dat punt een model krijgt. De punten 24, 26, 27 en 31 zijn definities door verwijzing,
+      # naar Verordening (EU) nr. 1025/2012 (punt 24), Verordening (EG) nr. 765/2008 (punten
+      # 26 en 27) en Verordening (EU) 2019/1020 (punt 31); hun model wordt een binding naar
+      # die regelingen.
       execution:
         parameters:
           - name: samenstel_met_ten_minste_een_beweegbaar_onderdeel
@@ -1284,7 +1313,11 @@ articles:
           - name: kan_niet_zelfstandig_bepaalde_toepassing_realiseren
             type: boolean
             required: false
-            description: Punt 10.
+            description: >-
+              Punt 10. Het samenstel kan niet zelfstandig een bepaalde toepassing realiseren:
+              het is nog bedoeld om met andere machines of uitrusting een machine te vormen.
+              Dat een samenstel pas na montage op een vervoermiddel of in een gebouw kan
+              functioneren (punt 1, onder c), valt hier niet onder.
           - name: slechts_bedoeld_om_te_worden_ingebouwd_om_machine_te_vormen
             type: boolean
             required: false
@@ -1357,7 +1390,9 @@ articles:
                 toepassing". Punt 10 zegt dat een samenstel "nog geen machine vormt, aangezien
                 het niet zelfstandig een bepaalde toepassing kan realiseren". Een samenstel dat
                 dat niet kan, is daarom geen machine onder a, ook niet als het voor een toepassing
-                is samengevoegd. Via punt 1, onder c, dat naar a verwijst, geldt dat daar ook.
+                is samengevoegd. Punt 1, onder c, verwijst naar a en b; voor zijn a-tak geldt dit
+                daardoor ook. De onderdelen b, d, e en f noemen hun eigen feiten, en daar leest
+                het model punt 10 niet in.
           - output: machine_onder_b
             value: $samenstel_als_a_waaraan_slechts_montage_of_aansluitcomponenten_ontbreken
             legal_basis:
@@ -2544,7 +2579,7 @@ articles:
             type: boolean
             description: >-
               Artikel 2, lid 2. Deze binding en de vorige noemen geen parameters: de feiten over
-              het product (ruim zestig, uit de artikelen 2 en 3) gaan ongewijzigd mee, omdat een
+              het product (uit de artikelen 2 en 3) gaan ongewijzigd mee, omdat een
               verwijzing binnen deze verordening alle parameters van de aanroep doorgeeft. Een
               scenario rekent de uitsluiting van een wapen hier vanaf die feiten uit, zodat een
               engine die dat anders gaat doen, niet stil een verkeerde uitkomst geeft.

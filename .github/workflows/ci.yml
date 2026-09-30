@@ -357,10 +357,11 @@ jobs:
 
       # Fail-closed gate over the corpus: MISPLACED / DANGLING / PLAIN-PARAM
       # source bindings and IMPL-DANGLING / IMPL-NO-DATE implements declarations
-      # are all modelling errors. The script exits non-zero on any finding.
-      # A binding onto a law that corpus/niet-geoogst.yaml lists as not harvested
-      # yet is NIET-GEOOGST: reported as a warning, not failing (a state of the
-      # corpus, not a modelling error). Any other unknown $id stays red.
+      # are modelling errors, and so is a STALE entry in corpus/niet-geoogst.yaml;
+      # the script exits non-zero on any of them. A binding onto a law that list
+      # names is NIET-GEOOGST, and one onto a law without any outputs yet is
+      # NIET-GEINTERPRETEERD: both are reported as warnings and do not fail. Any
+      # other unknown $id stays red. The script's docstring has the full list.
       - name: Check cross-law binding integrity
         run: |
           python3 script/cross-law-integriteit.py corpus/regulation

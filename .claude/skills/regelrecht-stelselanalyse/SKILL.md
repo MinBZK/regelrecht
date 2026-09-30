@@ -116,12 +116,21 @@ toetsbaar tegen de wettekst i.p.v. alleen de endpoint.
       voorkomende verborgen vorm.
    3. **DANGLING** — voor elke `source: { regulation, output }` onder `input:`: verifieer
       `output ∈ outputs[regulation]`. Zo niet → **DANGLING** (**modellering-fout**).
+      Twee uitzonderingen, allebei een **stand van het corpus** en geen fout: staat de doelwet
+      niet in het corpus maar wél in `niet-geoogst.yaml` naast de corpus-root, dan is het
+      **NIET-GEOOGST**; staat hij er wel maar levert geen enkele toestand van die wet outputs,
+      dan is het **NIET-GEINTERPRETEERD**. Een onbekende `$id` die niet in die lijst staat,
+      blijft DANGLING (een tikfout), en een regel in de lijst die niet meer klopt is **STALE**
+      en ook een fout.
    4. **PLAIN-PARAM** — een `parameters:`-item waarvan de `description` "conceptueel" of
       "tijdelijk als directe parameter" bevat maar dat géén binding is. (Let op: woorden als
       "forward naar" op een leaf-parameter die een binding-mapping vóédt zijn legitiem — niet
       flaggen.)
-   5. Rapporteer `clean / misplaced / dangling / plain-param`. Een corpus is pas
-      **source-clean** als `misplaced = 0`, `dangling = 0` én `plain-param = 0`.
+   5. Rapporteer `clean / misplaced / dangling / plain-param`, en daarnaast
+      `niet-geoogst / niet-geinterpreteerd / stale`. Een corpus is pas **source-clean** als
+      `misplaced = 0`, `dangling = 0`, `plain-param = 0` én `stale = 0`. NIET-GEOOGST en
+      NIET-GEINTERPRETEERD maken het corpus niet vuil, maar zulke bindingen resolven nog niet:
+      tel ze mee als werk dat op het oogsten of interpreteren van de doelwet wacht.
 
    **MISPLACED, DANGLING en PLAIN-PARAM zijn in de vier-weg-classificatie ALTIJD
    modellering-fout — nooit "engine-limitatie".** Het "de engine kan geen meerdere bindingen
@@ -130,7 +139,8 @@ toetsbaar tegen de wettekst i.p.v. alleen de endpoint.
 
    Draai de scan reproduceerbaar met
    `python3 script/cross-law-integriteit.py <corpus-root>`
-   (exit-code 0 = source-clean, 1 = bevindingen).
+   (exit-code 0 = source-clean, 1 = bevindingen; de gemelde NIET-GEOOGST- en
+   NIET-GEINTERPRETEERD-regels staan ook bij exit 0 in de uitvoer).
 
 4. **Classificeer** elke bevinding 4-weg (zie boven). Voer de meta-check uit.
 
@@ -167,7 +177,9 @@ toetsbaar tegen de wettekst i.p.v. alleen de endpoint.
 - `script/cross-law-integriteit.py` (repo-script, buiten de skill) — herbruikbaar script voor de source-refs-integriteitsscan:
   bouwt `regulation → outputs`, detecteert MISPLACED/DANGLING/PLAIN-PARAM source-bindingen
   én IMPL-DANGLING (`implements` naar een niet-gedeclareerde open_term) / IMPL-NO-DATE
-  (implementing-regeling zonder `valid_from`), en print de telling (exit 1 bij bevindingen).
+  (implementing-regeling zonder `valid_from`) / STALE (verouderde regel in `niet-geoogst.yaml`),
+  meldt NIET-GEOOGST en NIET-GEINTERPRETEERD zonder te falen, en print de telling (exit 1 bij
+  bevindingen).
   Corpus-agnostisch; draait ook als CI-gate (`cross-law-integrity` job) en als preflight
   in de `Valideer`-stap.
 

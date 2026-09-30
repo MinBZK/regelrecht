@@ -8,13 +8,14 @@ Feature: Welke conformiteitsbeoordelingsprocedure geldt (artikel 25 en bijlage I
   voor de systemen met zelfontwikkelend gedrag, en het model deelt een product
   niet op. Zolang een mens die markering niet heeft geaccepteerd, weigert de
   engine het artikel in de standaardmodus. De scenario's over de indeling
-  draaien daarom in de modus "warn", die de uitdrukbare logica uitvoert; de
-  laatste twee laten zien wat de markering in de andere modi doet.
+  draaien daarom in de modus "warn", die de uitdrukbare logica uitvoert; twee
+  scenario's laten zien wat de markering in de modi "error" en "propagate"
+  doet.
 
   Artikel 25, lid 1, geeft alleen een procedure voor een machine of verwant
   product waarop de verordening volgens artikel 2 van toepassing is. Die
   feiten staan in toepassingsgebied.feature; hier gaat het om de indeling in
-  bijlage I, en het laatste scenario laat zien dat lid 1 op artikel 2 wacht.
+  bijlage I. Het laatste scenario laat zien dat lid 1 op artikel 2 wacht.
 
   Background:
     Given the calculation date is "2027-01-14"

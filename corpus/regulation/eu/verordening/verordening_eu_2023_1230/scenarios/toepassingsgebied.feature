@@ -18,7 +18,7 @@ Feature: Op welke producten de verordening van toepassing is (artikel 2 en artik
   Een product dat al onder een onderdeel zonder andere regeling valt, zoals
   een raceauto onder j, vraagt niet om die regeling.
 
-  Lid 2 draagt twee markeringen en artikel 3 één. De scenario's draaien daarom
+  Lid 2 en artikel 3 dragen elk twee markeringen. De scenario's draaien daarom
   in de modus "warn"; het laatste laat zien wat de markeringen in de
   standaardmodus doen.
 
@@ -174,9 +174,9 @@ Feature: Op welke producten de verordening van toepassing is (artikel 2 en artik
     Then the execution succeeds
     Then output "machine_onder_a" is false
 
-  Scenario: Een aftakas tussen trekker en machine is een verwant product (onderdeel e, artikel 3, punt 9)
+  Scenario: Een cardanas tussen trekker en machine is een verwant product (onderdeel e, artikel 3, punt 9)
     Given the following parameters:
-      | samenstel_met_ten_minste_een_beweegbaar_onderdeel                                         | false |
+      | voorzien_van_of_bestemd_voor_aandrijfsysteem                                              | false |
       | verwijderbare_component_voor_krachtoverbrenging                                           | true  |
       | tussen_machine_met_eigen_aandrijving_of_trekker_en_andere_machine_of_verwant_product     | true  |
       | verbindt_bij_eerste_vaste_aslager                                                         | true  |
@@ -261,6 +261,31 @@ Feature: Op welke producten de verordening van toepassing is (artikel 2 en artik
     When I evaluate "toegestane_conformiteitsbeoordelingsprocedures" of "verordening_eu_2023_1230"
     Then the execution succeeds
     Then output "toegestane_conformiteitsbeoordelingsprocedures" is absent
+
+  Scenario: Een cardanas buiten bijlage I krijgt interne productiecontrole
+    Given the following parameters:
+      | voorzien_van_of_bestemd_voor_aandrijfsysteem                                              | false |
+      | verwijderbare_component_voor_krachtoverbrenging                                           | true  |
+      | tussen_machine_met_eigen_aandrijving_of_trekker_en_andere_machine_of_verwant_product     | true  |
+      | verbindt_bij_eerste_vaste_aslager                                                         | true  |
+      | categorie_bijlage_i                                                                       | geen  |
+      | vervaardigd_volgens_normen_die_alle_eisen_bestrijken                                      | false |
+    When I evaluate "toegestane_conformiteitsbeoordelingsprocedures" of "verordening_eu_2023_1230"
+    Then the execution succeeds
+    Then output "toegestane_conformiteitsbeoordelingsprocedures" equals '["A"]'
+
+  Scenario: Een samenstel voor een toepassing dat nog in een machine moet worden ingebouwd, is een niet voltooide machine
+    Given the following parameters:
+      | kan_niet_zelfstandig_bepaalde_toepassing_realiseren                                | true  |
+      | slechts_bedoeld_om_te_worden_ingebouwd_om_machine_te_vormen                        | true  |
+      | samenstel_als_a_waaraan_slechts_montage_of_aansluitcomponenten_ontbreken           | false |
+      | gereed_voor_montage_en_functioneert_alleen_na_montage_op_vervoermiddel_of_in_gebouw | false |
+      | samenstel_van_machines_dat_als_een_geheel_functioneert                             | false |
+      | in_samenhang_bestemd_voor_heffen_van_lasten                                        | false |
+      | samenstel_als_a_tot_en_met_e_waarop_enkel_software_ontbreekt                       | false |
+    When I evaluate "is_niet_voltooide_machine" of "verordening_eu_2023_1230"
+    Then the execution succeeds
+    Then output "is_niet_voltooide_machine" is true
 
   Scenario: Zonder acceptatie van de markeringen weigert de engine lid 2
     Given the untranslatable mode is "error"

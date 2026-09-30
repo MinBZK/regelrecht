@@ -31,7 +31,7 @@ expert-workshop.
 | `protect-schema` | onveranderlijkheid releasede schema's | git diff vs `origin/main` | CI-gate (PR) |
 | `provenance-checks` (RFC-013) | schema-registratie, `$schema`-refs, symlink | repo-structuur | CI-gate (PR) |
 | Engine-resolver (runtime) | bestaan wet/artikel/output, cycles, types | de geladen corpus zelf | alleen bij uitvoering (BDD) |
-| **cross-law-integriteit** | MISPLACED/DANGLING/PLAIN-PARAM/IMPL-DANGLING/IMPL-NO-DATE | `regulation → outputs` + `open_terms`-index uit de corpus | **CI-gate** (`cross-law-integrity` job) |
+| **cross-law-integriteit** | MISPLACED/DANGLING/PLAIN-PARAM/IMPL-DANGLING/IMPL-NO-DATE/STALE (fout); NIET-GEOOGST/NIET-GEINTERPRETEERD (gemeld) | `regulation → outputs` + `open_terms`-index uit de corpus | **CI-gate** (`cross-law-integrity` job) |
 | BDD-features | end-to-end reken-uitkomsten incl. IoC | verwachte waarden in `corpus/regulation/**/scenarios/*.feature` | CI-gate — *let op meta-check* |
 | RFC-013 execution receipt | reproduceerbaarheid | engine+schema+regulation-hash+scope | runtime |
 | **drift-check** (Step 0) | `text:` ≡ geldende wettekst (structureel + tekstueel) | **wetten.overheid.nl/`<bwb>`/`<valid_from>`** (+ Staatsblad) | methodologisch (WebFetch + kalibratie) |
@@ -52,7 +52,11 @@ De statische gate is `script/cross-law-integriteit.py`. Sinds de
 uitbreiding dekt hij ook de IoC-kant: `implements` moet naar een echt gedeclareerd
 `open_term` wijzen (IMPL-DANGLING) en implementing-regelingen moeten `valid_from` dragen
 (IMPL-NO-DATE; anders matcht de RFC-003-temporele filter elke datum). Draait nu als
-CI-gate over `corpus/regulation`.
+CI-gate over `corpus/regulation`. Een binding op een wet die nog niet in het corpus staat,
+is geen fout zolang `niet-geoogst.yaml` naast de corpus-root die wet noemt (NIET-GEOOGST);
+een doelwet die er wel is maar in geen enkele toestand outputs levert, heet
+NIET-GEINTERPRETEERD. Beide worden gemeld en laten de gate groen. Een verouderde regel in
+de lijst (wet inmiddels aanwezig, of door niemand meer gelezen) is STALE en rood.
 
 ## De meta-check (scharnierpunt)
 

@@ -204,6 +204,33 @@ YAML
 lezer "$c8/lezer" kaal uitkomst
 check "doelwet zonder machine_readable → niet-geinterpreteerd, niet rood" 0 "niet-geinterpreteerd=1 " "$c8" --peildatum 2026-06-01 --niet-geoogst "$leeg"
 
+# 10. Een wet die al een model heeft, krijgt een nieuwe toestand met alleen tekst.
+#     Op een peildatum in die nieuwe toestand levert de wet niets, maar de keten
+#     werkte: dat is breuk, geen "nog niet geinterpreteerd", en dus rood.
+c9="$tmp/nieuwe-kale-toestand"
+doelwet "$c9/doelwet" 2020-01-01 nee
+cat >"$c9/doelwet/2026-01-01.yaml" <<'YAML'
+$id: doelwet
+valid_from: '2026-01-01'
+articles:
+  - number: '1'
+    text: nieuwe tekst, nog geen model
+YAML
+lezer "$c9/lezer" doelwet uitkomst
+check "nieuwe toestand zonder model van een wet met model → dangling" 1 "dangling=1 " "$c9" --peildatum 2026-06-01 --niet-geoogst "$leeg"
+
+# 11. Zonder --niet-geoogst leest de poort alleen naast een root die regulation
+#     heet een lijst. Een andere root (corpus/demo) leest die lijst niet, en meldt
+#     dus ook geen STALE voor wetten die alleen corpus/regulation leest.
+mkdir -p "$tmp/andere/wet"
+lezer "$tmp/andere/wet" doelwet_elders uitkomst
+verwacht "$tmp/niet-geoogst.yaml" iets_dat_hier_niemand_leest
+check "andere root dan regulation → geen lijst, geen STALE" 1 "stale=0 " "$tmp/andere" --peildatum 2026-06-01
+mkdir -p "$tmp/corp/regulation"
+cp -r "$c4/lezer" "$tmp/corp/regulation/"
+verwacht "$tmp/corp/niet-geoogst.yaml" nog_niet_geoogst
+check "root regulation → lijst ernaast wordt gelezen" 0 "niet-geoogst=1 " "$tmp/corp/regulation" --peildatum 2026-06-01
+
 c5="$tmp/output-mist"
 doelwet "$c5/doelwet" 2020-01-01 nee
 lezer "$c5/lezer" doelwet bestaat_niet
