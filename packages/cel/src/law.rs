@@ -944,11 +944,15 @@ fn establish_event(
     let bwa = parts[basis].law;
     // A submission (RFC-046): the engine says which articles hook onto it,
     // by the rule it fires them when the establishing article runs, and which
-    // decisions are taken on it.
+    // decisions are taken on it. An article that produces a submission may
+    // establish other facts too (Wpp 102 also the verdict on a late
+    // application); the submission is the event it establishes without a
+    // type of its own.
     let submission = bwa
         .article
         .get_produces()
         .and_then(|p| p.submission.as_ref())
+        .filter(|_| bv.type_.is_none())
         .map(|s| s.kind.clone());
     let (law_id, number) = (&bwa.regulation.id, &bwa.article.number);
     let (decisions, stage) = match &submission {
