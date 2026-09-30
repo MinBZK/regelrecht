@@ -9,7 +9,7 @@
 # artikel 8 over de verrekening van betaalde voorschotten (naar Awb 4:95 lid 4).
 # Geen geldend recht.
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.8.0/schema/v0.8.0/schema.json
 $id: testregeling_awb
 name: Testregeling verzuim
 regulatory_layer: WET
@@ -327,15 +327,14 @@ articles:
       1. De aanvraag om een beschikking wordt ondertekend en bevat ten minste de naam en het adres van
       de aanvrager, de dagtekening en een aanduiding van de beschikking die wordt gevraagd.
       2. Een aanvraag geldt als ingediend op de dag van ontvangst.
-    # Fictief, naar Awb 4:1, 4:2 lid 1 en 4:13 (notitie "het gram uit de
-    # wet"): dit artikel past zichzelf toe op elke aanvraag om een
-    # beschikking, als haak op de stage AANVRAAG, zonder dat de bijzondere
-    # regeling het noemt. Het geeft de aanvraag haar soort, de vaste velden en
-    # het moment dat telt.
+    # Fictief, naar Awb 4:2 lid 1 en 4:13 (RFC-046): dit artikel past
+    # zichzelf toe op elke aanvraag waarop een beschikking wordt genomen, als
+    # haak op de aanvraag, zonder dat de bijzondere regeling het noemt. Het
+    # geeft de aanvraag de vaste velden en het moment dat telt.
     machine_readable:
       hooks:
         - hook_point: pre_actions
-          applies_to: {legal_character: BESCHIKKING, stage: AANVRAAG}
+          applies_to: {submission: AANVRAAG, decided_by: BESCHIKKING}
       execution:
         produces:
           legal_character: TOETS
@@ -343,9 +342,7 @@ articles:
           extensions:
             chronolex:
               establishes:
-                - extends: {stage: AANVRAAG}
-                  type: submission
-                  subtype: aanvraag
+                - extends: {submission: AANVRAAG}
                   fields: parameters
                   effective_at: {legal_basis: [testregeling_awb#9 lid 2]}
         parameters:

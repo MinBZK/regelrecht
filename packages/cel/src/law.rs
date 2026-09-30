@@ -1,6 +1,6 @@
 //! The law as the source of the gram shape and the reduction (proposal
 //! "lexostatus in de wet", 28-09-2026; note "het gram uit de wet",
-//! 29-09-2026).
+//! 29-09-2026; RFC-046).
 //!
 //! An article can say two things in `produces.extensions.chronolex`
 //! (RFC-022 §3.2: one namespace per integration):
@@ -8,27 +8,28 @@
 //! - `establishes`: the facts this article brings into being, as an event of a
 //!   chronicle: the type, the subtype, the stage, which gram it refers to
 //!   (`refers_to`, with a name from the law text: a decision `on_application`,
-//!   a payment to the `decision`), which decision an application asks for
-//!   (`requests`), the legal basis, why the `effective_at` counts in law and
-//!   which fields the gram carries. Or it extends an event that another
-//!   article establishes (`extends: <event>`), adding fields and legal basis.
-//!   Or it applies to every event at a stage of a procedure (`extends:
-//!   {stage: <STAGE>}`), the way a hook of RFC-007 does: the article declares
-//!   a hook on that stage, with the legal character of the decision the event
-//!   is about. That is how the Awb applies itself: Awb 4:1, 4:2 lid 1 and 4:13
-//!   hook onto (BESCHIKKING, AANVRAAG) and give every application for a
-//!   decision its type, its core fields and its moment of receipt, without
-//!   the specific law naming the Awb.
+//!   a payment to the `decision`), the legal basis, why the `effective_at`
+//!   counts in law and which fields the gram carries. Or it extends an event
+//!   that another article establishes (`extends: <event>`), adding fields and
+//!   legal basis. Or it contributes to the submission its hook applies to
+//!   (`extends: {submission: AANVRAAG}`, RFC-046).
 //! - `reads`: how the article reads its own parameters from the chronicle, in
 //!   the vocabulary of the reduction ([`crate::reduction`]). That is a
 //!   lexostatus "from the requested perspective" (position paper): the
 //!   perspective is the article that asks. It is named after the article
 //!   (`<regulation>#<article>`).
 //!
+//! Which articles make up an application is decided by executing the law,
+//! not here. Wpp 102 says that it establishes an application
+//! (`produces.submission`); Wpp 107 says that it decides on it
+//! (`produces.decides_on`); Awb 4:2 hooks onto every application on which a
+//! beschikking is taken. The engine fires those hooks when Wpp 102 runs, and
+//! [`establish`] asks the engine which hooks those are
+//! (`find_submission_hooks`), so the gram and the execution cannot disagree.
+//!
 //! A stream names per event the article that establishes it (`establishes:`)
 //! and holds only the registration: which cell records the fact, and through
-//! which intake. [`establish`] finds the articles that extend the event or
-//! hook onto its stage, and derives the rest: the fields with their type and
+//! which intake. [`establish`] derives the rest: the fields with their type and
 //! origin, and how each binds. A field is input by default (`$external`); only
 //! an origin says otherwise (the decision requested is fixed, what the channel
 //! or a register supplies binds to `$supplied`). [`lexostatuses`] turns every
@@ -82,13 +83,15 @@ impl Reads {
     }
 }
 
-/// What an extension extends: an event by name, or every event at a stage of
-/// a procedure (with a hook of the article on that stage).
+/// What an extension extends: an event by name, or the submission (such as an
+/// application) that a hook of the article applies to (RFC-046). Which
+/// submission that is, the engine says: the article takes part when its hook
+/// fires on the article that establishes the submission.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(untagged)]
 pub enum Extends {
     Event(String),
-    Stage { stage: String },
+    Submission { submission: String },
 }
 
 /// A fact that an article establishes, or the extension of a fact that
@@ -109,12 +112,6 @@ pub struct Establishment {
     pub subtype: Option<String>,
     #[serde(default)]
     pub stage: Option<String>,
-    /// The decisions an application asks for (Wpp 102 lid 1 "kan subsidie
-    /// aanvragen": the decision of art. 107). Their legal character chooses
-    /// the procedure, the first stage of that procedure is the stage of the
-    /// event (AANVRAAG), and the hooks on that stage apply.
-    #[serde(default)]
-    pub requests: Vec<String>,
     /// Which gram a gram of this event refers to, per name from the law text
     /// (Wpp 107 "besluit op de aanvraag": `on_application`; Awb 3:41
     /// "bekendmaking van besluiten": `decision`), and what that gram must be.
@@ -197,9 +194,9 @@ impl Establishment {
         }
     }
 
-    fn extends_stage(&self) -> Option<&str> {
+    fn extends_submission(&self) -> Option<&str> {
         match &self.extends {
-            Some(Extends::Stage { stage }) => Some(stage),
+            Some(Extends::Submission { submission }) => Some(submission),
             _ => None,
         }
     }
@@ -493,6 +490,18 @@ fn hooks_onto(article: &Article, stage: &str, legal_character: Option<&str>) -> 
         })
 }
 
+/// Whether the article declares a hook on a submission of this kind (RFC-046).
+fn hooks_onto_submission(article: &Article, kind: &str) -> bool {
+    article
+        .machine_readable
+        .as_ref()
+        .and_then(|m| m.hooks.as_ref())
+        .is_some_and(|h| {
+            h.iter()
+                .any(|h| h.applies_to.submission.as_deref() == Some(kind))
+        })
+}
+
 /// What a stage requires: `requires` of that stage in a procedure (RFC-008)
 /// and the outputs of the articles with a hook on that stage (RFC-007), for
 /// the legal character if the event knows it.
@@ -541,56 +550,43 @@ fn stage_fields(
     out
 }
 
-/// The article behind a reference, in the version of `date`.
-fn article_of<'s>(
-    service: &'s LawExecutionService,
-    reference: &str,
-    date: Option<NaiveDate>,
-) -> Result<&'s Article, String> {
-    let b = crate::regulations::parse(reference)?;
-    version(service, b.regulation, date)
-        .and_then(|l| l.find_article_by_number(b.article))
-        .ok_or_else(|| format!("'{reference}' is not a loaded article"))
-}
-
-/// What an application asks for decides its stage and the hooks that apply:
-/// the legal character of the decisions requested, and the first stage of
-/// the procedure for it (RFC-008: AANVRAAG). `None` stage: that procedure has
-/// no stages, or none is loaded (a regulation of general scope, for which
-/// Awb 4:2 does not apply). More than one legal character is an error until
-/// there is a real case for it.
-fn requested(
+/// What is taken on a submission decides its stage and the hooks that apply
+/// (RFC-046): the decisions that name the establishing article in
+/// `produces.decides_on`, their legal character, and the first stage of the
+/// procedure for it (RFC-008: AANVRAAG). `None` stage: no decision is taken
+/// on it, or its procedure has no stages (a regulation of general scope, for
+/// which Awb 4:2 does not apply). More than one legal character is an error
+/// until there is a real case for it.
+fn decided(
     service: &LawExecutionService,
-    requests: &[String],
-    date: Option<NaiveDate>,
-) -> Result<(Option<String>, Option<String>), String> {
-    let mut characters: BTreeSet<String> = BTreeSet::new();
-    for r in requests {
-        let a = article_of(service, r, date).map_err(|f| format!("requests: {f}"))?;
-        let lc = a
-            .get_produces()
-            .and_then(|p| p.legal_character.clone())
-            .ok_or_else(|| {
-                format!("requests: '{r}' produces no legal character, so it is no decision")
-            })?;
-        characters.insert(lc);
-    }
+    law_id: &str,
+    article: &str,
+) -> Result<(Vec<String>, Option<String>), String> {
+    let decisions = service.resolver().decisions_on(law_id, article);
+    let characters: BTreeSet<&str> = decisions
+        .iter()
+        .map(|d| d.legal_character.as_str())
+        .collect();
+    let references = decisions
+        .iter()
+        .map(|d| format!("{}#{}", d.law_id, d.article_number))
+        .collect();
     let lc = match characters.into_iter().collect::<Vec<_>>()[..] {
-        [] => return Ok((None, None)),
-        [ref one] => one.clone(),
+        [] => return Ok((references, None)),
+        [one] => one,
         ref more => {
             return Err(format!(
-                "requests: decisions of more than one legal character ({}): the hooks of each would all apply",
+                "decisions of more than one legal character are taken on it ({}): the general law would apply twice",
                 more.join(", ")
             ))
         }
     };
     let stage = service
         .resolver()
-        .find_procedure(&lc, None)
+        .find_procedure(lc, None)
         .and_then(|p| p.stages.first())
         .map(|s| s.name.clone());
-    Ok((Some(lc), stage))
+    Ok((references, stage))
 }
 
 /// Fill in the events with `establishes` from the law, in the version that
@@ -630,7 +626,7 @@ pub fn establish(
             if let Some(events) = copy.get_mut("events").and_then(Value::as_array_mut) {
                 for e in events {
                     if let Some(o) = e.as_object_mut() {
-                        o.remove("requests");
+                        o.remove("decided_by");
                         o.remove("field_sources");
                         o.remove("prefill");
                     }
@@ -859,18 +855,18 @@ fn set_yaml(map: &mut serde_yaml_ng::Mapping, path: &str, value: serde_yaml_ng::
 /// binds to `$supplied`, and everything else is input (`$external`).
 fn binding_of(
     f: &FieldDef,
-    requests: &[String],
+    decided_by: &[String],
     prefilled: bool,
 ) -> Result<serde_yaml_ng::Value, String> {
     use serde_yaml_ng::Value as Y;
     if f.is_requested_decision() {
-        if requests.is_empty() {
+        if decided_by.is_empty() {
             return Err(format!(
-                "field '{}' is the decision requested (rol GEVRAAGD_BESLUIT), but the event requests no decision (requests)",
+                "field '{}' is the decision requested (rol GEVRAAGD_BESLUIT), but no decision is taken on the submission (produces.decides_on of a decision article)",
                 f.name
             ));
         }
-        return Ok(Y::String(requests.join(", ")));
+        return Ok(Y::String(decided_by.join(", ")));
     }
     if let Some(columns) = &f.columns {
         let mut m = serde_yaml_ng::Mapping::new();
@@ -946,42 +942,67 @@ fn establish_event(
     };
     let bv = parts[basis].establishment;
     let bwa = parts[basis].law;
-    if !bv.requests.is_empty() && bv.stage.is_some() {
-        errors.push(format!(
-            "{}: an application takes its stage from the decision it requests; name requests or stage, not both",
-            bwa.reference
-        ));
-    }
-    let (legal_character, stage) = match requested(service, &bv.requests, date) {
-        Ok((lc, s)) => (lc, bv.stage.clone().or(s)),
-        Err(f) => {
-            errors.push(format!("{}: {f}", bwa.reference));
-            (None, bv.stage.clone())
-        }
+    // A submission (RFC-046): the engine says which articles hook onto it,
+    // by the rule it fires them when the establishing article runs, and which
+    // decisions are taken on it.
+    let submission = bwa
+        .article
+        .get_produces()
+        .and_then(|p| p.submission.as_ref())
+        .map(|s| s.kind.clone());
+    let (law_id, number) = (&bwa.regulation.id, &bwa.article.number);
+    let (decisions, stage) = match &submission {
+        None => (Vec::new(), bv.stage.clone()),
+        Some(_) => match decided(service, law_id, number) {
+            Ok((d, s)) => (d, bv.stage.clone().or(s)),
+            Err(f) => {
+                errors.push(format!("{}: {f}", bwa.reference));
+                (Vec::new(), bv.stage.clone())
+            }
+        },
     };
 
-    // The hooks on the stage (the general law that applies itself), then the
-    // extensions by name (the specific law and the policy), each in the order
-    // of the corpus. The legal basis of the gram follows this order: the
-    // establishing article first.
-    if let Some(s) = stage.as_deref() {
-        for wa in law.values() {
+    // The articles that hook onto the submission (the general law that
+    // applies itself), then the extensions by name (the specific law and the
+    // policy), each in the order of the corpus. The legal basis of the gram
+    // follows this order: the establishing article first.
+    if let Some(kind) = &submission {
+        let resolver = service.resolver();
+        let mut hooked: Vec<String> = Vec::new();
+        for point in [
+            regelrecht_law_model::HookPoint::PreActions,
+            regelrecht_law_model::HookPoint::PostActions,
+        ] {
+            for h in resolver.find_submission_hooks(point, kind, law_id, number) {
+                push_new(&mut hooked, &[format!("{}#{}", h.law_id, h.article_number)]);
+            }
+        }
+        hooked.sort();
+        for r in &hooked {
+            // A hook article without a chronolex block takes part in the
+            // execution but adds nothing to the gram.
+            let Some(wa) = law.get(r) else { continue };
             for v in &wa.chronolex.establishes {
-                if v.extends_stage() != Some(s) {
-                    continue;
-                }
-                if !hooks_onto(wa.article, s, None) {
-                    errors.push(format!(
-                        "{}: extends {{stage: {s}}}, but the article declares no hook on stage {s}",
-                        wa.reference
-                    ));
-                } else if hooks_onto(wa.article, s, legal_character.as_deref()) {
+                if v.extends_submission() == Some(kind.as_str()) {
                     parts.push(Part {
                         law: wa,
                         establishment: v,
                         via: Via::Hook,
                     });
                 }
+            }
+        }
+    }
+    for wa in law.values() {
+        for v in &wa.chronolex.establishes {
+            let Some(k) = v.extends_submission() else {
+                continue;
+            };
+            if !hooks_onto_submission(wa.article, k) {
+                errors.push(format!(
+                    "{}: extends {{submission: {k}}}, but the article declares no hook on a submission {k}",
+                    wa.reference
+                ));
             }
         }
     }
@@ -1006,10 +1027,9 @@ fn establish_event(
                 wa.reference
             ));
         }
-        if !p.is_basis() && (v.stage.is_some() || !v.refers_to.is_empty() || !v.requests.is_empty())
-        {
+        if !p.is_basis() && (v.stage.is_some() || !v.refers_to.is_empty()) {
             errors.push(format!(
-                "{}: an extension sets no stage, reference or decision requested; the article that establishes '{name}' does that",
+                "{}: an extension sets no stage or reference; the article that establishes '{name}' does that",
                 wa.reference
             ));
         }
@@ -1049,6 +1069,14 @@ fn establish_event(
             }
         }
     }
+    // An article that establishes a submission gives its type (RFC-046): an
+    // application is a submission of subtype aanvraag.
+    if let (None, Some(kind)) = (&type_, &submission) {
+        type_ = Some(("submission".to_string(), &bwa.reference));
+        if subtype.is_none() {
+            subtype = Some((kind.to_lowercase(), &bwa.reference));
+        }
+    }
     let Some((type_, _)) = type_ else {
         errors.push(format!(
             "{}: establishes '{name}' without a type, and no hook on its stage gives one",
@@ -1065,13 +1093,7 @@ fn establish_event(
     let mut moments: Vec<(&EffectiveAtLaw, &str)> = Vec::new();
     for p in &parts {
         push_new(&mut legal_basis, &p.legal_basis());
-        match part_fields(
-            service,
-            p,
-            stage.as_deref(),
-            legal_character.as_deref(),
-            date,
-        ) {
+        match part_fields(service, p, stage.as_deref(), None, date) {
             Ok(fs) => {
                 for f in fs {
                     push_new(&mut legal_basis, &f.legal_basis);
@@ -1214,7 +1236,7 @@ fn establish_event(
         // registration.
         let mut fields = serde_yaml_ng::Mapping::new();
         for d in &defs {
-            match binding_of(d, &bv.requests, prefill.contains_key(&d.name)) {
+            match binding_of(d, &decisions, prefill.contains_key(&d.name)) {
                 Ok(b) => set_yaml(&mut fields, &d.name, b),
                 Err(f) => errors.push(f),
             }
@@ -1287,7 +1309,7 @@ fn establish_event(
     event.subtype = subtype.map(|(s, _)| s);
     event.stage = stage;
     event.refers_to = bv.refers_to.clone();
-    event.requests = bv.requests.clone();
+    event.decided_by = decisions.clone();
     event.establishes = establishes;
     event.field_types = defs
         .iter()
@@ -1334,8 +1356,8 @@ fn establish_event(
             e.insert("refers_to".into(), v);
         }
         e.insert("legal_basis".into(), serde_json::json!(event.legal_basis));
-        if !event.requests.is_empty() {
-            e.insert("requests".into(), serde_json::json!(event.requests));
+        if !event.decided_by.is_empty() {
+            e.insert("decided_by".into(), serde_json::json!(event.decided_by));
         }
         if derived && !event.fields.is_empty() {
             e.insert(
@@ -2120,7 +2142,7 @@ articles:
     machine_readable:
       hooks:
         - hook_point: pre_actions
-          applies_to: {legal_character: BESCHIKKING, stage: AANVRAAG}
+          applies_to: {submission: AANVRAAG, decided_by: BESCHIKKING}
       execution:
         produces:
           legal_character: TOETS
@@ -2128,9 +2150,7 @@ articles:
           extensions:
             chronolex:
               establishes:
-                - extends: {stage: AANVRAAG}
-                  type: submission
-                  subtype: aanvraag
+                - extends: {submission: AANVRAAG}
                   fields: parameters
                   effective_at: {legal_basis: ['testwet_algemeen#1 lid 2']}
         parameters:
@@ -2155,11 +2175,11 @@ articles:
         produces:
           legal_character: TOETS
           decision_type: GEEN_BESLUIT
+          submission: {kind: AANVRAAG}
           extensions:
             chronolex:
               establishes:
                 - event: bijdrage_aangevraagd
-                  requests: ['testwet_bijzonder#2']
                   fields: {parameters: [statutaire_naam]}
                   aliases: {naam_aanvrager: statutaire_naam}
         parameters:
@@ -2169,7 +2189,7 @@ articles:
     url: https://example.com/testwet_bijzonder/2
     machine_readable:
       execution:
-        produces: {legal_character: BESCHIKKING, decision_type: TOEKENNING}
+        produces: {legal_character: BESCHIKKING, decision_type: TOEKENNING, decides_on: ['testwet_bijzonder#1']}
         output: [{name: bijdrage, type: number}]
         actions: [{output: bijdrage, value: 100}]
   - number: '3'
@@ -2180,20 +2200,19 @@ articles:
         produces:
           legal_character: TOETS
           decision_type: GEEN_BESLUIT
+          submission: {kind: AANVRAAG}
           extensions:
             chronolex:
               establishes:
                 - event: regeling_verzocht
-                  type: submission
                   subtype: verzoek
-                  requests: ['testwet_bijzonder#4']
                   fields: [onderwerp]
   - number: '4'
     text: De instantie stelt de regeling vast.
     url: https://example.com/testwet_bijzonder/4
     machine_readable:
       execution:
-        produces: {legal_character: BESLUIT_VAN_ALGEMENE_STREKKING, decision_type: ALGEMEEN_VERBINDEND_VOORSCHRIFT}
+        produces: {legal_character: BESLUIT_VAN_ALGEMENE_STREKKING, decision_type: ALGEMEEN_VERBINDEND_VOORSCHRIFT, decides_on: ['testwet_bijzonder#3']}
         output: [{name: vastgesteld, type: boolean}]
         actions: [{output: vastgesteld, value: true}]
 "#;
@@ -2357,7 +2376,7 @@ articles:
     #[test]
     fn an_extension_of_a_stage_needs_a_hook() {
         let without_hook = GENERAL.replace(
-            "      hooks:\n        - hook_point: pre_actions\n          applies_to: {legal_character: BESCHIKKING, stage: AANVRAAG}\n",
+            "      hooks:\n        - hook_point: pre_actions\n          applies_to: {submission: AANVRAAG, decided_by: BESCHIKKING}\n",
             "",
         );
         assert_ne!(without_hook, GENERAL);
@@ -2365,7 +2384,7 @@ articles:
         assert!(
             errors
                 .iter()
-                .any(|f| f.contains("declares no hook on stage AANVRAAG")),
+                .any(|f| f.contains("declares no hook on a submission AANVRAAG")),
             "{errors:?}"
         );
     }

@@ -59,11 +59,11 @@ pub struct Event {
     /// the ones that hook onto its stage.
     #[serde(default, deserialize_with = "one_or_many")]
     pub establishes: Vec<String>,
-    /// The decisions an application asks for (`requests` in the law, such as
-    /// Wpp 102 "subsidie aanvragen": the decision of art. 107). Filled in from
-    /// the law; not in the YAML.
+    /// For a submission (RFC-046): the decisions taken on it, the articles
+    /// that name its establishing article in `produces.decides_on` (Wpp 107
+    /// "besluit op de aanvraag"). Filled in from the law; not in the YAML.
     #[serde(skip)]
-    pub requests: Vec<String>,
+    pub decided_by: Vec<String>,
     #[serde(default)]
     pub legal_basis: Vec<String>,
     #[serde(rename = "type", default)]

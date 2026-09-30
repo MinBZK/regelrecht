@@ -4930,6 +4930,21 @@ async fn the_application_gram_comes_from_the_law() {
         via.contains(&("kanaal".into(), "extends".into())),
         "{via:?}"
     );
+    // The combination is an execution (RFC-046): running art. 1, the
+    // engine fires the fictitious Awb art. 9 as a hook on the application,
+    // because art. 2 and 3 decide on it and are beschikkingen.
+    let (_, assessed, _) = call(
+        &app,
+        "POST",
+        &format!("{TOESLAG}/api/application/assessment"),
+        Some(&a),
+        Some(json!({"external": {"maand": "2025-03-01", "geschat_inkomen": 90000}})),
+    )
+    .await;
+    let trace = assessed["result"]["trace_text"]
+        .as_str()
+        .unwrap_or_default();
+    assert!(trace.contains("testregeling_awb:9"), "{assessed}");
 
     let (status, body, _) = call(
         &app,

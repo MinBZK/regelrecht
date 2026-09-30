@@ -13,7 +13,7 @@
 # (temporal.period_type: month). Artikel 6 zegt hoe hoog de toeslag is bij
 # een inkomen; artikel 8 hoe het voorschot wordt betaald.
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.0/schema/v0.7.0/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.8.0/schema/v0.8.0/schema.json
 $id: testregeling_toeslag
 name: Testregeling maandtoeslag
 regulatory_layer: WET
@@ -36,15 +36,15 @@ articles:
         produces:
           legal_character: TOETS
           decision_type: GEEN_BESLUIT
-          # De aanvraag, en welke besluiten zij vraagt: het voorschot en de
-          # vaststelling. Wat een aanvraag om een beschikking verder bevat en
-          # wanneer zij telt, zegt de testregeling awb (artikel 9, een haak op
-          # de stage AANVRAAG); dit artikel noemt de testregeling awb niet.
+          # De aanvraag (RFC-046). Welke besluiten erop volgen, zeggen artikel
+          # 2 en 3 (decides_on); wat een aanvraag om een beschikking verder
+          # bevat en wanneer zij telt, zegt de testregeling awb (artikel 9, een
+          # haak op de aanvraag). Dit artikel noemt de testregeling awb niet.
+          submission: {kind: AANVRAAG}
           extensions:
             chronolex:
               establishes:
                 - event: aanvraag_ontvangen
-                  requests: [testregeling_toeslag#2, testregeling_toeslag#3]
                   fields: {parameters: [maand, geschat_inkomen, naam_aanvrager]}
         parameters:
           - name: maand
@@ -87,6 +87,7 @@ articles:
         produces:
           legal_character: BESCHIKKING
           decision_type: TOEKENNING
+          decides_on: [testregeling_toeslag#1]   # op de aanvraag
         parameters:
           - name: maand
             type: date
@@ -138,6 +139,7 @@ articles:
         produces:
           legal_character: BESCHIKKING
           decision_type: TOEKENNING
+          decides_on: [testregeling_toeslag#1]   # op de aanvraag
         parameters:
           - name: vastgesteld_inkomen
             type: number
