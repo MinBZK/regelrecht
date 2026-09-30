@@ -94,7 +94,7 @@ The build is the `build-demo` job in `deploy.yml` (`image-name: minbzk/regelrech
 
 What to check after a change is easiest on a preview (label the PR `deploy:preview`): that the WASM engine loads (network tab: `wasm/pkg/*.wasm` served as `application/wasm`), the slides, the portals of Merijn and Claudia, and one application followed all the way into the case system. The two things in `frontend-demo/nginx.conf` that can break are the SPA fallback to `index.html` and the MIME type for `.wasm`.
 
-The demo needs no backend and no secrets. Its build takes longer than the other frontends because of the Rust-to-WASM step. The `wasm-builder` stage pins the Rust image to the version in `rust-toolchain.toml` (a pre-commit test, `script/dockerfile-consistency.test.mjs`, fails when the two drift) and pins `wasm-bindgen-cli` to the version in `packages/Cargo.lock`; the build itself fails loudly when that second pair diverges.
+The demo needs no secrets to run. With `DEMO_WHY_PASSWORD` and `CLAUDE_CODE_OAUTH_TOKEN` set on the `demo` component, the container also starts the backend of the "why" explanation next to nginx; see [Demo](/components/demo). Without them the button does not appear. Its build takes longer than the other frontends because of the Rust-to-WASM step. The `wasm-builder` stage pins the Rust image to the version in `rust-toolchain.toml` (a pre-commit test, `script/dockerfile-consistency.test.mjs`, fails when the two drift) and pins `wasm-bindgen-cli` to the version in `packages/Cargo.lock`; the build itself fails loudly when that second pair diverges.
 
 ## ZAD CLI
 

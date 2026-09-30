@@ -73,8 +73,31 @@ RUN npm run build -w frontend-demo
 
 # Stage 2: Production (unprivileged nginx for Kubernetes/OpenShift)
 FROM nginxinc/nginx-unprivileged:1.27-alpine@sha256:65e3e85dbaed8ba248841d9d58a899b6197106c23cb0ff1a132b7bfe0547e4c0
+# The "why" button's backend (server/why.mjs) runs the Claude Code CLI under
+# Node. Root only for the install; the image runs as the nginx user again below.
+USER root
+RUN apk add --no-cache nodejs curl bash
+# Pinned, like the poc-portal image: a build of the same commit should not
+# switch CLI versions. The installer detects musl and fetches the matching build.
+# `bash -s` because the installer is a bash script, and `install` rather than
+# `mv` because ~/.local/bin/claude is a symlink into /root, which the nginx user
+# cannot follow.
+ARG CLAUDE_CODE_VERSION=2.1.236
+RUN curl -fsSL https://claude.ai/install.sh | bash -s -- "${CLAUDE_CODE_VERSION}" && \
+    install -m0755 "$(readlink -f /root/.local/bin/claude)" /usr/local/bin/claude && \
+    rm -rf /root/.local && \
+    claude --version
+ENV DISABLE_AUTOUPDATER=1 \
+    CLAUDE_CODE_SKIP_PROMPT_HISTORY=true
+COPY frontend-demo/server/why.mjs frontend-demo/server/prompt.mjs /app/why/
+COPY frontend-demo/start.sh /usr/local/bin/start-demo
+RUN chmod 0755 /usr/local/bin/start-demo
+# Numeric, as the base image sets it: a named user fails Kubernetes'
+# runAsNonRoot check when no runAsUser is given.
+USER 101
+
 COPY frontend-demo/nginx.conf /etc/nginx/conf.d/default.conf
 COPY deploy/nginx/security-headers.conf /etc/nginx/security-headers.conf
 COPY --from=builder /app/frontend-demo/dist /usr/share/nginx/html
 EXPOSE 8000
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["start-demo"]
