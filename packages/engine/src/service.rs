@@ -123,6 +123,11 @@ struct ResolutionContext<'a> {
     /// because their law had no version in force on the reference date.
     /// Collected independently of tracing so the skip reaches the receipt.
     declarations_not_in_force: Vec<DeclarationNotInForce>,
+    /// Overrides and implementations held back while the article declaring
+    /// one reads the output it replaces or fills in: that read is the value
+    /// it departs from, so it does not apply to it. Keyed like
+    /// [`override_key`] and [`implementation_key`].
+    held_back: HashSet<String>,
 }
 
 /// Parse the calculation date, rejecting malformed input: an unparseable date
@@ -213,6 +218,7 @@ impl<'a> ResolutionContext<'a> {
             delegation_refusals: Vec::new(),
             declaration_version_notes: Vec::new(),
             declarations_not_in_force: Vec::new(),
+            held_back: HashSet::new(),
         })
     }
 
@@ -238,6 +244,14 @@ impl<'a> ResolutionContext<'a> {
     fn leave(&mut self, key: &str) {
         self.visited.remove(key);
         self.depth -= 1;
+    }
+
+    /// What is held back for a base read, as a cycle-key suffix: empty when
+    /// nothing is, so ordinary keys are unchanged.
+    fn held_back_suffix(&self) -> String {
+        let mut held: Vec<&str> = self.held_back.iter().map(String::as_str).collect();
+        held.sort_unstable();
+        held.iter().map(|key| format!("\0held:{key}")).collect()
     }
 
     /// Check if a key is already being resolved (cycle detection).
@@ -492,6 +506,10 @@ fn voided_output_error(
 struct Demand {
     /// The outputs to compute, closed over what they read; `None` for all.
     outputs: Option<BTreeSet<String>>,
+    /// Outputs an applicable override replaces, with the parameters that
+    /// override declares: replaced where the action sets them, so the
+    /// article's later actions read the replaced value.
+    replacing: BTreeMap<String, BTreeSet<String>>,
     /// Requested outputs a `voids` excludes: not computed, their ground is
     /// recorded by `apply_overrides`.
     voided: Vec<String>,
@@ -499,6 +517,16 @@ struct Demand {
     read_before_actions: BTreeSet<String>,
     /// What the post_actions hooks and replacing overrides declare.
     read_after_actions: BTreeSet<String>,
+}
+
+/// What running the override of one output came to.
+enum OverrideOutcome {
+    /// No override applies, or the one that applies gave no value for it.
+    NotApplied,
+    /// The output does not arise, on this ground.
+    Voided(OutputProvenance),
+    /// The output takes this value from the overriding article.
+    Replaced(Value, OutputProvenance),
 }
 
 /// The one override of an output that applies (RFC-007, RFC-041).
@@ -583,7 +611,14 @@ enum LazyName<'a> {
 struct AfterPreHooks<'x> {
     inputs: &'x dyn LazyInputs,
     hook_outputs: &'x BTreeMap<String, Value>,
+    /// What a replacing override makes of an output the article just set.
+    replace: &'x ReplaceOutput<'x>,
 }
+
+/// Runs the replacing override of an output, if one applies, given the name,
+/// its computed value and the outputs computed before it.
+type ReplaceOutput<'x> =
+    dyn Fn(&str, &Value, &BTreeMap<String, Value>) -> Option<Result<Value>> + 'x;
 
 impl LazyInputs for AfterPreHooks<'_> {
     fn resolve_input(&self, name: &str) -> Option<Result<(Value, ResolveType)>> {
@@ -591,6 +626,15 @@ impl LazyInputs for AfterPreHooks<'_> {
             return None;
         }
         self.inputs.resolve_input(name)
+    }
+
+    fn replace_output(
+        &self,
+        name: &str,
+        value: &Value,
+        outputs: &BTreeMap<String, Value>,
+    ) -> Option<Result<Value>> {
+        (self.replace)(name, value, outputs)
     }
 }
 
@@ -625,6 +669,12 @@ impl LazyInputs for EarlierTerms<'_, '_> {
 /// cycle detection.
 fn override_key(law_id: &str, article: &str) -> String {
     format!("override:{law_id}\0{article}")
+}
+
+/// The key the implementation in `law_id` article `article` is held back
+/// under, while that article reads the output it fills in.
+fn implementation_key(law_id: &str, article: &str) -> String {
+    format!("implementation:{law_id}\0{article}")
 }
 
 /// The key the hook in `law_id` article `article` is entered under, for cycle
@@ -1929,7 +1979,9 @@ impl LawExecutionService {
         res_ctx: &mut ResolutionContext<'_>,
     ) -> Result<ArticleResult> {
         let output_name = output_names.first().copied().unwrap_or_default();
-        let cacheable = output_names.len() == 1;
+        // A value computed with an override held back is not the value of
+        // that output, so it neither comes from nor goes into the cache.
+        let cacheable = output_names.len() == 1 && res_ctx.held_back.is_empty();
 
         // --- Cache check (before depth check: cached results don't increase depth) ---
         let key = cache_key(law_id, output_name, &parameters);
@@ -2211,6 +2263,7 @@ impl LawExecutionService {
         let Some(requested) = requested_outputs else {
             return Demand {
                 outputs: None,
+                replacing: plan.replacing.clone(),
                 voided: Vec::new(),
                 read_before_actions,
                 read_after_actions: read_after(None),
@@ -2234,6 +2287,7 @@ impl LawExecutionService {
         let read_after_actions = read_after(Some(&outputs));
         Demand {
             outputs: Some(outputs),
+            replacing: plan.replacing.clone(),
             voided: requested
                 .iter()
                 .filter(|name| plan.voided.contains(**name))
@@ -2550,8 +2604,10 @@ impl LawExecutionService {
         };
         let reference = *reference;
 
-        // An override that is already executing does not apply again.
-        if res_ctx.is_visited(&override_key(&reference.law_id, &reference.article_number)) {
+        // An override that is already executing does not apply again, and
+        // one that is reading its own base value does not apply to that read.
+        let key = override_key(&reference.law_id, &reference.article_number);
+        if res_ctx.is_visited(&key) || res_ctx.held_back.contains(&key) {
             tracing::debug!(
                 law = %reference.law_id,
                 article = %reference.article_number,
@@ -2625,6 +2681,9 @@ impl LawExecutionService {
     ///
     /// For each output in the result, checks if an override exists from the contextual law.
     /// If found, executes the overriding article and replaces the output value.
+    /// An output in `replaced_in_actions` was already put to its override
+    /// where its action set it, and is left alone.
+    #[allow(clippy::too_many_arguments)]
     fn apply_overrides(
         &self,
         result: &mut ArticleResult,
@@ -2632,6 +2691,7 @@ impl LawExecutionService {
         law: &ArticleBasedLaw,
         parameters: &BTreeMap<String, Value>,
         voided_requested: &[String],
+        replaced_in_actions: &BTreeMap<String, Option<OutputProvenance>>,
         res_ctx: &mut ResolutionContext<'_>,
     ) -> Result<()> {
         // A law overriding its own output needs no contextual law, so a
@@ -2646,103 +2706,140 @@ impl LawExecutionService {
                 output_names.push(name.clone());
             }
         }
+        output_names.retain(|name| !replaced_in_actions.contains_key(name));
         for output_name in output_names {
-            let Some(selected) = self.select_override(law, article, &output_name, res_ctx)? else {
-                continue;
-            };
-            let ovr_law_id = &selected.reference().law_id;
-            let ovr_article_number = &selected.reference().article_number;
-            let ovr_key = override_key(ovr_law_id, ovr_article_number);
-
-            let (ovr_law, ovr_article, declaration) = match selected {
-                SelectedOverride::InForce {
-                    law,
-                    article,
-                    declaration,
-                    ..
-                } => (law, article, declaration),
-                SelectedOverride::NotInForce { reason, .. } => {
-                    res_ctx.note_not_in_force(DeclarationNotInForce {
-                        kind: DeclarationKind::Override,
-                        law_id: ovr_law_id.clone(),
-                        article: ovr_article_number.clone(),
-                        subject: format!(
-                            "output '{}' of {} article {}",
-                            output_name, law.id, article.number
-                        ),
-                        reason,
-                    });
-                    continue;
+            match self.run_override(article, law, &output_name, parameters, res_ctx)? {
+                OverrideOutcome::NotApplied => {}
+                OverrideOutcome::Voided(provenance) => {
+                    // "Bestaat geen aanspraak": the entitlement does not arise,
+                    // so there is no value to compute or replace. The output
+                    // leaves `outputs` and stays in the provenance, so an
+                    // absence with a ground is distinguishable from an absence
+                    // nobody asked about.
+                    result.outputs.remove(&output_name);
+                    result.output_provenance.insert(output_name, provenance);
                 }
-            };
-
-            // Trace (guard auto-pops on all exit paths)
-            let _guard = res_ctx.trace_guard(
-                format!("{}:{}", ovr_law_id, ovr_article_number),
-                PathNodeType::OverrideResolution,
-            );
-            res_ctx.trace_set_message(format!(
-                "Lex specialis: {}:{} overrides {}:{}.{}",
-                ovr_law_id, ovr_article_number, law.id, article.number, output_name
-            ));
-
-            if let Some(decl) = declaration.filter(|d| d.voids) {
-                // "Bestaat geen aanspraak": the entitlement does not arise, so
-                // there is no value to compute or replace. The output leaves
-                // `outputs` and stays in the provenance, so an absence with a
-                // ground is distinguishable from an absence nobody asked about.
-                result.outputs.remove(&output_name);
-                result.output_provenance.insert(
-                    output_name.clone(),
-                    OutputProvenance::Voided {
-                        law_id: ovr_law_id.to_string(),
-                        article: ovr_article_number.to_string(),
-                        grounds: decl.legal_text_excerpt.clone(),
-                    },
-                );
-                res_ctx.trace_set_message(format!(
-                    "Lex specialis: {}:{} voids {}:{}.{}",
-                    ovr_law_id, ovr_article_number, law.id, article.number, output_name
-                ));
-                continue;
-            }
-
-            let ovr_params = Self::filter_parameters_for_article(ovr_article, parameters);
-            res_ctx.enter(ovr_key.clone());
-
-            let ovr_result = self.evaluate_article_with_service(
-                ovr_article,
-                ovr_law,
-                ovr_params,
-                Some(&[output_name.as_str()]),
-                "BESLUIT", // override articles are not procedure-aware
-                res_ctx,
-            );
-
-            res_ctx.leave(&ovr_key);
-
-            let ovr_output = ovr_result?;
-
-            if let Some(value) = ovr_output.outputs.get(&output_name) {
-                tracing::debug!(
-                    output = %output_name,
-                    from = %law.id,
-                    to = %ovr_law_id,
-                    "Override applied"
-                );
-                result.outputs.insert(output_name.clone(), value.clone());
-                result.output_provenance.insert(
-                    output_name.clone(),
-                    OutputProvenance::Override {
-                        law_id: ovr_law_id.to_string(),
-                        article: ovr_article_number.to_string(),
-                    },
-                );
-                res_ctx.trace_set_result(value.clone());
+                OverrideOutcome::Replaced(value, provenance) => {
+                    result.outputs.insert(output_name.clone(), value);
+                    result.output_provenance.insert(output_name, provenance);
+                }
             }
         }
 
         Ok(())
+    }
+
+    /// The replacing override of `output_name`, run for the value it gives:
+    /// `None` when none applies, or when the one that applies is a void.
+    fn run_replacing_override(
+        &self,
+        article: &Article,
+        law: &ArticleBasedLaw,
+        output_name: &str,
+        parameters: &BTreeMap<String, Value>,
+        res_ctx: &mut ResolutionContext<'_>,
+    ) -> Result<Option<(Value, OutputProvenance)>> {
+        Ok(
+            match self.run_override(article, law, output_name, parameters, res_ctx)? {
+                OverrideOutcome::Replaced(value, provenance) => Some((value, provenance)),
+                OverrideOutcome::NotApplied | OverrideOutcome::Voided(_) => None,
+            },
+        )
+    }
+
+    /// Select the override of `output_name` and carry it out: record it when
+    /// it is not in force, report a void with its ground, or execute the
+    /// overriding article for the value it replaces the output with.
+    fn run_override(
+        &self,
+        article: &Article,
+        law: &ArticleBasedLaw,
+        output_name: &str,
+        parameters: &BTreeMap<String, Value>,
+        res_ctx: &mut ResolutionContext<'_>,
+    ) -> Result<OverrideOutcome> {
+        let Some(selected) = self.select_override(law, article, output_name, res_ctx)? else {
+            return Ok(OverrideOutcome::NotApplied);
+        };
+        let ovr_law_id = &selected.reference().law_id;
+        let ovr_article_number = &selected.reference().article_number;
+        let ovr_key = override_key(ovr_law_id, ovr_article_number);
+
+        let (ovr_law, ovr_article, declaration) = match selected {
+            SelectedOverride::InForce {
+                law,
+                article,
+                declaration,
+                ..
+            } => (law, article, declaration),
+            SelectedOverride::NotInForce { reason, .. } => {
+                res_ctx.note_not_in_force(DeclarationNotInForce {
+                    kind: DeclarationKind::Override,
+                    law_id: ovr_law_id.clone(),
+                    article: ovr_article_number.clone(),
+                    subject: format!(
+                        "output '{}' of {} article {}",
+                        output_name, law.id, article.number
+                    ),
+                    reason,
+                });
+                return Ok(OverrideOutcome::NotApplied);
+            }
+        };
+
+        // Trace (guard auto-pops on all exit paths)
+        let _guard = res_ctx.trace_guard(
+            format!("{}:{}", ovr_law_id, ovr_article_number),
+            PathNodeType::OverrideResolution,
+        );
+        res_ctx.trace_set_message(format!(
+            "Lex specialis: {}:{} overrides {}:{}.{}",
+            ovr_law_id, ovr_article_number, law.id, article.number, output_name
+        ));
+
+        if let Some(decl) = declaration.filter(|d| d.voids) {
+            res_ctx.trace_set_message(format!(
+                "Lex specialis: {}:{} voids {}:{}.{}",
+                ovr_law_id, ovr_article_number, law.id, article.number, output_name
+            ));
+            return Ok(OverrideOutcome::Voided(OutputProvenance::Voided {
+                law_id: ovr_law_id.to_string(),
+                article: ovr_article_number.to_string(),
+                grounds: decl.legal_text_excerpt.clone(),
+            }));
+        }
+
+        let ovr_params = Self::filter_parameters_for_article(ovr_article, parameters);
+        res_ctx.enter(ovr_key.clone());
+
+        let ovr_result = self.evaluate_article_with_service(
+            ovr_article,
+            ovr_law,
+            ovr_params,
+            Some(&[output_name]),
+            "BESLUIT", // override articles are not procedure-aware
+            res_ctx,
+        );
+
+        res_ctx.leave(&ovr_key);
+
+        let Some(value) = ovr_result?.outputs.remove(output_name) else {
+            return Ok(OverrideOutcome::NotApplied);
+        };
+        tracing::debug!(
+            output = %output_name,
+            from = %law.id,
+            to = %ovr_law_id,
+            "Override applied"
+        );
+        res_ctx.trace_set_result(value.clone());
+        Ok(OverrideOutcome::Replaced(
+            value,
+            OutputProvenance::Override {
+                law_id: ovr_law_id.to_string(),
+                article: ovr_article_number.to_string(),
+            },
+        ))
     }
 
     /// Execute an article with ServiceProvider support.
@@ -2844,6 +2941,40 @@ impl LawExecutionService {
             )
         })?;
 
+        // A replacing override runs where the action sets its output, with
+        // what an override at the end would receive: the parameters, what was
+        // resolved, the pre hook outputs and the outputs computed so far.
+        // Every output it was run for is recorded, applied or not, so
+        // `apply_overrides` does not run it a second time.
+        let replaced_in_actions: RefCell<BTreeMap<String, Option<OutputProvenance>>> =
+            RefCell::new(BTreeMap::new());
+        let replace = |name: &str, value: &Value, outputs: &BTreeMap<String, Value>| {
+            let declared = demand.replacing.get(name)?;
+            // What the override declares, of this article's inputs, is
+            // resolved for it before it runs.
+            if let Err(e) = lazy.resolve_names(declared) {
+                return Some(Err(e));
+            }
+            let mut ovr_params = parameters.clone();
+            ovr_params.extend(lazy.resolved());
+            ovr_params.extend(pre_hook_outputs.clone());
+            ovr_params.extend(outputs.clone());
+            ovr_params.insert(name.to_string(), value.clone());
+            let replaced = lazy.with_resolution_context(|res_ctx| {
+                self.run_replacing_override(article, law, name, &ovr_params, res_ctx)
+            });
+            match replaced {
+                Err(e) => Some(Err(e)),
+                Ok(outcome) => {
+                    let (value, provenance) = outcome.unzip();
+                    replaced_in_actions
+                        .borrow_mut()
+                        .insert(name.to_string(), provenance);
+                    value.map(Ok)
+                }
+            }
+        };
+
         let mut engine_params = parameters.clone();
         engine_params.extend(pre_hook_outputs.clone());
         let mut result = engine.evaluate_outputs(
@@ -2854,8 +2985,17 @@ impl LawExecutionService {
             Some(&AfterPreHooks {
                 inputs: &lazy,
                 hook_outputs: &pre_hook_outputs,
+                replace: &replace,
             }),
         )?;
+        let replaced_in_actions = replaced_in_actions.into_inner();
+        for (name, provenance) in &replaced_in_actions {
+            if let Some(provenance) = provenance {
+                result
+                    .output_provenance
+                    .insert(name.clone(), provenance.clone());
+            }
+        }
         lazy.resolve_names(
             demand
                 .read_after_actions
@@ -2937,6 +3077,7 @@ impl LawExecutionService {
             law,
             &post_params,
             &demand.voided,
+            &replaced_in_actions,
             res_ctx,
         )?;
 
@@ -2997,8 +3138,17 @@ impl LawExecutionService {
         res_ctx: &mut ResolutionContext<'c>,
     ) -> Result<Value> {
         // Cycle detection: check if we're already resolving this open term
-        // Use \0 as separator to prevent key collisions when IDs contain #
-        let ot_key = format!("open_term:{}\0{}\0{}", law.id, article.number, term.id);
+        // Use \0 as separator to prevent key collisions when IDs contain #.
+        // A base read resolves the term again with its implementation held
+        // back; that is another resolution, so what is held back is part of
+        // the key and a cycle within the base read is still caught.
+        let ot_key = format!(
+            "open_term:{}\0{}\0{}{}",
+            law.id,
+            article.number,
+            term.id,
+            res_ctx.held_back_suffix()
+        );
         if res_ctx.is_visited(&ot_key) {
             tracing::warn!(
                 law_id = %law.id,
@@ -3102,6 +3252,18 @@ impl LawExecutionService {
         let mut filled: Option<Value> = None;
         let mut silent: Vec<String> = Vec::new();
         for (impl_law, impl_article) in &lookup.implementations {
+            // The implementing article is reading the output it fills in:
+            // that read gets the law without this filling.
+            if res_ctx
+                .held_back
+                .contains(&implementation_key(&impl_law.id, &impl_article.number))
+            {
+                res_ctx.trace_set_message(format!(
+                    "Open term '{}': {} article {} held back, it is reading its own base value",
+                    term.id, impl_law.id, impl_article.number
+                ));
+                continue;
+            }
             tracing::debug!(
                 open_term = %term.id,
                 implementing_law = %impl_law.id,
@@ -3424,11 +3586,13 @@ impl LawExecutionService {
 
         if let Some(regulation) = &source.regulation {
             // External reference
+            let base_of = self.read_as_base(article, law, regulation, output_name, res_ctx);
             let resolution = self.resolve_external_input_detailed(
                 regulation,
                 output_name,
                 source.parameters.as_ref(),
                 context,
+                base_of.as_deref(),
                 res_ctx,
             )?;
 
@@ -3634,6 +3798,45 @@ impl LawExecutionService {
         }
     }
 
+    /// The key under which `article` is held back when it reads an output of
+    /// `regulation` that it changes itself, so the read is the value it
+    /// departs from:
+    ///
+    /// - it replaces that very output ("in afwijking van", RFC-007), or
+    /// - it fills in an open term of the article producing that output
+    ///   ("gelet op", RFC-003): the read gets what the law gives without this
+    ///   filling, which is its default or the next implementation.
+    ///
+    /// `None` for every other read, and for a void: an output that does not
+    /// arise has no value to depart from, and reading it yields the void with
+    /// its ground (RFC-041).
+    fn read_as_base(
+        &self,
+        article: &Article,
+        law: &ArticleBasedLaw,
+        regulation: &str,
+        output: &str,
+        res_ctx: &ResolutionContext<'_>,
+    ) -> Option<String> {
+        let target =
+            self.resolver
+                .get_article_by_output(regulation, output, res_ctx.reference_date())?;
+        let replaces = article.get_overrides().is_some_and(|decls| {
+            decls.iter().any(|d| {
+                !d.voids && d.law == regulation && d.article == target.number && d.output == output
+            })
+        });
+        if replaces {
+            return Some(override_key(&law.id, &article.number));
+        }
+        let fills_in = article.get_implements().is_some_and(|decls| {
+            decls
+                .iter()
+                .any(|d| d.law == regulation && d.article == target.number)
+        });
+        fills_in.then(|| implementation_key(&law.id, &article.number))
+    }
+
     /// Internal method for external input resolution with depth tracking.
     fn resolve_external_input_internal(
         &self,
@@ -3648,6 +3851,7 @@ impl LawExecutionService {
             output,
             source_parameters,
             context,
+            None,
             res_ctx,
         )
         .map(|resolution| resolution.value)
@@ -3655,16 +3859,27 @@ impl LawExecutionService {
 
     /// [`Self::resolve_external_input_internal`], also reporting whether the
     /// target was skipped for a required parameter that named nobody.
+    ///
+    /// `base_of` names the override or implementation (as [`override_key`] or
+    /// [`implementation_key`]) whose own article is reading the output it
+    /// replaces or fills in. That read is the value it departs from, not the
+    /// one it produces: the target is evaluated with it held back, under its
+    /// own cycle key, so it is not a cycle when that output is being resolved
+    /// already.
     fn resolve_external_input_detailed(
         &self,
         regulation: &str,
         output: &str,
         source_parameters: Option<&BTreeMap<String, String>>,
         context: &RuleContext,
+        base_of: Option<&str>,
         res_ctx: &mut ResolutionContext<'_>,
     ) -> Result<ExternalResolution> {
         // Check for circular reference before proceeding
-        let key = format!("{}#{}", regulation, output);
+        let key = match base_of {
+            Some(_) => format!("{}#{}@base", regulation, output),
+            None => format!("{}#{}", regulation, output),
+        };
         if res_ctx.is_visited(&key) {
             return Err(EngineError::CircularReference(format!(
                 "Circular cross-law reference detected: {} is already being resolved",
@@ -3790,11 +4005,22 @@ impl LawExecutionService {
 
         // Enter cross-law resolution scope
         res_ctx.enter(key.clone());
+        let newly_suppressed = base_of.is_some_and(|ovr| {
+            res_ctx.trace_set_message(format!(
+                "Base value: the reading article's own override or implementation is held back for {key}"
+            ));
+            res_ctx.held_back.insert(ovr.to_string())
+        });
 
         // Execute the target article
         let result = self.evaluate_law_output_internal(regulation, output, target_params, res_ctx);
 
         // Leave scope (even on error, for correct cycle tracking)
+        if newly_suppressed {
+            if let Some(ovr) = base_of {
+                res_ctx.held_back.remove(ovr);
+            }
+        }
         res_ctx.leave(&key);
 
         let value = match result {
@@ -4445,6 +4671,231 @@ articles:
                 );
             }
             other => panic!("Expected CircularReference error, got: {:?}", other),
+        }
+    }
+
+    /// A policy doubling what the statute says: the overriding article reads
+    /// the output it overrides. That read is the statute's own value, whether
+    /// the override fires on a read of the statute or is asked directly, and
+    /// the override is applied once, not again to its own input. A later
+    /// action of the overridden article reads the replaced value, like every
+    /// other reader does.
+    #[test]
+    fn an_override_reading_what_it_overrides_gets_the_base_value() {
+        let wet = r#"
+$id: boterhammenwet
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Men eet twee boterhammen.
+    machine_readable:
+      execution:
+        output:
+          - name: aantal_boterhammen
+            type: number
+          - name: plakjes_kaas
+            type: number
+        actions:
+          - output: aantal_boterhammen
+            value: 2
+          - output: plakjes_kaas
+            value: $aantal_boterhammen
+"#;
+        let beleid = r#"
+$id: beleidsregel_honger
+regulatory_layer: BELEIDSREGEL
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: In afwijking van artikel 1 eet wie honger heeft twee keer zoveel.
+    machine_readable:
+      overrides:
+        - law: boterhammenwet
+          article: '1'
+          output: aantal_boterhammen
+      execution:
+        parameters:
+          - name: heeft_honger
+            type: boolean
+        input:
+          - name: wettelijk_aantal
+            type: number
+            source:
+              regulation: boterhammenwet
+              output: aantal_boterhammen
+              parameters:
+                heeft_honger: $heeft_honger
+        output:
+          - name: aantal_boterhammen
+            type: number
+        actions:
+          - output: aantal_boterhammen
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $heeft_honger
+                    value: true
+                  then:
+                    operation: MULTIPLY
+                    values:
+                      - 2
+                      - $wettelijk_aantal
+              default: $wettelijk_aantal
+  - number: '2'
+    text: Het aantal van vandaag is dat van artikel 1 van de Boterhammenwet.
+    machine_readable:
+      execution:
+        parameters:
+          - name: heeft_honger
+            type: boolean
+        input:
+          - name: wettelijk_aantal
+            type: number
+            source:
+              regulation: boterhammenwet
+              output: aantal_boterhammen
+              parameters:
+                heeft_honger: $heeft_honger
+          - name: kaas
+            type: number
+            source:
+              regulation: boterhammenwet
+              output: plakjes_kaas
+              parameters:
+                heeft_honger: $heeft_honger
+        output:
+          - name: boterhammen_vandaag
+            type: number
+          - name: kaas_vandaag
+            type: number
+        actions:
+          - output: boterhammen_vandaag
+            value: $wettelijk_aantal
+          - output: kaas_vandaag
+            value: $kaas
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(wet).unwrap();
+        service.load_law(beleid).unwrap();
+
+        for (output, honger, expected) in [
+            ("boterhammen_vandaag", true, 4),
+            ("boterhammen_vandaag", false, 2),
+            ("kaas_vandaag", true, 4),
+            ("kaas_vandaag", false, 2),
+            ("aantal_boterhammen", true, 4),
+            ("aantal_boterhammen", false, 2),
+        ] {
+            let params = BTreeMap::from([("heeft_honger".to_string(), Value::Bool(honger))]);
+            let result = service
+                .evaluate_law_output("beleidsregel_honger", output, params, "2025-01-01")
+                .unwrap_or_else(|e| panic!("{output} (honger={honger}) failed: {e}"));
+            assert_eq!(
+                result.outputs.get(output),
+                Some(&Value::Int(expected)),
+                "{output} (honger={honger})"
+            );
+        }
+    }
+
+    /// The same policy as a filling of an open term: the law says two unless
+    /// policy says otherwise, and the policy doubles what the law says. The
+    /// implementing article's read of the law is the law without it (its
+    /// default), and the filling applies whether the law or the policy is
+    /// asked (RFC-003).
+    #[test]
+    fn an_implementation_reading_what_it_fills_in_gets_the_default() {
+        let wet = r#"
+$id: boterhammenwet
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Men eet twee boterhammen, tenzij bij beleid anders is bepaald.
+    machine_readable:
+      open_terms:
+        - id: aantal_boterhammen
+          type: number
+          required: true
+          default:
+            actions:
+              - output: aantal_boterhammen
+                value: 2
+      execution:
+        output:
+          - name: aantal_boterhammen
+            type: number
+          - name: plakjes_kaas
+            type: number
+        actions:
+          - output: aantal_boterhammen
+            value: $aantal_boterhammen
+          - output: plakjes_kaas
+            value: $aantal_boterhammen
+"#;
+        let beleid = r#"
+$id: beleidsregel_honger
+regulatory_layer: BELEIDSREGEL
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Gelet op artikel 1 eet wie honger heeft twee keer zoveel.
+    machine_readable:
+      implements:
+        - law: boterhammenwet
+          article: '1'
+          open_term: aantal_boterhammen
+      execution:
+        parameters:
+          - name: heeft_honger
+            type: boolean
+        input:
+          - name: wettelijk_aantal
+            type: number
+            source:
+              regulation: boterhammenwet
+              output: aantal_boterhammen
+              parameters:
+                heeft_honger: $heeft_honger
+        output:
+          - name: aantal_boterhammen
+            type: number
+        actions:
+          - output: aantal_boterhammen
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $heeft_honger
+                    value: true
+                  then:
+                    operation: MULTIPLY
+                    values: [2, $wettelijk_aantal]
+              default: $wettelijk_aantal
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(wet).unwrap();
+        service.load_law(beleid).unwrap();
+
+        for (law, output, honger, expected) in [
+            ("boterhammenwet", "plakjes_kaas", true, 4),
+            ("boterhammenwet", "plakjes_kaas", false, 2),
+            ("beleidsregel_honger", "aantal_boterhammen", true, 4),
+            ("beleidsregel_honger", "aantal_boterhammen", false, 2),
+        ] {
+            let params = BTreeMap::from([("heeft_honger".to_string(), Value::Bool(honger))]);
+            let result = service
+                .evaluate_law_output(law, output, params, "2025-01-01")
+                .unwrap_or_else(|e| panic!("{law}.{output} (honger={honger}) failed: {e}"));
+            assert_eq!(
+                result.outputs.get(output),
+                Some(&Value::Int(expected)),
+                "{law}.{output} (honger={honger})"
+            );
         }
     }
 

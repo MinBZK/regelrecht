@@ -106,6 +106,19 @@ pub(crate) trait LazyInputs {
     /// reference to it then fails like any unknown variable).
     /// The value comes with how the trace names where it came from.
     fn resolve_input(&self, name: &str) -> Option<Result<(Value, ResolveType)>>;
+
+    /// What output `name` becomes once this article has computed it as
+    /// `value`, with `outputs` the ones computed before it. `None` keeps
+    /// `value`; `Some` is what a replacing override made of it (RFC-007),
+    /// which the later actions of this article then read.
+    fn replace_output(
+        &self,
+        _name: &str,
+        _value: &Value,
+        _outputs: &BTreeMap<String, Value>,
+    ) -> Option<Result<Value>> {
+        None
+    }
 }
 
 /// The hook as a context field: a reference, copied into every child scope,
@@ -147,6 +160,13 @@ impl<'l> RuleContext<'l> {
     }
 
     /// Resolve declared inputs and open terms on first read (RFC-043).
+    /// What output `name`, just computed as `value`, becomes: see
+    /// [`LazyInputs::replace_output`]. `None` for a bare context.
+    pub(crate) fn replaced_output(&self, name: &str, value: &Value) -> Option<Result<Value>> {
+        let LazyHook(lazy) = self.lazy?;
+        lazy.replace_output(name, value, &self.outputs)
+    }
+
     pub(crate) fn set_lazy(&mut self, lazy: &'l dyn LazyInputs) {
         self.lazy = Some(LazyHook(lazy));
     }
