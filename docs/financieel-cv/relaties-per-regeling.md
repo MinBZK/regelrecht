@@ -318,7 +318,121 @@ demo-branch, waar de Awb wél gemodelleerd was.
 
 ---
 
-## 4. Samenvattend
+## 4. Wat er nog nodig is om de keten compleet te maken
+
+Zestien open terms in dit dossier wijzen naar een regeling die de uitkomst
+invult, en één daarvan is aangesloten. Daarnaast staat een aantal wetten alleen
+als parameter in het model. Hieronder wat er nodig is, op volgorde van gewicht
+voor deze casus.
+
+**De belangrijkste bevinding vooraf: het is geen harvest-probleem.** Alle wetten
+hieronder staan al als tekst in de corpus. Wat ontbreekt is `machine_readable`.
+
+Over de lagere regelgeving twee verschillende gevallen, en een eerdere versie
+van deze sectie gooide ze op één hoop:
+
+- **Ministeriële regelingen staan er wél**, maar onder `regulation/nl/wet/` met
+  `regulatory_layer: WET` — 868 slugs die met `regeling_` beginnen. Dat is een
+  harvester-fout, vastgelegd als issue #1240 in `MinBZK/regelrecht`, en niet
+  onschuldig: RFC-003 leest `regulatory_layer` voor lex-superior-prioriteit en
+  om te controleren of `delegation_type` bij de laag past. Een delegatieketen
+  uit dit corpus klopt dus niet.
+- **Gemeentelijke verordeningen staan er niet.** Geen enkele CVDR-bron voor een
+  gemeente; de enige die er is, is één waterschapsverordening. Dat de harvester
+  CVDR aankan is daarmee wel aangetoond.
+
+| # | Regeling | Status in de corpus | Waarom het knelt |
+|---|---|---|---|
+| 1 | **Wet sociale werkvoorziening** | 17 versies, **0 gemodelleerd** | Wordt in zes van de zeven wetten als parameter afgevangen — 17 parameters in totaal (`is_wsw_werknemer`, `is_wsw_geindiceerd_of_oude_indicatie`, `is_wsw_of_beschut_werk_dienstbetrekking`). Wie die invult bepaalt de uitkomst van NRP lid 2, LKS, LDP én JC/WPA, en niets controleert het |
+| 2 | **Wet minimumloon en minimumvakantiebijslag** | 57 versies, **0 gemodelleerd** | De loonkostensubsidie rekent tegen het minimumloon: 41 verwijzingen in de Participatiewet alleen. Het bedrag komt nu als parameter binnen, dus de kern van de berekening leunt op een aangeleverd getal |
+| 3 | **Algemene wet bestuursrecht** | 177 versies, **0 gemodelleerd** | Zeventien artikelen declareren `BESCHIKKING` als hook-trigger. Er luistert niets. Zonder de Awb ontbreekt de hele procedurele laag: motivering (3:46), bezwaartermijn (6:7), bekendmaking (6:8) |
+| 4 | **Besluit loonkostensubsidie Participatiewet** | 3 versies, **0 gemodelleerd** | De open term `regels_doelgroep_lks_en_loonwaarde_amvb` bij Pwet 10e noemt dit besluit al bij naam in zijn default. Aansluiten via `implements` is klein werk met direct effect op de LKS |
+| 5 | **Ministeriële regeling werkgeverslasten** | onbekend wélke regeling; ministeriële regelingen staan als `WET` gelabeld (#1240) | Pwet 10c delegeert `werkgeverslastenvergoeding_eurocent` naar de minister. Wij weten nog niet wélke regeling dat is — actie 1.5, uitgezet bij UWV. Zolang dat open staat kan het LKS-bedrag afwijken, zowel de subsidie als het 70%-maximum |
+| 6 | **Gemeentelijke verordeningen** | **niet in de corpus** | Vier open terms delegeren naar de gemeenteraad (Pwet 8a drie, Pwet 10 één). Zonder verordening blijft de gemeentelijke route "de route bestaat", nooit een bedrag. Dat is scopevraag 2.7, geen modelleervraag |
+| 7 | **UWV-beleidsregel dispensatiepercentage** | `beleidsregel/` bestaat (35 stuks), deze niet | Wajong 2:20 delegeert het percentage van de loondispensatie naar UWV. Zonder die regel zegt het model dát er dispensatie is, niet hoeveel |
+| 8 | **Ministeriële regelingen proefplaatsing** | niet geharvest; laag-labeling zie #1240 | Drie open terms, één per wet (WW 76a, WIA 37, Wajong 2:24), over de uitvoering. Raakt de duur niet — die staat in de wet — dus lager in de lijst |
+| 9 | **AMvB persoonlijke ondersteuning** | Pwet 10e, nog niet vastgesteld | Drie van de vier open terms bij 10e wachten op een AMvB die er niet is. Zolang die er niet is verandert 10e niets aan de aanspraak van art. 10 lid 1 |
+| 10 | **Wet SUWI** | 60 versies, **0 gemodelleerd** | Alleen genoemd in Wfsv 38b lid 1 onderdeel g, voor een experimentbepaling. Raakt onze twee persona's niet |
+
+### In beeld
+
+De dikke pijlen zijn gaten in de keten: een wet wordt als feit aangeroepen
+terwijl er een regeling achter zit die dat feit hoort te bepalen. De stippellijnen
+zijn open terms die op een invuller wachten — daar ligt de aanhechting al klaar.
+
+```mermaid
+flowchart LR
+  classDef kern fill:#fff5f5,stroke:#c0392b,stroke-width:2px,color:#000;
+  classDef gat fill:#f7e2e0,stroke:#9b2c27,stroke-width:3px,color:#000;
+  classDef klaar fill:#f6e9d5,stroke:#8a5300,stroke-width:2px,color:#000;
+  classDef afwezig fill:#f5f5f5,stroke:#9b2c27,stroke-width:2px,stroke-dasharray: 5 4,color:#000;
+  classDef gedaan fill:#ddede3,stroke:#1f6141,stroke-width:2px,color:#000;
+
+  subgraph KERN["De zeven gemodelleerde regelingen"]
+    direction TB
+    FCV["<b>Financieel CV</b><br/>Ziektewet 29b &middot; Wtl 2.1 &middot; Pwet 10c/10d<br/>Wajong 2:20 &middot; Wet WIA 35 &middot; WW 76a<br/>+ kapstok Wfsv 38b"]:::kern
+  end
+
+  subgraph GAT["1&ndash;3 &nbsp;Gat in de keten &mdash; wet wordt als feit aangeroepen"]
+    direction TB
+    WSW["<b>Wet sociale werkvoorziening</b><br/>17 versies in de corpus<br/><i>0 gemodelleerd</i>"]:::gat
+    WML["<b>Wet minimumloon</b><br/>57 versies in de corpus<br/><i>0 gemodelleerd</i>"]:::gat
+    AWB["<b>Algemene wet bestuursrecht</b><br/>177 versies in de corpus<br/><i>0 gemodelleerd</i>"]:::gat
+  end
+
+  subgraph KLAAR["4&ndash;9 &nbsp;Aanhechting ligt klaar &mdash; open term wacht op invuller"]
+    direction TB
+    BLKS["<b>Besluit loonkostensubsidie Pwet</b><br/>3 versies in de corpus<br/><i>0 gemodelleerd</i>"]:::klaar
+    MRWGL["<b>Min. regeling werkgeverslasten</b><br/><i>welke regeling is onbekend</i><br/>staat uit bij UWV"]:::afwezig
+    VERORD["<b>Gemeentelijke verordeningen</b><br/><i>niet in de corpus</i><br/>geen CVDR-bron voor gemeenten"]:::afwezig
+    BRUWV["<b>UWV-beleidsregel</b><br/>dispensatiepercentage<br/><i>niet in de corpus</i>"]:::afwezig
+    MRPP["<b>Min. regelingen proefplaatsing</b><br/>drie stuks, uitvoering<br/><i>niet in de corpus</i>"]:::afwezig
+    AMVBPO["<b>AMvB persoonlijke ondersteuning</b><br/><i>nog niet vastgesteld</i>"]:::afwezig
+  end
+
+  subgraph OK["Al aangesloten"]
+    REINT["<b>Reïntegratiebesluit</b><br/>art. 1a &mdash; <code>implements</code><br/><i>de enige werkende koppeling</i>"]:::gedaan
+  end
+
+  WSW == "17 parameters in 6 wetten<br/>NRP &middot; LKS &middot; LDP &middot; JC/WPA" ==> FCV
+  WML == "41 verwijzingen in de Pwet<br/>bedrag komt als parameter binnen" ==> FCV
+  AWB == "17 artikelen roepen BESCHIKKING aan<br/>er luistert niets" ==> FCV
+
+  FCV -. "open term bij Pwet 10e<br/>default noemt dit besluit al" .-> BLKS
+  FCV -. "open term bij Pwet 10c<br/>raakt LKS-bedrag én 70%-max" .-> MRWGL
+  FCV -. "4 open terms<br/>Pwet 8a en 10 lid 1" .-> VERORD
+  FCV -. "open term bij Wajong 2:20<br/>hoeveel dispensatie" .-> BRUWV
+  FCV -. "3 open terms<br/>WW 76a, WIA 37, Wajong 2:24" .-> MRPP
+  FCV -. "3 open terms bij Pwet 10e" .-> AMVBPO
+
+  REINT == "vult 2 open terms<br/>WIA 35 + Wajong 2:22" ==> FCV
+```
+
+(Bron: `stelsel-ontbrekende-regelingen.mmd`. Er is nog geen PNG van; die kan in
+deze omgeving niet gerenderd worden.)
+
+### Wat al wél is aangesloten
+
+Het **Reïntegratiebesluit** (`amvb/reintegratiebesluit`, art. 1a) vult met
+`implements` twee open terms: `nadere_regels_voorzieningen_artikel_35` bij de
+Wet WIA en `nadere_regels_voorzieningen_artikel_2_22` bij de Wajong. Dat is de
+enige werkende IoC-koppeling in het dossier, en meteen het model voor de rest.
+
+### Wat dit betekent voor de volgorde
+
+Nummer 1 tot en met 3 zijn geen invulling van een open term maar een gat in de
+keten: de wet wordt aangeroepen als feit terwijl er een regeling achter zit die
+het feit zou moeten bepalen. Dat is een ander soort werk dan 4 tot en met 9,
+waar de aanhechting al klaarligt en alleen de invuller ontbreekt.
+
+Het **Dagloonbesluit werknemersverzekeringen** staat er ook (4 versies, niet
+gemodelleerd). Het valt buiten deze lijst omdat de no-riskpolis alleen het
+*recht* modelleert en niet de hoogte van het ziekengeld; zodra die hoogte in
+scope komt, schuift het besluit naar boven.
+
+---
+
+## 5. Samenvattend
 
 Markeringen zijn hier per artikel geteld en opgeteld over de artikelen die de
 regeling beslaat.
