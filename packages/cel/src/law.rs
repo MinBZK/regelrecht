@@ -2186,6 +2186,10 @@ articles:
                 - event: bijdrage_aangevraagd
                   fields: {parameters: [statutaire_naam]}
                   aliases: {naam_aanvrager: statutaire_naam}
+                - event: verzuim_beoordeeld
+                  type: act
+                  subtype: vaststelling
+                  fields: [in_verzuim]
         parameters:
           - {name: statutaire_naam, type: string, required: false, origin: {waarde: BELANGHEBBENDE, grondslag: 'testwet_bijzonder#1'}}
   - number: '2'
@@ -2255,7 +2259,7 @@ articles:
             s.load_law(t).unwrap();
         }
         let mut streams = vec![crate::stream::parse(
-            "$id: test_bijdragen\nrecording_actor: test_instantie\nchronicle: test_kroniek\nevents:\n  - {name: bijdrage_aangevraagd, establishes: 'testwet_bijzonder#1', intake: portaal}\n  - {name: regeling_verzocht, establishes: 'testwet_bijzonder#3', intake: portaal}\n",
+            "$id: test_bijdragen\nrecording_actor: test_instantie\nchronicle: test_kroniek\nevents:\n  - {name: bijdrage_aangevraagd, establishes: 'testwet_bijzonder#1', intake: portaal}\n  - {name: regeling_verzocht, establishes: 'testwet_bijzonder#3', intake: portaal}\n  - {name: verzuim_beoordeeld, establishes: 'testwet_bijzonder#1', intake: behandelaar}\n",
             "test",
         )
         .unwrap()];
@@ -2353,6 +2357,13 @@ articles:
         assert_eq!(e.establishes, ["testwet_bijzonder#3"]);
         let fields: Vec<String> = e.leaves().into_iter().map(|b| b.path).collect();
         assert_eq!(fields, ["onderwerp"]);
+        // Another fact the article that produces the application
+        // establishes (with a type of its own) is not the application.
+        let v = &streams[0].events[2];
+        assert_eq!(v.stage, None);
+        assert_eq!(v.establishes, ["testwet_bijzonder#1"]);
+        let fields: Vec<String> = v.leaves().into_iter().map(|b| b.path).collect();
+        assert_eq!(fields, ["in_verzuim"]);
     }
 
     /// A field added to the general law reaches every application without a
