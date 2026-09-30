@@ -209,6 +209,8 @@ On commit the hooks run, each only when a matching file changed:
 - YAML linting (yamllint, config in `.yamllint`)
 - Rust formatting (`just format`) and clippy (`just lint`)
 - Schema validation of corpus files (`just validate`)
+- Licence information (`reuse lint`): every file needs a licence, set in
+  `REUSE.toml` with the licence texts in `LICENSES/`
 - The test suites of the CI scripts and merge gates under `script/`, when that
   script or its workflow changed
 

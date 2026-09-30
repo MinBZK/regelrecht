@@ -1,0 +1,50 @@
+version = 1
+
+# Standaard: alles in deze repository valt onder de EUPL-1.2.
+[[annotations]]
+path = "**"
+SPDX-FileCopyrightText = "Ministerie van Binnenlandse Zaken en Koninkrijksrelaties"
+SPDX-License-Identifier = "EUPL-1.2"
+
+# Rijkslogo, rijkswapen en de lettertypes RijksoverheidSans en -Serif.
+# Auteursrechtelijk voorbehoud van de Staat (Stcrt. 2008, nr. 115).
+[[annotations]]
+path = [
+  "**/fonts/RO*.woff",
+  "frontend-lawmaking/assets/rijkswapen.svg",
+  "frontend-demo/public/logos/ANVS.png",
+  "frontend-demo/public/logos/BELASTINGDIENST.png",
+  "frontend-demo/public/logos/CJIB.png",
+  "frontend-demo/public/logos/DJI.png",
+  "frontend-demo/public/logos/DOUANE.png",
+  "frontend-demo/public/logos/DUO.png",
+  "frontend-demo/public/logos/IND.png",
+  "frontend-demo/public/logos/JenV.png",
+  "frontend-demo/public/logos/JUSTID.png",
+  "frontend-demo/public/logos/NVWA.png",
+  "frontend-demo/public/logos/RvIG.png",
+  "frontend-demo/public/logos/RVO.png",
+  "frontend-demo/public/logos/SZW.png",
+  "frontend-demo/public/logos/TOESLAGEN.png",
+  "frontend-demo/public/logos/VWS.png",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "Staat der Nederlanden"
+SPDX-License-Identifier = "LicenseRef-Rijkshuisstijl"
+
+# Eigen beeldmerken van organisaties buiten de rijkshuisstijl.
+[[annotations]]
+path = [
+  "frontend-demo/public/logos/CBS.png",
+  "frontend-demo/public/logos/GEMEENTE_AMSTERDAM.png",
+  "frontend-demo/public/logos/GEMEENTE_ROTTERDAM.png",
+  "frontend-demo/public/logos/KADASTER.png",
+  "frontend-demo/public/logos/KIESRAAD.png",
+  "frontend-demo/public/logos/KVK.png",
+  "frontend-demo/public/logos/SVB.png",
+  "frontend-demo/public/logos/UWV.png",
+  "frontend-poc-*/public/img/digid-logo.svg",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "De betreffende organisaties"
+SPDX-License-Identifier = "LicenseRef-Trademark"

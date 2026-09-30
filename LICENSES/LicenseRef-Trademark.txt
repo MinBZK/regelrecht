@@ -1,0 +1,10 @@
+Merk- en beeldrecht van derden
+
+Dit bestand is het logo of beeldmerk van een andere organisatie dan de
+maker van deze repository. Het valt niet onder de licentie van de rest van
+de repository. Alle rechten op het logo berusten bij de organisatie die het
+voert.
+
+Het logo staat hier alleen om in een demonstratie aan te wijzen welke
+organisatie een regeling uitvoert. Wie het buiten die context wil gebruiken,
+vraagt toestemming aan de rechthebbende organisatie.
