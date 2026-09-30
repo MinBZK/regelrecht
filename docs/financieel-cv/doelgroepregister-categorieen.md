@@ -7,7 +7,7 @@ Afgeleid uit de `machine_readable`-blokken en de wetteksten op de branch
 2026-01-01, overige wetten 2026-07-01.
 
 Hoort bij [`gegevensherkomst.md`](gegevensherkomst.md) en
-[`juristsessie-voorbereiding.md`](juristsessie-voorbereiding.md).
+[`juristsessie-voorbereiding.md`](archief/juristsessie-voorbereiding.md).
 De beslisbomen bij dit document staan in
 [`beslisboom-doelgroepregister.md`](beslisboom-doelgroepregister.md).
 

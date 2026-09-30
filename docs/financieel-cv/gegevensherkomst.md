@@ -4,7 +4,7 @@ Alle invoer van de zeven gemodelleerde wetten van het Financieel CV, ingedeeld
 naar herkomst. Afgeleid uit de `machine_readable`-blokken op de branch
 `traject/financieel-cv-validatie-df48ddd1`, gemeten op 20 september 2026.
 
-Hoort bij [`juristsessie-voorbereiding.md`](juristsessie-voorbereiding.md).
+Hoort bij [`juristsessie-voorbereiding.md`](archief/juristsessie-voorbereiding.md).
 
 ## De verdeling
 

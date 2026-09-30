@@ -190,7 +190,7 @@ citeren, maar als grondslag voor de gegevens en voor het besluit.
 
 ### De gegevens en hun herkomst
 
-De volledige lijst staat in [`gegevensherkomst.md`](gegevensherkomst.md): 120
+De volledige lijst staat in [`gegevensherkomst.md`](../gegevensherkomst.md): 120
 gegevens, elk met type, de wetten die het gebruiken, en de bron waar het
 vandaan zou moeten komen. Samengevat:
 

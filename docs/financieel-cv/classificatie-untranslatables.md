@@ -187,7 +187,7 @@ Uit de scope-analyse, dot-voting of korte ja/nee (`workshop-draaiboek`, deel 2).
 
 ## Een bevinding die vervalt
 
-Bevinding 1 uit [`juristsessie-voorbereiding.md`](juristsessie-voorbereiding.md),
+Bevinding 1 uit [`juristsessie-voorbereiding.md`](archief/juristsessie-voorbereiding.md),
 "de Wajong-artikelen dragen verkeerde nummers", houdt geen stand. De bestanden
 dragen `number: 2:15`, `2:20`, `2:22` en `2:24`. De getallen 135, 140, 142 en 144
 ontstaan bij het lezen met PyYAML, dat YAML 1.1 implementeert en `2:20` uitrekent

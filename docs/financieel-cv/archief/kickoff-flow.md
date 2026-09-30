@@ -27,13 +27,13 @@ gecached materiaal ziet.
 
 Open in editor (1 keer per tabblad):
 
-- [README.md](README.md) — projectoverzicht
+- [README.md](../README.md) — projectoverzicht
 - [stelsel-overview.md](stelsel-overview.md) — deel 1
 - [financieel-cv-stelsel.png](financieel-cv-stelsel.png) — deel 1
 - [financieel-cv-graph-detail-alle-7.png](financieel-cv-graph-detail-alle-7.png) — deel 2
 - [financieel-cv-graph-detail.png](financieel-cv-graph-detail.png) — deel 2 (zoom)
 - [output-walkthrough.md](output-walkthrough.md) — deel 3
-- [mvt-referenties.md](mvt-referenties.md) — deel 5
+- [mvt-referenties.md](../mvt-referenties.md) — deel 5
 
 ---
 
@@ -137,7 +137,7 @@ draaiende code die per persoon doorrekent.
 **Doel:** vooraf inkaderen wat in vervolgsessies juridisch besproken
 moet worden.
 
-1. Open [mvt-referenties.md](mvt-referenties.md).
+1. Open [mvt-referenties.md](../mvt-referenties.md).
 2. Loop per regeling de **Open vragen voor jurist** sectie langs.
 3. Vraag de groep: "Welke van deze vragen moeten in vervolgsessie 1,
    welke in sessie 2?" Maak met ze een ruwe planning.
@@ -155,7 +155,7 @@ moet worden.
 **Doel:** transparant zijn over de scope-grenzen voordat de groep
 verwachtingen vormt.
 
-Open [README.md](README.md) en scroll naar de sectie
+Open [README.md](../README.md) en scroll naar de sectie
 **"Niet-gedaan / volgende iteratie"**:
 
 - Reïntegratiebesluit (BWBR0018394) niet als `implements` geharvest
@@ -199,7 +199,7 @@ git checkout packages/editor-api/src/feature_flags.rs   # demo-only patch revert
 
 | Stap | Bestand | Wat |
 |------|---------|-----|
-| Voorber. | [README.md](README.md) | Projectoverzicht |
+| Voorber. | [README.md](../README.md) | Projectoverzicht |
 | Deel 1 | [stelsel-overview.md](stelsel-overview.md) | Tekst + uitleg stelsel |
 | Deel 1 | [financieel-cv-stelsel.png](financieel-cv-stelsel.png) | Stelsel-diagram |
 | Deel 2 | [financieel-cv-graph-detail-alle-7.png](financieel-cv-graph-detail-alle-7.png) | Detail-graph alle regelingen |
@@ -207,9 +207,9 @@ git checkout packages/editor-api/src/feature_flags.rs   # demo-only patch revert
 | Deel 2 | [financieel-cv-graph-detail.png](financieel-cv-graph-detail.png) | NRP zoom-in |
 | Deel 3 | [output-walkthrough.md](output-walkthrough.md) | Wettekst+formule per output |
 | Deel 4 | <http://localhost:3000> | Live editor + Wettengraaf |
-| Deel 4 | [persona-traces/](persona-traces/) | Trace-output van BDD-runs |
-| Deel 5 | [mvt-referenties.md](mvt-referenties.md) | MvT + open vragen |
-| Deel 6 | [README.md](README.md) | "Niet-gedaan"-sectie |
+| Deel 4 | `persona-traces/` (verwijderd 30 september 2026) | Trace-output van BDD-runs; opnieuw te genereren met `doorloop/` |
+| Deel 5 | [mvt-referenties.md](../mvt-referenties.md) | MvT + open vragen |
+| Deel 6 | [README.md](../README.md) | "Niet-gedaan"-sectie |
 
 ## Cheatsheet — commando's
 
