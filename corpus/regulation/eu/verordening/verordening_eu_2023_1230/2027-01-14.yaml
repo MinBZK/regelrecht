@@ -1435,6 +1435,7 @@ articles:
       open_terms:
         - id: rekening_houden_met_belangen_kmo_bij_tarieven
           type: string
+          required: true
           decided_per_case_by: de aangemelde instantie (artikel 25, lid 5)
           legal_basis: artikel 25, lid 5, Verordening (EU) 2023/1230
   - number: '26'
