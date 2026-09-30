@@ -390,6 +390,25 @@ pub struct Produces {
     /// is not silently dropped.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub extensions: Option<serde_json::Value>,
+    /// The article establishes something a belanghebbende submits, such as
+    /// an application (Awb 1:3 lid 3), that the general law can hook onto
+    /// (RFC-046). Next to the legal character of the article's own outputs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub submission: Option<Submission>,
+    /// The articles that establish the submission this decision is taken on
+    /// (RFC-046), as `<regulation>#<article>`: Wpp 107 "besluit op de
+    /// aanvraag" names Wpp 102.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decides_on: Option<Vec<String>>,
+}
+
+/// What an article establishes that a belanghebbende submits (RFC-046).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Submission {
+    /// The kind of submission, as the law names it: `AANVRAAG` (Awb 1:3 lid
+    /// 3). The general law hooks onto it with `applies_to.submission`.
+    pub kind: String,
 }
 
 /// A single case in an IF operation (cases/default syntax)
@@ -925,6 +944,16 @@ pub struct HookFilter {
     /// When absent, defaults to BESLUIT for backward compatibility.
     #[serde(default)]
     pub stage: Option<String>,
+    /// Match articles that establish a submission of this kind (RFC-046),
+    /// such as `AANVRAAG`: Awb 4:2 applies to every application. A hook names
+    /// either this or `legal_character`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub submission: Option<String>,
+    /// With `submission`: only a submission on which decisions of this legal
+    /// character are taken (`decides_on` in the decision article), such as
+    /// `BESCHIKKING` for afdeling 4.1.1 of the Awb.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decided_by: Option<String>,
 }
 
 /// Declaration that an article fires as a hook on matching lifecycle events (RFC-007)

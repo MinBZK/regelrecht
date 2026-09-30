@@ -27,6 +27,6 @@ pub use model::{
     OpenTerm, OpenTermDefault, Origin, OriginOverride, OriginRole, OriginValue, Output,
     OverrideDeclaration, Parameter, Placement, PlacementContainer, Preamble, ProcedureAppliesTo,
     ProcedureDefinition, Produces, ProvisionReference, ResolveSpec, Source, Stage,
-    StageRequirement, Temporal, TypeSpec, UntranslatableEntry,
+    StageRequirement, Submission, Temporal, TypeSpec, UntranslatableEntry,
 };
 pub use value::{MissingFact, MissingKind, Operation, ParameterType, RegulatoryLayer, Value};

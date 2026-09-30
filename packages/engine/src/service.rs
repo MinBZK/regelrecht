@@ -1653,7 +1653,7 @@ impl LawExecutionService {
         &self,
         hook_point: HookPoint,
         article: &Article,
-        _law: &ArticleBasedLaw,
+        law: &ArticleBasedLaw,
         stage: &str,
         parameters: &BTreeMap<String, Value>,
         res_ctx: &mut ResolutionContext<'_>,
@@ -1670,17 +1670,46 @@ impl LawExecutionService {
             None => return Ok((hook_outputs, hook_provenance)),
         };
 
-        let legal_character = match &produces.legal_character {
-            Some(lc) => lc.as_str(),
-            None => return Ok((hook_outputs, hook_provenance)),
-        };
-
         let decision_type = produces.decision_type.as_deref();
 
-        // Find matching hooks
-        let matching_hooks =
-            self.resolver
-                .find_hooks(hook_point, legal_character, decision_type, stage);
+        // The hooks on the decision this article produces (RFC-007), and the
+        // hooks on the submission it establishes (RFC-046): Awb 4:2 on every
+        // application on which a beschikking is taken.
+        let mut matching_hooks = match produces.legal_character.as_deref() {
+            Some(lc) => self
+                .resolver
+                .find_hooks(hook_point, lc, decision_type, stage),
+            None => Vec::new(),
+        };
+        let kind = produces.submission.as_ref().map(|s| s.kind.as_str());
+        if let Some(kind) = kind {
+            matching_hooks.extend(self.resolver.find_submission_hooks(
+                hook_point,
+                kind,
+                &law.id,
+                &article.number,
+            ));
+        }
+        let trigger = match (produces.legal_character.as_deref(), kind) {
+            (Some(lc), Some(k)) => format!("{lc} at stage {stage}, submission {k}"),
+            (Some(lc), None) => format!("{lc} at stage {stage}"),
+            (None, Some(k)) => format!("submission {k}"),
+            (None, None) => return Ok((hook_outputs, hook_provenance)),
+        };
+        // Whether a declaration of another article is a hook at this point on
+        // what this article produces (for the message when a hook article is
+        // missing from the version in force).
+        let same_trigger = |d: &crate::HookDeclaration| {
+            d.hook_point == hook_point
+                && match (&d.applies_to.legal_character, &d.applies_to.submission) {
+                    (Some(lc), _) => {
+                        produces.legal_character.as_deref() == Some(lc.as_str())
+                            && hook_filter_admits(&d.applies_to, decision_type, stage)
+                    }
+                    (None, Some(k)) => kind == Some(k.as_str()),
+                    (None, None) => false,
+                }
+        };
 
         if matching_hooks.is_empty() {
             return Ok((hook_outputs, hook_provenance));
@@ -1688,8 +1717,7 @@ impl LawExecutionService {
 
         tracing::debug!(
             hook_point = ?hook_point,
-            legal_character = legal_character,
-            stage = stage,
+            trigger = %trigger,
             matches = matching_hooks.len(),
             "Firing hooks"
         );
@@ -1722,9 +1750,7 @@ impl LawExecutionService {
                         kind: DeclarationKind::Hook,
                         law_id: hook_law_id.clone(),
                         article: hook_article_number.clone(),
-                        subject: format!(
-                            "hook point {hook_point_str} on {legal_character} at stage {stage}"
-                        ),
+                        subject: format!("hook point {hook_point_str} on {trigger}"),
                         reason: reason.describe(),
                     });
                     continue;
@@ -1741,9 +1767,7 @@ impl LawExecutionService {
                     kind: DeclarationKind::Hook,
                     law_id: hook_law_id.clone(),
                     article: hook_article_number.clone(),
-                    subject: format!(
-                        "hook point {hook_point_str} on {legal_character} at stage {stage}"
-                    ),
+                    subject: format!("hook point {hook_point_str} on {trigger}"),
                     reason: missing_article_reason(
                         hook_law,
                         hook_article_number,
@@ -1753,18 +1777,9 @@ impl LawExecutionService {
                                 h.law_id == *hook_law_id && h.article_number == candidate.number
                             });
                             !offered
-                                && candidate.get_hooks().is_some_and(|decls| {
-                                    decls.iter().any(|d| {
-                                        d.hook_point == hook_point
-                                            && d.applies_to.legal_character.as_deref()
-                                                == Some(legal_character)
-                                            && hook_filter_admits(
-                                                &d.applies_to,
-                                                decision_type,
-                                                stage,
-                                            )
-                                    })
-                                })
+                                && candidate
+                                    .get_hooks()
+                                    .is_some_and(|decls| decls.iter().any(&same_trigger))
                         },
                     ),
                 });
@@ -1780,8 +1795,8 @@ impl LawExecutionService {
                 PathNodeType::HookResolution,
             );
             res_ctx.trace_set_message(format!(
-                "Hook {:?} on {} stage {} → {}:{}",
-                hook_point, legal_character, stage, hook_law_id, hook_article_number
+                "Hook {:?} on {} → {}:{}",
+                hook_point, trigger, hook_law_id, hook_article_number
             ));
 
             // Enter scope for cycle detection
@@ -8626,6 +8641,184 @@ articles:
     /// The motiveringsplicht commences next year. Today the beschikking comes
     /// out without a motivering, and the engine used to log "Hook law not
     /// found" — untrue, the law is loaded — and say nothing anywhere else.
+    /// RFC-046: the general law hooks onto an application, not onto the
+    /// decision. A specific law establishes the application (`submission`),
+    /// a decision article says it decides on it (`decides_on`), and a hook
+    /// with `submission` and `decided_by` fires when the application article
+    /// runs, only if a decision of that legal character is taken on it.
+    const SUBMISSION_LAW: &str = r#"
+$id: wet_bijdrage
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: De vereniging kan een bijdrage aanvragen.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: TOETS
+          submission: {kind: AANVRAAG}
+        parameters:
+          - {name: naam, type: string, nullable: true, required: false}
+        output:
+          - {name: naam_gegeven, type: boolean}
+        actions:
+          - output: naam_gegeven
+            value: {operation: NOT, value: {operation: EQUALS, subject: $naam, value: null}}
+  - number: '2'
+    text: De instantie besluit op de aanvraag.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decides_on: ['wet_bijdrage#1']
+        output:
+          - {name: bijdrage, type: number}
+        actions:
+          - {output: bijdrage, value: 100}
+  - number: '3'
+    text: Ieder kan verzoeken een regeling vast te stellen.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: TOETS
+          submission: {kind: AANVRAAG}
+        output:
+          - {name: verzoek_gedaan, type: boolean}
+        actions:
+          - {output: verzoek_gedaan, value: true}
+  - number: '4'
+    text: De instantie stelt de regeling vast.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESLUIT_VAN_ALGEMENE_STREKKING
+          decides_on: ['wet_bijdrage#3']
+        output:
+          - {name: vastgesteld, type: boolean}
+        actions:
+          - {output: vastgesteld, value: true}
+"#;
+
+    const GENERAL_LAW: &str = r#"
+$id: wet_algemeen
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '9'
+    text: De aanvraag om een beschikking bevat de naam en de dagtekening.
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to: {submission: AANVRAAG, decided_by: BESCHIKKING}
+      execution:
+        parameters:
+          - {name: naam, type: string, nullable: true, required: false}
+          - {name: dagtekening, type: date, nullable: true, required: false}
+        output:
+          - {name: kern_gegeven, type: boolean}
+        actions:
+          - output: kern_gegeven
+            value:
+              operation: AND
+              conditions:
+                - {operation: NOT, value: {operation: EQUALS, subject: $naam, value: null}}
+                - {operation: NOT, value: {operation: EQUALS, subject: $dagtekening, value: null}}
+"#;
+
+    #[test]
+    fn test_the_general_law_hooks_onto_an_application_for_a_beschikking() {
+        let mut service = LawExecutionService::new();
+        service.load_law(SUBMISSION_LAW).unwrap();
+        service.load_law(GENERAL_LAW).unwrap();
+        let params = BTreeMap::from([
+            (
+                "naam".to_string(),
+                Value::String("Vereniging Voorbeeld".into()),
+            ),
+            (
+                "dagtekening".to_string(),
+                Value::String("2025-03-01".into()),
+            ),
+        ]);
+        let r = service
+            .evaluate_law_output("wet_bijdrage", "naam_gegeven", params, "2025-06-01")
+            .unwrap();
+        assert_eq!(r.outputs.get("kern_gegeven"), Some(&Value::Bool(true)));
+        assert!(matches!(
+            r.output_provenance.get("kern_gegeven"),
+            Some(OutputProvenance::Reactive { law_id, article, .. })
+                if law_id == "wet_algemeen" && article == "9"
+        ));
+        // The resolver says which decisions are taken on the application and
+        // which hooks apply, by the same rule the execution fires them.
+        let d = service.resolver().decisions_on("wet_bijdrage", "1");
+        assert_eq!(d.len(), 1);
+        assert_eq!(d[0].legal_character, "BESCHIKKING");
+        let hooks = service.resolver().find_submission_hooks(
+            HookPoint::PostActions,
+            "AANVRAAG",
+            "wet_bijdrage",
+            "1",
+        );
+        assert_eq!(hooks.len(), 1);
+        assert_eq!(hooks[0].law_id, "wet_algemeen");
+    }
+
+    #[test]
+    fn test_a_request_for_a_regulation_of_general_scope_gets_no_awb_4_2() {
+        let mut service = LawExecutionService::new();
+        service.load_law(SUBMISSION_LAW).unwrap();
+        service.load_law(GENERAL_LAW).unwrap();
+        let r = service
+            .evaluate_law_output(
+                "wet_bijdrage",
+                "verzoek_gedaan",
+                BTreeMap::new(),
+                "2025-06-01",
+            )
+            .unwrap();
+        assert!(!r.outputs.contains_key("kern_gegeven"), "{:?}", r.outputs);
+        // Nor does an application on which no decision is modeled.
+        let without_decision = SUBMISSION_LAW.replace("decides_on: ['wet_bijdrage#1']", "");
+        let mut service = LawExecutionService::new();
+        service.load_law(&without_decision).unwrap();
+        service.load_law(GENERAL_LAW).unwrap();
+        let r = service
+            .evaluate_law_output(
+                "wet_bijdrage",
+                "naam_gegeven",
+                BTreeMap::new(),
+                "2025-06-01",
+            )
+            .unwrap();
+        assert!(!r.outputs.contains_key("kern_gegeven"), "{:?}", r.outputs);
+    }
+
+    #[test]
+    fn test_a_hook_applies_to_a_decision_or_to_a_submission_not_both() {
+        let both = GENERAL_LAW.replace(
+            "applies_to: {submission: AANVRAAG, decided_by: BESCHIKKING}",
+            "applies_to: {submission: AANVRAAG, legal_character: BESCHIKKING}",
+        );
+        let e = LawExecutionService::new()
+            .load_law(&both)
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("both"), "{e}");
+        let decided_on_decision = GENERAL_LAW.replace(
+            "applies_to: {submission: AANVRAAG, decided_by: BESCHIKKING}",
+            "applies_to: {legal_character: BESCHIKKING, decided_by: BESCHIKKING}",
+        );
+        let e = LawExecutionService::new()
+            .load_law(&decided_on_decision)
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("decided_by"), "{e}");
+    }
+
     #[test]
     fn test_a_hook_not_in_force_is_recorded_instead_of_silently_skipped() {
         let besluit = r#"
