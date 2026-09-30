@@ -23,6 +23,14 @@ process.stdin.on('end', () => {
     setTimeout(() => process.exit(1), 50);
     return;
   }
+  if (mode === 'late') {
+    // An error result followed, in the same chunk, by more text: the text
+    // arrives after the server already gave up on this answer.
+    const d = (t) => JSON.stringify({ type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: t } } });
+    process.stdout.write(d('Je ') + '\\n' + JSON.stringify({ type: 'result', is_error: true, result: 'overloaded' }) + '\\n' + d('hebt') + '\\n');
+    setTimeout(() => process.exit(1), 50);
+    return;
+  }
   if (mode === 'error') {
     console.log(JSON.stringify({ type: 'result', is_error: true, result: 'rate limited' }));
     return;
@@ -40,7 +48,7 @@ let dir;
 const fakeCli = {};
 beforeAll(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'why-test-'));
-  for (const mode of ['ok', 'crash', 'error', 'cutoff', 'deaf']) {
+  for (const mode of ['ok', 'crash', 'error', 'cutoff', 'deaf', 'late']) {
     fakeCli[mode] = path.join(dir, `claude-${mode}`);
     fs.writeFileSync(fakeCli[mode], FAKE_CLI.replaceAll('__MODE__', JSON.stringify(mode)), { mode: 0o755 });
   }
@@ -91,6 +99,12 @@ describe('the password', () => {
       expect((await post(base, '/api/why/check', {}, null)).status).toBe(401);
     }));
 
+  it('turns password checks away once too many run at once', () =>
+    withServer({ maxConcurrentChecks: 0 }, async (base) => {
+      expect((await post(base, '/api/why/check', {}, 'geheim')).status).toBe(429);
+      expect((await post(base, '/api/why', body, 'geheim')).status).toBe(429);
+    }));
+
   it('guards the explanation itself, not only the check', () =>
     withServer({}, async (base) => {
       expect((await post(base, '/api/why', body, 'fout')).status).toBe(401);
@@ -136,6 +150,13 @@ describe('the explanation', () => {
       const res = await post(base, '/api/why', body);
       expect(res.status).toBe(200);
       await expect(res.text()).rejects.toThrow();
+    }));
+
+  it('ignores output that arrives after it gave up on the answer', () =>
+    withServer({ claudeBin: fakeCli.late }, async (base) => {
+      // The connection breaks, before or after the headers depending on timing.
+      await expect(post(base, '/api/why', body).then((res) => res.text())).rejects.toThrow();
+      expect((await fetch(`${base}/api/why`)).status).toBe(200);
     }));
 
   it('survives a CLI that dies before reading a large trace', () =>

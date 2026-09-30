@@ -122,6 +122,7 @@ export function parseCliLine(line) {
  * @param {number} [options.maxConcurrent]  CLI processes at once, on one subscription
  * @param {number} [options.timeoutMs]
  * @param {number} [options.wrongPasswordDelayMs]
+ * @param {number} [options.maxConcurrentChecks]  scrypt derivations at once
  */
 export function createWhyServer({
   password,
@@ -130,25 +131,43 @@ export function createWhyServer({
   maxConcurrent = 3,
   timeoutMs = 180_000,
   wrongPasswordDelayMs = 500,
+  maxConcurrentChecks = 4,
 }) {
   if (!password) throw new Error('a password is required: without one the button is open to everyone');
   let running = 0;
+  let checking = 0;
   const matches = passwordChecker(password);
 
-  /** @returns {Promise<'ok' | 'wrong'>} */
+  /**
+   * Each check is a scrypt derivation, which is CPU work anyone can ask for
+   * without knowing anything. A flood of them would starve the container, so
+   * only a few run at a time and the rest are turned away before any hashing.
+   * The pause after a wrong guess comes after the slot is freed: it slows the
+   * guesser without holding a place in the queue.
+   *
+   * @returns {Promise<'ok' | 'wrong' | 'busy'>}
+   */
   async function checkPassword(req) {
-    if (await matches(req.headers['x-demo-password'])) return 'ok';
-    // A pause on a wrong guess makes guessing slower, and costs a right one nothing.
+    if (checking >= maxConcurrentChecks) return 'busy';
+    checking += 1;
+    let ok;
+    try {
+      ok = await matches(req.headers['x-demo-password']);
+    } finally {
+      checking -= 1;
+    }
+    if (ok) return 'ok';
     await new Promise((r) => setTimeout(r, wrongPasswordDelayMs));
     return 'wrong';
   }
-  function refuse(res) {
+  function refuse(res, verdict) {
+    if (verdict === 'busy') return sendJson(res, 429, { error: 'too many password checks at once' });
     return sendJson(res, 401, { error: 'wrong password' });
   }
 
   async function explain(req, res) {
     const verdict = await checkPassword(req);
-    if (verdict !== 'ok') return refuse(res);
+    if (verdict !== 'ok') return refuse(res, verdict);
     if (running >= maxConcurrent) return sendJson(res, 429, { error: 'too many explanations at once' });
 
     const { json, tooLarge } = await readBody(req);
@@ -199,7 +218,10 @@ export function createWhyServer({
       res.end();
     };
     const write = (text) => {
-      if (!text || res.writableEnded) return;
+      // After finish() the response is ended or destroyed, but the child can
+      // still flush output: SIGTERM is not instant, and an error result can
+      // share a chunk with the lines after it.
+      if (!text || finished || res.writableEnded || res.destroyed) return;
       if (!started) {
         started = true;
         res.writeHead(200, {
@@ -216,10 +238,14 @@ export function createWhyServer({
     // The visitor closed the sheet: the answer has no reader, and on one
     // subscription an orphaned process is not free.
     res.on('close', () => finish());
+    // A write racing a client that just went away must not become an
+    // unhandled error: that would end the server for every visitor.
+    res.on('error', () => {});
 
     let sawDelta = false;
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (chunk) => {
+      if (finished) return;
       buffered += chunk;
       let newline;
       while ((newline = buffered.indexOf('\n')) >= 0) {
@@ -261,7 +287,7 @@ export function createWhyServer({
       if (url.pathname === '/api/why' && req.method === 'GET') return sendJson(res, 200, { available: true });
       if (url.pathname === '/api/why/check' && req.method === 'POST') {
         const verdict = await checkPassword(req);
-        if (verdict !== 'ok') return refuse(res);
+        if (verdict !== 'ok') return refuse(res, verdict);
         res.writeHead(204).end();
         return;
       }
