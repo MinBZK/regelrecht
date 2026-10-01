@@ -349,11 +349,9 @@ mod tests {
         TRIAL.with(|p| p.borrow().len())
     }
 
-    /// The overlay is removed, even if the engine run panics: the next
-    /// request on this thread does not see the draft as recorded.
     /// The registers of a deployment that binds the fictitious register
     /// policy to the chronicle of the register cell.
-    fn loaded_test_registers() -> (Registers, LawExecutionService) {
+    fn loaded_test_registers() -> Registers {
         let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
         let mut service = LawExecutionService::new();
         service
@@ -369,14 +367,12 @@ mod tests {
             "registers:\n  testbeleid_registerhouder#register: {cell: test_register, chronicle: test_register}\n",
         )
         .unwrap();
-        let registers = load(Some(&file), &mut service, "2025-03-12").unwrap();
-        (registers, service)
+        load(Some(&file), &mut service, "2025-03-12").unwrap()
     }
 
     #[test]
     fn links_name_policy_cell_and_chronicle() {
-        let (registers, _service) = loaded_test_registers();
-        let links = registers.links();
+        let links = loaded_test_registers().links();
         assert_eq!(
             links,
             [RegisterLink {
@@ -388,6 +384,8 @@ mod tests {
         );
     }
 
+    /// The overlay is removed, even if the engine run panics: the next
+    /// request on this thread does not see the draft as recorded.
     #[test]
     fn a_trial_is_removed_even_after_a_panic() {
         let g = crate::gram::test_gram("00000000-0000-4000-8000-000000000001");

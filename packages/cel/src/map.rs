@@ -69,6 +69,10 @@ pub struct Node {
     /// Only on an article: the regulation, on which the frontend collapses.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub regulation: Option<String>,
+    /// Only on an article: its number in the regulation (for the map itself;
+    /// the frontend reads the label).
+    #[serde(skip)]
+    pub article: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -89,7 +93,7 @@ pub struct Map {
 pub struct MapInput<'a> {
     pub process: &'a Process,
     /// Which policy queries which register.
-    pub registers: &'a [RegisterLink],
+    pub register_links: &'a [RegisterLink],
     /// The day whose version of each regulation the map reads (as the
     /// fragment route of an article does).
     pub date: NaiveDate,
@@ -111,6 +115,7 @@ impl Builder {
             label: label.to_string(),
             source,
             regulation: None,
+            article: None,
         });
         id
     }
@@ -128,6 +133,7 @@ impl Builder {
             label: article.to_string(),
             source,
             regulation: Some(regulation.to_string()),
+            article: Some(article.to_string()),
         });
         id
     }
@@ -296,13 +302,7 @@ fn lexostatus_id(cell: &str, name: &str) -> String {
 /// own filter (the same selection as the startup check,
 /// [`crate::check::events_for`]).
 fn read_events(def: &LexostatusDefinition, streams: &[Stream]) -> BTreeSet<String> {
-    let r = &def.reduction;
-    let filters: Vec<Option<&Filter>> = r
-        .derivations
-        .values()
-        .chain(r.extra_fields.values())
-        .map(|d| d.filter())
-        .collect();
+    let filters: Vec<Option<&Filter>> = def.all_derivations().map(|(_, d)| d.filter()).collect();
     // A derivation on the chosen gram reads what the lexostatus selects.
     let chosen = filters.is_empty() || filters.iter().any(Option::is_none);
     let mut out = BTreeSet::new();
@@ -397,8 +397,8 @@ fn handling_part(b: &mut Builder, input: &MapInput, proc: &str) {
 }
 
 /// What the synthesis of the process combines: a lexostatus of its own
-/// cell, a cell elsewhere, or the articles of its own policy; and the cells of the rows of
-/// the assessment.
+/// cell, a cell elsewhere, or the articles of its own policy; and the cells
+/// of the rows of the assessment.
 fn synthesis_part(b: &mut Builder, input: &MapInput, proc: &str) {
     let p = input.process;
     for s in &p.definition.synthesis {
@@ -432,7 +432,7 @@ fn source_part(b: &mut Builder, input: &MapInput) {
     let present: Vec<(String, String, String)> = b
         .nodes
         .values()
-        .filter_map(|n| Some((n.id.clone(), n.regulation.clone()?, n.label.clone())))
+        .filter_map(|n| Some((n.id.clone(), n.regulation.clone()?, n.article.clone()?)))
         .collect();
     for (node, regulation, number) in present {
         let Some(spec) = p
@@ -459,10 +459,12 @@ fn source_part(b: &mut Builder, input: &MapInput) {
 
 /// The registers the policies on the map query: per register an edge from
 /// every article on the map that asks its policy's register (an input
-/// without a source).
+/// without a source), and one to who supplies it: the streams that record
+/// into its chronicle if that is the cell of the process, otherwise the
+/// cell elsewhere.
 fn register_part(b: &mut Builder, input: &MapInput) {
     let resolver = input.process.service.resolver();
-    for link in input.registers {
+    for link in input.register_links {
         let Some(law) = resolver.get_law_for_date(&link.policy, Some(input.date)) else {
             continue;
         };
@@ -471,7 +473,9 @@ fn register_part(b: &mut Builder, input: &MapInput) {
             .values()
             .filter(|n| n.regulation.as_deref() == Some(link.policy.as_str()))
             .filter(|n| {
-                law.find_article_by_number(&n.label)
+                n.article
+                    .as_deref()
+                    .and_then(|number| law.find_article_by_number(number))
                     .is_some_and(|a| crate::register::source_less_inputs(a).next().is_some())
             })
             .map(|n| n.id.clone())
@@ -489,6 +493,24 @@ fn register_part(b: &mut Builder, input: &MapInput) {
         );
         for a in articles {
             b.edge(&a, &r, EdgeKind::Register);
+        }
+        let cell = &input.process.cell;
+        if link.cell == cell.id() {
+            for stream in cell
+                .streams
+                .iter()
+                .filter(|s| s.chronicle == link.chronicle)
+            {
+                b.edge(&r, &format!("stream:{}", stream.id), EdgeKind::Register);
+            }
+        } else {
+            let c = b.node(
+                format!("source_cell:{}", link.cell),
+                NodeKind::SourceCell,
+                &link.cell,
+                SourceRef::config("registers", &key),
+            );
+            b.edge(&r, &c, EdgeKind::Register);
         }
     }
 }

@@ -51,7 +51,7 @@ pub struct ProcessState {
     /// [`crate::regulations::version_key`]).
     pub regulation_files: Arc<BTreeMap<(String, String), PathBuf>>,
     /// Which policy queries which register, for the map.
-    pub registers: Arc<Vec<crate::register::RegisterLink>>,
+    pub register_links: Arc<Vec<crate::register::RegisterLink>>,
     /// The binding file of the registers (`CELL_REGISTERS`), if there is one.
     pub registers_file: Option<Arc<PathBuf>>,
 }
@@ -136,7 +136,7 @@ async fn examples_route(State(state): State<ProcessState>) -> Json<crate::exampl
 async fn map_route(State(state): State<ProcessState>) -> Json<crate::map::Map> {
     Json(crate::map::build(&crate::map::MapInput {
         process: &state.process,
-        registers: &state.registers,
+        register_links: &state.register_links,
         date: (state.clock)().date_naive(),
     }))
 }

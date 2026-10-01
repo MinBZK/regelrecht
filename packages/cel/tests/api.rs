@@ -5746,40 +5746,64 @@ async fn the_map_shows_the_lexostatuses_and_the_actions() {
     );
 }
 
+/// The map of every fixture process, with the path of the process.
+async fn fixture_maps(app: &Router) -> Vec<(String, Value)> {
+    let (_, processes, _) = call(app, "GET", "/api/processes", None, None).await;
+    let mut out = Vec::new();
+    for p in processes.as_array().unwrap() {
+        let process = format!("/processes/{}", p["id"].as_str().unwrap());
+        let (status, map, _) = call(app, "GET", &format!("{process}/api/map"), None, None).await;
+        assert_eq!(status, StatusCode::OK, "{map}");
+        out.push((process, map));
+    }
+    out
+}
+
 /// Every node of the map of every fixture process opens to its fragment,
-/// through the routes the frontend uses.
+/// through the routes the frontend uses; a channel, a role and an action
+/// open to their own block.
 #[tokio::test]
 async fn every_node_of_the_map_has_a_fragment() {
     let data = tempfile::tempdir().unwrap();
     let app = app(data.path());
-    let (_, processes, _) = call(&app, "GET", "/api/processes", None, None).await;
     let mut kinds = std::collections::BTreeSet::new();
-    for p in processes.as_array().unwrap() {
-        let process = format!("/processes/{}", p["id"].as_str().unwrap());
-        let (status, map, _) = call(&app, "GET", &format!("{process}/api/map"), None, None).await;
-        assert_eq!(status, StatusCode::OK, "{map}");
+    for (process, map) in fixture_maps(&app).await {
         for n in nodes(&map) {
-            kinds.insert(n["kind"].as_str().unwrap().to_string());
+            let kind = n["kind"].as_str().unwrap();
+            kinds.insert(kind.to_string());
             let uri = source_uri(&process, &n["source"]);
             let (status, body, _) = call(&app, "GET", &uri, None, None).await;
             assert_eq!(status, StatusCode::OK, "{n}: {uri}: {body}");
+            let name = n["id"].as_str().unwrap().split_once(':').unwrap().1;
+            let first = match kind {
+                "channel" | "role" => format!("{name}:"),
+                "action" => format!("- name: {name}"),
+                _ => continue,
+            };
+            let yaml = body["yaml"].as_str().unwrap().trim_start();
+            assert!(yaml.starts_with(&first), "{n}: {yaml}");
         }
     }
-    assert!(kinds.contains("source_cell"), "{kinds:?}");
+    for kind in ["channel", "role", "action", "source_cell"] {
+        assert!(kinds.contains(kind), "{kind}: {kinds:?}");
+    }
 }
 
 #[tokio::test]
 async fn every_edge_of_the_map_joins_two_nodes() {
     let data = tempfile::tempdir().unwrap();
-    let map = toeslag_map(&app(data.path())).await;
-    let ids: std::collections::BTreeSet<&str> = nodes(&map)
-        .iter()
-        .map(|n| n["id"].as_str().unwrap())
-        .collect();
-    for e in edges(&map) {
-        assert!(
-            ids.contains(e["from"].as_str().unwrap()) && ids.contains(e["to"].as_str().unwrap()),
-            "{e}"
-        );
+    let app = app(data.path());
+    for (process, map) in fixture_maps(&app).await {
+        let ids: std::collections::BTreeSet<&str> = nodes(&map)
+            .iter()
+            .map(|n| n["id"].as_str().unwrap())
+            .collect();
+        for e in edges(&map) {
+            assert!(
+                ids.contains(e["from"].as_str().unwrap())
+                    && ids.contains(e["to"].as_str().unwrap()),
+                "{process}: {e}"
+            );
+        }
     }
 }

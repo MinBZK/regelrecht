@@ -241,7 +241,7 @@ impl Runtime {
                 regulations: loaded.clone(),
                 root: root.clone(),
                 regulation_files: regulation_files.clone(),
-                registers: register_links.clone(),
+                register_links: register_links.clone(),
                 registers_file: registers_file.clone(),
             });
         }
