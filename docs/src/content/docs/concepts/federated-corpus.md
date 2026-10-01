@@ -49,6 +49,8 @@ Each source declares:
 
 The engine merges laws from all registered sources into a single corpus at load time. Scope information is used to filter: when executing for a person in Amsterdam, only Amsterdam's municipal ordinances apply.
 
+Scopes are claims, and the loader checks them against what a source delivers. It warns when a scoped source provides a regulation for a different municipality or water board, when it provides a national regulation (a decentral source can fill in national law but not replace it), and when it provides a regulation whose `regulatory_layer` it does not recognize. The check covers every version a source supplies, including one from a source that loses on priority. It reads the regulation body, so a GitHub source that is only enumerated by path, without fetching the files, is not checked. The check warns and does not refuse.
+
 The `implements` mechanism from [Inversion of Control](./inversion-of-control) works across repositories. Diemen's afstemmingsverordening (in Diemen's repo) can implement open terms from the Participatiewet (in the central repo). The engine does not care which repository a file came from.
 
 ## Local overrides
