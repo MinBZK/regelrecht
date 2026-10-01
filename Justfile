@@ -317,6 +317,32 @@ demo-why password="lokaal-demo-wachtwoord":
 dev-demo: wasm-build
     cd frontend-demo && npm run dev -- --port 7400 --strictPort --host 0.0.0.0
 
+# Record a walkthrough: the demo with the recorder panel in the corner. Takes
+# land in .walkthrough/takes/. Chrome or Edge; see
+# docs/src/content/docs/components/demo.md#recording.
+[doc("Open the demo with the walkthrough recorder")]
+walkthrough-record: wasm-build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ( until curl -sf -o /dev/null http://127.0.0.1:7400/; do sleep 0.3; done
+      case "$(uname -s)" in
+        Darwin) open -a "Google Chrome" "http://127.0.0.1:7400/presentatie?record" ;;
+        *) xdg-open "http://127.0.0.1:7400/presentatie?record" >/dev/null 2>&1 || true ;;
+      esac ) &
+    cd frontend-demo && WALKTHROUGH_RECORD=1 npm run dev -- --port 7400 --strictPort --host 127.0.0.1
+
+# The walkthrough pipeline: `just walkthrough prepare` after a take (clean,
+# transcribe, draft cuts), `just walkthrough build` after editing
+# corpus/demo/walkthrough/walkthrough.yaml, `just walkthrough status` to see
+# where things are. Needs ffmpeg; downloads its models on first use.
+[doc("Walkthrough post-processing (prepare, build, transcript, export, status)")]
+walkthrough *args:
+    uv run --quiet --project script/walkthrough walkthrough {{args}}
+
+# The walkthrough pipeline's own tests (the cut and caption arithmetic).
+walkthrough-test:
+    uv run --quiet --project script/walkthrough pytest -q script/walkthrough/tests
+
 # Everything the demo consists of, in the order a failure is cheapest to read:
 # the laws themselves, then what they compute, then the app around them.
 #

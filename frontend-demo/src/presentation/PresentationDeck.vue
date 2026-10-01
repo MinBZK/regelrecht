@@ -14,12 +14,34 @@ const p = usePresentation();
 const { state } = useDemo();
 const { t } = useI18n();
 
+/**
+ * The walkthrough player (src/walkthrough/WalkthroughView.vue) renders the
+ * same deck, but drives it itself: it passes the slide that belongs to the
+ * moment in the recording and brings its own controls in the `footer` slot.
+ * Without `slide` the deck follows the live presentation, as it always did.
+ */
+const props = defineProps({
+  slide: { type: Object, default: null },
+  index: { type: Number, default: 0 },
+  total: { type: Number, default: 0 },
+  presenter: { type: String, default: '' },
+  // The language of the slide text, when it is not the interface's (the
+  // walkthrough's slides are Dutch, also on /en/tour).
+  contentLang: { type: String, default: '' },
+});
+const driven = computed(() => !!props.slide);
+const cur = computed(() => (driven.value ? props.slide : p.current.value));
+const curIndex = computed(() => (driven.value ? props.index : p.index.value));
+const curTotal = computed(() => (driven.value ? props.total : p.total.value));
+const shown = computed(() => (driven.value ? true : p.active.value && p.current.value && p.visible.value));
+const full = computed(() => (driven.value ? !props.slide.route : p.isFull.value));
+
 // Een computed: het dek blijft staan tijdens een taalwissel, dus een datum die
 // eenmalig is uitgerekend zou in de oude taal blijven hangen.
 const today = computed(() => new Date().toLocaleDateString(intlLocale(), { day: 'numeric', month: 'long', year: 'numeric' }));
-const counter = computed(() => `${p.index.value + 1} / ${p.total.value}`);
-const progress = computed(() => (p.total.value ? `${((p.index.value + 1) / p.total.value) * 100}%` : '0%'));
-const isLast = computed(() => p.index.value === p.total.value - 1);
+const counter = computed(() => `${curIndex.value + 1} / ${curTotal.value}`);
+const progress = computed(() => (curTotal.value ? `${((curIndex.value + 1) / curTotal.value) * 100}%` : '0%'));
+const isLast = computed(() => curIndex.value === curTotal.value - 1);
 // Een computed, zodat de toetsregel meeverandert bij een taalwissel.
 const hints = computed(() => HINTS.map((id) => ({ id, segments: hintSegments(t(id)) })));
 
@@ -34,67 +56,70 @@ function saveName(e) {
 </script>
 
 <template>
-  <Teleport to="body">
-    <div v-if="p.active.value && p.current.value && p.visible.value" class="deck" :class="{ full: p.isFull.value }" role="region" :aria-label="t('deck.label')">
+  <Teleport to="body" :disabled="driven">
+    <div v-if="shown" class="deck" :class="{ full, driven }" role="region" :aria-label="t('deck.label')">
       <!-- Het podium: de tekstkolom van de dia. Op het hele scherm is dat een
            gecentreerde kolom van hooguit 1600px, in de rail de hele kolom. In
            beide gevallen is dit de container waar de typografie zich op meet,
            zodat één ladder voor allebei volstaat. -->
-      <div class="stage">
+      <div class="stage" :lang="contentLang || undefined">
       <div class="content">
         <div class="content-main">
           <!-- Title slide -->
-          <template v-if="p.current.value.kind === 'title'">
+          <template v-if="cur.kind === 'title'">
             <span class="overline">{{ today }}</span>
-            <h1 class="title title-hero">{{ p.current.value.title }}</h1>
-            <p v-if="p.current.value.subtitle" class="lead lead-hero">{{ p.current.value.subtitle }}</p>
+            <h1 class="title title-hero">{{ cur.title }}</h1>
+            <p v-if="cur.subtitle" class="lead lead-hero">{{ cur.subtitle }}</p>
             <div class="title-meta">
-              <input class="presenter" :value="state.presenterName" :placeholder="t('deck.presenter_name')" :aria-label="t('deck.presenter_name')" @change="saveName" />
-              <span v-if="p.current.value.footer" class="affiliation">{{ p.current.value.footer }}</span>
+              <span v-if="driven" class="presenter">{{ presenter }}</span>
+              <input v-else class="presenter" :value="state.presenterName" :placeholder="t('deck.presenter_name')" :aria-label="t('deck.presenter_name')" @change="saveName" />
+              <span v-if="cur.footer" class="affiliation">{{ cur.footer }}</span>
             </div>
           </template>
 
           <!-- Statement slide: a few big lines -->
-          <template v-else-if="p.current.value.kind === 'statement'">
-            <span v-if="p.current.value.overline" class="overline">{{ p.current.value.overline }}</span>
+          <template v-else-if="cur.kind === 'statement'">
+            <span v-if="cur.overline" class="overline">{{ cur.overline }}</span>
             <h1 class="title statement">
-              <span v-for="(line, j) in p.current.value.lines" :key="j" class="statement-line" v-html="emphasize(line)"></span>
+              <span v-for="(line, j) in cur.lines" :key="j" class="statement-line" v-html="emphasize(line)"></span>
             </h1>
           </template>
 
           <!-- Section or closing slide: a big title with a few plain lines -->
-          <template v-else-if="p.current.value.kind === 'closing' || p.current.value.kind === 'section'">
-            <span v-if="p.current.value.overline" class="overline">{{ p.current.value.overline }}</span>
-            <h1 class="title title-hero">{{ p.current.value.title }}</h1>
-            <ul v-if="p.current.value.lines?.length" class="bullets bullets-plain">
-              <li v-for="(line, j) in p.current.value.lines" :key="j" v-html="emphasize(line)"></li>
+          <template v-else-if="cur.kind === 'closing' || cur.kind === 'section'">
+            <span v-if="cur.overline" class="overline">{{ cur.overline }}</span>
+            <h1 class="title title-hero">{{ cur.title }}</h1>
+            <ul v-if="cur.lines?.length" class="bullets bullets-plain">
+              <li v-for="(line, j) in cur.lines" :key="j" v-html="emphasize(line)"></li>
             </ul>
-            <a v-if="p.current.value.link" class="slide-link" :href="p.current.value.link.href" target="_blank" rel="noopener noreferrer">{{ p.current.value.link.label }}</a>
+            <a v-if="cur.link" class="slide-link" :href="cur.link.href" target="_blank" rel="noopener noreferrer">{{ cur.link.label }}</a>
           </template>
 
           <!-- Demo slide: the rail next to the live app -->
           <template v-else>
-            <span v-if="p.current.value.overline" class="overline">{{ p.current.value.overline }}</span>
-            <h1 class="title">{{ p.current.value.title }}</h1>
-            <p v-if="p.current.value.lead" class="lead">{{ p.current.value.lead }}</p>
-            <ul v-if="p.current.value.bullets?.length" class="bullets">
-              <li v-for="(b, j) in p.current.value.bullets" :key="j" v-html="emphasize(b)"></li>
+            <span v-if="cur.overline" class="overline">{{ cur.overline }}</span>
+            <h1 class="title">{{ cur.title }}</h1>
+            <p v-if="cur.lead" class="lead">{{ cur.lead }}</p>
+            <ul v-if="cur.bullets?.length" class="bullets">
+              <li v-for="(b, j) in cur.bullets" :key="j" v-html="emphasize(b)"></li>
             </ul>
           </template>
         </div>
-        <div v-if="p.current.value.note" class="content-foot">
-          <p class="note">{{ p.current.value.note }}</p>
+        <div v-if="cur.note" class="content-foot">
+          <p class="note">{{ cur.note }}</p>
         </div>
       </div>
       </div>
 
+      <slot name="aside"></slot>
+      <slot name="footer">
       <div class="footer">
         <!-- De tellerregel en de toetsenregel staan links onder elkaar; de
              knoppen staan daar rechts naast, gecentreerd over allebei. Eerder
              stonden ze op de tellerregel, waardoor ze hoog naast een lege regel
              hingen terwijl de toetsen eronder de breedte vulden. -->
         <div class="footer-text">
-          <span class="counter" :aria-label="t('deck.slide_of', { n: p.index.value + 1, total: p.total.value })">{{ counter }}</span>
+          <span class="counter" :aria-label="t('deck.slide_of', { n: curIndex + 1, total: curTotal })">{{ counter }}</span>
           <!-- De toetsen als echte toetsen: nldd-keyboard-shortcut rendert een
                <kbd> per toets, met de OS-detectie en de semantiek erbij. Dit
                waren drie <span>'s met een eigen tekstkleur. `color="inherit"`
@@ -123,7 +148,7 @@ function saveName(e) {
             icon="back"
             :text="t('deck.previous')"
             tooltip-timing="never"
-            :disabled="p.index.value === 0 || undefined"
+            :disabled="curIndex === 0 || undefined"
             @click="p.prev()"
           ></nldd-icon-button>
           <nldd-button
@@ -142,7 +167,8 @@ function saveName(e) {
           ></nldd-icon-button>
         </nldd-button-bar>
       </div>
-      <div class="progress" aria-hidden="true"><div class="progress-fill" :style="{ width: progress }"></div></div>
+      </slot>
+      <div v-if="!driven" class="progress" aria-hidden="true"><div class="progress-fill" :style="{ width: progress }"></div></div>
     </div>
   </Teleport>
 </template>
@@ -462,6 +488,14 @@ function saveName(e) {
 @media (max-width: 1024px) {
   .deck {
     width: 100vw;
+  }
+  /* In the walkthrough player the rail goes into the page flow under the
+     video on a narrow screen, instead of covering it. */
+  .deck.driven:not(.full) {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    order: 2;
   }
 }
 </style>

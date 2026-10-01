@@ -1,0 +1,67 @@
+---
+# De opgenomen rondleiding door de demo.
+#
+# Dit bestand bepaalt wat de kijker ziet en hoort: welke opnames (takes) de
+# rondleiding vormen, wat eruit geknipt is, welke tekst er op de dia's staat en
+# welke veelgestelde vragen er bij welk moment verschijnen. `just walkthrough
+# build` maakt er de video's, de ondertitels en timeline.json van. Een
+# correctie is dus een wijziging hier en een nieuwe build, geen nieuwe opname.
+#
+# Tijden zijn seconden in de opname zelf (take-tijd), niet in het eindresultaat:
+# zo blijft een knip op zijn plek staan als er eerder in de rondleiding iets
+# bijkomt of afgaat. Zie docs/src/content/docs/components/demo.md.
+
+presenter:
+  name: ''
+  role: ''
+
+# De GitHub-release waar de video's als assets in staan. Zonder release haalt
+# de Docker-build niets op, en een timeline.json zonder release komt niet door
+# de tests (frontend-demo/src/walkthrough/corpus.test.js).
+release: ''
+
+# Woorden die de transcriptie goed moet spellen.
+glossary:
+  - RegelRecht
+  - regelrecht
+  - zorgtoeslag
+  - Awb
+  - Merijn
+  - Claudia
+  - machine-leesbaar
+
+# De hoofdlijn: stukken uit opnames, achter elkaar. Een hoofdstuk opnieuw
+# opgenomen? Laat het segment van de oude opname eerder stoppen en zet de
+# nieuwe opname erachter.
+#
+#   segments:
+#     - take: 2026-10-02T10-00-00
+#       to: 512.3
+#     - take: 2026-10-02T11-30-00
+main:
+  segments: []
+
+# Per opname wat eruit gaat. `just walkthrough prepare` zet een voorstel in
+# .walkthrough/takes/<take>/cuts.suggested.yaml.
+#
+#   2026-10-02T10-00-00:
+#     cuts:
+#       - {from: 12.3, to: 15.8, reason: dubbele zin}
+takes: {}
+
+# Tekst op een dia aanpassen zonder nieuwe opname, op dia-index.
+#
+#   5:
+#     title: De wet, machine-leesbaar
+#     lead: Elk artikel staat er twee keer in, als tekst en als regels.
+slides: {}
+
+# Veelgestelde vragen: een eigen opname per antwoord, en het moment in de
+# hoofdlijn waarop de vraag verschijnt (in take-tijd, of als hoofdstuk plus
+# seconden: `offer: {chapter: 5, after: 20}`).
+#
+#   - id: open-normen
+#     question: Hoe gaan jullie om met open normen?
+#     take: 2026-10-02T11-00-00
+#     offer: {take: 2026-10-02T10-00-00, at: 812.0}
+faq: []

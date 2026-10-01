@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useColorScheme } from '@regelrecht/frontend-shared';
 import { FEATURES, useDemo } from './store/demoStore.js';
@@ -60,12 +60,22 @@ router.afterEach(refreshScrollMode);
 // The presentation deck drives the tabs; it needs the router, the store (to
 // switch persona) and the slides from the demo config once that has loaded.
 const presentation = usePresentation();
+
+// The walkthrough recorder, in dev and only with `?record` in the address. A
+// literal `import.meta.env.DEV` so the production build drops the import
+// altogether: the deployed demo has no microphone or camera permission anyway.
+const RecorderPanel =
+  import.meta.env.DEV && typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('record')
+    ? defineAsyncComponent(() => import('./walkthrough/RecorderPanel.vue'))
+    : null;
 presentation.init({ router, demo });
 watch(corpus, (c) => presentation.init({ slides: c?.config?.slides ?? [] }), { immediate: true });
 // De modus staat in de store (en dus in localStorage); het dek houdt er zijn
 // eigen ref voor, zodat de store niet om de presentatiemodule heen cirkelt.
 watch(() => state.presentationMode, (m) => presentation.setMode(m), { immediate: true });
 function onGlobalKey(e) {
+  // The recorded walkthrough is its own page; the live deck stays out of it.
+  if (route.meta?.bare) return;
   if (e.key === 'P' && e.shiftKey && !e.target?.closest?.('input, textarea, select, [contenteditable]')) {
     e.preventDefault();
     // Een schakelaar, ook als het dek uit beeld staat. `start()` navigeert naar
@@ -288,8 +298,12 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
 </script>
 
 <template>
-  <nldd-app-view ref="appView" background="tinted">
+  <!-- A bare page (the recorded walkthrough) brings its own layout: the video
+       already shows the workspace bar, a live one around it would be a second. -->
+  <router-view v-if="route.meta?.bare" />
+  <nldd-app-view v-else ref="appView" background="tinted">
     <PresentationDeck />
+    <component :is="RecorderPanel" v-if="RecorderPanel" />
     <nldd-bar-split-view>
       <nldd-container slot="toolbar" padding="8" background="base">
         <nldd-toolbar size="md" :label="t('app.toolbar.label')">

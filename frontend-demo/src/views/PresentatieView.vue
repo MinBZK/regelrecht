@@ -3,6 +3,9 @@ import { computed, onActivated, onMounted, watch } from 'vue';
 import { usePresentation } from '../presentation/usePresentation.js';
 import { useDemo } from '../store/demoStore.js';
 import { useI18n } from '../i18n/index.js';
+import { useRouter } from 'vue-router';
+import { localeRouteName } from '../router.js';
+import { useWalkthrough } from '../walkthrough/useWalkthrough.js';
 
 // The Presentatie tab starts the deck. The deck itself is an overlay
 // (PresentationDeck.vue, mounted by App.vue) that covers the screen for the
@@ -10,7 +13,12 @@ import { useI18n } from '../i18n/index.js';
 // what remains when the deck is closed on this route: a way to start again.
 
 const p = usePresentation();
-const { t } = useI18n();
+const { t, locale } = useI18n();
+const router = useRouter();
+const { timeline: walkthrough } = useWalkthrough();
+function openWalkthrough() {
+  router.push(router.resolve({ name: localeRouteName('rondleiding', locale.value) }).path);
+}
 const { ready, corpus, state } = useDemo();
 const slides = computed(() => corpus.value?.config?.slides ?? []);
 
@@ -59,6 +67,9 @@ function kindLabel(s) {
       <nldd-rich-text spacing="tight">
         <p v-html="keyHelp"></p>
       </nldd-rich-text>
+      <!-- Wie de presentatie zonder presentator wil zien: de opgenomen versie,
+           met stem. Alleen als deze build er een heeft. -->
+      <nldd-button v-if="walkthrough" variant="secondary" start-icon="video-camera" :text="t('home.presentation.walkthrough')" @click="openWalkthrough"></nldd-button>
       <!-- De modus bepaalt of de dia's náást de demo blijven staan. In de zaal
            vertelt de presentator zelf en is het scherm van de demo; zelfstandig
            is er niemand die het verhaal erbij vertelt, dus blijft het staan.

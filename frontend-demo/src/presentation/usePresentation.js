@@ -21,7 +21,7 @@ import { localeRouteName, pageForConfigPath } from '../router.js';
  * It is read back to its page here and resolved against the active locale, so
  * a deck presented in English opens the English tabs.
  */
-function slideTarget(path) {
+export function slideTarget(path) {
   if (!path || !router) return null;
   const page = pageForConfigPath(path);
   if (!page) return path;

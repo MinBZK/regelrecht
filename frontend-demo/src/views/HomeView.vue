@@ -5,6 +5,7 @@ import { useDemo } from '../store/demoStore.js';
 import QrCode from '../components/QrCode.vue';
 import { useI18n } from '../i18n/index.js';
 import { localeRouteName } from '../router.js';
+import { useWalkthrough } from '../walkthrough/useWalkthrough.js';
 
 // De landingspagina op `/`. Wie de demo opent zonder te weten wat het is, leest
 // hier in een paar regels wat er te zien valt, start de presentatie met één
@@ -21,6 +22,8 @@ function pathFor(page) {
   return router.resolve({ name: localeRouteName(page, locale.value) }).path;
 }
 const { ready } = useDemo();
+// Only offered when this build carries a recording.
+const { timeline: walkthrough } = useWalkthrough();
 
 // De QR-code moet naar het adres wijzen waar déze pagina draait: productie,
 // een preview-deploy of een laptop op het netwerk tijdens een presentatie. Die
@@ -111,6 +114,14 @@ onActivated(() => {
               :text="t('home.hero.start')"
               :disabled="!ready || undefined"
               @click="start"
+            ></nldd-button>
+            <nldd-button
+              v-if="walkthrough"
+              size="lg"
+              variant="inherit-tinted"
+              start-icon="video-camera"
+              :text="t('home.hero.walkthrough')"
+              @click="router.push(pathFor('rondleiding'))"
             ></nldd-button>
             <nldd-button
               size="lg"

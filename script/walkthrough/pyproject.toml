@@ -1,0 +1,23 @@
+[project]
+name = "regelrecht-walkthrough"
+version = "0.1.0"
+description = "Post-processing for the recorded demo walkthrough: clean, transcribe, cut, build, export."
+requires-python = ">=3.11"
+dependencies = ["pyyaml>=6"]
+
+[project.scripts]
+walkthrough = "walkthrough.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["walkthrough"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

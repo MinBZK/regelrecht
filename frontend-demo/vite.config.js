@@ -1,6 +1,7 @@
 import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
+import { walkthroughDevServer } from './scripts/walkthrough-dev-server.mjs';
 
 // @cucumber/messages runs `createRequire(import.meta.url)` at import time, a
 // Node-only API. The shared Gherkin runner pulls it in, so the browser build
@@ -19,6 +20,9 @@ export default defineConfig({
         },
       },
     }),
+    // Receives recorder takes, only under `just walkthrough-record`
+    // (src/walkthrough/recorder.js); returns null otherwise, which Vite skips.
+    walkthroughDevServer(),
   ],
   resolve: {
     alias: isVitest ? {} : { 'node:module': nodeModuleShim },
