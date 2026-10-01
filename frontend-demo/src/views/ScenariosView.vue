@@ -145,7 +145,7 @@ async function run(index) {
   lap('engine', startedAt);
   const refused = selectedLoadFailure.value;
   if (refused) {
-    state.error = `Wet ${refused.id} (${refused.path}) is niet geladen; de engine weigerde: ${refused.message}`;
+    state.error = t('scenario.law_refused', { id: refused.id, path: refused.path, message: refused.message });
     state.status = 'fail';
     open[index] = true;
     return;

@@ -49,13 +49,13 @@ slides.3.lines.2: '**Iepenbier** publisearje'
 slides.4.title: Demo RegelRecht
 slides.4.lines.0: Folslein ferhaal, gjin einprodukt
 slides.4.lines.1: Wy meitsje belied troch te dwaan
-slides.5.overline: De wet
-slides.5.title: De wet, masine-lêsber
+slides.5.overline: It regelwurk
+slides.5.title: De wet as regelwurk
 slides.5.lead: De wettekst en de útfierbere regel steane neistinoar, per artikel.
 slides.5.bullets.0: >-
   Elk artikel hat in **machine_readable**-diel: hokker gegevens deryn geane, wat derút komt en hoe.
 slides.5.bullets.1: In ferwizing nei in oare wet is eksplisyt, gjin kopy fan in bedrach.
-slides.5.bullets.2: Deselde YAML draait yn 'e editor, yn dit portaal en yn 'e simulaasje.
+slides.5.bullets.2: Itselde regelwurk draait yn 'e editor, yn dit portaal en yn 'e simulaasje.
 slides.6.overline: Gearhing
 slides.6.title: Wetten hingje gear
 slides.6.lead: >-

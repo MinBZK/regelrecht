@@ -156,14 +156,14 @@ slides.4.title: RegelRecht demo
 slides.4.lines.0: A complete story, not a finished product
 slides.4.lines.1: We make policy by doing
 
-slides.5.overline: The law
-slides.5.title: The law, machine-readable
+slides.5.overline: The rulework
+slides.5.title: The law as a rulework
 slides.5.lead: The legal text and the executable rule sit side by side, article by article.
 slides.5.bullets.0: >-
   Every article has a **machine_readable** part: what goes in, what comes out,
   and how.
 slides.5.bullets.1: A reference to another law is explicit, not a copied amount.
-slides.5.bullets.2: The same YAML runs in the editor, in this portal and in the simulation.
+slides.5.bullets.2: The same rulework runs in the editor, in this portal and in the simulation.
 
 slides.6.overline: Coherence
 slides.6.title: Laws hang together
