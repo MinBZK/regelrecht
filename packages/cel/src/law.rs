@@ -336,6 +336,115 @@ impl FieldDef {
     }
 }
 
+/// Why an event looks the way it does (spec "waarom in de aanvraag",
+/// 01-10-2026): the chain of configuration and articles from which it is
+/// composed, per field why it is there and why it has its value, and the
+/// parameters of the articles taking part that did not become a field. The
+/// cell records it while composing; it is shown, not recorded in a gram.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct Explanation {
+    pub event: Vec<Step>,
+    pub fields: BTreeMap<String, FieldExplanation>,
+    pub excluded: Vec<Excluded>,
+}
+
+/// Per field: why it is on the form (`here`) and why it has its value (`value`).
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct FieldExplanation {
+    pub here: Vec<Step>,
+    pub value: Vec<Step>,
+}
+
+/// One step of an explanation: what kind, where it is written, and a short
+/// sentence (Dutch, for the demo) with the article and the YAML key in it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Step {
+    pub kind: StepKind,
+    pub source: SourceRef,
+    pub reason: String,
+}
+
+impl Step {
+    pub fn new(kind: StepKind, source: SourceRef, reason: impl Into<String>) -> Self {
+        Self {
+            kind,
+            source,
+            reason: reason.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StepKind {
+    Process,
+    Stream,
+    Submission,
+    Establishes,
+    DecidesOn,
+    Hook,
+    Extends,
+    Field,
+    Origin,
+    Alias,
+    Prefill,
+    Supply,
+    Presentation,
+}
+
+/// Where a step is written: an article (`<regulation>#<article>`, without a
+/// paragraph) or a loaded configuration file (`process`, `form`,
+/// `stream/<id>`), optionally with the key of the block in it (`anchor`).
+/// The fragment routes (`/api/law/...`, `/api/config/...`) resolve it.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct SourceRef {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub law: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub config: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub anchor: Option<String>,
+}
+
+impl SourceRef {
+    /// An article; a legal basis with a paragraph points to its article.
+    pub fn law(reference: &str) -> Self {
+        let article = match crate::regulations::parse(reference) {
+            Ok(g) => format!("{}#{}", g.regulation, g.article),
+            Err(_) => reference.to_string(),
+        };
+        Self {
+            law: Some(article),
+            ..Self::default()
+        }
+    }
+
+    pub fn config(config: &str, anchor: &str) -> Self {
+        Self {
+            config: Some(config.to_string()),
+            anchor: Some(anchor.to_string()),
+            ..Self::default()
+        }
+    }
+}
+
+/// A parameter of an article taking part that did not become a field, and why.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Excluded {
+    /// `<regulation>#<article>`.
+    pub article: String,
+    pub parameter: String,
+    pub reason: String,
+}
+
+/// An origin value as the law writes it (`BELANGHEBBENDE`, `KANAAL`, ...).
+fn origin_text(o: &Origin) -> String {
+    serde_json::to_value(o.waarde)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_string))
+        .unwrap_or_default()
+}
+
 /// How an article reads its parameters from the chronicle.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -674,17 +783,24 @@ fn push_new(to: &mut Vec<String>, from: &[String]) {
     }
 }
 
-/// The fields a part declares.
+/// The fields a part declares, and the parameters it passes over (with
+/// `fields: parameters` or `fields: {parameters: [...]}`) with the reason.
 fn part_fields(
     service: &LawExecutionService,
     part: &Part<'_, '_>,
     stage: Option<&str>,
     legal_character: Option<&str>,
     date: Option<NaiveDate>,
-) -> Result<Vec<FieldDef>, String> {
+) -> Result<(Vec<FieldDef>, Vec<Excluded>), String> {
     let article = part.law.article;
     let reference = &part.law.reference;
     let stated = part.legal_basis();
+    let mut excluded: Vec<Excluded> = Vec::new();
+    let exclude = |p: &str, reason: String| Excluded {
+        article: reference.clone(),
+        parameter: p.to_string(),
+        reason,
+    };
     let def = |name: String| FieldDef {
         name,
         type_: None,
@@ -714,7 +830,7 @@ fn part_fields(
             ..def(p.name.clone())
         }
     };
-    Ok(match &part.establishment.fields {
+    let fields = match &part.establishment.fields {
         None => Vec::new(),
         Some(Fields::List(l)) => l.iter().cloned().map(def).collect(),
         Some(Fields::Typed(m)) => m
@@ -746,21 +862,50 @@ fn part_fields(
                     })?;
                 out.push(from_parameter(p));
             }
+            for p in article
+                .get_parameters()
+                .iter()
+                .filter(|p| !s.parameters.contains(&p.name))
+            {
+                excluded.push(exclude(
+                    &p.name,
+                    format!(
+                        "niet genoemd in fields: {{parameters: [{}]}}",
+                        s.parameters.join(", ")
+                    ),
+                ));
+            }
             out
         }
-        Some(Fields::Keyword(t)) if t == "parameters" => article
-            .get_parameters()
-            .iter()
-            .filter(|p| {
-                p.origin
-                    .as_ref()
-                    .and_then(Declared::as_valid)
-                    .is_some_and(|o| {
-                        matches!(o.waarde, OriginValue::Belanghebbende | OriginValue::Kanaal)
-                    })
-            })
-            .map(from_parameter)
-            .collect(),
+        // Only what the applicant or the channel supplies is content of the
+        // application; any other parameter is passed over, with the reason.
+        Some(Fields::Keyword(t)) if t == "parameters" => {
+            let mut out = Vec::new();
+            for p in article.get_parameters() {
+                match p.origin.as_ref().and_then(Declared::as_valid) {
+                    Some(o)
+                        if matches!(
+                            o.waarde,
+                            OriginValue::Belanghebbende | OriginValue::Kanaal
+                        ) =>
+                    {
+                        out.push(from_parameter(p));
+                    }
+                    Some(o) => excluded.push(exclude(
+                        &p.name,
+                        format!(
+                            "origin {}: niet van de aanvrager of het kanaal, dus geen inhoud van de aanvraag",
+                            origin_text(o)
+                        ),
+                    )),
+                    None => excluded.push(exclude(
+                        &p.name,
+                        "geen origin, dus geen inhoud van de aanvraag".into(),
+                    )),
+                }
+            }
+            out
+        }
         Some(Fields::Keyword(t)) if t == "outputs" => {
             let spec = article.get_execution_spec();
             outputs(article)
@@ -793,7 +938,8 @@ fn part_fields(
                 "{reference}: fields '{t}' is not a list and not a keyword (outputs, stage, parameters)"
             ))
         }
-    })
+    };
+    Ok((fields, excluded))
 }
 
 /// The overrides of an origin by the policy that takes part in the event,
@@ -1093,12 +1239,16 @@ fn establish_event(
     let mut legal_basis: Vec<String> = Vec::new();
     let mut defs: Vec<FieldDef> = Vec::new();
     let mut aliases: BTreeMap<String, String> = BTreeMap::new();
+    // Per reader of a name bridge, the article that lays it.
+    let mut alias_by: BTreeMap<String, String> = BTreeMap::new();
     let mut prefill: BTreeMap<String, Prefill> = BTreeMap::new();
     let mut moments: Vec<(&EffectiveAtLaw, &str)> = Vec::new();
+    let mut explanation = Explanation::default();
     for p in &parts {
         push_new(&mut legal_basis, &p.legal_basis());
         match part_fields(service, p, stage.as_deref(), None, date) {
-            Ok(fs) => {
+            Ok((fs, ex)) => {
+                explanation.excluded.extend(ex);
                 for f in fs {
                     push_new(&mut legal_basis, &f.legal_basis);
                     match defs.iter_mut().find(|d| d.name == f.name) {
@@ -1115,7 +1265,10 @@ fn establish_event(
             }
             Err(f) => errors.push(f),
         }
-        aliases.extend(p.establishment.aliases.clone());
+        for (reader, field) in &p.establishment.aliases {
+            aliases.insert(reader.clone(), field.clone());
+            alias_by.insert(reader.clone(), p.law.reference.clone());
+        }
         for (field, w) in &p.establishment.prefill {
             let mut g = p.legal_basis();
             if g.is_empty() {
@@ -1163,6 +1316,14 @@ fn establish_event(
             continue;
         }
         let gone = defs.remove(k);
+        explanation.excluded.push(Excluded {
+            article: gone.declared_by.clone(),
+            parameter: reader.clone(),
+            reason: format!(
+                "opgegaan in '{field}' via aliases in {}: één vraag, twee grondslagen",
+                alias_by.get(reader).map_or("", String::as_str)
+            ),
+        });
         if let Some(d) = defs.iter_mut().find(|d| &d.name == field) {
             push_new(&mut d.legal_basis, &gone.legal_basis);
             d.optional = d.optional && gone.optional;
@@ -1338,6 +1499,7 @@ fn establish_event(
     event.aliases = aliases;
     event.prefill = prefill;
     event.field_defs = defs;
+    event.explanation = explanation;
 
     // The document (`GET /api/stream`) shows the event as it applies, with
     // per field where it comes from in the law.
@@ -2402,5 +2564,42 @@ articles:
                 .any(|f| f.contains("declares no hook on a submission AANVRAAG")),
             "{errors:?}"
         );
+    }
+
+    /// What does not become a field says why: a parameter without origin, a
+    /// parameter the article does not name in `fields: {parameters: [...]}`,
+    /// and the reader's side of a name bridge.
+    #[test]
+    fn what_is_not_in_the_application_says_why() {
+        let general = GENERAL;
+        let mut s = LawExecutionService::new();
+        let specific = SPECIFIC.replace(
+            "          - {name: statutaire_naam,",
+            "          - {name: aanvraagdatum, type: date, required: false, origin: {waarde: BELANGHEBBENDE, grondslag: 'testwet_bijzonder#1'}}\n          - {name: statutaire_naam,",
+        );
+        assert_ne!(specific, SPECIFIC);
+        for t in [general, specific.as_str(), POLICY] {
+            s.load_law(t).unwrap();
+        }
+        let mut streams = vec![crate::stream::parse(
+            "$id: test_bijdragen\nrecording_actor: test_instantie\nchronicle: test_kroniek\nevents:\n  - {name: bijdrage_aangevraagd, establishes: 'testwet_bijzonder#1', intake: portaal}\n",
+            "test",
+        )
+        .unwrap()];
+        assert_eq!(establish(&mut streams, &s, None), Vec::<String>::new());
+        let x = &streams[0].events[0].explanation.excluded;
+        let find = |p: &str| {
+            x.iter()
+                .find(|e| e.parameter == p)
+                .unwrap_or_else(|| panic!("{p}: {x:?}"))
+        };
+        assert_eq!(find("interne_notitie").article, "testwet_algemeen#1");
+        assert!(find("interne_notitie").reason.contains("geen origin"));
+        assert_eq!(find("aanvraagdatum").article, "testwet_bijzonder#1");
+        assert!(find("aanvraagdatum").reason.contains("niet genoemd"));
+        assert!(find("naam_aanvrager").reason.contains("statutaire_naam"));
+        assert!(find("naam_aanvrager").reason.contains("aliases"));
+        // A field is never excluded.
+        assert!(x.iter().all(|e| e.parameter != "statutaire_naam"));
     }
 }

@@ -118,6 +118,10 @@ pub struct Event {
     /// the origin in force. Empty for an event without `establishes`.
     #[serde(skip)]
     pub field_defs: Vec<crate::law::FieldDef>,
+    /// Why the event looks the way it does ([`crate::law::Explanation`]);
+    /// filled in by [`crate::law::establish`], empty without `establishes`.
+    #[serde(skip)]
+    pub explanation: crate::law::Explanation,
     /// The fields a register may fill in beforehand, per field the policy
     /// output that knows it (see [`crate::law::Prefill`]).
     #[serde(skip)]
