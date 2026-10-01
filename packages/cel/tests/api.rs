@@ -5124,6 +5124,31 @@ async fn a_step_opens_to_its_yaml() {
         "{f}"
     );
     assert!(f["line"].as_u64().unwrap() < f["end_line"].as_u64().unwrap());
+    // The whole file of the regulation, in the same version.
+    let (status, whole, _) = call(
+        &app,
+        "GET",
+        &format!("{TOESLAG}/api/law/testregeling_awb"),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{whole}");
+    assert_eq!(whole["file"], f["file"]);
+    assert_eq!(whole["line"], 1);
+    assert!(whole["yaml"]
+        .as_str()
+        .unwrap()
+        .contains(f["yaml"].as_str().unwrap()));
+    let (status, _, _) = call(
+        &app,
+        "GET",
+        &format!("{TOESLAG}/api/law/bestaat_niet"),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
     let (status, f, _) = call(
         &app,
         "GET",

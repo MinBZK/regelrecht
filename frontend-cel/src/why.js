@@ -4,16 +4,18 @@
 // route of a fragment and fetches it once, when it is opened.
 
 // The route under /processes/<id>/api of the fragment of a step's source, or
-// null if there is nothing to open (also a law without `#<article>`).
+// null if there is nothing to open (also a law without `#<article>`). With
+// `whole: true` the whole file the fragment is in.
 export function fragmentPath(source) {
   if (source?.law) {
     const [regulation, article] = source.law.split('#');
     if (!regulation || !article) return null;
-    return `/law/${encodeURIComponent(regulation)}/${encodeURIComponent(article)}`;
+    const law = `/law/${encodeURIComponent(regulation)}`;
+    return source.whole ? law : `${law}/${encodeURIComponent(article)}`;
   }
   if (source?.config) {
-    const path = source.config.split('/').map(encodeURIComponent).join('/');
-    return `/config/${path}${source.anchor ? `?anchor=${encodeURIComponent(source.anchor)}` : ''}`;
+    const path = `/config/${source.config.split('/').map(encodeURIComponent).join('/')}`;
+    return source.anchor && !source.whole ? `${path}?anchor=${encodeURIComponent(source.anchor)}` : path;
   }
   return null;
 }

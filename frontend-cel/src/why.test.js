@@ -22,6 +22,14 @@ describe('fragmentPath', () => {
     expect(fragmentPath({})).toBeNull();
     expect(fragmentPath(undefined)).toBeNull();
   });
+  it('the whole file of an article or a configuration', () => {
+    expect(fragmentPath({ law: 'algemene_wet_bestuursrecht#4:2', whole: true })).toBe(
+      '/law/algemene_wet_bestuursrecht',
+    );
+    expect(fragmentPath({ config: 'stream/napp_aanvragen', anchor: 'aanvraag_ontvangen', whole: true })).toBe(
+      '/config/stream/napp_aanvragen',
+    );
+  });
   it('a law without an article is nothing to open', () => {
     expect(fragmentPath({ law: 'uitvoering_napp' })).toBeNull();
     expect(fragmentPath({ law: 'uitvoering_napp#' })).toBeNull();

@@ -79,6 +79,7 @@ pub fn process_router(state: ProcessState) -> Router {
     let mut r = Router::new()
         .route("/api/examples", get(examples_route))
         .route("/api/map", get(map_route))
+        .route("/api/law/{regulation}", get(fragment::law_file_route))
         .route("/api/law/{regulation}/{article}", get(fragment::law_route))
         .route("/api/config/{*config}", get(fragment::config_route));
     let d = &state.process.definition;

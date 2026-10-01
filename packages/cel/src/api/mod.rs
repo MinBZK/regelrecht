@@ -20,6 +20,7 @@
 //! | `GET /api/examples` | default data per action (`examples` in `process.yaml`), also without login |
 //! | `GET /api/map` | the map: configuration, events, lexostatuses and the articles they touch, also without login |
 //! | `GET /api/law/{regulation}/{article}` | the YAML block of the article in the version that applies today (the version the cell loaded), with file and lines; also without login |
+//! | `GET /api/law/{regulation}` | the whole file of the regulation in that same version; also without login |
 //! | `GET /api/config/{*config}?anchor=` | the YAML block of a loaded `process`, `form`, `stream/<id>`, `cell`, `lexostatuses` or `registers`; also without login |
 //!
 //! A process with roles has the routes of its channels ([`session`]); every

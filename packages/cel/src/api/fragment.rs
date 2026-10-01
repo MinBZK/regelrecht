@@ -17,24 +17,40 @@ fn not_found(what: impl std::fmt::Display) -> Error {
     error(StatusCode::NOT_FOUND, format!("{what}: not loaded"))
 }
 
-/// `GET /api/law/{regulation}/{article}`: the block of the article in the
-/// version that applies today (the version the cell loaded; by the process
-/// clock), the newest without one.
+/// The file of a regulation in the version that applies today (the version
+/// the cell loaded; by the process clock), the newest without one.
+fn law_file<'s>(state: &'s ProcessState, regulation: &str) -> Result<&'s PathBuf, Error> {
+    let today = (state.clock)().date_naive();
+    crate::regulations::file_of(
+        &state.regulation_files,
+        &state.process.service,
+        regulation,
+        Some(today),
+    )
+    .ok_or_else(|| not_found(regulation))
+}
+
+/// `GET /api/law/{regulation}/{article}`: the block of the article.
 pub(super) async fn law_route(
     State(state): State<ProcessState>,
     Path((regulation, article)): Path<(String, String)>,
 ) -> Result<Json<Fragment>, Error> {
-    let today = (state.clock)().date_naive();
-    let file = crate::regulations::file_of(
-        &state.regulation_files,
-        &state.process.service,
-        &regulation,
-        Some(today),
-    )
-    .ok_or_else(|| not_found(&regulation))?;
+    let file = law_file(&state, &regulation)?;
     fragment::read(&state.root, file, |l| fragment::is_article(l, &article))
         .map(Json)
         .ok_or_else(|| not_found(format!("{regulation}#{article}")))
+}
+
+/// `GET /api/law/{regulation}`: the whole file of the regulation, in the
+/// same version as its articles.
+pub(super) async fn law_file_route(
+    State(state): State<ProcessState>,
+    Path(regulation): Path<String>,
+) -> Result<Json<Fragment>, Error> {
+    let file = law_file(&state, &regulation)?;
+    fragment::whole(&state.root, file)
+        .map(Json)
+        .ok_or_else(|| not_found(&regulation))
 }
 
 /// The file of a configuration this process loaded: `process`, `form`,
