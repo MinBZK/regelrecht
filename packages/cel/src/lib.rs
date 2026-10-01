@@ -40,6 +40,7 @@ pub mod initial_state;
 pub mod law;
 pub mod lexostatus_engine;
 pub mod load;
+pub mod map;
 pub mod origin;
 pub mod possibility;
 pub mod process;
