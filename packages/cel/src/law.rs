@@ -40,7 +40,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::NaiveDate;
-use regelrecht_engine::{Article, ArticleBasedLaw, LawExecutionService};
+use regelrecht_engine::{Article, ArticleBasedLaw, DecisionOn, LawExecutionService};
 use regelrecht_law_model::{Declared, Origin, OriginOverride, OriginRole, OriginValue};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -686,18 +686,14 @@ fn decided(
     service: &LawExecutionService,
     law_id: &str,
     article: &str,
-) -> Result<(Vec<String>, Option<String>), String> {
-    let decisions = service.resolver().decisions_on(law_id, article);
+) -> Result<(Vec<DecisionOn>, Option<String>), String> {
+    let decisions = service.resolver().decisions_on(law_id, article).to_vec();
     let characters: BTreeSet<&str> = decisions
         .iter()
         .map(|d| d.legal_character.as_str())
         .collect();
-    let references = decisions
-        .iter()
-        .map(|d| format!("{}#{}", d.law_id, d.article_number))
-        .collect();
     let lc = match characters.into_iter().collect::<Vec<_>>()[..] {
-        [] => return Ok((references, None)),
+        [] => return Ok((decisions, None)),
         [one] => one,
         ref more => {
             return Err(format!(
@@ -711,7 +707,7 @@ fn decided(
         .find_procedure(lc, None)
         .and_then(|p| p.stages.first())
         .map(|s| s.name.clone());
-    Ok((references, stage))
+    Ok((decisions, stage))
 }
 
 /// Fill in the events with `establishes` from the law, in the version that
@@ -774,6 +770,8 @@ struct Part<'a, 's> {
     law: &'a LawArticle<'s>,
     establishment: &'a Establishment,
     via: Via,
+    /// For a hook: the `decided_by` of the `applies_to` that fitted.
+    decided_by: Option<String>,
 }
 
 impl Part<'_, '_> {
@@ -1050,6 +1048,200 @@ fn binding_of(
     }))
 }
 
+/// The chain of an event: the stream, the article that establishes it, the
+/// decisions taken on a submission, the hooks and the extensions by name (an
+/// article that hooks or extends twice is one step).
+fn event_chain(
+    stream_id: &str,
+    name: &str,
+    basis: &Part<'_, '_>,
+    submission: Option<&str>,
+    decided_on: &[DecisionOn],
+    stage: Option<&str>,
+    parts: &[Part<'_, '_>],
+) -> Vec<Step> {
+    let reference = &basis.law.reference;
+    let mut chain = vec![Step::new(
+        StepKind::Stream,
+        SourceRef::config(&format!("stream/{stream_id}"), name),
+        format!(
+            "de stroom legt '{name}' vast en noemt het artikel dat het vestigt (establishes: {reference})"
+        ),
+    )];
+    match submission {
+        Some(kind) => {
+            chain.push(Step::new(
+                StepKind::Submission,
+                SourceRef::law(reference),
+                format!(
+                    "produces.submission: {{kind: {kind}}}: hier ontstaat een {}",
+                    kind.to_lowercase()
+                ),
+            ));
+            // The stage follows from the decision unless the article sets it.
+            let so = if basis.establishment.stage.is_none() {
+                "dus "
+            } else {
+                ""
+            };
+            for d in decided_on {
+                chain.push(Step::new(
+                    StepKind::DecidesOn,
+                    SourceRef::law(&format!("{}#{}", d.law_id, d.article_number)),
+                    format!(
+                        "decides_on: [{reference}], legal_character: {}: er wordt op besloten{}",
+                        d.legal_character,
+                        stage
+                            .map(|s| format!(", {so}stage {s}"))
+                            .unwrap_or_default()
+                    ),
+                ));
+            }
+        }
+        None => chain.push(Step::new(
+            StepKind::Establishes,
+            SourceRef::law(reference),
+            format!("vestigt '{name}' (establishes)"),
+        )),
+    }
+    let mut hooks_seen: BTreeSet<&str> = BTreeSet::new();
+    for p in parts.iter().filter(|p| p.via == Via::Hook) {
+        if !hooks_seen.insert(&p.law.reference) {
+            continue;
+        }
+        chain.push(Step::new(
+            StepKind::Hook,
+            SourceRef::law(&p.law.reference),
+            format!(
+                "de engine vindt de haak: applies_to: {{submission: {}{}}} past",
+                submission.unwrap_or_default(),
+                p.decided_by
+                    .as_deref()
+                    .map(|d| format!(", decided_by: {d}"))
+                    .unwrap_or_default()
+            ),
+        ));
+    }
+    let mut extends_seen: BTreeSet<&str> = BTreeSet::new();
+    for p in parts.iter().filter(|p| p.via == Via::Extends) {
+        if !extends_seen.insert(&p.law.reference) {
+            continue;
+        }
+        chain.push(Step::new(
+            StepKind::Extends,
+            SourceRef::law(&p.law.reference),
+            format!("breidt '{name}' uit bij naam (extends: {name})"),
+        ));
+    }
+    chain
+}
+
+/// Per field: why it is there (the chain of the event to the articles that
+/// declare it, and the name bridges into it) and why it has its value (the
+/// origin, a policy that overrides it, a register that fills it in
+/// beforehand).
+#[allow(clippy::too_many_arguments)]
+fn field_explanation(
+    d: &FieldDef,
+    event_name: &str,
+    event: &[Step],
+    declarations: &[(String, Via, String)],
+    bridges: &[Step],
+    overridden: Option<&(Option<Origin>, String)>,
+    decisions: &[String],
+    prefill: Option<&Prefill>,
+) -> FieldExplanation {
+    let mut here: Vec<Step> = Vec::new();
+    for (reference, via, how) in declarations {
+        match via {
+            Via::Establishes => here.push(Step::new(
+                StepKind::Establishes,
+                SourceRef::law(reference),
+                format!("neemt '{}' op ({how})", d.name),
+            )),
+            Via::Hook => {
+                // The chain to this hook; what an earlier declaration
+                // already put there is not repeated.
+                for s in event.iter().filter(|s| {
+                    matches!(s.kind, StepKind::Submission | StepKind::DecidesOn)
+                        || (s.kind == StepKind::Hook
+                            && s.source.law.as_deref() == Some(reference.as_str()))
+                }) {
+                    let mut s = s.clone();
+                    if s.kind == StepKind::Hook {
+                        s.reason =
+                            format!("{}; neemt zijn parameters als velden ({how})", s.reason);
+                    }
+                    if !here.contains(&s) {
+                        here.push(s);
+                    }
+                }
+            }
+            Via::Extends => here.push(Step::new(
+                StepKind::Extends,
+                SourceRef::law(reference),
+                format!("voegt '{}' toe aan '{event_name}' ({how})", d.name),
+            )),
+        }
+    }
+    here.extend(bridges.iter().cloned());
+
+    let mut value: Vec<Step> = Vec::new();
+    let optional = if d.optional {
+        "; niet verplicht (required: false)"
+    } else {
+        ""
+    };
+    let origin_step = |o: &Origin, by: &str| {
+        let what = match (o.waarde, o.rol) {
+            (_, Some(OriginRole::GevraagdBesluit)) => format!(
+                "vast: het besluit dat erop volgt ({})",
+                decisions.join(", ")
+            ),
+            (OriginValue::Belanghebbende, _) => "invoer van de aanvrager".to_string(),
+            (OriginValue::Kanaal, _) => "het kanaal levert het".to_string(),
+            _ => origin_text(o),
+        };
+        Step::new(
+            StepKind::Origin,
+            SourceRef::law(by),
+            format!(
+                "origin {} (grondslag {}): {what}{optional}",
+                origin_text(o),
+                o.grondslag
+            ),
+        )
+    };
+    match (overridden, &d.origin) {
+        (Some((law_origin, by)), Some(now)) => {
+            if let Some(o) = law_origin {
+                value.push(origin_step(o, &o.grondslag));
+            }
+            let mut s = origin_step(now, by);
+            s.reason = format!("origins in {by} zet de origin om: {}", s.reason);
+            value.push(s);
+        }
+        (None, Some(o)) => value.push(origin_step(o, &o.grondslag)),
+        (_, None) => value.push(Step::new(
+            StepKind::Field,
+            SourceRef::law(&d.declared_by),
+            format!("geen origin: invoer ($external){optional}"),
+        )),
+    }
+    if let Some(w) = prefill {
+        value.push(Step::new(
+            StepKind::Prefill,
+            // An establishment with prefill always states a legal basis.
+            SourceRef::law(&w.legal_basis[0]),
+            format!(
+                "prefill: {{{}: {{output: {}}}}}: de cel voert {} uit; weet het register niets, dan vult de aanvrager het in",
+                d.name, w.output, w.regulation
+            ),
+        ));
+    }
+    FieldExplanation { here, value }
+}
+
 fn establish_event(
     stream: &mut Stream,
     i: usize,
@@ -1059,7 +1251,6 @@ fn establish_event(
 ) -> Result<(), Vec<String>> {
     let name = stream.events[i].name.clone();
     let listed = stream.events[i].establishes.clone();
-    let stream_id = stream.id.clone();
     let mut errors = Vec::new();
 
     // The article that establishes the event, among those the stream names;
@@ -1079,6 +1270,7 @@ fn establish_event(
                     law: wa,
                     establishment: v,
                     via: Via::Establishes,
+                    decided_by: None,
                 });
                 found = true;
             } else if v.extends_event() == Some(name.as_str()) {
@@ -1119,7 +1311,7 @@ fn establish_event(
         .filter(|_| bv.type_.is_none())
         .map(|s| s.kind.clone());
     let (law_id, number) = (&bwa.regulation.id, &bwa.article.number);
-    let (decisions, stage) = match &submission {
+    let (decided_on, stage) = match &submission {
         None => (Vec::new(), bv.stage.clone()),
         Some(_) => match decided(service, law_id, number) {
             Ok((d, s)) => (d, bv.stage.clone().or(s)),
@@ -1129,13 +1321,15 @@ fn establish_event(
             }
         },
     };
+    let decisions: Vec<String> = decided_on
+        .iter()
+        .map(|d| format!("{}#{}", d.law_id, d.article_number))
+        .collect();
 
     // The articles that hook onto the submission (the general law that
     // applies itself), then the extensions by name (the specific law and the
     // policy), each in the order of the corpus. The legal basis of the gram
     // follows this order: the establishing article first.
-    // Per hook article, the `decided_by` of the `applies_to` that fitted.
-    let mut hook_filters: BTreeMap<String, Option<String>> = BTreeMap::new();
     if let Some(kind) = &submission {
         let resolver = service.resolver();
         let mut hooked: Vec<(String, Option<String>)> = Vec::new();
@@ -1151,8 +1345,7 @@ fn establish_event(
             }
         }
         hooked.sort();
-        hook_filters = hooked.iter().cloned().collect();
-        for (r, _) in &hooked {
+        for (r, decided_by) in &hooked {
             // A hook article without a chronolex block takes part in the
             // execution but adds nothing to the gram.
             let Some(wa) = law.get(r) else { continue };
@@ -1162,6 +1355,7 @@ fn establish_event(
                         law: wa,
                         establishment: v,
                         via: Via::Hook,
+                        decided_by: decided_by.clone(),
                     });
                 }
             }
@@ -1188,6 +1382,7 @@ fn establish_event(
                     law: wa,
                     establishment: v,
                     via: Via::Extends,
+                    decided_by: None,
                 });
             }
         }
@@ -1223,79 +1418,18 @@ fn establish_event(
         }
     }
 
-    // The chain of the event: the stream, the article that establishes it,
-    // the decisions taken on a submission, the hooks and the extensions by
-    // name (an article that hooks or extends twice is one step).
-    let mut explanation = Explanation::default();
-    explanation.event.push(Step::new(
-        StepKind::Stream,
-        SourceRef::config(&format!("stream/{stream_id}"), &name),
-        format!(
-            "de stroom legt '{name}' vast en noemt het artikel dat het vestigt (establishes: {})",
-            bwa.reference
+    let mut explanation = Explanation {
+        event: event_chain(
+            &stream.id,
+            &name,
+            &parts[basis],
+            submission.as_deref(),
+            &decided_on,
+            stage.as_deref(),
+            &parts,
         ),
-    ));
-    match &submission {
-        Some(kind) => {
-            explanation.event.push(Step::new(
-                StepKind::Submission,
-                SourceRef::law(&bwa.reference),
-                format!(
-                    "produces.submission: {{kind: {kind}}}: hier ontstaat een {}",
-                    kind.to_lowercase()
-                ),
-            ));
-            for d in service.resolver().decisions_on(law_id, number) {
-                explanation.event.push(Step::new(
-                    StepKind::DecidesOn,
-                    SourceRef::law(&format!("{}#{}", d.law_id, d.article_number)),
-                    format!(
-                        "decides_on: [{}], legal_character: {}: er wordt op besloten{}",
-                        bwa.reference,
-                        d.legal_character,
-                        stage
-                            .as_deref()
-                            .map(|s| format!(", dus stage {s}"))
-                            .unwrap_or_default()
-                    ),
-                ));
-            }
-        }
-        None => explanation.event.push(Step::new(
-            StepKind::Establishes,
-            SourceRef::law(&bwa.reference),
-            format!("vestigt '{name}' (establishes)"),
-        )),
-    }
-    let mut hooks_seen: BTreeSet<&str> = BTreeSet::new();
-    for p in parts.iter().filter(|p| p.via == Via::Hook) {
-        if !hooks_seen.insert(&p.law.reference) {
-            continue;
-        }
-        let decided_by = hook_filters.get(&p.law.reference).cloned().flatten();
-        explanation.event.push(Step::new(
-            StepKind::Hook,
-            SourceRef::law(&p.law.reference),
-            format!(
-                "de engine vindt de haak: applies_to: {{submission: {}{}}} past",
-                submission.as_deref().unwrap_or_default(),
-                decided_by
-                    .map(|d| format!(", decided_by: {d}"))
-                    .unwrap_or_default()
-            ),
-        ));
-    }
-    let mut extends_seen: BTreeSet<&str> = BTreeSet::new();
-    for p in parts.iter().filter(|p| p.via == Via::Extends) {
-        if !extends_seen.insert(&p.law.reference) {
-            continue;
-        }
-        explanation.event.push(Step::new(
-            StepKind::Extends,
-            SourceRef::law(&p.law.reference),
-            format!("breidt '{name}' uit bij naam (extends: {name})"),
-        ));
-    }
+        ..Explanation::default()
+    };
 
     // Type and subtype: from the establishing article, or from a hook on the
     // stage (Awb 4:1: an application is a submission of subtype aanvraag).
@@ -1350,11 +1484,15 @@ fn establish_event(
             Ok((fs, ex)) => {
                 explanation.excluded.extend(ex);
                 for f in fs {
-                    declared.entry(f.name.clone()).or_default().push((
+                    let by = (
                         p.law.reference.clone(),
                         p.via,
                         fields_text(p.establishment.fields.as_ref()),
-                    ));
+                    );
+                    let declarations = declared.entry(f.name.clone()).or_default();
+                    if !declarations.contains(&by) {
+                        declarations.push(by);
+                    }
                     push_new(&mut legal_basis, &f.legal_basis);
                     match defs.iter_mut().find(|d| d.name == f.name) {
                         Some(d) => {
@@ -1416,24 +1554,6 @@ fn establish_event(
             overridden.insert(d.name.clone(), (law_origin, by.clone()));
         }
     }
-    // One step per policy article that overrides origins.
-    let mut per_policy: BTreeMap<&str, Vec<(&str, String)>> = BTreeMap::new();
-    for (field, (_, by)) in &overridden {
-        if let Some(d) = defs.iter().find(|d| &d.name == field) {
-            per_policy.entry(by).or_default().push((
-                field,
-                d.origin.as_ref().map(origin_text).unwrap_or_default(),
-            ));
-        }
-    }
-    for (by, fs) in per_policy {
-        let list: Vec<String> = fs.iter().map(|(f, w)| format!("{f} naar {w}")).collect();
-        explanation.event.push(Step::new(
-            StepKind::Origin,
-            SourceRef::law(by),
-            format!("origins: zet de origin van {} om", list.join(", ")),
-        ));
-    }
     // A name bridge, per field that stays.
     let mut alias_steps: BTreeMap<String, Vec<Step>> = BTreeMap::new();
     // One question, two legal bases: an alias between two fields of the
@@ -1451,15 +1571,24 @@ fn establish_event(
             parameter: reader.clone(),
             reason: format!(
                 "opgegaan in '{field}' via aliases in {}: één vraag, twee grondslagen",
-                alias_by.get(reader).map_or("", String::as_str)
+                alias_by[reader]
             ),
         });
-        // The field that stays is declared where the reader's side was too.
+        // The field that stays is declared where the reader's side was, and
+        // carries the bridges that led to the reader.
         let moved = declared.remove(reader).unwrap_or_default();
-        declared.entry(field.clone()).or_default().extend(moved);
-        alias_steps.entry(field.clone()).or_default().push(Step::new(
+        let declarations = declared.entry(field.clone()).or_default();
+        for by in moved {
+            if !declarations.contains(&by) {
+                declarations.push(by);
+            }
+        }
+        let moved = alias_steps.remove(reader).unwrap_or_default();
+        let steps = alias_steps.entry(field.clone()).or_default();
+        steps.extend(moved);
+        steps.push(Step::new(
             StepKind::Alias,
-            SourceRef::law(alias_by.get(reader).map_or("", String::as_str)),
+            SourceRef::law(&alias_by[reader]),
             format!(
                 "naamsbrug aliases: {{{reader}: {field}}}: '{reader}' ({}) is dezelfde vraag, met grondslag {}",
                 gone.declared_by,
@@ -1470,6 +1599,29 @@ fn establish_event(
             push_new(&mut d.legal_basis, &gone.legal_basis);
             d.optional = d.optional && gone.optional;
         }
+    }
+    // What one article passes over but another declares is a field.
+    explanation
+        .excluded
+        .retain(|e| !defs.iter().any(|d| d.name == e.parameter));
+    // One step per policy article that overrides origins, naming only the
+    // fields that are left after the name bridges.
+    let mut per_policy: BTreeMap<&str, Vec<(&str, String)>> = BTreeMap::new();
+    for (field, (_, by)) in &overridden {
+        if let Some(d) = defs.iter().find(|d| &d.name == field) {
+            per_policy.entry(by).or_default().push((
+                field,
+                d.origin.as_ref().map(origin_text).unwrap_or_default(),
+            ));
+        }
+    }
+    for (by, fs) in per_policy {
+        let list: Vec<String> = fs.iter().map(|(f, w)| format!("{f} naar {w}")).collect();
+        explanation.event.push(Step::new(
+            StepKind::Origin,
+            SourceRef::law(by),
+            format!("origins: zet de origin van {} om", list.join(", ")),
+        ));
     }
     for (field, w) in &prefill {
         if !defs.iter().any(|d| &d.name == field) {
@@ -1530,101 +1682,24 @@ fn establish_event(
         }
     }
 
-    // Per field: why it is there (the chain to the article that declares
-    // it) and why it has its value (the origin, a policy that overrides it,
-    // a register that fills it in beforehand).
-    let chain_to = |reference: &str| -> Vec<Step> {
-        explanation
-            .event
-            .iter()
-            .filter(|s| {
-                matches!(s.kind, StepKind::Submission | StepKind::DecidesOn)
-                    || (s.kind == StepKind::Hook && s.source.law.as_deref() == Some(reference))
-            })
-            .cloned()
-            .collect()
-    };
-    let mut per_field: BTreeMap<String, FieldExplanation> = BTreeMap::new();
-    for d in &defs {
-        let mut here: Vec<Step> = Vec::new();
-        for (reference, via, how) in declared.get(&d.name).into_iter().flatten() {
-            match via {
-                Via::Establishes => here.push(Step::new(
-                    StepKind::Establishes,
-                    SourceRef::law(reference),
-                    format!("neemt '{}' op ({how})", d.name),
-                )),
-                Via::Hook => {
-                    let mut c = chain_to(reference);
-                    if let Some(h) = c.last_mut().filter(|s| s.kind == StepKind::Hook) {
-                        h.reason =
-                            format!("{}; neemt zijn parameters als velden ({how})", h.reason);
-                    }
-                    here.extend(c);
-                }
-                Via::Extends => here.push(Step::new(
-                    StepKind::Extends,
-                    SourceRef::law(reference),
-                    format!("voegt '{}' toe aan '{name}' ({how})", d.name),
-                )),
-            }
-        }
-        here.extend(alias_steps.remove(&d.name).unwrap_or_default());
-        let mut value: Vec<Step> = Vec::new();
-        let optional = if d.optional {
-            "; niet verplicht (required: false)"
-        } else {
-            ""
-        };
-        let origin_step = |o: &Origin, by: &str| {
-            let what = match (o.waarde, o.rol) {
-                (_, Some(OriginRole::GevraagdBesluit)) => format!(
-                    "vast: het besluit dat erop volgt ({})",
-                    decisions.join(", ")
-                ),
-                (OriginValue::Belanghebbende, _) => "invoer van de aanvrager".to_string(),
-                (OriginValue::Kanaal, _) => "het kanaal levert het".to_string(),
-                _ => origin_text(o),
-            };
-            Step::new(
-                StepKind::Origin,
-                SourceRef::law(by),
-                format!(
-                    "origin {} (grondslag {}): {what}{optional}",
-                    origin_text(o),
-                    o.grondslag
-                ),
-            )
-        };
-        match (overridden.get(&d.name), &d.origin) {
-            (Some((law_origin, by)), Some(now)) => {
-                if let Some(o) = law_origin {
-                    value.push(origin_step(o, &o.grondslag));
-                }
-                let mut s = origin_step(now, by);
-                s.reason = format!("origins in {by} zet de origin om: {}", s.reason);
-                value.push(s);
-            }
-            (None, Some(o)) => value.push(origin_step(o, &o.grondslag)),
-            (_, None) => value.push(Step::new(
-                StepKind::Field,
-                SourceRef::law(&d.declared_by),
-                format!("geen origin: invoer ($external){optional}"),
-            )),
-        }
-        if let Some(w) = prefill.get(&d.name) {
-            value.push(Step::new(
-                StepKind::Prefill,
-                SourceRef::law(w.legal_basis.first().map_or("", String::as_str)),
-                format!(
-                    "prefill: {{{}: {{output: {}}}}}: de cel voert {} uit; weet het register niets, dan vult de aanvrager het in",
-                    d.name, w.output, w.regulation
-                ),
-            ));
-        }
-        per_field.insert(d.name.clone(), FieldExplanation { here, value });
-    }
-    explanation.fields = per_field;
+    explanation.fields = defs
+        .iter()
+        .map(|d| {
+            let declarations = declared.get(&d.name).map_or(&[][..], Vec::as_slice);
+            let bridges = alias_steps.get(&d.name).map_or(&[][..], Vec::as_slice);
+            let x = field_explanation(
+                d,
+                &name,
+                &explanation.event,
+                declarations,
+                bridges,
+                overridden.get(&d.name),
+                &decisions,
+                prefill.get(&d.name),
+            );
+            (d.name.clone(), x)
+        })
+        .collect();
 
     let event = &mut stream.events[i];
     if !event.refers_to.is_empty() {
@@ -2813,14 +2888,18 @@ articles:
     /// and the reader's side of a name bridge.
     #[test]
     fn what_is_not_in_the_application_says_why() {
-        let general = GENERAL;
+        let general = GENERAL.replace(
+            "          - {name: interne_notitie",
+            "          - {name: dossiernummer, type: string, origin: {waarde: DOSSIER, grondslag: 'testwet_algemeen#1 lid 1'}}\n          - {name: interne_notitie",
+        );
+        assert_ne!(general, GENERAL);
         let mut s = LawExecutionService::new();
         let specific = SPECIFIC.replace(
             "          - {name: statutaire_naam,",
             "          - {name: aanvraagdatum, type: date, required: false, origin: {waarde: BELANGHEBBENDE, grondslag: 'testwet_bijzonder#1'}}\n          - {name: statutaire_naam,",
         );
         assert_ne!(specific, SPECIFIC);
-        for t in [general, specific.as_str(), POLICY] {
+        for t in [general.as_str(), specific.as_str(), POLICY] {
             s.load_law(t).unwrap();
         }
         let mut streams = vec![crate::stream::parse(
@@ -2839,6 +2918,8 @@ articles:
         assert!(find("interne_notitie").reason.contains("geen origin"));
         assert_eq!(find("aanvraagdatum").article, "testwet_bijzonder#1");
         assert!(find("aanvraagdatum").reason.contains("niet genoemd"));
+        // An origin of the body itself is no content of the application.
+        assert!(find("dossiernummer").reason.contains("origin DOSSIER"));
         assert!(find("naam_aanvrager").reason.contains("statutaire_naam"));
         assert!(find("naam_aanvrager").reason.contains("aliases"));
         // A field is never excluded.
@@ -2944,5 +3025,61 @@ articles:
         assert!(f["statutaire_naam"].value[0]
             .reason
             .contains("required: false"));
+    }
+
+    /// No step twice and no field that is gone: an alias between two fields
+    /// the same hook declares gives the chain once; the policy that
+    /// overrides the origin of the reader's side names no field that the
+    /// bridge removed; a parameter one article passes over but another
+    /// declares is a field, not excluded.
+    #[test]
+    fn the_explanation_has_no_double_steps_or_merged_fields() {
+        let general = GENERAL.replace(
+            "                  fields: parameters\n",
+            "                  fields: parameters\n                  aliases: {ondertekening: gevraagde_beschikking}\n",
+        );
+        assert_ne!(general, GENERAL);
+        let policy = POLICY.replace(
+            "                    nummer: {type: string,",
+            "                    interne_notitie: {type: string}\n                    nummer: {type: string,",
+        );
+        assert_ne!(policy, POLICY);
+        let mut s = LawExecutionService::new();
+        for t in [general.as_str(), SPECIFIC, policy.as_str()] {
+            s.load_law(t).unwrap();
+        }
+        let mut streams = vec![crate::stream::parse(
+            "$id: test_bijdragen\nrecording_actor: test_instantie\nchronicle: test_kroniek\nevents:\n  - {name: bijdrage_aangevraagd, establishes: 'testwet_bijzonder#1', intake: portaal}\n",
+            "test",
+        )
+        .unwrap()];
+        assert_eq!(establish(&mut streams, &s, None), Vec::<String>::new());
+        let x = &streams[0].events[0].explanation;
+        assert_eq!(
+            kinds(&x.fields["gevraagde_beschikking"].here),
+            [
+                StepKind::Submission,
+                StepKind::DecidesOn,
+                StepKind::Hook,
+                StepKind::Alias
+            ]
+        );
+        // The policy overrode the origin of 'ondertekening', which the
+        // bridge removed: no event step names it.
+        assert!(
+            x.event.iter().all(|s| s.kind != StepKind::Origin),
+            "{:?}",
+            x.event
+        );
+        assert!(!x.fields.contains_key("ondertekening"));
+        let excluded: Vec<&str> = x.excluded.iter().map(|e| e.parameter.as_str()).collect();
+        assert_eq!(
+            excluded.iter().filter(|p| **p == "ondertekening").count(),
+            1,
+            "{excluded:?}"
+        );
+        // The policy declares what the general law passes over.
+        assert!(x.fields.contains_key("interne_notitie"));
+        assert!(!excluded.contains(&"interne_notitie"), "{excluded:?}");
     }
 }
