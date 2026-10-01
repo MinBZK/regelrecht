@@ -119,12 +119,6 @@ pub(crate) trait LazyInputs {
     ) -> Option<Result<Value>> {
         None
     }
-
-    /// Per output a replacing override applies to, what that override reads
-    /// of this article: the actions producing it run first (RFC-044).
-    fn replacement_reads(&self) -> Option<&BTreeMap<String, BTreeSet<String>>> {
-        None
-    }
 }
 
 /// The hook as a context field: a reference, copied into every child scope,
@@ -170,12 +164,6 @@ impl<'l> RuleContext<'l> {
     pub(crate) fn replaced_output(&self, name: &str, value: &Value) -> Option<Result<Value>> {
         let LazyHook(lazy) = self.lazy?;
         lazy.replace_output(name, value, &self.outputs)
-    }
-
-    /// See [`LazyInputs::replacement_reads`]. `None` for a bare context.
-    pub(crate) fn replacement_reads(&self) -> Option<&BTreeMap<String, BTreeSet<String>>> {
-        let LazyHook(lazy) = self.lazy?;
-        lazy.replacement_reads()
     }
 
     /// Resolve declared inputs and open terms on first read (RFC-043).

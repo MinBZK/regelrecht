@@ -623,8 +623,6 @@ struct AfterPreHooks<'x> {
     hook_outputs: &'x BTreeMap<String, Value>,
     /// What a replacing override makes of an output the article just set.
     replace: &'x ReplaceOutput<'x>,
-    /// Per replaced output, the parameters its override declares.
-    replacing: &'x BTreeMap<String, BTreeSet<String>>,
 }
 
 /// Runs the replacing override of an output, if one applies, given the name,
@@ -647,10 +645,6 @@ impl LazyInputs for AfterPreHooks<'_> {
         outputs: &BTreeMap<String, Value>,
     ) -> Option<Result<Value>> {
         (self.replace)(name, value, outputs)
-    }
-
-    fn replacement_reads(&self) -> Option<&BTreeMap<String, BTreeSet<String>>> {
-        Some(self.replacing)
     }
 }
 
@@ -2997,12 +2991,12 @@ impl LawExecutionService {
             engine_params,
             calculation_date,
             demand.outputs.as_ref(),
+            &demand.replacing,
             trace,
             Some(&AfterPreHooks {
                 inputs: &lazy,
                 hook_outputs: &pre_hook_outputs,
                 replace: &replace,
-                replacing: &demand.replacing,
             }),
         )?;
         let replaced_in_actions = replaced_in_actions.into_inner();
@@ -3405,6 +3399,7 @@ impl LawExecutionService {
                         parameters.clone(),
                         calculation_date,
                         Some(&required),
+                        &BTreeMap::new(),
                         None,
                         Some(&earlier_terms),
                     )

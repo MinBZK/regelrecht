@@ -224,7 +224,14 @@ impl<'a> ArticleEngine<'a> {
         requested_output: Option<&str>,
     ) -> Result<ArticleResult> {
         let required = self.required_for(requested_output);
-        self.evaluate_outputs(parameters, calculation_date, required.as_ref(), None, None)
+        self.evaluate_outputs(
+            parameters,
+            calculation_date,
+            required.as_ref(),
+            &BTreeMap::new(),
+            None,
+            None,
+        )
     }
 
     /// Execute this article's logic with trace support.
@@ -242,6 +249,7 @@ impl<'a> ArticleEngine<'a> {
             parameters,
             calculation_date,
             required.as_ref(),
+            &BTreeMap::new(),
             Some(trace),
             None,
         )
@@ -254,7 +262,9 @@ impl<'a> ArticleEngine<'a> {
 
     /// Execute the actions producing `outputs` (a dependency closure, see
     /// [`crate::demand::required_outputs`]); `None` runs every action
-    /// (RFC-043). With `lazy`, an input or open term is resolved when an
+    /// (RFC-043), in dependency order, where an output in `replacing` also
+    /// waits for the outputs its replacing override declares (RFC-044). With
+    /// `lazy`, an input or open term is resolved when an
     /// operation first reads it; without it, `parameters` must already
     /// contain every value this article needs (cross-article and cross-law
     /// resolution is [`crate::LawExecutionService`]'s job).
@@ -263,6 +273,7 @@ impl<'a> ArticleEngine<'a> {
         parameters: BTreeMap<String, Value>,
         calculation_date: &str,
         outputs: Option<&BTreeSet<String>>,
+        replacing: &BTreeMap<String, BTreeSet<String>>,
         trace: Option<Rc<RefCell<TraceBuilder>>>,
         lazy: Option<&dyn LazyInputs>,
     ) -> Result<ArticleResult> {
@@ -289,7 +300,7 @@ impl<'a> ArticleEngine<'a> {
         }
 
         // Execute actions (with trace instrumentation)
-        self.execute_actions_traced(&mut context, outputs)?;
+        self.execute_actions_traced(&mut context, outputs, replacing)?;
 
         // Build result
         // Tag all outputs as Direct (hooks/overrides are tagged by the service layer)
@@ -381,6 +392,7 @@ impl<'a> ArticleEngine<'a> {
         &self,
         context: &mut RuleContext,
         outputs: Option<&BTreeSet<String>>,
+        replacing: &BTreeMap<String, BTreeSet<String>>,
     ) -> Result<()> {
         let actions = self.get_actions();
         let tracing_active = context.has_trace();
@@ -388,12 +400,7 @@ impl<'a> ArticleEngine<'a> {
         // Dependency order, not file order: an action runs after what it
         // reads, so the order of the actions in the file never changes a
         // value (RFC-044).
-        let no_reads = BTreeMap::new();
-        let order = crate::demand::execution_order(
-            actions,
-            context.replacement_reads().unwrap_or(&no_reads),
-        )
-        .map_err(|output| {
+        let order = crate::demand::execution_order(actions, replacing).map_err(|output| {
             EngineError::CircularReference(format!(
                 "output '{output}' of {} article {} depends on itself",
                 self.law.id, self.article.number
