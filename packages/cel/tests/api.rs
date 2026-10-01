@@ -5304,17 +5304,22 @@ async fn every_source_resolves(app: &Router, process: &str, form: &Value) {
         }
     }
     for s in steps {
-        let source = &s["source"];
-        let uri = match source["law"].as_str() {
-            Some(law) => format!("{process}/api/law/{}", law.replace('#', "/")),
-            None => format!(
-                "{process}/api/config/{}?anchor={}",
-                source["config"].as_str().unwrap(),
-                source["anchor"].as_str().unwrap()
-            ),
-        };
+        let uri = source_uri(process, &s["source"]);
         let (status, body, _) = call(app, "GET", &uri, None, None).await;
         assert_eq!(status, StatusCode::OK, "{uri}: {body}");
+    }
+}
+
+/// The fragment route of a source (`{law}` or `{config, anchor}`), as the
+/// frontend builds it.
+fn source_uri(process: &str, source: &Value) -> String {
+    match source["law"].as_str() {
+        Some(law) => format!("{process}/api/law/{}", law.replace('#', "/")),
+        None => format!(
+            "{process}/api/config/{}?anchor={}",
+            source["config"].as_str().unwrap(),
+            source["anchor"].as_str().unwrap().replace('#', "%23")
+        ),
     }
 }
 
@@ -5447,4 +5452,134 @@ async fn the_form_says_why() {
         "{o}"
     );
     every_source_resolves(&app, TOESLAG, &form).await;
+}
+
+/// The configuration the map points to opens as well: the cell, its
+/// lexostatuses and the registers of the deployment.
+#[tokio::test]
+async fn the_configuration_of_the_map_opens_to_its_yaml() {
+    let data = tempfile::tempdir().unwrap();
+    let app = app(data.path());
+    for (uri, file, first) in [
+        (
+            "/api/config/cell?anchor=id",
+            "cells/toeslag/cell.yaml",
+            "id: test_toeslag",
+        ),
+        (
+            "/api/config/lexostatuses?anchor=werkvoorraad",
+            "cells/toeslag/lexostatuses.yaml",
+            "  - name: werkvoorraad",
+        ),
+    ] {
+        let (status, f, _) = call(&app, "GET", &format!("{TOESLAG}{uri}"), None, None).await;
+        assert_eq!(status, StatusCode::OK, "{uri}: {f}");
+        assert_eq!(f["file"], file, "{uri}");
+        assert!(f["yaml"].as_str().unwrap().starts_with(first), "{uri}: {f}");
+    }
+    // Without a binding file there are no registers to open.
+    let (status, _, _) = call(
+        &app,
+        "GET",
+        &format!("{TOESLAG}/api/config/registers"),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // With one: the register policy in the corpus, bound to the chronicle of
+    // the register cell.
+    let setup = tempfile::Builder::new().prefix("setup").tempdir().unwrap();
+    let regulation = setup.path().join("regulation");
+    copy_tree(&fixtures().join("regulation"), &regulation);
+    std::fs::create_dir_all(regulation.join("testbeleid_registerhouder")).unwrap();
+    std::fs::copy(
+        fixtures().join("beleid/testbeleid_registerhouder.yaml"),
+        regulation.join("testbeleid_registerhouder/2025-01-01.yaml"),
+    )
+    .unwrap();
+    let registers = setup.path().join("registers.yaml");
+    std::fs::write(
+        &registers,
+        "registers:\n  testbeleid_registerhouder#register: {cell: test_register, chronicle: test_register}\n",
+    )
+    .unwrap();
+    let config = Config {
+        cells_path: fixtures().join("cells"),
+        processes_path: Some(fixtures().join("processes")),
+        regulation_path: regulation,
+        data_dir: data.path().join("met-registers"),
+        port: DEFAULT_PORT,
+        read_token: None,
+        read_token_sources: Vec::new(),
+        reduction: Default::default(),
+        registers: Some(registers),
+    };
+    let app = as_reader(&Runtime::load(&config, clock()).unwrap());
+    let (status, f, _) = call(
+        &app,
+        "GET",
+        &format!("{TOESLAG}/api/config/registers?anchor=testbeleid_registerhouder%23register"),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{f}");
+    assert_eq!(f["file"], "registers.yaml");
+    assert!(
+        f["yaml"]
+            .as_str()
+            .unwrap()
+            .contains("{cell: test_register, chronicle: test_register}"),
+        "{f}"
+    );
+}
+
+async fn toeslag_map(app: &Router) -> Value {
+    let (status, map, _) = call(app, "GET", &format!("{TOESLAG}/api/map"), None, None).await;
+    assert_eq!(status, StatusCode::OK, "{map}");
+    map
+}
+
+fn nodes(map: &Value) -> &Vec<Value> {
+    map["nodes"].as_array().unwrap()
+}
+
+fn edges(map: &Value) -> &Vec<Value> {
+    map["edges"].as_array().unwrap()
+}
+
+fn has_node(map: &Value, kind: &str, id: &str) -> bool {
+    nodes(map)
+        .iter()
+        .any(|n| n["kind"] == kind && n["id"] == id)
+}
+
+fn has_edge(map: &Value, from: &str, to: &str, kind: &str) -> bool {
+    edges(map)
+        .iter()
+        .any(|e| e["from"] == from && e["to"] == to && e["kind"] == kind)
+}
+
+/// The map of a process: the process, its channels and its roles; open
+/// without login.
+#[tokio::test]
+async fn the_map_shows_the_process_its_channels_and_roles() {
+    let data = tempfile::tempdir().unwrap();
+    let app = app(data.path());
+    let map = toeslag_map(&app).await;
+    assert_eq!(map["process"], "test_toeslag_proces");
+    let process = "process:test_toeslag_proces";
+    assert!(has_node(&map, "process", process), "{map}");
+    for channel in ["channel:persoon", "channel:medewerker"] {
+        assert!(has_edge(&map, process, channel, "channel"), "{channel}");
+    }
+    assert!(has_edge(&map, process, "role:aanvrager", "role"));
+    assert!(has_edge(
+        &map,
+        "role:aanvrager",
+        "channel:persoon",
+        "channel"
+    ));
 }

@@ -37,12 +37,17 @@ pub(super) async fn law_route(
         .ok_or_else(|| not_found(format!("{regulation}#{article}")))
 }
 
-/// The file of a configuration this process loaded: `process`, `form` or
-/// `stream/<id>` (a stream of its cell).
+/// The file of a configuration this process loaded: `process`, `form`,
+/// `stream/<id>` (a stream of its cell), `cell` and `lexostatuses` (of its
+/// cell) and `registers` (the binding file of the deployment, if there is
+/// one).
 fn config_file(state: &ProcessState, config: &str) -> Option<PathBuf> {
     let p = &state.process;
     match config.split_once('/') {
         None if config == "process" => Some(p.dir.join(crate::config::PROCESS_FILE)),
+        None if config == "cell" => Some(p.cell.dir.join(crate::config::CELL_FILE)),
+        None if config == "lexostatuses" => Some(p.cell.dir.join(&p.cell.definition.lexostatuses)),
+        None if config == "registers" => state.registers_file.as_deref().cloned(),
         None if config == "form" => p
             .definition
             .portal

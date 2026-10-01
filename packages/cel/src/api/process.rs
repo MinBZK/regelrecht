@@ -50,6 +50,10 @@ pub struct ProcessState {
     /// The file of every loaded regulation, per `(id, version_key)` (see
     /// [`crate::regulations::version_key`]).
     pub regulation_files: Arc<BTreeMap<(String, String), PathBuf>>,
+    /// Which policy queries which register, for the map.
+    pub registers: Arc<Vec<crate::register::RegisterLink>>,
+    /// The binding file of the registers (`CELL_REGISTERS`), if there is one.
+    pub registers_file: Option<Arc<PathBuf>>,
 }
 
 /// What the runtime prepares per action: the synthesis sources its
@@ -74,6 +78,7 @@ impl ProcessState {
 pub fn process_router(state: ProcessState) -> Router {
     let mut r = Router::new()
         .route("/api/examples", get(examples_route))
+        .route("/api/map", get(map_route))
         .route("/api/law/{regulation}/{article}", get(fragment::law_route))
         .route("/api/config/{*config}", get(fragment::config_route));
     let d = &state.process.definition;
@@ -124,6 +129,16 @@ async fn examples_route(State(state): State<ProcessState>) -> Json<crate::exampl
             .examples
             .on(&crate::date::reference_date(&(state.clock)())),
     )
+}
+
+/// The map of the process. Open, like the stream definitions: it says
+/// nothing about anyone.
+async fn map_route(State(state): State<ProcessState>) -> Json<crate::map::Map> {
+    Json(crate::map::build(&crate::map::MapInput {
+        process: &state.process,
+        registers: &state.registers,
+        date: (state.clock)().date_naive(),
+    }))
 }
 
 /// What `GET /api/processes` says about a process: who acts, in which cell,

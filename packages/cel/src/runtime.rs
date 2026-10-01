@@ -53,6 +53,8 @@ impl Runtime {
             &mut corpus.service,
             &crate::date::reference_date(&clock()),
         )?;
+        let register_links = Arc::new(registers.links());
+        let registers_file = config.registers.clone().map(Arc::new);
         let service = Arc::new(corpus.service);
         let loaded = Arc::new(corpus.regulations);
         let regulation_files = Arc::new(corpus.files);
@@ -239,6 +241,8 @@ impl Runtime {
                 regulations: loaded.clone(),
                 root: root.clone(),
                 regulation_files: regulation_files.clone(),
+                registers: register_links.clone(),
+                registers_file: registers_file.clone(),
             });
         }
         let router = build_router(&cell_states, &process_states);

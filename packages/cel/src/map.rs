@@ -86,6 +86,9 @@ pub struct MapInput<'a> {
     pub process: &'a Process,
     /// Which policy queries which register.
     pub registers: &'a [RegisterLink],
+    /// The day whose version of each regulation the map reads (as the
+    /// fragment route of an article does).
+    pub date: chrono::NaiveDate,
 }
 
 /// Nodes and edges, deduplicated and in a stable order.
