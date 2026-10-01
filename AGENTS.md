@@ -300,7 +300,7 @@ een sleutel die maar in één bestand landt is een bug, geen halve klus.
   maakten hem. `frisian.test.js` vangt hem nu; breid de stammenlijst daar uit
   als er een woord bijkomt.
 - **Paden bevatten geen teken dat gecodeerd moet worden.** Slugs worden vertaald
-  (`/en/laws`, `/fy/senarios`), maar een apostrof wordt `%27` en dat is het
+  (`/en/ruleworks`, `/fy/senarios`), maar een apostrof wordt `%27` en dat is het
   adres dat tijdens een presentatie op het scherm komt. Het Nederlands doet het
   al zo: het tabblad heet "Scenario's" en het pad is `/scenarios`.
   `router.test.js` weigert een pad met zo'n teken.
@@ -322,7 +322,7 @@ een sleutel die maar in één bestand landt is een bug, geen halve klus.
   die is blijven staan terwijl het origineel veranderde, opvalt. Zonder die
   stap faalt `i18n.test.js`, mét de sleutelnamen en het commando erbij.
 - **Adressen**: Nederlandse paden blijven zoals ze zijn, Engels staat onder
-  `/en/` met vertaalde slugs (`/wetten` ↔ `/en/laws`). De tabel staat in
+  `/en/` met vertaalde slugs (`/regelwerken` ↔ `/en/ruleworks`). De tabel staat in
   `src/router.js`; een pagina spreek je aan op naam (`localeRouteName`), nooit
   op een letterlijk pad, anders belandt een Engelse bezoeker op een Nederlands
   tabblad.

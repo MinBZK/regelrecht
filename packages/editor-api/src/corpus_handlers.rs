@@ -3970,7 +3970,7 @@ pub async fn create_traject_law(
     if traject.corpus.source_map.get_law(&law_id).is_some() {
         return Err((
             StatusCode::CONFLICT,
-            "Er bestaat al een regelwerk met dit $id in dit traject; pas het $id in de YAML aan."
+            "Er bestaat al een regeling met dit $id in dit traject; pas het $id in de YAML aan."
                 .to_string(),
         ));
     }
@@ -4097,7 +4097,7 @@ pub async fn promote_corpus_law(
         if law.source_id == traject.writable_own_source_id {
             return Err((
                 StatusCode::CONFLICT,
-                "Dit regelwerk staat al in dit traject.".to_string(),
+                "Deze regeling staat al in dit traject.".to_string(),
             ));
         }
     }
@@ -4149,7 +4149,7 @@ pub async fn promote_corpus_law(
         {
             return Err((
                 StatusCode::CONFLICT,
-                "Dit regelwerk staat al (deels) in dit traject.".to_string(),
+                "Deze regeling staat al (deels) in dit traject.".to_string(),
             ));
         }
         tracing::info!(
@@ -4169,7 +4169,10 @@ pub async fn promote_corpus_law(
     let outcome = writer
         .backend
         .persist(&auth.into_write_context(
-            format!("Voeg regelwerk {} toe uit het centrale corpus", law_id),
+            format!(
+                "Voeg de regelwerken van {} toe uit het centrale corpus",
+                law_id
+            ),
             author,
         ))
         .await
@@ -4215,7 +4218,7 @@ async fn collect_promote_files(
     let not_found = || {
         (
             StatusCode::NOT_FOUND,
-            "Dit regelwerk is niet gevonden in het centrale corpus van dit traject.".to_string(),
+            "Deze regeling is niet gevonden in het centrale corpus van dit traject.".to_string(),
         )
     };
     let versions: Vec<LoadedLaw> = traject
@@ -4235,7 +4238,7 @@ async fn collect_promote_files(
         tracing::warn!(law_id = %law_id, path = %path.display(), error = %e, "promote: {what} lezen uit seed-bron mislukt");
         (
             StatusCode::BAD_GATEWAY,
-            "Kon het regelwerk niet volledig uit het centrale corpus lezen.".to_string(),
+            "Kon de regeling niet volledig uit het centrale corpus lezen.".to_string(),
         )
     };
 

@@ -505,11 +505,11 @@ fn check_duplicate_ids(
             law_id: Some(id.to_string()),
             message: format!(
                 "Het id '{id}' wordt door meerdere mappen gedeclareerd: '{list}'. Bij een \
-                 dubbel id houdt de index er één over; het andere regelwerk verdwijnt uit de \
+                 dubbel id houdt de index er één over; de andere regeling verdwijnt uit de \
                  bibliotheek."
             ),
             remedy: format!(
-                "Geef elk regelwerk een eigen $id, of verwijder de map die er niet meer hoort te \
+                "Geef elke regeling een eigen $id, of verwijder de map die er niet meer hoort te \
                  staan. Zijn het twee versies van dezelfde regeling, zet ze dan als losse \
                  datumbestanden in één map '{id}'."
             ),

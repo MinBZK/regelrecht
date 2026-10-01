@@ -118,15 +118,32 @@ export function localeRouteName(page, locale) {
  * is active.
  */
 export function pageForConfigPath(path) {
-  const clean = String(path || '').split('?')[0];
-  // A slide written before a page moved still carries the old path.
-  const match = PAGES.find((p) =>
-    [p.paths[DEFAULT_LOCALE], p.formerPaths?.[DEFAULT_LOCALE]].filter(Boolean).some((path) => {
-      const root = path.split('/:')[0];
-      return clean === root || clean.startsWith(`${root}/`);
-    }),
-  );
-  return match?.name ?? null;
+  return splitConfigPath(path)?.page ?? null;
+}
+
+/**
+ * A Dutch config path taken apart: the page it refers to, and what follows the
+ * page's own root (`/zorgtoeslagwet` in `/regelwerken/zorgtoeslagwet`).
+ *
+ * The rest is cut off against the root that matched, not against the page's
+ * current path. A slide written before a page moved still carries the old path,
+ * and measured against the new root its law would silently fall away: the tab
+ * would open on whatever law happened to be open.
+ */
+export function splitConfigPath(path) {
+  const raw = String(path || '');
+  const clean = raw.split('?')[0];
+  for (const p of PAGES) {
+    for (const pattern of [p.paths[DEFAULT_LOCALE], p.formerPaths?.[DEFAULT_LOCALE]]) {
+      if (!pattern) continue;
+      const root = pattern.split('/:')[0];
+      if (clean === root || clean.startsWith(`${root}/`)) {
+        // `/` is the root of the home page only; it has nothing after it.
+        return { page: p.name, rest: root === '/' ? '' : raw.slice(root.length) };
+      }
+    }
+  }
+  return null;
 }
 
 const router = createRouter({

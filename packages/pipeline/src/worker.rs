@@ -2114,7 +2114,7 @@ pub async fn finish_enrich_task_job(
         }
         None => {
             let title = if new_law {
-                format!("Nieuwe wet beoordelen: {}", payload.law_id)
+                format!("Nieuw regelwerk beoordelen: {}", payload.law_id)
             } else {
                 format!("Verrijking beoordelen: {}", payload.law_id)
             };

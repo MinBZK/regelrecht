@@ -291,8 +291,8 @@ export default {
   'zaak.portaal.change_wizard': 'Report a change',
   'zaak.portaal.read_only.title': 'You may only view this data',
   'zaak.portaal.read_only.body': 'This authorisation does not let you correct data or submit an application.',
-  'zaak.portaal.load_failure.one': 'One law has not loaded',
-  'zaak.portaal.load_failure.other': '{n} laws have not loaded',
+  'zaak.portaal.load_failure.one': 'One rulework has not loaded',
+  'zaak.portaal.load_failure.other': '{n} ruleworks have not loaded',
   'zaak.portaal.load_failure.body':
     'The engine refused: {details}. Schemes that depend on them cannot reach an outcome.',
   'zaak.portaal.pending_claims.one': '{n} correction is awaiting review',

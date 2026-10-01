@@ -11,25 +11,25 @@
  */
 import { computed, nextTick, ref } from 'vue';
 import { currentLocale } from '../i18n/index.js';
-import { localeRouteName, pageForConfigPath } from '../router.js';
+import { localeRouteName, pageForConfigPath, splitConfigPath } from '../router.js';
 
 /**
  * The slide's target, in the language that is on.
  *
- * `route:` in demo-config.yaml is a Dutch path (`/wetten`), because a file
+ * `route:` in demo-config.yaml is a Dutch path (`/regelwerken`), because a file
  * about slides should not have to know the routing table of every language.
  * It is read back to its page here and resolved against the active locale, so
  * a deck presented in English opens the English tabs.
  */
 function slideTarget(path) {
   if (!path || !router) return null;
-  const page = pageForConfigPath(path);
-  if (!page) return path;
-  // Wat na het tabblad komt (`/wetten/zorgtoeslagwet`: de wet) gaat mee. Anders
-  // opent de dia het tabblad op de wet die er toevallig nog open stond, en
-  // landt de presentator na een oefenronde op de verkeerde.
-  const root = router.resolve({ name: page }).path;
-  const rest = path.startsWith(root) ? path.slice(root.length) : '';
+  const parts = splitConfigPath(path);
+  if (!parts) return path;
+  // Wat na het tabblad komt (`/regelwerken/zorgtoeslagwet`: de wet) gaat mee.
+  // Anders opent de dia het tabblad op de wet die er toevallig nog open stond,
+  // en landt de presentator na een oefenronde op de verkeerde. De rest komt uit
+  // `splitConfigPath`, zodat ook een dia met een oud pad zijn wet houdt.
+  const { page, rest } = parts;
   const base = router.resolve({ name: localeRouteName(page, currentLocale()) }).path;
   return rest ? `${base.replace(/\/$/, '')}${rest}` : base;
 }

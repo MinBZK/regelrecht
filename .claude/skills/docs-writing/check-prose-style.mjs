@@ -135,8 +135,10 @@ const RULES = [
     id: 'rulework-compound',
     level: 'error',
     // A rulework conforms to the schema; the schema is not a rulework. A
-    // compound is how the word slides onto the schema, so it has no exemption.
-    re: /\b(?:regelwerk-?(?:schema|formaat|taal)|rulework[ -](?:schema|format|language))\b/gi,
+    // compound is how the word slides onto the schema, so it has no exemption:
+    // no frozen-file skip and no opt-out. Whitespace counts as a joint too, so
+    // a term broken over a hard wrap ("rulework\nschema") is still caught.
+    re: /\b(?:regelwerk[\s-]*(?:schema(?:'s)?|formaat|formaten|taal|talen)|rulework[\s-]+(?:schema|format|language)s?)\b/gi,
     msg: '"regelwerk"/"rulework" used as a name for the schema or the format',
     hint: 'A rulework is one regulation in YAML. The schema and the format keep their own names: "the schema", "the law format".',
   },
@@ -145,9 +147,13 @@ const RULES = [
     level: 'error',
     // The older words for one regulation in YAML. Frozen documents keep the
     // wording they were written in (AGENTS.md, "An accepted RFC is not
-    // rewritten"), so an RFC that is past Proposed is skipped.
-    re: /\b(?:wets?bestand(?:en)?|law files?|law YAML files?)\b/gi,
+    // rewritten"), so an RFC that is past Proposed is skipped. The lookbehind
+    // keeps "case-law files" out, and `\s+` catches a term split over a wrap.
+    re: /(?<![\p{L}\p{N}-])(?:wets?bestand(?:en)?|law(?:\s+YAML)?\s+files?)\b/giu,
     skipFile: (raw) => /^status:\s*(?:Accepted|Superseded|Rejected)\s*$/m.test(raw.split(/^---\s*$/m)[1] ?? ''),
+    // The RFC that retires these words has to mention them. Such a document
+    // opts out, visibly, with <!-- prose-style: allow instance-term -->.
+    optOut: true,
     msg: 'older word for one regulation in YAML',
     hint: 'Write "regelwerk" (Dutch) or "rulework" (English). See the Vocabulary section of AGENTS.md.',
   },
@@ -274,7 +280,8 @@ if (argv.includes('--help') || argv.includes('-h')) {
     'Usage: node check-prose-style.mjs [--strict] [path ...]\n\n' +
       'Scans docs prose for anti-AI-tell violations.\n' +
       '  errors (em-dashes, banned phrases, summary openers) always fail (exit 1).\n' +
-      '  warnings ("not X but Y" contrasts) are reported; --strict makes them fail too.\n\n' +
+      '  warnings ("not X but Y" contrasts) are reported; --strict makes them fail too.\n' +
+      '  --only=id,id runs just those rules.\n\n' +
       'No paths => the default docs prose set:\n' +
       DEFAULT_TARGETS.map((t) => '  ' + t).join('\n') +
       '\n\nPass a single file to check just that file.',
@@ -283,6 +290,17 @@ if (argv.includes('--help') || argv.includes('-h')) {
 }
 
 const strict = argv.includes('--strict');
+// `--only=id,id` runs just those rules. CI uses it to hold the vocabulary rules
+// over the whole default set, where the style rules still have older findings.
+const onlyArg = argv.find((a) => a.startsWith('--only='));
+const only = onlyArg ? new Set(onlyArg.slice('--only='.length).split(',').filter(Boolean)) : null;
+if (only) {
+  const unknown = [...only].filter((id) => !RULES.some((r) => r.id === id));
+  if (unknown.length) {
+    console.error(`unknown rule id(s): ${unknown.join(', ')}`);
+    process.exit(2);
+  }
+}
 const targets = argv.filter((a) => !a.startsWith('--'));
 const files = (targets.length ? targets : DEFAULT_TARGETS).flatMap(collect);
 
@@ -301,9 +319,11 @@ for (const file of files) {
   };
   for (const rule of RULES) {
     if (rule.skipFile && rule.skipFile(raw)) continue;
-    // A document that has to mention a banned word (the RFC that retires it)
-    // opts out per rule, visibly: <!-- prose-style: allow <rule-id> -->
-    if (raw.includes(`prose-style: allow ${rule.id} `)) continue;
+    if (only && !only.has(rule.id)) continue;
+    // Only a rule that declares `optOut` can be switched off from inside a
+    // document, and the marker is read from the code-stripped text: a page that
+    // merely quotes the syntax in a code block does not opt itself out.
+    if (rule.optOut && prose.includes(`prose-style: allow ${rule.id} `)) continue;
     rule.re.lastIndex = 0;
     let m;
     while ((m = rule.re.exec(prose)) !== null) {

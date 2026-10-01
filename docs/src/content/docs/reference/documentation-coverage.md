@@ -30,7 +30,6 @@ CI keeps the list complete, not correct. `docs/scripts/check-rfc-coverage.mjs` f
 | RFC-021 | Date comparison | [Temporal Validity and Dates](../concepts/temporal-and-dates) |
 | RFC-039 | Addressable execution traces | [Traceability](../concepts/traceability), which still describes the pre-RFC-039 shape; see the backlog |
 | RFC-043 | Lazy evaluation | [Engine](../components/engine#how-it-works), [Which outputs come back](../components/engine#which-outputs-come-back) |
-| RFC-044 | Regelwerk as the name for one regulation in YAML | [Glossary](../reference/glossary#regelrecht-specific-terms) |
 
 RFC-000 (the RFC process) is documented by [rfc-000](/rfcs/rfc-000) itself; the contributing guide links to it.
 
@@ -52,6 +51,7 @@ A reader meets these constructs in a rulework or a running service whatever the 
 | RFC-038 | Callable is not presentable | Backlog: [Schema](./schema) lists the `RECHTSPOSITIE` value it added; the entry-point rule itself has no page |
 | RFC-040 | The schema documents itself | [Schema](./schema) |
 | RFC-041 | A void is not scoped like a replacement | [Voiding an output](../concepts/hooks-and-reactive-execution#voiding-an-output) |
+| RFC-044 | Regelrechts and regelwerk as names (partially applied) | [Glossary](./glossary#regelrecht-specific-terms) |
 
 ## Backlog
 

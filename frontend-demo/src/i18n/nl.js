@@ -294,8 +294,8 @@ export default {
   'zaak.portaal.change_wizard': 'Wijziging doorgeven',
   'zaak.portaal.read_only.title': 'Je mag deze gegevens alleen inzien',
   'zaak.portaal.read_only.body': 'Met deze machtiging kun je geen gegevens corrigeren en geen aanvraag indienen.',
-  'zaak.portaal.load_failure.one': 'Eén wet is niet geladen',
-  'zaak.portaal.load_failure.other': '{n} wetten zijn niet geladen',
+  'zaak.portaal.load_failure.one': 'Eén regelwerk is niet geladen',
+  'zaak.portaal.load_failure.other': '{n} regelwerken zijn niet geladen',
   'zaak.portaal.load_failure.body':
     'De engine weigerde: {details}. Regelingen die hiervan afhangen kunnen geen uitkomst geven.',
   'zaak.portaal.pending_claims.one': '{n} correctie wacht op beoordeling',

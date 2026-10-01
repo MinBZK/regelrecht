@@ -484,13 +484,13 @@ defineExpose({ show });
         <div slot="empty">
           <nldd-inline-dialog
             v-if="searching"
-            text="Zoeken in de wetten…"
+            text="Zoeken in de regelwerken…"
           ></nldd-inline-dialog>
           <nldd-inline-dialog
             v-else-if="searchFailed"
             variant="alert"
             text="Zoeken is mislukt"
-            supporting-text="De wetten konden niet worden doorzocht. Probeer het opnieuw."
+            supporting-text="De regelwerken konden niet worden doorzocht. Probeer het opnieuw."
           ></nldd-inline-dialog>
           <nldd-inline-dialog
             v-else-if="needsLogin && searchTerm.length >= MIN_QUERY_LENGTH"

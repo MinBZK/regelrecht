@@ -7,7 +7,7 @@
  * survive a switch), and that a wrong path keeps the language it was typed in.
  */
 import { describe, expect, it } from 'vitest';
-import router, { localeFromPath, localeRouteName, pageForConfigPath } from './router.js';
+import router, { localeFromPath, localeRouteName, pageForConfigPath, splitConfigPath } from './router.js';
 
 const PAGE_NAMES = ['home', 'presentatie', 'wetten', 'graaf', 'scenarios', 'simulatie', 'portaal', 'zaaksysteem'];
 
@@ -200,6 +200,26 @@ describe('pageForConfigPath', () => {
   it('is null for a path no page owns', () => {
     expect(pageForConfigPath('/nergens')).toBe(null);
     expect(pageForConfigPath('')).toBe(null);
+  });
+});
+
+describe('splitConfigPath', () => {
+  it.each([
+    ['/regelwerken', 'wetten', ''],
+    ['/regelwerken/zorgtoeslagwet', 'wetten', '/zorgtoeslagwet'],
+    // The old path keeps its law. Cut against the page's current root the rest
+    // would come out empty, and the slide would open on whatever law was left
+    // open: the tab right, the law wrong, and nothing to show for it.
+    ['/wetten', 'wetten', ''],
+    ['/wetten/zorgtoeslagwet', 'wetten', '/zorgtoeslagwet'],
+    ['/scenarios/nl/wet/x.feature', 'scenarios', '/nl/wet/x.feature'],
+    ['/', 'home', ''],
+  ])('%s is the %s page with %j after it', (path, page, rest) => {
+    expect(splitConfigPath(path)).toEqual({ page, rest });
+  });
+
+  it('is null for a path no page owns', () => {
+    expect(splitConfigPath('/nergens')).toBe(null);
   });
 });
 
