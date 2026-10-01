@@ -5093,6 +5093,91 @@ async fn a_register_fact_with_and_without_the_register() {
     );
 }
 
+/// The fragment routes give the block the cell loaded, with file and line;
+/// an unknown article, an unknown configuration or a file the runtime did
+/// not load is 404.
+#[tokio::test]
+async fn a_step_opens_to_its_yaml() {
+    let data = tempfile::tempdir().unwrap();
+    let app = app(data.path());
+    let (status, f, _) = call(
+        &app,
+        "GET",
+        &format!("{TOESLAG}/api/law/testregeling_awb/9"),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{f}");
+    assert_eq!(f["file"], "regulation/testregeling_awb/2025-01-01.yaml");
+    assert!(
+        f["yaml"].as_str().unwrap().starts_with("  - number: '9'"),
+        "{f}"
+    );
+    assert!(f["line"].as_u64().unwrap() < f["end_line"].as_u64().unwrap());
+    let (status, f, _) = call(
+        &app,
+        "GET",
+        &format!("{TOESLAG}/api/config/stream/test_toeslag_aanvragen?anchor=aanvraag_ontvangen"),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{f}");
+    assert_eq!(f["file"], "chronicles/test_toeslag_aanvragen.yaml");
+    assert!(f["yaml"]
+        .as_str()
+        .unwrap()
+        .contains("name: aanvraag_ontvangen"));
+    let (status, f, _) = call(
+        &app,
+        "GET",
+        &format!("{TOESLAG}/api/config/process?anchor=portal"),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{f}");
+    assert_eq!(f["file"], "processes/toeslag/process.yaml");
+    // The form file of a process with a form: a field, and without an anchor
+    // the whole file.
+    let (status, f, _) = call(
+        &app,
+        "GET",
+        &format!("{AGENCY}/api/config/form?anchor=naam"),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{f}");
+    assert_eq!(f["file"], "processes/instantie/formulier.yaml");
+    assert!(f["yaml"].as_str().unwrap().contains("{id: naam,"), "{f}");
+    let (status, f, _) = call(
+        &app,
+        "GET",
+        &format!("{AGENCY}/api/config/form"),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{f}");
+    assert_eq!(
+        (f["line"].as_u64(), f["end_line"].as_u64()),
+        (Some(1), Some(33))
+    );
+    for uri in [
+        "/api/config/form",
+        "/api/law/testregeling_awb/99",
+        "/api/law/bestaat_niet/1",
+        "/api/config/stream/bestaat_niet",
+        "/api/config/../../etc/passwd",
+        "/api/config/process?anchor=bestaat_niet",
+    ] {
+        let (status, _, _) = call(&app, "GET", &format!("{TOESLAG}{uri}"), None, None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
+    }
+}
+
 /// Copy a directory tree.
 fn copy_tree(from: &Path, to: &Path) {
     std::fs::create_dir_all(to).unwrap();

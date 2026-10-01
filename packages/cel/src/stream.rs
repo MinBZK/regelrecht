@@ -19,7 +19,7 @@
 //! with the field path.
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, FixedOffset};
 use serde::{Deserialize, Serialize};
@@ -42,6 +42,8 @@ pub struct Stream {
     pub sha256: String,
     /// The document itself, for `GET /api/stream`.
     pub document: Value,
+    /// The file it was loaded from; `None` for a stream parsed from text.
+    pub file: Option<PathBuf>,
 }
 
 /// An event from a stream.
@@ -486,13 +488,14 @@ pub fn parse(text: &str, source: &str) -> Result<Stream, Vec<String>> {
         events: raw.events,
         sha256: hex::encode(Sha256::digest(text.as_bytes())),
         document,
+        file: None,
     })
 }
 
 /// Load the stream definitions from a file or from all `.yaml` files in a
 /// directory.
 pub fn load(path: &Path) -> Result<Vec<Stream>, Vec<String>> {
-    let files: Vec<std::path::PathBuf> = if path.is_dir() {
+    let files: Vec<PathBuf> = if path.is_dir() {
         load::yaml_files(path).map_err(|e| vec![e])?
     } else {
         vec![path.to_path_buf()]
@@ -501,7 +504,10 @@ pub fn load(path: &Path) -> Result<Vec<Stream>, Vec<String>> {
     let mut errors = Vec::new();
     for file in &files {
         match load::load(file, parse) {
-            Ok(s) => streams.push(s),
+            Ok(mut s) => {
+                s.file = Some(file.clone());
+                streams.push(s)
+            }
             Err(f) => errors.extend(f),
         }
     }

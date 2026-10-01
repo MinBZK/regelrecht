@@ -1,7 +1,9 @@
 //! The state and the routes of a process, relative to `/processes/<id>`;
 //! see the table in [`crate::api`]. The handlers are in [`super::session`],
-//! [`super::portal`] and [`super::handling`].
+//! [`super::portal`], [`super::handling`] and [`super::fragment`].
 
+use std::collections::BTreeMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::extract::State;
@@ -10,6 +12,7 @@ use axum::{Json, Router};
 use serde_json::{json, Value};
 
 use super::counter::counter_submit;
+use super::fragment;
 use super::handling::{action_route, case_route, trial_action_route, worklist_route};
 use super::inspection;
 use super::portal::{assessment_route, form_route, possibilities_route, submit};
@@ -41,6 +44,11 @@ pub struct ProcessState {
     pub assessment_rows: Arc<Vec<Rows>>,
     /// The loaded regulations, for the receipt of a decision.
     pub regulations: Arc<Vec<LoadedRegulation>>,
+    /// The corpus root (the parent of `REGULATION_PATH`): the fragment routes
+    /// name files relative to it.
+    pub root: Arc<PathBuf>,
+    /// The file of every loaded regulation, per `(id, valid_from)`.
+    pub regulation_files: Arc<BTreeMap<(String, String), PathBuf>>,
 }
 
 /// What the runtime prepares per action: the synthesis sources its
@@ -63,7 +71,10 @@ impl ProcessState {
 /// process has them, and every route checks whether the role of the
 /// logged-in user may use that group.
 pub fn process_router(state: ProcessState) -> Router {
-    let mut r = Router::new().route("/api/examples", get(examples_route));
+    let mut r = Router::new()
+        .route("/api/examples", get(examples_route))
+        .route("/api/law/{regulation}/{article}", get(fragment::law_route))
+        .route("/api/config/{*config}", get(fragment::config_route));
     let d = &state.process.definition;
     if !d.roles.is_empty() {
         r = r

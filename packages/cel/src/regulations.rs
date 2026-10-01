@@ -11,7 +11,7 @@
 //! (`load_law`).
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use regelrecht_engine::{Article, LawExecutionService};
 use regelrecht_law_model::{ParameterType, TypeSpec};
@@ -26,6 +26,10 @@ use crate::gram::LoadedRegulation;
 pub struct Corpus {
     pub service: LawExecutionService,
     pub regulations: Vec<LoadedRegulation>,
+    /// The file of every loaded regulation, per `(id, valid_from)` as in
+    /// [`LoadedRegulation`] (which stays without a path: it goes into the
+    /// receipt).
+    pub files: BTreeMap<(String, String), PathBuf>,
 }
 
 /// Load every regulation (a YAML file with `$id` and `articles`) under a
@@ -37,6 +41,7 @@ pub fn load(map: &Path) -> Result<Corpus, Vec<String>> {
     }
     let mut service = LawExecutionService::new();
     let mut loaded: Vec<LoadedRegulation> = Vec::new();
+    let mut regulation_files = BTreeMap::new();
     let mut errors = Vec::new();
     let mut files = Vec::new();
     for item in WalkDir::new(map)
@@ -84,7 +89,9 @@ pub fn load(map: &Path) -> Result<Corpus, Vec<String>> {
                             .map(|f| format!("{}: {f}", path.display())),
                     );
                 }
-                loaded.push(inventory(&path, &text, &doc, id));
+                let inv = inventory(&path, &text, &doc, id);
+                regulation_files.insert((inv.id.clone(), inv.valid_from.clone()), path);
+                loaded.push(inv);
             }
             Err(e) => errors.push(format!("{}: {e}", path.display())),
         }
@@ -94,6 +101,7 @@ pub fn load(map: &Path) -> Result<Corpus, Vec<String>> {
         Ok(Corpus {
             service,
             regulations: loaded,
+            files: regulation_files,
         })
     } else {
         Err(errors)
