@@ -4,10 +4,11 @@
 // route of a fragment and fetches it once, when it is opened.
 
 // The route under /processes/<id>/api of the fragment of a step's source, or
-// null if there is nothing to open.
+// null if there is nothing to open (also a law without `#<article>`).
 export function fragmentPath(source) {
   if (source?.law) {
     const [regulation, article] = source.law.split('#');
+    if (!regulation || !article) return null;
     return `/law/${encodeURIComponent(regulation)}/${encodeURIComponent(article)}`;
   }
   if (source?.config) {

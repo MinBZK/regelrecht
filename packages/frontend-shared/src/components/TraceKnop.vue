@@ -30,15 +30,15 @@
       <nldd-container padding="24" gap="16">
         <nldd-title :size="3">
           <span slot="overline">{{ overline }}</span>
-          <span>{{ titel }}</span>
+          <h2>{{ titel }}</h2>
         </nldd-title>
         <nldd-rich-text v-if="toelichting"><p>{{ toelichting }}</p></nldd-rich-text>
         <template v-if="slots.default">
           <slot></slot>
-          <nldd-title v-if="trace" :size="4"><h3>Trace van de engine</h3></nldd-title>
+          <nldd-title v-if="showTrace" :size="4"><h3>Trace van de engine</h3></nldd-title>
         </template>
         <!-- Dezelfde weergave als de editor: de box-drawing-tekst van de engine. -->
-        <template v-if="trace">
+        <template v-if="showTrace">
           <nldd-code-viewer v-if="traceText" wrap>{{ traceText }}</nldd-code-viewer>
           <nldd-rich-text v-else><p>Deze run gaf geen trace terug.</p></nldd-rich-text>
         </template>
@@ -65,7 +65,7 @@ const props = defineProps({
   // Zonder trace: het icoon opent alleen de inhoud van het slot (bijvoorbeeld
   // de uitleg waarom een veld er staat), zonder het kopje en de melding van
   // de trace.
-  trace: { type: Boolean, default: true },
+  showTrace: { type: Boolean, default: true },
 });
 
 const slots = useSlots();

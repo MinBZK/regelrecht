@@ -10,21 +10,25 @@ defineProps({
 });
 
 // fragment(source) -> Promise<{file, line, end_line, yaml}>, provided by
-// ApplicationView.
-const fragment = inject('fragment');
+// ProcessView; without it there is no YAML to show.
+const fragment = inject('fragment', null);
 const open = ref({});
+const loading = ref({});
 const error = ref({});
 
 async function toggle(i, step) {
+  error.value = { ...error.value, [i]: '' };
   if (open.value[i]) {
     open.value = { ...open.value, [i]: null };
     return;
   }
+  loading.value = { ...loading.value, [i]: true };
   try {
     open.value = { ...open.value, [i]: await fragment(step.source) };
-    error.value = { ...error.value, [i]: '' };
   } catch (e) {
     error.value = { ...error.value, [i]: e.message };
+  } finally {
+    loading.value = { ...loading.value, [i]: false };
   }
 }
 </script>
@@ -36,12 +40,15 @@ async function toggle(i, step) {
         <nldd-rich-text>
           <p><strong>{{ i + 1 }}. {{ stepLabel(s) }}</strong>: {{ s.reason }}</p>
         </nldd-rich-text>
-        <nldd-container v-if="fragmentPath(s.source)" layout="row">
+        <nldd-container v-if="fragment && fragmentPath(s.source)" layout="row">
           <nldd-button
             type="button"
             variant="neutral-tinted"
             size="sm"
             :text="open[i] ? 'Verberg YAML' : 'Toon YAML'"
+            :accessible-label="`${open[i] ? 'Verberg' : 'Toon'} YAML van ${stepLabel(s)}`"
+            :expanded="Boolean(open[i])"
+            :loading="loading[i] || undefined"
             @click="toggle(i, s)"
           ></nldd-button>
         </nldd-container>

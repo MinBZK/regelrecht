@@ -11,6 +11,7 @@
 // submission.
 import { computed, onMounted, provide, ref } from 'vue';
 import { inspectionApi, processApi } from '../api.js';
+import { fragmentCache } from '../why.js';
 import { rolesOf, sessionText, startScreen as startScreenOf } from '../channel.js';
 import LoginView from './LoginView.vue';
 import PossibilitiesView from './PossibilitiesView.vue';
@@ -30,6 +31,9 @@ const props = defineProps({
 
 const api = processApi(props.process.id);
 provide('api', api);
+// The YAML fragments behind the steps of the "waarom?", fetched once each
+// per process, so they survive a remount of the form.
+provide('fragment', fragmentCache((path) => api.fragment(path)));
 provide('cellApi', inspectionApi(props.process.id, props.cell.id));
 // The examples of the process (logins, application, and a form per action);
 // without them: empty.

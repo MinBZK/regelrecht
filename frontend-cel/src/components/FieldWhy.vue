@@ -3,6 +3,7 @@
 // and for a value from a register the trace of the run that supplied it.
 import TraceKnop from '@regelrecht/frontend-shared/components/TraceKnop.vue';
 import WhySteps from './WhySteps.vue';
+import { suppliedText } from '../form.js';
 
 defineProps({ field: { type: Object, required: true } });
 </script>
@@ -10,7 +11,7 @@ defineProps({ field: { type: Object, required: true } });
 <template>
   <TraceKnop
     v-if="field.why"
-    :trace="Boolean(field.supplied?.trace_text)"
+    :show-trace="field.supplied?.source === 'register'"
     :trace-text="field.supplied?.trace_text ?? null"
     :titel="field.label"
     overline="Waarom?"
@@ -21,7 +22,7 @@ defineProps({ field: { type: Object, required: true } });
     <nldd-title :size="4"><h3>Waarom deze waarde</h3></nldd-title>
     <WhySteps :steps="field.why.value" />
     <nldd-rich-text v-if="field.supplied">
-      <p>Waarde: {{ field.supplied.value }} ({{ field.supplied.source }})</p>
+      <p>Waarde: {{ field.supplied.value }}. {{ suppliedText(field) }}.</p>
     </nldd-rich-text>
   </TraceKnop>
 </template>

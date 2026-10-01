@@ -5,19 +5,16 @@
 // the law. What the channel or a register supplies (`supplied`) is shown
 // filled in and read-only, and is not sent along: the cell takes it from the
 // channel. A field the law lets the applicant leave out says so.
-import { computed, inject, onMounted, provide, ref } from 'vue';
+import { computed, inject, onMounted, ref } from 'vue';
 import { external, getPath, setPath, suppliedText, withoutSupplied } from '../form.js';
 import { provenanceRows, routesFrom, sourceStatusText } from '../text.js';
 import InputField from '../components/InputField.vue';
 import TableInput from '../components/TableInput.vue';
 import FieldWhy from '../components/FieldWhy.vue';
 import WhySteps from '../components/WhySteps.vue';
-import { fragmentCache } from '../why.js';
 import TraceKnop from '@regelrecht/frontend-shared/components/TraceKnop.vue';
 
 const api = inject('api');
-// The YAML fragments behind the steps of the "waarom?", fetched once each.
-provide('fragment', fragmentCache((path) => api.fragment(path)));
 // The application example of the process (`external`), or null.
 const examples = inject('examples');
 const example = computed(() => examples.value.application);
@@ -158,7 +155,7 @@ const resultExplanation = computed(() => {
     </nldd-title>
     <TraceKnop
       v-if="form?.why"
-      :trace="false"
+      :show-trace="false"
       titel="Waarom ziet deze aanvraag er zo uit?"
       overline="Waarom?"
       accessible-label="Waarom ziet deze aanvraag er zo uit?"
@@ -216,16 +213,17 @@ const resultExplanation = computed(() => {
             :optional="f.optional || undefined"
             :optional-label="f.optional ? 'niet verplicht' : undefined"
           >
-            <nldd-container layout="row" gap="8" vertical-alignment="center">
-              <TableInput
-                v-if="f.type === 'table'"
-                :label="f.label"
-                :columns="f.columns ?? []"
-                :model-value="values[f.name] ?? []"
-                @update:model-value="set(f.name, $event)"
-              />
+            <TableInput
+              v-if="f.type === 'table'"
+              :label="f.label"
+              :columns="f.columns ?? []"
+              :model-value="values[f.name] ?? []"
+              @update:model-value="set(f.name, $event)"
+            >
+              <FieldWhy :field="f" />
+            </TableInput>
+            <nldd-container v-else layout="row" gap="8" vertical-alignment="center">
               <InputField
-                v-else
                 :kind="f.type"
                 :label="f.label"
                 :choices="f.options"
