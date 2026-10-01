@@ -948,4 +948,6 @@ export default {
   'recorder.no_capture': 'This browser cannot record the tab. Record in Chrome or Edge.',
   'recorder.help': 'Chrome asks which tab to share: pick this one. During the take this panel goes away and the tab title shows ● REC. Shift+X marks a slip, Shift+R stops.',
   'recorder.saving': 'Saving the take…',
+  'walkthrough.own_turn': 'You are clicking in the demo yourself now. Play puts the walkthrough back where it was.',
+  'walkthrough.phone': 'On a larger screen the walkthrough runs through the real demo. On a phone you see it as a video.',
 };

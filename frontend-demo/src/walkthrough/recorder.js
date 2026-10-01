@@ -45,15 +45,6 @@ export function newTakeId(date = new Date()) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}`;
 }
 
-/** Position of a click inside the captured area, as fractions; null when outside. */
-export function relativePoint(rect, clientX, clientY) {
-  if (!rect || rect.width <= 0 || rect.height <= 0) return null;
-  const x = (clientX - rect.left) / rect.width;
-  const y = (clientY - rect.top) / rect.height;
-  if (x < 0 || x > 1 || y < 0 || y > 1) return null;
-  return { x: Math.round(x * 10000) / 10000, y: Math.round(y * 10000) / 10000 };
-}
-
 /** The first MIME type this browser's MediaRecorder accepts. */
 function pickMime(candidates) {
   return candidates.find((m) => window.MediaRecorder?.isTypeSupported?.(m)) ?? '';

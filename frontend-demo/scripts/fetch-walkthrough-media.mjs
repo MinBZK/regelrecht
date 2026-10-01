@@ -28,7 +28,7 @@ const REPO = 'MinBZK/regelrecht';
 /** Every media file the timeline names, with its checksum. */
 export function mediaFiles(timeline) {
   const tracks = [timeline.main, ...(timeline.faq ?? [])];
-  return tracks.flatMap((t) => [t.video, t.cam].filter(Boolean)).map(({ src, sha256 }) => ({ src, sha256 }));
+  return tracks.flatMap((t) => [t.audio, t.video, t.cam].filter(Boolean)).map(({ src, sha256 }) => ({ src, sha256 }));
 }
 
 function sha256(buf) {

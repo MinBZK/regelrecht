@@ -78,7 +78,7 @@ def protected_spans(events: list[dict], gap: float = 1.5, before: float = 0.2, a
     goes on, which reads as an edit and is exactly what the recording is meant
     to avoid.
     """
-    keys = sorted(e["t"] / 1000 for e in events if e.get("type") == "key")
+    keys = sorted(e["t"] / 1000 for e in events if e.get("type") in ("key", "input"))
     spans: list[tuple[float, float]] = []
     for k in keys:
         if spans and k - spans[-1][1] <= gap:
@@ -169,9 +169,9 @@ def chapters(track: Track, events_by_take: dict[str, list[dict]], overrides: dic
         slide.update(overrides.get(index, overrides.get(str(index), {})) or {})
         if result and at - result[-1]["start"] < 0.05:
             result.pop()
-        result.append({"start": round(at, 3), "slideIndex": index, "slide": slide, "profile": e.get("profile")})
+        result.append({"start": round(at, 3), "slideIndex": index, "slide": slide, "profile": e.get("profile"), "state": e.get("state")})
     if not result:
-        result.append({"start": 0.0, "slideIndex": 0, "slide": {}, "profile": None})
+        result.append({"start": 0.0, "slideIndex": 0, "slide": {}, "profile": None, "state": None})
     result[0]["start"] = 0.0
     total = round(track.duration, 3)
     for i, c in enumerate(result):
@@ -329,3 +329,50 @@ def suggest_cuts(
                 break
         out.append({"from": round(start["start"] - 0.05, 2), "to": round(after[0]["start"] - 0.05, 2), "reason": "verspreking (Shift+X)"})
     return sorted(out, key=lambda c: c["from"])
+
+
+# Actions the player does again in the live demo. Everything else in the log
+# (flubs, the end mark, the deck closing) is for post-processing only.
+REPLAYED = ("slide", "route", "click", "input", "change", "key", "scroll")
+KEEP_FIELDS = ("index", "path", "target", "fx", "fy", "value", "checked", "key", "top", "left")
+
+
+def remap_actions(track: Track, events_by_take: dict[str, list[dict]]) -> list[dict]:
+    """The replayable actions on the output timeline.
+
+    An action in a cut is not dropped but moved to the cut: the words and the
+    wait go, the click stays. Dropping it would leave the demo in another
+    state than the presenter's from that moment on (a panel never opened, a
+    law never picked). The same holds for what happened in a take before the
+    stretch that is used: it all happens at the start of that stretch.
+
+    Where a piece from another take begins, a `restore` puts the demo in the
+    state that take started from (its first slide's snapshot), since a retake
+    is recorded from its own starting point.
+    """
+    out: list[dict] = []
+    for i, p in enumerate(track.pieces):
+        events = events_by_take.get(p.take, [])
+        same_take_before = i > 0 and track.pieces[i - 1].take == p.take
+        if not same_take_before:
+            slides = [e for e in events if e.get("type") == "slide"]
+            # The slide the take starts on: the last one logged in its first
+            # half second (a take's log can open with the slide the deck
+            # showed a moment before it started).
+            first = next((e for e in reversed(slides) if e["t"] <= slides[0]["t"] + 500), None) if slides else None
+            if first is not None:
+                out.append({"t": round(p.out, 3), "type": "restore", "state": first.get("state"), "slideIndex": first.get("index", 0)})
+        # This piece collects what happened after the piece before it in the
+        # same take (or from the take's start) up to its own end.
+        lower = track.pieces[i - 1].end if same_take_before else float("-inf")
+        for e in events:
+            if e.get("type") not in REPLAYED:
+                continue
+            t = e["t"] / 1000
+            if not lower < t <= p.end:
+                continue
+            at = p.out + max(0.0, t - p.start)
+            out.append({"t": round(at, 3), "type": e["type"], **{k: e[k] for k in KEEP_FIELDS if k in e}})
+    # Stable: actions moved to the same moment keep their recorded order.
+    out.sort(key=lambda e: e["t"])
+    return out

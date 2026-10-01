@@ -7,7 +7,7 @@
     walkthrough suggest <take>   draft cuts: long silences and flub marks
     walkthrough transcript <take|main>  the text per slide, to check the slides
     walkthrough build            walkthrough.yaml -> media, timeline.json, captions
-    walkthrough export           a shareable MP4 per track (needs `just dev-demo`)
+    walkthrough export           a shareable MP4 per track
     walkthrough status           what is recorded and processed so far
 
 Raw takes live in `.walkthrough/takes/<take>/` (not in git). What decides the
@@ -38,7 +38,7 @@ from .timeline import (
     chapters,
     check_cuts,
     protected_spans,
-    remap_points,
+    remap_actions,
     remap_words,
     suggest_cuts,
     to_vtt,
@@ -55,7 +55,6 @@ HERE = Path(__file__).resolve().parent
 DENOISE = ["--python", "3.11", "--with", "deepfilternet==0.5.6", "--with", "torch==2.0.1", "--with", "torchaudio==2.0.2", "--with", "numpy<2"]
 WHISPERX = ["--python", "3.12", "--with", "whisperx"]
 OPENCV = ["--with", "opencv-python-headless<5"]
-PLAYWRIGHT = ["--with", "playwright"]
 
 MAX_WIDTH = 2560
 CAM_SIZE = 480
@@ -162,7 +161,12 @@ def clean(take: str, denoise: bool = True) -> None:
 def glossary() -> str:
     cfg = load_config(required=False)
     words = cfg.get("glossary") or []
-    return ", ".join(words)
+    # A sentence, not a bare list: Whisper copies the prompt's style, and a
+    # list without punctuation gave a transcript without full stops, which
+    # leaves the captions nothing to break on.
+    if not words:
+        return "Dit is een rondleiding door de demo van RegelRecht."
+    return f"Dit is een rondleiding door de demo van RegelRecht. Begrippen die erin voorkomen: {', '.join(words)}."
 
 
 def transcribe(take: str, model: str = "large-v3") -> None:
@@ -315,9 +319,16 @@ def render_track(name: str, segments: list[dict], cfg: dict, overrides: dict, de
     voice = workdir / f"{name}-voice.wav"
     media.loudnorm(raw, voice)
 
+    # The voice on its own is what the player plays: it drives the live demo,
+    # and a viewer should not download the picture of it as well. The video
+    # with the voice is for a phone, where the live demo does not fit, and for
+    # the shareable MP4.
+    audio_out = workdir / f"{name}-voice.m4a"
+    ffmpeg("-i", voice, "-c:a", "aac", "-b:a", "96k", "-ac", "1", "-movflags", "+faststart", audio_out)
     main = workdir / f"{name}.mp4"
     ffmpeg("-i", video_only, "-i", voice, "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-shortest", "-movflags", "+faststart", main)
     entry: dict = {"duration": round(track.duration, 3)}
+    entry["audio"] = hashed(audio_out, f"{name}-voice", dest)
     entry["video"] = {**hashed(main, name, dest), "width": width, "height": height}
     if has_cam:
         cam_only = workdir / f"{name}-cam.mp4"
@@ -330,7 +341,18 @@ def render_track(name: str, segments: list[dict], cfg: dict, overrides: dict, de
 
     chs = chapters(track, events, overrides)
     entry["chapters"] = chs
-    entry["clicks"] = [{"t": c["t"], "x": c["x"], "y": c["y"]} for c in remap_points(track, events, "click")]
+    entry["events"] = remap_actions(track, events)
+    # The deck as it stood when the first take was recorded, with the slide
+    # corrections from walkthrough.yaml: the replay shows these slides.
+    meta = read_json(take_dir(takes[0]) / "meta.json", {})
+    deck = [dict(s) for s in meta.get("slides") or []]
+    for i, fix in overrides.items():
+        if 0 <= i < len(deck):
+            deck[i].update(fix or {})
+    entry["slides"] = deck
+    first_take = track.pieces[0].take if track.pieces else takes[0]
+    entry["recordedAt"] = read_json(take_dir(first_take) / "meta.json", {}).get("startedAt")
+    entry["viewport"] = meta.get("viewport")
     out_words = remap_words(track, words)
     cues = captions(out_words, breaks=[c["start"] for c in chs[1:]])
     vtt = to_vtt(cues)
@@ -394,7 +416,7 @@ def build(release: str | None = None) -> None:
         "faq": faqs,
     }
     (CORPUS / "timeline.json").write_text(json.dumps(timeline, ensure_ascii=False, indent=1) + "\n")
-    total = sum(t["video"]["bytes"] + ((t.get("cam") or {}).get("bytes") or 0) for t in [main, *faqs])
+    total = sum(sum((t.get(k) or {}).get("bytes") or 0 for k in ("audio", "video", "cam")) for t in [main, *faqs])
     say(f"klaar: {main['duration']:.0f}s rondleiding, {len(faqs)} vragen, {total / 1e6:.0f} MB media in {PUBLIC.relative_to(ROOT)}")
 
 
@@ -447,7 +469,7 @@ def status() -> None:
 # ---- export ---------------------------------------------------------------------------
 
 
-def export(url: str) -> None:
+def export() -> None:
     from .export import export_all
 
     timeline = read_json(CORPUS / "timeline.json")
@@ -455,7 +477,7 @@ def export(url: str) -> None:
         raise SystemExit("nog geen timeline.json; draai eerst `walkthrough build`")
     out = WORK / "export"
     out.mkdir(parents=True, exist_ok=True)
-    export_all(timeline, url, PUBLIC, CORPUS, out, PLAYWRIGHT)
+    export_all(timeline, PUBLIC, CORPUS, out)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -472,8 +494,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("which", nargs="?", default="main", help="main, faq-<id> of een opname")
     p = sub.add_parser("build")
     p.add_argument("--release", help="tag van de GitHub-release met de media")
-    p = sub.add_parser("export")
-    p.add_argument("--url", default="http://localhost:7400", help="waar `just dev-demo` draait")
+    sub.add_parser("export")
     sub.add_parser("status")
     args = ap.parse_args(argv)
 
@@ -493,7 +514,7 @@ def main(argv: list[str] | None = None) -> None:
     elif args.cmd == "build":
         build(args.release)
     elif args.cmd == "export":
-        export(args.url)
+        export()
     elif args.cmd == "status":
         status()
 

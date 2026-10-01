@@ -17,7 +17,9 @@ import {
 
 const track = {
   duration: 100,
+  audio: { src: 'main.m4a' },
   video: { src: 'main.mp4', width: 1600, height: 1000 },
+  events: [],
   cam: null,
   captions: {},
   chapters: [

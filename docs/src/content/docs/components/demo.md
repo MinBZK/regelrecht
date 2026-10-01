@@ -67,11 +67,23 @@ Without a server behind `/api/why` the app does not show the feature at all: no 
 
 Next to the live presentation there is a recorded one at `/rondleiding` (`/en/tour`), for people who go through the demo without a presenter. The home page and the Presentation tab only offer it when the build carries a recording.
 
-The player shows the deck on the left and the demo as video on the right, with the presenter's voice and, if recorded, the presenter's face in a circle in the rail. The demo part is a recording, not a replay of clicks in the live app. A replay would recompute every amount on the day it is watched, give every case a new random id and depend on the layout of the viewer's window; the video shows what was said on the day it was recorded. The slides do stay live text: they render from the timeline, so a sentence on a slide can be corrected without recording again. "Try it yourself" opens the live demo at the same tab and persona.
+The walkthrough is not a video of the demo. It is the presenter's voice, and while it plays the demo itself does what the presenter did: the deck changes slides and opens tabs, and buttons are clicked and text is typed, letter by letter at the recorded pace, in the live app. A cursor moves to each click a moment before it happens. The deck is the same rail as in the zelfstandig mode of the presentation, with playback controls in its footer, the presenter's face in a circle under the slide, and the frequently asked questions that have come up so far. Pausing hands the demo to the viewer, who can click around; playing again restores the recorded state of that moment and goes on.
 
-The controls are design-system buttons in the deck's footer: play and pause, ten seconds back or forward, previous and next chapter (one chapter per slide), a chapter menu, playback speed, captions, the presenter bubble on or off, and a transcript per chapter in a side panel. The keys are Space or k to pause, the arrows for chapters, j and l for ten seconds, and c for captions. Frequently asked questions appear in the rail at the moment the presenter mentions them; each answer is a short recording of its own with its own address (`/rondleiding/<id>`), and "Back to the walkthrough" resumes where the viewer left off. The player remembers its position in `localStorage`.
+The controls are design-system buttons in the deck's footer: play and pause, previous and next chapter (one chapter per slide), a chapter menu, and a menu with playback speed, captions, the presenter bubble, a transcript per chapter, and the way out. The keys are Space or k to pause, the arrows for chapters, j and l for ten seconds, c for captions and Escape to leave a question. A question appears in the rail when the presenter mentions it; its answer is a short recording of its own with its own address (`/rondleiding/<id>`), and leaving it resumes the main line where the viewer was.
 
-The video player, the bubble, the caption overlay and the click ripple are custom CSS in `WalkthroughView.vue`, because the design system has no video components.
+How the replay holds up:
+
+- **Finding elements.** A click is stored as a description of the element, not a position: per scope (the document, then each shadow root of a design-system component on the way) the element's tag and what names it to a person, such as its text, label or link. The replay looks that up in the live page. Links are stored without their origin, and when an exact match fails, numbers in labels ("Wetten, 79") are ignored. A recording made at one window width replays at another; this was checked between 1100 and 1920 pixels wide, with the rail next to the demo (`src/walkthrough/locator.js`).
+- **Waiting.** An element that is not there yet, because a tab is still loading or the engine is computing, is waited for, and the voice pauses with it.
+- **The date.** While a replay runs, `Date` answers with the moment of the recording plus the time into it (`clock.js`), so amounts and deadlines are those of the recording day.
+- **Jumping.** Every chapter carries the demo state as it was when its slide came up. A jump restores that state, mounts the tabs fresh and replays the chapter's actions up to the target, fast.
+- **The viewer's own session.** The replay drives the same store, but does not write it to `localStorage`, and leaving the walkthrough puts the viewer's own state back.
+
+A replay can still break when the demo changes: a button that is renamed or removed is no longer found. The replay then goes to the right tab itself (it also records the route of every navigation), but a click inside the tab is lost. Record the affected chapter again; a take can start at any slide.
+
+On a screen narrower than 1024 pixels the demo and the rail do not fit side by side, and the page plays the recording of the window as a video instead, with its captions.
+
+The player's layer over the demo (the bubble, the cursor and its ripple, the captions) is custom CSS in `src/walkthrough/Replay*.vue`, because the design system has no video or pointer components. The cursor and the captions are placed in the browser's top layer, so they stay visible over a sheet or dialog the replay opens.
 
 ### Recording
 
@@ -79,15 +91,16 @@ The video player, the bubble, the caption overlay and the click ripple are custo
 just walkthrough-record   # the demo on :7400 in Chrome, with the recorder panel
 ```
 
-The recorder is a panel in the top left corner, present only in the dev server and only with `?record` in the address; the production bundle does not contain it, and the deployed site's `Permissions-Policy` blocks the microphone and camera anyway. It records three tracks on one clock:
+The recorder is a panel in the top left corner, present only in the dev server and only with `?record` in the address; the production bundle does not contain it, and the deployed site's `Permissions-Policy` blocks the microphone and camera anyway. A take is recorded the way it is played back: in Dutch, with the deck as a rail next to the demo. It records on one clock:
 
-- the demo itself: the whole current tab through `getDisplayMedia`, with the microphone as its audio (echo cancellation, noise suppression and automatic gain off);
+- the microphone (echo cancellation, noise suppression and automatic gain off);
 - the webcam, optionally;
-- an event log of slide changes, routes, click positions and typing. It records that a key was pressed in a field, never which one.
+- the actions (`capture.js`): clicks, typing with its value after every keystroke, selects and checkboxes, Enter and Escape, scrolling, and the deck's slide changes and the routes;
+- the whole window as video, for phones and for the shareable MP4.
 
-A take is recorded in zaal mode, the way the demo is presented in a room: the deck covers the screen on a story slide and steps aside on a slide that opens the demo, so the demo fills the window. The whole window is recorded and not only the workspace, because side sheets and dialogs are placed against the window; a crop next to the rail left the law list out of the picture. The player puts the slide text back next to the video. During a take the panel leaves the screen and the tab title starts with "● REC". Shift+X marks a slip (say the sentence again from its start), Shift+R stops. Chunks stream to the Vite dev server, which writes them to `.walkthrough/takes/<take>/`; a crash loses seconds, not the take. A take can start at any slide, and the panel can restore the demo state as it was at that slide in an earlier take, so one chapter can be recorded again on its own.
+What is typed is recorded, because the replay has to type it again. It is demo input with fictitious personas, said aloud in the same take. The state of the demo is stored with every slide change, which is what a jump restores and what lets one chapter be recorded again from its own starting point.
 
-Record in Chrome or Edge, which can capture their own tab without asking for a window.
+During a take the panel leaves the screen and the tab title starts with "● REC". Shift+X marks a slip (say the sentence again from its start), Shift+R stops. Chunks stream to the Vite dev server, which writes them to `.walkthrough/takes/<take>/`; a crash loses seconds, not the take. The endpoint that writes them exists only under `just walkthrough-record`, accepts only requests from the machine itself, and limits their size. Record in Chrome or Edge, which can capture their own tab without asking for a window.
 
 ### Post-processing
 
@@ -96,15 +109,15 @@ Record in Chrome or Edge, which can capture their own tab without asking for a w
 ```bash
 just walkthrough prepare     # last take: extract, clean the voice, transcribe, draft cuts
 just walkthrough transcript  # the spoken text per slide
-just walkthrough build       # walkthrough.yaml to videos, captions and timeline.json
-just walkthrough export      # a shareable MP4 per track (needs `just dev-demo` running)
+just walkthrough build       # walkthrough.yaml to voice, video, captions and timeline.json
+just walkthrough export      # a shareable MP4 per track
 just walkthrough status      # which takes exist and how far each one is processed
 just walkthrough-test        # the tests of the cut and caption arithmetic
 ```
 
-The voice is denoised with DeepFilterNet, filtered below 80 Hz, de-essed and compressed; loudness is normalized to -16 LUFS over the finished track, so every chapter is equally loud. WhisperX (Whisper large-v3 with a Dutch wav2vec2 aligner) gives every word a timestamp, with the `glossary` from `walkthrough.yaml` as a prompt for the spelling of domain terms. `prepare` then proposes cuts: long silences shortened, unless the presenter clicked or changed slide in them, and the sentence before each Shift+X. The proposal is a draft. The cuts that count are the ones in `corpus/demo/walkthrough/walkthrough.yaml`, which also lists the takes that make up the walkthrough, slide texts that replace the recorded ones, and the questions with the take of their answer and the moment they appear. The build refuses a cut through typing. DeepFilterNet, WhisperX and OpenCV (for finding the face in the webcam picture) each run in their own `uv` environment and are downloaded on first use; ffmpeg has to be installed.
+The voice is denoised with DeepFilterNet, filtered below 80 Hz, de-essed and compressed; loudness is normalized to -16 LUFS over the finished track, so every chapter is equally loud. WhisperX (Whisper large-v3 with a Dutch wav2vec2 aligner) gives every word a timestamp; the `glossary` from `walkthrough.yaml` goes into its prompt as a sentence, because Whisper copies the prompt's style and a bare list gave a transcript without full stops. `prepare` then proposes cuts: long silences shortened, unless the presenter acted in them, and the sentence before each Shift+X. The proposal is a draft. The cuts that count are the ones in `corpus/demo/walkthrough/walkthrough.yaml`, which also lists the takes that make up the walkthrough, slide texts that replace the recorded ones, and the questions with the take of their answer and the moment they appear. DeepFilterNet, WhisperX and OpenCV (for finding the face in the webcam picture) each run in their own `uv` environment and are downloaded on first use; ffmpeg has to be installed.
 
-`build` cuts every piece on whole frames, so the voice cannot drift from the picture over many cuts, and names every video after its checksum. The timeline, the captions and `walkthrough.yaml` are in git under `corpus/demo/walkthrough/`; the videos are not, because a re-recorded chapter would leave tens of megabytes in the history for good. They are assets of the GitHub release named in `timeline.json`. The Docker build fetches them with `scripts/fetch-walkthrough-media.mjs` and refuses a file whose checksum differs. nginx serves them from `/walkthrough/` with a one-year cache, which is safe because a new recording means new file names.
+`build` cuts every piece on whole frames, so the voice cannot drift from the picture over many cuts, and refuses a cut through typing. An action inside a cut is not dropped but moved to the cut, so the demo still ends up in the presenter's state. The timeline, the captions and `walkthrough.yaml` are in git under `corpus/demo/walkthrough/`; the media are not, because a re-recorded chapter would leave megabytes in the history for good. They are assets of the GitHub release named in `timeline.json`. The Docker build fetches them with `scripts/fetch-walkthrough-media.mjs` and refuses a file whose checksum differs. nginx serves them from `/walkthrough/` with a one-year cache, which is safe because a new recording means new file names.
 
 ## Running locally
 

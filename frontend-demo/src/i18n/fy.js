@@ -843,4 +843,6 @@ export default {
   "recorder.no_capture": "Dizze browser kin de ljepper net opnimme. Nim op yn Chrome of Edge.",
   "recorder.help": "Chrome freget hokker ljepper asto dielst: kies dizze ljepper. Under de opname ferdwynt dit paniel en stiet der ● REC yn 'e ljeppertitel. Shift+X markearret in fersprekking, Shift+R stoppet.",
   "recorder.saving": "Opname bewarje…",
+  "walkthrough.own_turn": "Do klikst no sels yn de demo. Ôfspylje set de rûnlieding werom dêr't er wie.",
+  "walkthrough.phone": "Op in grutter skerm rint de rûnlieding troch de echte demo. Op in telefoan sjochst him as fideo.",
 };

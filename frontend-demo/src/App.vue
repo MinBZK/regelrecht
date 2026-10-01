@@ -8,6 +8,11 @@ import { LOCALES, useI18n } from './i18n/index.js';
 import { localeRouteName } from './router.js';
 import PresentationDeck from './presentation/PresentationDeck.vue';
 import { usePresentation } from './presentation/usePresentation.js';
+import { replay } from './walkthrough/replay.js';
+import { viewEpoch } from './walkthrough/viewEpoch.js';
+import ReplayAside from './walkthrough/ReplayAside.vue';
+import ReplayControls from './walkthrough/ReplayControls.vue';
+import ReplayOverlay from './walkthrough/ReplayOverlay.vue';
 import { lockWhy, probeWhy, unlockWhy, whyAvailable, whyUnlocked } from './why/why.js';
 
 // The workspace shell: one bar with the tab bar and the presenter menu, and
@@ -74,8 +79,9 @@ watch(corpus, (c) => presentation.init({ slides: c?.config?.slides ?? [] }), { i
 // eigen ref voor, zodat de store niet om de presentatiemodule heen cirkelt.
 watch(() => state.presentationMode, (m) => presentation.setMode(m), { immediate: true });
 function onGlobalKey(e) {
-  // The recorded walkthrough is its own page; the live deck stays out of it.
-  if (route.meta?.bare) return;
+  // While the recorded walkthrough runs it drives the deck; Shift+P would
+  // pull the deck out from under it.
+  if (replay.active) return;
   if (e.key === 'P' && e.shiftKey && !e.target?.closest?.('input, textarea, select, [contenteditable]')) {
     e.preventDefault();
     // Een schakelaar, ook als het dek uit beeld staat. `start()` navigeert naar
@@ -298,11 +304,14 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
 </script>
 
 <template>
-  <!-- A bare page (the recorded walkthrough) brings its own layout: the video
-       already shows the workspace bar, a live one around it would be a second. -->
-  <router-view v-if="route.meta?.bare" />
-  <nldd-app-view v-else ref="appView" background="tinted">
-    <PresentationDeck />
+  <nldd-app-view ref="appView" background="tinted">
+    <!-- While the recorded walkthrough plays, the deck carries its controls
+         and, under the slide, the presenter's bubble and the questions. -->
+    <PresentationDeck>
+      <template v-if="replay.active" #aside><ReplayAside /></template>
+      <template v-if="replay.active" #footer><ReplayControls /></template>
+    </PresentationDeck>
+    <ReplayOverlay v-if="replay.active" />
     <component :is="RecorderPanel" v-if="RecorderPanel" />
     <nldd-bar-split-view>
       <nldd-container slot="toolbar" padding="8" background="base">
@@ -542,7 +551,9 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
           </nldd-simple-section>
         </nldd-page>
         <router-view v-else v-slot="{ Component }">
-          <keep-alive>
+          <!-- Keyed so the walkthrough can drop every cached tab when it
+               jumps (walkthrough/viewEpoch.js). -->
+          <keep-alive :key="viewEpoch">
             <component :is="Component" />
           </keep-alive>
         </router-view>

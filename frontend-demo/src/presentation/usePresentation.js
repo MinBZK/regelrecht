@@ -254,11 +254,15 @@ function onKey(e) {
   }
 }
 
-function start(i = 0) {
+/**
+ * Start the deck at slide `i`. `keys: false` leaves the keyboard alone: the
+ * recorded walkthrough drives the deck itself and has its own keys.
+ */
+function start(i = 0, { keys = true } = {}) {
   if (!total.value) return;
   active.value = true;
   document.documentElement.classList.add('rr-presenting');
-  if (!listening) {
+  if (keys && !listening) {
     window.addEventListener('keydown', onKey);
     listening = true;
   }

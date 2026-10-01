@@ -1,18 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { newTakeId, relativePoint } from './recorder.js';
+import { newTakeId } from './recorder.js';
 import { parseTakePath } from '../../scripts/walkthrough-dev-server.mjs';
 import { mediaFiles } from '../../scripts/fetch-walkthrough-media.mjs';
 
 describe('recorder helpers', () => {
   it('names a take by its local time, safe as a directory', () => {
     expect(newTakeId(new Date(2026, 9, 2, 9, 5, 7))).toBe('2026-10-02T09-05-07');
-  });
-
-  it('stores a click as a fraction of the captured area, and ignores the rail', () => {
-    const rect = { left: 576, top: 0, width: 1024, height: 1000 };
-    expect(relativePoint(rect, 1088, 500)).toEqual({ x: 0.5, y: 0.5 });
-    expect(relativePoint(rect, 100, 500)).toBeNull();
-    expect(relativePoint({ left: 0, top: 0, width: 0, height: 0 }, 1, 1)).toBeNull();
   });
 });
 

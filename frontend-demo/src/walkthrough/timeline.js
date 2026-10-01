@@ -13,12 +13,14 @@
  *     main: TRACK,
  *     faq: [{ id, question, offer, ...TRACK }] }
  *
- *   TRACK = { duration,
- *             video: { src, width, height },     // the app plus the voice
+ *   TRACK = { duration, recordedAt, viewport,
+ *             audio: { src },                    // the voice: the replay's clock
+ *             video: { src, width, height },     // the window, for a phone and the MP4
  *             cam: { src } | null,               // the presenter bubble
  *             captions: { nl: 'file.vtt' },
- *             chapters: [{ start, end, slideIndex, slide, profile }],
- *             clicks: [{ t, x, y }] }            // x, y as fractions
+ *             slides: [...],                     // the deck as recorded
+ *             chapters: [{ start, end, slideIndex, slide, profile, state }],
+ *             events: [{ t, type, ... }] }       // what replay.js does again
  *
  * Everything here is free of the DOM, so the player's decisions can be tested
  * without a browser.
@@ -44,7 +46,8 @@ export function validTrack(track) {
   return (
     !!track &&
     Number.isFinite(track.duration) &&
-    typeof track.video?.src === 'string' &&
+    typeof track.audio?.src === 'string' &&
+    Array.isArray(track.events) &&
     Array.isArray(track.chapters) &&
     track.chapters.length > 0
   );

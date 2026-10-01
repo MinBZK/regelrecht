@@ -7,6 +7,7 @@ from walkthrough.timeline import (
     chapters,
     check_cuts,
     protected_spans,
+    remap_actions,
     remap_points,
     remap_words,
     subtract,
@@ -147,6 +148,36 @@ def test_suggested_cuts_prefer_measured_silences():
     # The aligner stretched "Hier" over the pause; the audio knows better.
     words = [w("Hier", 0, 2.9), w("ziet", 3.0, 3.3)]
     assert suggest_cuts(words, [], silences=[(0.4, 2.95)]) == [{"from": 0.8, "to": 2.55, "reason": "stilte van 2.6s"}]
+
+
+def test_actions_in_a_cut_move_to_the_cut_instead_of_disappearing():
+    events = {
+        "a": [
+            ev(0, "slide", index=0, state={"x": 1}),
+            ev(1, "click", target=[{"tag": "button"}], fx=0.5, fy=0.5),
+            ev(3, "input", target=[{"tag": "input"}], value="hu"),
+            ev(5, "flub"),
+            ev(6, "click", target=[{"tag": "a"}]),
+        ]
+    }
+    track = build_track([{"take": "a"}], {"a": [(2, 4)]}, {"a": 10})
+    acts = remap_actions(track, events)
+    assert [(a["type"], a["t"]) for a in acts] == [("restore", 0), ("slide", 0), ("click", 1), ("input", 2), ("click", 4)]
+    assert acts[0]["state"] == {"x": 1}
+    assert acts[3]["value"] == "hu"
+
+
+def test_a_retake_starts_from_its_own_state():
+    events = {
+        "a": [ev(0, "slide", index=0, state={"n": 0}), ev(1, "click", target=[])],
+        "b": [ev(0, "slide", index=4, state={"n": 4}), ev(0.5, "click", target=[]), ev(9, "click", target=[])],
+    }
+    track = build_track([{"take": "a", "to": 2}, {"take": "b", "from": 1, "to": 3}], {}, {"a": 5, "b": 10})
+    acts = remap_actions(track, events)
+    restores = [(a["t"], a["slideIndex"], a["state"]) for a in acts if a["type"] == "restore"]
+    assert restores == [(0, 0, {"n": 0}), (2, 4, {"n": 4})]
+    # Before the used stretch of b: at its start. After it: gone.
+    assert [a["t"] for a in acts if a["type"] == "click"] == [1, 2]
 
 
 def test_suggested_cut_for_a_flub_goes_back_to_the_sentence_start():

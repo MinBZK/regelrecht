@@ -2,18 +2,20 @@
 /**
  * The recorder's controls, shown in dev with `?record` in the address.
  *
- * The take is the whole window, so the panel leaves the screen while it
- * runs: the tab title shows that it is recording, Shift+X marks a slip and
- * Shift+R stops. It is recorded in zaal mode, the way the presenter works in
- * a room: the deck covers the screen on a story slide and steps aside on a
- * demo slide.
+ * A take is recorded the way it is played back: in Dutch, with the deck as a
+ * rail next to the demo (zelfstandig). The player replays the actions in the
+ * live demo, so what matters most is the action log (capture.js); the video
+ * of the window is kept for the phone and for a shareable MP4. The panel
+ * leaves the screen while a take runs: the tab title shows that it records,
+ * Shift+X marks a slip and Shift+R stops.
  */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useDemo } from '../store/demoStore.js';
 import { usePresentation } from '../presentation/usePresentation.js';
-import { useI18n } from '../i18n/index.js';
-import { hasSnapshots, logEvent, markFlub, recorder, relativePoint, rememberSnapshot, snapshotFor, startRecording, stopRecording } from './recorder.js';
+import { adoptLocale, currentLocale, useI18n } from '../i18n/index.js';
+import { captureActions } from './capture.js';
+import { hasSnapshots, logEvent, markFlub, recorder, rememberSnapshot, snapshotFor, startRecording, stopRecording } from './recorder.js';
 
 const { t } = useI18n();
 const router = useRouter();
@@ -27,14 +29,10 @@ const slides = computed(() => p.slides.value ?? []);
 const cleanups = [];
 let previousMode = null;
 let previousTitle = null;
+let previousLocale = null;
 
 function plain(value) {
   return JSON.parse(JSON.stringify(value));
-}
-
-function onPointer(e) {
-  const point = relativePoint({ left: 0, top: 0, width: window.innerWidth, height: window.innerHeight }, e.clientX, e.clientY);
-  if (point) logEvent({ type: 'click', ...point });
 }
 
 function editable(e) {
@@ -45,18 +43,13 @@ function onKey(e) {
   if (e.key === 'X' && e.shiftKey && !editable(e)) {
     e.preventDefault();
     markFlub();
-    return;
   }
-  // Only that someone typed, never what: the log marks stretches the cutter
-  // must leave whole, and has no use for the characters.
-  if (editable(e) && e.key.length === 1) logEvent({ type: 'key' });
 }
 
 function listen() {
-  document.addEventListener('pointerdown', onPointer, true);
   window.addEventListener('keydown', onKey, true);
-  cleanups.push(() => document.removeEventListener('pointerdown', onPointer, true));
   cleanups.push(() => window.removeEventListener('keydown', onKey, true));
+  cleanups.push(captureActions(logEvent));
   cleanups.push(router.afterEach((to) => logEvent({ type: 'route', path: to.fullPath })));
   cleanups.push(
     watch(
@@ -88,26 +81,34 @@ async function start() {
     }
   }
   previousMode = demo.state.presentationMode;
-  demo.state.presentationMode = 'zaal';
+  demo.state.presentationMode = 'zelfstandig';
+  // The replay finds controls by their Dutch text, so a take is Dutch.
+  previousLocale = currentLocale();
+  adoptLocale('nl');
   const takeId = await startRecording({
     meta: {
       startSlide: startAt.value,
       slideCount: slides.value.length,
       viewport: { width: window.innerWidth, height: window.innerHeight, dpr: window.devicePixelRatio },
-      locale: document.documentElement.lang || null,
+      locale: 'nl',
+      // The deck as it stood: the player shows these slides, not whatever
+      // demo-config.yaml says by the time someone watches.
+      slides: plain(p.slides.value ?? []),
       userAgent: navigator.userAgent,
     },
   });
   if (!takeId) {
-    demo.state.presentationMode = previousMode;
+    restoreAfterTake();
     return;
   }
   // The panel is off screen now; the tab title, outside the picture, says
   // that the take runs.
   previousTitle = document.title;
   document.title = `● REC · ${previousTitle}`;
-  listen();
+  // The deck first, then the log: the log's first slide is then the slide the
+  // take starts on, not whatever the deck showed a moment before.
   p.start(startAt.value);
+  listen();
 }
 
 function restoreAfterTake() {
@@ -116,6 +117,8 @@ function restoreAfterTake() {
   previousTitle = null;
   if (previousMode) demo.state.presentationMode = previousMode;
   previousMode = null;
+  if (previousLocale) adoptLocale(previousLocale);
+  previousLocale = null;
 }
 
 async function stop() {

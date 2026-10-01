@@ -969,4 +969,6 @@ export default {
   'recorder.no_capture': 'Deze browser kan het tabblad niet opnemen. Neem op in Chrome of Edge.',
   'recorder.help': 'Chrome vraagt welk tabblad je deelt: kies dit tabblad. Tijdens de opname verdwijnt dit paneel en staat er ● REC in de tabtitel. Shift+X markeert een verspreking, Shift+R stopt.',
   'recorder.saving': 'Opname opslaan…',
+  'walkthrough.own_turn': 'Je klikt nu zelf in de demo. Afspelen zet de rondleiding terug waar hij was.',
+  'walkthrough.phone': 'Op een groter scherm loopt de rondleiding door de echte demo. Op een telefoon zie je hem als video.',
 };
