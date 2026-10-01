@@ -128,6 +128,17 @@ impl DataSource for RegisterSource {
     }
 }
 
+/// A register as the map of a process shows it (`GET /api/map`): the policy
+/// that queries it and the name it has there (the key `<policy>#<name>` of
+/// the binding file), and the cell and chronicle that supply it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegisterLink {
+    pub policy: String,
+    pub name: String,
+    pub cell: String,
+    pub chronicle: String,
+}
+
 /// The place where a register source receives its chronicle.
 type Lock = Arc<OnceLock<Arc<Chronicle>>>;
 
@@ -272,6 +283,23 @@ pub fn load(
 }
 
 impl Registers {
+    /// Which policy queries which register, and who supplies it.
+    pub fn links(&self) -> Vec<RegisterLink> {
+        self.bindings
+            .iter()
+            .filter_map(|(key, k, _)| {
+                // `load` only binds a key of the form `<policy>#<name>`.
+                let (policy, name) = key.split_once('#')?;
+                Some(RegisterLink {
+                    policy: policy.to_string(),
+                    name: name.to_string(),
+                    cell: k.cell.clone(),
+                    chronicle: k.chronicle.clone(),
+                })
+            })
+            .collect()
+    }
+
     /// Check the cells and chronicles of the bindings, before the chronicles
     /// are open.
     pub fn check(&self, cells: &[(&str, Vec<&str>)]) -> Vec<String> {
@@ -304,6 +332,7 @@ impl Registers {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -313,6 +342,43 @@ mod tests {
 
     /// The overlay is removed, even if the engine run panics: the next
     /// request on this thread does not see the draft as recorded.
+    /// The registers of a deployment that binds the fictitious register
+    /// policy to the chronicle of the register cell.
+    fn loaded_test_registers() -> (Registers, LawExecutionService) {
+        let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+        let mut service = LawExecutionService::new();
+        service
+            .load_law(
+                &std::fs::read_to_string(fixtures.join("beleid/testbeleid_registerhouder.yaml"))
+                    .unwrap(),
+            )
+            .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("registers.yaml");
+        std::fs::write(
+            &file,
+            "registers:\n  testbeleid_registerhouder#register: {cell: test_register, chronicle: test_register}\n",
+        )
+        .unwrap();
+        let registers = load(Some(&file), &mut service, "2025-03-12").unwrap();
+        (registers, service)
+    }
+
+    #[test]
+    fn links_name_policy_cell_and_chronicle() {
+        let (registers, _service) = loaded_test_registers();
+        let links = registers.links();
+        assert_eq!(
+            links,
+            [RegisterLink {
+                policy: "testbeleid_registerhouder".into(),
+                name: "register".into(),
+                cell: "test_register".into(),
+                chronicle: "test_register".into(),
+            }]
+        );
+    }
+
     #[test]
     fn a_trial_is_removed_even_after_a_panic() {
         let g = crate::gram::test_gram("00000000-0000-4000-8000-000000000001");
