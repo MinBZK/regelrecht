@@ -35,11 +35,13 @@
         <nldd-rich-text v-if="toelichting"><p>{{ toelichting }}</p></nldd-rich-text>
         <template v-if="slots.default">
           <slot></slot>
-          <nldd-title :size="4"><h3>Trace van de engine</h3></nldd-title>
+          <nldd-title v-if="trace" :size="4"><h3>Trace van de engine</h3></nldd-title>
         </template>
         <!-- Dezelfde weergave als de editor: de box-drawing-tekst van de engine. -->
-        <nldd-code-viewer v-if="traceText" wrap>{{ traceText }}</nldd-code-viewer>
-        <nldd-rich-text v-else><p>Deze run gaf geen trace terug.</p></nldd-rich-text>
+        <template v-if="trace">
+          <nldd-code-viewer v-if="traceText" wrap>{{ traceText }}</nldd-code-viewer>
+          <nldd-rich-text v-else><p>Deze run gaf geen trace terug.</p></nldd-rich-text>
+        </template>
       </nldd-container>
     </nldd-page>
   </nldd-sheet>
@@ -60,6 +62,10 @@ const props = defineProps({
   // De toegankelijke naam van knop en sheet; zonder: "Hoe dit is berekend".
   accessibleLabel: { type: String, default: '' },
   overline: { type: String, default: 'Trace van de engine' },
+  // Zonder trace: het icoon opent alleen de inhoud van het slot (bijvoorbeeld
+  // de uitleg waarom een veld er staat), zonder het kopje en de melding van
+  // de trace.
+  trace: { type: Boolean, default: true },
 });
 
 const slots = useSlots();

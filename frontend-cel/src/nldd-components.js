@@ -22,6 +22,8 @@ import '@nldd/design-system/form-field';
 import '@nldd/design-system/form-section';
 import '@nldd/design-system/icon-button';
 import '@nldd/design-system/inline-dialog';
+import '@nldd/design-system/list';
+import '@nldd/design-system/list-item';
 import '@nldd/design-system/number-field';
 import '@nldd/design-system/page';
 import '@nldd/design-system/rich-text';

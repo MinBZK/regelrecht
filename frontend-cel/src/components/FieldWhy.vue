@@ -1,0 +1,27 @@
+<script setup>
+// The "waarom?" of one field: why it is on the form, why it has its value,
+// and for a value from a register the trace of the run that supplied it.
+import TraceKnop from '@regelrecht/frontend-shared/components/TraceKnop.vue';
+import WhySteps from './WhySteps.vue';
+
+defineProps({ field: { type: Object, required: true } });
+</script>
+
+<template>
+  <TraceKnop
+    v-if="field.why"
+    :trace="Boolean(field.supplied?.trace_text)"
+    :trace-text="field.supplied?.trace_text ?? null"
+    :titel="field.label"
+    overline="Waarom?"
+    :accessible-label="`Waarom: ${field.label}`"
+  >
+    <nldd-title :size="4"><h3>Waarom dit veld hier staat</h3></nldd-title>
+    <WhySteps :steps="field.why.here" />
+    <nldd-title :size="4"><h3>Waarom deze waarde</h3></nldd-title>
+    <WhySteps :steps="field.why.value" />
+    <nldd-rich-text v-if="field.supplied">
+      <p>Waarde: {{ field.supplied.value }} ({{ field.supplied.source }})</p>
+    </nldd-rich-text>
+  </TraceKnop>
+</template>
