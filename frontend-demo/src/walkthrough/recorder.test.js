@@ -30,6 +30,15 @@ describe('take endpoint', () => {
   });
 });
 
+describe('components', () => {
+  // The production build leaves the recorder panel out (it is dev-only), so
+  // nothing else would notice a panel that no longer compiles.
+  it('compiles the recorder panel and the player', async () => {
+    expect((await import('./RecorderPanel.vue')).default).toBeTruthy();
+    expect((await import('./WalkthroughView.vue')).default).toBeTruthy();
+  });
+});
+
 describe('media fetch', () => {
   it('lists every video and bubble the timeline names, with its checksum', () => {
     const timeline = {

@@ -2,9 +2,13 @@
  * The walkthrough recorder: captures a narrated run through the demo.
  *
  * Three tracks, one clock:
- *  - the app, as video: the current tab through `getDisplayMedia`, cropped to
- *    the workspace with Region Capture so the deck rail on the left is not in
- *    it, with the microphone as its audio track;
+ *  - the app, as video: the whole current tab through `getDisplayMedia`, with
+ *    the microphone as its audio track. The whole tab and not a crop of the
+ *    workspace: side sheets and dialogs are placed against the window, and a
+ *    crop next to the deck rail cut the law list out of the picture. The
+ *    take is recorded in zaal mode, where the deck steps aside on a demo
+ *    slide, so the demo fills the window; the player puts the slide text
+ *    back next to it;
  *  - the webcam, as a separate video, for the presenter bubble;
  *  - an event log: slide changes, routes, clicks, typing and flub marks.
  *
@@ -31,7 +35,6 @@ export const recorder = reactive({
   elapsed: 0,
   withCamera: true,
   flubs: 0,
-  level: 0,
 });
 
 let session = null;
@@ -111,7 +114,6 @@ function teardown() {
     }
   }
   s.streams.forEach((st) => st.getTracks().forEach((tr) => tr.stop()));
-  s.stopMeter?.();
   session = null;
 }
 
@@ -166,35 +168,12 @@ export function hasSnapshots() {
   }
 }
 
-function meterFor(stream) {
-  try {
-    const ctx = new AudioContext();
-    const analyser = ctx.createAnalyser();
-    analyser.fftSize = 1024;
-    ctx.createMediaStreamSource(stream).connect(analyser);
-    const buf = new Float32Array(analyser.fftSize);
-    const id = setInterval(() => {
-      analyser.getFloatTimeDomainData(buf);
-      let peak = 0;
-      for (const v of buf) peak = Math.max(peak, Math.abs(v));
-      recorder.level = peak;
-    }, 100);
-    return () => {
-      clearInterval(id);
-      ctx.close();
-    };
-  } catch {
-    return () => {};
-  }
-}
-
 /**
  * Start a take. Must run from a click: `getDisplayMedia` needs a user gesture.
  *
- * `captureEl` is the element to crop to (the workspace next to the rail).
  * `meta` lands in meta.json as is (viewport, slide count, locale).
  */
-export async function startRecording({ captureEl, meta = {} }) {
+export async function startRecording({ meta = {} } = {}) {
   if (recorder.phase === 'recording' || recorder.phase === 'starting' || recorder.phase === 'saving') return;
   // Whatever an earlier take left running (after an error) goes first.
   teardown();
@@ -207,8 +186,8 @@ export async function startRecording({ captureEl, meta = {} }) {
   recorder.takeId = takeId;
   const streams = [];
   try {
-    if (!window.CropTarget?.fromElement) {
-      throw Object.assign(new Error('no Region Capture'), { key: 'recorder.no_region_capture' });
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      throw Object.assign(new Error('no getDisplayMedia'), { key: 'recorder.no_capture' });
     }
     const display = await navigator.mediaDevices.getDisplayMedia({
       video: { frameRate: 30, width: { ideal: 3840 }, height: { ideal: 2160 } },
@@ -222,7 +201,6 @@ export async function startRecording({ captureEl, meta = {} }) {
     const [screenTrack] = display.getVideoTracks();
     // Text and thin lines: favour sharpness over motion.
     screenTrack.contentHint = 'detail';
-    await screenTrack.cropTo(await window.CropTarget.fromElement(captureEl));
 
     const mic = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1, sampleRate: 48000 },
@@ -260,13 +238,12 @@ export async function startRecording({ captureEl, meta = {} }) {
       events: [],
       t0: null,
       camStart: null,
-      stopMeter: meterFor(mic),
       meta: {
         takeId,
         startedAt: new Date().toISOString(),
         appMime,
         camMime: camRec ? camMime : null,
-        captureSize: { width: captureEl.clientWidth, height: captureEl.clientHeight },
+        captureSize: { width: window.innerWidth, height: window.innerHeight },
         screenSettings: screenTrack.getSettings?.() ?? null,
         camSettings: cam?.getVideoTracks()[0]?.getSettings?.() ?? null,
         micSettings: mic.getAudioTracks()[0]?.getSettings?.() ?? null,
@@ -334,7 +311,6 @@ export async function stopRecording() {
   clearInterval(s.tick);
   await Promise.all([stopped(s.app), stopped(s.camRec)]);
   s.streams.forEach((st) => st.getTracks().forEach((tr) => tr.stop()));
-  s.stopMeter();
   const meta = {
     ...s.meta,
     endedAt: new Date().toISOString(),

@@ -2,11 +2,11 @@
 /**
  * The recorder's controls, shown in dev with `?record` in the address.
  *
- * Sits in the top-left corner, over the deck rail. The capture is cropped to
- * the workspace next to the rail, so nothing here ends up in the recording.
- * While a take runs the body keeps the rail's offset on every slide (see
- * `rr-recording` in presentation.css): the captured area must not change size
- * halfway, or the video changes resolution under the encoder.
+ * The take is the whole window, so the panel leaves the screen while it
+ * runs: the tab title shows that it is recording, Shift+X marks a slip and
+ * Shift+R stops. It is recorded in zaal mode, the way the presenter works in
+ * a room: the deck covers the screen on a story slide and steps aside on a
+ * demo slide.
  */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
@@ -23,26 +23,17 @@ const p = usePresentation();
 const startAt = ref(0);
 const restore = ref(hasSnapshots());
 const slides = computed(() => p.slides.value ?? []);
-const minutes = computed(() => {
-  const s = Math.floor(recorder.elapsed / 1000);
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-});
-const levelPct = computed(() => Math.min(100, Math.round(recorder.level * 100)));
-
-function captureEl() {
-  return document.querySelector('nldd-bar-split-view');
-}
 
 const cleanups = [];
 let previousMode = null;
+let previousTitle = null;
 
 function plain(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
 function onPointer(e) {
-  const el = captureEl();
-  const point = relativePoint(el?.getBoundingClientRect(), e.clientX, e.clientY);
+  const point = relativePoint({ left: 0, top: 0, width: window.innerWidth, height: window.innerHeight }, e.clientX, e.clientY);
   if (point) logEvent({ type: 'click', ...point });
 }
 
@@ -89,8 +80,6 @@ function unlisten() {
 }
 
 async function start() {
-  const el = captureEl();
-  if (!el) return;
   if (restore.value) {
     const snap = snapshotFor(startAt.value);
     if (snap) {
@@ -99,10 +88,8 @@ async function start() {
     }
   }
   previousMode = demo.state.presentationMode;
-  demo.state.presentationMode = 'zelfstandig';
-  document.documentElement.classList.add('rr-recording');
+  demo.state.presentationMode = 'zaal';
   const takeId = await startRecording({
-    captureEl: el,
     meta: {
       startSlide: startAt.value,
       slideCount: slides.value.length,
@@ -112,35 +99,41 @@ async function start() {
     },
   });
   if (!takeId) {
-    document.documentElement.classList.remove('rr-recording');
     demo.state.presentationMode = previousMode;
     return;
   }
+  // The panel is off screen now; the tab title, outside the picture, says
+  // that the take runs.
+  previousTitle = document.title;
+  document.title = `● REC · ${previousTitle}`;
   listen();
   p.start(startAt.value);
 }
 
-async function stop() {
+function restoreAfterTake() {
   unlisten();
-  await stopRecording();
-  document.documentElement.classList.remove('rr-recording');
+  if (previousTitle != null) document.title = previousTitle;
+  previousTitle = null;
   if (previousMode) demo.state.presentationMode = previousMode;
+  previousMode = null;
+}
+
+async function stop() {
+  await stopRecording();
+  restoreAfterTake();
 }
 
 // Chrome's own "stop sharing" ends the take from outside this panel.
 watch(
   () => recorder.phase,
   (phase) => {
-    if (phase === 'saving' || phase === 'error') {
-      unlisten();
-      document.documentElement.classList.remove('rr-recording');
-    }
+    if (phase === 'saving' || phase === 'error') restoreAfterTake();
   },
 );
 
 function onGlobalKey(e) {
-  // Shift+R starts and stops, so the presenter never has to reach for the mouse
-  // in the middle of a sentence.
+  // Shift+R stops, so the presenter never has to reach for the mouse in the
+  // middle of a sentence (and the panel is off screen anyway).
   if (e.key === 'R' && e.shiftKey && !editable(e)) {
     e.preventDefault();
     if (recorder.phase === 'recording') stop();
@@ -154,22 +147,11 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="recorder" role="region" :aria-label="t('recorder.label')">
+  <div v-if="recorder.phase !== 'recording'" class="recorder" role="region" :aria-label="t('recorder.label')">
     <nldd-card background="base">
       <nldd-container padding="16" gap="12">
-        <template v-if="recorder.phase === 'recording' || recorder.phase === 'saving'">
-          <nldd-container layout="horizontal" gap="8" vertical-alignment="center">
-            <span class="dot" aria-hidden="true"></span>
-            <nldd-text size="md">{{ t('recorder.recording', { time: minutes }) }}</nldd-text>
-            <nldd-tag size="sm" :text="t('recorder.slide', { n: p.index.value + 1, total: slides.length })"></nldd-tag>
-            <nldd-tag v-if="recorder.flubs" size="sm" color="warning" :text="t.plural(recorder.flubs, 'recorder.flubs')"></nldd-tag>
-          </nldd-container>
-          <nldd-progress-bar size="sm" :value="levelPct" max="100" :accessible-label="t('recorder.level')"></nldd-progress-bar>
-          <nldd-button-bar>
-            <nldd-button size="sm" variant="secondary" start-icon="flag" :text="t('recorder.flub')" @click="markFlub"></nldd-button>
-            <nldd-button size="sm" variant="destructive" start-icon="stop" :text="t('recorder.stop')" :loading="recorder.phase === 'saving' || undefined" @click="stop"></nldd-button>
-          </nldd-button-bar>
-          <nldd-text size="sm" color="secondary">{{ t('recorder.keys') }}</nldd-text>
+        <template v-if="recorder.phase === 'saving'">
+          <nldd-activity-indicator show-text :text="t('recorder.saving')" timing="instant" size="24"></nldd-activity-indicator>
         </template>
         <template v-else>
           <nldd-text size="md">{{ t('recorder.title') }}</nldd-text>
@@ -201,17 +183,5 @@ onUnmounted(() => {
   left: 0.75rem;
   width: min(22rem, calc(36vw - 1.5rem));
   z-index: 95;
-}
-.dot {
-  width: 0.75rem;
-  height: 0.75rem;
-  border-radius: 50%;
-  background: var(--primitives-color-rood-500);
-  animation: rr-rec-blink 1.2s steps(2, start) infinite;
-}
-@keyframes rr-rec-blink {
-  to {
-    visibility: hidden;
-  }
 }
 </style>

@@ -45,17 +45,6 @@ html.rr-presenting.rr-presenting-full body {
   padding-left: 0;
 }
 
-/* While a walkthrough is recorded the workspace keeps the rail's offset on
- * every slide, also on one that covers the screen and also with the deck
- * closed. The recording is cropped to the workspace; if its box changed size
- * between slides, the video would change resolution halfway through a take.
- * The full-screen deck still covers it, so the audience sees no difference. */
-html.rr-recording body,
-html.rr-recording.rr-presenting.rr-presenting-full body {
-  padding-left: 36vw;
-  transition: none;
-}
-
 /* While the deck names the persona, the profile tag in the bar is noise. In de
  * zaal verdwijnt het dek op een demo-dia, en dan benoemt het de persona dus
  * niet meer: daar horen de knoppen terug te zijn. Vandaar de uitzondering op

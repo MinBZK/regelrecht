@@ -708,6 +708,12 @@ const homePath = computed(() => router.resolve({ name: localeRouteName('home', l
   gap: 0.6rem;
   padding-top: 1rem;
 }
+/* On a slide that covers the screen the deck drops its own side padding for
+   the footer and gives it to its own footer class; these controls replace
+   that footer, so they take the same inset. */
+.full .controls {
+  padding-inline: clamp(1.5rem, 4vw, 4rem);
+}
 .controls > nldd-button {
   align-self: flex-start;
 }

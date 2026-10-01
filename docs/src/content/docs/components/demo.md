@@ -81,13 +81,13 @@ just walkthrough-record   # the demo on :7400 in Chrome, with the recorder panel
 
 The recorder is a panel in the top left corner, present only in the dev server and only with `?record` in the address; the production bundle does not contain it, and the deployed site's `Permissions-Policy` blocks the microphone and camera anyway. It records three tracks on one clock:
 
-- the demo itself: the current tab through `getDisplayMedia`, cropped with Region Capture to the workspace next to the rail, with the microphone as its audio (echo cancellation, noise suppression and automatic gain off);
+- the demo itself: the whole current tab through `getDisplayMedia`, with the microphone as its audio (echo cancellation, noise suppression and automatic gain off);
 - the webcam, optionally;
 - an event log of slide changes, routes, click positions and typing. It records that a key was pressed in a field, never which one.
 
-While recording, the workspace keeps the rail's offset on every slide, so the cropped area keeps one size and the video one resolution. Chunks stream to the Vite dev server, which writes them to `.walkthrough/takes/<take>/`; a crash loses seconds, not the take. Shift+X marks a slip (say the sentence again from its start), Shift+R stops. A take can start at any slide, and the panel can restore the demo state as it was at that slide in an earlier take, so one chapter can be recorded again on its own.
+A take is recorded in zaal mode, the way the demo is presented in a room: the deck covers the screen on a story slide and steps aside on a slide that opens the demo, so the demo fills the window. The whole window is recorded and not only the workspace, because side sheets and dialogs are placed against the window; a crop next to the rail left the law list out of the picture. The player puts the slide text back next to the video. During a take the panel leaves the screen and the tab title starts with "● REC". Shift+X marks a slip (say the sentence again from its start), Shift+R stops. Chunks stream to the Vite dev server, which writes them to `.walkthrough/takes/<take>/`; a crash loses seconds, not the take. A take can start at any slide, and the panel can restore the demo state as it was at that slide in an earlier take, so one chapter can be recorded again on its own.
 
-Chrome or Edge is required: Region Capture is not in Firefox or Safari.
+Record in Chrome or Edge, which can capture their own tab without asking for a window.
 
 ### Post-processing
 
