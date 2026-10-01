@@ -31,7 +31,8 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::{Arc, OnceLock};
 
-use regelrecht_engine::{DataSource, LawExecutionService, Value as EngineValue};
+use regelrecht_engine::{Article, DataSource, LawExecutionService, Value as EngineValue};
+use regelrecht_law_model::Input;
 use serde::Deserialize;
 
 use crate::chronicle::Chronicle;
@@ -150,6 +151,20 @@ pub struct Registers {
     bindings: Vec<(String, Binding, Lock)>,
 }
 
+/// The source-less inputs (`source: {}`) of an article: what it asks of a
+/// register.
+pub fn source_less_inputs(article: &Article) -> impl Iterator<Item = &Input> {
+    article
+        .get_execution_spec()
+        .into_iter()
+        .flat_map(|e| e.input.iter().flatten())
+        .filter(|i| {
+            i.source
+                .as_ref()
+                .is_some_and(|s| s.regulation.is_none() && s.output.is_none())
+        })
+}
+
 /// The source-less input (`source: {}`) of a regulation: the names.
 fn register_input(service: &LawExecutionService, regulation: &str) -> Vec<String> {
     let Some(law) = service.resolver().get_law(regulation) else {
@@ -158,13 +173,7 @@ fn register_input(service: &LawExecutionService, regulation: &str) -> Vec<String
     let mut out: Vec<String> = law
         .articles
         .iter()
-        .filter_map(|a| a.get_execution_spec())
-        .flat_map(|e| e.input.iter().flatten())
-        .filter(|i| {
-            i.source
-                .as_ref()
-                .is_some_and(|s| s.regulation.is_none() && s.output.is_none())
-        })
+        .flat_map(source_less_inputs)
         .map(|i| i.name.clone())
         .collect();
     out.sort();

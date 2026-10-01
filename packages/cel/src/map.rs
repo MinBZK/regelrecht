@@ -11,9 +11,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use chrono::NaiveDate;
 use serde::Serialize;
 
+use crate::config::RowsDefinition;
 use crate::law::{SourceRef, StepKind};
 use crate::process::Process;
+use crate::reduction::{Filter, LexostatusDefinition};
 use crate::register::RegisterLink;
+use crate::stream::Stream;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -187,6 +190,7 @@ pub fn build(input: &MapInput) -> Map {
         b.edge(&proc, &a, EdgeKind::LegalBasis);
     }
     cell_part(&mut b, input);
+    lexostatus_part(&mut b, input);
     if let Some(portal) = p.portal() {
         b.edge(
             &proc,
@@ -194,6 +198,10 @@ pub fn build(input: &MapInput) -> Map {
             EdgeKind::Portal,
         );
     }
+    handling_part(&mut b, input, &proc);
+    synthesis_part(&mut b, input, &proc);
+    source_part(&mut b, input);
+    register_part(&mut b, input);
     b.finish(id)
 }
 
@@ -275,6 +283,212 @@ fn cell_part(b: &mut Builder, input: &MapInput) {
                     b.edge(&establishing, &policy, EdgeKind::Prefill);
                 }
             }
+        }
+    }
+}
+
+fn lexostatus_id(cell: &str, name: &str) -> String {
+    format!("lexostatus:{cell}/{name}")
+}
+
+/// The events a lexostatus reads: those its reduction can select, through
+/// the filter of the lexostatus and, per derivation over a collection, its
+/// own filter (the same selection as the startup check,
+/// [`crate::check::events_for`]).
+fn read_events(def: &LexostatusDefinition, streams: &[Stream]) -> BTreeSet<String> {
+    let r = &def.reduction;
+    let filters: Vec<Option<&Filter>> = r
+        .derivations
+        .values()
+        .chain(r.extra_fields.values())
+        .map(|d| d.filter())
+        .collect();
+    // A derivation on the chosen gram reads what the lexostatus selects.
+    let chosen = filters.is_empty() || filters.iter().any(Option::is_none);
+    let mut out = BTreeSet::new();
+    for f in std::iter::once(None)
+        .filter(|_| chosen)
+        .chain(filters.into_iter().flatten().map(Some))
+    {
+        for (s, e) in crate::check::events_for(def, f, streams) {
+            out.insert(event_id(&s.id, &e.name));
+        }
+    }
+    out
+}
+
+/// The lexostatuses of the cell, the events they read and, for one the law
+/// reads, the reading article.
+fn lexostatus_part(b: &mut Builder, input: &MapInput) {
+    let cell = &input.process.cell;
+    for d in &cell.lexostatuses.lexostatus_definitions {
+        let source = match &d.law {
+            Some(law) => SourceRef::law(&law.article),
+            None => SourceRef::config("lexostatuses", &d.name),
+        };
+        let l = b.node(
+            lexostatus_id(cell.id(), &d.name),
+            NodeKind::Lexostatus,
+            &d.name,
+            source,
+        );
+        for event in read_events(d, &cell.streams) {
+            b.edge(&l, &event, EdgeKind::Reads);
+        }
+        if let Some(law) = &d.law {
+            let a = b.article(&law.article);
+            b.edge(&l, &a, EdgeKind::Executes);
+        }
+    }
+}
+
+/// A cell the process queries that is not its own (synthesis, rows).
+fn source_cell(b: &mut Builder, cell: &str, anchor: &str) -> String {
+    b.node(
+        format!("source_cell:{cell}"),
+        NodeKind::SourceCell,
+        cell,
+        in_process(anchor),
+    )
+}
+
+/// The cells a synthesis per row queries, from `from`.
+fn rows_part(b: &mut Builder, from: &str, rows: &[RowsDefinition]) {
+    for r in rows {
+        for src in &r.sources {
+            let c = source_cell(b, &src.cell, "rows");
+            b.edge(from, &c, EdgeKind::Rows);
+        }
+    }
+}
+
+/// The worklist and the actions of the handling: the article each action
+/// executes, the hooks on its stage and the event it records.
+fn handling_part(b: &mut Builder, input: &MapInput, proc: &str) {
+    let Some(h) = &input.process.definition.handling else {
+        return;
+    };
+    b.edge(
+        proc,
+        &lexostatus_id(&h.worklist.cell, &h.worklist.lexostatus),
+        EdgeKind::Synthesis,
+    );
+    for action in &h.actions {
+        let a = b.node(
+            format!("action:{}", action.name),
+            NodeKind::Action,
+            action.label(),
+            in_process(&action.name),
+        );
+        b.edge(proc, &a, EdgeKind::Action);
+        let article = b.article(&action.article);
+        b.edge(&a, &article, EdgeKind::LegalBasis);
+        for hook in &action.hooks {
+            let hook = b.article(hook);
+            b.edge(&a, &hook, EdgeKind::Hook);
+        }
+        b.edge(
+            &a,
+            &event_id(&action.record.stream, &action.record.event),
+            EdgeKind::Records,
+        );
+        rows_part(b, &a, &action.rows);
+    }
+}
+
+/// What the synthesis of the process combines: a lexostatus of its own
+/// cell, a cell elsewhere, or the articles of its own policy; and the cells of the rows of
+/// the assessment.
+fn synthesis_part(b: &mut Builder, input: &MapInput, proc: &str) {
+    let p = input.process;
+    for s in &p.definition.synthesis {
+        if let Some(regulation) = &s.regulation {
+            // The own policy, computed by the engine: its outputs are the
+            // extra fields; the articles that have them.
+            for output in &s.extra_fields {
+                if let Some(article) = output_article(p, regulation, output, input.date) {
+                    let a = b.article(&article);
+                    b.edge(proc, &a, EdgeKind::Synthesis);
+                }
+            }
+            continue;
+        }
+        let target = if s.cell == p.cell.id() {
+            lexostatus_id(&s.cell, &s.lexostatus)
+        } else {
+            source_cell(b, &s.cell, "synthesis")
+        };
+        b.edge(proc, &target, EdgeKind::Synthesis);
+    }
+    rows_part(b, proc, p.assessment_rows());
+}
+
+/// One level of `source` between articles: an article on the map that takes
+/// an input from the output of another regulation points to the article of
+/// that output. The new articles get no `source` edges of their own, or the
+/// map would pull in the whole chain.
+fn source_part(b: &mut Builder, input: &MapInput) {
+    let p = input.process;
+    let present: Vec<(String, String, String)> = b
+        .nodes
+        .values()
+        .filter_map(|n| Some((n.id.clone(), n.regulation.clone()?, n.label.clone())))
+        .collect();
+    for (node, regulation, number) in present {
+        let Some(spec) = p
+            .service
+            .resolver()
+            .get_law_for_date(&regulation, Some(input.date))
+            .and_then(|l| l.find_article_by_number(&number))
+            .and_then(|a| a.get_execution_spec())
+        else {
+            continue;
+        };
+        for i in spec.input.iter().flatten() {
+            let Some(src) = &i.source else { continue };
+            let (Some(reg), Some(out)) = (&src.regulation, &src.output) else {
+                continue;
+            };
+            if let Some(target) = output_article(p, reg, out, input.date) {
+                let target = b.article(&target);
+                b.edge(&node, &target, EdgeKind::Source);
+            }
+        }
+    }
+}
+
+/// The registers the policies on the map query: per register an edge from
+/// every article on the map that asks its policy's register (an input
+/// without a source).
+fn register_part(b: &mut Builder, input: &MapInput) {
+    let resolver = input.process.service.resolver();
+    for link in input.registers {
+        let Some(law) = resolver.get_law_for_date(&link.policy, Some(input.date)) else {
+            continue;
+        };
+        let articles: Vec<String> = b
+            .nodes
+            .values()
+            .filter(|n| n.regulation.as_deref() == Some(link.policy.as_str()))
+            .filter(|n| {
+                law.find_article_by_number(&n.label)
+                    .is_some_and(|a| crate::register::source_less_inputs(a).next().is_some())
+            })
+            .map(|n| n.id.clone())
+            .collect();
+        if articles.is_empty() {
+            continue;
+        }
+        // The key of the binding file, which is also the anchor there.
+        let key = format!("{}#{}", link.policy, link.name);
+        let r = b.node(
+            format!("register:{key}"),
+            NodeKind::Register,
+            &link.name,
+            SourceRef::config("registers", &key),
+        );
+        for a in articles {
+            b.edge(&a, &r, EdgeKind::Register);
         }
     }
 }

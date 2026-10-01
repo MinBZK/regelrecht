@@ -5695,3 +5695,91 @@ async fn the_map_links_an_event_to_the_articles_of_its_explanation() {
         "{map}"
     );
 }
+
+/// A lexostatus reads the events its reduction selects; the process reads
+/// its lexostatuses (synthesis, worklist) and acts on an article that the
+/// action records in an event.
+#[tokio::test]
+async fn the_map_shows_the_lexostatuses_and_the_actions() {
+    let data = tempfile::tempdir().unwrap();
+    let map = toeslag_map(&app(data.path())).await;
+    let process = "process:test_toeslag_proces";
+    let aanvraag = "lexostatus:test_toeslag/aanvraag";
+    assert!(has_node(&map, "lexostatus", aanvraag), "{map}");
+    assert!(has_edge(
+        &map,
+        aanvraag,
+        "event:test_toeslag_aanvragen/aanvraag_ontvangen",
+        "reads"
+    ));
+    // Per derivation filter: the decisions read the payment of the advance,
+    // not the application.
+    let besluiten = "lexostatus:test_toeslag/besluiten";
+    assert!(has_edge(
+        &map,
+        besluiten,
+        "event:test_toeslag_zaakverloop/voorschot_betaald",
+        "reads"
+    ));
+    assert!(!has_edge(
+        &map,
+        besluiten,
+        "event:test_toeslag_aanvragen/aanvraag_ontvangen",
+        "reads"
+    ));
+    for l in [aanvraag, besluiten, "lexostatus:test_toeslag/werkvoorraad"] {
+        assert!(has_edge(&map, process, l, "synthesis"), "{l}");
+    }
+    let action = "action:voorschot";
+    assert!(has_edge(&map, process, action, "action"));
+    assert!(has_edge(
+        &map,
+        action,
+        "event:test_toeslag_zaakverloop/voorschot_verleend",
+        "records"
+    ));
+    assert!(
+        edges(&map)
+            .iter()
+            .any(|e| e["from"] == action && e["kind"] == "legal_basis"),
+        "{map}"
+    );
+}
+
+/// Every node of the map of every fixture process opens to its fragment,
+/// through the routes the frontend uses.
+#[tokio::test]
+async fn every_node_of_the_map_has_a_fragment() {
+    let data = tempfile::tempdir().unwrap();
+    let app = app(data.path());
+    let (_, processes, _) = call(&app, "GET", "/api/processes", None, None).await;
+    let mut kinds = std::collections::BTreeSet::new();
+    for p in processes.as_array().unwrap() {
+        let process = format!("/processes/{}", p["id"].as_str().unwrap());
+        let (status, map, _) = call(&app, "GET", &format!("{process}/api/map"), None, None).await;
+        assert_eq!(status, StatusCode::OK, "{map}");
+        for n in nodes(&map) {
+            kinds.insert(n["kind"].as_str().unwrap().to_string());
+            let uri = source_uri(&process, &n["source"]);
+            let (status, body, _) = call(&app, "GET", &uri, None, None).await;
+            assert_eq!(status, StatusCode::OK, "{n}: {uri}: {body}");
+        }
+    }
+    assert!(kinds.contains("source_cell"), "{kinds:?}");
+}
+
+#[tokio::test]
+async fn every_edge_of_the_map_joins_two_nodes() {
+    let data = tempfile::tempdir().unwrap();
+    let map = toeslag_map(&app(data.path())).await;
+    let ids: std::collections::BTreeSet<&str> = nodes(&map)
+        .iter()
+        .map(|n| n["id"].as_str().unwrap())
+        .collect();
+    for e in edges(&map) {
+        assert!(
+            ids.contains(e["from"].as_str().unwrap()) && ids.contains(e["to"].as_str().unwrap()),
+            "{e}"
+        );
+    }
+}
