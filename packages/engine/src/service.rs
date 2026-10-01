@@ -623,6 +623,8 @@ struct AfterPreHooks<'x> {
     hook_outputs: &'x BTreeMap<String, Value>,
     /// What a replacing override makes of an output the article just set.
     replace: &'x ReplaceOutput<'x>,
+    /// Per replaced output, the parameters its override declares.
+    replacing: &'x BTreeMap<String, BTreeSet<String>>,
 }
 
 /// Runs the replacing override of an output, if one applies, given the name,
@@ -645,6 +647,10 @@ impl LazyInputs for AfterPreHooks<'_> {
         outputs: &BTreeMap<String, Value>,
     ) -> Option<Result<Value>> {
         (self.replace)(name, value, outputs)
+    }
+
+    fn replacement_reads(&self) -> Option<&BTreeMap<String, BTreeSet<String>>> {
+        Some(self.replacing)
     }
 }
 
@@ -2958,20 +2964,8 @@ impl LawExecutionService {
         // `apply_overrides` does not run it a second time.
         let replaced_in_actions: RefCell<BTreeMap<String, Option<OutputProvenance>>> =
             RefCell::new(BTreeMap::new());
-        let article_outputs: BTreeSet<String> = crate::demand::action_outputs(article)
-            .map(str::to_string)
-            .collect();
         let replace = |name: &str, value: &Value, outputs: &BTreeMap<String, Value>| {
             let declared = demand.replacing.get(name)?;
-            // An override that declares an output this article has not set
-            // yet cannot run here; it runs after the last action, as it did
-            // before replacements moved into the action loop.
-            let pending = declared.iter().any(|param| {
-                param != name && !outputs.contains_key(param) && article_outputs.contains(param)
-            });
-            if pending {
-                return None;
-            }
             // What the override declares, of this article's inputs, is
             // resolved for it before it runs.
             if let Err(e) = lazy.resolve_names(declared) {
@@ -3008,6 +3002,7 @@ impl LawExecutionService {
                 inputs: &lazy,
                 hook_outputs: &pre_hook_outputs,
                 replace: &replace,
+                replacing: &demand.replacing,
             }),
         )?;
         let replaced_in_actions = replaced_in_actions.into_inner();
@@ -5144,9 +5139,9 @@ articles:
         assert_eq!(result.outputs.get("vandaag"), Some(&Value::Int(6)));
     }
 
-    /// An overridden output assigned twice is replaced after its last
-    /// assignment: an action between the two reads the first assignment, an
-    /// action after them reads the replaced value.
+    /// An overridden output assigned twice is replaced once, after its last
+    /// assignment, and every reader reads that value: also an action declared
+    /// between the two assignments, because readers run after all of them.
     #[test]
     fn an_output_assigned_twice_is_replaced_after_its_last_assignment() {
         let wet = r#"
@@ -5217,7 +5212,7 @@ articles:
         let mut service = LawExecutionService::new();
         service.load_law(wet).unwrap();
         service.load_law(&beleid).unwrap();
-        // tussenstand 1 (before the last assignment), plakjes_kaas 4.
+        // tussenstand and plakjes_kaas both read the replaced value (4).
         let result = service
             .evaluate_law_output(
                 "beleid_boterhammen",
@@ -5226,7 +5221,137 @@ articles:
                 "2025-01-01",
             )
             .unwrap();
-        assert_eq!(result.outputs.get("gelezen"), Some(&Value::Int(104)));
+        assert_eq!(result.outputs.get("gelezen"), Some(&Value::Int(404)));
+    }
+
+    /// The order of the actions in the file never changes a value: the same
+    /// article with its actions reversed gives the same outputs, with and
+    /// without an override that reads an output declared after the one it
+    /// replaces.
+    #[test]
+    fn the_order_of_actions_in_the_file_does_not_change_a_value() {
+        let wet = |actions: &str| {
+            format!(
+                r#"
+$id: wet_a
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: A, B en C.
+    machine_readable:
+      execution:
+        output:
+          - name: a
+            type: number
+          - name: b
+            type: number
+          - name: c
+            type: number
+        actions:
+{actions}"#
+            )
+        };
+        let a = "          - output: a\n            value: 2\n";
+        let b = "          - output: b\n            value:\n              operation: ADD\n              values: [$a, 1]\n";
+        let c = "          - output: c\n            value: 10\n";
+        let beleid = r#"
+$id: beleid_a
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: In afwijking daarvan is A gelijk aan C.
+    machine_readable:
+      overrides:
+        - law: wet_a
+          article: '1'
+          output: a
+      execution:
+        parameters:
+          - name: c
+            type: number
+            required: true
+        output:
+          - name: a
+            type: number
+        actions:
+          - output: a
+            value: $c
+  - number: '2'
+    text: B volgens de wet.
+    machine_readable:
+      execution:
+        input:
+          - name: b
+            type: number
+            source:
+              regulation: wet_a
+              output: b
+        output:
+          - name: gelezen
+            type: number
+        actions:
+          - output: gelezen
+            value: $b
+"#;
+        for order in [[a, b, c], [c, b, a], [b, a, c], [b, c, a]] {
+            let actions = order.concat();
+            // Without the override: b is a + 1.
+            let mut plain = LawExecutionService::new();
+            plain.load_law(&wet(&actions)).unwrap();
+            let result = plain
+                .evaluate_law_output("wet_a", "b", BTreeMap::new(), "2025-01-01")
+                .unwrap_or_else(|e| panic!("{actions}: {e}"));
+            assert_eq!(result.outputs.get("b"), Some(&Value::Int(3)), "{actions}");
+
+            // With it: a is c (10), so b is 11, whatever the order.
+            let mut overridden = LawExecutionService::new();
+            overridden.load_law(&wet(&actions)).unwrap();
+            overridden.load_law(beleid).unwrap();
+            let result = overridden
+                .evaluate_law_output("beleid_a", "gelezen", BTreeMap::new(), "2025-01-01")
+                .unwrap_or_else(|e| panic!("{actions}: {e}"));
+            assert_eq!(
+                result.outputs.get("gelezen"),
+                Some(&Value::Int(11)),
+                "{actions}"
+            );
+        }
+    }
+
+    /// Outputs of one article that read each other are a cycle, reported as
+    /// one, not a variable that happens to be missing in file order.
+    #[test]
+    fn outputs_reading_each_other_are_a_cycle() {
+        let law = r#"
+$id: wet_cyclus
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: A is B, B is A.
+    machine_readable:
+      execution:
+        output:
+          - name: a
+            type: number
+          - name: b
+            type: number
+        actions:
+          - output: a
+            value: $b
+          - output: b
+            value: $a
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+        match service.evaluate_law_output("wet_cyclus", "a", BTreeMap::new(), "2025-01-01") {
+            Err(EngineError::CircularReference(msg)) => {
+                assert!(msg.contains("depends on itself"), "{msg}");
+            }
+            other => panic!("expected CircularReference, got {other:?}"),
+        }
     }
 
     /// An article that both fills in an open term of a law and overrides an
@@ -5309,8 +5434,8 @@ articles:
         );
     }
 
-    /// An override that declares an output its target article sets later
-    /// runs after the article's last action, where that output exists.
+    /// An override that declares an output its target article sets later in
+    /// the file still runs where it replaces: that output is computed first.
     #[test]
     fn an_override_declaring_a_later_output_runs_after_the_actions() {
         let wet = r#"

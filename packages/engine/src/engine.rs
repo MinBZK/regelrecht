@@ -385,7 +385,23 @@ impl<'a> ArticleEngine<'a> {
         let actions = self.get_actions();
         let tracing_active = context.has_trace();
 
-        for (index, action) in actions.iter().enumerate() {
+        // Dependency order, not file order: an action runs after what it
+        // reads, so the order of the actions in the file never changes a
+        // value (RFC-044).
+        let no_reads = BTreeMap::new();
+        let order = crate::demand::execution_order(
+            actions,
+            context.replacement_reads().unwrap_or(&no_reads),
+        )
+        .map_err(|output| {
+            EngineError::CircularReference(format!(
+                "output '{output}' of {} article {} depends on itself",
+                self.law.id, self.article.number
+            ))
+        })?;
+
+        for (position, &index) in order.iter().enumerate() {
+            let action = &actions[index];
             if let (Some(outputs), Some(name)) = (outputs, &action.output) {
                 if !outputs.contains(name) {
                     continue;
@@ -471,13 +487,14 @@ impl<'a> ArticleEngine<'a> {
             }
 
             // A replacing override takes effect where the output is set, so
-            // the actions after it read the value the special rule gives, the
-            // same value every other article reads (RFC-007). Only after the
-            // last action writing the output: an output assigned twice is
-            // replaced once, as what the article ends up with.
-            let is_last_write = !actions[index + 1..]
+            // every action reading it, which runs after it, reads the value
+            // the special rule gives, the same value every other article
+            // reads (RFC-044). Only after the last action writing the output:
+            // an output assigned twice is replaced once, as what the article
+            // ends up with.
+            let is_last_write = !order[position + 1..]
                 .iter()
-                .any(|a| a.output.as_deref() == Some(output_name.as_str()));
+                .any(|&later| actions[later].output.as_deref() == Some(output_name.as_str()));
             let replaced = if is_last_write {
                 context.replaced_output(output_name, &value)
             } else {
