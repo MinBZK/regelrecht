@@ -34,7 +34,7 @@ watch(() => props.trajectRef, reload);
  */
 function scopeSummary(r) {
   if (!r) return null;
-  const laws = `${r.checked_laws} ${r.checked_laws === 1 ? 'wetbestand' : 'wetbestanden'}`;
+  const laws = `${r.checked_laws} ${r.checked_laws === 1 ? 'regelwerk' : 'regelwerken'}`;
   const scenarios = `${r.checked_scenarios} ${r.checked_scenarios === 1 ? 'scenario' : "scenario's"}`;
   return `${laws} en ${scenarios} nagekeken in de eigen repo van dit traject.`;
 }
@@ -47,7 +47,7 @@ function scopeSummary(r) {
     <nldd-rich-text v-if="paneChromeVisible(loading)">
       <p>
         Controle op de configuratie van het traject-corpus: mapnamen,
-        bestandsnamen, dubbele wet-id's en verwijzingen die nergens uitkomen.
+        bestandsnamen, dubbele id's en verwijzingen die nergens uitkomen.
       </p>
     </nldd-rich-text>
     <nldd-spacer v-if="paneChromeVisible(loading)" size="16"></nldd-spacer>

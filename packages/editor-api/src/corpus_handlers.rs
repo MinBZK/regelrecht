@@ -277,7 +277,7 @@ impl ReadScope {
                         );
                         (
                             StatusCode::BAD_GATEWAY,
-                            format!("Kon versies van wet '{law_id}' niet laden"),
+                            format!("Kon de versies van '{law_id}' niet laden"),
                         )
                     })
             }
@@ -315,7 +315,7 @@ fn law_read_error(
         tracing::warn!(traject = %traject_id, law_id = %law_id, error = %e, "failed to load law body");
         (
             StatusCode::BAD_GATEWAY,
-            format!("Kon wet '{law_id}' niet laden"),
+            format!("Kon regelwerk '{law_id}' niet laden"),
         )
     }
 }
@@ -722,7 +722,7 @@ pub async fn list_traject_changed_laws(
             tracing::warn!(traject_ref = %traject_ref, error = %e, "changed-laws diff failed");
             (
                 StatusCode::BAD_GATEWAY,
-                "Kon de gewijzigde wetten van dit traject niet ophalen".to_string(),
+                "Kon de gewijzigde regelwerken van dit traject niet ophalen".to_string(),
             )
         })?;
     Ok(Json(ids))
@@ -2861,7 +2861,7 @@ where
         None
     };
     if if_match.is_some() {
-        check_if_match(current.as_deref(), if_match.as_deref(), "Wet")?;
+        check_if_match(current.as_deref(), if_match.as_deref(), "Regelwerk")?;
     }
 
     let (body, message) = compose(current.as_deref())?;
@@ -3956,7 +3956,10 @@ pub async fn create_traject_law(
     let meta = regelrecht_pipeline::law_convert::validate_law_yaml(&body).map_err(|errors| {
         (
             StatusCode::BAD_REQUEST,
-            format!("Wet valideert niet tegen het schema: {}", errors.join("; ")),
+            format!(
+                "Regelwerk valideert niet tegen het schema: {}",
+                errors.join("; ")
+            ),
         )
     })?;
     let law_id = meta.law_id.clone();
@@ -3967,7 +3970,7 @@ pub async fn create_traject_law(
     if traject.corpus.source_map.get_law(&law_id).is_some() {
         return Err((
             StatusCode::CONFLICT,
-            "Er bestaat al een wet met dit $id in dit traject; pas het $id in de YAML aan."
+            "Er bestaat al een regelwerk met dit $id in dit traject; pas het $id in de YAML aan."
                 .to_string(),
         ));
     }
@@ -3997,7 +4000,7 @@ pub async fn create_traject_law(
     {
         return Err((
             StatusCode::CONFLICT,
-            "Er staat al een wetsbestand op dit pad in het traject; pas het $id in de YAML aan."
+            "Er staat al een regelwerk op dit pad in het traject; pas het $id in de YAML aan."
                 .to_string(),
         ));
     }
@@ -4010,7 +4013,7 @@ pub async fn create_traject_law(
     let outcome = writer
         .backend
         .persist(&auth.into_write_context(
-            format!("Nieuwe wet {} uit documentconversie", law_id),
+            format!("Nieuw regelwerk {} uit documentconversie", law_id),
             author,
         ))
         .await
@@ -4094,7 +4097,7 @@ pub async fn promote_corpus_law(
         if law.source_id == traject.writable_own_source_id {
             return Err((
                 StatusCode::CONFLICT,
-                "Deze wet staat al in dit traject.".to_string(),
+                "Dit regelwerk staat al in dit traject.".to_string(),
             ));
         }
     }
@@ -4146,7 +4149,7 @@ pub async fn promote_corpus_law(
         {
             return Err((
                 StatusCode::CONFLICT,
-                "Deze wet staat al (deels) in dit traject.".to_string(),
+                "Dit regelwerk staat al (deels) in dit traject.".to_string(),
             ));
         }
         tracing::info!(
@@ -4166,7 +4169,7 @@ pub async fn promote_corpus_law(
     let outcome = writer
         .backend
         .persist(&auth.into_write_context(
-            format!("Voeg wet {} toe uit het centrale corpus", law_id),
+            format!("Voeg regelwerk {} toe uit het centrale corpus", law_id),
             author,
         ))
         .await
@@ -4212,7 +4215,7 @@ async fn collect_promote_files(
     let not_found = || {
         (
             StatusCode::NOT_FOUND,
-            "Deze wet is niet gevonden in het centrale corpus van dit traject.".to_string(),
+            "Dit regelwerk is niet gevonden in het centrale corpus van dit traject.".to_string(),
         )
     };
     let versions: Vec<LoadedLaw> = traject
@@ -4232,7 +4235,7 @@ async fn collect_promote_files(
         tracing::warn!(law_id = %law_id, path = %path.display(), error = %e, "promote: {what} lezen uit seed-bron mislukt");
         (
             StatusCode::BAD_GATEWAY,
-            "Kon de wet niet volledig uit het centrale corpus lezen.".to_string(),
+            "Kon het regelwerk niet volledig uit het centrale corpus lezen.".to_string(),
         )
     };
 
@@ -4267,10 +4270,10 @@ async fn collect_promote_files(
             backend
                 .read_file(&relative_path)
                 .await
-                .map_err(|e| fetch_error("wet-versie", &relative_path, &e))?
+                .map_err(|e| fetch_error("regelwerk", &relative_path, &e))?
                 .ok_or_else(|| {
                     fetch_error(
-                        "wet-versie",
+                        "regelwerk",
                         &relative_path,
                         &"bestand ontbreekt bij de bron",
                     )
@@ -4292,7 +4295,7 @@ async fn collect_promote_files(
         .map(PathBuf::from)
         .ok_or((
             StatusCode::INTERNAL_SERVER_ERROR,
-            "Kan de wet-map niet bepalen.".to_string(),
+            "Kan de map van het regelwerk niet bepalen.".to_string(),
         ))?;
     let scenarios_dir = law_dir.join("scenarios");
     if let Some(entry) = traject.corpus.backends.get(&primary.source_id) {
@@ -5156,7 +5159,7 @@ mod tests {
         // header is absent, which is what keeps older clients (frontend
         // without etag plumbing, curl) on the blind last-write-wins save.
         let current = "$id: wet\nname: v1\n";
-        let etag = check_if_match(Some(current), None, "Wet").unwrap();
+        let etag = check_if_match(Some(current), None, "Regelwerk").unwrap();
         assert_eq!(etag.as_deref(), Some(document_etag(current).as_str()));
     }
 
@@ -5167,11 +5170,11 @@ mod tests {
         // message names the law (not "Document").
         let current = "$id: wet\nname: v2-van-iemand-anders\n";
         let stale = document_etag("$id: wet\nname: v1\n");
-        let err = check_if_match(Some(current), Some(&stale), "Wet")
+        let err = check_if_match(Some(current), Some(&stale), "Regelwerk")
             .expect_err("stale etag must be refused");
         assert_eq!(err.0, StatusCode::PRECONDITION_FAILED);
         assert!(
-            err.1.contains("Wet"),
+            err.1.contains("Regelwerk"),
             "message should name the noun: {}",
             err.1
         );

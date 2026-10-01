@@ -269,14 +269,14 @@ defineExpose({ show });
     ref="sheetRef"
     placement="right"
     width="480px"
-    accessible-label="Wet toevoegen aan traject"
+    accessible-label="Regelwerk toevoegen aan traject"
     sm-full-height
     @close="onSheetClose"
   >
       <nldd-page sticky-header>
         <nldd-top-title-bar
           slot="header"
-          text="Wet toevoegen"
+          text="Regelwerk toevoegen"
           dismiss-text="Annuleer"
           @dismiss="close"
         ></nldd-top-title-bar>
@@ -423,7 +423,7 @@ defineExpose({ show });
           <template v-else>
             <nldd-form-field
               label="Upload een document"
-              supporting-label="PDF of Word. Bij deze conversie leest AI het document: er is geen route naar een wet zonder taalmodel. De keten zet het om naar een basis-wet en verrijkt het; het resultaat komt terug als review-taak bij Taken."
+              supporting-label="PDF of Word. Bij deze conversie leest AI het document: er is geen route naar een regelwerk zonder taalmodel. De keten zet het om naar een eerste versie van het regelwerk en verrijkt die; het resultaat komt terug als review-taak bij Taken."
             >
               <nldd-button
                 size="md"

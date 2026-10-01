@@ -440,7 +440,7 @@ defineExpose({ show });
         <!-- Interne corpus-treffers: platte lijst, eigen repo eerst (op
              bron-prioriteit), met de bron als ondertitel per rij. Rijen
              navigeren alleen naar de wet; promoten naar het traject kan
-             uitsluitend via de "Wet toevoegen"-flow (AddLawSheet). -->
+             uitsluitend via de "Regelwerk toevoegen"-flow (AddLawSheet). -->
         <nldd-list-item
           v-for="law in sortedLaws"
           :key="law.law_id"

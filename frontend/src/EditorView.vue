@@ -751,7 +751,7 @@ function fileTimestamp() {
 
 // Law id as a filename part, hyphenated (the corpus slug uses underscores).
 function lawSlug() {
-  return (lawId.value || 'wet').replace(/_/g, '-');
+  return (lawId.value || 'regelwerk').replace(/_/g, '-');
 }
 
 // Trigger a browser download of `text` as `filename`. Revoke on a later tick:
@@ -1720,12 +1720,12 @@ const reviewBannerVariant = computed(() => {
   return 'accent';
 });
 const reviewBannerText = computed(() =>
-  reviewIsLawCreate.value ? 'Nieuwe wet uit documentconversie' : 'Voorstel uit verrijking',
+  reviewIsLawCreate.value ? 'Nieuw regelwerk uit documentconversie' : 'Voorstel uit verrijking',
 );
 const reviewBannerSupportingText = computed(() => {
   if (reviewLoadError.value) return reviewLoadError.value;
   if (reviewIsLawCreate.value) {
-    return 'Controleer de wet; Opslaan voegt de wet toe aan het traject, Verwerpen wijst af.';
+    return 'Controleer het regelwerk; Opslaan voegt het toe aan het traject, Verwerpen wijst af.';
   }
   if (!reviewSeeded.value) {
     return reviewArticleNumber.value
@@ -1758,7 +1758,7 @@ const reviewChangedPanes = computed(() => {
 const reviewStatusText = computed(() => {
   if (reviewLoadError.value) return reviewLoadError.value;
   const what = reviewIsLawCreate.value
-    ? 'Dit is een nieuwe wet uit documentconversie'
+    ? 'Dit is een nieuw regelwerk uit documentconversie'
     : 'Dit is een gegenereerd voorstel';
   const panes = reviewChangedPanes.value;
   const list =
@@ -1777,8 +1777,8 @@ const reviewProgressNote = computed(() => {
       ? ` Onderdeel ${reviewPartIndex.value} van ${reviewPartCount.value}.`
       : '';
   return reviewUndecidedParts.value.length > 1
-    ? `${position} De wet wordt pas bijgewerkt als alle onderdelen zijn beoordeeld.`
-    : `${position} Dit is het laatste onderdeel; daarna wordt de wet bijgewerkt.`;
+    ? `${position} Het regelwerk wordt pas bijgewerkt als alle onderdelen zijn beoordeeld.`
+    : `${position} Dit is het laatste onderdeel; daarna wordt het regelwerk bijgewerkt.`;
 });
 
 // Fires once the law + its first article have finished loading (whether
@@ -2041,13 +2041,13 @@ async function enrichLaw() {
   try {
     const { alreadyRunning, tooMany } = await requestEnrich();
     if (alreadyRunning) {
-      enrichFeedback.value = { variant: 'warning', text: 'Er loopt al een verrijking voor deze wet.' };
+      enrichFeedback.value = { variant: 'warning', text: 'Er loopt al een verrijking voor dit regelwerk.' };
     } else if (tooMany) {
       enrichFeedback.value = { variant: 'warning', text: 'Je hebt te veel verrijkingen tegelijk lopen.' };
     } else {
       enrichFeedback.value = {
         variant: 'success',
-        text: 'Verrijking van de hele wet gestart - je krijgt een taak per gewijzigd artikel zodra het resultaat klaarstaat.',
+        text: 'Verrijking van het hele regelwerk gestart - je krijgt een taak per gewijzigd artikel zodra het resultaat klaarstaat.',
       };
     }
   } catch (e) {
@@ -2644,7 +2644,7 @@ async function handleActionSave() {
           <nldd-container v-if="engineLoadError" padding="8">
             <nldd-banner
               variant="critical"
-              text="De engine kan deze wet niet laden"
+              text="De engine kan dit regelwerk niet laden"
               :supporting-text="engineLoadError"
             ></nldd-banner>
           </nldd-container>
@@ -2927,12 +2927,12 @@ async function handleActionSave() {
                     >
                       <nldd-menu slot="popup">
                         <nldd-menu-item icon="document" text="Artikel-notities als YAML" @select="exportArticleNotes"></nldd-menu-item>
-                        <nldd-menu-item icon="document" text="Wet-notities als YAML" @select="exportNotes"></nldd-menu-item>
+                        <nldd-menu-item icon="document" text="Notities bij dit regelwerk als YAML" @select="exportNotes"></nldd-menu-item>
                       </nldd-menu>
                     </nldd-icon-button>
                     <nldd-menu-group slot="overflow" text="Notities downloaden">
                       <nldd-menu-item icon="document" text="Artikel-notities als YAML" @select="exportArticleNotes"></nldd-menu-item>
-                      <nldd-menu-item icon="document" text="Wet-notities als YAML" @select="exportNotes"></nldd-menu-item>
+                      <nldd-menu-item icon="document" text="Notities bij dit regelwerk als YAML" @select="exportNotes"></nldd-menu-item>
                     </nldd-menu-group>
                   </nldd-toolbar-item>
                   <!-- YAML parse-status (Machine-readable pane). -->
@@ -2955,7 +2955,7 @@ async function handleActionSave() {
                     v-if="canEnrichLaw && isEnrichPane(view) && hasMachineReadable"
                     slot="overflow"
                     icon="ai"
-                    text="Verrijk deze wet opnieuw"
+                    text="Verrijk dit regelwerk opnieuw"
                     @select="enrichLaw"
                   ></nldd-menu-item>
                 </nldd-toolbar>

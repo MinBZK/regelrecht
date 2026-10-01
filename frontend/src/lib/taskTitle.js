@@ -65,7 +65,7 @@ export function runningTitle(job, lawName = (id) => id) {
   // Een wet maken uit een geüpload document: target_path draagt de geüploade
   // bestandsnaam (COALESCE in list_running_task_jobs_for_account).
   if (job?.job_type === 'law_convert') {
-    return `Wachten op wet maken van ${fileName(job.target_path, 'document')}`;
+    return `Wachten op regelwerk maken van ${fileName(job.target_path, 'document')}`;
   }
   // Een wet ophalen in een traject: law_id draagt het BWB-id van de op te halen
   // wet, die nog niet in het corpus staat, dus lawName valt hier meestal terug.

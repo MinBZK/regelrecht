@@ -478,7 +478,7 @@ const TAKEN_TITELS = {
   werkdocumenten: 'Werkdocumenten',
   // Alleen bereikbaar via een handmatig getypte /taken/wet zonder id; het panel
   // linkt altijd naar één wet.
-  wet: 'Wetten',
+  wet: 'Regelwerken',
 };
 const takenTitle = computed(() => {
   if (!takenCategorie.value) return undefined;
@@ -2098,7 +2098,7 @@ watch(activeTrajectRef, () => {
           v-if="indexError && !isLibraryMode"
           variant="warning"
           duration="0"
-          text="Wetten en regels van dit traject zijn niet geladen"
+          text="De regelwerken van dit traject zijn niet geladen"
           :supporting-text="indexErrorSupportingText"
         >
           <nldd-button slot="actions" variant="secondary" text="Probeer opnieuw" @click="retryLoadCorpus"></nldd-button>
@@ -2114,7 +2114,7 @@ watch(activeTrajectRef, () => {
           <nldd-simple-section width="full">
             <nldd-inline-dialog
               variant="alert"
-              text="Wetten en regels zijn niet geladen"
+              text="De regelwerken zijn niet geladen"
               :supporting-text="indexErrorSupportingText"
             >
               <nldd-button slot="actions" variant="primary" text="Probeer opnieuw" @click="retryLoadCorpus"></nldd-button>
@@ -2240,7 +2240,7 @@ watch(activeTrajectRef, () => {
                       <nldd-banner
                         variant="success"
                         text="Conversie gestart"
-                        supporting-text="Je krijgt een taak zodra de wet klaarstaat voor beoordeling."
+                        supporting-text="Je krijgt een taak zodra het regelwerk klaarstaat voor beoordeling."
                         dismissible
                         @dismiss="dismissLawUploadStarted"
                       ></nldd-banner>
@@ -2250,7 +2250,7 @@ watch(activeTrajectRef, () => {
                       <nldd-banner
                         variant="success"
                         text="Ophalen gestart"
-                        supporting-text="De aanvraag staat bij Taken; je krijgt een taak zodra de wet klaarstaat voor beoordeling."
+                        supporting-text="De aanvraag staat bij Taken; je krijgt een taak zodra het regelwerk klaarstaat voor beoordeling."
                         dismissible
                         @dismiss="dismissLawHarvestStarted"
                       ></nldd-banner>
@@ -2360,7 +2360,7 @@ watch(activeTrajectRef, () => {
                      favourite button runs entirely off `selectedLawId` (route)
                      + `favorites`, never the loaded law, so waiting for
                      `selectedLaw` only hid the toolbar during the load. -->
-                <nldd-toolbar v-if="paneChromeVisible(selectedLawLoading)" label="Wetacties">
+                <nldd-toolbar v-if="paneChromeVisible(selectedLawLoading)" label="Regelwerkacties">
                   <!-- priority: hoger blijft langer staan, lager verdwijnt als
                        eerste in het overflow-menu. -->
                   <nldd-toolbar-item slot="start" :priority="2">
@@ -2381,8 +2381,8 @@ watch(activeTrajectRef, () => {
                         <nldd-container padding="16">
                           <nldd-inline-dialog
                             icon="login"
-                            text="Log in om wetten als favoriet te markeren"
-                            supporting-text="Zodra je bent ingelogd kun je wetten bewaren en snel terugvinden."
+                            text="Log in om regelwerken als favoriet te markeren"
+                            supporting-text="Zodra je bent ingelogd kun je regelwerken bewaren en snel terugvinden."
                           >
                             <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login()"></nldd-button>
                             <nldd-button slot="actions" variant="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
@@ -2428,8 +2428,8 @@ watch(activeTrajectRef, () => {
                   ></nldd-search-field>
                   <nldd-spacer size="16"></nldd-spacer>
                 </template>
-                <nldd-activity-indicator v-if="selectedLawLoading" text="Wet laden" show-text></nldd-activity-indicator>
-                <nldd-inline-dialog v-else-if="!selectedLaw" text="Selecteer een wet"></nldd-inline-dialog>
+                <nldd-activity-indicator v-if="selectedLawLoading" text="Regelwerk laden" show-text></nldd-activity-indicator>
+                <nldd-inline-dialog v-else-if="!selectedLaw" text="Selecteer een regelwerk"></nldd-inline-dialog>
                 <template v-else>
                 <nldd-list variant="simple">
                   <nldd-list-item size="md" button :current="isAlgemeen || undefined" @click="selectAlgemeen()">

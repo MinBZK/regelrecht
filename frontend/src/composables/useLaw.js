@@ -373,7 +373,7 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
       });
       if (res.status === 412) {
         throw new Error(
-          'De wet is intussen door iemand anders gewijzigd. ' +
+          'Het regelwerk is intussen door iemand anders gewijzigd. ' +
           'Herlaad de pagina om de nieuwste versie te zien en voer je ' +
           'wijziging daarna opnieuw door.',
         );

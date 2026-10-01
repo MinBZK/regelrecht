@@ -74,7 +74,7 @@ async function applyEnrichment(jobId, decisions, etag) {
   });
   if (res.status === 412) {
     throw new Error(
-      'De wet is intussen door iemand anders gewijzigd. Herlaad de pagina om de ' +
+      'Het regelwerk is intussen door iemand anders gewijzigd. Herlaad de pagina om de ' +
         'nieuwste versie te zien en beoordeel de verrijking daarna opnieuw.',
     );
   }
