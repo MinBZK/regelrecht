@@ -14,7 +14,7 @@ A named authority, when the body is fixed:
 ```yaml
 machine_readable:
   competent_authority:
-    name: Belastingdienst
+    name: Dienst Toeslagen
     type: INSTANCE
 ```
 
