@@ -3635,7 +3635,7 @@ impl LawExecutionService {
             // resolved. Use \0 as separator to prevent key collisions, and an
             // "internal:" prefix to keep keys distinct from external references.
             // What is held back for a base read is part of the key: the
-            // held-back evaluation is another resolution (RFC-044).
+            // held-back evaluation is another resolution.
             let internal_key = format!(
                 "internal:{}\0{}{}",
                 law.id,

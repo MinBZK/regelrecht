@@ -164,7 +164,7 @@ execution:
 
 That read is the general rule's value, computed with this override held back, and the override applies once. The same holds for an article that `implements` an open term of a law and reads that law: it reads the law without its own filling, which is the next implementation or the `default`. A `voids` override is not included: reading a voided output still yields the void.
 
-A replacing override takes effect where the overridden article sets the output, so the article's own later actions read the replaced value, like every other reader: a monthly amount derived from `hoogte_zorgtoeslag` in the same article follows the raised amount. The article runs its actions in dependency order, so where an action stands in the file never changes which value it reads. See [RFC-044](/rfcs/rfc-044).
+A replacing override takes effect where the overridden article sets the output, so the article's own later actions read the replaced value, like every other reader: a monthly amount derived from `hoogte_zorgtoeslag` in the same article follows the raised amount. The article runs its actions in dependency order, so where an action stands in the file never changes which value it reads.
 
 ### How overrides differ from IoC
 

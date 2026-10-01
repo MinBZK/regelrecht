@@ -263,7 +263,7 @@ impl<'a> ArticleEngine<'a> {
     /// Execute the actions producing `outputs` (a dependency closure, see
     /// [`crate::demand::required_outputs`]); `None` runs every action
     /// (RFC-043), in dependency order, where an output in `replacing` also
-    /// waits for the outputs its replacing override declares (RFC-044). With
+    /// waits for the outputs its replacing override declares. With
     /// `lazy`, an input or open term is resolved when an
     /// operation first reads it; without it, `parameters` must already
     /// contain every value this article needs (cross-article and cross-law
@@ -399,7 +399,7 @@ impl<'a> ArticleEngine<'a> {
 
         // Dependency order, not file order: an action runs after what it
         // reads, so the order of the actions in the file never changes a
-        // value (RFC-044).
+        // value.
         let order = crate::demand::execution_order(actions, replacing).map_err(|output| {
             EngineError::CircularReference(format!(
                 "output '{output}' of {} article {} depends on itself",
@@ -496,7 +496,7 @@ impl<'a> ArticleEngine<'a> {
             // A replacing override takes effect where the output is set, so
             // every action reading it, which runs after it, reads the value
             // the special rule gives, the same value every other article
-            // reads (RFC-044). Only after the last action writing the output:
+            // reads. Only after the last action writing the output:
             // an output assigned twice is replaced once, as what the article
             // ends up with.
             let is_last_write = !order[position + 1..]

@@ -71,7 +71,7 @@ pub(crate) fn required_outputs_with(
     required
 }
 
-/// The order to run `actions` in (RFC-044): every action after the actions
+/// The order to run `actions` in: every action after the actions
 /// producing what it reads, and, for an output with an entry in
 /// `also_reads`, after the actions producing what that entry names (the
 /// parameters of an override that replaces it). Where nothing orders two
