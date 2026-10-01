@@ -35,8 +35,8 @@ Feature: Bepalen recht op Terrasvergunning horeca Rotterdam
       | kvk_nummer | advies_uitgebracht | advies_mate_van_gevaar | advies_datum | relatie_tot_strafbare_feiten | financieringsrisico | voorschriften_geadviseerd |
       | 85234567   | null               | null                   | null         | null                         | null                | null                      |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999999990 | 1990-01-01    | null              | null        | []                |                | []             |               |               | null  | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999999990 | 1990-01-01    | null              | null        | []                | []             |               |               | null  | []           |                       |
     And the following parameters:
       | terras_locatie                     | voor     |
       | terras_oppervlakte                 | 10       |
@@ -80,8 +80,8 @@ Feature: Bepalen recht op Terrasvergunning horeca Rotterdam
       | kvk_nummer | advies_uitgebracht | advies_mate_van_gevaar | advies_datum | relatie_tot_strafbare_feiten | financieringsrisico | voorschriften_geadviseerd |
       | 85234567   | null               | null                   | null         | null                         | null                | null                      |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999999990 | 1990-01-01    | null              | null        | []                |                | []             |               |               | null  | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999999990 | 1990-01-01    | null              | null        | []                | []             |               |               | null  | []           |                       |
     And the following parameters:
       | terras_locatie                     | voor     |
       | terras_oppervlakte                 | 10       |
@@ -120,8 +120,8 @@ Feature: Bepalen recht op Terrasvergunning horeca Rotterdam
       | kvk_nummer | advies_uitgebracht | advies_mate_van_gevaar | advies_datum | relatie_tot_strafbare_feiten | financieringsrisico | voorschriften_geadviseerd |
       | 85234567   | null               | null                   | null         | null                         | null                | null                      |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999999990 | 1990-01-01    | null              | null        | []                |                | []             |               |               | null  | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999999990 | 1990-01-01    | null              | null        | []                | []             |               |               | null  | []           |                       |
     And the following parameters:
       | terras_locatie                     | voor     |
       | terras_oppervlakte                 | 10       |
@@ -160,8 +160,8 @@ Feature: Bepalen recht op Terrasvergunning horeca Rotterdam
       | kvk_nummer | advies_uitgebracht | advies_mate_van_gevaar | advies_datum | relatie_tot_strafbare_feiten | financieringsrisico | voorschriften_geadviseerd |
       | 85234567   | null               | null                   | null         | null                         | null                | null                      |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999999990 | 1990-01-01    | null              | null        | []                |                | []             |               |               | null  | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999999990 | 1990-01-01    | null              | null        | []                | []             |               |               | null  | []           |                       |
     And the following parameters:
       | terras_locatie                     | voor     |
       | terras_oppervlakte                 | 10       |
@@ -200,8 +200,8 @@ Feature: Bepalen recht op Terrasvergunning horeca Rotterdam
       | kvk_nummer | advies_uitgebracht | advies_mate_van_gevaar | advies_datum | relatie_tot_strafbare_feiten | financieringsrisico | voorschriften_geadviseerd |
       | 85234567   | null               | null                   | null         | null                         | null                | null                      |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999999990 | 1990-01-01    | null              | null        | []                |                | []             |               |               | null  | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999999990 | 1990-01-01    | null              | null        | []                | []             |               |               | null  | []           |                       |
     And the following parameters:
       | terras_locatie                     | voor     |
       | terras_oppervlakte                 | 20       |
@@ -240,8 +240,8 @@ Feature: Bepalen recht op Terrasvergunning horeca Rotterdam
       | kvk_nummer | advies_uitgebracht | advies_mate_van_gevaar | advies_datum | relatie_tot_strafbare_feiten | financieringsrisico | voorschriften_geadviseerd |
       | 85234567   | null               | null                   | null         | null                         | null                | null                      |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999999990 | 1990-01-01    | null              | null        | []                |                | []             |               |               | null  | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999999990 | 1990-01-01    | null              | null        | []                | []             |               |               | null  | []           |                       |
     And the following parameters:
       | terras_locatie                     | voor     |
       | terras_oppervlakte                 | 10       |
@@ -280,8 +280,8 @@ Feature: Bepalen recht op Terrasvergunning horeca Rotterdam
       | kvk_nummer | advies_uitgebracht | advies_mate_van_gevaar | advies_datum | relatie_tot_strafbare_feiten | financieringsrisico | voorschriften_geadviseerd |
       | 85234567   | null               | null                   | null         | null                         | null                | null                      |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999999990 | 1990-01-01    | null              | null        | []                |                | []             |               |               | null  | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999999990 | 1990-01-01    | null              | null        | []                | []             |               |               | null  | []           |                       |
     And the following parameters:
       | terras_locatie                     | voor     |
       | terras_oppervlakte                 | 10       |
@@ -321,8 +321,8 @@ Feature: Bepalen recht op Terrasvergunning horeca Rotterdam
       | kvk_nummer | advies_uitgebracht | advies_mate_van_gevaar | advies_datum | relatie_tot_strafbare_feiten | financieringsrisico | voorschriften_geadviseerd |
       | 85234567   | null               | null                   | null         | null                         | null                | null                      |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999999990 | 1990-01-01    | null              | null        | []                |                | []             |               |               | null  | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999999990 | 1990-01-01    | null              | null        | []                | []             |               |               | null  | []           |                       |
     And the following parameters:
       | terras_locatie                     | voor     |
       | terras_oppervlakte                 | 10       |

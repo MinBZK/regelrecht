@@ -325,7 +325,6 @@ export default {
   "sheet.change.field.straat": "a0c5",
   "sheet.change.field.subsidiabele_servicekosten": "c049",
   "sheet.change.field.uitkeringen_en_pensioenen": "d5ef",
-  "sheet.change.field.verblijfsadres": "9531",
   "sheet.change.field.vervreemdingsvoordelen": "7d7c",
   "sheet.change.field.winst_uit_onderneming": "0a2e",
   "sheet.change.field.woonplaats": "20a5",

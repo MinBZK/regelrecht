@@ -533,7 +533,6 @@ export default {
   "sheet.change.field.postcode": "Postkoade",
   "sheet.change.field.woonplaats": "Wenplak",
   "sheet.change.field.adres": "Adres",
-  "sheet.change.field.verblijfsadres": "Ferbliuwsadres",
   "sheet.change.type.huishouden": "Myn húshâlding",
   "sheet.change.type.huishouden.description": "Trouwe, skiede, gearwenje of in bern",
   "sheet.change.event.scheiden": "Ik gean skieden of wy geane útinoar",
