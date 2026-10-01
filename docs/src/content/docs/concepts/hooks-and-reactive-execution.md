@@ -164,7 +164,7 @@ execution:
 
 That read is the general rule's value, computed with this override held back, and the override applies once. The same holds for an article that `implements` an open term of a law and reads that law: it reads the law without its own filling, which is the next implementation or the `default`. A `voids` override is not included: reading a voided output still yields the void.
 
-A replacing override takes effect where the overridden article sets the output, so the article's own later actions read the replaced value, like every other reader: a monthly amount derived from `hoogte_zorgtoeslag` in the same article follows the raised amount. The article runs its actions in dependency order, so where an action stands in the file never changes which value it reads.
+A replacing override takes effect where the overridden article sets the output, so the article's own later actions read the replaced value, like every other reader: a monthly amount derived from `hoogte_zorgtoeslag` in the same article follows the raised amount. An override may read the inputs of the article it overrides, but not its other outputs: the engine refuses that, because which of them were already set would depend on the order of the actions in the file. A name that is both an input and an output of that article is the input to the override, except the replaced output itself, which the override receives as the article computed it.
 
 ### How overrides differ from IoC
 

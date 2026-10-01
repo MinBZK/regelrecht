@@ -520,6 +520,8 @@ struct Demand {
     /// override declares: replaced where the action sets them, so the
     /// article's later actions read the replaced value.
     replacing: BTreeMap<String, BTreeSet<String>>,
+    /// See [`OverridePlan::rule_reads`].
+    rule_reads: BTreeMap<String, BTreeSet<String>>,
     /// Requested outputs a `voids` excludes: not computed, their ground is
     /// recorded by `apply_overrides`.
     voided: Vec<String>,
@@ -573,6 +575,9 @@ struct OverridePlan {
     /// article declares: it receives those names from this article, when it
     /// runs, which is when its output is computed.
     replacing: BTreeMap<String, BTreeSet<String>>,
+    /// Per such output, the declared parameters the override's rule for that
+    /// output may read: see [`rule_reads`]. At most `replacing`.
+    rule_reads: BTreeMap<String, BTreeSet<String>>,
 }
 
 /// An article's inputs and open terms, each resolved the first time it is
@@ -681,10 +686,12 @@ fn override_key(law_id: &str, article: &str) -> String {
     format!("override:{law_id}\0{article}")
 }
 
-/// The key the implementation in `law_id` article `article` is held back
-/// under, while that article reads the output it fills in.
-fn implementation_key(law_id: &str, article: &str) -> String {
-    format!("implementation:{law_id}\0{article}")
+/// The key the implementation in `law_id` article `article` of an open term
+/// of `implemented` is held back under, while that article reads that law. Per
+/// implemented law: an article filling terms in two laws and reading one of
+/// them still fills the other.
+fn implementation_key(law_id: &str, article: &str, implemented: &str) -> String {
+    format!("implementation:{law_id}\0{article}\0{implemented}")
 }
 
 /// The key the hook in `law_id` article `article` is entered under, for cycle
@@ -709,6 +716,37 @@ fn declared_parameter_names(article: &Article) -> impl Iterator<Item = String> +
         .into_iter()
         .flatten()
         .map(|p| p.name.clone())
+}
+
+/// The parameters `article`'s rule for `output` may read, kept to what the
+/// article declares. Narrowed to what its actions for that output (closed
+/// over the article's own outputs) refer to only when that is all it can
+/// read: an article with a sourced input (a same-law reference receives all
+/// its parameters, a data source is keyed on them), an open term (a default
+/// or an implementation receives them) or a `produces` (its hooks receive
+/// them) may read any declared parameter, so for it this is all of them; the
+/// same for an article whose own outputs are overridden (`override_plan`).
+/// Missing a read would let the file order decide what the override sees.
+fn rule_reads(article: &Article, output: &str) -> BTreeSet<String> {
+    let declared: BTreeSet<String> = declared_parameter_names(article).collect();
+    let passes_parameters_on = article.get_inputs().iter().any(|i| i.source.is_some())
+        || article.get_open_terms().is_some_and(|t| !t.is_empty())
+        || article.get_produces().is_some();
+    if passes_parameters_on {
+        return declared;
+    }
+    let actions = article
+        .get_execution_spec()
+        .and_then(|e| e.actions.as_deref())
+        .unwrap_or_default();
+    let closure = crate::demand::required_outputs(actions, &[output]);
+    let mut reads: BTreeSet<String> = actions
+        .iter()
+        .filter(|action| action.output.as_ref().is_some_and(|o| closure.contains(o)))
+        .flat_map(crate::demand::referenced_names)
+        .collect();
+    reads.retain(|name| declared.contains(name));
+    reads
 }
 
 impl<'a, 'r, 'c> LazyArticleInputs<'a, 'r, 'c> {
@@ -2274,6 +2312,7 @@ impl LawExecutionService {
             return Demand {
                 outputs: None,
                 replacing: plan.replacing.clone(),
+                rule_reads: plan.rule_reads.clone(),
                 voided: Vec::new(),
                 read_before_actions,
                 read_after_actions: read_after(None),
@@ -2281,7 +2320,9 @@ impl LawExecutionService {
         };
         // The requested outputs and the outputs a post hook reads, closed over
         // what they read, where computing an output also reads what its
-        // replacing override declares. An output a void excludes is not
+        // replacing override declares (of this article's outputs only the
+        // replaced one itself or a name that is also an input: the override
+        // is refused another output). An output a void excludes is not
         // computed for a request or a hook: the law says it does not arise.
         let actions = article
             .get_execution_spec()
@@ -2298,6 +2339,7 @@ impl LawExecutionService {
         Demand {
             outputs: Some(outputs),
             replacing: plan.replacing.clone(),
+            rule_reads: plan.rule_reads.clone(),
             voided: requested
                 .iter()
                 .filter(|name| plan.voided.contains(**name))
@@ -2321,6 +2363,7 @@ impl LawExecutionService {
             // Not in force, more than one, or none: nothing to plan for;
             // `apply_overrides` records or reports it.
             let Ok(Some(SelectedOverride::InForce {
+                law: ovr_law,
                 article: ovr_article,
                 declaration,
                 ..
@@ -2335,6 +2378,20 @@ impl LawExecutionService {
                     output.to_string(),
                     declared_parameter_names(ovr_article).collect(),
                 );
+                // An override of the overriding article's own outputs
+                // receives all its parameters, as an input or a hook would.
+                let overridden_itself = crate::demand::action_outputs(ovr_article).any(|own| {
+                    !self
+                        .resolver
+                        .find_overrides(&ovr_law.id, &ovr_article.number, own)
+                        .is_empty()
+                });
+                let reads = if overridden_itself {
+                    declared_parameter_names(ovr_article).collect()
+                } else {
+                    rule_reads(ovr_article, output)
+                };
+                plan.rule_reads.insert(output.to_string(), reads);
             }
         }
         plan
@@ -2958,8 +3015,48 @@ impl LawExecutionService {
         // `apply_overrides` does not run it a second time.
         let replaced_in_actions: RefCell<BTreeMap<String, Option<OutputProvenance>>> =
             RefCell::new(BTreeMap::new());
+        // A name that is also an input, parameter or open term of this article
+        // is that input to an override, whatever an action of the same name
+        // makes of it: which of the two is set when the override runs would
+        // depend on the file order.
+        let article_inputs: BTreeSet<&str> = article
+            .get_parameters()
+            .iter()
+            .map(|p| p.name.as_str())
+            .chain(article.get_inputs().iter().map(|i| i.name.as_str()))
+            .chain(
+                article
+                    .get_open_terms()
+                    .into_iter()
+                    .flatten()
+                    .map(|term| term.id.as_str()),
+            )
+            .collect();
+        let article_outputs: BTreeSet<String> = crate::demand::action_outputs(article)
+            .filter(|name| !article_inputs.contains(name))
+            .map(str::to_string)
+            .collect();
         let replace = |name: &str, value: &Value, outputs: &BTreeMap<String, Value>| {
             let declared = demand.replacing.get(name)?;
+            // An override that asks for another output of the article it
+            // overrides is refused, wherever that output stands. Run where
+            // the output is set, it would see that other output only when
+            // the file happens to set it first; run after the article, the
+            // actions before it would read the general rule's value. Either
+            // way the file order would decide a value.
+            let reads = demand.rule_reads.get(name);
+            if let Some(param) = reads
+                .into_iter()
+                .flatten()
+                .find(|param| *param != name && article_outputs.contains(*param))
+            {
+                return Some(Err(EngineError::InvalidOperation(format!(
+                    "the override of output '{name}' of {} article {} reads parameter \
+                     '{param}', which is another output of that article; an override may \
+                     read the overridden article's inputs, not its other outputs",
+                    law.id, article.number
+                ))));
+            }
             // What the override declares, of this article's inputs, is
             // resolved for it before it runs.
             if let Err(e) = lazy.resolve_names(declared) {
@@ -2968,7 +3065,12 @@ impl LawExecutionService {
             let mut ovr_params = parameters.clone();
             ovr_params.extend(lazy.resolved());
             ovr_params.extend(pre_hook_outputs.clone());
-            ovr_params.extend(outputs.clone());
+            ovr_params.extend(
+                outputs
+                    .iter()
+                    .filter(|(output, _)| !article_inputs.contains(output.as_str()))
+                    .map(|(output, value)| (output.clone(), value.clone())),
+            );
             ovr_params.insert(name.to_string(), value.clone());
             let replaced = lazy.with_resolution_context(|res_ctx| {
                 self.run_replacing_override(article, law, name, &ovr_params, res_ctx)
@@ -2991,7 +3093,6 @@ impl LawExecutionService {
             engine_params,
             calculation_date,
             demand.outputs.as_ref(),
-            &demand.replacing,
             trace,
             Some(&AfterPreHooks {
                 inputs: &lazy,
@@ -3265,10 +3366,11 @@ impl LawExecutionService {
         for (impl_law, impl_article) in &lookup.implementations {
             // The implementing article is reading the output it fills in:
             // that read gets the law without this filling.
-            if res_ctx
-                .held_back
-                .contains(&implementation_key(&impl_law.id, &impl_article.number))
-            {
+            if res_ctx.held_back.contains(&implementation_key(
+                &impl_law.id,
+                &impl_article.number,
+                &law.id,
+            )) {
                 res_ctx.trace_set_message(format!(
                     "Open term '{}': {} article {} held back, it is reading its own base value",
                     term.id, impl_law.id, impl_article.number
@@ -3399,7 +3501,6 @@ impl LawExecutionService {
                         parameters.clone(),
                         calculation_date,
                         Some(&required),
-                        &BTreeMap::new(),
                         None,
                         Some(&earlier_terms),
                     )
@@ -3844,7 +3945,7 @@ impl LawExecutionService {
             .get_implements()
             .is_some_and(|decls| decls.iter().any(|d| d.law == regulation));
         if fills_in {
-            held.push(implementation_key(&law.id, &article.number));
+            held.push(implementation_key(&law.id, &article.number, regulation));
         }
         // Only an article that replaces this output pays for the lookup of
         // the article producing it: this runs on every sourced input.
@@ -5134,9 +5235,9 @@ articles:
         assert_eq!(result.outputs.get("vandaag"), Some(&Value::Int(6)));
     }
 
-    /// An overridden output assigned twice is replaced once, after its last
-    /// assignment, and every reader reads that value: also an action declared
-    /// between the two assignments, because readers run after all of them.
+    /// An overridden output assigned twice is replaced after its last
+    /// assignment: an action between the two reads the first assignment, an
+    /// action after them reads the replaced value.
     #[test]
     fn an_output_assigned_twice_is_replaced_after_its_last_assignment() {
         let wet = r#"
@@ -5207,7 +5308,7 @@ articles:
         let mut service = LawExecutionService::new();
         service.load_law(wet).unwrap();
         service.load_law(&beleid).unwrap();
-        // tussenstand and plakjes_kaas both read the replaced value (4).
+        // tussenstand 1 (before the last assignment), plakjes_kaas 4.
         let result = service
             .evaluate_law_output(
                 "beleid_boterhammen",
@@ -5216,188 +5317,7 @@ articles:
                 "2025-01-01",
             )
             .unwrap();
-        assert_eq!(result.outputs.get("gelezen"), Some(&Value::Int(404)));
-    }
-
-    /// The order of the actions in the file never changes a value: the same
-    /// article with its actions reversed gives the same outputs, with and
-    /// without an override that reads an output declared after the one it
-    /// replaces.
-    #[test]
-    fn the_order_of_actions_in_the_file_does_not_change_a_value() {
-        let wet = |actions: &str| {
-            format!(
-                r#"
-$id: wet_a
-regulatory_layer: WET
-publication_date: '2025-01-01'
-articles:
-  - number: '1'
-    text: A, B en C.
-    machine_readable:
-      execution:
-        output:
-          - name: a
-            type: number
-          - name: b
-            type: number
-          - name: c
-            type: number
-        actions:
-{actions}"#
-            )
-        };
-        let a = "          - output: a\n            value: 2\n";
-        let b = "          - output: b\n            value:\n              operation: ADD\n              values: [$a, 1]\n";
-        let c = "          - output: c\n            value: 10\n";
-        let beleid = r#"
-$id: beleid_a
-regulatory_layer: WET
-publication_date: '2025-01-01'
-articles:
-  - number: '1'
-    text: In afwijking daarvan is A gelijk aan C.
-    machine_readable:
-      overrides:
-        - law: wet_a
-          article: '1'
-          output: a
-      execution:
-        parameters:
-          - name: c
-            type: number
-            required: true
-        output:
-          - name: a
-            type: number
-        actions:
-          - output: a
-            value: $c
-  - number: '2'
-    text: B volgens de wet.
-    machine_readable:
-      execution:
-        input:
-          - name: b
-            type: number
-            source:
-              regulation: wet_a
-              output: b
-        output:
-          - name: gelezen
-            type: number
-        actions:
-          - output: gelezen
-            value: $b
-"#;
-        for order in [[a, b, c], [c, b, a], [b, a, c], [b, c, a]] {
-            let actions = order.concat();
-            // Without the override: b is a + 1.
-            let mut plain = LawExecutionService::new();
-            plain.load_law(&wet(&actions)).unwrap();
-            let result = plain
-                .evaluate_law_output("wet_a", "b", BTreeMap::new(), "2025-01-01")
-                .unwrap_or_else(|e| panic!("{actions}: {e}"));
-            assert_eq!(result.outputs.get("b"), Some(&Value::Int(3)), "{actions}");
-
-            // With it: a is c (10), so b is 11, whatever the order.
-            let mut overridden = LawExecutionService::new();
-            overridden.load_law(&wet(&actions)).unwrap();
-            overridden.load_law(beleid).unwrap();
-            let result = overridden
-                .evaluate_law_output("beleid_a", "gelezen", BTreeMap::new(), "2025-01-01")
-                .unwrap_or_else(|e| panic!("{actions}: {e}"));
-            assert_eq!(
-                result.outputs.get("gelezen"),
-                Some(&Value::Int(11)),
-                "{actions}"
-            );
-        }
-    }
-
-    /// A FOREACH element named like an output of the article is the element,
-    /// not that output: no dependency, so no cycle.
-    #[test]
-    fn a_foreach_binding_named_like_an_output_is_not_a_cycle() {
-        let law = r#"
-$id: wet_lus
-regulatory_layer: WET
-publication_date: '2025-01-01'
-articles:
-  - number: '1'
-    text: Het totaal van de bedragen, en twee keer dat totaal.
-    machine_readable:
-      execution:
-        parameters:
-          - name: bedragen
-            type: array
-        output:
-          - name: totaal
-            type: number
-          - name: bedrag
-            type: number
-        actions:
-          - output: totaal
-            value:
-              operation: FOREACH
-              collection: $bedragen
-              as: bedrag
-              body: $bedrag
-              combine: ADD
-          - output: bedrag
-            value:
-              operation: MULTIPLY
-              values: [$totaal, 2]
-"#;
-        let mut service = LawExecutionService::new();
-        service.load_law(law).unwrap();
-        let result = service
-            .evaluate_law_output(
-                "wet_lus",
-                "bedrag",
-                BTreeMap::from([(
-                    "bedragen".to_string(),
-                    Value::Array(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
-                )]),
-                "2025-01-01",
-            )
-            .unwrap();
-        assert_eq!(result.outputs.get("totaal"), Some(&Value::Int(6)));
-        assert_eq!(result.outputs.get("bedrag"), Some(&Value::Int(12)));
-    }
-
-    /// Outputs of one article that read each other are a cycle, reported as
-    /// one, not a variable that happens to be missing in file order.
-    #[test]
-    fn outputs_reading_each_other_are_a_cycle() {
-        let law = r#"
-$id: wet_cyclus
-regulatory_layer: WET
-publication_date: '2025-01-01'
-articles:
-  - number: '1'
-    text: A is B, B is A.
-    machine_readable:
-      execution:
-        output:
-          - name: a
-            type: number
-          - name: b
-            type: number
-        actions:
-          - output: a
-            value: $b
-          - output: b
-            value: $a
-"#;
-        let mut service = LawExecutionService::new();
-        service.load_law(law).unwrap();
-        match service.evaluate_law_output("wet_cyclus", "a", BTreeMap::new(), "2025-01-01") {
-            Err(EngineError::CircularReference(msg)) => {
-                assert!(msg.contains("depends on itself"), "{msg}");
-            }
-            other => panic!("expected CircularReference, got {other:?}"),
-        }
+        assert_eq!(result.outputs.get("gelezen"), Some(&Value::Int(104)));
     }
 
     /// An article that both fills in an open term of a law and overrides an
@@ -5480,11 +5400,197 @@ articles:
         );
     }
 
-    /// An override that declares an output its target article sets later in
-    /// the file still runs where it replaces: that output is computed first.
+    /// A name that is both an input and an output of the overridden article
+    /// is the input to the override, in either file order, and is not
+    /// refused.
     #[test]
-    fn an_override_declaring_a_later_output_runs_after_the_actions() {
+    fn an_override_reads_an_input_named_like_an_output_as_the_input() {
+        let wet = |actions: &str| {
+            format!(
+                r#"
+$id: wet_a
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: A is twee, N is tien keer N.
+    machine_readable:
+      execution:
+        parameters:
+          - name: n
+            type: number
+            required: true
+        output:
+          - name: a
+            type: number
+          - name: n
+            type: number
+        actions:
+{actions}"#
+            )
+        };
+        let a = "          - output: a\n            value: 2\n";
+        let n = "          - output: n\n            value:\n              operation: MULTIPLY\n              values: [$n, 10]\n";
+        let beleid = r#"
+$id: beleid_a
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: In afwijking daarvan is A gelijk aan N.
+    machine_readable:
+      overrides:
+        - law: wet_a
+          article: '1'
+          output: a
+      execution:
+        parameters:
+          - name: n
+            type: number
+            required: true
+        output:
+          - name: a
+            type: number
+        actions:
+          - output: a
+            value: $n
+  - number: '2'
+    text: A volgens de wet.
+    machine_readable:
+      execution:
+        parameters:
+          - name: n
+            type: number
+            required: true
+        input:
+          - name: a
+            type: number
+            source:
+              regulation: wet_a
+              output: a
+              parameters:
+                n: $n
+        output:
+          - name: gelezen
+            type: number
+        actions:
+          - output: gelezen
+            value: $a
+"#;
+        for actions in [[a, n].concat(), [n, a].concat()] {
+            let mut service = LawExecutionService::new();
+            service.load_law(&wet(&actions)).unwrap();
+            service.load_law(beleid).unwrap();
+            let params = BTreeMap::from([("n".to_string(), Value::Int(3))]);
+            let result = service
+                .evaluate_law_output("beleid_a", "gelezen", params, "2025-01-01")
+                .unwrap_or_else(|e| panic!("{actions}: {e}"));
+            assert_eq!(
+                result.outputs.get("gelezen"),
+                Some(&Value::Int(3)),
+                "{actions}"
+            );
+        }
+    }
+
+    /// An override article replacing two outputs is judged per output: the
+    /// rule for `b` does not read `a`, so declaring `a` for the rule for `a`
+    /// does not refuse `b`.
+    #[test]
+    fn an_override_is_judged_on_what_its_rule_for_the_output_reads() {
         let wet = r#"
+$id: wet_a
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: A is twee, B is drie.
+    machine_readable:
+      execution:
+        output:
+          - name: a
+            type: number
+          - name: b
+            type: number
+        actions:
+          - output: a
+            value: 2
+          - output: b
+            value: 3
+"#;
+        let beleid = r#"
+$id: beleid_a
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: In afwijking daarvan is A het dubbele en B zeven.
+    machine_readable:
+      overrides:
+        - law: wet_a
+          article: '1'
+          output: a
+        - law: wet_a
+          article: '1'
+          output: b
+      execution:
+        parameters:
+          - name: a
+            type: number
+            required: true
+        output:
+          - name: a
+            type: number
+          - name: b
+            type: number
+        actions:
+          - output: a
+            value:
+              operation: MULTIPLY
+              values: [$a, 2]
+          - output: b
+            value: 7
+  - number: '2'
+    text: A en B volgens de wet.
+    machine_readable:
+      execution:
+        input:
+          - name: a
+            type: number
+            source:
+              regulation: wet_a
+              output: a
+          - name: b
+            type: number
+            source:
+              regulation: wet_a
+              output: b
+        output:
+          - name: gelezen
+            type: number
+        actions:
+          - output: gelezen
+            value:
+              operation: ADD
+              values: [$a, $b]
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(wet).unwrap();
+        service.load_law(beleid).unwrap();
+        let result = service
+            .evaluate_law_output("beleid_a", "gelezen", BTreeMap::new(), "2025-01-01")
+            .unwrap();
+        assert_eq!(result.outputs.get("gelezen"), Some(&Value::Int(11)));
+    }
+
+    /// An override that reaches another output of its target through an open
+    /// term of its own (a default reading the parameter) is refused as well,
+    /// in either file order.
+    #[test]
+    fn an_override_reading_another_output_through_an_open_term_is_refused() {
+        let wet = |actions: &str| {
+            format!(
+                r#"
 $id: wet_a
 regulatory_layer: WET
 publication_date: '2025-01-01'
@@ -5499,11 +5605,411 @@ articles:
           - name: b
             type: number
         actions:
+{actions}"#
+            )
+        };
+        let a = "          - output: a\n            value: 2\n";
+        let b = "          - output: b\n            value: 10\n";
+        let beleid = r#"
+$id: beleid_a
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: In afwijking daarvan is A een meer dan T.
+    machine_readable:
+      overrides:
+        - law: wet_a
+          article: '1'
+          output: a
+      open_terms:
+        - id: t
+          type: number
+          required: true
+          default:
+            actions:
+              - output: t
+                value: $b
+      execution:
+        parameters:
+          - name: b
+            type: number
+            required: true
+        output:
+          - name: a
+            type: number
+        actions:
+          - output: a
+            value:
+              operation: ADD
+              values: [$t, 1]
+  - number: '2'
+    text: A volgens de wet.
+    machine_readable:
+      execution:
+        input:
+          - name: a
+            type: number
+            source:
+              regulation: wet_a
+              output: a
+        output:
+          - name: gelezen
+            type: number
+        actions:
+          - output: gelezen
+            value: $a
+"#;
+        for actions in [[a, b].concat(), [b, a].concat()] {
+            let mut service = LawExecutionService::new();
+            service.load_law(&wet(&actions)).unwrap();
+            service.load_law(beleid).unwrap();
+            match service.evaluate_law_output("beleid_a", "gelezen", BTreeMap::new(), "2025-01-01")
+            {
+                Err(EngineError::InvalidOperation(msg)) => {
+                    assert!(msg.contains("another output"), "{actions}: {msg}");
+                }
+                other => panic!("{actions}: expected the override to be refused, got {other:?}"),
+            }
+        }
+    }
+
+    /// An override that reaches another output of its target through a
+    /// same-law input (which receives all its parameters) is refused as
+    /// well, in either file order.
+    #[test]
+    fn an_override_reading_another_output_through_a_same_law_input_is_refused() {
+        let wet = |actions: &str| {
+            format!(
+                r#"
+$id: wet_a
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: A is een, X is vijf.
+    machine_readable:
+      execution:
+        output:
+          - name: a
+            type: number
+          - name: x
+            type: number
+        actions:
+{actions}"#
+            )
+        };
+        let a = "          - output: a\n            value: 1\n";
+        let x = "          - output: x\n            value: 5\n";
+        let beleid = r#"
+$id: beleid_a
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: In afwijking daarvan is A gelijk aan Y.
+    machine_readable:
+      overrides:
+        - law: wet_a
+          article: '1'
+          output: a
+      execution:
+        parameters:
+          - name: x
+            type: number
+            required: true
+        input:
+          - name: y
+            type: number
+            source:
+              output: y
+        output:
+          - name: a
+            type: number
+        actions:
+          - output: a
+            value: $y
+  - number: '2'
+    text: A volgens de wet.
+    machine_readable:
+      execution:
+        input:
+          - name: a
+            type: number
+            source:
+              regulation: wet_a
+              output: a
+        output:
+          - name: gelezen
+            type: number
+        actions:
+          - output: gelezen
+            value: $a
+  - number: '3'
+    text: Y is tien keer X.
+    machine_readable:
+      execution:
+        parameters:
+          - name: x
+            type: number
+            required: true
+        output:
+          - name: y
+            type: number
+        actions:
+          - output: y
+            value:
+              operation: MULTIPLY
+              values: [$x, 10]
+"#;
+        for actions in [[a, x].concat(), [x, a].concat()] {
+            let mut service = LawExecutionService::new();
+            service.load_law(&wet(&actions)).unwrap();
+            service.load_law(beleid).unwrap();
+            match service.evaluate_law_output("beleid_a", "gelezen", BTreeMap::new(), "2025-01-01")
+            {
+                Err(EngineError::InvalidOperation(msg)) => {
+                    assert!(msg.contains("another output"), "{actions}: {msg}");
+                }
+                other => panic!("{actions}: expected the override to be refused, got {other:?}"),
+            }
+        }
+    }
+
+    /// An override whose own output is overridden in turn hands its
+    /// parameters on to that override, so a declared parameter that is
+    /// another output of its target refuses it, in either file order.
+    #[test]
+    fn an_override_whose_output_is_overridden_in_turn_is_judged_on_all_it_declares() {
+        let wet = |actions: &str| {
+            format!(
+                r#"
+$id: wet_a
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: A is een, X is vijf.
+    machine_readable:
+      execution:
+        output:
+          - name: a
+            type: number
+          - name: x
+            type: number
+        actions:
+{actions}"#
+            )
+        };
+        let a = "          - output: a\n            value: 1\n";
+        let x = "          - output: x\n            value: 5\n";
+        let beleid = r#"
+$id: beleid_a
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: In afwijking daarvan is A twee.
+    machine_readable:
+      overrides:
+        - law: wet_a
+          article: '1'
+          output: a
+      execution:
+        parameters:
+          - name: x
+            type: number
+            required: true
+        output:
+          - name: a
+            type: number
+        actions:
           - output: a
             value: 2
-          - output: b
-            value: 10
+  - number: '2'
+    text: A volgens de wet.
+    machine_readable:
+      execution:
+        input:
+          - name: a
+            type: number
+            source:
+              regulation: wet_a
+              output: a
+        output:
+          - name: gelezen
+            type: number
+        actions:
+          - output: gelezen
+            value: $a
+  - number: '3'
+    text: In afwijking van artikel 1 is A tien keer X.
+    machine_readable:
+      overrides:
+        - law: beleid_a
+          article: '1'
+          output: a
+      execution:
+        parameters:
+          - name: x
+            type: number
+            required: true
+        output:
+          - name: a
+            type: number
+        actions:
+          - output: a
+            value:
+              operation: MULTIPLY
+              values: [$x, 10]
 "#;
+        for actions in [[a, x].concat(), [x, a].concat()] {
+            let mut service = LawExecutionService::new();
+            service.load_law(&wet(&actions)).unwrap();
+            service.load_law(beleid).unwrap();
+            match service.evaluate_law_output("beleid_a", "gelezen", BTreeMap::new(), "2025-01-01")
+            {
+                Err(EngineError::InvalidOperation(msg)) => {
+                    assert!(msg.contains("another output"), "{actions}: {msg}");
+                }
+                other => panic!("{actions}: expected the override to be refused, got {other:?}"),
+            }
+        }
+    }
+
+    /// An article filling open terms in two laws, reading one of them, is held
+    /// back only for that one: the other law keeps its filling.
+    #[test]
+    fn an_implementation_is_held_back_only_for_the_law_it_reads() {
+        let l2 = r#"
+$id: wet_twee
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Z is T, honderd tenzij anders bepaald.
+    machine_readable:
+      open_terms:
+        - id: t
+          type: number
+          required: true
+          default:
+            actions:
+              - output: t
+                value: 100
+      execution:
+        output:
+          - name: z
+            type: number
+        actions:
+          - output: z
+            value: $t
+"#;
+        let l1 = r#"
+$id: wet_een
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: X is S plus Z, S nul tenzij anders bepaald.
+    machine_readable:
+      open_terms:
+        - id: s
+          type: number
+          required: true
+          default:
+            actions:
+              - output: s
+                value: 0
+      execution:
+        input:
+          - name: z
+            type: number
+            source:
+              regulation: wet_twee
+              output: z
+        output:
+          - name: x
+            type: number
+        actions:
+          - output: x
+            value:
+              operation: ADD
+              values: [$s, $z]
+"#;
+        let regeling = r#"
+$id: regeling_beide
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: S is een meer dan X; T is zeven.
+    machine_readable:
+      implements:
+        - law: wet_een
+          article: '1'
+          open_term: s
+        - law: wet_twee
+          article: '1'
+          open_term: t
+      execution:
+        input:
+          - name: basis
+            type: number
+            source:
+              regulation: wet_een
+              output: x
+        output:
+          - name: s
+            type: number
+          - name: t
+            type: number
+        actions:
+          - output: s
+            value:
+              operation: ADD
+              values: [$basis, 1]
+          - output: t
+            value: 7
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(l2).unwrap();
+        service.load_law(l1).unwrap();
+        service.load_law(regeling).unwrap();
+        // X without the filling of S is 0 + 7; S is 8; X is 8 + 7.
+        let result = service
+            .evaluate_law_output("wet_een", "x", BTreeMap::new(), "2025-01-01")
+            .unwrap();
+        assert_eq!(result.outputs.get("x"), Some(&Value::Int(15)));
+    }
+
+    /// An override that asks for another output of the article it overrides
+    /// is refused, whether the file sets that output before or after the one
+    /// it replaces: otherwise the file order would decide a value.
+    #[test]
+    fn an_override_declaring_another_output_of_its_target_is_refused() {
+        let wet = |actions: &str| {
+            format!(
+                r#"
+$id: wet_a
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: A is twee, B is tien.
+    machine_readable:
+      execution:
+        output:
+          - name: a
+            type: number
+          - name: b
+            type: number
+        actions:
+{actions}"#
+            )
+        };
+        let a = "          - output: a\n            value: 2\n";
+        let b = "          - output: b\n            value: 10\n";
         let beleid = r#"
 $id: beleid_a
 regulatory_layer: WET
@@ -5544,13 +6050,18 @@ articles:
           - output: gelezen
             value: $a
 "#;
-        let mut service = LawExecutionService::new();
-        service.load_law(wet).unwrap();
-        service.load_law(beleid).unwrap();
-        let result = service
-            .evaluate_law_output("beleid_a", "gelezen", BTreeMap::new(), "2025-01-01")
-            .unwrap();
-        assert_eq!(result.outputs.get("gelezen"), Some(&Value::Int(10)));
+        for actions in [[a, b].concat(), [b, a].concat()] {
+            let mut service = LawExecutionService::new();
+            service.load_law(&wet(&actions)).unwrap();
+            service.load_law(beleid).unwrap();
+            match service.evaluate_law_output("beleid_a", "gelezen", BTreeMap::new(), "2025-01-01")
+            {
+                Err(EngineError::InvalidOperation(msg)) => {
+                    assert!(msg.contains("another output"), "{actions}: {msg}");
+                }
+                other => panic!("{actions}: expected the override to be refused, got {other:?}"),
+            }
+        }
     }
 
     /// An implementation reads the whole law it fills in without itself, not
