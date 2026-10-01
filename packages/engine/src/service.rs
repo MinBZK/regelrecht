@@ -5315,6 +5315,57 @@ articles:
         }
     }
 
+    /// A FOREACH element named like an output of the article is the element,
+    /// not that output: no dependency, so no cycle.
+    #[test]
+    fn a_foreach_binding_named_like_an_output_is_not_a_cycle() {
+        let law = r#"
+$id: wet_lus
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het totaal van de bedragen, en twee keer dat totaal.
+    machine_readable:
+      execution:
+        parameters:
+          - name: bedragen
+            type: array
+        output:
+          - name: totaal
+            type: number
+          - name: bedrag
+            type: number
+        actions:
+          - output: totaal
+            value:
+              operation: FOREACH
+              collection: $bedragen
+              as: bedrag
+              body: $bedrag
+              combine: ADD
+          - output: bedrag
+            value:
+              operation: MULTIPLY
+              values: [$totaal, 2]
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+        let result = service
+            .evaluate_law_output(
+                "wet_lus",
+                "bedrag",
+                BTreeMap::from([(
+                    "bedragen".to_string(),
+                    Value::Array(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
+                )]),
+                "2025-01-01",
+            )
+            .unwrap();
+        assert_eq!(result.outputs.get("totaal"), Some(&Value::Int(6)));
+        assert_eq!(result.outputs.get("bedrag"), Some(&Value::Int(12)));
+    }
+
     /// Outputs of one article that read each other are a cycle, reported as
     /// one, not a variable that happens to be missing in file order.
     #[test]

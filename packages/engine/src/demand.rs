@@ -10,7 +10,7 @@
 //! so the walk goes through [`crate::article::ActionOperation::operands`], which is exhaustive
 //! over the operation variants.
 
-use crate::article::{Action, ActionValue, Article};
+use crate::article::{Action, ActionOperation, ActionValue, Article};
 use crate::types::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -156,32 +156,56 @@ pub(crate) fn reference_base(reference: &str) -> Option<&str> {
     Some(path.split('.').next().unwrap_or(path))
 }
 
-/// Every `$name` an action refers to, by its base name.
+/// Every `$name` an action refers to, by its base name. A name a FOREACH
+/// binds (`as`) is its element inside `body` and `filter`, not a reference to
+/// an output or input of that name.
 pub(crate) fn referenced_names(action: &Action) -> BTreeSet<String> {
     let mut names = BTreeSet::new();
     action
         .operands()
-        .for_each(|operand| visit_value(operand, &mut names));
+        .for_each(|operand| visit_value(operand, &BTreeSet::new(), &mut names));
     names
 }
 
-fn visit_value(value: &ActionValue, names: &mut BTreeSet<String>) {
+fn visit_value(value: &ActionValue, bound: &BTreeSet<&str>, names: &mut BTreeSet<String>) {
     match value {
-        ActionValue::Literal(literal) => visit_literal(literal, names),
-        ActionValue::Operation(op) => op
-            .operands()
-            .into_iter()
-            .for_each(|operand| visit_value(operand, names)),
+        ActionValue::Literal(literal) => visit_literal(literal, bound, names),
+        ActionValue::Operation(op) => match op.as_ref() {
+            ActionOperation::Foreach {
+                collection,
+                as_name,
+                body,
+                filter,
+                ..
+            } => {
+                visit_value(collection, bound, names);
+                let mut inner = bound.clone();
+                inner.insert(as_name.as_str());
+                std::iter::once(body)
+                    .chain(filter)
+                    .for_each(|operand| visit_value(operand, &inner, names));
+            }
+            other => other
+                .operands()
+                .into_iter()
+                .for_each(|operand| visit_value(operand, bound, names)),
+        },
     }
 }
 
-fn visit_literal(literal: &Value, names: &mut BTreeSet<String>) {
+fn visit_literal(literal: &Value, bound: &BTreeSet<&str>, names: &mut BTreeSet<String>) {
     match literal {
-        Value::String(s) => names.extend(reference_base(s).map(str::to_string)),
-        Value::Array(items) => items.iter().for_each(|item| visit_literal(item, names)),
+        Value::String(s) => names.extend(
+            reference_base(s)
+                .filter(|name| !bound.contains(name))
+                .map(str::to_string),
+        ),
+        Value::Array(items) => items
+            .iter()
+            .for_each(|item| visit_literal(item, bound, names)),
         Value::Object(fields) => fields
             .values()
-            .for_each(|field| visit_literal(field, names)),
+            .for_each(|field| visit_literal(field, bound, names)),
         _ => {}
     }
 }
@@ -193,6 +217,48 @@ mod tests {
 
     fn actions(yaml: &str) -> Vec<Action> {
         serde_yaml_ng::from_str(yaml).unwrap()
+    }
+
+    #[test]
+    fn a_foreach_binding_is_not_a_reference_inside_its_body() {
+        let acts = actions(
+            r#"
+- output: totaal
+  value:
+    operation: FOREACH
+    collection: $bedragen
+    as: bedrag
+    filter:
+      operation: GREATER_THAN
+      subject: $bedrag
+      value: $drempel
+    body: $bedrag
+    combine: ADD
+"#,
+        );
+        assert_eq!(
+            referenced_names(&acts[0]),
+            BTreeSet::from(["bedragen".to_string(), "drempel".to_string()])
+        );
+    }
+
+    #[test]
+    fn a_foreach_binding_does_not_hide_the_name_in_its_collection() {
+        // The collection is read in the scope around the FOREACH, where the
+        // binding does not exist yet.
+        let acts = actions(
+            r#"
+- output: totaal
+  value:
+    operation: FOREACH
+    collection: $item
+    body: $item
+"#,
+        );
+        assert_eq!(
+            referenced_names(&acts[0]),
+            BTreeSet::from(["item".to_string()])
+        );
     }
 
     #[test]
