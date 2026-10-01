@@ -45,6 +45,16 @@ html.rr-presenting.rr-presenting-full body {
   padding-left: 0;
 }
 
+/* While the rail is on screen, a left sheet starts where the demo starts.
+ * Read by the rule sheetOffset.js puts in every nldd-sheet (a temporary
+ * workaround until the design system has a hook for this). */
+html.rr-presenting:not(.rr-presenting-full):not(.rr-deck-hidden) {
+  --rr-sheet-offset: 36vw;
+  /* And it comes in from that edge, not from behind the slides. */
+  --rr-sheet-slide: 1.5rem;
+  --rr-sheet-fade: 0;
+}
+
 /* While the deck names the persona, the profile tag in the bar is noise. In de
  * zaal verdwijnt het dek op een demo-dia, en dan benoemt het de persona dus
  * niet meer: daar horen de knoppen terug te zijn. Vandaar de uitzondering op
@@ -79,6 +89,9 @@ html.rr-presenting:not(.rr-deck-hidden) .rr-hide-presenting {
 @media (max-width: 1024px) {
   html.rr-presenting body {
     padding-left: 0;
+  }
+  html.rr-presenting:not(.rr-presenting-full):not(.rr-deck-hidden) {
+    --rr-sheet-offset: 0px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

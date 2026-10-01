@@ -69,7 +69,7 @@ Next to the live presentation there is a recorded one at `/rondleiding` (`/en/to
 
 The walkthrough is not a video of the demo. It is the presenter's voice, and while it plays the demo itself does what the presenter did: the deck changes slides and opens tabs, and buttons are clicked and text is typed, letter by letter at the recorded pace, in the live app. A cursor moves to each click a moment before it happens. The deck is the same rail as in the zelfstandig mode of the presentation, with playback controls in its footer, the presenter's face in a circle under the slide, and the frequently asked questions that have come up so far. Pausing hands the demo to the viewer, who can click around; playing again restores the recorded state of that moment and goes on.
 
-The controls are design-system buttons in the deck's footer: play and pause, previous and next chapter (one chapter per slide), a chapter menu, and a menu with playback speed, captions, the presenter bubble, a transcript per chapter, and the way out. The keys are Space or k to pause, the arrows for chapters, j and l for ten seconds, c for captions and Escape to leave a question. A question appears in the rail when the presenter mentions it; its answer is a short recording of its own with its own address (`/rondleiding/<id>`), and leaving it resumes the main line where the viewer was.
+The controls are design-system buttons in the deck's footer: play and pause, previous and next chapter (one chapter per slide), a chapter menu, and a menu with playback speed, captions, the presenter bubble, a transcript per chapter, and the way out. The keys are Space to pause, the arrows for chapters and Escape to leave a question; there are no single-letter shortcuts (WCAG 2.1.4). While the walkthrough plays these keys belong to the player, also when the replay left focus in a field it typed into. A question appears in the rail when the presenter mentions it; its answer is a short recording of its own with its own address (`/rondleiding/<id>`), and leaving it resumes the main line where the viewer was.
 
 How the replay holds up:
 
@@ -84,6 +84,8 @@ A replay can still break when the demo changes: a button that is renamed or remo
 On a screen narrower than 1024 pixels the demo and the rail do not fit side by side, and the page plays the recording of the window as a video instead, with its captions.
 
 The player's layer over the demo (the bubble, the cursor and its ripple, the captions) is custom CSS in `src/walkthrough/Replay*.vue`, because the design system has no video or pointer components. The cursor and the captions are placed in the browser's top layer, so they stay visible over a sheet or dialog the replay opens.
+
+A sheet that opens on the left (the law list on the Laws tab, an `nldd-sheet` with `placement="left"`) is placed by the design system against the window edge, which with the deck as a rail is behind the slides. Until the design system has a hook for that edge, `src/presentation/sheetOffset.js` adds a rule to those components' shadow roots that moves the sheet, and its slide-in, to the edge of the demo while the rail is on screen. It depends on internal class names; `sheetOffset.test.js` fails when they change. This also applies to the live presentation in zelfstandig mode.
 
 ### Recording
 

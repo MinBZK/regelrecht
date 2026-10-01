@@ -108,7 +108,9 @@ export function signature(el) {
 function matches(el, sig) {
   if (el.tagName.toLowerCase() !== sig.tag) return false;
   for (const [k, v] of Object.entries(sig)) {
-    if (k !== 'tag' && read(el, k) !== v) return false;
+    if (k === 'tag' || k === '__masked') continue;
+    const have = read(el, k);
+    if ((sig.__masked && have != null ? MASK(have) : have) !== v) return false;
   }
   return true;
 }
@@ -118,19 +120,27 @@ function visible(el) {
   return !!r && r.width > 0 && r.height > 0;
 }
 
+const MASK = (v) => String(v).replace(/\d+/g, '#');
+
 /**
- * The same signature without what tends to drift between the recording and
- * the corpus of the day: a count in a label ("Wetten, 79"), loose text. Used
- * only when the exact signature finds nothing.
+ * The same signature with the numbers masked: a count in a label ("Wetten,
+ * 79") is what drifts between the recording and the corpus of the day, and
+ * the words around it are what still names the element. Null when nothing is
+ * left to mask, or when the signature says no more than its tag: matching
+ * every button is not a looser match but a wrong one.
  */
 export function loosen(sig) {
-  const out = {};
+  const out = { tag: sig.tag, __masked: true };
+  let changed = false;
+  let named = false;
   for (const [k, v] of Object.entries(sig)) {
-    if (k === 'textContent') continue;
-    if (typeof v === 'string' && /\d/.test(v) && k !== 'href' && k !== 'tag') continue;
-    out[k] = v;
+    if (k === 'tag' || k === 'nth' || k === '__masked') continue;
+    const masked = MASK(v);
+    if (masked !== v) changed = true;
+    if (k !== '@role' && k !== '@slot' && k !== 'type') named = true;
+    out[k] = masked;
   }
-  return out;
+  return changed && named ? out : null;
 }
 
 /** Elements in `scope` that fit `sig`, the visible ones first. */
@@ -167,15 +177,24 @@ export function describe(el) {
   });
 }
 
-/** The element a description points to now, or null. */
-export function resolve(steps) {
+/**
+ * The element a description points to now, or null. With `loose`, a step
+ * that finds nothing exactly may match with its numbers masked; its place
+ * (`nth`) then counts only when the looser match finds as many elements.
+ */
+export function resolve(steps, { loose = false } = {}) {
   let scope = document;
   let el = null;
   for (const step of steps ?? []) {
     const { nth = 0, ...sig } = step;
     let list = candidates(scope, sig);
-    if (!list.length) list = candidates(scope, loosen(sig));
-    el = list[nth] ?? list[0] ?? null;
+    let index = nth;
+    if (!list.length && loose) {
+      const looser = loosen(sig);
+      list = looser ? candidates(scope, looser) : [];
+      if (list.length <= nth) index = 0;
+    }
+    el = list[index] ?? null;
     if (!el) return null;
     scope = el.shadowRoot ?? el;
   }

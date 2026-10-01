@@ -7,7 +7,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useI18n } from '../i18n/index.js';
 import { usePresentation } from '../presentation/usePresentation.js';
-import { audioTime, backToMain, currentTrack, replay, seek, togglePlay } from './replay.js';
+import { PLAYER_KEYS, audioTime, backToMain, currentTrack, replay, seek, togglePlay } from './replay.js';
 import { MEDIA_BASE, cueAt, followerCorrection, formatTime, nextChapterStart, previousChapterStart } from './timeline.js';
 import { camSlot, transcript } from './chrome.js';
 
@@ -94,15 +94,21 @@ function pathHas(e, selector) {
 
 function onKey(e) {
   if (!replay.active || e.metaKey || e.ctrlKey || e.altKey || transcript.open) return;
-  // A field, a menu or the demo's own controls keep their keys; so does the
-  // viewer once they have taken over.
-  if (pathHas(e, 'input, textarea, select, [contenteditable], nldd-menu, nldd-menu-item, [role="menu"]')) return;
+  if (!PLAYER_KEYS.has(e.key)) return;
+  // A menu keeps its keys.
+  if (pathHas(e, 'nldd-menu, nldd-menu-item, [role="menu"]')) return;
+  // A field keeps them too, unless the walkthrough is playing: then focus in a
+  // field is where the replay typed, and Space must pause rather than type.
+  if (!replay.playing && pathHas(e, 'input, textarea, select, [contenteditable]')) return;
   if (replay.diverged && !pathHas(e, '.deck, .wt-chrome')) return;
   if (e.key === ' ' && pathHas(e, 'button, a[href], nldd-button, nldd-icon-button')) return;
+  // Ours: the field or the deck underneath must not act on it as well.
+  e.stopPropagation();
   const tr = track.value;
   switch (e.key) {
+    // No single-letter shortcuts (WCAG 2.1.4): a speech-input user saying a
+    // word would fire them. Space, the arrows and Escape are enough.
     case ' ':
-    case 'k':
       e.preventDefault();
       togglePlay();
       break;
@@ -116,15 +122,6 @@ function onKey(e) {
       if (to != null) seek(to);
       break;
     }
-    case 'j':
-      seek(replay.now - 10);
-      break;
-    case 'l':
-      seek(replay.now + 10);
-      break;
-    case 'c':
-      replay.captionsOn = !replay.captionsOn;
-      break;
     case 'Escape':
       if (replay.faq) backToMain();
       break;
@@ -134,11 +131,12 @@ function onKey(e) {
 
 onMounted(() => {
   raf = requestAnimationFrame(loop);
-  window.addEventListener('keydown', onKey);
+  // Capture phase: ahead of a field that has focus.
+  window.addEventListener('keydown', onKey, true);
 });
 onUnmounted(() => {
   cancelAnimationFrame(raf);
-  window.removeEventListener('keydown', onKey);
+  window.removeEventListener('keydown', onKey, true);
 });
 </script>
 

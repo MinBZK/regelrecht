@@ -74,7 +74,9 @@ const RecorderPanel =
     ? defineAsyncComponent(() => import('./walkthrough/RecorderPanel.vue'))
     : null;
 presentation.init({ router, demo });
-watch(corpus, (c) => presentation.init({ slides: c?.config?.slides ?? [] }), { immediate: true });
+// Not while the recorded walkthrough runs: it shows the deck as it was
+// recorded, and a language switch by the viewer must not swap it out.
+watch(corpus, (c) => replay.active || presentation.init({ slides: c?.config?.slides ?? [] }), { immediate: true });
 // De modus staat in de store (en dus in localStorage); het dek houdt er zijn
 // eigen ref voor, zodat de store niet om de presentatiemodule heen cirkelt.
 watch(() => state.presentationMode, (m) => presentation.setMode(m), { immediate: true });

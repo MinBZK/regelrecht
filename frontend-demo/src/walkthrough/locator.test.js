@@ -40,8 +40,15 @@ describe('locator', () => {
     const { button } = host('rr-test-bar', 'Wetten, 79');
     const steps = describeEl(button);
     button.setAttribute('aria-label', 'Wetten, 81');
-    expect(resolve(steps)).toBe(button);
-    expect(loosen({ tag: 'button', '@aria-label': 'Wetten, 81', text: 'Wetten' })).toEqual({ tag: 'button', text: 'Wetten' });
+    // Only when asked: an exact miss first means "wait, it is still loading".
+    expect(resolve(steps)).toBeNull();
+    expect(resolve(steps, { loose: true })).toBe(button);
+  });
+
+  it('never loosens a description down to a bare tag', () => {
+    expect(loosen({ tag: 'button', textContent: 'Aanvragen' })).toBeNull();
+    expect(loosen({ tag: 'button', '@role': 'tab' })).toBeNull();
+    expect(loosen({ tag: 'button', '@aria-label': 'Wetten, 81' })).toEqual({ tag: 'button', __masked: true, '@aria-label': 'Wetten, #' });
   });
 
   it('tells two alike elements apart by their order', () => {

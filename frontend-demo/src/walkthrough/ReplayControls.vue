@@ -44,9 +44,11 @@ function tryIt() {
   replay.diverged = true;
   replay.cursor.visible = false;
 }
-function leave() {
+async function leave() {
+  // Away from the walkthrough's page first: stopping remounts the tabs, and
+  // on that page a fresh mount would start the walkthrough again.
+  await router.push(router.resolve({ name: localeRouteName('home', locale.value) }).path);
   stopReplay();
-  router.push(router.resolve({ name: localeRouteName('home', locale.value) }).path);
 }
 
 const backButton = ref(null);

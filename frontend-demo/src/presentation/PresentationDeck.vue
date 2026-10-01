@@ -5,6 +5,7 @@ import { useDemo } from '../store/demoStore.js';
 import { intlLocale } from '../data/format.js';
 import { useI18n } from '../i18n/index.js';
 import { HINTS, hintSegments } from './keyHints.js';
+import { clockEpoch } from '../walkthrough/clock.js';
 
 // The deck: a Rijkshuisstijl-blue panel, full-screen for the intro and the
 // closing, a left rail while the live demo runs on the right. Slides are data
@@ -16,7 +17,12 @@ const { t } = useI18n();
 
 // Een computed: het dek blijft staan tijdens een taalwissel, dus een datum die
 // eenmalig is uitgerekend zou in de oude taal blijven hangen.
-const today = computed(() => new Date().toLocaleDateString(intlLocale(), { day: 'numeric', month: 'long', year: 'numeric' }));
+// Ook afhankelijk van `clockEpoch`: tijdens een opgenomen rondleiding staat
+// de klok op het moment van opnemen, en de datum moet daarna weer vandaag zijn.
+const today = computed(() => {
+  void clockEpoch.value;
+  return new Date().toLocaleDateString(intlLocale(), { day: 'numeric', month: 'long', year: 'numeric' });
+});
 const counter = computed(() => `${p.index.value + 1} / ${p.total.value}`);
 const progress = computed(() => (p.total.value ? `${((p.index.value + 1) / p.total.value) * 100}%` : '0%'));
 const isLast = computed(() => p.index.value === p.total.value - 1);

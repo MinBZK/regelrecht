@@ -21,7 +21,7 @@
 import { nextTick, reactive } from 'vue';
 import { adoptLocale, currentLocale } from '../i18n/index.js';
 import { setPersistence } from '../store/demoStore.js';
-import { pageForConfigPath } from '../router.js';
+import { localeRouteName, pageForConfigPath } from '../router.js';
 import { click, setChecked, setValue, key as pressKey, scrollTo } from './actions.js';
 import { installClock, uninstallClock } from './clock.js';
 import { resolve } from './locator.js';
@@ -51,7 +51,8 @@ let timeline = null;
 let ctx = null; // { router, demo, presentation }
 let audio = null;
 let next = 0; // index of the next event to apply
-let busy = false;
+/** The seek token of whoever is applying events now (pump or seek), or null. */
+let busyOwner = null;
 let raf = 0;
 let mainPosition = 0;
 let backup = null;
@@ -95,14 +96,30 @@ function samePage(path) {
 // ---- finding and doing --------------------------------------------------------
 
 /**
- * The element of `target`, waiting for it to appear. If the wait gets long
- * the voice stops too, so the picture never runs behind the words.
+ * Whether work started under `token` may still touch the demo: not after a
+ * jump (a newer token), not after leaving, not once the viewer took over.
  */
-async function find(target, { timeout = 4000, fast = false } = {}) {
+function current(token) {
+  return token === seekToken && replay.active && !replay.diverged;
+}
+
+/**
+ * The element of `target`, waiting for it to appear. If the wait gets long
+ * the voice stops too, so the picture never runs behind the words. Only when
+ * the exact element does not show up is a looser match tried: trying it at
+ * once would click a look-alike while the real one is still rendering.
+ */
+async function find(target, { timeout = 4000, fast = false, token = seekToken } = {}) {
   const started = performance.now();
+  const limit = fast ? 1500 : timeout;
   let paused = false;
   for (;;) {
-    const el = resolve(target);
+    if (!current(token)) {
+      if (paused) replay.waiting = false;
+      return null;
+    }
+    const waited = performance.now() - started;
+    const el = resolve(target, { loose: waited > limit / 2 });
     if (el) {
       if (paused) {
         replay.waiting = false;
@@ -110,8 +127,7 @@ async function find(target, { timeout = 4000, fast = false } = {}) {
       }
       return el;
     }
-    const waited = performance.now() - started;
-    if (waited > (fast ? 1500 : timeout)) break;
+    if (waited > limit) break;
     if (!fast && !paused && waited > 250 && replay.playing) {
       paused = true;
       replay.waiting = true;
@@ -146,8 +162,9 @@ function ripple(p) {
   }, 700);
 }
 
-async function apply(e, { fast = false } = {}) {
+async function apply(e, { fast = false, token = seekToken } = {}) {
   const { router, presentation } = ctx;
+  const opts = { fast, token };
   switch (e.type) {
     case 'restore':
       applyState(e.state);
@@ -163,13 +180,16 @@ async function apply(e, { fast = false } = {}) {
       // control that moved, a tab that is not there) does the replay go
       // itself, so the story stays on the tab the voice talks about.
       const deadline = performance.now() + (fast ? 300 : 1500);
-      while (performance.now() < deadline && !samePage(e.path)) await sleep(60);
-      if (!samePage(e.path)) await router.push(e.path).catch(() => {});
+      while (performance.now() < deadline && !samePage(e.path)) {
+        await sleep(60);
+        if (!current(token)) return;
+      }
+      if (!samePage(e.path) && current(token)) await router.push(e.path).catch(() => {});
       return;
     }
     case 'click': {
-      const el = await find(e.target, { fast });
-      if (!el) return;
+      const el = await find(e.target, opts);
+      if (!el || !current(token)) return;
       el.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
       if (!fast) {
         const p = pointIn(el, e.fx, e.fy);
@@ -180,28 +200,29 @@ async function apply(e, { fast = false } = {}) {
       return;
     }
     case 'input': {
-      const el = await find(e.target, { fast });
-      if (!el) return;
+      const el = await find(e.target, opts);
+      if (!el || !current(token)) return;
       if (!fast) showCursorAt(pointIn(el, 0.15, 0.5));
       setValue(el, e.value ?? '');
       return;
     }
     case 'change': {
-      const el = await find(e.target, { fast });
-      if (!el) return;
+      const el = await find(e.target, opts);
+      if (!el || !current(token)) return;
       if (typeof e.checked === 'boolean') setChecked(el, e.checked);
       else setValue(el, e.value ?? '', { change: true });
       return;
     }
     case 'key': {
-      const el = e.target ? await find(e.target, { fast, timeout: 1000 }) : null;
+      const el = e.target ? await find(e.target, { ...opts, timeout: 1000 }) : null;
+      if (!current(token)) return;
       if (el) pressKey(el, e.key);
       else document.dispatchEvent(new KeyboardEvent('keydown', { key: e.key, bubbles: true }));
       return;
     }
     case 'scroll': {
-      const el = e.target ? await find(e.target, { fast, timeout: 1000 }) : document.scrollingElement;
-      if (el) scrollTo(el, e.top ?? 0, e.left ?? 0);
+      const el = e.target ? await find(e.target, { ...opts, timeout: 1000 }) : document.scrollingElement;
+      if (el && current(token)) scrollTo(el, e.top ?? 0, e.left ?? 0);
       return;
     }
     default:
@@ -224,20 +245,20 @@ function lead(events, now) {
 }
 
 async function pump() {
-  if (busy) return;
+  if (busyOwner !== null || replay.diverged) return;
   const track = currentTrack();
   const events = track?.events ?? [];
-  busy = true;
+  const token = seekToken;
+  busyOwner = token;
   try {
     while (next < events.length && events[next].t <= replay.now) {
-      const token = seekToken;
-      await apply(events[next]);
-      if (token !== seekToken) return; // a jump happened meanwhile
+      await apply(events[next], { token });
+      if (!current(token)) return; // a jump, a stop or the viewer meanwhile
       next += 1;
     }
     lead(events, replay.now);
   } finally {
-    busy = false;
+    if (busyOwner === token) busyOwner = null;
   }
 }
 
@@ -301,6 +322,7 @@ export async function seek(t, { play: playAfter = replay.playing } = {}) {
   const token = seekToken;
   audio?.pause();
   replay.playing = false;
+  replay.waiting = false;
   replay.diverged = false;
   replay.cursor.visible = false;
   const target = Math.max(0, Math.min(track.duration, t));
@@ -314,18 +336,22 @@ export async function seek(t, { play: playAfter = replay.playing } = {}) {
   await ctx.presentation.goTo(chapter.slideIndex);
   await sleep(250);
   const events = track.events ?? [];
-  let i = events.findIndex((e) => e.t >= chapter.start);
+  // The chapter's snapshot was taken when its slide came up, so whatever comes
+  // before that slide event in the list (actions moved out of a cut to the
+  // same moment) is already in it. Replay from just after the slide event.
+  const slideAt = events.findIndex((e) => e.type === 'slide' && e.index === chapter.slideIndex && e.t >= chapter.start - 0.001);
+  let i = slideAt >= 0 ? slideAt + 1 : events.findIndex((e) => e.t >= chapter.start);
   if (i < 0) i = events.length;
-  busy = true;
+  busyOwner = token;
   try {
     for (; i < events.length && events[i].t <= target; i += 1) {
-      if (token !== seekToken) return;
+      if (token !== seekToken || !replay.active) return;
       const e = events[i];
       replay.now = e.t;
-      await apply(e, { fast: true });
+      await apply(e, { fast: true, token });
     }
   } finally {
-    busy = false;
+    if (busyOwner === token) busyOwner = null;
   }
   if (token !== seekToken) return;
   next = i;
@@ -342,9 +368,12 @@ export async function play() {
     return;
   }
   replay.playing = true;
-  await audio.play().catch(() => {
-    replay.playing = false;
-  });
+  // During a wait the voice stays where it is; the wait resumes it.
+  if (!replay.waiting) {
+    await audio.play().catch(() => {
+      replay.playing = false;
+    });
+  }
   if (!raf) raf = requestAnimationFrame(tick);
 }
 
@@ -396,6 +425,9 @@ export function savedPosition() {
 
 // ---- the viewer taking over -------------------------------------------------------
 
+/** Keys the player answers to; see ReplayOverlay.vue. */
+export const PLAYER_KEYS = new Set([' ', 'ArrowLeft', 'ArrowRight', 'Escape']);
+
 function fromViewer(e) {
   if (!e.isTrusted || !replay.active) return false;
   // The player's own controls and the deck are not the demo.
@@ -405,8 +437,12 @@ function fromViewer(e) {
 function onViewerAct(e) {
   if (!fromViewer(e)) return;
   // A key is the viewer taking over only when it goes into the demo's own
-  // fields; Space, the arrows and Escape elsewhere are the player's keys.
-  if (e.type === 'keydown' && !(e.composedPath?.() ?? []).some((n) => n?.matches?.('input, textarea, select, [contenteditable]'))) return;
+  // fields. While it plays, Space, the arrows and Escape are the player's,
+  // also when the replay itself left focus in a field it typed into.
+  if (e.type === 'keydown') {
+    if (replay.playing && PLAYER_KEYS.has(e.key)) return;
+    if (!(e.composedPath?.() ?? []).some((n) => n?.matches?.('input, textarea, select, [contenteditable]'))) return;
+  }
   if (replay.playing) pause();
   replay.diverged = true;
   replay.cursor.visible = false;
@@ -421,6 +457,9 @@ function onViewerAct(e) {
 export async function startReplay(data, context, { at = 0, faqId = null } = {}) {
   timeline = data;
   ctx = context;
+  // A live presentation that was still running would keep its arrow keys and
+  // move the deck under the replay.
+  ctx.presentation.stop();
   backup = clone(ctx.demo.state);
   setPersistence(false);
   // The recording is Dutch; its slides and the controls it clicks are found
@@ -463,7 +502,14 @@ export function stopReplay() {
   setPersistence(true);
   demo.reregister();
   presentation.init({ slides: demo.corpus.value?.config?.slides ?? [] });
-  if (previousLocale) adoptLocale(previousLocale);
+  if (previousLocale && previousLocale !== currentLocale()) {
+    adoptLocale(previousLocale);
+    // The URL decides the language on the next navigation; put the page in
+    // the viewer's language now, so it does not flip back.
+    const here = ctx.router.currentRoute.value;
+    const page = here.meta?.page;
+    if (page) ctx.router.replace({ name: localeRouteName(page, previousLocale), params: here.params }).catch(() => {});
+  }
   resetViews();
   backup = null;
 }

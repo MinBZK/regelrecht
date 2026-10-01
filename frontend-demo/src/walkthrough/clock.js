@@ -8,8 +8,17 @@
  * answers with the recorded moment plus the time into the recording.
  */
 
+import { ref } from 'vue';
+
 const RealDate = globalThis.Date;
 let installed = null;
+
+/**
+ * Bumped when the clock is installed or removed. A computed that formats
+ * "today" reads it, so it does not keep the recording's date after a replay
+ * (or today's date during one).
+ */
+export const clockEpoch = ref(0);
 
 /**
  * Make `new Date()` and `Date.now()` return `nowMs()`. `new Date(x)` with an
@@ -33,12 +42,14 @@ export function installClock(nowMs) {
   }
   installed = state;
   globalThis.Date = ReplayDate;
+  clockEpoch.value += 1;
 }
 
 export function uninstallClock() {
   if (!installed) return;
   globalThis.Date = RealDate;
   installed = null;
+  clockEpoch.value += 1;
 }
 
 export function clockInstalled() {

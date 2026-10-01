@@ -10,7 +10,7 @@
  * On a phone the demo next to a rail does not fit, so this page plays the
  * recording as a video instead, with its captions.
  */
-import { computed, onMounted, ref } from 'vue';
+import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useDemo } from '../store/demoStore.js';
 import { usePresentation } from '../presentation/usePresentation.js';
@@ -36,14 +36,26 @@ const homePath = computed(() => router.resolve({ name: localeRouteName('home', l
 const video = computed(() => timeline.value?.main?.video ?? null);
 const captions = computed(() => timeline.value?.main?.captions?.nl ?? null);
 
-onMounted(async () => {
+// Starting waits for the timeline and the engine; by then the viewer may
+// have gone elsewhere, and a walkthrough must not start over another page.
+// The tabs are kept alive, so a second visit is an activation, not a mount.
+let here = false;
+
+async function maybeStart() {
+  here = true;
   await ready;
   await demo.boot().catch(() => {});
   loaded.value = true;
   narrow.value = window.innerWidth < WIDE;
   if (!timeline.value || narrow.value || replay.active) return;
+  if (!here || route.meta?.page !== 'rondleiding') return;
   await startReplay(timeline.value, { router, demo, presentation }, { at: savedPosition(), faqId: route.params.faqId ?? null });
-});
+}
+
+onMounted(maybeStart);
+onActivated(maybeStart);
+onDeactivated(() => (here = false));
+onUnmounted(() => (here = false));
 </script>
 
 <template>
