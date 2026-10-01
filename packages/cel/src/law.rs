@@ -309,8 +309,9 @@ pub struct FieldDef {
     /// The article of the policy whose `origins` gives the origin in force.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub origin_policy: Option<String>,
-    /// `required: false` in the law (RFC-036): the applicant may leave it
-    /// out, and the form says so (Awb 4:4 lid 2).
+    /// `required: false` in the law (RFC-036). Only for input of the
+    /// applicant does it mean they may leave it out and the form says so
+    /// (Awb 4:4 lid 2); see [`FieldDef::optional_for_applicant`].
     pub optional: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -326,6 +327,17 @@ impl FieldDef {
         self.origin
             .as_ref()
             .is_some_and(|o| o.waarde == OriginValue::Kanaal)
+    }
+
+    /// Whether the applicant may leave the field out: `required: false` and
+    /// the origin in force is BELANGHEBBENDE (what the channel supplies, the
+    /// applicant does not leave out).
+    pub fn optional_for_applicant(&self) -> bool {
+        self.optional
+            && self
+                .origin
+                .as_ref()
+                .is_some_and(|o| o.waarde == OriginValue::Belanghebbende)
     }
 
     /// Whether the field is the decision requested (`rol: GEVRAAGD_BESLUIT`).
@@ -425,6 +437,11 @@ impl SourceRef {
             anchor: Some(anchor.to_string()),
             ..Self::default()
         }
+    }
+
+    /// An event in the loaded stream file `stream/<id>`.
+    pub fn stream(id: &str, event: &str) -> Self {
+        Self::config(&format!("stream/{id}"), event)
     }
 }
 
@@ -1063,7 +1080,7 @@ fn event_chain(
     let reference = &basis.law.reference;
     let mut chain = vec![Step::new(
         StepKind::Stream,
-        SourceRef::config(&format!("stream/{stream_id}"), name),
+        SourceRef::stream(stream_id, name),
         format!(
             "de stroom legt '{name}' vast en noemt het artikel dat het vestigt (establishes: {reference})"
         ),
@@ -1187,11 +1204,6 @@ fn field_explanation(
     here.extend(bridges.iter().cloned());
 
     let mut value: Vec<Step> = Vec::new();
-    let optional = if d.optional {
-        "; niet verplicht (required: false)"
-    } else {
-        ""
-    };
     let origin_step = |o: &Origin, by: &str| {
         let what = match (o.waarde, o.rol) {
             (_, Some(OriginRole::GevraagdBesluit)) => format!(
@@ -1206,7 +1218,7 @@ fn field_explanation(
             StepKind::Origin,
             SourceRef::law(by),
             format!(
-                "origin {} (grondslag {}): {what}{optional}",
+                "origin {} (grondslag {}): {what}",
                 origin_text(o),
                 o.grondslag
             ),
@@ -1225,8 +1237,13 @@ fn field_explanation(
         (_, None) => value.push(Step::new(
             StepKind::Field,
             SourceRef::law(&d.declared_by),
-            format!("geen origin: invoer ($external){optional}"),
+            "geen origin: invoer ($external)",
         )),
+    }
+    if d.optional_for_applicant() {
+        if let Some(s) = value.last_mut() {
+            s.reason.push_str("; niet verplicht (required: false)");
+        }
     }
     if let Some(w) = prefill {
         value.push(Step::new(

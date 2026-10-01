@@ -39,12 +39,24 @@ pub(super) async fn form_route(
 ) -> Result<Json<Value>, Error> {
     let (stream, event) = portal_event(&state)?;
     let form = state.process.form.as_ref();
+    let portal = state
+        .process
+        .portal()
+        .ok_or_else(|| error(StatusCode::INTERNAL_SERVER_ERROR, "no portal configured"))?;
     let mut fields = crate::form::fields(event, form).map_err(internal)?;
-    if let Ok(session) = logged_in(&state, &headers) {
-        let intake = portal_intake(&state, event, &session, true);
+    let session = logged_in(&state, &headers).ok();
+    if let Some(session) = &session {
+        let intake = portal_intake(&state, event, session, true);
         crate::form::with_supplied(&mut fields, event, &intake);
     }
-    let why = crate::form::explain(&mut fields, event, form, &state.process.definition);
+    let why = crate::form::explain(
+        &mut fields,
+        event,
+        form,
+        portal,
+        &state.process.definition,
+        session.as_ref().map(|s| s.channel.as_str()),
+    );
     Ok(Json(json!({
         "cell": state.cell_id(),
         "stream": stream.document,

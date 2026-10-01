@@ -5345,10 +5345,10 @@ async fn the_form_says_why() {
     let adres = form_field(&form, "adres_aanvrager").unwrap();
     assert!(kinds(&adres["why"]["here"]).contains(&"hook"), "{adres}");
     assert_eq!(adres["why"]["value"][0]["kind"], "origin");
-    assert!(adres["why"]["value"][0]["reason"]
-        .as_str()
-        .unwrap()
-        .contains("BELANGHEBBENDE"));
+    let reason = adres["why"]["value"][0]["reason"].as_str().unwrap();
+    assert!(reason.contains("BELANGHEBBENDE"), "{adres}");
+    // Input of the applicant with `required: false` may be left out ...
+    assert!(reason.contains("niet verplicht"), "{adres}");
     // Without a form file the label comes from the law.
     let last = adres["why"]["here"].as_array().unwrap().last().unwrap();
     assert_eq!(last["kind"], "presentation", "{adres}");
@@ -5364,6 +5364,8 @@ async fn the_form_says_why() {
         ["origin", "origin", "supply"],
         "{o}"
     );
+    // ... what the channel supplies may not.
+    assert!(!o["why"].to_string().contains("niet verplicht"), "{o}");
     let supply = o["why"]["value"].as_array().unwrap().last().unwrap();
     assert_eq!(
         supply["source"],
@@ -5396,4 +5398,53 @@ async fn the_form_says_why() {
         "{naam}"
     );
     every_source_resolves(&app, AGENCY, &form).await;
+
+    // The toeslag process with a form file: an entry with a label of its own
+    // is the form's, an entry without one has the label of the law and the
+    // group of the form.
+    let setup = tempfile::tempdir().unwrap();
+    copy_tree(&fixtures(), setup.path());
+    let dir = setup.path().join("processes/toeslag");
+    let process = std::fs::read_to_string(dir.join("process.yaml")).unwrap();
+    let portal = "  event: aanvraag_ontvangen\n";
+    assert_eq!(process.matches(portal).count(), 1);
+    std::fs::write(
+        dir.join("process.yaml"),
+        process.replace(
+            portal,
+            &format!("{portal}  form: {{path: formulier.yaml, screen: aanvraag}}\n"),
+        ),
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("formulier.yaml"),
+        "schermen:\n  - id: aanvraag\n    groepen:\n      - titel: De aanvrager\n        velden:\n          - {id: naam_aanvrager, label: Uw naam}\n          - {id: adres_aanvrager}\n",
+    )
+    .unwrap();
+    let data = tempfile::tempdir().unwrap();
+    let app = as_reader(&runtime_at(setup.path(), data.path()).unwrap());
+    let (_, form, _) = call(&app, "GET", &format!("{TOESLAG}/api/form"), None, None).await;
+    let naam = form_field(&form, "naam_aanvrager").unwrap();
+    let last = naam["why"]["here"].as_array().unwrap().last().unwrap();
+    assert_eq!(
+        last["source"],
+        json!({"config": "form", "anchor": "naam_aanvrager"}),
+        "{naam}"
+    );
+    let adres = form_field(&form, "adres_aanvrager").unwrap();
+    let last = adres["why"]["here"].as_array().unwrap().last().unwrap();
+    assert!(last["source"]["law"].is_string(), "{adres}");
+    let reason = last["reason"].as_str().unwrap();
+    assert!(
+        reason.contains("geen label") && reason.contains("groep 'De aanvrager'"),
+        "{adres}"
+    );
+    // Without a session every channel of the portal says what it supplies.
+    let o = form_field(&form, "ondertekening").unwrap();
+    assert_eq!(
+        o["why"]["value"].as_array().unwrap().last().unwrap()["kind"],
+        "supply",
+        "{o}"
+    );
+    every_source_resolves(&app, TOESLAG, &form).await;
 }

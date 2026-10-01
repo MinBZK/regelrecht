@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::channel::Routes;
-use crate::config::ProcessDefinition;
+use crate::config::{Portal, ProcessDefinition};
 use crate::law::{SourceRef, Step, StepKind};
 use crate::load;
 use crate::stream::{Event, Shape};
@@ -140,55 +140,48 @@ pub fn with_supplied(fields: &mut [Field], event: &Event, intake: &Value) {
 /// the law composed ([`crate::law::Explanation`], the same as in the stream
 /// document), with what only the process knows: the portal that records the
 /// event, the channel that supplies a field and the form file that gives
-/// order, groups and labels. Sets `why` per field and returns `{event,
-/// excluded}` for the form as a whole.
+/// order, groups and labels. `channel` is the channel of the logged-in
+/// applicant; without one, every channel of the portal says what it would
+/// supply. Sets `why` per field and returns `{event, excluded}` for the form
+/// as a whole.
 pub fn explain(
     fields: &mut [Field],
     event: &Event,
     form: Option<&Form>,
+    portal: &Portal,
     process: &ProcessDefinition,
+    channel: Option<&str>,
 ) -> Value {
-    // Without a portal there is no form; the stream then stands in for it.
-    let stream = process.portal.as_ref().map(|p| {
-        (
-            SourceRef::config(&format!("stream/{}", p.stream), &p.event),
-            p,
-        )
-    });
-    let mut chain = Vec::new();
-    if let Some((_, p)) = &stream {
-        chain.push(Step::new(
-            StepKind::Process,
-            SourceRef::config("process", "portal"),
-            format!(
-                "het portaal legt '{}' vast in stroom '{}' (cel {})",
-                p.event, p.stream, p.cell
-            ),
-        ));
-    }
+    let stream = SourceRef::stream(&portal.stream, &portal.event);
+    let mut chain = vec![Step::new(
+        StepKind::Process,
+        SourceRef::config("process", "portal"),
+        format!(
+            "het portaal legt '{}' vast in stroom '{}' (cel {})",
+            portal.event, portal.stream, portal.cell
+        ),
+    )];
     chain.extend(event.explanation.event.iter().cloned());
-    let screen = process
-        .portal
-        .as_ref()
-        .and_then(|p| p.form.as_ref())
-        .filter(|_| form.is_some());
-    match (screen, &stream) {
-        (Some(s), _) => chain.push(Step::new(
+    chain.push(match form.and(portal.form.as_ref()) {
+        Some(s) => Step::new(
             StepKind::Presentation,
             SourceRef::config("form", &s.screen),
             format!(
                 "scherm '{}': volgorde, groepen en labels (het formulier bepaalt geen gedrag)",
                 s.screen
             ),
-        )),
-        (None, Some((source, _))) => chain.push(Step::new(
+        ),
+        None => Step::new(
             StepKind::Presentation,
-            source.clone(),
+            stream.clone(),
             "geen formulier: labels uit de wet, volgorde van de stroom",
-        )),
-        (None, None) => {}
-    }
-    let channels = process.channels_with(Routes::Portal);
+        ),
+    });
+    let channels: Vec<_> = process
+        .channels_with(Routes::Portal)
+        .into_iter()
+        .filter(|(id, _)| channel.is_none_or(|c| c == *id))
+        .collect();
     for f in fields.iter_mut() {
         let mut why = event
             .explanation
@@ -196,42 +189,48 @@ pub fn explain(
             .get(&f.name)
             .cloned()
             .unwrap_or_default();
-        let in_form = form.is_some_and(|x| x.fields.iter().any(|v| v.name == f.name));
-        why.here.push(if in_form && screen.is_some() {
+        let entry = form.and_then(|x| x.fields.iter().find(|v| v.name == f.name));
+        let group = f
+            .group
+            .as_deref()
+            .map(|g| format!(", groep '{g}'"))
+            .unwrap_or_default();
+        // A form entry without a label of its own has the label of the law.
+        why.here.push(if entry.is_some_and(|v| v.label != v.name) {
             Step::new(
                 StepKind::Presentation,
                 SourceRef::config("form", &f.name),
-                format!(
-                    "label '{}'{}",
-                    f.label,
-                    f.group
-                        .as_deref()
-                        .map(|g| format!(", groep '{g}'"))
-                        .unwrap_or_default()
-                ),
+                format!("label '{}'{group}", f.label),
             )
         } else {
-            // The article that declares the field; a field the law did not
-            // compose has only the stream.
-            let source = event
-                .field_defs
-                .iter()
-                .find(|d| d.name == f.name)
-                .map(|d| SourceRef::law(&d.declared_by))
-                .or_else(|| stream.as_ref().map(|(s, _)| s.clone()))
-                .unwrap_or_default();
-            Step::new(
-                StepKind::Presentation,
-                source,
-                format!("label '{}' uit de wet: het formulier zwijgt", f.label),
-            )
+            let silent = if entry.is_some() {
+                "het formulier geeft geen label"
+            } else {
+                "het formulier zwijgt"
+            };
+            match event.field_defs.iter().find(|d| d.name == f.name) {
+                Some(d) => Step::new(
+                    StepKind::Presentation,
+                    SourceRef::law(&d.declared_by),
+                    format!("label '{}' uit de wet: {silent}{group}", f.label),
+                ),
+                None => Step::new(
+                    StepKind::Presentation,
+                    stream.clone(),
+                    format!("geen artikel noemt het veld: de naam uit de stroom{group}"),
+                ),
+            }
         });
         for (id, k) in &channels {
             if let Some(from) = k.supplies.get(&f.name) {
                 why.value.push(Step::new(
                     StepKind::Supply,
                     SourceRef::config("process", id),
-                    format!("het kanaal '{id}' levert {}: {from} (supplies)", f.name),
+                    format!(
+                        "het kanaal '{id}' levert {}: {from} (supplies, grondslag {})",
+                        f.name,
+                        k.legal_basis.join(", ")
+                    ),
                 ));
             }
         }
@@ -474,10 +473,7 @@ pub fn fields(event: &Event, form: Option<&Form>) -> Result<Vec<Field>, String> 
             });
             field.unit = d.unit.clone();
         }
-        field.optional = d.optional
-            && d.origin
-                .as_ref()
-                .is_some_and(|o| o.waarde == regelrecht_law_model::OriginValue::Belanghebbende);
+        field.optional = d.optional_for_applicant();
     }
     // Whether a field is a table is determined by the stream: otherwise the
     // screen shows an input that the cell refuses on submission.

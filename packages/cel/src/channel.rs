@@ -405,7 +405,7 @@ pub fn prefill(
         let e = evaluate(service, &p.regulation, &[&p.output], &parameters, date);
         if let Some(value) = e.values.get(&p.output).filter(|v| !v.is_null()) {
             let mut s = serde_json::json!({"value": value, "source": "register", "legal_basis": p.legal_basis});
-            if let Some(t) = e.trace_text.filter(|_| with_trace) {
+            if let Some(t) = e.trace_text {
                 s["trace_text"] = Value::String(t);
             }
             found.insert(field.clone(), s);
