@@ -10,7 +10,7 @@
 //! | `GET /api/lexostatus/{name}?<input>=...` | with the runtime or read token: a reduction, with the inputs as query; the runtime offers `case_state` for every cell with a case |
 //! | `POST /api/lexostatus/{name}/trial` | only with the runtime token: `{draft, inputs}`: builds the gram in memory and reduces the chronicle with that gram; records nothing |
 //! | `POST /api/grams` | only with the runtime token: `{actor, stream, event, intake, external, refers_to?, decision?, root_grams?}`: builds the gram, gives it an id, validates it, checks the actor and the references and records it |
-//! | `GET /api/stream` | the stream definitions of the cell, with their hash |
+//! | `GET /api/stream` | the stream definitions of the cell, with their hash and, per event, the `explanation` (why the event looks this way) |
 //!
 //! A process acts: it informs, concludes and has a cell record
 //! ([`process`]). Every process:
@@ -18,7 +18,7 @@
 //! | Route | Does |
 //! |---|---|
 //! | `GET /api/examples` | default data per action (`examples` in `process.yaml`), also without login |
-//! | `GET /api/law/{regulation}/{article}` | the YAML block of the article in the version the cell uses, with file and lines; also without login |
+//! | `GET /api/law/{regulation}/{article}` | the YAML block of the article in the version that applies today (the version the cell loaded), with file and lines; also without login |
 //! | `GET /api/config/{*config}?anchor=` | the YAML block of a loaded `process`, `form` or `stream/<id>`; also without login |
 //!
 //! A process with roles has the routes of its channels ([`session`]); every
@@ -37,7 +37,7 @@
 //!
 //! | Route | Does |
 //! |---|---|
-//! | `GET /api/form` | the fields of the application form, from the stream of the cell |
+//! | `GET /api/form` | the fields of the application form, from the stream of the cell, with `why` per field and for the form (why it is there, why this value, what is not in it) and, when logged in, `supplied.trace_text` for a register value |
 //! | `POST /api/application/assessment` | trial reduction in the cell, synthesis, synthesis per row, engine |
 //! | `POST /api/application` | the cell records the gram |
 //! | `GET /api/possibilities` | what the portal offers according to the policy, per window, with trace |

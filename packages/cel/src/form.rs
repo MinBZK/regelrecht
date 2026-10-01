@@ -9,6 +9,9 @@
 //! does, for a logged-in applicant, what the channel or a register supplies
 //! (note "het gram uit de wet": the form only keeps the presentation).
 //!
+//! [`explain`] adds the process layer (portal, form, channel) to the
+//! explanation that the law gives of the event.
+//!
 //! The form document deliberately keeps its Dutch vocabulary (it is a dossier
 //! document that other tools read as well); the runtime translates it at the
 //! edge (the serde renames below and `document_type`, `document_options`,

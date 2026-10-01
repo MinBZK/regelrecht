@@ -32,7 +32,9 @@ fn portal_event(state: &ProcessState) -> Result<(&stream::Stream, &stream::Event
 /// in the stream of the cell, with labels and order from the form of the
 /// process. For a logged-in applicant, what the channel supplies and what a
 /// register fills in beforehand comes with each field (`supplied`): the
-/// portal shows it as filled in automatically.
+/// portal shows it as filled in automatically. Every field and the form as a
+/// whole carry `why` (see [`crate::form::explain`]), and a register value its
+/// trace.
 pub(super) async fn form_route(
     State(state): State<ProcessState>,
     headers: HeaderMap,

@@ -36,6 +36,10 @@
 //! reading article whose facts lie in the cell into a lexostatus definition,
 //! which then goes through the same checks and the same reduction as a
 //! definition from `cell.yaml`.
+//!
+//! Composing an event also records why it looks this way ([`Explanation`]: the
+//! chain, per field `here`/`value`, and `excluded`). `/api/stream` shows it as
+//! `explanation` and `/api/form` as `why`: the same structure under two names.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -1621,6 +1625,11 @@ fn establish_event(
     explanation
         .excluded
         .retain(|e| !defs.iter().any(|d| d.name == e.parameter));
+    // One entry per (article, parameter): the first one stays.
+    let mut seen = BTreeSet::new();
+    explanation
+        .excluded
+        .retain(|e| seen.insert((e.article.clone(), e.parameter.clone())));
     // One step per policy article that overrides origins, naming only the
     // fields that are left after the name bridges.
     let mut per_policy: BTreeMap<&str, Vec<(&str, String)>> = BTreeMap::new();

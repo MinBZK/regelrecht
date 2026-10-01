@@ -18,7 +18,8 @@ fn not_found(what: impl std::fmt::Display) -> Error {
 }
 
 /// `GET /api/law/{regulation}/{article}`: the block of the article in the
-/// version that applies today (by the process clock), the newest without one.
+/// version that applies today (the version the cell loaded; by the process
+/// clock), the newest without one.
 pub(super) async fn law_route(
     State(state): State<ProcessState>,
     Path((regulation, article)): Path<(String, String)>,

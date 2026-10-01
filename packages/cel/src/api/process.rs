@@ -47,7 +47,8 @@ pub struct ProcessState {
     /// The corpus root (the parent of `REGULATION_PATH`): the fragment routes
     /// name files relative to it.
     pub root: Arc<PathBuf>,
-    /// The file of every loaded regulation, per `(id, valid_from)`.
+    /// The file of every loaded regulation, per `(id, version_key)` (see
+    /// [`crate::regulations::version_key`]).
     pub regulation_files: Arc<BTreeMap<(String, String), PathBuf>>,
 }
 
