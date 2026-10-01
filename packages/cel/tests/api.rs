@@ -5583,3 +5583,115 @@ async fn the_map_shows_the_process_its_channels_and_roles() {
         "channel"
     ));
 }
+
+/// The steps of the chain of an event in `/api/stream`, as the edges of
+/// the map name them: `(kind, <regulation>#<article>)` for every step that
+/// links the event to an article (a submission establishes it).
+fn event_steps(stream: &Value, stream_id: &str, event: &str) -> Vec<(String, String)> {
+    let s = stream["streams"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["stream"]["$id"] == stream_id)
+        .expect("the stream");
+    let e = s["stream"]["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["name"] == event)
+        .expect("the event");
+    e["explanation"]["event"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|step| {
+            let kind = match step["kind"].as_str().unwrap() {
+                "submission" | "establishes" => "establishes",
+                k @ ("hook" | "extends" | "origin" | "decides_on") => k,
+                _ => return None,
+            };
+            Some((
+                kind.to_string(),
+                step["source"]["law"].as_str()?.to_string(),
+            ))
+        })
+        .collect()
+}
+
+/// An event hangs on the articles of its chain: the same chain as the
+/// explanation in `/api/stream` (spec "waarom in de aanvraag"), the decision
+/// on a submission decides on its establishing article, and a field a
+/// register fills in beforehand leads to the policy that knows it.
+#[tokio::test]
+async fn the_map_links_an_event_to_the_articles_of_its_explanation() {
+    let data = tempfile::tempdir().unwrap();
+    let app = app(data.path());
+    let map = toeslag_map(&app).await;
+    let event = "event:test_toeslag_aanvragen/aanvraag_ontvangen";
+    assert!(has_node(&map, "event", event), "{map}");
+    assert!(has_edge(
+        &map,
+        "process:test_toeslag_proces",
+        event,
+        "portal"
+    ));
+    assert!(has_edge(
+        &map,
+        "stream:test_toeslag_aanvragen",
+        event,
+        "records"
+    ));
+    assert!(has_edge(
+        &map,
+        "cell:test_toeslag",
+        "stream:test_toeslag_aanvragen",
+        "records"
+    ));
+    let (_, stream, _) = call(
+        &app,
+        "GET",
+        &format!("{TOESLAG_CELL}/api/stream"),
+        None,
+        None,
+    )
+    .await;
+    let steps = event_steps(&stream, "test_toeslag_aanvragen", "aanvraag_ontvangen");
+    let kinds: Vec<&str> = steps.iter().map(|(k, _)| k.as_str()).collect();
+    assert!(
+        kinds.contains(&"establishes") && kinds.contains(&"hook") && kinds.contains(&"decides_on"),
+        "{steps:?}"
+    );
+    let establishing = format!(
+        "article:{}",
+        steps.iter().find(|(k, _)| k == "establishes").unwrap().1
+    );
+    for (kind, article) in &steps {
+        let article = format!("article:{article}");
+        if kind == "decides_on" {
+            assert!(
+                has_edge(&map, &article, &establishing, "decides_on"),
+                "{article} decides on {establishing}"
+            );
+        } else {
+            assert!(has_edge(&map, event, &article, kind), "{kind} {article}");
+        }
+    }
+    // Every edge from the event to an article is a step of the chain.
+    for e in edges(&map).iter().filter(|e| e["from"] == event) {
+        let to = e["to"].as_str().unwrap();
+        if let Some(article) = to.strip_prefix("article:") {
+            assert!(
+                steps
+                    .iter()
+                    .any(|(k, a)| a == article && e["kind"] == k.as_str()),
+                "{e}"
+            );
+        }
+    }
+    assert!(
+        edges(&map)
+            .iter()
+            .any(|e| e["from"] == establishing.as_str() && e["kind"] == "prefill"),
+        "{map}"
+    );
+}

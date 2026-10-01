@@ -8,9 +8,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use chrono::NaiveDate;
 use serde::Serialize;
 
-use crate::law::SourceRef;
+use crate::law::{SourceRef, StepKind};
 use crate::process::Process;
 use crate::register::RegisterLink;
 
@@ -88,7 +89,7 @@ pub struct MapInput<'a> {
     pub registers: &'a [RegisterLink],
     /// The day whose version of each regulation the map reads (as the
     /// fragment route of an article does).
-    pub date: chrono::NaiveDate,
+    pub date: NaiveDate,
 }
 
 /// Nodes and edges, deduplicated and in a stable order.
@@ -185,5 +186,95 @@ pub fn build(input: &MapInput) -> Map {
         let a = b.article(&m.legal_basis);
         b.edge(&proc, &a, EdgeKind::LegalBasis);
     }
+    cell_part(&mut b, input);
+    if let Some(portal) = p.portal() {
+        b.edge(
+            &proc,
+            &event_id(&portal.stream, &portal.event),
+            EdgeKind::Portal,
+        );
+    }
     b.finish(id)
+}
+
+fn event_id(stream: &str, event: &str) -> String {
+    format!("event:{stream}/{event}")
+}
+
+/// The edge of a step of the chain of an event to its article; `None` for a
+/// step that is not one. A submission is how an application is established
+/// (RFC-046). The decision on it is an edge between articles (see
+/// [`cell_part`]), not one from the event.
+fn step_edge(kind: StepKind) -> Option<EdgeKind> {
+    Some(match kind {
+        StepKind::Submission | StepKind::Establishes => EdgeKind::Establishes,
+        StepKind::Hook => EdgeKind::Hook,
+        StepKind::Extends => EdgeKind::Extends,
+        StepKind::Origin => EdgeKind::Origin,
+        _ => return None,
+    })
+}
+
+/// The article of a regulation with this output, in the version of `date`.
+fn output_article(p: &Process, regulation: &str, output: &str, date: NaiveDate) -> Option<String> {
+    p.service
+        .resolver()
+        .get_article_by_output(regulation, output, Some(date))
+        .map(|a| format!("{regulation}#{}", a.number))
+}
+
+/// The cell of the process, its streams and events, and per event the
+/// articles of its chain ([`crate::law::Explanation`]), the decisions on it
+/// and the policies that fill in a field beforehand.
+fn cell_part(b: &mut Builder, input: &MapInput) {
+    let p = input.process;
+    let cell = &p.cell;
+    let c = b.node(
+        format!("cell:{}", cell.id()),
+        NodeKind::Cell,
+        cell.id(),
+        SourceRef::config("cell", "id"),
+    );
+    for stream in &cell.streams {
+        let s = b.node(
+            format!("stream:{}", stream.id),
+            NodeKind::Stream,
+            &stream.id,
+            SourceRef::config(&format!("stream/{}", stream.id), "events"),
+        );
+        b.edge(&c, &s, EdgeKind::Records);
+        for event in &stream.events {
+            let e = b.node(
+                event_id(&stream.id, &event.name),
+                NodeKind::Event,
+                &event.name,
+                SourceRef::stream(&stream.id, &event.name),
+            );
+            b.edge(&s, &e, EdgeKind::Records);
+            for step in &event.explanation.event {
+                let (Some(kind), Some(law)) = (step_edge(step.kind), &step.source.law) else {
+                    continue;
+                };
+                let a = b.article(law);
+                b.edge(&e, &a, kind);
+            }
+            // The first article that takes part is the one that establishes
+            // the event (see `crate::law::establish`).
+            let Some(establishing) = event.establishes.first().map(|a| b.article(a)) else {
+                continue;
+            };
+            for decider in &event.decided_by {
+                let d = b.article(decider);
+                b.edge(&d, &establishing, EdgeKind::DecidesOn);
+            }
+            for prefill in event.prefill.values() {
+                if let Some(policy) =
+                    output_article(p, &prefill.regulation, &prefill.output, input.date)
+                {
+                    let policy = b.article(&policy);
+                    b.edge(&establishing, &policy, EdgeKind::Prefill);
+                }
+            }
+        }
+    }
 }
