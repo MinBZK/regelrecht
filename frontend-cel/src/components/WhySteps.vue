@@ -1,35 +1,21 @@
 <script setup>
 // A chain of steps of the "waarom?", numbered, as the cell gives them: per
-// step where it is written and the reason. "Toon YAML" fetches the fragment
-// the cell loaded (once, see why.js) and shows it with file and lines.
+// step where it is written and the reason. "Toon YAML" shows the fragment
+// the cell loaded (FragmentView) with file and lines.
 import { inject, ref } from 'vue';
 import { fragmentPath, stepLabel } from '../why.js';
+import FragmentView from './FragmentView.vue';
 
 defineProps({
   steps: { type: Array, default: () => [] },
 });
 
-// fragment(source) -> Promise<{file, line, end_line, yaml}>, provided by
-// ProcessView; without it there is no YAML to show.
+// Provided by ProcessView; without it there is no YAML to show.
 const fragment = inject('fragment', null);
 const open = ref({});
-const loading = ref({});
-const error = ref({});
 
-async function toggle(i, step) {
-  error.value = { ...error.value, [i]: '' };
-  if (open.value[i]) {
-    open.value = { ...open.value, [i]: null };
-    return;
-  }
-  loading.value = { ...loading.value, [i]: true };
-  try {
-    open.value = { ...open.value, [i]: await fragment(step.source) };
-  } catch (e) {
-    error.value = { ...error.value, [i]: e.message };
-  } finally {
-    loading.value = { ...loading.value, [i]: false };
-  }
+function toggle(i) {
+  open.value = { ...open.value, [i]: !open.value[i] };
 }
 </script>
 
@@ -48,20 +34,10 @@ async function toggle(i, step) {
             :text="open[i] ? 'Verberg YAML' : 'Toon YAML'"
             :accessible-label="`${open[i] ? 'Verberg' : 'Toon'} YAML van ${stepLabel(s)}`"
             :expanded="Boolean(open[i])"
-            :loading="loading[i] || undefined"
-            @click="toggle(i, s)"
+            @click="toggle(i)"
           ></nldd-button>
         </nldd-container>
-        <template v-if="open[i]">
-          <nldd-rich-text><p>{{ open[i].file }}, regel {{ open[i].line }}–{{ open[i].end_line }}</p></nldd-rich-text>
-          <nldd-code-viewer language="yaml" wrap>{{ open[i].yaml }}</nldd-code-viewer>
-        </template>
-        <nldd-inline-dialog
-          v-if="error[i]"
-          variant="alert"
-          text="Fragment niet te laden"
-          :supporting-text="error[i]"
-        ></nldd-inline-dialog>
+        <FragmentView v-if="open[i]" :source="s.source" />
       </nldd-container>
     </nldd-list-item>
   </nldd-list>

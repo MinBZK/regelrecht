@@ -14,8 +14,9 @@
   },
   "dependencies": {
     "@nldd/design-system": "^0.8.88",
-    "vue": "^3.5.42",
-    "@regelrecht/frontend-shared": "*"
+    "@regelrecht/frontend-shared": "*",
+    "@vue-flow/core": "^1.48.2",
+    "vue": "^3.5.42"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.7",

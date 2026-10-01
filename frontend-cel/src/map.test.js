@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { collapse, columnLayout, followEvent } from './map.js';
+import { collapse, columnLayout, followEvent, nodeText } from './map.js';
 
 // A map as the runtime gives it: the portal event, established by Wpp 102,
 // hooked by Awb 4:2 and 4:13, Wpp 107 decides on 102.
@@ -74,5 +74,14 @@ describe('columnLayout', () => {
     expect(pos.get('process:p').x).toBeLessThan(pos.get('event:a/ontvangen').x);
     expect(pos.get('event:a/ontvangen').x).toBeLessThan(pos.get('law:wpp').x);
     expect(pos.get('law:awb').y).toBeLessThan(pos.get('law:wpp').y);
+  });
+});
+
+describe('nodeText', () => {
+  it('names the kind, the law of an article and the count of a folded law', () => {
+    const m = collapse(map, new Set(['awb']));
+    expect(nodeText(m.nodes.find((n) => n.id === 'stream:a'))).toBe('stroom: a');
+    expect(nodeText(m.nodes.find((n) => n.id === 'article:awb#4:2'))).toBe('awb art. 4:2');
+    expect(nodeText(m.nodes.find((n) => n.id === 'law:wpp'))).toBe('wet wpp (2)');
   });
 });

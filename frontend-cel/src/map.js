@@ -3,12 +3,15 @@
 // column per kind (configuration left, the law right). Pure functions; the
 // view hands the result to vue-flow.
 
+// The process stands alone in the first column, so its edges to channels,
+// roles and actions run to the right like every other edge.
 export const COLUMN = {
-  process: 0, channel: 0, role: 0, action: 0,
-  cell: 1, stream: 1, register: 1, source_cell: 1,
-  event: 2,
-  lexostatus: 3,
-  article: 4, law: 4,
+  process: 0,
+  channel: 1, role: 1, action: 1,
+  cell: 2, stream: 2, register: 2, source_cell: 2,
+  event: 3,
+  lexostatus: 4,
+  article: 5, law: 5,
 };
 export const COL_W = 300;
 export const ROW_H = 64;
@@ -91,7 +94,7 @@ export function followEvent(map, event) {
 export function columnLayout(nodes) {
   const columns = new Map();
   for (const n of nodes) {
-    const c = COLUMN[n.kind] ?? 1;
+    const c = COLUMN[n.kind] ?? 2;
     if (!columns.has(c)) columns.set(c, []);
     columns.get(c).push(n);
   }
@@ -104,4 +107,18 @@ export function columnLayout(nodes) {
       .forEach(([, id], row) => pos.set(id, { x: c * COL_W, y: row * ROW_H }));
   }
   return pos;
+}
+
+// What a kind of node is called on the page.
+export const KIND_TEXT = {
+  process: 'proces', channel: 'kanaal', role: 'rol', action: 'handeling',
+  cell: 'cel', stream: 'stroom', register: 'register', source_cell: 'broncel',
+  event: 'event', lexostatus: 'lexostatus', article: 'artikel', law: 'wet',
+};
+
+/** The text of a node in the graph: its kind and its name; a law with its count. */
+export function nodeText(n) {
+  if (n.kind === 'law') return `wet ${n.label} (${n.count})`;
+  if (n.kind === 'article') return `${n.regulation} art. ${n.label}`;
+  return `${KIND_TEXT[n.kind] ?? n.kind}: ${n.label}`;
 }

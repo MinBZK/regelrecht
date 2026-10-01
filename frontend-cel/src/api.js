@@ -61,6 +61,9 @@ export function processApi(id) {
     possibilities: () => request('GET', `${p}/possibilities`),
     // Default data per action; also without a login.
     examples: () => request('GET', `${p}/examples`),
+    // The map of the process: configuration, events, lexostatuses and the
+    // articles they touch, as {process, nodes, edges}; also without a login.
+    map: () => request('GET', `${p}/map`),
     // The YAML fragment behind a step of the "waarom?"; also without login.
     // `path` comes from fragmentPath in why.js, which is also the cache key.
     fragment: (path) => request('GET', `${p}${path}`),

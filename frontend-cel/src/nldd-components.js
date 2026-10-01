@@ -8,6 +8,7 @@
 // here on purpose: such a name has to exist, not to be imported.
 //
 // Regenerate: npm run nldd:imports
+import '@nldd/design-system/activity-indicator';
 import '@nldd/design-system/button';
 import '@nldd/design-system/button-group';
 import '@nldd/design-system/cell';
@@ -36,4 +37,5 @@ import '@nldd/design-system/table';
 import '@nldd/design-system/text-cell';
 import '@nldd/design-system/text-field';
 import '@nldd/design-system/title';
+import '@nldd/design-system/token';
 import '@nldd/design-system/top-navigation-bar';

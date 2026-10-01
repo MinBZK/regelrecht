@@ -8,12 +8,17 @@
 import { computed, onMounted, ref } from 'vue';
 import { fetchCells, fetchProcesses } from './api.js';
 import CellView from './views/CellView.vue';
+import MapView from './views/MapView.vue';
 import ProcessView from './views/ProcessView.vue';
 
 const cells = ref([]);
 const processes = ref([]);
-// What is open: `process:<id>` or `cell:<id>`, or null for the overview.
+// What is open: `process:<id>`, `cell:<id>`, the map (MAP), or null for the
+// overview.
 const chosen = ref(null);
+// The map page has a path of its own, so it can be linked: /opbouw.
+const MAP = 'opbouw';
+if (location.pathname.replace(/\/$/, '') === `/${MAP}`) chosen.value = MAP;
 const error = ref('');
 const loaded = ref(false);
 
@@ -52,7 +57,7 @@ onMounted(async () => {
   try {
     [cells.value, processes.value] = await Promise.all([fetchCells(), fetchProcesses()]);
     // If there is only one process with a portal, it opens directly.
-    if (portals.value.length === 1) chosen.value = `process:${portals.value[0].id}`;
+    if (portals.value.length === 1 && chosen.value === null) chosen.value = `process:${portals.value[0].id}`;
   } catch (e) {
     error.value = e.message;
   } finally {
@@ -63,6 +68,7 @@ onMounted(async () => {
 function tab(e) {
   const to = e.detail?.item?.dataset?.item;
   chosen.value = to === '' ? null : (to ?? chosen.value);
+  history.replaceState(null, '', chosen.value === MAP ? `/${MAP}` : '/');
 }
 
 function processText(p) {
@@ -105,6 +111,7 @@ function cellText(c) {
       <template v-else-if="loaded">
         <nldd-tab-bar size="md" accessible-label="Proces of cel" @tabchange="tab">
           <nldd-tab-bar-item data-item="" text="Overzicht" :current="chosen === null || undefined"></nldd-tab-bar-item>
+          <nldd-tab-bar-item :data-item="MAP" text="Opbouw" :current="chosen === MAP || undefined"></nldd-tab-bar-item>
           <nldd-tab-bar-item
             v-for="p in processes"
             :key="`process:${p.id}`"
@@ -121,7 +128,8 @@ function cellText(c) {
           ></nldd-tab-bar-item>
         </nldd-tab-bar>
         <nldd-spacer size="24"></nldd-spacer>
-        <ProcessView v-if="process && cellOf(process)" :key="chosen" :process="process" :cell="cellOf(process)" />
+        <MapView v-if="chosen === MAP" :processes="processes" />
+        <ProcessView v-else-if="process && cellOf(process)" :key="chosen" :process="process" :cell="cellOf(process)" />
         <CellView
           v-else-if="cell"
           :key="chosen"
