@@ -686,6 +686,24 @@ fn override_key(law_id: &str, article: &str) -> String {
     format!("override:{law_id}\0{article}")
 }
 
+/// The article of `target_law` whose `output` `article` replaces (a
+/// replacing, not voiding, override), when that article produces it.
+fn replaced_article<'l>(
+    article: &Article,
+    target_law: &'l ArticleBasedLaw,
+    output: &str,
+) -> Option<&'l Article> {
+    article
+        .get_overrides()?
+        .iter()
+        .filter(|d| !d.voids && d.law == target_law.id && d.output == output)
+        .find_map(|d| {
+            target_law
+                .find_article_by_number(&d.article)
+                .filter(|target| target.has_output(output))
+        })
+}
+
 /// The key the implementation in `law_id` article `article` of an open term
 /// of `implemented` is held back under, while that article reads that law. Per
 /// implemented law: an article filling terms in two laws and reading one of
@@ -3736,12 +3754,19 @@ impl LawExecutionService {
             // resolved. Use \0 as separator to prevent key collisions, and an
             // "internal:" prefix to keep keys distinct from external references.
             // What is held back for a base read is part of the key: the
-            // held-back evaluation is another resolution.
+            // held-back evaluation is another resolution. An article reading
+            // an output of its own law that it replaces or fills in reads its
+            // base value, as across laws.
+            let base_of = self.read_as_base(article, law, &law.id, output_name, res_ctx);
             let internal_key = format!(
                 "internal:{}\0{}{}",
                 law.id,
                 output_name,
-                res_ctx.held_back_suffix()
+                if base_of.is_empty() {
+                    res_ctx.held_back_suffix()
+                } else {
+                    res_ctx.held_back_suffix_with(&base_of)
+                }
             );
             if res_ctx.is_visited(&internal_key) {
                 res_ctx.trace_set_message(format!(
@@ -3754,7 +3779,16 @@ impl LawExecutionService {
                 )));
             }
 
-            let ref_article = match law.find_article_by_output(output_name) {
+            // A base read of an output this article replaces reads the
+            // article the override names: with a same-law override two
+            // articles produce the output, and the general one is meant.
+            let base_target = if base_of.is_empty() {
+                None
+            } else {
+                replaced_article(article, law, output_name)
+            };
+            let ref_article = match base_target.or_else(|| law.find_article_by_output(output_name))
+            {
                 Some(a) => a,
                 None => {
                     res_ctx.trace_set_message(format!(
@@ -3799,6 +3833,10 @@ impl LawExecutionService {
                 )));
             }
 
+            let newly_held: Vec<&String> = base_of
+                .iter()
+                .filter(|held| res_ctx.held_back.insert((*held).clone()))
+                .collect();
             let eval_result = self.evaluate_article_with_service(
                 ref_article,
                 law,
@@ -3807,6 +3845,9 @@ impl LawExecutionService {
                 "BESLUIT",
                 res_ctx,
             );
+            for held in newly_held {
+                res_ctx.held_back.remove(held);
+            }
 
             // Leave scope (even on error, for correct cycle tracking)
             res_ctx.leave(&internal_key);
@@ -3947,21 +3988,16 @@ impl LawExecutionService {
         if fills_in {
             held.push(implementation_key(&law.id, &article.number, regulation));
         }
-        // Only an article that replaces this output pays for the lookup of
-        // the article producing it: this runs on every sourced input.
-        let replacing: Vec<_> = article
-            .get_overrides()
-            .into_iter()
-            .flatten()
-            .filter(|d| !d.voids && d.law == regulation && d.output == output)
-            .collect();
-        if replacing.is_empty() {
+        // Only an article with overrides pays for the lookup of the law
+        // producing the output: this runs on every sourced input.
+        if article.get_overrides().is_none() {
             return held;
         }
         let replaces = self
             .resolver
-            .get_article_by_output(regulation, output, res_ctx.reference_date())
-            .is_some_and(|target| replacing.iter().any(|d| d.article == target.number));
+            .get_law_for_date(regulation, res_ctx.reference_date())
+            .and_then(|target_law| replaced_article(article, target_law, output))
+            .is_some();
         if replaces {
             held.push(override_key(&law.id, &article.number));
         }
@@ -5875,6 +5911,130 @@ articles:
                 other => panic!("{actions}: expected the override to be refused, got {other:?}"),
             }
         }
+    }
+
+    /// A same-law override reading the output it replaces through a same-law
+    /// reference (`source: {output}`) reads the base value, as across laws.
+    #[test]
+    fn a_same_law_override_reads_its_base_through_a_same_law_reference() {
+        let law = r#"
+$id: boterhammenwet
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Men eet twee boterhammen.
+    machine_readable:
+      execution:
+        output:
+          - name: aantal_boterhammen
+            type: number
+        actions:
+          - output: aantal_boterhammen
+            value: 2
+  - number: '2'
+    text: In afwijking van artikel 1 eet men er twee keer zoveel.
+    machine_readable:
+      overrides:
+        - law: boterhammenwet
+          article: '1'
+          output: aantal_boterhammen
+      execution:
+        input:
+          - name: basis
+            type: number
+            source:
+              output: aantal_boterhammen
+        output:
+          - name: aantal_boterhammen
+            type: number
+        actions:
+          - output: aantal_boterhammen
+            value:
+              operation: MULTIPLY
+              values: [2, $basis]
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+        // Asked through the general article (the override applies within its
+        // own law) and through the overriding one: doubled once, not twice.
+        let result = service
+            .evaluate_law_output(
+                "boterhammenwet",
+                "aantal_boterhammen",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("aantal_boterhammen"),
+            Some(&Value::Int(4))
+        );
+    }
+
+    /// A same-law implementation reading the output it fills in through a
+    /// same-law reference reads the default, as across laws.
+    #[test]
+    fn a_same_law_implementation_reads_the_default_through_a_same_law_reference() {
+        let law = r#"
+$id: boterhammenwet
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Men eet twee boterhammen, tenzij anders bepaald.
+    machine_readable:
+      open_terms:
+        - id: aantal_boterhammen
+          type: number
+          required: true
+          default:
+            actions:
+              - output: aantal_boterhammen
+                value: 2
+      execution:
+        output:
+          - name: aantal_boterhammen
+            type: number
+        actions:
+          - output: aantal_boterhammen
+            value: $aantal_boterhammen
+  - number: '2'
+    text: Gelet op artikel 1 eet men er een meer.
+    machine_readable:
+      implements:
+        - law: boterhammenwet
+          article: '1'
+          open_term: aantal_boterhammen
+      execution:
+        input:
+          - name: basis
+            type: number
+            source:
+              output: aantal_boterhammen
+        output:
+          - name: aantal_boterhammen
+            type: number
+        actions:
+          - output: aantal_boterhammen
+            value:
+              operation: ADD
+              values: [$basis, 1]
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+        let result = service
+            .evaluate_law_output(
+                "boterhammenwet",
+                "aantal_boterhammen",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("aantal_boterhammen"),
+            Some(&Value::Int(3))
+        );
     }
 
     /// An article filling open terms in two laws, reading one of them, is held
