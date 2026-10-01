@@ -419,6 +419,7 @@ pub fn set_form(d: &mut ProcessDefinition, service: &LawExecutionService, cell: 
                             legal_basis: Vec::new(),
                             optional: false,
                             supplied: None,
+                            why: None,
                         }
                     })
                     .collect()
@@ -528,6 +529,7 @@ fn fact_field(
         legal_basis: field_legal_basis(event, &paths, effective_at),
         optional: false,
         supplied: None,
+        why: None,
     }
 }
 

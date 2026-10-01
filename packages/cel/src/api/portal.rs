@@ -44,12 +44,14 @@ pub(super) async fn form_route(
         let intake = portal_intake(&state, event, &session, true);
         crate::form::with_supplied(&mut fields, event, &intake);
     }
+    let why = crate::form::explain(&mut fields, event, form, &state.process.definition);
     Ok(Json(json!({
         "cell": state.cell_id(),
         "stream": stream.document,
         "event": event.name,
         "title": form.and_then(|f| f.title.clone()),
         "fields": fields,
+        "why": why,
     })))
 }
 

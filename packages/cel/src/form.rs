@@ -28,6 +28,9 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::channel::Routes;
+use crate::config::ProcessDefinition;
+use crate::law::{SourceRef, Step, StepKind};
 use crate::load;
 use crate::stream::{Event, Shape};
 
@@ -103,6 +106,11 @@ pub struct Field {
     /// it as filled in automatically; the submission may not change it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub supplied: Option<Value>,
+    /// Why the field is on the form and why it has its value
+    /// ([`crate::law::FieldExplanation`]), with the presentation and what
+    /// the channel supplies; see [`explain`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub why: Option<crate::law::FieldExplanation>,
 }
 
 /// Add to the fields what `intake` supplies (`$intake.supplied`), per field,
@@ -126,6 +134,110 @@ pub fn with_supplied(fields: &mut [Field], event: &Event, intake: &Value) {
             f.supplied = Some(s);
         }
     }
+}
+
+/// Why the form looks the way it does: the explanation of the event that
+/// the law composed ([`crate::law::Explanation`], the same as in the stream
+/// document), with what only the process knows: the portal that records the
+/// event, the channel that supplies a field and the form file that gives
+/// order, groups and labels. Sets `why` per field and returns `{event,
+/// excluded}` for the form as a whole.
+pub fn explain(
+    fields: &mut [Field],
+    event: &Event,
+    form: Option<&Form>,
+    process: &ProcessDefinition,
+) -> Value {
+    // Without a portal there is no form; the stream then stands in for it.
+    let stream = process.portal.as_ref().map(|p| {
+        (
+            SourceRef::config(&format!("stream/{}", p.stream), &p.event),
+            p,
+        )
+    });
+    let mut chain = Vec::new();
+    if let Some((_, p)) = &stream {
+        chain.push(Step::new(
+            StepKind::Process,
+            SourceRef::config("process", "portal"),
+            format!(
+                "het portaal legt '{}' vast in stroom '{}' (cel {})",
+                p.event, p.stream, p.cell
+            ),
+        ));
+    }
+    chain.extend(event.explanation.event.iter().cloned());
+    let screen = process
+        .portal
+        .as_ref()
+        .and_then(|p| p.form.as_ref())
+        .filter(|_| form.is_some());
+    match (screen, &stream) {
+        (Some(s), _) => chain.push(Step::new(
+            StepKind::Presentation,
+            SourceRef::config("form", &s.screen),
+            format!(
+                "scherm '{}': volgorde, groepen en labels (het formulier bepaalt geen gedrag)",
+                s.screen
+            ),
+        )),
+        (None, Some((source, _))) => chain.push(Step::new(
+            StepKind::Presentation,
+            source.clone(),
+            "geen formulier: labels uit de wet, volgorde van de stroom",
+        )),
+        (None, None) => {}
+    }
+    let channels = process.channels_with(Routes::Portal);
+    for f in fields.iter_mut() {
+        let mut why = event
+            .explanation
+            .fields
+            .get(&f.name)
+            .cloned()
+            .unwrap_or_default();
+        let in_form = form.is_some_and(|x| x.fields.iter().any(|v| v.name == f.name));
+        why.here.push(if in_form && screen.is_some() {
+            Step::new(
+                StepKind::Presentation,
+                SourceRef::config("form", &f.name),
+                format!(
+                    "label '{}'{}",
+                    f.label,
+                    f.group
+                        .as_deref()
+                        .map(|g| format!(", groep '{g}'"))
+                        .unwrap_or_default()
+                ),
+            )
+        } else {
+            // The article that declares the field; a field the law did not
+            // compose has only the stream.
+            let source = event
+                .field_defs
+                .iter()
+                .find(|d| d.name == f.name)
+                .map(|d| SourceRef::law(&d.declared_by))
+                .or_else(|| stream.as_ref().map(|(s, _)| s.clone()))
+                .unwrap_or_default();
+            Step::new(
+                StepKind::Presentation,
+                source,
+                format!("label '{}' uit de wet: het formulier zwijgt", f.label),
+            )
+        });
+        for (id, k) in &channels {
+            if let Some(from) = k.supplies.get(&f.name) {
+                why.value.push(Step::new(
+                    StepKind::Supply,
+                    SourceRef::config("process", id),
+                    format!("het kanaal '{id}' levert {}: {from} (supplies)", f.name),
+                ));
+            }
+        }
+        f.why = Some(why);
+    }
+    serde_json::json!({"event": chain, "excluded": event.explanation.excluded})
 }
 
 /// A name made readable, as the label of a field without a label or of a
@@ -196,6 +308,7 @@ impl FieldDoc {
             legal_basis: legal_basis_from(self.legal_basis.as_ref()),
             optional: false,
             supplied: None,
+            why: None,
         }
     }
 }
@@ -333,6 +446,7 @@ pub fn fields(event: &Event, form: Option<&Form>) -> Result<Vec<Field>, String> 
                 legal_basis: Vec::new(),
                 optional: false,
                 supplied: None,
+                why: None,
             });
         }
     }

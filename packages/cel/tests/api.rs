@@ -5284,3 +5284,116 @@ async fn a_change_of_the_general_law_reaches_the_application() {
     }
     assert_eq!(hashes[0], hashes[1]);
 }
+
+/// The kinds of the steps of a chain, in order.
+fn kinds(steps: &Value) -> Vec<&str> {
+    steps
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["kind"].as_str().unwrap())
+        .collect()
+}
+
+/// Every source a `why` of the form names resolves to a fragment.
+async fn every_source_resolves(app: &Router, process: &str, form: &Value) {
+    let mut steps: Vec<&Value> = form["why"]["event"].as_array().unwrap().iter().collect();
+    for f in form["fields"].as_array().unwrap() {
+        for part in ["here", "value"] {
+            steps.extend(f["why"][part].as_array().unwrap());
+        }
+    }
+    for s in steps {
+        let source = &s["source"];
+        let uri = match source["law"].as_str() {
+            Some(law) => format!("{process}/api/law/{}", law.replace('#', "/")),
+            None => format!(
+                "{process}/api/config/{}?anchor={}",
+                source["config"].as_str().unwrap(),
+                source["anchor"].as_str().unwrap()
+            ),
+        };
+        let (status, body, _) = call(app, "GET", &uri, None, None).await;
+        assert_eq!(status, StatusCode::OK, "{uri}: {body}");
+    }
+}
+
+/// The form says per field why it is there and why it has its value, and
+/// for the form as a whole the chain from the portal to the presentation.
+/// It is the same composition as the stream document: no second copy.
+#[tokio::test]
+async fn the_form_says_why() {
+    let data = tempfile::tempdir().unwrap();
+    let app = app(data.path());
+    let a = toeslag_login_as(&app, "123456789").await;
+    let (_, form, _) = call(&app, "GET", &format!("{TOESLAG}/api/form"), Some(&a), None).await;
+    let chain = kinds(&form["why"]["event"]);
+    assert_eq!(chain.first(), Some(&"process"), "{chain:?}");
+    assert_eq!(
+        chain[1..4],
+        ["stream", "submission", "decides_on"],
+        "{chain:?}"
+    );
+    assert!(
+        chain.contains(&"hook") && chain.contains(&"origin"),
+        "{chain:?}"
+    );
+    // Without a form file the presentation comes from the law and the stream.
+    assert_eq!(chain.last(), Some(&"presentation"), "{chain:?}");
+    assert!(form["why"]["excluded"].is_array(), "{form}");
+    // Via the hook of the general law.
+    let adres = form_field(&form, "adres_aanvrager").unwrap();
+    assert!(kinds(&adres["why"]["here"]).contains(&"hook"), "{adres}");
+    assert_eq!(adres["why"]["value"][0]["kind"], "origin");
+    assert!(adres["why"]["value"][0]["reason"]
+        .as_str()
+        .unwrap()
+        .contains("BELANGHEBBENDE"));
+    // Without a form file the label comes from the law.
+    let last = adres["why"]["here"].as_array().unwrap().last().unwrap();
+    assert_eq!(last["kind"], "presentation", "{adres}");
+    assert!(last["source"]["law"].is_string(), "{adres}");
+    // Prefilled from the register.
+    let naam = form_field(&form, "naam_aanvrager").unwrap();
+    assert!(kinds(&naam["why"]["value"]).contains(&"prefill"), "{naam}");
+    // The channel supplies the signature: the policy overrides the origin,
+    // the channel names what it supplies.
+    let o = form_field(&form, "ondertekening").unwrap();
+    assert_eq!(
+        kinds(&o["why"]["value"]),
+        ["origin", "origin", "supply"],
+        "{o}"
+    );
+    let supply = o["why"]["value"].as_array().unwrap().last().unwrap();
+    assert_eq!(
+        supply["source"],
+        json!({"config": "process", "anchor": "persoon"}),
+        "{o}"
+    );
+    every_source_resolves(&app, TOESLAG, &form).await;
+    // The stream document carries the same chain of the event.
+    let (_, stream, _) = call(
+        &app,
+        "GET",
+        &format!("{TOESLAG_CELL}/api/stream"),
+        None,
+        None,
+    )
+    .await;
+    assert!(stream.to_string().contains("\"explanation\""), "{stream}");
+
+    // With a form file: order, groups and labels come from the form.
+    let (_, form, _) = call(&app, "GET", &format!("{AGENCY}/api/form"), None, None).await;
+    let chain = form["why"]["event"].as_array().unwrap();
+    let last = chain.last().unwrap();
+    assert_eq!(last["kind"], "presentation", "{last}");
+    assert_eq!(last["source"]["config"], "form", "{last}");
+    let naam = form_field(&form, "naam").unwrap();
+    let last = naam["why"]["here"].as_array().unwrap().last().unwrap();
+    assert_eq!(
+        last["source"],
+        json!({"config": "form", "anchor": "naam"}),
+        "{naam}"
+    );
+    every_source_resolves(&app, AGENCY, &form).await;
+}
