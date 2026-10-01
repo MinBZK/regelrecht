@@ -4998,6 +4998,13 @@ async fn a_register_fact_with_and_without_the_register() {
     let n = form_field(&form, "naam_aanvrager").unwrap();
     assert_eq!(n["supplied"]["value"], "A. Voorbeeld", "{n}");
     assert_eq!(n["supplied"]["source"], "register");
+    // The form shows the trace of the run that supplied the value ...
+    assert!(
+        n["supplied"]["trace_text"]
+            .as_str()
+            .is_some_and(|t| t.contains("testbeleid_toeslag")),
+        "{n}"
+    );
     let (_, known, _) = call(
         &app,
         "POST",
@@ -5034,6 +5041,8 @@ async fn a_register_fact_with_and_without_the_register() {
     .await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
     assert_eq!(body["gram"]["fields"]["naam_aanvrager"], "A. Voorbeeld");
+    // ... the gram does not carry it.
+    assert!(!body.to_string().contains("trace_text"), "{body}");
     assert_eq!(
         body["gram"]["field_provenance"]["naam_aanvrager"],
         json!({"source": "register", "legal_basis": ["testbeleid_toeslag#5"]})

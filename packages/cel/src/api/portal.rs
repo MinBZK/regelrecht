@@ -41,7 +41,7 @@ pub(super) async fn form_route(
     let form = state.process.form.as_ref();
     let mut fields = crate::form::fields(event, form).map_err(internal)?;
     if let Ok(session) = logged_in(&state, &headers) {
-        let intake = portal_intake(&state, event, &session);
+        let intake = portal_intake(&state, event, &session, true);
         crate::form::with_supplied(&mut fields, event, &intake);
     }
     Ok(Json(json!({
@@ -75,8 +75,14 @@ fn owner_of<'s>(state: &ProcessState, session: &'s Session) -> Option<(String, &
 
 /// What the portal passes under `$intake` for the applicant: the channel and
 /// its fields, what the channel supplies to the application (with the day of
-/// submission) and what a register fills in beforehand.
-fn portal_intake(state: &ProcessState, event: &stream::Event, session: &Session) -> Value {
+/// submission) and what a register fills in beforehand; `with_trace` only
+/// for the form (see [`channel::prefill`]), never for what is recorded.
+fn portal_intake(
+    state: &ProcessState,
+    event: &stream::Event,
+    session: &Session,
+    with_trace: bool,
+) -> Value {
     let mut intake = channel::intake(
         &event.intake,
         state.process.definition.channels_with(Routes::Portal),
@@ -91,6 +97,7 @@ fn portal_intake(state: &ProcessState, event: &stream::Event, session: &Session)
         event,
         &state.process.service,
         &today.format("%Y-%m-%d").to_string(),
+        with_trace,
     );
     intake
 }
@@ -136,7 +143,7 @@ async fn request_for(
         actor: state.process.definition.actor.clone(),
         stream: stream.id.clone(),
         event: event.name.clone(),
-        intake: portal_intake(state, event, session),
+        intake: portal_intake(state, event, session, false),
         external: concept.external.clone(),
         refers_to: concept.refers_to.clone(),
         decision: None,

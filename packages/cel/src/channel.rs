@@ -359,7 +359,17 @@ pub fn supply(
 /// supplies, by name. A value goes under `$intake.supplied` with `source:
 /// register`; without a value (the register does not know it, or a
 /// parameter is missing) the applicant fills the field in.
-pub fn prefill(intake: &mut Value, event: &Event, service: &LawExecutionService, date: &str) {
+///
+/// With `with_trace` the value carries the engine's trace (`trace_text`),
+/// for the form; the route that records leaves it out, so it never reaches
+/// a gram.
+pub fn prefill(
+    intake: &mut Value,
+    event: &Event,
+    service: &LawExecutionService,
+    date: &str,
+    with_trace: bool,
+) {
     if event.prefill.is_empty() {
         return;
     }
@@ -387,13 +397,18 @@ pub fn prefill(intake: &mut Value, event: &Event, service: &LawExecutionService,
             .iter()
             .filter_map(|q| Some((q.name.clone(), known.get(&q.name)?.clone())))
             .collect();
-        let e =
-            crate::assessment::evaluate(service, &p.regulation, &[&p.output], &parameters, date);
+        let evaluate = if with_trace {
+            crate::assessment::evaluate_with_trace
+        } else {
+            crate::assessment::evaluate
+        };
+        let e = evaluate(service, &p.regulation, &[&p.output], &parameters, date);
         if let Some(value) = e.values.get(&p.output).filter(|v| !v.is_null()) {
-            found.insert(
-                field.clone(),
-                serde_json::json!({"value": value, "source": "register", "legal_basis": p.legal_basis}),
-            );
+            let mut s = serde_json::json!({"value": value, "source": "register", "legal_basis": p.legal_basis});
+            if let Some(t) = e.trace_text.filter(|_| with_trace) {
+                s["trace_text"] = Value::String(t);
+            }
+            found.insert(field.clone(), s);
         }
     }
     if let Some(m) = intake.as_object_mut() {

@@ -124,6 +124,7 @@ pub(super) async fn counter_submit(
         event,
         &state.process.service,
         &now.date_naive().format("%Y-%m-%d").to_string(),
+        false,
     );
     if let Value::Object(m) = &mut intake {
         crate::gram::set_path(m, &path, Value::String(input.received_at.clone()));
