@@ -56,12 +56,14 @@ impl Runtime {
         let service = Arc::new(corpus.service);
         let loaded = Arc::new(corpus.regulations);
         let regulation_files = Arc::new(corpus.files);
+        // A relative `REGULATION_PATH` of one component has an empty parent.
         let root = Arc::new(
             config
                 .regulation_path
                 .parent()
-                .map(Path::to_path_buf)
-                .unwrap_or_default(),
+                .filter(|p| !p.as_os_str().is_empty())
+                .unwrap_or(Path::new("."))
+                .to_path_buf(),
         );
         let dirs = cell_dirs(&config.cells_path).map_err(|e| vec![e])?;
         // The shape of an event follows from the law as it applies today.

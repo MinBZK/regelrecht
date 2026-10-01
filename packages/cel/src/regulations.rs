@@ -26,10 +26,32 @@ use crate::gram::LoadedRegulation;
 pub struct Corpus {
     pub service: LawExecutionService,
     pub regulations: Vec<LoadedRegulation>,
-    /// The file of every loaded regulation, per `(id, valid_from)` as in
-    /// [`LoadedRegulation`] (which stays without a path: it goes into the
-    /// receipt).
+    /// The file of every loaded regulation, per `(id, version)` with the
+    /// version as the engine knows it ([`version_key`]); see [`file_of`].
     pub files: BTreeMap<(String, String), PathBuf>,
+}
+
+/// The version of a regulation as the engine selects it: `valid_from`,
+/// otherwise `publication_date`. Not the file name, which the receipt
+/// prefers (see `inventory`): in the corpus they differ.
+pub fn version_key(valid_from: Option<&str>, publication_date: &str) -> String {
+    valid_from.unwrap_or(publication_date).to_string()
+}
+
+/// The file of the version of `id` that the engine applies on `date` (the
+/// newest without one).
+pub fn file_of<'f>(
+    files: &'f BTreeMap<(String, String), PathBuf>,
+    service: &LawExecutionService,
+    id: &str,
+    date: Option<chrono::NaiveDate>,
+) -> Option<&'f PathBuf> {
+    let resolver = service.resolver();
+    let law = resolver
+        .get_law_for_date(id, date)
+        .or_else(|| resolver.get_law(id))?;
+    let version = version_key(law.valid_from.as_deref(), &law.publication_date);
+    files.get(&(id.to_string(), version))
 }
 
 /// Load every regulation (a YAML file with `$id` and `articles`) under a
@@ -89,9 +111,13 @@ pub fn load(map: &Path) -> Result<Corpus, Vec<String>> {
                             .map(|f| format!("{}: {f}", path.display())),
                     );
                 }
-                let inv = inventory(&path, &text, &doc, id);
-                regulation_files.insert((inv.id.clone(), inv.valid_from.clone()), path);
-                loaded.push(inv);
+                let read = |key: &str| doc.get(key).and_then(serde_yaml_ng::Value::as_str);
+                let version = version_key(
+                    read("valid_from"),
+                    read("publication_date").unwrap_or_default(),
+                );
+                regulation_files.insert((id.clone(), version), path.clone());
+                loaded.push(inventory(&path, &text, &doc, id));
             }
             Err(e) => errors.push(format!("{}: {e}", path.display())),
         }
@@ -379,6 +405,35 @@ mod tests {
         assert!(c.regulations.iter().any(|r| r.id == "testregeling_aanvraag"
             && r.valid_from == "2025-01-01"
             && r.sha256.len() == 64));
+    }
+
+    /// Two versions of one regulation whose file names are not their
+    /// `valid_from`, crosswise: the file follows the version the engine
+    /// applies, not the file name.
+    #[test]
+    fn the_file_of_the_version_the_engine_applies() {
+        // Under a plain directory: the loader skips hidden ones, like `.tmp…`.
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("corpus");
+        let version = |valid_from: &str| {
+            format!("$id: twee_versies\nname: Twee versies\nregulatory_layer: WET\npublication_date: '2019-01-01'\nvalid_from: '{valid_from}'\nurl: https://example.com\narticles:\n  - number: '1'\n    text: versie {valid_from}\n")
+        };
+        std::fs::create_dir_all(dir.join("twee_versies")).unwrap();
+        for (file, valid_from) in [
+            ("2021-01-01.yaml", "2020-01-01"),
+            ("2020-01-01.yaml", "2021-01-01"),
+        ] {
+            std::fs::write(dir.join("twee_versies").join(file), version(valid_from)).unwrap();
+        }
+        let c = load(&dir).unwrap();
+        let on = |date: &str| {
+            let date = chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").unwrap();
+            let file = file_of(&c.files, &c.service, "twee_versies", Some(date)).unwrap();
+            file.file_name().unwrap().to_string_lossy().to_string()
+        };
+        assert_eq!(on("2020-06-01"), "2021-01-01.yaml");
+        assert_eq!(on("2021-06-01"), "2020-01-01.yaml");
+        assert!(file_of(&c.files, &c.service, "bestaat_niet", None).is_none());
     }
 
     #[test]

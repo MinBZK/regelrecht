@@ -18,35 +18,19 @@ fn not_found(what: impl std::fmt::Display) -> Error {
 }
 
 /// `GET /api/law/{regulation}/{article}`: the block of the article in the
-/// version that applies today (the newest without one).
+/// version that applies today (by the process clock), the newest without one.
 pub(super) async fn law_route(
     State(state): State<ProcessState>,
     Path((regulation, article)): Path<(String, String)>,
 ) -> Result<Json<Fragment>, Error> {
-    let resolver = state.process.service.resolver();
     let today = (state.clock)().date_naive();
-    let law = resolver
-        .get_law_for_date(&regulation, Some(today))
-        .or_else(|| resolver.get_law(&regulation))
-        .ok_or_else(|| not_found(&regulation))?;
-    let valid_from = law
-        .valid_from
-        .clone()
-        .unwrap_or_else(|| law.publication_date.clone());
-    let of_id: Vec<&PathBuf> = state
-        .regulation_files
-        .iter()
-        .filter(|((id, _), _)| *id == regulation)
-        .map(|(_, p)| p)
-        .collect();
-    let file = state
-        .regulation_files
-        .get(&(regulation.clone(), valid_from))
-        .or(match of_id[..] {
-            [one] => Some(one),
-            _ => None,
-        })
-        .ok_or_else(|| not_found(&regulation))?;
+    let file = crate::regulations::file_of(
+        &state.regulation_files,
+        &state.process.service,
+        &regulation,
+        Some(today),
+    )
+    .ok_or_else(|| not_found(&regulation))?;
     fragment::read(&state.root, file, |l| fragment::is_article(l, &article))
         .map(Json)
         .ok_or_else(|| not_found(format!("{regulation}#{article}")))
@@ -80,14 +64,7 @@ pub(super) async fn config_route(
     let file = config_file(&state, &config).ok_or_else(|| not_found(&config))?;
     let found = match query.get("anchor") {
         Some(a) => fragment::read(&state.root, &file, |l| fragment::is_anchor(l, a)),
-        None => fragment::read(&state.root, &file, |_| true).map(|mut f| {
-            // The whole file, not only the first block.
-            if let Ok(text) = std::fs::read_to_string(&file) {
-                f.end_line = text.lines().count();
-                f.yaml = text;
-            }
-            f
-        }),
+        None => fragment::whole(&state.root, &file),
     };
     found.map(Json).ok_or_else(|| not_found(&config))
 }
