@@ -34,7 +34,8 @@ flowchart LR
     ZT[Zorgtoeslagwet] -->|toetsingsinkomen| Awir
     ZT -->|heeft_toeslagpartner| Awir
     ZT -->|is_verzekerde| ZVW[Zorgverzekeringswet]
-    Awir -->|inkomen| WIB[Wet inkomstenbelasting]
+    Awir -->|inkomensgegeven| AWR[Algemene wet inzake rijksbelastingen]
+    AWR -->|verzamelinkomen| WIB[Wet inkomstenbelasting]
     WIB -->|persoonsgegevens| BRP[BRP]
 ```
 
