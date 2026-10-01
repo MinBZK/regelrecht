@@ -34,6 +34,7 @@ pub mod date;
 pub mod engine_regulation;
 pub mod examples;
 pub mod form;
+pub mod fragment;
 pub mod gram;
 pub mod initial_state;
 pub mod law;
