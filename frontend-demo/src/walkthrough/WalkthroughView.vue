@@ -451,12 +451,14 @@ const homePath = computed(() => router.resolve({ name: localeRouteName('home', l
                interface language; say so, as the law pages do. -->
           <nldd-text v-if="locale !== DEFAULT_LOCALE" size="sm" color="inherit">{{ t('walkthrough.dutch_only') }}</nldd-text>
           <nldd-progress-bar size="sm" color="donkergeel" :value="progress" max="100" value-display="none" :accessible-label="t('walkthrough.progress_at', { time: timeText })"></nldd-progress-bar>
+          <!-- Two rows and one contextual button. What a viewer reaches for
+               (play, chapters) is a button; the rest (speed, captions,
+               transcript, the bubble, leaving) sits under one menu. Ten
+               seconds back and forth stay on j and l. -->
           <div class="control-row">
             <nldd-button-bar>
               <nldd-icon-button variant="inherit-tinted" icon="media-backward-end" :text="t('walkthrough.prev_chapter')" @click="prevChapter"></nldd-icon-button>
-              <nldd-icon-button variant="inherit-tinted" icon="media-backward" :text="t('walkthrough.back10')" @click="skip(-10)"></nldd-icon-button>
               <nldd-icon-button ref="playButton" variant="inherit-filled" :icon="playing ? 'pause' : 'play'" :text="playing ? t('walkthrough.pause') : t('walkthrough.play')" @click="togglePlay"></nldd-icon-button>
-              <nldd-icon-button variant="inherit-tinted" icon="media-forward" :text="t('walkthrough.forward10')" @click="skip(10)"></nldd-icon-button>
               <nldd-icon-button variant="inherit-tinted" icon="media-forward-end" :text="t('walkthrough.next_chapter')" @click="nextChapter"></nldd-icon-button>
             </nldd-button-bar>
             <span class="time" aria-hidden="true">{{ timeText }}</span>
@@ -474,21 +476,29 @@ const homePath = computed(() => router.resolve({ name: localeRouteName('home', l
                   ></nldd-menu-item>
                 </nldd-menu>
               </nldd-button>
-              <nldd-button variant="inherit-tinted" size="sm" :text="speedText(speed)" :accessible-label="t('walkthrough.speed')" expandable popup-type="menu">
-                <nldd-menu slot="popup" :accessible-label="t('walkthrough.speed')">
-                  <nldd-menu-item v-for="s in SPEEDS" :key="s" type="radio" :text="speedText(s)" :selected="s === speed || undefined" @select="setSpeed(s)"></nldd-menu-item>
+              <nldd-icon-button variant="inherit-tinted" icon="more" :text="t('walkthrough.more')" expandable popup-type="menu">
+                <nldd-menu slot="popup" :accessible-label="t('walkthrough.more')">
+                  <!-- `@select` on each item, not on the group: the same
+                       reason as the toolbar menus in App.vue. -->
+                  <nldd-menu-group :text="t('walkthrough.speed')">
+                    <nldd-menu-item v-for="s in SPEEDS" :key="s" type="radio" :text="speedText(s)" :selected="s === speed || undefined" @select="setSpeed(s)"></nldd-menu-item>
+                  </nldd-menu-group>
+                  <nldd-menu-group :text="t('walkthrough.view')">
+                    <nldd-menu-item type="checkbox" icon="message-rectangle-text" :text="t('walkthrough.captions')" :selected="captionsOn || undefined" @select="captionsOn = !captionsOn"></nldd-menu-item>
+                    <nldd-menu-item v-if="track.cam" type="checkbox" icon="person-circle" :text="t('walkthrough.camera')" :selected="camOn || undefined" @select="camOn = !camOn"></nldd-menu-item>
+                    <nldd-menu-item icon="text-document" :text="t('walkthrough.transcript.open')" @select="openTranscript"></nldd-menu-item>
+                  </nldd-menu-group>
+                  <nldd-menu-group>
+                    <nldd-menu-item icon="home" :text="t('walkthrough.leave')" @select="router.push(homePath)"></nldd-menu-item>
+                  </nldd-menu-group>
                 </nldd-menu>
-              </nldd-button>
-              <nldd-icon-button variant="inherit-tinted" icon="text-document" :text="t('walkthrough.transcript.open')" @click="openTranscript"></nldd-icon-button>
-              <nldd-icon-button :variant="captionsOn ? 'inherit-filled' : 'inherit-tinted'" icon="message-rectangle-text" :text="captionsOn ? t('walkthrough.captions_off') : t('walkthrough.captions_on')" @click="captionsOn = !captionsOn"></nldd-icon-button>
-              <nldd-icon-button v-if="track.cam" :variant="camOn ? 'inherit-filled' : 'inherit-tinted'" icon="person-circle" :text="camOn ? t('walkthrough.camera_off') : t('walkthrough.camera_on')" @click="camOn = !camOn"></nldd-icon-button>
+              </nldd-icon-button>
             </nldd-button-bar>
           </div>
-          <nldd-button-bar>
-            <nldd-button v-if="faq" ref="backButton" variant="inherit-filled" size="sm" start-icon="back" :text="t('walkthrough.faq.back')" @click="backToMain"></nldd-button>
-            <nldd-button v-if="tryTarget" variant="inherit-tinted" size="sm" start-icon="hand" :text="t('walkthrough.try')" @click="tryIt"></nldd-button>
-            <nldd-button variant="inherit-tinted" size="sm" start-icon="home" :text="t('walkthrough.leave')" :href="homePath" @click.prevent="router.push(homePath)"></nldd-button>
-          </nldd-button-bar>
+          <!-- One way on from here: back from a question, or into the live
+               demo at this spot. -->
+          <nldd-button v-if="faq" ref="backButton" variant="inherit-filled" size="sm" start-icon="back" :text="t('walkthrough.faq.back')" @click="backToMain"></nldd-button>
+          <nldd-button v-else-if="tryTarget" variant="inherit-tinted" size="sm" start-icon="hand" :text="t('walkthrough.try')" @click="tryIt"></nldd-button>
         </div>
       </template>
     </PresentationDeck>
@@ -697,6 +707,9 @@ const homePath = computed(() => router.resolve({ name: localeRouteName('home', l
   flex-direction: column;
   gap: 0.6rem;
   padding-top: 1rem;
+}
+.controls > nldd-button {
+  align-self: flex-start;
 }
 .control-row {
   display: flex;
