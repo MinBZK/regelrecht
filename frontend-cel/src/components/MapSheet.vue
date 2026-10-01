@@ -10,7 +10,9 @@ import FragmentView from './FragmentView.vue';
 const props = defineProps({ node: { type: Object, default: null } });
 const emit = defineEmits(['close']);
 const sheetEl = ref(null);
-const label = computed(() => (props.node ? `Fragment van ${nodeText(props.node)}` : 'Fragment'));
+// The last node shown, so the sheet keeps its content while it closes.
+const shown = ref(null);
+const label = computed(() => (shown.value ? `Fragment van ${nodeText(shown.value)}` : 'Fragment'));
 
 watch(
   () => props.node,
@@ -19,6 +21,7 @@ watch(
       sheetEl.value?.hide();
       return;
     }
+    shown.value = n;
     await nextTick();
     sheetEl.value?.show();
   },
@@ -27,13 +30,13 @@ watch(
 
 <template>
   <nldd-sheet ref="sheetEl" placement="right" width="760px" :accessible-label="label" @close="emit('close')">
-    <nldd-page v-if="node">
+    <nldd-page v-if="shown">
       <nldd-container padding="24" gap="16">
         <nldd-title :size="3">
-          <span slot="overline">{{ KIND_TEXT[node.kind] ?? node.kind }}</span>
-          <h2>{{ node.kind === 'article' ? `${node.regulation} art. ${node.label}` : node.label }}</h2>
+          <span slot="overline">{{ KIND_TEXT[shown.kind] ?? shown.kind }}</span>
+          <h2>{{ shown.kind === 'article' ? `${shown.regulation} art. ${shown.label}` : shown.label }}</h2>
         </nldd-title>
-        <FragmentView :source="node.source" />
+        <FragmentView :source="shown.source" />
       </nldd-container>
     </nldd-page>
   </nldd-sheet>

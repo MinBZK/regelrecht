@@ -41,4 +41,5 @@ watch(
     <nldd-rich-text><p>{{ shown.file }}, regel {{ shown.line }}–{{ shown.end_line }}</p></nldd-rich-text>
     <nldd-code-viewer language="yaml" wrap>{{ shown.yaml }}</nldd-code-viewer>
   </template>
+  <nldd-rich-text v-else><p>Geen fragment voor deze knoop.</p></nldd-rich-text>
 </template>
