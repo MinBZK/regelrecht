@@ -3,7 +3,7 @@ title: "Law Model"
 description: "The Rust crate that defines the law-YAML document types once, for every crate that reads or writes the law format, and the suite that holds it to the JSON schema."
 ---
 
-The law model is the Rust representation of a law file: the structs and enums a document under `corpus/regulation/` deserializes into. It is defined once, in its own crate, so the engine, the corpus library and the workers all share one set of types instead of each deriving its own.
+The law model is the Rust representation of a rulework: the structs and enums a document under `corpus/regulation/` deserializes into. It is defined once, in its own crate, so the engine, the corpus library and the workers all share one set of types instead of each deriving its own.
 
 ## Overview
 
@@ -51,7 +51,7 @@ The model is currently more permissive than the schema in documented ways. It ha
 `packages/shared/` (crate `regelrecht-shared`) sits one level lower and holds the few definitions that every crate in the workspace needs to agree on. It is small enough that it has no page of its own:
 
 - `RegulatoryLayer`, the enum of regulatory layer types (`GRONDWET`, `WET`, `AMVB` and so on), which the law model re-exports.
-- `CURRENT_SCHEMA_VERSION` and `SCHEMA_URL`, the `$schema` value that the harvester and the pipeline stamp into newly written law YAML. A test asserts the constant matches the `schema/latest` symlink.
+- `CURRENT_SCHEMA_VERSION` and `SCHEMA_URL`, the `$schema` value that the harvester and the pipeline stamp into newly written ruleworks. A test asserts the constant matches the `schema/latest` symlink.
 - `dates::today()` (feature `dates`), the current calendar date in the Europe/Amsterdam timezone, so a container running in UTC and a laptop in another timezone pick the same law version.
 - `telemetry::init_subscriber` (feature `telemetry`), the `tracing` setup the service binaries share.
 

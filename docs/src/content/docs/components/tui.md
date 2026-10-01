@@ -27,7 +27,7 @@ There are ten tabs, in the order the tab bar shows them:
 | Dashboard | Corpus statistics: laws, articles, features and scenarios, laws per regulatory layer, the most referenced laws and the laws with most implementations |
 | BDD | Run and view BDD test results |
 | Engine | Execute laws with custom parameters |
-| Corpus | Browse and search law files |
+| Corpus | Browse and search ruleworks |
 | Pipeline | Placeholder, see below |
 | Validation | Run schema validation |
 | Trace | Inspect execution trace trees |

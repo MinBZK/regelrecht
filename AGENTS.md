@@ -54,6 +54,60 @@ from `packages/engine/build.rs`): change `grammar.yaml` and run
 `just bdd-codegen`. A failing law-validation scenario (bucket A, next to a law)
 means a law changed or the scenario is stale, and a human decides which.
 
+## Vocabulary: the language is Regelrechts, one regulation in it is a regelwerk
+
+The language is **Regelrechts**, the way the language of Nederland is
+Nederlands. It is a proper name and stays untranslated: "written in
+Regelrechts". The schema is its formal grammar and the engine one
+implementation of its semantics. "The law format" and *wetformaat* remain as
+descriptions; do not replace them wholesale. RFC-044 records both names and the
+alternatives that lost.
+
+One YAML file in the corpus is a **regelwerk**: one regulation at one point in
+time, with the legal text and its machine-executable interpretation side by
+side. A regulation with two versions has two. Several together are a *stelsel
+van regelwerken*.
+
+| | Singular | Plural |
+|---|---|---|
+| Dutch | het regelwerk | regelwerken |
+| English | rulework | ruleworks |
+| Frisian | regelwurk | regelwurken |
+
+Which word a sentence needs:
+
+- **Does "het YAML-bestand van" fit in front of it?** Then it is a regelwerk:
+  the thing someone adds, opens, enriches, validates, saves or formally
+  establishes. Do not write *wetsbestand*, *law file*, *law YAML file* or, for
+  this meaning, *specificatie*.
+- **Is it what the legislature laid down?** Then it stays *wet*, *regeling* or
+  *wettekst*: "dit komt letterlijk uit de wet", wetten.overheid.nl, "Soort
+  regeling". Not every regelwerk is a wet; a ministerial regulation, an
+  ordinance and a policy rule get one too.
+- **The schema, the format and the language are not a regelwerk.** A regelwerk
+  is written in Regelrechts and conforms to the schema. Never coin
+  *regelwerkschema*, *regelwerkformaat*, *regelwerktaal*, *rulework schema* or
+  *rulework format*: that is how the word slides onto the schema. They stay
+  "the schema", "the law format" and *wetformaat*. The prose linter in
+  `.claude/skills/docs-writing/` rejects those compounds.
+
+Replacing an older word is a judgement per occurrence, never a search and
+replace: "law YAML" and "specification" mean the instance in one sentence and
+the language in the next. When in doubt, leave the old word.
+
+What does not change:
+
+- **Code identifiers.** `law_id`, `ArticleBasedLaw`, the API routes, the
+  `law_entries` table, the WASM API and the Gherkin steps in `bdd/grammar.yaml`
+  keep `law`. The term is vocabulary for prose and user interfaces.
+- **The released schema**, including its descriptions.
+- **Frozen documents.** The published papers and the body of accepted or
+  superseded RFCs keep the wording they were written in.
+- **Werkpakket slugs** such as `vaststelling-van-specificaties`. The title
+  changed; the slug is a reference and stays.
+- **The heading "The law file" on `/reference/schema`** and its anchor. That
+  page describes the schema, so the word stays out of its headings.
+
 ## Development Setup
 
 Prerequisites are in `docs/src/content/docs/guide/getting-started.md`; the local
@@ -163,7 +217,7 @@ This line is optional, because most PRs touch no law and requiring it would
 produce the same empty box as a reasonless `geen`. Present, it has to resolve:
 the gate rejects an id that is not in the corpus, and renders each one as a link
 to the law on wetten.overheid.nl in the check's summary. The URL comes from the
-law file's own `url` (falling back to `bwb_id`), so it cannot drift from the
+rulework's own `url` (falling back to `bwb_id`), so it cannot drift from the
 corpus. Do not write the link yourself, and never invent a BWB number: name the
 `$id` and let the gate resolve it.
 
@@ -450,7 +504,7 @@ What does need one: replacing the title, the central concept, or the field
 definitions. The case that produced this rule: schema v0.7.0 renames the channel
 RFC-012 describes from `untranslatables` to `markings`, and the first attempt
 rewrote RFC-012 to match. That would have made every existing citation to it
-point at a document about a different field, while a law file on schema v0.5.x
+point at a document about a different field, while a rulework on schema v0.5.x
 still carries `untranslatables` and the engine still reads it. The RFC keeps its
 text and goes to `Superseded` instead, and the RFC introducing the new channel
 carries the new design.

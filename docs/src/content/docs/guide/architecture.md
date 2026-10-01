@@ -47,7 +47,7 @@ C4Container
     Rel(user, editor, "Browses and edits laws")
     Rel(editor, editorapi, "REST API calls")
     Rel(editor, engine, "Executes laws (WASM)")
-    Rel(editorapi, corpus, "Reads and writes law files")
+    Rel(editorapi, corpus, "Reads and writes ruleworks")
     Rel(editorapi, admin, "Proxies /api/harvest-admin")
     Rel(editorapi, pipelineapi, "Proxies /api/harvest")
     Rel(editorapi, db, "Creates traject jobs")
@@ -77,7 +77,7 @@ regelrecht/
 ├── packages/
 │   ├── engine/           # Execution engine (native, WASM, CLI)
 │   ├── law-model/        # Rust implementation of the schema contract
-│   ├── corpus/           # Library for reading regulation YAML
+│   ├── corpus/           # Library for reading ruleworks
 │   ├── harvester/        # BWB / CVDR download and conversion
 │   ├── pipeline/         # Job queue, harvest and enrich workers
 │   ├── editor-api/       # Backend for the law editor

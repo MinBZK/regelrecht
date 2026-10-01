@@ -95,7 +95,7 @@ One loop is not an error: a rule that reads the value it departs from. An overri
 
 ## Further reading
 
-- [Law Format](./law-format) - full structure of a law YAML file
+- [Law Format](./law-format) - full structure of a rulework
 - [Inversion of Control](./inversion-of-control) - a different pattern for cross-law values: delegation
 - [Temporal Validity and Dates](./temporal-and-dates) - what happens when a reference points at a law that has ended
 - [Traceability](./traceability) - a real cross-law chain shown in an execution trace

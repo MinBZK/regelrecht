@@ -67,7 +67,7 @@ The `gelet_op` field matches the real legal preamble text. The `implements` bloc
 
 ### The engine connects them at load time
 
-When the engine loads all law files, it builds an index of all `implements` declarations. When it encounters an `open_term` during execution, it looks up the index, finds the implementing regulation, and executes it to get the value.
+When the engine loads all ruleworks, it builds an index of all `implements` declarations. When it encounters an `open_term` during execution, it looks up the index, finds the implementing regulation, and executes it to get the value.
 
 ## Municipal ordinances (co-government)
 

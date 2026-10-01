@@ -104,7 +104,7 @@ just mutants-diff  # Only what this branch changed
 
 ## Schema Validation
 
-All law YAML files are validated against the JSON schema:
+Every rulework is validated against the JSON schema:
 
 ```bash
 just validate                     # Validate all

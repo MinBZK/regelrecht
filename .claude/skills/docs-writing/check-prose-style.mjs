@@ -132,6 +132,26 @@ const RULES = [
     hint: 'Trust the reader; cut the recap or fold it into the last real point.',
   },
   {
+    id: 'rulework-compound',
+    level: 'error',
+    // A rulework conforms to the schema; the schema is not a rulework. A
+    // compound is how the word slides onto the schema, so it has no exemption.
+    re: /\b(?:regelwerk-?(?:schema|formaat|taal)|rulework[ -](?:schema|format|language))\b/gi,
+    msg: '"regelwerk"/"rulework" used as a name for the schema or the format',
+    hint: 'A rulework is one regulation in YAML. The schema and the format keep their own names: "the schema", "the law format".',
+  },
+  {
+    id: 'instance-term',
+    level: 'error',
+    // The older words for one regulation in YAML. Frozen documents keep the
+    // wording they were written in (AGENTS.md, "An accepted RFC is not
+    // rewritten"), so an RFC that is past Proposed is skipped.
+    re: /\b(?:wets?bestand(?:en)?|law files?|law YAML files?)\b/gi,
+    skipFile: (raw) => /^status:\s*(?:Accepted|Superseded|Rejected)\s*$/m.test(raw.split(/^---\s*$/m)[1] ?? ''),
+    msg: 'older word for one regulation in YAML',
+    hint: 'Write "regelwerk" (Dutch) or "rulework" (English). See the Vocabulary section of AGENTS.md.',
+  },
+  {
     id: 'not-x-but-y',
     level: 'warn',
     // "not X, but Y" / "niet X, maar Y". High recall, low precision: a regex
@@ -280,6 +300,10 @@ for (const file of files) {
     return lo + 1;
   };
   for (const rule of RULES) {
+    if (rule.skipFile && rule.skipFile(raw)) continue;
+    // A document that has to mention a banned word (the RFC that retires it)
+    // opts out per rule, visibly: <!-- prose-style: allow <rule-id> -->
+    if (raw.includes(`prose-style: allow ${rule.id} `)) continue;
     rule.re.lastIndex = 0;
     let m;
     while ((m = rule.re.exec(prose)) !== null) {

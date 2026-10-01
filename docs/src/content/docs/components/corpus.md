@@ -13,10 +13,10 @@ The corpus library is a shared Rust crate for loading and managing the regulatio
 
 ## What it does
 
-The corpus library provides a single API for loading law files regardless of where they are stored. It reads the `corpus-registry.yaml` manifest, authenticates with remote sources, fetches YAML files, and parses them into typed Rust structures.
+The corpus library provides a single API for loading ruleworks regardless of where they are stored. It reads the `corpus-registry.yaml` manifest, authenticates with remote sources, fetches YAML files, and parses them into typed Rust structures.
 
 Other packages use it:
-- The **editor-api** uses it to serve law files to the frontend
+- The **editor-api** uses it to serve ruleworks to the frontend
 - The **admin** uses it to proxy corpus data to the dashboard
 - The **engine** uses the parsed output for execution
 
@@ -25,7 +25,7 @@ Other packages use it:
 | Module | Purpose |
 |--------|---------|
 | `registry.rs` | `CorpusRegistry` - loads `corpus-registry.yaml`, merges local overrides |
-| `source_map.rs` | `SourceMap` - maps law IDs to parsed regulation YAML |
+| `source_map.rs` | `SourceMap` - maps law IDs to parsed ruleworks |
 | `models.rs` | `Source`, `SourceType` (Local/GitHub), `RegistryManifest` |
 | `github.rs` | `GitHubFetcher` - fetches YAML via GitHub API (feature-gated) |
 | `validation.rs` | Schema validation against the JSON schema |

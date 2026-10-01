@@ -10,7 +10,7 @@ capability: ''
 capaciteit: ''
 toelichting: |-
   Deze onderzoeksopgave richt zich op tijdreizen in de praktijk: hoe kunnen
-  gebruikers van machine-uitvoerbare specificaties — burgers, uitvoerders,
+  gebruikers van machine-uitvoerbare regelwerken — burgers, uitvoerders,
   juristen — voor een concreet geval vaststellen en toepassen welke regels op
   welk moment golden? Een wet verwijst naar lagere regelgeving, beleidsregels
   en uitvoeringsbeleid, die elk hun eigen wijzigingsmoment en geldigheidsperiode

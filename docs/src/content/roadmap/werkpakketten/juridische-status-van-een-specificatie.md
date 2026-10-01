@@ -1,6 +1,6 @@
 ---
 id: juridische-status-van-een-specificatie
-titel: Juridische status van een specificatie
+titel: Juridische status van een regelwerk
 faseId: wat
 disciplineId: recht
 prioriteit: hoog
@@ -11,7 +11,7 @@ capaciteit: juridisch specialist / PhD
 toelichting: >-
   **Waarom dit werkpakket**\
 
-  Zolang de juridische status van interpretatieve keuzes in de specificatie
+  Zolang de juridische status van interpretatieve keuzes in het regelwerk
   onbepaald blijft, ontstaan drie risico's die zich niet in het onderzoek maar
   in de uitvoeringspraktijk manifesteren.
 
@@ -28,13 +28,13 @@ toelichting: >-
 
   Ten tweede is het niet waarschijnlijk dat juridische afdelingen van potentiële
   deelnemende organisaties instemmen met het uitbesteden van hun
-  uitvoeringslogica aan een gedeelde specificatie zolang onduidelijk is wie
-  verantwoordelijk is wanneer die specificatie een fout bevat. De vraag is
+  uitvoeringslogica aan een gedeeld regelwerk zolang onduidelijk is wie
+  verantwoordelijk is wanneer dat regelwerk een fout bevat. De vraag is
   daarmee ook een adoptievoorwaarde.
 
 
   Ten derde bestaat het risico dat de aanpak het aantal interpretatieve keuzes
-  wel verkleint, maar de resterende keuzes concentreert in één specificatie
+  wel verkleint, maar de resterende keuzes concentreert in één regelwerk
   zonder dat daar een juridisch kanaal tegenover staat dat publicatie en
   toetsing waarborgt. Het probleem van onzichtbare interpretatie verplaatst zich
   dan van veel systemen naar één, in plaats van dat het wordt opgelost.
@@ -47,9 +47,9 @@ toelichting: >-
   wetgevingsprocedure.
 
 
-  **De specificatie**\
+  **Het regelwerk**\
 
-  De specificatie lijkt op onderdelen op een beleidsregel maar wijkt daar ook op
+  Het regelwerk lijkt op onderdelen op een beleidsregel maar wijkt daar ook op
   wezenlijke punten vanaf. Met name omdat het uitvoerbaar, samenstelbaar en via
   attestatie aan uitvoering gebonden is. (section 4.2, _Rules as Executed_, 12
   July 2026)
@@ -82,7 +82,7 @@ toelichting: >-
   die wel is uitgevoerd, maar nooit officieel is gepubliceerd?
 volgorde: 1000
 onderzoeksvragen:
-  - vraag: Wat voor juridisch instrument is de specificatie?
+  - vraag: Wat voor juridisch instrument is een regelwerk?
     paper: sec:legalstatus
   - vraag: Is het een beleidsregel of een nieuwe vorm?
     paper: sec:legalstatus
@@ -93,11 +93,11 @@ onderzoeksvragen:
       vastgelegd?
     paper: sec:agenda-legal
   - vraag: >-
-      Hoe kunnen we garanderen dat de vertaling van wet naar software-specificatie
+      Hoe kunnen we garanderen dat de vertaling van wet naar regelwerk
       een verdedigbare juridische interpretatie is?
     paper: sec:whochooses
   - vraag: >-
-      Wat betekent het juridisch om een 'uitvoerbare specificatie' officieel te
+      Wat betekent het juridisch om een regelwerk officieel te
       publiceren?
     paper: sec:agenda-legal
   - vraag: >-

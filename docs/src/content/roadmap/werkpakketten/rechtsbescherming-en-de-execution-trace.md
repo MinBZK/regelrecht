@@ -11,7 +11,7 @@ capaciteit: ''
 toelichting: |-
   Deze onderzoeksopgave richt zich op wat een burger of rechter kan met de
   execution trace van een besluit: het technische spoor dat vastlegt hoe een
-  machine-uitvoerbare specificatie tot een uitkomst is gekomen. Drie vragen
+  machine-uitvoerbaar regelwerk tot een uitkomst is gekomen. Drie vragen
   horen bij elkaar omdat ze alle drie de juridische betekenis van die trace
   raken, vanuit een ander perspectief: heeft de burger er recht op onder de
   motiveringsplicht (Awb) of het inzagerecht (AVG), welke bewijswaarde heeft

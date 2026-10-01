@@ -7,16 +7,16 @@ RegelRecht turns Dutch legislation into structured files that a computer can exe
 
 ## The approach
 
-RegelRecht encodes each law once, in a structured YAML format that both people and computers can read. A single execution engine runs these law files and produces answers: does this person qualify? How much do they receive? Which rules applied?
+RegelRecht encodes each law once, in a structured YAML format that both people and computers can read. Each regulation, at each date it took effect, becomes one such file: a [rulework](/reference/glossary#regelrecht-specific-terms). A single execution engine runs these ruleworks and produces answers: does this person qualify? How much do they receive? Which rules applied?
 
-The YAML specification is an interpretation of the law in executable form, not the law itself. If the two conflict, the statute prevails and the specification is corrected; legal validity stays with the published legislation ([Rules as Executed, section 4.2](/research/rules-as-executed#sec:legalstatus)). Every article in the file corresponds to an article in the official legal text, with a link back to the original, so a reader can hold the interpretation against the text it claims to follow.
+A rulework is an interpretation of the law in executable form, not the law itself. If the two conflict, the statute prevails and the rulework is corrected; legal validity stays with the published legislation ([Rules as Executed, section 4.2](/research/rules-as-executed#sec:legalstatus)). Every article in the file corresponds to an article in the official legal text, with a link back to the original, so a reader can hold the interpretation against the text it claims to follow.
 
 A few principles hold throughout:
 
 | Principle | What it means |
 |-----------|---------------|
 | **Close to the text** | The file follows the structure of the law, article by article. Interpreting the text and executing it are separate steps. |
-| **Zero domain knowledge** | The engine has no hardcoded holidays, tax rates or special cases. Everything comes from law YAML. |
+| **Zero domain knowledge** | The engine has no hardcoded holidays, tax rates or special cases. Everything comes from the ruleworks. |
 | **Identical execution** | Browser, backend, editor: same inputs, same result. |
 | **Version control as governance** | Git history captures legislative evolution. Branches are proposals, merges are publication. |
 | **Traceability** | Every computed value points back to a specific article and paragraph. |
@@ -71,7 +71,7 @@ For full format details, see [Law Format](./law-format).
 
 ## How the engine executes a law
 
-The engine is a calculator for law. You give it a law YAML file, tell it which output you want, provide some facts about a person (BSN, income, age, etc.), and specify a date.
+The engine is a calculator for law. You give it a rulework, tell it which output you want, provide some facts about a person (BSN, income, age, etc.), and specify a date.
 
 The engine walks through the relevant articles, resolves all inputs, applies the legal logic (comparisons, arithmetic, conditions), and returns an answer with a full trace of how it got there.
 
@@ -125,7 +125,7 @@ Every execution produces a receipt: a sealed envelope containing the engine vers
 
 Different government organizations handle different parts of the law chain. The tax inspector (*inspecteur*) determines income, the Allowances Service determines healthcare allowance, municipalities handle social assistance. An article records which body may issue a binding decision in `competent_authority` (see [Competent Authority](./competent-authority)), and the engine uses that to model these boundaries. Today it runs in simulation mode (compute everything locally); the authoritative mode that exchanges signed results between organizations is the proposed end state, not yet implemented. See [Multi-Org Execution](./multi-org-execution).
 
-On the data side, 342 municipalities, 12 provinces, and 21 water boards all produce their own regulations. The [federated corpus](./federated-corpus) model lets each authority maintain their own law files in their own Git repository while the engine discovers and loads them through a registry.
+On the data side, 342 municipalities, 12 provinces, and 21 water boards all produce their own regulations. The [federated corpus](./federated-corpus) model lets each authority maintain their own ruleworks in their own Git repository while the engine discovers and loads them through a registry.
 
 ### Groups of unknown size
 

@@ -10,7 +10,7 @@ The harvester downloads Dutch legislation and converts it to the RegelRecht YAML
 - **Language**: Rust
 - **Location**: `packages/harvester/`
 - **Sources**: BWB / wetten.nl (national law) and CVDR (local/decentralized regulations)
-- **Output**: YAML law files with textual content (no `machine_readable` yet)
+- **Output**: ruleworks that hold only the legal text (no `machine_readable` yet)
 
 ## How it works
 
@@ -20,7 +20,7 @@ flowchart LR
     A -->|2. Manifest XML| B
     A -->|3. Content XML| B
     B -->|4. Parse & Split| C[Articles]
-    C -->|5. Generate| D[YAML Law File]
+    C -->|5. Generate| D[Rulework]
     D --> E[Corpus Juris]
 ```
 
