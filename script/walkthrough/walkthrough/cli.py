@@ -1,9 +1,10 @@
 """The walkthrough pipeline, from a raw take to what the demo plays.
 
-    walkthrough prepare <take>   ingest + clean + transcribe + suggest, in one go
+    walkthrough prepare <take>   ingest + clean + transcribe + correct + suggest
     walkthrough ingest <take>    remux, take the voice out, read the event log
     walkthrough clean <take>     denoise and tidy the voice (no loudness yet)
     walkthrough transcribe <take>  words with timestamps (WhisperX, Dutch)
+    walkthrough correct <take>   a language model corrects what Whisper misheard
     walkthrough suggest <take>   draft cuts: long silences and flub marks
     walkthrough transcript <take|main>  the text per slide, to check the slides
     walkthrough build            walkthrough.yaml -> media, timeline.json, captions
@@ -182,6 +183,92 @@ def transcribe(take: str, model: str = "large-v3") -> None:
     say(f"{take}: words.json klaar")
 
 
+CORRECT_PROMPT = """Hieronder staat een automatisch transcript (Whisper) van een gesproken
+rondleiding door de demo van RegelRecht: wetten als machine-uitvoerbare
+regels. Verbeter wat de spraakherkenning verkeerd verstond: verkeerd
+gespelde of verkeerd gehoorde woorden, vakbegrippen, namen en interpunctie.
+
+Regels:
+- Verbeter wat er verkeerd verstaan is, niet hoe het gezegd is. Spreektaal,
+  herhalingen, "eh" en "jada jada" blijven staan; herschrijf geen zinnen.
+- Houd de woordvolgorde aan. Voeg geen inhoud toe en laat niets weg.
+- Twijfel je, laat het woord dan staan.
+- Antwoord met alleen de verbeterde tekst, zonder toelichting.
+
+{context}
+Transcript:
+{text}
+"""
+
+
+def correct(take: str) -> Path | None:
+    """Let a language model correct the transcript, as a person would.
+
+    Whisper gets Dutch policy vocabulary wrong ("machine uit voorwaarde
+    formaat"). The model gets the glossary and the slide texts as context and
+    returns the same speech with the mishearings fixed; `words_for` puts that
+    text back onto Whisper's timing. Runs headless Claude Code (`claude -p`);
+    without it the raw transcript stays, and the file can be edited by hand.
+    """
+    d = take_dir(take)
+    words = read_json(d / "words.json", {}).get("words", [])
+    if not words:
+        raise SystemExit(f"{take}: nog geen transcript; draai eerst `just walkthrough transcribe {take}`")
+    if not shutil.which("claude"):
+        say(f"{take}: geen `claude` op het pad; het transcript blijft zoals Whisper het hoorde")
+        return None
+    slides = []
+    for e in read_json(d / "events.json", []):
+        sl = e.get("slide") or {}
+        text = " / ".join(x for x in [sl.get("title"), *(sl.get("lines") or []), sl.get("body")] if isinstance(x, str) and x)
+        if e.get("type") == "slide" and text and text not in slides:
+            slides.append(text)
+    terms = (load_config(required=False).get("glossary") or [])
+    context = ""
+    if terms:
+        context += "Begrippen die erin voorkomen: " + ", ".join(terms) + ".\n"
+    if slides:
+        context += "Teksten op de dia's die erbij te zien waren:\n" + "\n".join(f"- {x}" for x in slides) + "\n"
+    raw = " ".join(w["word"] for w in words)
+    say(f"{take}: transcript nakijken met een taalmodel")
+    r = subprocess.run(
+        ["claude", "-p", "--model", "sonnet", "--tools", ""],
+        input=CORRECT_PROMPT.format(context=context, text=raw),
+        capture_output=True,
+        text=True,
+    )
+    fixed = r.stdout.strip()
+    if r.returncode != 0 or not fixed:
+        say(f"{take}: nakijken lukte niet ({r.stderr.strip()[:200] or 'leeg antwoord'}); het ruwe transcript blijft")
+        return None
+    # A model that rewrote rather than corrected is caught here: the timing
+    # only carries over when most words stayed.
+    from difflib import SequenceMatcher
+
+    same = SequenceMatcher(None, raw.lower().split(), fixed.lower().split(), autojunk=False).ratio()
+    if same < 0.8:
+        say(f"{take}: het taalmodel veranderde te veel ({same:.0%} gelijk); niet overgenomen")
+        return None
+    out = d / "corrected.txt"
+    out.write_text(fixed + "\n")
+    changed = [(a, b) for a, b in _changes(raw, fixed)]
+    say(f"{take}: {len(changed)} verbeteringen in {out}")
+    for a, b in changed:
+        print(f"    {a}  ->  {b}")
+    return out
+
+
+def _changes(raw: str, fixed: str) -> list[tuple[str, str]]:
+    from difflib import SequenceMatcher
+
+    a, b = raw.split(), fixed.split()
+    out = []
+    for op, i1, i2, j1, j2 in SequenceMatcher(None, [x.lower().strip(".,;:!?") for x in a], [x.lower().strip(".,;:!?") for x in b], autojunk=False).get_opcodes():
+        if op != "equal":
+            out.append((" ".join(a[i1:i2]) or "(niets)", " ".join(b[j1:j2]) or "(weg)"))
+    return out
+
+
 def suggest(take: str) -> list[dict]:
     d = take_dir(take)
     words = read_json(d / "words.json", {}).get("words", [])
@@ -211,6 +298,7 @@ def prepare(take: str, model: str, denoise: bool) -> None:
     ingest(take)
     clean(take, denoise=denoise)
     transcribe(take, model=model)
+    correct(take)
     suggest(take)
     cam_crop(take)
 
@@ -224,6 +312,18 @@ def load_config(required: bool = True) -> dict:
             raise SystemExit(f"{CONFIG.relative_to(ROOT)} ontbreekt")
         return {}
     return yaml.safe_load(CONFIG.read_text()) or {}
+
+
+def words_for(cfg: dict, take: str) -> list[dict]:
+    """A take's words, corrected when `correct` (or a person) wrote
+    `corrected.txt`: the captions, the transcript and the draft scripts all
+    read these."""
+    from .timeline import align_text
+
+    d = take_dir(take)
+    words = read_json(d / "words.json", {}).get("words", [])
+    fixed = d / "corrected.txt"
+    return align_text(words, fixed.read_text()) if fixed.exists() else words
 
 
 def cuts_for(cfg: dict, take: str) -> list[tuple[float, float]]:
@@ -279,7 +379,7 @@ def render_recorded(name: str, segments: list[dict], cfg: dict, overrides: dict,
     infos = {t: take_info(t) for t in takes}
     durations = {t: infos[t]["duration"] for t in takes}
     events = {t: read_json(take_dir(t) / "events.json", []) for t in takes}
-    words = {t: read_json(take_dir(t) / "words.json", {}).get("words", []) for t in takes}
+    words = {t: words_for(cfg, t) for t in takes}
     cuts = {t: cuts_for(cfg, t) for t in takes}
     for t in takes:
         check_cuts(cuts[t], protected_spans(events[t]))
@@ -591,10 +691,10 @@ def transcript(which: str) -> None:
         from .timeline import Piece, Track
 
         tr = Track([Piece(p["take"], p["from"], p["to"], p["at"]) for p in track["pieces"] if "take" in p])
-        words = remap_words(tr, {t: read_json(take_dir(t) / "words.json", {}).get("words", []) for t in {p.take for p in tr.pieces}})
+        words = remap_words(tr, {t: words_for(load_config(required=False), t) for t in {p.take for p in tr.pieces}})
         chs = track["chapters"]
     else:
-        words = read_json(take_dir(which) / "words.json", {}).get("words", [])
+        words = words_for(load_config(required=False), which)
         events = read_json(take_dir(which) / "events.json", [])
         from .timeline import Track, Piece
 
@@ -619,7 +719,7 @@ def draft_scripts(take: str) -> list[Path]:
     from .script import beat_starts, draft_lines
 
     d = take_dir(take)
-    words = read_json(d / "words.json", {}).get("words", [])
+    words = words_for(load_config(required=False), take)
     if not words:
         raise SystemExit(f"{take}: nog geen transcript; draai eerst `just walkthrough prepare {take}`")
     events = read_json(d / "events.json", [])
@@ -824,7 +924,7 @@ def export() -> None:
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(prog="walkthrough", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name in ("prepare", "ingest", "clean", "transcribe", "suggest"):
+    for name in ("prepare", "ingest", "clean", "transcribe", "correct", "suggest"):
         p = sub.add_parser(name)
         p.add_argument("take", nargs="?", help="map in .walkthrough/takes (standaard: de laatste)")
         if name in ("prepare", "transcribe"):
@@ -847,7 +947,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--yes", action="store_true", help="niet vragen")
     args = ap.parse_args(argv)
 
-    take = getattr(args, "take", None) or (latest_take() if args.cmd in ("prepare", "ingest", "clean", "transcribe", "suggest") else None)
+    take = getattr(args, "take", None) or (latest_take() if args.cmd in ("prepare", "ingest", "clean", "transcribe", "correct", "suggest") else None)
     if args.cmd == "prepare":
         prepare(take, args.model, not args.no_denoise)
     elif args.cmd == "ingest":
@@ -856,6 +956,8 @@ def main(argv: list[str] | None = None) -> None:
         clean(take, denoise=not args.no_denoise)
     elif args.cmd == "transcribe":
         transcribe(take, args.model)
+    elif args.cmd == "correct":
+        correct(take)
     elif args.cmd == "suggest":
         print(yaml.safe_dump(suggest(take), allow_unicode=True, sort_keys=False))
     elif args.cmd == "transcript":

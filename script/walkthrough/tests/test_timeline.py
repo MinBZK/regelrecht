@@ -123,6 +123,20 @@ def test_pieces_start_and_end_on_frames():
     assert [(p.start, p.end) for p in track.pieces] == [(0, 1.0), (2.0333, 4.0)]
 
 
+def test_a_corrected_text_keeps_the_timing_of_what_it_corrects():
+    from walkthrough.timeline import align_text
+
+    w = lambda text, s, e: {"word": text, "start": s, "end": e}
+    words = [w("geen", 0, 0.3), w("endproduct.", 0.3, 1.0), w("machine", 2, 2.4), w("uit", 2.4, 2.6), w("voorwaarde", 2.6, 3.2), w("formaat.", 3.2, 3.8)]
+    fixed = align_text(words, "Geen eindproduct. Machine-uitvoerbaar formaat.")
+    assert [x["word"] for x in fixed] == ["Geen", "eindproduct.", "Machine-uitvoerbaar", "formaat."]
+    assert (fixed[0]["start"], fixed[0]["end"]) == (0, 0.3)
+    # The phrase takes the span of the words it replaces.
+    assert (fixed[2]["start"], fixed[2]["end"]) == (2, 3.2)
+    assert (fixed[3]["start"], fixed[3]["end"]) == (3.2, 3.8)
+    assert align_text(words, "") == words
+
+
 def test_long_caption_wraps_on_two_lines():
     text = "Elke organisatie vertaalt de wet opnieuw naar haar eigen software"
     assert wrap(text).count("\n") == 1

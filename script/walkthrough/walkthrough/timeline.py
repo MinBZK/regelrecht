@@ -9,6 +9,7 @@ that straddles a jump) are tested without ffmpeg. All times are seconds.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 
@@ -210,6 +211,81 @@ def remap_words(track: Track, words_by_take: dict[str, list[dict]]) -> list[dict
                 e = min(e, p.end)
                 out.append({"word": w["word"], "start": round(p.out + s - p.start, 3), "end": round(p.out + e - p.start, 3)})
     return sorted(out, key=lambda w: w["start"])
+
+
+def _bare(token: str) -> str:
+    return re.sub(r"[^\w-]", "", token.lower())
+
+
+def align_text(words: list[dict], text: str) -> list[dict]:
+    """Put a corrected text onto the timing of the words it corrects.
+
+    The transcription gets words wrong but their timing right; a corrected
+    text gets the words right but has no timing. Matching the two on bare
+    words (no case, no punctuation) keeps the timing of every word that
+    stayed, and gives a replaced stretch the span of what it replaces,
+    spread evenly. A word that was only added sits at the end of the word
+    before it.
+    """
+    from difflib import SequenceMatcher
+
+    new = text.split()
+    if not new:
+        return words
+    ops = SequenceMatcher(None, [_bare(w["word"]) for w in words], [_bare(t) for t in new], autojunk=False).get_opcodes()
+    out = []
+    for op, i1, i2, j1, j2 in ops:
+        tokens = new[j1:j2]
+        if op == "equal":
+            out += [{**w, "word": t} for w, t in zip(words[i1:i2], tokens)]
+        elif tokens and i2 > i1:
+            out += _respell(words[i1:i2], tokens)
+        elif tokens:
+            at = out[-1]["end"] if out else (words[0]["start"] if words else 0.0)
+            out += [{"word": t, "start": at, "end": at} for t in tokens]
+    return out
+
+
+def _respell(old: list[dict], tokens: list[str]) -> list[dict]:
+    """New words over the span of old ones, each over the words its letters
+    came from.
+
+    "endproduct. machine uit voorwaarde" -> "eindproduct. machine-uitvoerbaar":
+    matched letter by letter, so "eindproduct" keeps the time of "endproduct"
+    and "machine-uitvoerbaar" that of the three words it replaces, rather
+    than each an even share of the whole stretch.
+    """
+    from difflib import SequenceMatcher
+
+    owner, src = [], ""
+    for n, w in enumerate(old):
+        bare = (_bare(w["word"]) or "_") + " "
+        owner += [n] * len(bare)
+        src += bare
+    dst, spans = "", []
+    for t in tokens:
+        spans.append((len(dst), len(dst) + len(_bare(t) or "_")))
+        dst += (_bare(t) or "_") + " "
+    to_src = {}
+    for a, b, n in SequenceMatcher(None, src, dst, autojunk=False).get_matching_blocks():
+        for k in range(n):
+            to_src[b + k] = a + k
+    start, end = old[0]["start"], old[-1]["end"]
+    step = (end - start) / len(tokens)
+    out = []
+    for k, (t, (lo, hi)) in enumerate(zip(tokens, spans)):
+        hit = [to_src[c] for c in range(lo, hi) if c in to_src]
+        if len(hit) >= (hi - lo) / 2:
+            # Whole words: a new word spans the old words its letters came from.
+            s, e = old[owner[min(hit)]]["start"], old[owner[max(hit)]]["end"]
+        else:
+            s, e = start + k * step, start + (k + 1) * step
+        out.append({"word": t, "start": round(s, 3), "end": round(e, 3)})
+    # Letters can match out of order; times must not.
+    for prev, cur in zip(out, out[1:]):
+        cur["start"] = max(cur["start"], prev["start"])
+        cur["end"] = max(cur["end"], cur["start"])
+    return out
 
 
 def captions(words: list[dict], max_chars: int = 84, max_len: float = 6.0, pause: float = 0.7, breaks: list[float] | None = None) -> list[dict]:
