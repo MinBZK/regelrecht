@@ -88,8 +88,8 @@ use trial::{event_fields, own};
 
 pub use check::{check, sources_for};
 pub use load::{
-    assessments, decision_parameter_of, field_kind, hooks_at, not_yet, prepare_for, procedure_of,
-    required, set_form,
+    assessments, decision_parameter_of, field_kind, hooks_at, not_yet, outputs_of_article,
+    prepare_for, procedure_of, required, set_form,
 };
 pub use state::{
     decisions_in_case, procedure_of_the_case, state, ActionStatus, DecisionInCase, LegalProtection,

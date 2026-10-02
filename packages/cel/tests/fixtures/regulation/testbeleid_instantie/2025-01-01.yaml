@@ -1,0 +1,44 @@
+---
+# Fictief uitvoeringsbeleid van de instantie (RFC-047): een organisatie en een
+# burger dienen in op het portaal, een medewerker aan het loket voert een
+# aanvraag in die langs een andere weg binnenkwam. De techniek van een kanaal
+# staat in deployment/channels.yaml. Geen geldend recht.
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.8.0/schema/v0.8.0/schema.json
+$id: testbeleid_instantie
+name: Testbeleid instantie
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.com/testbeleid_instantie
+competent_authority:
+  name: Test instantie
+articles:
+  - number: '1'
+    url: https://example.com/testbeleid_instantie/1
+    text: |-
+      1. Het publieke portaal is het kanaal eherkenning. Wie daar inlogt, doet dat namens een organisatie met haar nummer.
+      2. Op het publieke portaal wordt de aanvraag van artikel 1 van de testregeling ingediend en vooraf
+      getoetst op volledigheid.
+      3. Een burger logt op het publieke portaal in met zijn burgernummer, langs het kanaal burger.
+      4. Aan het loket voert een medewerker een aanvraag in, langs het kanaal medewerker.
+    machine_readable:
+      executes:
+        - {article: testregeling_aanvraag#1, as: procedure}
+      execution:
+        produces:
+          legal_character: TOETS
+          decision_type: GEEN_BESLUIT
+          extensions:
+            chronolex:
+              channels:
+                eherkenning:
+                  kind: portal
+                  role: aanvrager
+                  identifies: [kvk, persoon]
+                  owner: kvk
+                  submits: testregeling_aanvraag#1
+                  assesses: {output: aanvraag_volledig}
+                  form: {document: documents/formulier-instantie.yaml, screen: aanvraag}
+                burger: {kind: portal, role: burger, identifies: [nummer], owner: nummer}
+                medewerker: {kind: counter, role: loket}

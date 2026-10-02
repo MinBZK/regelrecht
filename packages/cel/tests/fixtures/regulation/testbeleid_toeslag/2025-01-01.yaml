@@ -4,8 +4,8 @@
 # is beleid (de ruimte die Awb 4:2 lid 1 de dienst laat), geen configuratie.
 # Het tijdvak is een maand, als de eerste dag ervan (RFC-001:
 # temporal.period_type month). Artikel 4 en 5: wat het portaal bij een
-# aanvraag vastlegt en vooraf invult (notitie "het gram uit de wet"). Geen
-# geldend recht.
+# aanvraag vastlegt en vooraf invult (notitie "het gram uit de wet").
+# Artikel 6: de kanalen van de dienst (RFC-047). Geen geldend recht.
 $schema: >-
   https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.8.0/schema/v0.8.0/schema.json
 $id: testbeleid_toeslag
@@ -98,6 +98,8 @@ articles:
       1. Wie via het portaal een maandtoeslag aanvraagt, ondertekent de aanvraag met het persoonsnummer waarmee hij inlogt.
       2. Het portaal legt bij de aanvraag vast met welk persoonsnummer is ingelogd en langs welke weg de aanvraag binnenkwam.
     machine_readable:
+      executes:
+        - {article: testregeling_toeslag#1, as: procedure}
       origins:
         - regulation: testregeling_awb
           parameter: ondertekening
@@ -114,6 +116,10 @@ articles:
                   fields:
                     persoonsnummer: {type: string, origin: {waarde: KANAAL, grondslag: testbeleid_toeslag#4 lid 2}}
                     kanaal: {type: string, origin: {waarde: KANAAL, grondslag: testbeleid_toeslag#4 lid 2}}
+              # Wat het kanaal persoon bij een aanvraag levert: de ondertekening
+              # en het persoonsnummer uit de login (lid 1 en 2), en de weg (lid 2).
+              supplies:
+                persoon: {ondertekening: nummer, persoonsnummer: nummer, kanaal: $channel}
   - number: '5'
     url: https://example.com/testbeleid_toeslag/5
     text: >-
@@ -145,3 +151,34 @@ articles:
                 - when: {operation: EQUALS, subject: $persoonsnummer, value: '123456789'}
                   then: A. Voorbeeld
               default: null
+  - number: '6'
+    url: https://example.com/testbeleid_toeslag/6
+    text: |-
+      1. Het publieke portaal is het kanaal persoon. Wie daar inlogt, doet dat met zijn persoonsnummer en
+      vraagt er de maandtoeslag van artikel 1 van de testregeling aan, die vooraf wordt getoetst.
+      2. Het behandelportaal is het kanaal medewerker.
+    machine_readable:
+      executes:
+        - {article: testregeling_toeslag#1, as: procedure}
+      execution:
+        produces:
+          legal_character: TOETS
+          decision_type: GEEN_BESLUIT
+          extensions:
+            chronolex:
+              channels:
+                persoon:
+                  kind: portal
+                  role: aanvrager
+                  identifies: [nummer]
+                  owner: nummer
+                  submits: testregeling_toeslag#1
+                  assesses: {output: aanvraag_toelaatbaar}
+                  offers:
+                    regulation: testbeleid_toeslag
+                    output: aanvraag_aangeboden
+                    deadline: aanvraagtermijn
+                    windows: aangeboden_maanden
+                    start: begin_maand
+                  legal_basis: [testbeleid_toeslag#4 lid 1, testbeleid_toeslag#4 lid 2]
+                medewerker: {kind: handling, role: behandelaar}

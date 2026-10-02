@@ -58,6 +58,13 @@ pub struct ChannelDefinition {
     /// `legal_basis` is why it may.
     #[serde(default)]
     pub supplies: BTreeMap<String, String>,
+    /// The policy article that declares the channel (RFC-047); `None` for a
+    /// channel from `process.yaml`.
+    #[serde(skip)]
+    pub declared_by: Option<String>,
+    /// The policy article that says what it supplies (RFC-047).
+    #[serde(skip)]
+    pub supplied_by: Option<String>,
 }
 
 /// In `supplies`: the route the application came in by (`$intake.channel`).

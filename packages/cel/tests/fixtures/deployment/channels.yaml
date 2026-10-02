@@ -1,0 +1,63 @@
+---
+# De techniek van de kanalen van de fixtures (RFC-047), per cel: hoe de
+# nagebootste login eruitziet. Welke kanalen er zijn en wat zij leveren staat in
+# het testbeleid; de grondslag van een veld ook (`identifies`).
+test_afnemer:
+  eherkenning:
+    adapter: simulated
+    label: Inloggen namens een organisatie
+    explanation: Vul een organisatienummer van acht cijfers in en uw naam.
+    fields:
+      kvk:
+        label: Organisatienummer
+        pattern: '[0-9]{8}'
+        message: een organisatienummer heeft acht cijfers
+        numeric: true
+      persoon: {label: Uw naam}
+  medewerker:
+    adapter: simulated
+    label: Inloggen als medewerker
+    role_label: Behandelaar
+    fields:
+      naam: {label: Naam}
+test_instantie:
+  eherkenning:
+    adapter: simulated
+    label: Inloggen namens een organisatie
+    fields:
+      kvk: {label: Organisatienummer, pattern: '[0-9]{8}', message: een organisatienummer heeft acht cijfers}
+      persoon: {label: Uw naam}
+  burger:
+    adapter: simulated
+    label: Inloggen als burger
+    explanation: Vul een burgernummer van negen cijfers in.
+    fields:
+      nummer:
+        label: Burgernummer
+        pattern: '[0-9]{9}'
+        check: elfproef
+        message: dit is geen geldig burgernummer
+        numeric: true
+  medewerker:
+    adapter: simulated
+    label: Inloggen als medewerker
+    role_label: Loketmedewerker
+    fields:
+      naam: {label: Naam}
+test_toeslag:
+  persoon:
+    adapter: simulated
+    label: Inloggen als persoon
+    explanation: Vul een persoonsnummer van negen cijfers in.
+    fields:
+      nummer:
+        label: Persoonsnummer
+        pattern: '[0-9]{9}'
+        message: een persoonsnummer heeft negen cijfers
+        numeric: true
+  medewerker:
+    adapter: simulated
+    label: Inloggen als medewerker
+    role_label: Behandelaar
+    fields:
+      naam: {label: Naam}

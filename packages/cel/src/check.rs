@@ -86,6 +86,25 @@ pub fn events_for<'a>(
     out
 }
 
+/// The derivations of a definition that read `<stream>/<event>`: per
+/// derivation its own filter on top of that of the lexostatus; a derivation
+/// on the chosen gram reads what the lexostatus selects.
+pub fn derivations_reading(
+    def: &LexostatusDefinition,
+    streams: &[Stream],
+    stream: &str,
+    event: &str,
+) -> Vec<String> {
+    def.all_derivations()
+        .filter(|(_, d)| {
+            events_for(def, d.derivation.filter(), streams)
+                .iter()
+                .any(|(s, e)| s.id == stream && e.name == event)
+        })
+        .map(|(n, _)| n.clone())
+        .collect()
+}
+
 /// The events in a chronicle that can pass a filter, apart from the filter
 /// of a lexostatus (for `without`).
 pub fn events_in<'a>(

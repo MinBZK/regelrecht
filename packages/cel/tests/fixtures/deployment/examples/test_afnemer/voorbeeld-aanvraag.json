@@ -1,0 +1,12 @@
+{
+  "external": {
+    "naam": "Vereniging Voorbeeld",
+    "adres": "Voorbeeldstraat 1, 1234 AB Voorbeeld",
+    "dagtekening": "2025-03-12",
+    "gebieden": [
+      {"gebied": "Voorbeeldstad", "zetels": 4},
+      {"gebied": "Buurdorp", "zetels": 2}
+    ],
+    "aanduiding": "VOORBEELD"
+  }
+}

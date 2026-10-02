@@ -1,0 +1,40 @@
+---
+# Fictief uitvoeringsbeleid van de afnemer (RFC-047): welke kanalen er zijn,
+# wie er inlogt en wat het portaal indient. De techniek van een kanaal staat in
+# deployment/channels.yaml. Geen geldend recht.
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.8.0/schema/v0.8.0/schema.json
+$id: testbeleid_afnemer
+name: Testbeleid afnemer
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.com/testbeleid_afnemer
+competent_authority:
+  name: Test afnemer
+articles:
+  - number: '1'
+    url: https://example.com/testbeleid_afnemer/1
+    text: |-
+      1. Het publieke portaal is het kanaal eherkenning. Wie daar inlogt, doet dat namens een organisatie met haar nummer.
+      2. Op het publieke portaal wordt de aanvraag van artikel 1 van de testregeling ingediend en vooraf getoetst.
+      3. Het behandelportaal is het kanaal medewerker.
+    machine_readable:
+      executes:
+        - {article: testregeling_afnemer#1, as: procedure}
+      execution:
+        produces:
+          legal_character: TOETS
+          decision_type: GEEN_BESLUIT
+          extensions:
+            chronolex:
+              channels:
+                eherkenning:
+                  kind: portal
+                  role: aanvrager
+                  identifies: {kvk: [testregeling_register#1], persoon: []}
+                  owner: kvk
+                  submits: testregeling_afnemer#1
+                  assesses: {output: aanvraag_toelaatbaar}
+                  legal_basis: [testregeling_afnemer#1]
+                medewerker: {kind: handling, role: behandelaar}

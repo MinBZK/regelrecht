@@ -712,7 +712,7 @@ fn the_decision_form_follows_from_origin() {
 
 /// Implementing policy of the actor gives `jaar` a different origin.
 const POLICY: &str = r#"
-$id: testbeleid_afnemer
+$id: testbeleid_afnemer_herkomst
 regulatory_layer: UITVOERINGSBELEID
 publication_date: '2025-01-01'
 competent_authority: {name: Test afnemer}
@@ -724,7 +724,7 @@ articles:
       origins:
         - regulation: testregeling_afnemer
           parameter: jaar
-          origin: {waarde: DOSSIER, grondslag: 'testbeleid_afnemer#1 lid 1'}
+          origin: {waarde: DOSSIER, grondslag: 'testbeleid_afnemer_herkomst#1 lid 1'}
 "#;
 
 #[test]
@@ -732,7 +732,7 @@ fn an_override_in_policy_wins() {
     let c = consumer(same, same, &[POLICY]);
     assert_eq!(
             c.errors,
-            ["besluit: wrong source for parameter 'jaar' of testregeling_afnemer#3 (DOSSIER, grondslag testbeleid_afnemer#1 lid 1, from testbeleid_afnemer#1): it comes from synthesis source test_register/registerstatus"]
+            ["besluit: wrong source for parameter 'jaar' of testregeling_afnemer#3 (DOSSIER, grondslag testbeleid_afnemer_herkomst#1 lid 1, from testbeleid_afnemer_herkomst#1): it comes from synthesis source test_register/registerstatus"]
         );
     // Policy of another authority does not count.
     let other = POLICY.replace("name: Test afnemer", "name: Een ander");
@@ -743,19 +743,19 @@ fn an_override_in_policy_wins() {
 #[test]
 fn two_clashing_overrides_are_an_error() {
     let second = format!(
-            "{POLICY}  - number: '2'\n    text: Tweede.\n    machine_readable:\n      origins:\n        - regulation: testregeling_afnemer\n          parameter: jaar\n          origin: {{waarde: REGISTER, register: testregeling_register, grondslag: 'testbeleid_afnemer#2'}}\n"
+            "{POLICY}  - number: '2'\n    text: Tweede.\n    machine_readable:\n      origins:\n        - regulation: testregeling_afnemer\n          parameter: jaar\n          origin: {{waarde: REGISTER, register: testregeling_register, grondslag: 'testbeleid_afnemer_herkomst#2'}}\n"
         );
     let c = consumer(same, same, &[&second]);
     assert_eq!(
             c.errors,
-            ["origins: 'jaar' of testregeling_afnemer gets two origins: DOSSIER, grondslag testbeleid_afnemer#1 lid 1, from testbeleid_afnemer#1 and REGISTER, register testregeling_register, grondslag testbeleid_afnemer#2, from testbeleid_afnemer#2"]
+            ["origins: 'jaar' of testregeling_afnemer gets two origins: DOSSIER, grondslag testbeleid_afnemer_herkomst#1 lid 1, from testbeleid_afnemer_herkomst#1 and REGISTER, register testregeling_register, grondslag testbeleid_afnemer_herkomst#2, from testbeleid_afnemer_herkomst#2"]
         );
     // An override of a parameter that does not exist.
     let unknown = POLICY.replace("parameter: jaar", "parameter: bestaat_niet");
     let c = consumer(same, same, &[&unknown]);
     assert_eq!(
             c.errors,
-            ["origins in testbeleid_afnemer#1: regulation 'testregeling_afnemer' has no parameter 'bestaat_niet'"]
+            ["origins in testbeleid_afnemer_herkomst#1: regulation 'testregeling_afnemer' has no parameter 'bestaat_niet'"]
         );
 }
 

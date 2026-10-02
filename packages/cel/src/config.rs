@@ -230,6 +230,10 @@ pub struct ProcessDefinition {
     /// Default data per action, for a trial setup.
     #[serde(default)]
     pub examples: Option<ExamplesDefinition>,
+    /// The policy article of the portal channel, for a process from policy
+    /// (RFC-047); `None` for one from `process.yaml`.
+    #[serde(skip)]
+    pub declared_by: Option<String>,
 }
 
 /// How strict the origin check (RFC-043) is.

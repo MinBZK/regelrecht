@@ -1,0 +1,24 @@
+---
+# Standaardgegevens per handeling van de fixtures, voor een proefopstelling
+# (RFC-047), per cel. Paden zijn relatief aan dit bestand; een handeling heet
+# naar haar event.
+test_afnemer:
+  logins: [examples/test_afnemer/voorbeeld-login.json, examples/test_afnemer/voorbeeld-login-ander.json]
+  application: examples/test_afnemer/voorbeeld-aanvraag.json
+  actions:
+    besluit_genomen: examples/test_afnemer/voorbeeld-besluit.json
+    besluit_bekendgemaakt: examples/test_afnemer/voorbeeld-bekendmaking.json
+test_toeslag:
+  logins: [examples/test_toeslag/voorbeeld-login.json]
+  application: examples/test_toeslag/voorbeeld-aanvraag.json
+  actions:
+    voorschot_verleend: examples/test_toeslag/voorbeeld-voorschot.json
+    besluit_bekendgemaakt_voorschot_verleend: examples/test_toeslag/voorbeeld-bekendmaking.json
+    voorschot_betaald: examples/test_toeslag/voorbeeld-voorschot-betalen.json
+    toeslag_vastgesteld: examples/test_toeslag/voorbeeld-vaststelling.json
+    besluit_bekendgemaakt_toeslag_vastgesteld: examples/test_toeslag/voorbeeld-bekendmaking.json
+    vaststelling_gewijzigd: examples/test_toeslag/voorbeeld-wijziging.json
+    besluit_bekendgemaakt_vaststelling_gewijzigd: examples/test_toeslag/voorbeeld-bekendmaking.json
+    terugvordering_vastgesteld: examples/test_toeslag/voorbeeld-terugvordering.json
+    besluit_bekendgemaakt_terugvordering_vastgesteld: examples/test_toeslag/voorbeeld-bekendmaking.json
+    terugbetaling_ontvangen: examples/test_toeslag/voorbeeld-terugbetaling.json

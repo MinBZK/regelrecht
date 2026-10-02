@@ -72,6 +72,11 @@ pub(super) fn outputs_of(service: &LawExecutionService, article: &str) -> Vec<St
         .unwrap_or_default()
 }
 
+/// The outputs of an article, `<regulation>#<article>`, in declaration order.
+pub fn outputs_of_article(service: &LawExecutionService, article: &str) -> Vec<String> {
+    outputs_of(service, article)
+}
+
 /// The parameter of an article with origin role `BESLUIT` (RFC-047): it
 /// receives the id of the decision the action acts on. `None` without one
 /// (or without the article); more than one is an error, because the runtime
