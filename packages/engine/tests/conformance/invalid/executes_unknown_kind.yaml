@@ -1,0 +1,17 @@
+---
+# invalid: 'as' outside the four kinds (RFC-047)
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.8.0/schema/v0.8.0/schema.json
+$id: test_conformance_executes_unknown_kind
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2025-01-01'
+url: https://example.invalid/executes
+competent_authority:
+  name: Een instantie
+articles:
+  - number: '1'
+    url: https://example.invalid/executes/1
+    text: De instantie leest de aanvraag van artikel 1 van de wet zoals zij haar ontving.
+    machine_readable:
+      executes:
+        - article: test_conformance_submission#1
+          as: guidance

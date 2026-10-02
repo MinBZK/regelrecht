@@ -2208,6 +2208,35 @@
               }
             }
           }
+        },
+        "executes": {
+          "type": "array",
+          "description": "The articles of law this policy article executes, and how (RFC-047). fact_finding, interpretation and weighing are the three subjects of a beleidsregel in Awb 1:3 lid 4 (vaststelling van feiten, uitleg van wettelijke voorschriften, afweging van belangen); procedure is a choice of this format, not an Awb term: the way of working without a weighing of its own, such as a portal or a channel. Name only the article the policy works out, not the general law that hooks onto it. The engine indexes it in both directions and names it in the trace; it does not change the outcome.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "article",
+              "as"
+            ],
+            "properties": {
+              "article": {
+                "type": "string",
+                "pattern": "^[a-z0-9_]+#[^#]+$",
+                "description": "The executed article, `<regulation>#<article>`, without a paragraph."
+              },
+              "as": {
+                "type": "string",
+                "enum": [
+                  "fact_finding",
+                  "interpretation",
+                  "weighing",
+                  "procedure"
+                ],
+                "description": "How the policy works it out: fact_finding, interpretation or weighing (Awb 1:3 lid 4), or procedure (own choice)."
+              }
+            }
+          }
         }
       },
       "additionalProperties": false

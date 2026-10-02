@@ -365,6 +365,14 @@ fn declaration_fingerprint(law: &ArticleBasedLaw) -> Vec<String> {
         {
             parts.push(format!("decides_on\0{}\0{target}", article.number));
         }
+        for e in article.get_executes() {
+            parts.push(format!(
+                "executes\0{}\0{}\0{}",
+                article.number,
+                e.article,
+                e.kind.as_str()
+            ));
+        }
         if let Some(overrides) = article.get_overrides() {
             for decl in overrides {
                 parts.push(format!(
@@ -407,6 +415,17 @@ pub struct DecisionOn {
     pub law_id: String,
     pub article_number: String,
     pub legal_character: String,
+}
+
+/// A policy article that executes an article of law (RFC-047).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExecutesEntry {
+    /// The policy.
+    pub law_id: String,
+    pub article_number: String,
+    /// The executed article, `<regulation>#<article>`.
+    pub target: String,
+    pub kind: regelrecht_law_model::ExecutesKind,
 }
 
 /// Resolves cross-law references and provides law registry functionality.
@@ -463,6 +482,9 @@ pub struct RuleResolver {
     /// article that establishes the submission -> the decision articles that
     /// name it in `produces.decides_on`, with their legal character.
     decides_on_index: HashMap<String, Vec<DecisionOn>>,
+    /// Policy articles that execute an article (RFC-047): `<law>#<article>`
+    /// of the executed article -> the policy articles, newest version only.
+    executes_index: HashMap<String, Vec<ExecutesEntry>>,
     /// Override index: (target_law, target_article, output) -> list of overriding articles
     /// Enables O(1) lookup of lex specialis overrides for a given output.
     overrides_index: HashMap<(String, String, String), Vec<LawArticleRef>>,
@@ -526,6 +548,7 @@ impl RuleResolver {
             hooks_index: HashMap::new(),
             submission_hooks_index: HashMap::new(),
             decides_on_index: HashMap::new(),
+            executes_index: HashMap::new(),
             overrides_index: HashMap::new(),
             procedure_index: HashMap::new(),
             procedure_defaults: HashMap::new(),
@@ -1434,6 +1457,10 @@ impl RuleResolver {
             entries.retain(|d| d.law_id != law_id);
         }
         self.decides_on_index.retain(|_, v| !v.is_empty());
+        for entries in self.executes_index.values_mut() {
+            entries.retain(|e| e.law_id != law_id);
+        }
+        self.executes_index.retain(|_, v| !v.is_empty());
 
         // Remove old override index entries for this law
         for entries in self.overrides_index.values_mut() {
@@ -1546,6 +1573,20 @@ impl RuleResolver {
                         }
                     }
 
+                    // What a policy article executes (RFC-047).
+                    for e in article.get_executes() {
+                        let entry = ExecutesEntry {
+                            law_id: law_id.to_string(),
+                            article_number: article.number.clone(),
+                            target: e.article.clone(),
+                            kind: e.kind,
+                        };
+                        let list = self.executes_index.entry(e.article.clone()).or_default();
+                        if !list.contains(&entry) {
+                            list.push(entry);
+                        }
+                    }
+
                     // Overrides index
                     if let Some(ovr_decls) = article.get_overrides() {
                         for decl in ovr_decls {
@@ -1592,6 +1633,10 @@ impl RuleResolver {
             entries.retain(|d| d.law_id != law_id);
         }
         self.decides_on_index.retain(|_, v| !v.is_empty());
+        for entries in self.executes_index.values_mut() {
+            entries.retain(|e| e.law_id != law_id);
+        }
+        self.executes_index.retain(|_, v| !v.is_empty());
 
         // Remove override index entries for this law
         for entries in self.overrides_index.values_mut() {
@@ -1713,6 +1758,33 @@ impl RuleResolver {
             .get(&format!("{law_id}#{article_number}"))
             .map(Vec::as_slice)
             .unwrap_or(&[])
+    }
+
+    /// The policy articles that execute `<law_id>#<article_number>` (RFC-047).
+    pub fn executed_by(&self, law_id: &str, article_number: &str) -> &[ExecutesEntry] {
+        self.executes_index
+            .get(&format!("{law_id}#{article_number}"))
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+    }
+
+    /// What `<law_id>#<article_number>` executes, in the newest version of
+    /// its law (RFC-047).
+    pub fn executes_of(&self, law_id: &str, article_number: &str) -> Vec<ExecutesEntry> {
+        self.get_law(law_id)
+            .and_then(|l| l.find_article_by_number(article_number))
+            .map(|a| {
+                a.get_executes()
+                    .iter()
+                    .map(|e| ExecutesEntry {
+                        law_id: law_id.to_string(),
+                        article_number: article_number.to_string(),
+                        target: e.article.clone(),
+                        kind: e.kind,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     /// Find the hooks on a submission of `kind` that the article
@@ -4764,5 +4836,54 @@ articles:
                 )
             );
         }
+    }
+
+    const EXECUTING_POLICY: &str = r#"
+$id: test_beleid
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het portaal neemt de aanvraag van artikel 1 van de wet aan.
+    machine_readable:
+      executes:
+        - {article: 'test_law#1', as: procedure}
+"#;
+
+    /// A policy article says which article of law it executes (RFC-047); the
+    /// resolver answers in both directions, like `decides_on` (RFC-046).
+    #[test]
+    fn executes_is_indexed_in_both_directions() {
+        let mut r = RuleResolver::new();
+        r.load_from_yaml(make_test_law()).unwrap();
+        r.load_from_yaml(EXECUTING_POLICY).unwrap();
+        let by = r.executed_by("test_law", "1");
+        assert_eq!(by.len(), 1, "{by:?}");
+        assert_eq!(by[0].law_id, "test_beleid");
+        assert_eq!(by[0].article_number, "1");
+        assert_eq!(by[0].kind, regelrecht_law_model::ExecutesKind::Procedure);
+        let of = r.executes_of("test_beleid", "1");
+        assert_eq!(of.len(), 1);
+        assert_eq!(of[0].target, "test_law#1");
+        assert!(r.executed_by("test_law", "2").is_empty());
+        assert!(r.executes_of("test_law", "1").is_empty());
+    }
+
+    /// A newer version of the policy replaces what the older one executes.
+    #[test]
+    fn a_newer_policy_version_replaces_its_executes() {
+        let mut r = RuleResolver::new();
+        r.load_from_yaml(make_test_law()).unwrap();
+        r.load_from_yaml(EXECUTING_POLICY).unwrap();
+        r.load_from_yaml(
+            &EXECUTING_POLICY
+                .replace("valid_from: '2025-01-01'", "valid_from: '2026-01-01'")
+                .replace("test_law#1", "test_law#2"),
+        )
+        .unwrap();
+        assert!(r.executed_by("test_law", "1").is_empty());
+        assert_eq!(r.executed_by("test_law", "2").len(), 1);
+        assert_eq!(r.executes_of("test_beleid", "1")[0].target, "test_law#2");
     }
 }

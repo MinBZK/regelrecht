@@ -1264,6 +1264,43 @@ pub struct UntranslatableEntry {
     pub accepted: bool,
 }
 
+/// How a policy article works out the article of law it executes (RFC-047).
+/// The first three are the subjects of a beleidsregel in Awb 1:3 lid 4;
+/// `procedure` is not an Awb term (own choice): the way of working without a
+/// weighing of its own, such as a portal or a channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutesKind {
+    FactFinding,
+    Interpretation,
+    Weighing,
+    Procedure,
+}
+
+impl ExecutesKind {
+    /// The value as it is written in a law.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ExecutesKind::FactFinding => "fact_finding",
+            ExecutesKind::Interpretation => "interpretation",
+            ExecutesKind::Weighing => "weighing",
+            ExecutesKind::Procedure => "procedure",
+        }
+    }
+}
+
+/// The article of law a policy article executes (RFC-047): only the article
+/// itself, never the general law that hooks onto it (Awb 4:2 hooks onto the
+/// application of Wpp 102; a policy executes Wpp 102).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Executes {
+    /// `<regulation>#<article>`, without a paragraph.
+    pub article: String,
+    #[serde(rename = "as")]
+    pub kind: ExecutesKind,
+}
+
 /// Machine-readable section of an article
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct MachineReadable {
@@ -1306,6 +1343,9 @@ pub struct MachineReadable {
     /// Each entry is kept as written when it is not valid; see [`Declared`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origins: Option<Vec<Declared<OriginOverride>>>,
+    /// The articles of law this (policy) article executes, and how (RFC-047).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub executes: Option<Vec<Executes>>,
 }
 
 /// Represents a single article in a law
@@ -1438,6 +1478,14 @@ impl Article {
         self.machine_readable
             .as_ref()
             .and_then(|mr| mr.overrides.as_ref())
+    }
+
+    /// What this article executes (RFC-047); empty without `executes`.
+    pub fn get_executes(&self) -> &[Executes] {
+        self.machine_readable
+            .as_ref()
+            .and_then(|mr| mr.executes.as_deref())
+            .unwrap_or(&[])
     }
 
     /// Get the markings declared by this article (schema v0.7.0).

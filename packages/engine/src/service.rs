@@ -2210,6 +2210,13 @@ impl LawExecutionService {
             None => Vec::new(),
         };
 
+        // RFC-047: name what this policy article executes, as a step of its own.
+        for e in article.get_executes() {
+            let _guard =
+                res_ctx.trace_guard(format!("executes:{}", e.article), PathNodeType::Article);
+            res_ctx.trace_set_message(format!("voert uit: {} ({})", e.article, e.kind.as_str()));
+        }
+
         // A required parameter the caller passed as null or unknown names
         // nobody. At the top level (depth 0) that is the caller's error, not a
         // missing fact and not an absence to decide on (RFC-036); a cross-law
@@ -8795,6 +8802,51 @@ articles:
             )
             .unwrap();
         assert!(!r.outputs.contains_key("kern_gegeven"), "{:?}", r.outputs);
+    }
+
+    /// The trace names what a policy article executes (RFC-047).
+    #[test]
+    fn test_the_trace_names_what_a_policy_article_executes() {
+        let law = r#"
+$id: wet_x
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Er is een uitkomst.
+    machine_readable:
+      execution:
+        output: [{name: uitkomst, type: number}]
+        actions: [{output: uitkomst, value: 1}]
+"#;
+        let policy = r#"
+$id: beleid_x
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het beleid werkt artikel 1 van de wet uit.
+    machine_readable:
+      executes: [{article: 'wet_x#1', as: procedure}]
+      execution:
+        output: [{name: uitgewerkt, type: number}]
+        actions: [{output: uitgewerkt, value: 2}]
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+        service.load_law(policy).unwrap();
+        let r = service
+            .evaluate_law_output_with_trace("beleid_x", "uitgewerkt", BTreeMap::new(), "2025-06-01")
+            .unwrap();
+        let trace = r.trace.expect("trace");
+        assert!(
+            trace_mentions(&trace, "voert uit: wet_x#1 (procedure)"),
+            "{trace:?}"
+        );
+        let r = service
+            .evaluate_law_output_with_trace("wet_x", "uitkomst", BTreeMap::new(), "2025-06-01")
+            .unwrap();
+        assert!(!trace_mentions(&r.trace.expect("trace"), "voert uit"));
     }
 
     #[test]
