@@ -80,7 +80,7 @@ The required `Test` check is a gate job that fails when any job it depends on fa
 
 - **Cross-law integrity** - `script/cross-law-integriteit.py` over the corpus: misplaced or dangling source bindings and broken `implements` declarations
 - **Frontend tests** - unit tests and bundle builds for the editor, lawmaking, demo, arch-explorer and shared packages, plus a check that the BDD grammar codegen is in sync
-- **Ontwerpsysteem-imports** (`nldd-imports`) - checks that the design-system imports match the tags in use
+- **Ontwerpsysteem-imports** - checks that the design-system imports match the tags in use
 - **E2E (mocked)** - `just test-e2e`, the Playwright suite against mocked backends
 - **Rust image build** - builds the `pipeline-api` image to catch Dockerfile breakage
 - **Docs source checks** - `npm run check:source` in `docs/`: cited paths, Gherkin steps, prose style, RFC coverage and numbering, the schema version and declared imports, without an Astro build
