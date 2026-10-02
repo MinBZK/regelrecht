@@ -61,7 +61,7 @@ stops autoplay.
 ## Running locally
 
 ```bash
-just dev-frontend lawmaking
+just dev lawmaking
 ```
 
 This starts Vite on port 7500 (override with `LAWMAKING_PORT`), without

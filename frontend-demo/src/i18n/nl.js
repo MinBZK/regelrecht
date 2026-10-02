@@ -606,7 +606,6 @@ export default {
   'sheet.change.field.postcode': 'Postcode',
   'sheet.change.field.woonplaats': 'Woonplaats',
   'sheet.change.field.adres': 'Adres',
-  'sheet.change.field.verblijfsadres': 'Verblijfsadres',
   'sheet.change.type.huishouden': 'Mijn huishouden',
   'sheet.change.type.huishouden.description': 'Trouwen, scheiden, samenwonen of een kind',
   'sheet.change.event.scheiden': 'Ik ga scheiden of wij gaan uit elkaar',

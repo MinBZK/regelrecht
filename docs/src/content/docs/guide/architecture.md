@@ -89,7 +89,7 @@ regelrecht/
 │   ├── frontend-shared/  # Code shared by the Vue frontends
 │   ├── poc-portal/       # Password-gated portal for the PoCs
 │   ├── poc-napp/         # Backend of the napp PoC
-│   ├── poc-assistent/    # Policy assistant for the PoCs
+│   ├── poc-assistent/    # Policy assistant for the PoCs (Node package)
 │   ├── arch-extract/     # Architecture explorer (developer tool)
 │   └── grafana/          # Provisioned dashboards
 ├── frontend/             # Law editor (Vue 3 + Vite)
@@ -98,7 +98,8 @@ regelrecht/
 ├── frontend-poc-*/       # The proof-of-concepts behind the portal
 ├── corpus-poc/           # Case corpora of the PoCs, not law in force
 ├── pocs/                 # The PoC register
-├── corpus/               # Machine-readable laws (YAML), plus the demo corpus
+├── corpus/               # Machine-readable laws (YAML), notes, and the demo corpus
+├── corpus-registry.yaml  # The regulation sources the corpus library loads
 ├── bdd/                  # Canonical BDD grammar + conformance features
 ├── schema/               # Law format JSON schema, one directory per version
 └── docs/                 # Documentation site (Astro) + RFCs

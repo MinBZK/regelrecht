@@ -28,7 +28,7 @@ CI keeps the list complete, not correct. `docs/scripts/check-rfc-coverage.mjs` f
 | RFC-018 | Note infrastructure | [Notes and Annotations](../concepts/notes-and-annotations) |
 | RFC-019 | Law end dates | [Temporal Validity and Dates](../concepts/temporal-and-dates) |
 | RFC-021 | Date comparison | [Temporal Validity and Dates](../concepts/temporal-and-dates) |
-| RFC-039 | Addressable execution traces | [Traceability](../concepts/traceability), which still describes the pre-RFC-039 shape; see the backlog |
+| RFC-039 | Addressable execution traces | [Traceability](../concepts/traceability#the-trace-document), [Engine](../components/engine) |
 | RFC-043 | Lazy evaluation | [Engine](../components/engine#how-it-works), [Which outputs come back](../components/engine#which-outputs-come-back) |
 
 RFC-000 (the RFC process) is documented by [rfc-000](/rfcs/rfc-000) itself; the contributing guide links to it.
@@ -61,7 +61,6 @@ Accepted RFCs whose design rationale is not yet written up as prose:
 
 Built features that work but are thin or absent in the docs, roughly in priority order:
 
-- **Trace shape after RFC-039**: [Traceability](../concepts/traceability) and [Engine](../components/engine) describe the trace as the bare root step, and an engine now returns a `{trace_version, root}` document whose steps carry an address and an anchor. Both pages predate that and need rewriting against the published format.
 - **Editor collaboration**: trajects (create, invite members, roles, session branches) have a full backend and UI but no user-facing guide.
 - **Editor views**: the law graph (a sheet with trace stepping, opened from a scenario) and the review tasks under *Taken*, where the output of an asynchronous AI job is checked before it lands (`/api/tasks`), have no user-facing guide.
 - **WASM API surface**: the JavaScript bindings (`execute`, `executeWithTrace`, `executeMultiple`, `resolveNote`, `registerDataSource`, …) are an integration point with no reference page.

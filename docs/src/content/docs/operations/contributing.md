@@ -1,9 +1,9 @@
 ---
 title: "Contributing"
-description: "The branching model, quality checks, and workflow for contributing to RegelRecht."
+description: "The branching model, quality checks, and workflow the RegelRecht team follows, and how outside contributions are handled."
 ---
 
-RegelRecht is open source and welcomes contributions. The workflow is below.
+RegelRecht is open source so that anyone can read and check how law is translated into executable rules. The project is not organized around outside contributions: issues are the channel the team acts on, and pull requests from outside are generally not merged (see `CONTRIBUTING.md` at the repository root). This page describes the workflow the team itself follows.
 
 ## Branching model
 
