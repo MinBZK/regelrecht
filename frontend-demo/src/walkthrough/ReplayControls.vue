@@ -79,7 +79,7 @@ watch(
       <span class="time" aria-hidden="true">{{ timeText }}</span>
       <nldd-button-bar>
         <nldd-button variant="inherit-tinted" size="sm" :text="t('walkthrough.chapters')" expandable popup-type="menu">
-          <nldd-menu slot="popup" :accessible-label="t('walkthrough.chapters')">
+          <nldd-menu slot="popup" placement="top-start" :accessible-label="t('walkthrough.chapters')">
             <nldd-menu-item
               v-for="(c, i) in chapters"
               :key="i"
@@ -92,7 +92,7 @@ watch(
           </nldd-menu>
         </nldd-button>
         <nldd-icon-button variant="inherit-tinted" icon="more" :text="t('walkthrough.more')" expandable popup-type="menu">
-          <nldd-menu slot="popup" :accessible-label="t('walkthrough.more')">
+          <nldd-menu slot="popup" placement="top-end" :accessible-label="t('walkthrough.more')">
             <!-- `@select` on each item, not on the group: the same reason as
                  the toolbar menus in App.vue. -->
             <nldd-menu-group :text="t('walkthrough.speed')">
