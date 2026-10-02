@@ -244,6 +244,11 @@ pub enum OriginRole {
     /// the decision the application asks for, as the portal offers it, not
     /// typed in by the applicant.
     GevraagdBesluit,
+    /// The decision the parameter is about (RFC-047): the runtime gives the
+    /// id of the decision gram the action acts on, such as the
+    /// subsidievaststelling a payment executes (UB 15). A fact from the
+    /// course of the case (`DOSSIER`), with a role a process can find.
+    Besluit,
 }
 
 impl OriginRole {
@@ -252,6 +257,7 @@ impl OriginRole {
         match self {
             OriginRole::Tijdvak => "TIJDVAK",
             OriginRole::GevraagdBesluit => "GEVRAAGD_BESLUIT",
+            OriginRole::Besluit => "BESLUIT",
         }
     }
 }

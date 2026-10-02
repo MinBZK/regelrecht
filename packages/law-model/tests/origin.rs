@@ -154,6 +154,23 @@ fn the_role_of_the_decision_requested() {
     assert!(yaml.contains("rol: GEVRAAGD_BESLUIT"), "{yaml}");
 }
 
+/// The decision a parameter is about (RFC-047): the runtime gives it the id
+/// of the decision gram an action acts on.
+#[test]
+fn the_role_of_the_decision() {
+    let law = parse(&WET.replace(
+        "grondslag: een_regeling#1 lid 1",
+        "grondslag: een_regeling#1 lid 1\n              rol: BESLUIT",
+    ));
+    let o = law.articles[0].get_parameters()[0]
+        .origin
+        .as_ref()
+        .and_then(Declared::as_valid)
+        .expect("origin");
+    assert_eq!(o.rol, Some(OriginRole::Besluit));
+    assert_eq!(OriginRole::Besluit.as_str(), "BESLUIT");
+}
+
 #[test]
 fn origin_survives_a_round_trip() {
     let law = parse(WET);

@@ -72,6 +72,23 @@ pub(super) fn outputs_of(service: &LawExecutionService, article: &str) -> Vec<St
         .unwrap_or_default()
 }
 
+/// The parameter of an article with origin role `BESLUIT` (RFC-047): it
+/// receives the id of the decision the action acts on. More than one is
+/// not meaningful; the first counts.
+pub fn decision_parameter_of(service: &LawExecutionService, article: &str) -> Option<String> {
+    regulations::article(service, article)
+        .ok()?
+        .get_parameters()
+        .iter()
+        .find(|p| {
+            p.origin
+                .as_ref()
+                .and_then(|o| o.as_valid())
+                .is_some_and(|o| o.rol == Some(regelrecht_law_model::OriginRole::Besluit))
+        })
+        .map(|p| p.name.clone())
+}
+
 /// The assessments of an action that executes a decision: the boolean
 /// outputs of a TOETS article that are the norm of the legal basis of
 /// the event. Only for an executogram: that is the delivery or settlement
@@ -276,6 +293,9 @@ pub fn prepare_for(
             }
         }
         h.article = article;
+        if h.decision_parameter.is_none() {
+            h.decision_parameter = decision_parameter_of(service, &h.article);
+        }
         h.assessments = assessments(service, &h.article, event)
             .into_iter()
             .filter(|t| !h.outputs.contains(t))
@@ -719,5 +739,40 @@ articles:
         )
         .unwrap();
         assert!(assessments(&s, "testregeling_bevoegd#1", &other_paragraph).is_empty());
+    }
+
+    const PAYMENT_POLICY: &str = r#"
+$id: testbeleid_betaling
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: De dienst betaalt wat bij het besluit nog te betalen is.
+    machine_readable:
+      execution:
+        parameters:
+          - name: besluit
+            type: string
+            required: true
+            origin: {waarde: DOSSIER, grondslag: 'testbeleid_betaling#1', rol: BESLUIT}
+          - {name: bedrag, type: amount, required: true}
+        output: [{name: nog_te_betalen, type: amount}]
+        actions: [{output: nog_te_betalen, value: $bedrag}]
+"#;
+
+    /// The parameter that receives the decision id follows from the law
+    /// (origin role BESLUIT), not from the configuration.
+    #[test]
+    fn the_decision_parameter_follows_from_the_origin_role() {
+        let mut s = LawExecutionService::new();
+        s.load_law(PAYMENT_POLICY).unwrap();
+        assert_eq!(
+            decision_parameter_of(&s, "testbeleid_betaling#1").as_deref(),
+            Some("besluit")
+        );
+        let without = PAYMENT_POLICY.replace(", rol: BESLUIT", "");
+        let mut s = LawExecutionService::new();
+        s.load_law(&without).unwrap();
+        assert_eq!(decision_parameter_of(&s, "testbeleid_betaling#1"), None);
     }
 }
