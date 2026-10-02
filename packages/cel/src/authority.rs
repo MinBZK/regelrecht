@@ -10,12 +10,14 @@
 //! - the acting actor: who acts in the process, in a role, through a
 //!   channel, on behalf of an authority ([`crate::gram::ActingActor`]).
 //!
-//! What connects the actor to the authority is said by the configuration: `on_behalf_of` in
-//! `process.yaml` names the authority as a regulation names it in
-//! `competent_authority`, or a regulation whose competent authority it
-//! is. The runtime compares names literally; there is no normalization that
-//! reads an id as a name. If the process also acts for another authority,
-//! `mandates` names that authority with a legal basis (Awb 10:1). Without a mandate
+//! What connects the actor to the authority is the policy (RFC-047): the
+//! process acts on behalf of the competent authority of the implementing
+//! policy that declares its channels (`on_behalf_of`), by the name a
+//! regulation gives in `competent_authority`, or a regulation whose
+//! competent authority it is. The runtime compares names literally; there is
+//! no normalization that reads an id as a name. If the process also acts for
+//! another authority, `mandates` in that policy names that authority with a
+//! legal basis (Awb 10:1). Without a mandate
 //! the decision is refused for another authority.
 
 use std::collections::BTreeSet;
@@ -287,8 +289,32 @@ articles:
         s
     }
 
-    fn process(extra: &str) -> ProcessDefinition {
-        ProcessDefinition::parse(&format!("id: p\nactor: de_instantie\n{extra}"), "t").unwrap()
+    fn process(on_behalf_of: Option<OnBehalfOf>, mandates: &[(&str, &str)]) -> ProcessDefinition {
+        ProcessDefinition {
+            id: "p".into(),
+            actor: "de_instantie".into(),
+            on_behalf_of,
+            mandates: mandates
+                .iter()
+                .map(|(authority, legal_basis)| Mandate {
+                    authority: authority.to_string(),
+                    legal_basis: legal_basis.to_string(),
+                })
+                .collect(),
+            ..Default::default()
+        }
+    }
+
+    fn authority(name: &str) -> Option<OnBehalfOf> {
+        Some(OnBehalfOf::Authority {
+            authority: name.into(),
+        })
+    }
+
+    fn regulation(name: &str) -> Option<OnBehalfOf> {
+        Some(OnBehalfOf::Regulation {
+            regulation: name.into(),
+        })
     }
 
     #[test]
@@ -306,36 +332,41 @@ articles:
     #[test]
     fn on_behalf_of_an_authority_or_a_regulation() {
         let s = service();
-        let d = process("on_behalf_of: {authority: De Raad van Voorbeeld}\n");
+        let d = process(authority("De Raad van Voorbeeld"), &[]);
         assert_eq!(
             loose_at(&d, &s).unwrap().as_deref(),
             Some("De Raad van Voorbeeld")
         );
-        let d = process("on_behalf_of: {regulation: testregeling_bevoegd}\n");
+        let d = process(regulation("testregeling_bevoegd"), &[]);
         assert_eq!(
             loose_at(&d, &s).unwrap().as_deref(),
             Some("De Instantie van Voorbeeld")
         );
-        let d = process("on_behalf_of: {authority: de_instantie_van_voorbeeld}\n");
+        let d = process(authority("de_instantie_van_voorbeeld"), &[]);
         let f = loose_at(&d, &s).unwrap_err();
         assert!(
             f[0].contains("no loaded regulation names 'de_instantie_van_voorbeeld'"),
             "{f:?}"
         );
-        let d = process("on_behalf_of: {regulation: bestaat_niet}\n");
+        let d = process(regulation("bestaat_niet"), &[]);
         assert!(loose_at(&d, &s).unwrap_err()[0].contains("not loaded"));
-        assert_eq!(loose_at(&process(""), &s).unwrap(), None);
+        assert_eq!(loose_at(&process(None, &[]), &s).unwrap(), None);
     }
 
     #[test]
     fn a_mandate_names_a_known_authority_and_a_legal_basis() {
         let s = service();
         let ok = process(
-            "on_behalf_of: {regulation: testregeling_bevoegd}\nmandates:\n  - {authority: De Raad van Voorbeeld, legal_basis: 'testregeling_bevoegd#4'}\n",
+            regulation("testregeling_bevoegd"),
+            &[("De Raad van Voorbeeld", "testregeling_bevoegd#4")],
         );
         assert!(loose_at(&ok, &s).is_ok());
         let error = process(
-            "on_behalf_of: {regulation: testregeling_bevoegd}\nmandates:\n  - {authority: De Instantie van Voorbeeld, legal_basis: 'testregeling_bevoegd#9'}\n  - {authority: Niemand, legal_basis: 'testregeling_bevoegd#4'}\n",
+            regulation("testregeling_bevoegd"),
+            &[
+                ("De Instantie van Voorbeeld", "testregeling_bevoegd#9"),
+                ("Niemand", "testregeling_bevoegd#4"),
+            ],
         );
         let f = loose_at(&error, &s).unwrap_err();
         assert_eq!(f.len(), 3, "{f:?}");

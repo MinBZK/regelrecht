@@ -1,9 +1,9 @@
 //! Actions in a case: on trial, without recording, and taken, after which
 //! the process has the cell record them.
 //!
-//! `handling.actions` in `process.yaml` names per action an article
+//! The derivation (RFC-047, [`crate::derive`]) names per action an article
 //! (a regulation and outputs) and the event in which the cell records it. What
-//! an action needs and from whom is not stated there: it follows from the
+//! an action needs and from whom follows from the
 //! stage of the event (RFC-008) and from the origin of the parameters (RFC-043).
 //! There are three kinds ([`ActionKind`]), and the event says which:
 //!

@@ -1,4 +1,5 @@
-//! A process: a directory under `PROCESSES_PATH`, loaded and checked.
+//! A process: derived from the policy of its actor (RFC-047, see
+//! [`crate::derive`]), loaded and checked.
 //!
 //! A process belongs to the actor. It informs (synthesis of lexostatuses from
 //! cells), concludes (the decision) and has a cell record. It records
@@ -31,7 +32,7 @@ use crate::stream::{Binding, Event, Stream};
 /// A loaded process that passed the checks at startup.
 pub struct Process {
     pub definition: ProcessDefinition,
-    /// The directory of the process; paths in `process.yaml` are relative to it.
+    /// The root of the corpus; the paths of a derived process are absolute.
     pub dir: PathBuf,
     /// The cell the process records in: of the portal, the worklist,
     /// the decision and the sources of the case. It runs in this runtime.
@@ -63,26 +64,12 @@ pub struct Window {
 }
 
 impl Process {
-    /// Load a process from its directory and check it against the cells of the
-    /// runtime. Every error is returned, and every error names the process. The
-    /// checks on synthesis and actions are in [`crate::synthesis::check`]
-    /// and [`crate::action::check`]; the runtime calls them.
-    pub fn load(
-        map: &Path,
-        cells: &BTreeMap<String, Arc<Cell>>,
-        service: Arc<LawExecutionService>,
-    ) -> Result<Self, Vec<String>> {
-        let name = map
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_default();
-        let definition = ProcessDefinition::load(map).map_err(|f| with_process(&name, f))?;
-        let id = definition.id.clone();
-        Self::load_definition(definition, map, cells, service).map_err(|f| with_process(&id, f))
-    }
-
-    /// A process from policy (RFC-047). Its paths (form, examples) are
-    /// absolute; `root` is the corpus root.
+    /// Load a process from policy (RFC-047) and check it against the cells of
+    /// the runtime. Every error is returned, and every error names the
+    /// process. Its paths (form, examples) are absolute; `root` is the corpus
+    /// root. The checks on synthesis and actions are in
+    /// [`crate::synthesis::check`] and [`crate::action::check`]; the runtime
+    /// calls them.
     pub fn from_derived(
         derived: crate::derive::Derived,
         root: &Path,
@@ -246,7 +233,7 @@ impl Process {
             .unwrap_or_default()
     }
 
-    /// The actions of the handling, in the order of `process.yaml`.
+    /// The actions of the handling, in the order of the streams.
     pub fn actions(&self) -> &[crate::config::ActionDefinition] {
         self.definition
             .handling
@@ -258,7 +245,7 @@ impl Process {
 
 /// The lexostatuses the law reads in the cell the process records in,
 /// as sources of the case (`case: true`), after the sources of the case that
-/// `process.yaml` itself names. Which article reads which fact is in the law
+/// the synthesis of the deployment itself names. Which article reads which fact is in the law
 /// (`produces.extensions.chronolex.reads`); the process does not need to list
 /// them. A source that is already there stays.
 fn add_law_sources_to(definition: &mut ProcessDefinition, cell: &Cell) {
@@ -407,69 +394,51 @@ pub fn with_process(process: &str, errors: Vec<String>) -> Vec<String> {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
+    use crate::config::{RowInput, SourceInput};
 
-    fn fixtures() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
-    }
-
-    fn service() -> Arc<LawExecutionService> {
-        Arc::new(
-            crate::regulations::load(&fixtures().join("regulation"))
-                .unwrap()
-                .service,
-        )
-    }
-
-    fn cells(s: &Arc<LawExecutionService>) -> BTreeMap<String, Arc<Cell>> {
-        crate::config::cell_dirs(&fixtures().join("cells"))
+    /// A process of the fixtures as the policy gives it, after `adjust`,
+    /// loaded as the runtime does.
+    fn load(
+        cell: &str,
+        adjust: impl FnOnce(&mut ProcessDefinition),
+    ) -> Result<Process, Vec<String>> {
+        let (s, cells, d) = crate::derive::tests::setup();
+        let mut x = crate::derive::tests::derive(&s, &cells, &d)
             .unwrap()
-            .iter()
-            .map(|m| {
-                let c = Cell::load(m, s.clone()).unwrap();
-                (c.id().to_string(), Arc::new(c))
-            })
-            .collect()
+            .into_iter()
+            .find(|p| p.definition.id == cell)
+            .unwrap();
+        adjust(&mut x.definition);
+        Process::from_derived(x, &crate::derive::tests::fixtures(), &cells, s)
     }
 
-    /// Copy a fixture process to a temporary directory, with an adjustment
-    /// to its `process.yaml`.
-    fn with(process: &str, adjust: impl Fn(String) -> String) -> tempfile::TempDir {
-        let dir = tempfile::tempdir().unwrap();
-        for e in std::fs::read_dir(fixtures().join("processes").join(process)).unwrap() {
-            let p = e.unwrap().path();
-            let mut text = std::fs::read_to_string(&p).unwrap();
-            if p.file_name().unwrap() == "process.yaml" {
-                text = adjust(text);
-            }
-            std::fs::write(dir.path().join(p.file_name().unwrap()), text).unwrap();
-        }
-        dir
+    fn errors(cell: &str, adjust: impl FnOnce(&mut ProcessDefinition)) -> Vec<String> {
+        load(cell, adjust).err().unwrap()
     }
 
-    fn errors(process: &str, adjust: impl Fn(String) -> String) -> Vec<String> {
-        let s = service();
-        let dir = with(process, adjust);
-        Process::load(dir.path(), &cells(&s), s).err().unwrap()
+    fn source<'a>(d: &'a mut ProcessDefinition, lexostatus: &str) -> &'a mut SynthesisSource {
+        d.synthesis
+            .iter_mut()
+            .find(|b| b.lexostatus == lexostatus)
+            .unwrap()
     }
 
     #[test]
     fn load_fixture_processes() {
-        let s = service();
-        let c = cells(&s);
-        let agency = Process::load(&fixtures().join("processes/instantie"), &c, s.clone()).unwrap();
+        let agency = load("test_instantie", |_| {}).unwrap();
         assert_eq!(agency.cell.id(), "test_instantie");
         assert_eq!(agency.portal_event().unwrap().1.name, "aanvraag_ontvangen");
         assert!(agency.form.is_some());
-        let consumer = Process::load(&fixtures().join("processes/afnemer"), &c, s).unwrap();
+        let consumer = load("test_afnemer", |_| {}).unwrap();
         assert_eq!(consumer.cell.id(), "test_afnemer");
         assert_eq!(consumer.definition.case_sources().count(), 3);
         assert_eq!(consumer.definition.other_sources().count(), 2);
-        // What has not happened yet at the decision is not in process.yaml:
-        // it follows from the procedure of the beschikking (stage BEKENDMAKING after
-        // BESLUIT). The day of publication is derived by the lexostatus besluit
-        // (no gram: empty), so it is not included.
+        // What has not happened yet at the decision follows from the
+        // procedure of the beschikking (stage BEKENDMAKING after BESLUIT).
+        // The day of publication is derived by the lexostatus besluit (no
+        // gram: empty), so it is not included.
         let b = consumer.definition.handling.as_ref().unwrap();
-        let decision = b.action("besluit").unwrap();
+        let decision = b.action("besluit_genomen").unwrap();
         assert_eq!(decision.kind, crate::config::ActionKind::Decision);
         assert_eq!(decision.stage.as_deref(), Some("BESLUIT"));
         let state = &decision.not_yet;
@@ -478,11 +447,11 @@ mod tests {
         assert_eq!(state.len(), 1);
         // The publication is a follow-up to the decision, with the hook of the
         // objection deadline; the payment a fact with an assessment.
-        let known = b.action("bekendmaken").unwrap();
+        let known = b.action("besluit_bekendgemaakt").unwrap();
         assert_eq!(
             known.kind,
             crate::config::ActionKind::FollowUp {
-                decision: "besluit".into(),
+                decision: "besluit_genomen".into(),
                 procedure: "beschikking".into()
             }
         );
@@ -495,30 +464,19 @@ mod tests {
                 "einde_bezwaartermijn"
             ]
         );
-        let pay = b.action("betalen").unwrap();
+        let pay = b.action("betaling_verricht").unwrap();
         assert_eq!(pay.kind, crate::config::ActionKind::Fact);
         assert_eq!(pay.assessments, ["betaling_conform"]);
     }
 
-    /// A translation in the synthesis rests on a legal basis: every legal basis
-    /// points to a loaded article, and with `origin_check: strict` every
-    /// source that translates has one. The fixture gives both the register
-    /// and the register status one; the test takes away the second.
+    /// A translation in the synthesis rests on a legal basis: every legal
+    /// basis points to a loaded article, and every source that translates
+    /// has one. The fixture gives both the register and the register status
+    /// one; the test takes away the second.
     #[test]
     fn the_legal_basis_of_a_translation() {
-        let strict = |t: String| {
-            t.replace(
-                "actor: test_afnemer\n",
-                "actor: test_afnemer\norigin_check: strict\n",
-            )
-        };
-        // The fixture gives the translation of the registerstatus its legal
-        // basis (strict on the route from policy); without it, strict fails.
-        let f = errors("afnemer", |t| {
-            strict(t).replace(
-                "    legal_basis: [testregeling_afnemer#1, testregeling_register#3]\n",
-                "",
-            )
+        let f = errors("test_afnemer", |d| {
+            source(d, "registerstatus").legal_basis.clear();
         });
         assert_eq!(f.len(), 1, "{f:?}");
         assert!(
@@ -527,101 +485,97 @@ mod tests {
                 && f[0].contains("without legal basis"),
             "{f:?}"
         );
-        // A legal basis that does not exist, also outside strict.
-        let f = errors("afnemer", |t| {
-            t.replace(
-                "legal_basis: [testregeling_afnemer#1, testregeling_register#1]",
-                "legal_basis: [testregeling_afnemer#1, testregeling_register#9]",
-            )
+        // A legal basis that does not exist.
+        let f = errors("test_afnemer", |d| {
+            source(d, "register").legal_basis[1] = "testregeling_register#9".into();
         });
         assert_eq!(
             f,
-            ["process 'test_afnemer_proces': synthesis source test_register/register: legal basis 'testregeling_register#9': regulation 'testregeling_register' has no article 9"]
+            ["process 'test_afnemer': synthesis source test_register/register: legal basis 'testregeling_register#9': regulation 'testregeling_register' has no article 9"]
         );
         // A fixed value in the input of a per-row source is also a
         // translation.
-        let f = errors("afnemer", |t| {
-            strict(t).replace(
-                "gebied: {column: gebied}\n                peildatum",
-                "gebied: {value: noord}\n                peildatum",
-            )
+        let f = errors("test_afnemer", |d| {
+            let a = d
+                .handling
+                .as_mut()
+                .unwrap()
+                .actions
+                .iter_mut()
+                .find(|a| a.name == "besluit_genomen")
+                .unwrap();
+            let tarief = a.rows[0]
+                .sources
+                .iter_mut()
+                .find(|s| s.lexostatus == "tarief")
+                .unwrap();
+            tarief.input.insert(
+                "gebied".into(),
+                RowInput::Value {
+                    value: "noord".into(),
+                },
+            );
         });
         assert!(
-            f.iter().any(|m| m.contains("action 'besluit', rows 'gebiedstabel', source test_gebieden/tarief: translates (gebied = \"noord\") without legal basis")),
+            f.iter().any(|m| m.contains("action 'besluit_genomen', rows 'gebiedstabel', source test_gebieden/tarief: translates (gebied = \"noord\") without legal basis")),
             "{f:?}"
         );
+        // An input from a field is no translation.
+        assert!(matches!(
+            source(
+                &mut load("test_afnemer", |_| {}).unwrap().definition,
+                "registerstatus"
+            )
+            .input
+            .values()
+            .next(),
+            Some(SourceInput::Field(_))
+        ));
     }
 
     /// The legal basis of a channel and of a field points to a loaded article,
     /// with the paragraph it names.
     #[test]
     fn the_legal_basis_of_a_channel() {
-        let f = errors("afnemer", |t| {
-            t.replace(
-                "legal_basis: [testregeling_afnemer#1]",
-                "legal_basis: [testregeling_afnemer#1 lid 4]",
-            )
+        let f = errors("test_afnemer", |d| {
+            d.channels.get_mut("eherkenning").unwrap().legal_basis =
+                vec!["testregeling_afnemer#1 lid 4".into()];
         });
         assert_eq!(f.len(), 1, "{f:?}");
         assert!(
             f[0].contains("channel 'eherkenning': legal basis 'testregeling_afnemer#1 lid 4': article 1 has no paragraph 4"),
             "{f:?}"
         );
-        let f = errors("afnemer", |t| {
-            t.replace(
-                "legal_basis: [testregeling_register#1]",
-                "legal_basis: [testregeling_onbekend#1]",
-            )
+        let f = errors("test_afnemer", |d| {
+            let k = d.channels.get_mut("eherkenning").unwrap();
+            k.fields[0].legal_basis = vec!["testregeling_onbekend#1".into()];
         });
         assert_eq!(
             f,
-            ["process 'test_afnemer_proces': channel 'eherkenning', field 'kvk': legal basis 'testregeling_onbekend#1': regulation 'testregeling_onbekend' is not loaded"]
+            ["process 'test_afnemer': channel 'eherkenning', field 'kvk': legal basis 'testregeling_onbekend#1': regulation 'testregeling_onbekend' is not loaded"]
         );
     }
 
     #[test]
     fn every_message_names_the_process() {
-        let f = errors("instantie", |t| {
-            t.replace("cell: test_instantie", "cell: bestaat_niet")
-        });
-        assert_eq!(f.len(), 1, "{f:?}");
-        assert!(
-            f[0].starts_with(
-                "process 'test_instantie_proces': cell 'bestaat_niet' does not run in this runtime"
-            ),
-            "{f:?}"
-        );
-    }
-
-    #[test]
-    fn a_process_acts_in_one_cell() {
-        let f = errors("afnemer", |t| {
-            t.replace(
-                "worklist: {cell: test_afnemer,",
-                "worklist: {cell: test_register,",
-            )
+        let f = errors("test_instantie", |d| {
+            d.portal.as_mut().unwrap().cell = "bestaat_niet".into();
         });
         assert!(
-            f.iter().any(|f| f.contains(
-                "handling.worklist: cell 'test_register', and the process records in cell 'test_afnemer'"
-            )),
+            f.iter()
+                .any(|m| m.contains("cell 'bestaat_niet' does not run in this runtime")),
             "{f:?}"
         );
-    }
-
-    #[test]
-    fn a_process_without_a_cell() {
-        let f = errors("instantie", |t| {
-            t.split("\nroles:").next().unwrap().to_string()
-        });
-        assert!(f[0].contains("the process names no cell"), "{f:?}");
+        assert!(
+            f.iter()
+                .all(|m| m.starts_with("process 'test_instantie': ")),
+            "{f:?}"
+        );
     }
 
     #[test]
     fn the_actor_records_in_its_own_streams() {
-        let f = errors("afnemer", |t| {
-            t.replace("actor: test_afnemer", "actor: iemand_anders")
-        });
+        let f = errors("test_afnemer", |d| d.actor = "iemand_anders".into());
         assert!(
             f.iter().any(|f| f.contains(
                 "portal: stream 'test_afnemer_aanvragen' has recording_actor 'test_afnemer', and the process acts as 'iemand_anders'"
@@ -629,28 +583,15 @@ mod tests {
             "{f:?}"
         );
         assert!(
-            f.iter()
-                .any(|f| f.contains("action 'besluit', record: stream 'test_afnemer_zaakverloop'")),
-            "{f:?}"
-        );
-    }
-
-    #[test]
-    fn portal_with_unknown_event() {
-        let f = errors("instantie", |t| {
-            t.replace("event: aanvraag_ontvangen", "event: bestaat_niet")
-        });
-        assert!(
-            f.iter()
-                .any(|f| f.contains("stream 'test_aanvragen' has no event 'bestaat_niet'")),
+            f.iter().any(|f| f
+                .contains("action 'besluit_genomen', record: stream 'test_afnemer_zaakverloop'")),
             "{f:?}"
         );
     }
 
     #[test]
     fn examples_of_the_fixture() {
-        let s = service();
-        let consumer = Process::load(&fixtures().join("processes/afnemer"), &cells(&s), s).unwrap();
+        let consumer = load("test_afnemer", |_| {}).unwrap();
         let labels: Vec<&str> = consumer
             .examples
             .logins
@@ -659,17 +600,19 @@ mod tests {
             .collect();
         assert_eq!(labels, ["voorbeeld-login", "voorbeeld-login-ander"]);
         assert!(consumer.examples.application.is_some());
-        assert!(consumer.examples.actions.contains_key("besluit"));
+        assert!(consumer.examples.actions.contains_key("besluit_genomen"));
     }
 
     #[test]
     fn example_for_an_action_the_process_does_not_have() {
-        let f = errors("instantie", |t| {
-            format!("{t}\nexamples:\n  actions: {{besluit: weg.json}}\n")
+        let f = errors("test_instantie", |d| {
+            d.examples = Some(ExamplesDefinition {
+                actions: [("besluit".to_string(), "weg.json".to_string())].into(),
+                ..Default::default()
+            });
         });
         assert_eq!(f.len(), 2, "{f:?}");
         assert!(f[0].contains("examples.actions: the process has no action 'besluit'"));
-
         assert!(f[1].contains("weg.json"), "{f:?}");
     }
 }

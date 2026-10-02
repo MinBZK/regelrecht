@@ -37,7 +37,7 @@ pub struct ProcessState {
     /// The synthesis sources that are not a lexostatus of the case, with the
     /// transport the runtime chose.
     pub sources: Arc<Vec<Source>>,
-    /// Per action (in the order of `process.yaml`) the sources its article
+    /// Per action (in the order of the handling) the sources its article
     /// asks for and its synthesis per row.
     pub actions: Arc<Vec<ActionState>>,
     /// The synthesis per row of the assessment, with its sources.

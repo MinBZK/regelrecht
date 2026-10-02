@@ -1,6 +1,6 @@
 //! Application possibilities: what does the portal offer a logged-in person?
 //!
-//! The actor's policy says so (`portal.offer` in `process.yaml`): an output
+//! The actor's policy says so (`offers` of the portal channel, RFC-047): an output
 //! of a regulation, executed in a run with what is fixed beforehand: who logs
 //! in, what other cells know and the chosen window (the parameter with
 //! origin BELANGHEBBENDE and legal basis Awb 4:2 lid 1). True: offer.

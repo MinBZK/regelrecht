@@ -735,12 +735,12 @@ fn offer_(a: &Offer, service: &LawExecutionService, errors: &mut Vec<String>) {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
+    use crate::config::ProcessDefinition;
     use crate::{reduction, stream};
     use std::path::Path;
 
     const STREAM: &str = include_str!("../tests/fixtures/chronicles/test_aanvragen.yaml");
     const CELL: &str = include_str!("../tests/fixtures/cells/instantie/lexostatuses.yaml");
-    const CELL_DEF: &str = include_str!("../tests/fixtures/processes/instantie/process.yaml");
     const REG_STREAM: &str = include_str!("../tests/fixtures/chronicles/test_registers.yaml");
     const REG_CELL: &str = include_str!("../tests/fixtures/cells/register/lexostatuses.yaml");
 
@@ -750,16 +750,23 @@ mod tests {
             .service
     }
 
-    fn run(stream_text: &str, cell_text: &str) -> Result<(), Vec<String>> {
-        run_with(stream_text, cell_text, CELL_DEF)
+    /// The process of the instantie, as the policy of the fixtures gives it.
+    fn cell_def() -> ProcessDefinition {
+        crate::derive::tests::derived("test_instantie")
     }
 
-    /// The checks on the cell, and on the portal of the process (`cell_def`
-    /// is a `process.yaml`).
-    fn run_with(stream_text: &str, cell_text: &str, cell_def: &str) -> Result<(), Vec<String>> {
+    fn run(stream_text: &str, cell_text: &str) -> Result<(), Vec<String>> {
+        run_with(stream_text, cell_text, cell_def())
+    }
+
+    /// The checks on the cell, and on the portal of the process `d`.
+    fn run_with(
+        stream_text: &str,
+        cell_text: &str,
+        d: ProcessDefinition,
+    ) -> Result<(), Vec<String>> {
         let s = stream::parse(stream_text, "stream")?;
         let c = reduction::parse(cell_text, "cell")?;
-        let d = crate::config::ProcessDefinition::parse(cell_def, "process.yaml")?;
         let streams = [s];
         let mut errors = check(&streams, &c, &service()).err().unwrap_or_default();
         if let Some(p) = &d.portal {
@@ -773,7 +780,7 @@ mod tests {
         }
     }
 
-    fn portal_fails_with(cell_def: &str, expected: &str) {
+    fn portal_fails_with(cell_def: ProcessDefinition, expected: &str) {
         let errors = run_with(STREAM, CELL, cell_def).unwrap_err();
         assert!(
             errors.iter().any(|f| f.contains(expected)),
@@ -992,24 +999,25 @@ mod tests {
 
     #[test]
     fn portal_with_output_outside_the_legal_basis() {
-        let cell_def = CELL_DEF.replace(
-            "regulation: testregeling_aanvraag\n    output: aanvraag_volledig",
-            "regulation: testregeling_awb\n    output: in_verzuim",
-        );
-        portal_fails_with(&cell_def, "is not in the legal basis of event");
+        let mut d = cell_def();
+        let a = &mut d.portal.as_mut().unwrap().assessment;
+        a.regulation = "testregeling_awb".into();
+        a.output = "in_verzuim".into();
+        portal_fails_with(d, "is not in the legal basis of event");
     }
 
-    /// The cell definition with an offer from `testregeling_aanvraag`.
-    fn with_offer(output: &str, deadline: Option<&str>) -> String {
-        let deadline = deadline
-            .map(|t| format!("    deadline: {t}\n"))
-            .unwrap_or_default();
-        CELL_DEF.replace(
-            "  form:",
-            &format!(
-                "  offer:\n    regulation: testregeling_aanvraag\n    output: {output}\n{deadline}  form:"
-            ),
-        )
+    /// The process with an offer from `testregeling_aanvraag`.
+    fn with_offer(output: &str, deadline: Option<&str>) -> ProcessDefinition {
+        let mut d = cell_def();
+        d.portal.as_mut().unwrap().offer = Some(crate::config::Offer {
+            regulation: "testregeling_aanvraag".into(),
+            output: output.into(),
+            deadline: deadline.map(str::to_string),
+            windows: None,
+            start: None,
+            opening: None,
+        });
+        d
     }
 
     #[test]
@@ -1017,16 +1025,16 @@ mod tests {
         run_with(
             STREAM,
             CELL,
-            &with_offer("aanvraag_volledig", Some("aanvraag_tijdig")),
+            with_offer("aanvraag_volledig", Some("aanvraag_tijdig")),
         )
         .unwrap();
-        run_with(STREAM, CELL, &with_offer("aanvraag_volledig", None)).unwrap();
+        run_with(STREAM, CELL, with_offer("aanvraag_volledig", None)).unwrap();
     }
 
     #[test]
     fn offer_with_unknown_output() {
         portal_fails_with(
-            &with_offer("bestaat_niet", None),
+            with_offer("bestaat_niet", None),
             "portal.offer: regulation 'testregeling_aanvraag' has no output 'bestaat_niet'",
         );
     }
@@ -1034,7 +1042,7 @@ mod tests {
     #[test]
     fn offer_with_unknown_deadline() {
         portal_fails_with(
-            &with_offer("aanvraag_volledig", Some("bestaat_niet")),
+            with_offer("aanvraag_volledig", Some("bestaat_niet")),
             "portal.offer: regulation 'testregeling_aanvraag' has no deadline output 'bestaat_niet'",
         );
     }
@@ -1044,7 +1052,7 @@ mod tests {
     #[test]
     fn offer_with_deadline_from_another_article() {
         portal_fails_with(
-            &with_offer("aanvraag_volledig", Some("aanvraag_compleet")),
+            with_offer("aanvraag_volledig", Some("aanvraag_compleet")),
             "portal.offer: deadline 'aanvraag_compleet' comes from testregeling_aanvraag#2, the output 'aanvraag_volledig' from testregeling_aanvraag#1; they must come from the same article",
         );
     }
@@ -1057,11 +1065,14 @@ mod tests {
 
     #[test]
     fn no_portal_no_portal_check() {
-        let cell_def = CELL_DEF.split("\nportal:").next().unwrap().to_string();
-        run_with(STREAM, CELL, &cell_def).unwrap();
+        let without_portal = || ProcessDefinition {
+            portal: None,
+            ..cell_def()
+        };
+        run_with(STREAM, CELL, without_portal()).unwrap();
         // An intake path no portal delivers is then not an error either.
         let stream = STREAM.replace("$intake.eherkenning.persoon", "$intake.eherkenning.bsn");
-        run_with(&stream, CELL, &cell_def).unwrap();
+        run_with(&stream, CELL, without_portal()).unwrap();
     }
 
     #[test]
@@ -1230,8 +1241,9 @@ mod tests {
     #[test]
     fn portal_does_not_assess_a_list() {
         let cell = format!("{CELL}{LIST}");
-        let cell_def = CELL_DEF.replace("lexostatus: aanvraag_inhoud", "lexostatus: werkvoorraad");
-        let errors = run_with(STREAM, &cell, &cell_def).unwrap_err();
+        let mut d = cell_def();
+        d.portal.as_mut().unwrap().assessment.lexostatus = "werkvoorraad".into();
+        let errors = run_with(STREAM, &cell, d).unwrap_err();
         assert!(
             errors
                 .iter()

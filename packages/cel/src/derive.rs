@@ -1,6 +1,5 @@
-//! A process from policy (RFC-047): the [`ProcessDefinition`] the runtime
-//! used to read from `process.yaml`, derived from the policy of an actor
-//! ([`crate::policy`]), the cells and the deployment
+//! A process from policy (RFC-047): the [`ProcessDefinition`] of an actor,
+//! derived from its policy ([`crate::policy`]), the cells and the deployment
 //! ([`crate::deployment`]). One process per actor; its id is the id of the
 //! cell that records its submissions.
 
@@ -12,9 +11,7 @@ use regelrecht_engine::LawExecutionService;
 
 use crate::cell::Cell;
 use crate::channel::{ChannelDefinition, RoleDefinition};
-use crate::config::{
-    Assessment, FormReference, OnBehalfOf, OriginCheck, Portal, ProcessDefinition,
-};
+use crate::config::{Assessment, FormReference, OnBehalfOf, Portal, ProcessDefinition};
 use crate::deployment::{ChannelDeployment, Deployment};
 use crate::policy::{ActorPolicy, DeclaredChannel};
 use crate::stream::{Event, Stream};
@@ -270,7 +267,7 @@ fn channel_and_role(
         intake: k.intake.clone(),
         legal_basis,
         supplies: supplied.map(|(_, s)| s.clone()).unwrap_or_default(),
-        declared_by: Some(c.article.clone()),
+        declared_by: c.article.clone(),
         supplied_by: supplied.map(|(by, _)| by.clone()),
     };
     let role = RoleDefinition {
@@ -379,7 +376,6 @@ fn process(
     let definition = ProcessDefinition {
         id: id.clone(),
         actor: portal.stream.recording_actor.clone(),
-        origin_check: OriginCheck::Strict,
         on_behalf_of: Some(OnBehalfOf::Authority {
             authority: p.authority.clone(),
         }),
@@ -397,7 +393,7 @@ fn process(
         synthesis: synthesis.synthesis,
         handling,
         examples: deployment.examples.get(&id).cloned(),
-        declared_by: Some(channel.article.clone()),
+        declared_by: channel.article.clone(),
     };
     Ok(Derived {
         definition,
@@ -452,7 +448,6 @@ fn assessment_lexostatus(
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 pub(crate) mod tests {
     use super::*;
-    use crate::config::PROCESS_FILE;
 
     pub(crate) fn fixtures() -> std::path::PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
@@ -493,7 +488,6 @@ pub(crate) mod tests {
         let d = fixtures().join("deployment");
         let config = crate::config::Config {
             cells_path: fixtures().join("cells"),
-            processes_path: None,
             regulation_path: fixtures().join("regulation"),
             data_dir: fixtures(),
             port: 0,
@@ -535,262 +529,152 @@ pub(crate) mod tests {
             .definition
     }
 
-    pub(crate) fn from_yaml(process: &str) -> ProcessDefinition {
-        crate::load::load(
-            &fixtures()
-                .join("processes")
-                .join(process)
-                .join(PROCESS_FILE),
-            ProcessDefinition::parse,
-        )
-        .unwrap()
+    /// What the derivation decides about a process, as JSON: actor,
+    /// authority, mandates, channels, roles, portal, offer, form and actions
+    /// (in their order). The synthesis, its rows and the examples are not in
+    /// it: the derivation takes those from the deployment as they are.
+    pub(crate) fn summary(
+        d: &ProcessDefinition,
+        service: &LawExecutionService,
+    ) -> serde_json::Value {
+        use serde_json::json;
+        let channels: serde_json::Map<String, serde_json::Value> = d
+            .channels
+            .iter()
+            .map(|(id, k)| {
+                (
+                    id.clone(),
+                    json!({
+                        "label": k.label,
+                        "explanation": k.explanation,
+                        "owner": k.owner,
+                        "owner_path": k.owner_path(),
+                        "intake": k.intake,
+                        "supplies": k.supplies,
+                        "legal_basis": k.legal_basis,
+                        "fields": k.fields,
+                        "declared_by": k.declared_by,
+                        "supplied_by": k.supplied_by,
+                    }),
+                )
+            })
+            .collect();
+        let roles: serde_json::Map<String, serde_json::Value> = d
+            .roles
+            .iter()
+            .map(|(id, r)| {
+                (
+                    id.clone(),
+                    json!({
+                        "channel": r.channel,
+                        "routes": r.routes,
+                        "label": r.label,
+                        "legal_basis": r.legal_basis,
+                    }),
+                )
+            })
+            .collect();
+        let portal = d.portal.as_ref().map(|p| {
+            json!({
+                "record": [p.cell, p.stream, p.event],
+                "assessment": [p.assessment.lexostatus, p.assessment.regulation, p.assessment.output],
+                "offer": p.offer.as_ref().map(|o| json!({
+                    "regulation": o.regulation,
+                    "output": o.output,
+                    "deadline": o.deadline,
+                    "windows": o.windows,
+                    "start": o.start,
+                    "opening": o.opening,
+                })),
+                "form": p.form.as_ref().map(|f| json!([
+                    Path::new(&f.path).file_name().map(|n| n.to_string_lossy().into_owned()),
+                    f.screen,
+                ])),
+            })
+        });
+        let handling = d.handling.as_ref().map(|h| {
+            json!({
+                "worklist": [h.worklist.cell, h.worklist.lexostatus],
+                "actions": h.actions.iter().map(|a| json!({
+                    "name": a.name,
+                    "label": a.label,
+                    "role": a.role,
+                    "article": a.article,
+                    "regulation": a.regulation,
+                    "outputs": a.outputs,
+                    "decision": a.decision,
+                    "decision_parameter": a.decision_parameter,
+                    "record": [a.record.cell, a.record.stream, a.record.event],
+                })).collect::<Vec<_>>(),
+            })
+        });
+        json!({
+            "id": d.id,
+            "actor": d.actor,
+            "authority": crate::authority::own(d, service),
+            "declared_by": d.declared_by,
+            "mandates": d.mandates,
+            "channels": channels,
+            "roles": roles,
+            "portal": portal,
+            "handling": handling,
+        })
     }
 
-    fn file_name(p: &str) -> String {
-        Path::new(p)
-            .file_name()
-            .unwrap()
-            .to_string_lossy()
-            .into_owned()
-    }
-
-    /// The action names of `process.yaml` and the event names that replace
-    /// them (the table "Hernoemingen" of the plan).
-    pub(crate) const RENAMED: &[(&str, &str)] = &[
-        ("besluit", "besluit_genomen"),
-        ("bekendmaken", "besluit_bekendgemaakt"),
-        ("betalen", "betaling_verricht"),
-        ("aanvulling_vragen", "aanvulling_gevraagd"),
-        ("voorschot", "voorschot_verleend"),
-        (
-            "voorschot_bekendmaken",
-            "besluit_bekendgemaakt_voorschot_verleend",
-        ),
-        ("voorschot_betalen", "voorschot_betaald"),
-        ("vaststellen", "toeslag_vastgesteld"),
-        (
-            "vaststelling_bekendmaken",
-            "besluit_bekendgemaakt_toeslag_vastgesteld",
-        ),
-        ("vaststelling_wijzigen", "vaststelling_gewijzigd"),
-        (
-            "wijziging_bekendmaken",
-            "besluit_bekendgemaakt_vaststelling_gewijzigd",
-        ),
-        ("terugvorderen", "terugvordering_vastgesteld"),
-        (
-            "terugvordering_bekendmaken",
-            "besluit_bekendgemaakt_terugvordering_vastgesteld",
-        ),
-        ("terugbetalen", "terugbetaling_ontvangen"),
-    ];
-
-    /// Until `process.yaml` goes (Task 11): the policy says the same about
-    /// channels, roles and the portal as the configuration did, and the
-    /// deployment holds the same technique, synthesis and examples.
+    /// The processes the policy of the fixtures gives. The expectations in
+    /// `tests/fixtures/derived/<id>.json` are what `process.yaml` said
+    /// before it went (RFC-047), under the new names.
     #[test]
-    fn the_policy_gives_the_same_process_as_the_configuration() {
+    fn the_policy_gives_the_expected_processes() {
         let (service, cells, deployment) = setup();
         let all = derive(&service, &cells, &deployment).unwrap();
-        // The basis of a role is the first of its channel in the policy;
-        // `process.yaml` gave a role none (an intended deviation).
-        let role_basis: &[(&str, &str, &str)] = &[
-            ("test_afnemer", "aanvrager", "testregeling_afnemer#1"),
-            ("test_toeslag", "aanvrager", "testbeleid_toeslag#4 lid 1"),
-        ];
-        for (cell, process) in [
-            ("test_afnemer", "afnemer"),
-            ("test_instantie", "instantie"),
-            ("test_toeslag", "toeslag"),
-        ] {
-            let d = &all
-                .iter()
-                .find(|p| p.definition.id == cell)
-                .unwrap()
-                .definition;
-            let y = from_yaml(process);
-            // The process id is the cell id (renamed).
-            assert_eq!(d.id, cell);
-            assert_eq!(d.actor, y.actor, "{cell}");
-            // The authority: as `on_behalf_of` gave it; the instantie had
-            // none and now has the one of its policy (renamed).
-            let own = crate::authority::own(d, &service);
-            if cell == "test_instantie" {
-                assert_eq!(own.as_deref(), Some("Test instantie"));
-                assert_eq!(crate::authority::own(&y, &service), None);
-            } else {
-                assert!(own.is_some(), "{cell}");
-                assert_eq!(own, crate::authority::own(&y, &service), "{cell}");
-            }
-            assert_eq!(d.mandates, y.mandates, "{cell}");
-            assert_eq!(
-                d.channels.keys().collect::<Vec<_>>(),
-                y.channels.keys().collect::<Vec<_>>(),
-                "{cell}"
-            );
-            for (id, k) in &y.channels {
-                let dk = &d.channels[id];
-                assert_eq!(dk.label, k.label, "{cell}/{id}");
-                assert_eq!(dk.explanation, k.explanation, "{cell}/{id}");
-                assert_eq!(dk.owner, k.owner, "{cell}/{id}");
-                assert_eq!(dk.intake, k.intake, "{cell}/{id}");
-                assert_eq!(dk.supplies, k.supplies, "{cell}/{id}");
-                assert_eq!(dk.legal_basis, k.legal_basis, "{cell}/{id}");
-                // Name, label, pattern, check, message, numeric and legal basis.
-                let fields =
-                    |f: &[crate::channel::IdentificationField]| serde_json::to_value(f).unwrap();
-                assert_eq!(fields(&dk.fields), fields(&k.fields), "{cell}/{id}");
-                assert!(dk.declared_by.is_some(), "{cell}/{id}");
-            }
-            assert_eq!(
-                d.roles.keys().collect::<Vec<_>>(),
-                y.roles.keys().collect::<Vec<_>>(),
-                "{cell}"
-            );
-            for (id, r) in &y.roles {
-                assert_eq!(d.roles[id].channel, r.channel, "{cell}/{id}");
-                assert_eq!(d.roles[id].routes, r.routes, "{cell}/{id}");
-                assert_eq!(d.roles[id].label, r.label, "{cell}/{id}");
-                assert_eq!(r.legal_basis, None, "{cell}/{id}");
-                let expected = role_basis
-                    .iter()
-                    .find(|(c, role, _)| *c == cell && role == id)
-                    .map(|(_, _, b)| b.to_string());
-                assert_eq!(d.roles[id].legal_basis, expected, "{cell}/{id}");
-            }
-            let (dp, yp) = (d.portal.as_ref().unwrap(), y.portal.as_ref().unwrap());
-            assert_eq!(
-                (&dp.cell, &dp.stream, &dp.event),
-                (&yp.cell, &yp.stream, &yp.event),
-                "{cell}"
-            );
-            assert_eq!(
-                (
-                    &dp.assessment.lexostatus,
-                    &dp.assessment.regulation,
-                    &dp.assessment.output
-                ),
-                (
-                    &yp.assessment.lexostatus,
-                    &yp.assessment.regulation,
-                    &yp.assessment.output
-                ),
-                "{cell}"
-            );
-            assert_eq!(
-                format!("{:?}", dp.assessment.rows),
-                format!("{:?}", yp.assessment.rows),
-                "{cell}"
-            );
-            let offer = |o: Option<&crate::config::Offer>| {
-                o.map(|o| {
-                    (
-                        o.regulation.clone(),
-                        o.output.clone(),
-                        o.deadline.clone(),
-                        o.windows.clone(),
-                        o.start.clone(),
-                        o.opening.clone(),
-                    )
-                })
-            };
-            assert_eq!(offer(dp.offer.as_ref()), offer(yp.offer.as_ref()), "{cell}");
-            // The form: the same screen of the same document, now under
-            // `documents/` (the yaml path is relative to the process).
-            let dir = fixtures().join("processes").join(process);
-            assert_eq!(
-                dp.form
-                    .as_ref()
-                    .map(|f| (&f.screen, std::fs::read_to_string(&f.path).unwrap())),
-                yp.form.as_ref().map(|f| (
-                    &f.screen,
-                    std::fs::read_to_string(dir.join(&f.path)).unwrap()
-                )),
-                "{cell}"
-            );
+        let ids: Vec<&str> = all.iter().map(|p| p.definition.id.as_str()).collect();
+        assert_eq!(ids, ["test_afnemer", "test_instantie", "test_toeslag"]);
+        for p in &all {
+            let d = &p.definition;
+            let file = fixtures().join("derived").join(format!("{}.json", d.id));
+            let expected: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+            assert_eq!(summary(d, &service), expected, "{}", file.display());
+            // The synthesis and its rows per action come from the deployment
+            // as they are, the rows under the name of their action.
+            let s = deployment.synthesis.get(&d.id);
             assert_eq!(
                 format!("{:?}", d.synthesis),
-                format!("{:?}", y.synthesis),
-                "{cell}"
+                format!("{:?}", s.map(|s| s.synthesis.clone()).unwrap_or_default()),
+                "{}",
+                d.id
             );
-            // The rows per action, under the event name of the action.
-            let rows: BTreeMap<String, String> = y
-                .handling
-                .iter()
-                .flat_map(|h| &h.actions)
-                .filter(|a| !a.rows.is_empty())
-                .map(|a| {
-                    let name = RENAMED
-                        .iter()
-                        .find(|(was, _)| *was == a.name)
-                        .map_or(a.name.as_str(), |(_, is)| is);
-                    (name.to_string(), format!("{:?}", a.rows))
-                })
-                .collect();
-            let derived_rows: BTreeMap<String, String> = deployment
-                .synthesis
-                .get(cell)
-                .iter()
-                .flat_map(|s| &s.action_rows)
-                .map(|(a, r)| (a.clone(), format!("{r:?}")))
-                .collect();
-            assert_eq!(derived_rows, rows, "{cell}");
-            if cell == "test_afnemer" {
-                assert!(derived_rows.contains_key("besluit_genomen"));
+            for (name, rows) in s.iter().flat_map(|s| &s.action_rows) {
+                let a = d.handling.as_ref().and_then(|h| h.action(name)).unwrap();
+                assert_eq!(
+                    format!("{:?}", a.rows),
+                    format!("{rows:?}"),
+                    "{}/{name}",
+                    d.id
+                );
             }
-            // The examples: the same files, the actions under their event name.
-            let examples = |e: Option<&crate::config::ExamplesDefinition>, rename: bool| {
-                e.map(|e| {
-                    let actions: BTreeMap<String, String> = e
-                        .actions
-                        .iter()
-                        .map(|(a, p)| {
-                            let a = RENAMED
-                                .iter()
-                                .find(|(was, _)| rename && was == a)
-                                .map_or(a.as_str(), |(_, is)| is);
-                            (a.to_string(), file_name(p))
-                        })
-                        .collect();
-                    (
-                        e.logins.iter().map(|l| file_name(l)).collect::<Vec<_>>(),
-                        e.application.as_deref().map(file_name),
-                        actions,
-                    )
-                })
-            };
-            assert_eq!(
-                examples(d.examples.as_ref(), false),
-                examples(y.examples.as_ref(), true),
-                "{cell}"
-            );
         }
+        let rows = &deployment.synthesis["test_afnemer"].action_rows;
+        assert!(rows.contains_key("besluit_genomen"), "{rows:?}");
     }
 
     #[test]
     fn the_channels_of_the_policy_carry_their_articles() {
         let d = derived("test_toeslag");
-        assert_eq!(d.declared_by.as_deref(), Some("testbeleid_toeslag#6"));
+        assert_eq!(d.declared_by, "testbeleid_toeslag#6");
         let persoon = &d.channels["persoon"];
-        assert_eq!(persoon.declared_by.as_deref(), Some("testbeleid_toeslag#6"));
+        assert_eq!(persoon.declared_by, "testbeleid_toeslag#6");
         assert_eq!(persoon.supplied_by.as_deref(), Some("testbeleid_toeslag#4"));
         assert!(d.channels["medewerker"].supplied_by.is_none());
         // The owner: the field of the submission the policy names, through
         // the field of the login that carries it.
         assert_eq!(persoon.owner.as_deref(), Some("nummer"));
-        assert_eq!(
-            persoon.owner_path("persoon").as_deref(),
-            Some("persoonsnummer")
-        );
+        assert_eq!(persoon.owner_path(), Some("persoonsnummer"));
         let i = derived("test_instantie");
+        assert_eq!(i.channels["burger"].owner_path(), Some("burger.nummer"));
         assert_eq!(
-            i.channels["burger"].owner_path("burger").as_deref(),
-            Some("burger.nummer")
-        );
-        assert_eq!(
-            i.channels["eherkenning"]
-                .owner_path("eherkenning")
-                .as_deref(),
+            i.channels["eherkenning"].owner_path(),
             Some("eherkenning.kvk")
         );
         // The basis of the role is the first of the channel.
@@ -803,7 +687,6 @@ pub(crate) mod tests {
             &a.on_behalf_of,
             Some(crate::config::OnBehalfOf::Authority { authority }) if authority == "Test afnemer"
         ));
-        assert_eq!(a.origin_check, crate::config::OriginCheck::Strict);
     }
 
     #[test]
@@ -1055,6 +938,12 @@ pub(crate) mod tests {
                     &e,
                     &["testbeleid_afnemer#1", "'eherkenning'", submits, says]
                 ),
+                "{e:?}"
+            );
+            // Every message names the authority whose policy it is.
+            assert!(
+                e.iter()
+                    .all(|f| f.starts_with("authority 'Test afnemer': ")),
                 "{e:?}"
             );
         }

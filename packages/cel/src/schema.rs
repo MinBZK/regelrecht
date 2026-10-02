@@ -10,7 +10,6 @@ const STREAM: &str = include_str!("../../../schema/chronolex/v0.3.0/stream.json"
 const LEXOSTATUS: &str = include_str!("../../../schema/chronolex/v0.3.0/lexostatus.json");
 const GRAM: &str = include_str!("../../../schema/chronolex/v0.3.0/gram.json");
 const CELL: &str = include_str!("../../../schema/chronolex/v0.3.0/cell.json");
-const PROCESS: &str = include_str!("../../../schema/chronolex/v0.3.0/process.json");
 
 /// Which of the schemas.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,8 +20,6 @@ pub enum Kind {
     Lexostatus,
     /// A cell definition, `cell.yaml` (`cell.json`).
     Cell,
-    /// A process definition, `process.yaml` (`process.json`).
-    Process,
     /// A recorded gram (`gram.json`).
     Gram,
 }
@@ -39,8 +36,6 @@ static LEXOSTATUS_V: LazyLock<Result<Validator, String>> =
     LazyLock::new(|| compile(LEXOSTATUS, "lexostatus.json"));
 static GRAM_V: LazyLock<Result<Validator, String>> = LazyLock::new(|| compile(GRAM, "gram.json"));
 static CELL_V: LazyLock<Result<Validator, String>> = LazyLock::new(|| compile(CELL, "cell.json"));
-static PROCESS_V: LazyLock<Result<Validator, String>> =
-    LazyLock::new(|| compile(PROCESS, "process.json"));
 
 /// Validate a document against one of the schemas. On failure: every
 /// violation as `<path>: <message>`.
@@ -50,7 +45,6 @@ pub fn validate(kind: Kind, doc: &Value) -> Result<(), Vec<String>> {
         Kind::Lexostatus => &*LEXOSTATUS_V,
         Kind::Gram => &*GRAM_V,
         Kind::Cell => &*CELL_V,
-        Kind::Process => &*PROCESS_V,
     }
     .as_ref()
     .map_err(|e| vec![e.clone()])?;
@@ -84,7 +78,6 @@ mod tests {
             ("lexostatus", &*LEXOSTATUS_V),
             ("gram", &*GRAM_V),
             ("cell", &*CELL_V),
-            ("process", &*PROCESS_V),
         ] {
             assert!(v.is_ok(), "{name}: {:?}", v.as_ref().err());
         }

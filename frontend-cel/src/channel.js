@@ -1,5 +1,5 @@
 // Channels and roles as GET /api/processes gives them for a process
-// (`channels` and `roles` in process.yaml). No channel is fixed here: the
+// (declared in the actor's policy, RFC-047). No channel is fixed here: the
 // screens build their fields, labels and choices from this description.
 
 // The roles of a process as a list: [{id, label, channel, routes}], in the

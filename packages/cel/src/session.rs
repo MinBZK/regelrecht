@@ -1,4 +1,5 @@
-//! Sessions of the roles of a process (`roles` in `process.yaml`): every role
+//! Sessions of the roles of a process (a role per channel of the policy,
+//! RFC-047): every role
 //! logs in through a simulated channel ([`crate::channel`]). One cookie per
 //! process, one user per session: whoever logs in in another role replaces
 //! the session. There is no register and no database check.

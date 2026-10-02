@@ -1,6 +1,7 @@
 //! The cell runtime: loads every cell under `CELLS_PATH` and every process
-//! under `PROCESSES_PATH`, and serves them under `/cells/<id>/api/` and
-//! `/processes/<id>/api/`. See README.md for the env variables.
+//! the policy gives (`CELL_CHANNELS`, RFC-047), and serves them under
+//! `/cells/<id>/api/` and `/processes/<id>/api/`. See README.md for the env
+//! variables.
 
 use regelrecht_cel::api::system_clock;
 use regelrecht_cel::config::Config;

@@ -49,7 +49,7 @@ export function processApi(id) {
   const p = `/processes/${encodeURIComponent(id)}/api`;
   const actionPath = (root, name) => `${p}/cases/${encodeURIComponent(root)}/actions/${encodeURIComponent(name)}`;
   return {
-    // Log in through a channel from `channels` in process.yaml: the fields of
+    // Log in through a channel of the process (RFC-047): the fields of
     // the channel, and `role` when more than one role logs in through it.
     login: (channel, input) => request('POST', `${p}/channels/${encodeURIComponent(channel)}/login`, input),
     // Who is logged in, through whichever channel.

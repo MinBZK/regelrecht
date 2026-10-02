@@ -1,7 +1,7 @@
 <script setup>
 // A process. Which roles there are, through which channel they log in and
-// which screens they have, GET /api/processes says (`channels` and `roles`
-// in process.yaml): a role with routes portal sees what the policy offers
+// which screens they have, GET /api/processes says (the channels of the
+// actor's policy, RFC-047): a role with routes portal sees what the policy offers
 // and submits, a role with routes handling sees the worklist, a case with
 // its actions (the decision, the publication, a payment, a fact from its
 // course), a role with routes counter enters an application that came in

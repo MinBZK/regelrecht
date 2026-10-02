@@ -163,10 +163,7 @@ pub fn explain(
     let stream = SourceRef::stream(&portal.stream, &portal.event);
     let mut chain = vec![Step::new(
         StepKind::Process,
-        process
-            .from_policy()
-            .map(SourceRef::law)
-            .unwrap_or_else(|| SourceRef::config("process", "portal")),
+        SourceRef::law(&process.declared_by),
         format!(
             "het portaal legt '{}' vast in stroom '{}' (cel {})",
             portal.event, portal.stream, portal.cell
@@ -236,10 +233,7 @@ pub fn explain(
             if let Some(from) = k.supplies.get(&f.name) {
                 why.value.push(Step::new(
                     StepKind::Supply,
-                    k.supplied_by
-                        .as_deref()
-                        .map(SourceRef::law)
-                        .unwrap_or_else(|| SourceRef::config("process", id)),
+                    SourceRef::law(k.supplied_by.as_deref().unwrap_or(&k.declared_by)),
                     format!(
                         "het kanaal '{id}' levert {}: {from} (supplies, grondslag {})",
                         f.name,
@@ -547,7 +541,7 @@ mod tests {
     use crate::stream;
 
     const STREAM: &str = include_str!("../tests/fixtures/chronicles/test_aanvragen.yaml");
-    const FORM: &str = include_str!("../tests/fixtures/processes/instantie/formulier.yaml");
+    const FORM: &str = include_str!("../tests/fixtures/documents/formulier-instantie.yaml");
 
     #[test]
     fn order_and_labels_from_the_form() {

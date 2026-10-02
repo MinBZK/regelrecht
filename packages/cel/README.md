@@ -15,9 +15,10 @@ indeling van de positionpaper.
   zaakverloop. Elke handeling eerst op proef, dan vastgelegd door de cel.
 
 De cel waarin een proces vastlegt, is voor het proces een bron zoals elke
-andere: het leest haar lexostatussen en kroniek langs dezelfde routes. Cel en
-proces zijn configuratie, geen code: een map met een `cell.yaml`, en een map
-met een `process.yaml`. De code noemt geen casus; de tests draaien op de
+andere: het leest haar lexostatussen en kroniek langs dezelfde routes. Een cel
+is configuratie, geen code: een map met een `cell.yaml`. Een proces volgt uit
+het uitvoeringsbeleid van de actor en drie deploymentbestanden (RFC-047, zie
+"Het proces uit beleid"). De code noemt geen casus; de tests draaien op de
 generieke fixtures in `tests/fixtures/`. De docs-pagina
 `docs/src/content/docs/components/cel.md` beschrijft dezelfde opzet, met de
 afwijkingen van RFC-022 en de open vragen.
@@ -37,7 +38,9 @@ just cel          # runtime op :7170, frontend op :7171, op de fixtures
 | Variabele | Betekenis |
 |---|---|
 | `CELLS_PATH` | Map met een submap per cel, elk met een `cell.yaml`. |
-| `PROCESSES_PATH` | Map met een submap per proces, elk met een `process.yaml`. Optioneel: zonder draaien alleen de cellen. |
+| `CELL_CHANNELS` | `channels.yaml` van de deployment: per cel-id de techniek van elk kanaal dat het beleid noemt. Optioneel: zonder draaien alleen de cellen; met volgen de processen uit het beleid (RFC-047). |
+| `CELL_SYNTHESIS` | `synthesis.yaml` van de deployment: per cel-id `synthesis`, `assessment_rows` en `action_rows`, tot RFC-045. Alleen met `CELL_CHANNELS`. |
+| `CELL_EXAMPLES` | `examples.yaml` van de deployment: per cel-id de standaardgegevens van een proefopstelling. Alleen met `CELL_CHANNELS`. |
 | `REGULATION_PATH` | Map met regelingen, gedeeld door de hele runtime; elk YAML-bestand met `$id` en `articles` wordt geladen. |
 | `DATA_DIR` | Map voor de kronieken: per cel een submap `<id>/`. |
 | `CELL_PORT` | Poort, standaard 7170. De runtime luistert op `0.0.0.0`. |
@@ -53,88 +56,107 @@ lexostatuses: <pad>               # lexostatus-definities
 initial_state: <pad>              # optioneel: grammen voor een lege kroniek
 ```
 
+## Het proces uit beleid
+
+Er is geen procesbestand (RFC-047). De runtime leidt per actor een proces af
+uit het uitvoeringsbeleid van zijn bevoegd gezag, de cellen en de
+deploymentbestanden. Het beleid noemt de kanalen in
+`produces.extensions.chronolex` van een artikel:
+
 ```yaml
-# <PROCESSES_PATH>/<map>/process.yaml, schema schema/chronolex/v0.3.0/process.json
-id: <proces-id>                   # routes onder /processes/<id>/api/
-actor: <actor>                    # recording_actor van elke stroom waarin het vastlegt
-origin_check: strict              # optioneel; strict: een parameter zonder origin is een fout (standaard lenient)
-on_behalf_of: {authority: <naam>} # of {regulation: <$id>}: het bevoegd gezag waarvoor het proces handelt; verplicht met handling
-mandates:                         # optioneel: ook handelen namens een ander gezag (Awb 10:1)
-  - {authority: <naam>, legal_basis: <regeling>#<artikel>}
-channels:                         # nagebootste logins; geen register, geen gecertificeerde login
-  <kanaal>:
-    label: <tekst>
-    explanation: <tekst>          # optioneel
-    fields:
-      - {name: <veld>, label: <tekst>, pattern: <regex>, check: elfproef, message: <tekst>, numeric: true, legal_basis: [...]}
-    owner: <veld>                 # optioneel: wie een zaak volgt, moet haar met deze waarde kennen
-    intake: <pad>                 # optioneel: onder $intake.<pad>.<veld>; zonder: de id van het kanaal
-    legal_basis: [<regeling>#<artikel>, ...]   # optioneel: waarop kanaal en eigenaar rusten
-roles:                            # optioneel; zonder rollen geen login
-  <rol>: {channel: <kanaal>, routes: [portal, handling, counter], label: <tekst>, legal_basis: <regeling>#<artikel>}
-portal:                           # optioneel, vraagt een rol met routes portal
-  cell: <cel-id>                  # waar de indiening wordt vastgelegd; in deze runtime
-  stream: <$id van de stroom>
-  event: <event dat een indiening wordt>
-  assessment:
-    lexostatus: <naam>
-    regulation: <$id>
-    output: <output>
-    rows: [...]                   # optioneel: synthese per regel, als bij het besluit
-  offer:                          # optioneel
-    regulation: <$id>
-    output: <output>
-    deadline: <output>            # optioneel
-    windows: <output>             # als het artikel een tijdvak vraagt (origin met rol: TIJDVAK): de tijdvakken uit het beleid
-    start: <output>               # optioneel: de eerste dag van een tijdvak, het peil van het aanbod
-    opening: <output>             # optioneel: de opening van een tijdvak; het loket weigert een ontvangst daarvoor
-  form: {path: <pad>, screen: <id>}   # optioneel
-synthesis:                        # optioneel, alleen met een portaal of handelingen
-  - {cell: <cel-id>, lexostatus: <naam>, case: true}   # een lexostatus van de zaak
-  - cell: <id van de bron-cel>
-    url: <http://host:poort>      # optioneel; zonder url: intern transport
-    lexostatus: <naam bij de bron>
-    input:
-      <input van de bron>: {lexostatus: <lexostatus van de zaak of eerdere bron>, field: <parameter of extra veld>}
-      <input van de bron>: {value: <vaste waarde>}
-    parameters: [<naam>, ...]     # expliciet, geen wildcard; dezelfde naam bij bron en afnemer
-    # of: parameters: {<naam bij de bron>: <parameter van de afnemer>}
-    extra_fields: [<naam>, ...]   # optioneel: invoer voor een latere bron
-    legal_basis: [<regeling>#<artikel>, ...]   # waarop de vertaling rust; met origin_check: strict verplicht als de bron vertaalt
-handling:                         # optioneel, vraagt een rol met routes handling
-  worklist: {cell: <cel-id>, lexostatus: <lijst-lexostatus>}
-  actions:                        # de handelingen in een zaak (zie "Handelingen in een zaak")
-    - name: <naam>                # uniek; de route is cases/<root>/actions/<naam>
-      label: <tekst>              # optioneel
-      role: <rol>                 # optioneel: alleen deze rol (met routes handling)
-      decision: <naam>            # bij een feit dat een besluit volgt of een besluit dat er een wijzigt: de handeling van dat besluit
-      regulation: <$id>           # optioneel: anders de beschikking van het gezag van on_behalf_of
-      outputs: [<output>, ...]    # van een en hetzelfde artikel; bij een vervolg komen de haken erbij
-      rows:                       # optioneel: synthese per regel (zie hieronder)
-        - parameter: <array-parameter>
-          table: {lexostatus: <van de zaak of een bron>, field: <tabelveld>}
-          columns: {<kolom van de tabel>: <kolom van de parameter>}
-          sources:
-            - cell: <id>
-              url: <http://host:poort>   # optioneel; zonder url: intern
-              lexostatus: <naam bij de bron>
-              input:
-                <input>: {column: <kolom van de regel>}
-                <input>: {lexostatus: <van de zaak of een bron>, field: <naam>}
-                <input>: {parameter: <naam>}
-                <input>: {regulation: <$id>, output: <output>}   # de wet leidt de invoer af
-                <input>: {value: <vaste waarde>}
-              columns: {<naam bij de bron>: <kolom van de parameter>}
-              legal_basis: [...]  # als bij een synthese-bron
-      record: {cell: <cel-id>, stream: <$id>, event: <event met zaak: volgt>}
-examples:                         # optioneel: standaardgegevens per handeling
-  logins: [<pad>, ...]
-  application: <pad>
-  actions: {<naam>: <pad>}        # {form: {...}}; "$today" wordt de datum van vandaag
+extensions:
+  chronolex:
+    channels:
+      <kanaal>:
+        kind: portal | handling | counter   # bepaalt de routes van de rol
+        role: <rol>                         # optioneel; zonder: de kanaalnaam
+        identifies: {<veld>: [<grondslag>, ...]}   # of een lijst veldnamen
+        owner: <veld van de indiening>      # wie een zaak volgt
+        submits: <regeling>#<artikel>       # precies één kanaal per actor: het portaal
+        assesses: {output: <output van dat artikel>}
+        offers: {regulation, output, deadline?, windows?, start?, opening?}
+        form: {document: <pad vanaf de corpuswortel>, screen: <id>}
+        legal_basis: [<regeling>#<artikel>, ...]   # de eerste is de grondslag van de rol
+    supplies:                               # wat een kanaal in de indiening levert
+      <kanaal>: {<veld van het gram>: <veld van het kanaal> | $channel | $submitted_on}
+    mandates:                               # ook handelen namens een ander gezag (Awb 10:1)
+      - {authority: <naam>, legal_basis: <regeling>#<artikel>}
 ```
 
-Paden in `process.yaml` zijn relatief aan de map van het proces. Het portaal,
-de werkvoorraad, het besluit en de bronnen met `case: true` noemen dezelfde
+Wat de runtime daaruit afleidt:
+
+- het proces-id is de id van de cel die de indiening van het portaal
+  vastlegt, de actor de `recording_actor` van die stroom, het gezag dat van
+  het beleid;
+- het portaal-event is het ene indieningsevent dat het `submits`-artikel
+  vestigt, de toets de ene lexostatus van die cel die het event leest en een
+  parameter van dat artikel afleidt;
+- de werkvoorraad is de ingebouwde lijst `worklist`: de zaken waarop nog niet
+  elk gevraagd besluit is genomen, met de kolommen `ontvangen_op`,
+  `vastgelegd_op`, het eigenaarsveld van het portaalkanaal en het veld met
+  origin-rol `TIJDVAK`;
+- de handelingen zijn de events van de cel met een intake die een kanaal van
+  `kind: handling` noemt, genoemd naar hun event (een vervolg bij meer
+  besluiten: `<event>_<besluit-event>`), met het artikel uit de wet (zie
+  "Handelingen in een zaak");
+- de origin-controle is altijd strict: een parameter zonder origin is een
+  fout.
+
+De deployment houdt alleen de techniek, per cel-id gegroepeerd:
+
+```yaml
+# CELL_CHANNELS: channels.yaml
+<cel-id>:
+  <kanaal>:
+    adapter: simulated            # nagebootste login; geen register, geen gecertificeerde login
+    label: <tekst>
+    explanation: <tekst>          # optioneel
+    intake: <pad>                 # optioneel: onder $intake.<pad>.<veld>; zonder: de kanaalnaam
+    role_label: <tekst>           # optioneel; zonder: de rolnaam
+    fields:                       # in loginvolgorde; de grondslag geeft identifies in het beleid
+      <veld>: {label: <tekst>, pattern: <regex>, check: elfproef, message: <tekst>, numeric: true}
+
+# CELL_SYNTHESIS: synthesis.yaml (tot RFC-045)
+<cel-id>:
+  synthesis:
+    - {cell: <cel-id>, lexostatus: <naam>, case: true}   # een lexostatus van de zaak
+    - cell: <id van de bron-cel>
+      url: <http://host:poort>    # optioneel; zonder url: intern transport
+      lexostatus: <naam bij de bron>
+      input:
+        <input van de bron>: {lexostatus: <lexostatus van de zaak of eerdere bron>, field: <parameter of extra veld>}
+        <input van de bron>: {value: <vaste waarde>}
+      parameters: [<naam>, ...]   # expliciet, geen wildcard; dezelfde naam bij bron en afnemer
+      # of: parameters: {<naam bij de bron>: <parameter van de afnemer>}
+      extra_fields: [<naam>, ...] # optioneel: invoer voor een latere bron
+      legal_basis: [<regeling>#<artikel>, ...]   # waarop de vertaling rust; verplicht als de bron vertaalt
+  assessment_rows: [...]          # synthese per regel van de toets
+  action_rows:                    # synthese per regel per handeling (de eventnaam)
+    <handeling>:
+      - parameter: <array-parameter>
+        table: {lexostatus: <van de zaak of een bron>, field: <tabelveld>}
+        columns: {<kolom van de tabel>: <kolom van de parameter>}
+        sources:
+          - cell: <id>
+            url: <http://host:poort>   # optioneel; zonder url: intern
+            lexostatus: <naam bij de bron>
+            input:
+              <input>: {column: <kolom van de regel>}
+              <input>: {lexostatus: <van de zaak of een bron>, field: <naam>}
+              <input>: {parameter: <naam>}
+              <input>: {regulation: <$id>, output: <output>}   # de wet leidt de invoer af
+              <input>: {value: <vaste waarde>}
+            columns: {<naam bij de bron>: <kolom van de parameter>}
+            legal_basis: [...]    # als bij een synthese-bron
+
+# CELL_EXAMPLES: examples.yaml, paden relatief aan dit bestand
+<cel-id>:
+  logins: [<pad>, ...]
+  application: <pad>
+  actions: {<handeling>: <pad>}   # {form: {...}}; "$today" wordt de datum van vandaag
+```
+
+Het portaal, de handelingen en de bronnen met `case: true` noemen dezelfde
 cel: in deze stap handelt een proces over de zaken van een cel, en die cel
 draait in dezelfde runtime. Een bron met `case: true` is een lexostatus van
 de zaak zelf, met als enige input `zaakkenmerk`: het besluit vraagt haar met
@@ -404,7 +426,7 @@ de uitslag), in plaats van een regel die stil wegvalt. De regels worden
 tegelijk bevraagd (hooguit zestien tegelijk), elk met haar bronnen na elkaar,
 en de tabel houdt de volgorde van het tabelveld.
 
-De toets kent hetzelfde blok onder `portal.assessment.rows`. Daar komt de tabel
+De toets kent hetzelfde blok onder `assessment_rows` in `synthesis.yaml`. Daar komt de tabel
 uit de proefreductie van het concept (de toets-lexostatus) of uit een bron die
 haar doorgeeft; de toets bouwt de rijen op vóór de engine, zoals het besluit.
 Een rijen-blok levert alleen aan de uitvoering waar het staat: de rijen van
@@ -442,9 +464,15 @@ eigen grondslag, een event met `besluit: wijzigt` (zoals Awb 4:49).
 
 ## Handelingen in een zaak
 
-`handling.actions` noemt per handeling een artikel (een regeling en
-uitkomsten) en het event waarin de cel haar vastlegt. Wat een handeling nodig
-heeft en van wie, staat er niet in: het volgt uit de stage van het event
+De afleiding (RFC-047) geeft per handeling een artikel (een regeling en
+uitkomsten) en het event waarin de cel haar vastlegt. Een handeling is een
+event van de cel met een intake die een kanaal van `kind: handling` noemt; ze
+heet naar dat event. Het artikel van een besluit is het artikel dat het event
+vestigt, dat van een vervolg het artikel van zijn besluit, en dat van een
+feit het beleidsartikel dat een artikel uit de grondslag van het event
+uitvoert met een parameter met origin-rol `BESLUIT`, of anders het artikel
+waarvan de uitkomsten afhangen van wat de lexostatussen uit het event lezen.
+Wat een handeling nodig heeft en van wie, volgt uit de stage van het event
 (RFC-008) en uit de origin van de parameters (RFC-043). Er is een route voor
 elke handeling, `cases/<root>/actions/<naam>` en `.../trial`; er zijn geen
 routes per soort besluit. Het event zegt welke soort een handeling is:
@@ -537,7 +565,7 @@ wat het besluit tot besluit maakt: `legal_character` en `decision_type` uit
 
 Bij een besluit en een vervolg komt het bevoegd gezag uit de regeling (het
 artikel, anders de regeling zelf) en wordt het letterlijk getoetst tegen het
-gezag van `on_behalf_of`: gelijk betekent vastleggen, een gezag uit `mandates`
+gezag waarvoor het proces handelt: gelijk betekent vastleggen, een gezag uit `mandates`
 vastleggen in mandaat, een ander gezag weigeren; noemt de regeling er geen,
 dan legt de cel vast met een waarschuwing en zonder `competent_authority`. Zo
 blijven de drie assen van RFC-022 par. 2 gescheiden: `recording_actor`,
@@ -593,12 +621,16 @@ Per cel:
 
 Per proces:
 
-1. De procesdefinitie valideert tegen `process.json`. Het portaal, de
-   werkvoorraad, het besluit en de bronnen van de zaak noemen een cel, dezelfde,
-   en die draait in deze runtime.
+1. De afleiding uit het beleid (RFC-047) vindt precies één portaalkanaal,
+   één portaal-event, één toets-lexostatus en per handeling een artikel; elk
+   kanaal van het beleid heeft een adapter in `channels.yaml` en andersom.
+   Wat een beleidsartikel `executes`, is geldig en blijft binnen de
+   bevoegdheid van zijn eigen gezag (Awb 4:81). Het portaal, de handelingen
+   en de bronnen van de zaak noemen een cel, dezelfde, en die draait in deze
+   runtime.
 2. De `actor` is de `recording_actor` van elke stroom waarin het proces
-   vastlegt (die van het portaal en die van elke handeling). `on_behalf_of` noemt een
-   gezag dat een geladen regeling noemt (verplicht met een behandeling); een
+   vastlegt (die van het portaal en die van elke handeling). Het gezag van het
+   beleid is een gezag dat een geladen regeling noemt; een
    mandaat noemt zo'n gezag, niet het eigen, en een grondslag die een geladen
    artikel aanwijst. Elk kanaal heeft unieke velden, leesbare patronen en een
    eigenaar die een veld is; de grondslag van een kanaal of veld wijst geladen
@@ -623,8 +655,8 @@ Per proces:
    artikel van de toets, het besluit of het aanbod, of van een artikel dat een
    van die transitief aanroept (via `source`); een parameter komt uit maar een
    bron; een gewone bron is een andere cel dan die van het proces. De
-   `legal_basis` van een bron (ook per regel) wijst geladen artikelen aan; met
-   `origin_check: strict` draagt elke bron die vertaalt (een andere naam bij de
+   `legal_basis` van een bron (ook per regel) wijst geladen artikelen aan, en
+   elke bron die vertaalt draagt (een andere naam bij de
    afnemer, of een vaste waarde in de invoer) er een: de vertaling is een
    lezing van de wet.
 5. Behandeling: de werkvoorraad is een lijst; een bron van de zaak vraagt een
@@ -633,9 +665,8 @@ Per proces:
    de behandeling; de uitkomsten komen uit een artikel (bij een vervolg ook
    uit de haken van zijn stage); elke parameter uit het formulier, de stand
    van wat nog niet gebeurd is of een rijen-definitie moet de aanroeper van
-   het artikel leveren; een parameter komt uit maar een bron. Zonder
-   `regulation` is het artikel de enige beschikking waarvoor het gezag van
-   `on_behalf_of` bevoegd is. Het vastleg-event bestaat en volgt een zaak; een
+   het artikel leveren; een parameter komt uit maar een bron. Het
+   vastleg-event bestaat en volgt een zaak; een
    stage erop staat in de procedure van het artikel. Een besluit legt elke
    uitkomst vast en verder alleen oordelen; een vervolg legt vast wat de
    stage vraagt en wat de haken uitrekenen, en niets anders.
@@ -654,13 +685,12 @@ Per proces:
    actor (het verloop van de zaak). Zonder leverancier start de runtime niet,
    behalve bij `required: false`: dan krijgt de engine hem niet en rekent ze
    met een onbekende waarde, en is het een waarschuwing. Een parameter zonder
-   origin is een waarschuwing, en met `origin_check: strict` in `process.yaml` een
-   fout; een `BELANGHEBBENDE`-parameter zonder `required: false` (behalve het
+   origin is een fout (altijd strict, RFC-047); een `BELANGHEBBENDE`-parameter zonder `required: false` (behalve het
    tijdvak) is een waarschuwing. Een bron met een url, of een interne cel die
    niet draait, telt, met een waarschuwing per bron over wat niet na te gaan
    is. Een `register` dat niet geladen is, is een fout; een grondslag in een
    regeling die niet geladen is, een waarschuwing. `origins` in
-   uitvoeringsbeleid van het gezag van `on_behalf_of` overschrijft de origin uit de wet; twee
+   uitvoeringsbeleid van het gezag waarvoor het proces handelt overschrijft de origin uit de wet; twee
    botsende overschrijvingen zijn een fout. Al bij het laden van het corpus
    houdt een origin die niet te lezen is, of een REGISTER zonder `register`,
    de runtime tegen, met bestand, artikel en parameter.
@@ -678,8 +708,11 @@ komen.
 |---|---|
 | `runtime` | cellen en processen laden en controleren, kronieken openen, router over alles |
 | `cell` | een cel uit haar map laden |
-| `process` | een proces uit zijn map laden, en de controles op cel, actor en portaal |
-| `config` | omgeving, `cell.yaml` en `process.yaml` |
+| `process` | een afgeleid proces laden, en de controles op cel, actor en portaal |
+| `config` | omgeving, `cell.yaml` en de procesdefinitie die de runtime afleidt |
+| `policy` | kanalen, `supplies` en mandaten uit het uitvoeringsbeleid, en de controle op `executes` (RFC-047) |
+| `deployment` | `channels.yaml`, `synthesis.yaml` en `examples.yaml` |
+| `derive` | de procesdefinitie uit beleid, cellen en deployment: portaal, toets, rollen en handelingen |
 | `stream` | stroomdefinitie laden en valideren, gram bouwen uit intake en external |
 | `gram` | het vastgelegde gram, met invoer en receipt van elke berekende handeling, en het lezen van een veldpad |
 | `reduction` | kroniek reduceren tot lexostatus; `reduction::definition` laadt de lexostatus-definities, `reduction::as_of` peilt op een eerder moment |
@@ -689,14 +722,14 @@ komen.
 | `synthesis` | bronnen bevragen, samenvoegen met herkomst, en de controles erop |
 | `origin` | wie een parameter levert volgens de wet (RFC-043): de controle bij het opstarten, de aanbodregel, het tijdvak en het besluitformulier |
 | `transport` | intern en HTTP |
-| `channel` | kanalen en rollen uit `process.yaml`: de vorm van een login, de intake, de eigenaar, de controles |
-| `authority` | `on_behalf_of` en `mandates`: het gezag waarvoor een proces handelt, en de toets tegen de wet |
+| `channel` | kanalen en rollen: de vorm van een login, de intake, de eigenaar, de controles |
+| `authority` | het gezag waarvoor een proces handelt en zijn mandaten, en de toets tegen de wet |
 | `session` | sessies per rol |
 | `assessment` | parameters aan de engine, een of meer uitkomsten evalueren |
 | `action` | de handelingen in een zaak (besluit, vervolg, feit): voorbereiden bij het laden, op proef, vastleggen, de stand per zaak en de rechtsbescherming, en de controles op behandeling |
 | `rows` | synthese per regel: een tabelveld wordt een array-parameter |
-| `possibility` | wat het aanbod per tijdvak zegt (`portal.offer`) |
-| `examples` | de voorbeelden per handeling uit `examples` in `process.yaml` |
+| `possibility` | wat het aanbod per tijdvak zegt (`offers` van het portaalkanaal) |
+| `examples` | de voorbeelden per handeling uit `examples.yaml` |
 | `api` | de routes: `api::cell` (de cel), `api::process` (de router van een proces), `api::session`, `api::portal`, `api::counter` en `api::handling` |
 | `cell_client` | hoe een proces de cel vraagt: zaak lezen, vastleggen, proefreductie, als typen |
 | `date` | momenten lezen, peildatum, jaartal en het `TimePoint` van een peil |

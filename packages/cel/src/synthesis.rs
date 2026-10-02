@@ -628,8 +628,8 @@ fn pass_on(process: &Process) -> Vec<String> {
 /// What the decision requires further is in [`crate::action::check`].
 /// The legal basis of the translations in the synthesis, at startup: every
 /// legal basis of a synthesis source or of a per-row source points at a
-/// loaded article, with the paragraph it names. With `origin_check: strict`
-/// every source that translates (a name at the consumer that differs from
+/// loaded article, with the paragraph it names, and every source that
+/// translates (a name at the consumer that differs from
 /// the one at the source, or a fixed value in the input) carries a legal
 /// basis: the translation is a reading of the law, just like a derivation in
 /// a cell.
@@ -637,7 +637,6 @@ pub fn legal_bases(
     d: &crate::config::ProcessDefinition,
     service: &regelrecht_engine::LawExecutionService,
 ) -> Vec<String> {
-    let strict = d.origin_check == crate::config::OriginCheck::Strict;
     let synthesis = d.other_sources().map(|b| {
         (
             format!("synthesis source {}/{}", b.cell, b.lexostatus),
@@ -678,9 +677,9 @@ pub fn legal_bases(
                 errors.insert(format!("{who}: {f}"));
             }
         }
-        if strict && legal_basis.is_empty() && !translates.is_empty() {
+        if legal_basis.is_empty() && !translates.is_empty() {
             errors.insert(format!(
-                "{who}: translates ({}) without legal basis; with origin_check: strict the consumer says which article a translation rests on",
+                "{who}: translates ({}) without legal basis; the consumer says which article a translation rests on",
                 translates.join("; ")
             ));
         }

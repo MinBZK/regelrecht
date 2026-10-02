@@ -1,7 +1,6 @@
 //! The runtime: all cells under `CELLS_PATH` and all processes, in one
-//! program. With `CELL_CHANNELS` the processes follow from the policy and the
-//! deployment (RFC-047); otherwise they are the directories under
-//! `PROCESSES_PATH`.
+//! program. The processes follow from the policy and the deployment
+//! (`CELL_CHANNELS`, RFC-047); without `CELL_CHANNELS` only the cells run.
 //!
 //! Every cell gets its own chronicle (`DATA_DIR/<id>/`) and its own
 //! routes (`/cells/<id>/api/...`); every process its own routes
@@ -23,7 +22,7 @@ use serde_json::Value;
 use crate::api::{self, ActionState, CellState, Clock, ProcessState};
 use crate::cell::{with_cell, Cell};
 use crate::chronicle::Chronicle;
-use crate::config::{cell_dirs, process_dirs, Config, ReductionMode, RowsDefinition};
+use crate::config::{cell_dirs, Config, ReductionMode, RowsDefinition};
 use crate::process::{with_process, Process};
 use crate::session::Sessions;
 use crate::synthesis::{self, Source, TIME_LIMIT};
@@ -160,17 +159,6 @@ impl Runtime {
                     }
                 }
                 Err(f) => errors.extend(f),
-            }
-        } else {
-            let process_dirs = match &config.processes_path {
-                Some(p) => process_dirs(p).map_err(|e| vec![e])?,
-                None => Vec::new(),
-            };
-            for map in &process_dirs {
-                match Process::load(map, &per_id, service.clone()) {
-                    Ok(p) => processes.push(p),
-                    Err(f) => errors.extend(f),
-                }
             }
         }
         let mut ids = BTreeSet::new();

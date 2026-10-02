@@ -79,12 +79,12 @@ pub(super) struct Concept {
     refers_to: std::collections::BTreeMap<String, String>,
 }
 
-/// The owner path of the user's channel (`channels.<id>.owner`,
-/// under `$intake`) and its value there. A channel without an owner makes
+/// The owner path of the user's channel (its `owner` in the policy, under
+/// `$intake` or the supplied field) and its value there. A channel without an owner makes
 /// no one the owner.
 fn owner_of<'s>(state: &ProcessState, session: &'s Session) -> Option<(String, &'s str)> {
     let k = state.process.definition.channels.get(&session.channel)?;
-    let path = k.owner_path(&session.channel)?;
+    let path = k.owner_path()?.to_string();
     let value = session.fields.get(k.owner.as_ref()?)?;
     Some((path, value.as_str()))
 }

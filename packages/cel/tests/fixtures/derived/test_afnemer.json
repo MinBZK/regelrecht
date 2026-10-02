@@ -1,0 +1,168 @@
+{
+  "actor": "test_afnemer",
+  "authority": "Test afnemer",
+  "channels": {
+    "eherkenning": {
+      "declared_by": "testbeleid_afnemer#1",
+      "explanation": "Vul een organisatienummer van acht cijfers in en uw naam.",
+      "fields": [
+        {
+          "label": "Organisatienummer",
+          "legal_basis": [
+            "testregeling_register#1"
+          ],
+          "message": "een organisatienummer heeft acht cijfers",
+          "name": "kvk",
+          "numeric": true,
+          "pattern": "[0-9]{8}"
+        },
+        {
+          "label": "Uw naam",
+          "name": "persoon"
+        }
+      ],
+      "intake": null,
+      "label": "Inloggen namens een organisatie",
+      "legal_basis": [
+        "testregeling_afnemer#1"
+      ],
+      "owner": "kvk",
+      "owner_path": "eherkenning.kvk",
+      "supplied_by": null,
+      "supplies": {}
+    },
+    "medewerker": {
+      "declared_by": "testbeleid_afnemer#1",
+      "explanation": null,
+      "fields": [
+        {
+          "label": "Naam",
+          "name": "naam"
+        }
+      ],
+      "intake": null,
+      "label": "Inloggen als medewerker",
+      "legal_basis": [],
+      "owner": null,
+      "owner_path": null,
+      "supplied_by": null,
+      "supplies": {}
+    }
+  },
+  "declared_by": "testbeleid_afnemer#1",
+  "handling": {
+    "actions": [
+      {
+        "article": "testregeling_awb#5",
+        "decision": null,
+        "decision_parameter": null,
+        "label": "Aanvulling gevraagd (Testregeling afnemer, artikel 3)",
+        "name": "aanvulling_gevraagd",
+        "outputs": [
+          "termijn_opgeschort"
+        ],
+        "record": [
+          "test_afnemer",
+          "test_afnemer_zaakverloop",
+          "aanvulling_gevraagd"
+        ],
+        "regulation": "testregeling_awb",
+        "role": null
+      },
+      {
+        "article": "testregeling_afnemer#3",
+        "decision": null,
+        "decision_parameter": null,
+        "label": "Besluit genomen (Testregeling afnemer, artikel 3)",
+        "name": "besluit_genomen",
+        "outputs": [
+          "vastgesteld_bedrag",
+          "gebiedsbedrag",
+          "besluit_tijdig",
+          "besluitdeadline",
+          "zorgvuldig"
+        ],
+        "record": [
+          "test_afnemer",
+          "test_afnemer_zaakverloop",
+          "besluit_genomen"
+        ],
+        "regulation": "testregeling_afnemer",
+        "role": null
+      },
+      {
+        "article": "testregeling_afnemer#3",
+        "decision": null,
+        "decision_parameter": null,
+        "label": "Besluit bekendgemaakt (Testregeling verzuim, artikel 2)",
+        "name": "besluit_bekendgemaakt",
+        "outputs": [
+          "besluit_tijdig"
+        ],
+        "record": [
+          "test_afnemer",
+          "test_afnemer_zaakverloop",
+          "besluit_bekendgemaakt"
+        ],
+        "regulation": "testregeling_afnemer",
+        "role": null
+      },
+      {
+        "article": "testregeling_awb#3",
+        "decision": "besluit_genomen",
+        "decision_parameter": null,
+        "label": "Betaling verricht (Testregeling verzuim, artikel 3)",
+        "name": "betaling_verricht",
+        "outputs": [
+          "nog_te_betalen",
+          "onverschuldigd_betaald"
+        ],
+        "record": [
+          "test_afnemer",
+          "test_afnemer_zaakverloop",
+          "betaling_verricht"
+        ],
+        "regulation": "testregeling_awb",
+        "role": null
+      }
+    ],
+    "worklist": [
+      "test_afnemer",
+      "worklist"
+    ]
+  },
+  "id": "test_afnemer",
+  "mandates": [],
+  "portal": {
+    "assessment": [
+      "aanvraag_inhoud",
+      "testregeling_afnemer",
+      "aanvraag_toelaatbaar"
+    ],
+    "form": null,
+    "offer": null,
+    "record": [
+      "test_afnemer",
+      "test_afnemer_aanvragen",
+      "aanvraag_ontvangen"
+    ]
+  },
+  "roles": {
+    "aanvrager": {
+      "channel": "eherkenning",
+      "label": null,
+      "legal_basis": "testregeling_afnemer#1",
+      "routes": [
+        "portal"
+      ]
+    },
+    "behandelaar": {
+      "channel": "medewerker",
+      "label": "Behandelaar",
+      "legal_basis": null,
+      "routes": [
+        "handling"
+      ]
+    }
+  }
+}

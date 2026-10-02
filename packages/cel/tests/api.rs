@@ -37,7 +37,6 @@ fn config_at(setup: &Path, data: &Path) -> Config {
     let d = setup.join("deployment");
     Config {
         cells_path: setup.join("cells"),
-        processes_path: None,
         regulation_path: setup.join("regulation"),
         data_dir: data.to_path_buf(),
         port: DEFAULT_PORT,
@@ -476,8 +475,6 @@ fn fixtures_validate_against_the_schemas() {
         ("cells/register/cell.yaml", Kind::Cell),
         ("cells/afnemer/cell.yaml", Kind::Cell),
         ("cells/gebieden/cell.yaml", Kind::Cell),
-        ("processes/instantie/process.yaml", Kind::Process),
-        ("processes/afnemer/process.yaml", Kind::Process),
     ] {
         let doc: Value =
             serde_yaml_ng::from_str(&std::fs::read_to_string(f.join(file)).unwrap()).unwrap();

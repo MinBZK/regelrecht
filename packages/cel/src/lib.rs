@@ -2,10 +2,11 @@
 //! them to a lexostatus, and processes that combine lexostatuses of cells,
 //! run the engine and have a cell record.
 //!
-//! Cell and process are configuration, not code: a directory under
-//! `CELLS_PATH` with a `cell.yaml`, and a directory under `PROCESSES_PATH` with
-//! a `process.yaml` (see README.md). The lexogram (1) belongs to no one; a cell
-//! has layers 2 through 4, each with its own file:
+//! A cell is configuration, not code: a directory under `CELLS_PATH` with a
+//! `cell.yaml`. A process follows from the policy of its actor and the
+//! deployment files (`CELL_CHANNELS`, RFC-047; see README.md). The lexogram
+//! (1) belongs to no one; a cell has layers 2 through 4, each with its own
+//! file:
 //!
 //! 1. the lexogram: the regulations from `REGULATION_PATH`, unchanged and
 //!    shared by all cells;

@@ -20,8 +20,8 @@
 //! wrong. If it has no supplier, that is an error, except with
 //! `required: false`: then the engine does not get it, and computes with an
 //! unknown value (RFC-036); that is a warning. A parameter without
-//! `origin` is a warning, and in a process with `origin_check: strict` an
-//! error. A `BELANGHEBBENDE` parameter without `required: false` is a
+//! `origin` is an error: who supplies it cannot be traced (RFC-047 made the
+//! check strict for every process). A `BELANGHEBBENDE` parameter without `required: false` is a
 //! warning (RFC-036), except the window.
 //!
 //! What the runtime cannot verify (a source with a url, an internal cell that
@@ -42,9 +42,7 @@ use regelrecht_law_model::{
 
 use crate::authority;
 use crate::cell::Cell;
-use crate::config::{
-    ActionDefinition, ActionKind, OriginCheck, ProcessDefinition, RowsDefinition, Verdict,
-};
+use crate::config::{ActionDefinition, ActionKind, ProcessDefinition, RowsDefinition, Verdict};
 use crate::reduction::{Derivation, Filter, LexostatusDefinition};
 use crate::regulations::{self, Required};
 use crate::stream::{Binding, Event, EventAttribute, Stream};

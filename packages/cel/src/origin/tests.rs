@@ -42,21 +42,26 @@ fn cells(s: &Arc<LawExecutionService>) -> BTreeMap<String, Arc<Cell>> {
         .collect()
 }
 
-fn process(name: &str, adjust: impl Fn(String) -> String) -> ProcessDefinition {
-    let path = fixtures().join("processes").join(name).join("process.yaml");
-    let text = adjust(std::fs::read_to_string(&path).unwrap());
-    ProcessDefinition::parse(&text, "t").unwrap()
+/// A process of the fixtures as the policy gives it (RFC-047), after
+/// `adjust`.
+fn process(cell: &str, adjust: impl FnOnce(&mut ProcessDefinition)) -> ProcessDefinition {
+    let mut d = crate::derive::tests::derived(cell);
+    adjust(&mut d);
+    d
 }
+
+/// The consumer's process as it is.
+fn keep(_: &mut ProcessDefinition) {}
 
 /// The check on the consumer's process.
 fn consumer(
     regulation: impl Fn(String) -> String,
-    adjust: impl Fn(String) -> String,
+    adjust: impl FnOnce(&mut ProcessDefinition),
     extra: &[&str],
 ) -> Check {
     let s = service(regulation, extra);
     let c = cells(&s);
-    let d = process("afnemer", adjust);
+    let d = process("test_afnemer", adjust);
     check_with_state(d, &c, &s)
 }
 
@@ -89,10 +94,10 @@ fn year_with(origin: &'static str) -> impl Fn(String) -> String {
 
 #[test]
 fn the_consumer_fixture_has_a_supplier_for_everything() {
-    let c = consumer(same, same, &[]);
+    let c = consumer(same, keep, &[]);
     assert!(c.errors.is_empty(), "{:?}", c.errors);
     assert!(c.warnings.is_empty(), "{:?}", c.warnings);
-    let decision: Vec<(&str, OriginValue)> = c.parameters["besluit"]
+    let decision: Vec<(&str, OriginValue)> = c.parameters["besluit_genomen"]
         .iter()
         .map(|(b, g)| (b.name.as_str(), g.as_ref().unwrap().origin.waarde))
         .collect();
@@ -109,25 +114,41 @@ fn a_missing_supplier_is_an_error() {
     // nothing supplies it.
     let c = consumer(
         |t| t.replace("          - {name: datum_bekendmaking, type: date}\n", ""),
-        |t| {
-            only_the_decision(t).replace(
-                "  - {cell: test_afnemer, lexostatus: besluit, case: true}\n",
-                "",
-            )
+        |d| {
+            only_the_decision(d);
+            without_the_decision_source(d);
         },
         &[],
     );
     assert_eq!(
             c.errors,
-            ["besluit: no supplier for parameter 'datum_bekendmaking' of testregeling_afnemer#3 (DOSSIER, grondslag testregeling_afnemer#3 lid 2)"]
+            ["besluit_genomen: no supplier for parameter 'datum_bekendmaking' of testregeling_afnemer#3 (DOSSIER, grondslag testregeling_afnemer#3 lid 2)"]
         );
 }
 
 /// The consumer's process with only the action of the decision.
-fn only_the_decision(t: String) -> String {
-    let start = t.find("    # De bekendmaking").unwrap();
-    let end = t.find("# Standaardgegevens").unwrap();
-    format!("{}{}", &t[..start], &t[end..])
+fn only_the_decision(d: &mut ProcessDefinition) {
+    d.handling
+        .as_mut()
+        .unwrap()
+        .actions
+        .retain(|a| a.name == "besluit_genomen");
+}
+
+/// Without the lexostatus `besluit` of the case as a source.
+fn without_the_decision_source(d: &mut ProcessDefinition) {
+    d.synthesis
+        .retain(|b| !(b.case && b.lexostatus == "besluit"));
+}
+
+/// The decision of the consumer's process executes `regulation` with
+/// `outputs` instead.
+fn the_decision_executes(d: &mut ProcessDefinition, regulation: &str, outputs: &[&str]) {
+    let a = &mut d.handling.as_mut().unwrap().actions[0];
+    a.regulation = regulation.to_string();
+    a.outputs = outputs.iter().map(|o| o.to_string()).collect();
+    // The article follows from the first output again.
+    a.article.clear();
 }
 
 /// With required: false and without a supplier the engine does not get the
@@ -136,13 +157,13 @@ fn only_the_decision(t: String) -> String {
 fn without_supplier_and_not_required_is_a_warning() {
     let c = consumer(
         |t| t.replace("          - {name: bekendgemaakt, type: boolean}\n", ""),
-        same,
+        keep,
         &[],
     );
     assert!(c.errors.is_empty(), "{:?}", c.errors);
     assert_eq!(
             c.warnings,
-            ["besluit: no supplier for parameter 'bekendgemaakt' of testregeling_afnemer#3 (DOSSIER, grondslag testregeling_afnemer#3 lid 2); required: false, so the engine does not get it and computes with an unknown value (RFC-036)"]
+            ["besluit_genomen: no supplier for parameter 'bekendgemaakt' of testregeling_afnemer#3 (DOSSIER, grondslag testregeling_afnemer#3 lid 2); required: false, so the engine does not get it and computes with an unknown value (RFC-036)"]
         );
 }
 
@@ -152,12 +173,12 @@ fn without_supplier_and_not_required_is_a_warning() {
 fn a_supplier_that_does_not_fit_the_origin() {
     let c = consumer(
         year_with("{waarde: DOSSIER, grondslag: 'testregeling_afnemer#3'}"),
-        same,
+        keep,
         &[],
     );
     assert_eq!(
             c.errors,
-            ["besluit: wrong source for parameter 'jaar' of testregeling_afnemer#3 (DOSSIER, grondslag testregeling_afnemer#3): it comes from synthesis source test_register/registerstatus"]
+            ["besluit_genomen: wrong source for parameter 'jaar' of testregeling_afnemer#3 (DOSSIER, grondslag testregeling_afnemer#3): it comes from synthesis source test_register/registerstatus"]
         );
 }
 
@@ -172,12 +193,12 @@ fn a_wrong_source_is_an_error_even_with_required_false() {
                     "          - name: bekendgemaakt\n            type: boolean\n            required: false\n            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_afnemer#3 lid 2}",
                 )
         },
-        same,
+        keep,
         &[],
     );
     assert_eq!(
             c.errors,
-            ["besluit: wrong source for parameter 'bekendgemaakt' of testregeling_afnemer#3 (BELANGHEBBENDE, grondslag testregeling_afnemer#3 lid 2): it comes from the state at decision"]
+            ["besluit_genomen: wrong source for parameter 'bekendgemaakt' of testregeling_afnemer#3 (BELANGHEBBENDE, grondslag testregeling_afnemer#3 lid 2): it comes from the state at decision"]
         );
     assert!(c.warnings.is_empty(), "{:?}", c.warnings);
 }
@@ -198,14 +219,14 @@ fn interested_party_and_dossier_follow_from_what_the_derivation_reads() {
                     "            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_afnemer#3 lid 1}\n          - name: opgeschorte_dagen",
                 )
         },
-        same,
+        keep,
         &[],
     );
     assert!(c.errors.contains(
             &"assessment: wrong source for parameter 'aanvraagdatum' of testregeling_afnemer#1 (DOSSIER, grondslag testregeling_afnemer#1): it comes from own lexostatus aanvraag_inhoud (what the applicant submitted)".to_string()
         ), "{:?}", c.errors);
     assert!(c.errors.contains(
-            &"besluit: wrong source for parameter 'datum_uitnodiging_aanvulling' of testregeling_afnemer#3 (BELANGHEBBENDE, grondslag testregeling_afnemer#3 lid 1): it comes from own lexostatus zaakverloop (the course of the case)".to_string()
+            &"besluit_genomen: wrong source for parameter 'datum_uitnodiging_aanvulling' of testregeling_afnemer#3 (BELANGHEBBENDE, grondslag testregeling_afnemer#3 lid 1): it comes from own lexostatus zaakverloop (the course of the case)".to_string()
         ), "{:?}", c.errors);
 }
 
@@ -220,11 +241,11 @@ fn a_verdict_from_a_lexostatus_is_an_error() {
                     "origin: {waarde: OORDEEL, grondslag: testregeling_afnemer#3 lid 1}\n          - name: zetels_op_lijst",
                 )
         },
-        same,
+        keep,
         &[],
     );
     assert!(c.errors.contains(
-            &"besluit: wrong source for parameter 'aanvraagdatum' of testregeling_afnemer#3 (OORDEEL, grondslag testregeling_afnemer#3 lid 1): the handler gives a verdict in the form of the action, but it comes from own lexostatus aanvraag_inhoud (what the applicant submitted)".to_string()
+            &"besluit_genomen: wrong source for parameter 'aanvraagdatum' of testregeling_afnemer#3 (OORDEEL, grondslag testregeling_afnemer#3 lid 1): the handler gives a verdict in the form of the action, but it comes from own lexostatus aanvraag_inhoud (what the applicant submitted)".to_string()
         ), "{:?}", c.errors);
 }
 
@@ -232,12 +253,12 @@ fn a_verdict_from_a_lexostatus_is_an_error() {
 fn a_register_must_fit_the_source() {
     let c = consumer(
             year_with("{waarde: REGISTER, register: testregeling_afnemer, grondslag: testregeling_register#3}"),
-            same,
+            keep,
             &[],
         );
     assert_eq!(
             c.errors,
-            ["besluit: wrong source for parameter 'jaar' of testregeling_afnemer#3 (REGISTER, register testregeling_afnemer, grondslag testregeling_register#3): synthesis source test_register/registerstatus keeps no chronicle with a legal basis in 'testregeling_afnemer'"]
+            ["besluit_genomen: wrong source for parameter 'jaar' of testregeling_afnemer#3 (REGISTER, register testregeling_afnemer, grondslag testregeling_register#3): synthesis source test_register/registerstatus keeps no chronicle with a legal basis in 'testregeling_afnemer'"]
         );
 }
 
@@ -250,7 +271,7 @@ fn register_and_legal_basis_are_loaded() {
         year_with(
             "{waarde: REGISTER, register: een_onbekend_register, grondslag: 'een_onbekende_wet#1'}",
         ),
-        same,
+        keep,
         &[],
     );
     assert!(c.warnings.contains(
@@ -267,11 +288,12 @@ fn register_and_legal_basis_are_loaded() {
 fn a_source_with_a_url_counts_with_a_warning() {
     let c = consumer(
         same,
-        |t| {
-            t.replace(
-                    "  - cell: test_register\n    lexostatus: registerstatus\n",
-                    "  - cell: test_register\n    url: http://register.example\n    lexostatus: registerstatus\n",
-                )
+        |d| {
+            d.synthesis
+                .iter_mut()
+                .find(|b| b.lexostatus == "registerstatus")
+                .unwrap()
+                .url = Some("http://register.example".into());
         },
         &[],
     );
@@ -289,7 +311,7 @@ fn an_internal_source_that_does_not_run_counts_with_a_warning() {
     let s = service(same, &[]);
     let mut c = cells(&s);
     c.remove("test_register");
-    let out = check_with_state(process("afnemer", same), &c, &s);
+    let out = check_with_state(process("test_afnemer", keep), &c, &s);
     assert!(out.errors.is_empty(), "{:?}", out.errors);
     assert_eq!(
             out.warnings,
@@ -311,30 +333,30 @@ fn the_assessment_rows_supply_to_the_assessment() {
                 1,
             )
     };
-    let c = consumer(asks_table, same, &[]);
+    let c = consumer(asks_table, keep, &[]);
     assert!(c.errors.is_empty(), "{:?}", c.errors);
     assert_eq!(
             c.warnings,
             ["assessment: no supplier for parameter 'gebiedstabel' of testregeling_afnemer#1 (BELANGHEBBENDE, grondslag testregeling_afnemer#1); required: false, so the engine does not get it and computes with an unknown value (RFC-036)"]
         );
-    let with_rows = |t: String| {
-        t.replace(
-                "    output: aanvraag_toelaatbaar\n",
-                "    output: aanvraag_toelaatbaar\n    rows:\n      - parameter: gebiedstabel\n        table: {lexostatus: aanvraag_inhoud, field: gebieden}\n        columns: {gebied: gebied}\n",
-            )
+    let with_rows = |d: &mut ProcessDefinition| {
+        d.portal.as_mut().unwrap().assessment.rows = serde_yaml_ng::from_str(
+            "- parameter: gebiedstabel\n  table: {lexostatus: aanvraag_inhoud, field: gebieden}\n  columns: {gebied: gebied}\n",
+        )
+        .unwrap();
     };
     let c = consumer(asks_table, with_rows, &[]);
     assert!(c.errors.is_empty(), "{:?}", c.errors);
     assert!(c.warnings.is_empty(), "{:?}", c.warnings);
 }
 
-/// Without origin, and an interested-party parameter without required: false:
-/// warnings, no errors.
+/// An interested-party parameter without required: false: a warning, no
+/// error.
 #[test]
 fn warnings_about_the_origin() {
     let s = service(same, &[]);
     let c = cells(&s);
-    let d = process("instantie", same);
+    let d = process("test_instantie", keep);
     let out = check(&d, &c["test_instantie"], &c, &s);
     assert!(out.errors.is_empty(), "{:?}", out.errors);
     assert!(out.warnings.contains(
@@ -345,49 +367,21 @@ fn warnings_about_the_origin() {
         .warnings
         .iter()
         .any(|w| w.contains("'bevat_aantal_aanduidingen'")));
-
-    let without = |t: String| {
-        t.replace("            origin: {waarde: DOSSIER, grondslag: testregeling_afnemer#3 lid 1}\n          - name: opgeschorte_dagen", "          - name: opgeschorte_dagen")
-    };
-    let s = service(without, &[]);
-    let c = cells(&s);
-    let out = check_with_state(process("afnemer", same), &c, &s);
-    assert_eq!(
-            out.warnings,
-            ["provenance: parameter 'datum_uitnodiging_aanvulling' of testregeling_afnemer#3 has no origin; who supplies it cannot be traced"]
-        );
 }
 
-/// In a process with `origin_check: strict` a parameter without origin
-/// is an error.
+/// A parameter without origin is an error: who supplies it cannot be
+/// traced. The origin check is strict for every process (RFC-047).
 #[test]
-fn strict_origin_check_makes_a_parameter_without_origin_an_error() {
+fn a_parameter_without_origin_is_an_error() {
     let without = |t: String| {
         t.replace("            origin: {waarde: DOSSIER, grondslag: testregeling_afnemer#3 lid 1}\n          - name: opgeschorte_dagen", "          - name: opgeschorte_dagen")
     };
-    let strict = |t: String| {
-        t.replace(
-            "actor: test_afnemer\n",
-            "actor: test_afnemer\norigin_check: strict\n",
-        )
-    };
-    let c = consumer(without, strict, &[]);
+    let c = consumer(without, keep, &[]);
     assert_eq!(
             c.errors,
-            ["provenance: parameter 'datum_uitnodiging_aanvulling' of testregeling_afnemer#3 has no origin; who supplies it cannot be traced (origin_check: strict)"]
+            ["provenance: parameter 'datum_uitnodiging_aanvulling' of testregeling_afnemer#3 has no origin; who supplies it cannot be traced"]
         );
     assert!(c.warnings.is_empty(), "{:?}", c.warnings);
-    // Without strict it stays a warning (see above), and
-    // `lenient` is the same as nothing.
-    let lenient = |t: String| {
-        t.replace(
-            "actor: test_afnemer\n",
-            "actor: test_afnemer\norigin_check: lenient\n",
-        )
-    };
-    let c = consumer(without, lenient, &[]);
-    assert!(c.errors.is_empty(), "{:?}", c.errors);
-    assert_eq!(c.warnings.len(), 1, "{:?}", c.warnings);
 }
 
 /// The payment example: a regulation that asks for the determined and the
@@ -440,22 +434,18 @@ articles:
 fn the_payment_example_is_missing_a_supplier() {
     let c = consumer(
         same,
-        |t| {
-            only_the_decision(t)
-                    .replace("  - {cell: test_afnemer, lexostatus: besluit, case: true}\n", "")
-                    .replace("      regulation: testregeling_afnemer\n", "      regulation: testregeling_betaling\n")
-                    .replace(
-                        "outputs: [vastgesteld_bedrag, gebiedsbedrag, besluit_tijdig, besluitdeadline, zorgvuldig]",
-                        "outputs: [nog_te_betalen]",
-                    )
+        |d| {
+            only_the_decision(d);
+            without_the_decision_source(d);
+            the_decision_executes(d, "testregeling_betaling", &["nog_te_betalen"]);
         },
         &[PAYMENT],
     );
     assert_eq!(
             c.errors,
             [
-                "besluit: no supplier for parameter 'vastgesteld_bedrag' of testregeling_betaling#1 (DOSSIER, grondslag testregeling_betaling#1 lid 1)",
-                "besluit: no supplier for parameter 'betaald_bedrag' of testregeling_betaling#1 (DOSSIER, grondslag testregeling_betaling#1 lid 1)",
+                "besluit_genomen: no supplier for parameter 'vastgesteld_bedrag' of testregeling_betaling#1 (DOSSIER, grondslag testregeling_betaling#1 lid 1)",
+                "besluit_genomen: no supplier for parameter 'betaald_bedrag' of testregeling_betaling#1 (DOSSIER, grondslag testregeling_betaling#1 lid 1)",
             ]
         );
 }
@@ -464,26 +454,18 @@ fn the_payment_example_is_missing_a_supplier() {
 /// only the first: the parameters of a second article too.
 #[test]
 fn every_output_of_the_decision_counts() {
-    let with = |outputs: &'static str| {
-        move |t: String| {
-            only_the_decision(t)
-                    .replace("  - {cell: test_afnemer, lexostatus: besluit, case: true}\n", "")
-                    .replace("      regulation: testregeling_afnemer\n", "      regulation: testregeling_betaling\n")
-                    .replace(
-                        "outputs: [vastgesteld_bedrag, gebiedsbedrag, besluit_tijdig, besluitdeadline, zorgvuldig]",
-                        outputs,
-                    )
+    let with = |outputs: &'static [&'static str]| {
+        move |d: &mut ProcessDefinition| {
+            only_the_decision(d);
+            without_the_decision_source(d);
+            the_decision_executes(d, "testregeling_betaling", outputs);
         }
     };
     // Only the second article: nothing to supply.
-    let c = consumer(same, with("outputs: [vermeldt_dag]"), &[PAYMENT]);
+    let c = consumer(same, with(&["vermeldt_dag"]), &[PAYMENT]);
     assert!(c.errors.is_empty(), "{:?}", c.errors);
     // The article without parameters first: the second still counts.
-    let c = consumer(
-        same,
-        with("outputs: [vermeldt_dag, nog_te_betalen]"),
-        &[PAYMENT],
-    );
+    let c = consumer(same, with(&["vermeldt_dag", "nog_te_betalen"]), &[PAYMENT]);
     assert_eq!(c.errors.len(), 2, "{:?}", c.errors);
     assert!(
         c.errors[0].contains("'vastgesteld_bedrag'"),
@@ -492,19 +474,22 @@ fn every_output_of_the_decision_counts() {
     );
 }
 
+/// The portal of the consumer's process offers `output` of its regulation.
+fn offer(d: &mut ProcessDefinition, output: &str) {
+    d.portal.as_mut().unwrap().offer = Some(crate::config::Offer {
+        regulation: "testregeling_afnemer".into(),
+        output: output.into(),
+        deadline: None,
+        windows: None,
+        start: None,
+        opening: None,
+    });
+}
+
 /// An offer that asks for a dossier fact stops the runtime.
 #[test]
 fn an_offer_on_a_dossier_fact_is_an_error() {
-    let c = consumer(
-        same,
-        |t| {
-            t.replace(
-                    "    output: aanvraag_toelaatbaar\n",
-                    "    output: aanvraag_toelaatbaar\n  offer: {regulation: testregeling_afnemer, output: besluitdeadline}\n",
-                )
-        },
-        &[],
-    );
+    let c = consumer(same, |d| offer(d, "besluitdeadline"), &[]);
     assert!(c.errors.contains(
             &"offer: condition relies on 'opgeschorte_dagen' (DOSSIER, grondslag testregeling_afnemer#3 lid 1), which is not known beforehand".to_string()
         ), "{:?}", c.errors);
@@ -522,16 +507,7 @@ fn an_offer_on_a_dossier_fact_is_an_error() {
 /// An offer on register and login facts is allowed.
 #[test]
 fn an_offer_on_register_facts() {
-    let c = consumer(
-        same,
-        |t| {
-            t.replace(
-                    "    output: aanvraag_toelaatbaar\n",
-                    "    output: aanvraag_toelaatbaar\n  offer: {regulation: testregeling_afnemer, output: lijst_heeft_zetels}\n",
-                )
-        },
-        &[],
-    );
+    let c = consumer(same, |d| offer(d, "lijst_heeft_zetels"), &[]);
     assert!(c.errors.is_empty(), "{:?}", c.errors);
 }
 
@@ -540,11 +516,15 @@ fn an_offer_on_register_facts() {
 /// after filling it in, so not a window and not known beforehand.
 #[test]
 fn the_window_is_a_role_not_a_legal_basis() {
-    let with_offer = |t: String| {
-        t.replace(
-                "    output: aanvraag_toelaatbaar\n",
-                "    output: aanvraag_toelaatbaar\n  offer:\n    regulation: testregeling_afnemer\n    output: aanvraag_aangeboden\n    deadline: aanvraagtermijn\n    windows: aangeboden_jaren\n    start: begin_aanvraagjaar\n",
-            )
+    let with_offer = |d: &mut ProcessDefinition| {
+        d.portal.as_mut().unwrap().offer = Some(crate::config::Offer {
+            regulation: "testregeling_afnemer".into(),
+            output: "aanvraag_aangeboden".into(),
+            deadline: Some("aanvraagtermijn".into()),
+            windows: Some("aangeboden_jaren".into()),
+            start: Some("begin_aanvraagjaar".into()),
+            opening: None,
+        });
     };
     let c = consumer(same, with_offer, &[]);
     assert!(c.errors.is_empty(), "{:?}", c.errors);
@@ -674,8 +654,8 @@ fn an_invalid_origin_names_file_and_parameter() {
 fn the_decision_form_follows_from_origin() {
     let s = service(same, &[]);
     let c = cells(&s);
-    let out = check_with_state(process("afnemer", same), &c, &s);
-    let o = verdicts(&out, &s, "besluit");
+    let out = check_with_state(process("test_afnemer", keep), &c, &s);
+    let o = verdicts(&out, &s, "besluit_genomen");
     let fields: Vec<(&str, &str, Option<&str>)> = o
         .iter()
         .map(|o| (o.parameter.as_str(), o.label.as_str(), o.group.as_deref()))
@@ -707,9 +687,9 @@ fn the_decision_form_follows_from_origin() {
         &[],
     );
     let c = cells(&s);
-    let out = check_with_state(process("afnemer", same), &c, &s);
+    let out = check_with_state(process("test_afnemer", keep), &c, &s);
     assert_eq!(
-        verdicts(&out, &s, "besluit")[0].label,
+        verdicts(&out, &s, "besluit_genomen")[0].label,
         "De dag van het besluit"
     );
     assert_eq!(
@@ -737,14 +717,14 @@ articles:
 
 #[test]
 fn an_override_in_policy_wins() {
-    let c = consumer(same, same, &[POLICY]);
+    let c = consumer(same, keep, &[POLICY]);
     assert_eq!(
             c.errors,
-            ["besluit: wrong source for parameter 'jaar' of testregeling_afnemer#3 (DOSSIER, grondslag testbeleid_afnemer_herkomst#1 lid 1, from testbeleid_afnemer_herkomst#1): it comes from synthesis source test_register/registerstatus"]
+            ["besluit_genomen: wrong source for parameter 'jaar' of testregeling_afnemer#3 (DOSSIER, grondslag testbeleid_afnemer_herkomst#1 lid 1, from testbeleid_afnemer_herkomst#1): it comes from synthesis source test_register/registerstatus"]
         );
     // Policy of another authority does not count.
     let other = POLICY.replace("name: Test afnemer", "name: Een ander");
-    let c = consumer(same, same, &[&other]);
+    let c = consumer(same, keep, &[&other]);
     assert!(c.errors.is_empty(), "{:?}", c.errors);
 }
 
@@ -753,14 +733,14 @@ fn two_clashing_overrides_are_an_error() {
     let second = format!(
             "{POLICY}  - number: '2'\n    text: Tweede.\n    machine_readable:\n      origins:\n        - regulation: testregeling_afnemer\n          parameter: jaar\n          origin: {{waarde: REGISTER, register: testregeling_register, grondslag: 'testbeleid_afnemer_herkomst#2'}}\n"
         );
-    let c = consumer(same, same, &[&second]);
+    let c = consumer(same, keep, &[&second]);
     assert_eq!(
             c.errors,
             ["origins: 'jaar' of testregeling_afnemer gets two origins: DOSSIER, grondslag testbeleid_afnemer_herkomst#1 lid 1, from testbeleid_afnemer_herkomst#1 and REGISTER, register testregeling_register, grondslag testbeleid_afnemer_herkomst#2, from testbeleid_afnemer_herkomst#2"]
         );
     // An override of a parameter that does not exist.
     let unknown = POLICY.replace("parameter: jaar", "parameter: bestaat_niet");
-    let c = consumer(same, same, &[&unknown]);
+    let c = consumer(same, keep, &[&unknown]);
     assert_eq!(
             c.errors,
             ["origins in testbeleid_afnemer_herkomst#1: regulation 'testregeling_afnemer' has no parameter 'bestaat_niet'"]
@@ -772,7 +752,7 @@ fn two_clashing_overrides_are_an_error() {
 /// id follows from the law, or the errors that `prepare_for` reports.
 fn prepared_with_besluit(
     regulation: impl Fn(String) -> String,
-    adjust: impl Fn(String) -> String,
+    adjust: impl FnOnce(&mut ProcessDefinition),
 ) -> (ProcessDefinition, Vec<String>) {
     let s = service(
         |t| {
@@ -784,7 +764,7 @@ fn prepared_with_besluit(
         &[],
     );
     let c = cells(&s);
-    let mut d = process("afnemer", adjust);
+    let mut d = process("test_afnemer", adjust);
     let authority = crate::authority::own(&d, &s);
     let errors = crate::action::prepare_for(&mut d, authority.as_deref(), &s, &c["test_afnemer"]);
     (d, errors)
@@ -799,32 +779,36 @@ fn decision_parameter(d: &ProcessDefinition, action: &str) -> Option<String> {
 
 #[test]
 fn prepare_for_fills_in_the_decision_parameter_from_the_law() {
-    let (d, errors) = prepared_with_besluit(same, same);
+    let (d, errors) = prepared_with_besluit(same, keep);
     assert!(errors.is_empty(), "{errors:?}");
     assert_eq!(
-        decision_parameter(&d, "besluit").as_deref(),
+        decision_parameter(&d, "besluit_genomen").as_deref(),
         Some("bekendgemaakt")
     );
     // Without the role nothing is filled in.
     let s = service(same, &[]);
     let c = cells(&s);
-    let mut d = process("afnemer", same);
+    let mut d = process("test_afnemer", keep);
     let authority = crate::authority::own(&d, &s);
     let errors = crate::action::prepare_for(&mut d, authority.as_deref(), &s, &c["test_afnemer"]);
     assert!(errors.is_empty(), "{errors:?}");
-    assert_eq!(decision_parameter(&d, "besluit"), None);
+    assert_eq!(decision_parameter(&d, "besluit_genomen"), None);
 }
 
 #[test]
 fn a_configured_decision_parameter_that_contradicts_the_law_is_an_error() {
-    let (_, errors) = prepared_with_besluit(same, |t| {
-        t.replace(
-            "    - name: besluit\n",
-            "    - name: besluit\n      decision_parameter: jaar\n",
-        )
+    let (_, errors) = prepared_with_besluit(same, |d| {
+        d.handling
+            .as_mut()
+            .unwrap()
+            .actions
+            .iter_mut()
+            .find(|a| a.name == "besluit_genomen")
+            .unwrap()
+            .decision_parameter = Some("jaar".into());
     });
     assert!(
-        errors.iter().any(|e| e.contains("action 'besluit'")
+        errors.iter().any(|e| e.contains("action 'besluit_genomen'")
             && e.contains("'jaar'")
             && e.contains("'bekendgemaakt'")),
         "{errors:?}"
@@ -840,7 +824,7 @@ fn more_than_one_besluit_parameter_is_an_error() {
                 "origin: {waarde: DOSSIER, grondslag: testregeling_afnemer#3 lid 1, rol: BESLUIT}\n          - name: jaar",
             )
         },
-        same,
+        keep,
     );
     assert!(
         errors

@@ -1,9 +1,10 @@
 //! Configuration: the runtime environment, the cell definition (`cell.yaml`)
-//! and the process definition (`process.yaml`).
+//! and the process definition.
 //!
-//! A cell is a directory under `CELLS_PATH` with a `cell.yaml`, a process a
-//! directory under `PROCESSES_PATH` with a `process.yaml`. Paths inside are
-//! relative to that directory.
+//! A cell is a directory under `CELLS_PATH` with a `cell.yaml`; paths inside
+//! are relative to that directory. A process has no file of its own: it
+//! follows from the policy of its actor and the deployment (RFC-047, see
+//! [`crate::derive`]).
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -21,17 +22,11 @@ pub const DEFAULT_PORT: u16 = 7170;
 /// The name of the file that makes a directory a cell.
 pub const CELL_FILE: &str = "cell.yaml";
 
-/// The name of the file that makes a directory a process.
-pub const PROCESS_FILE: &str = "process.yaml";
-
 /// The runtime environment.
 #[derive(Debug, Clone)]
 pub struct Config {
     /// Directory with a subdirectory per cell, each with a `cell.yaml`.
     pub cells_path: PathBuf,
-    /// Directory with a subdirectory per process, each with a `process.yaml`.
-    /// Without it: no processes, only cells.
-    pub processes_path: Option<PathBuf>,
     /// Directory with the regulations (the corpus), shared by all cells.
     pub regulation_path: PathBuf,
     /// Directory for the chronicles: a subdirectory `<id>/` per cell.
@@ -52,7 +47,8 @@ pub struct Config {
     /// queries one stops the runtime.
     pub registers: Option<PathBuf>,
     /// The channels of the deployment (`CELL_CHANNELS`, RFC-047): with it,
-    /// the processes follow from the policy instead of `PROCESSES_PATH`.
+    /// the processes follow from the policy. Without it: no processes, only
+    /// cells.
     pub channels: Option<PathBuf>,
     /// The synthesis and its rows per actor (`CELL_SYNTHESIS`), until RFC-045.
     pub synthesis: Option<PathBuf>,
@@ -124,15 +120,12 @@ impl Config {
         let channels = path("CELL_CHANNELS").ok();
         let synthesis = path("CELL_SYNTHESIS").ok();
         let examples = path("CELL_EXAMPLES").ok();
-        let processes_path = path("PROCESSES_PATH").ok();
         check_deployment(
             channels.is_some(),
             synthesis.is_some() || examples.is_some(),
-            processes_path.is_some(),
         )?;
         Ok(Self {
             cells_path: path("CELLS_PATH")?,
-            processes_path,
             regulation_path: path("REGULATION_PATH")?,
             data_dir: path("DATA_DIR")?,
             port,
@@ -162,18 +155,11 @@ impl Config {
 }
 
 /// The deployment files go together (RFC-047): `CELL_SYNTHESIS` and
-/// `CELL_EXAMPLES` only with `CELL_CHANNELS`, and the processes follow from
-/// the policy or from `PROCESSES_PATH`, not from both.
-fn check_deployment(channels: bool, with_channels: bool, processes: bool) -> Result<(), String> {
+/// `CELL_EXAMPLES` only with `CELL_CHANNELS`.
+fn check_deployment(channels: bool, with_channels: bool) -> Result<(), String> {
     if !channels && with_channels {
         return Err(
             "CELL_SYNTHESIS and CELL_EXAMPLES belong to CELL_CHANNELS, which is not set".into(),
-        );
-    }
-    if channels && processes {
-        return Err(
-            "set CELL_CHANNELS (processes from policy) or PROCESSES_PATH (process.yaml), not both"
-                .into(),
         );
     }
     Ok(())
@@ -192,64 +178,41 @@ pub struct CellDefinition {
     pub initial_state: Option<String>,
 }
 
-/// A process definition (`schema/chronolex/v0.3.0/process.json`): who acts
-/// and how. Informing (synthesis, assessment, offer), concluding (the
-/// decision) and having a cell record.
-#[derive(Debug, Clone, Deserialize)]
+/// A process definition: who acts and how. Informing (synthesis,
+/// assessment, offer), concluding (the decision) and having a cell record.
+/// The runtime derives it from the policy of the actor and the deployment
+/// (RFC-047, [`crate::derive`]); the origin check (RFC-043) is always strict.
+#[derive(Debug, Clone, Default)]
 pub struct ProcessDefinition {
+    /// The id of the cell that records the submissions.
     pub id: String,
     /// The actor of the process. A cell records for the process only in
     /// a stream with this `recording_actor`, and the decision is the
     /// decision order ("beschikking") this actor is competent for.
     pub actor: String,
-    /// How strict the origin check is (see [`crate::origin`]).
-    #[serde(default)]
-    pub origin_check: OriginCheck,
     /// On behalf of which competent authority the process acts (see
     /// [`crate::authority`]). Needed for a decision; without it no
     /// implementing policy counts as the actor's.
-    #[serde(default)]
     pub on_behalf_of: Option<OnBehalfOf>,
     /// Authorities for which the process acts under mandate (Awb 10:1), each
     /// with a legal basis.
-    #[serde(default)]
     pub mandates: Vec<Mandate>,
     /// Along which channels someone logs in (see [`crate::channel`]).
-    #[serde(default)]
     pub channels: BTreeMap<String, ChannelDefinition>,
     /// Who logs in, along which channel, and which routes that role may use.
     /// Without roles there is no login.
-    #[serde(default)]
     pub roles: BTreeMap<String, RoleDefinition>,
-    #[serde(default)]
     pub portal: Option<Portal>,
-    #[serde(default)]
     pub synthesis: Vec<SynthesisSource>,
-    #[serde(default)]
     pub handling: Option<Handling>,
     /// Default data per action, for a trial setup.
-    #[serde(default)]
     pub examples: Option<ExamplesDefinition>,
-    /// The policy article of the portal channel, for a process from policy
-    /// (RFC-047); `None` for one from `process.yaml`.
-    #[serde(skip)]
-    pub declared_by: Option<String>,
+    /// The policy article of the portal channel (RFC-047).
+    pub declared_by: String,
 }
 
-/// How strict the origin check (RFC-043) is.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum OriginCheck {
-    /// A parameter without origin is a warning.
-    #[default]
-    Lenient,
-    /// A parameter without origin is an error: who supplies it cannot be
-    /// traced.
-    Strict,
-}
-
-/// The `examples` block: a JSON file per action, relative to the
-/// directory of the process (see [`crate::examples`]).
+/// The examples of a process (`CELL_EXAMPLES`): a JSON file per action,
+/// relative to the examples file (see [`crate::examples`]).
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExamplesDefinition {
@@ -268,8 +231,7 @@ pub struct ExamplesDefinition {
 /// On behalf of which competent authority the process acts: a name as a
 /// regulation gives it in `competent_authority`, or a regulation whose
 /// competent authority it is.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(untagged)]
+#[derive(Debug, Clone)]
 pub enum OnBehalfOf {
     Authority { authority: String },
     Regulation { regulation: String },
@@ -286,7 +248,7 @@ pub struct Mandate {
 
 /// What the handler does in the process: a worklist, and actions in a
 /// case.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct Handling {
     /// A list lexostatus of the process's cell.
     pub worklist: LexostatusReference,
@@ -301,26 +263,24 @@ impl Handling {
 }
 
 /// A lexostatus of a cell.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct LexostatusReference {
     pub cell: String,
     pub lexostatus: String,
 }
 
 /// An action in a case (see [`crate::action`]): the outputs of an
-/// article, and the event in which the cell records it. What the action
-/// needs and from whom is not in `process.yaml`: it follows at load time
-/// from the stage of the event (RFC-008) and from the origin of the
-/// parameters (RFC-043); see the fields without serde below.
-#[derive(Debug, Clone, Default, Deserialize)]
+/// article, and the event in which the cell records it. The derivation
+/// (RFC-047) sets the fields up to `record`; what the action needs and from
+/// whom follows at load time from the stage of the event (RFC-008) and from
+/// the origin of the parameters (RFC-043), in the fields after it.
+#[derive(Debug, Clone, Default)]
 pub struct ActionDefinition {
     /// Unique in the process; the route is `cases/<c>/actions/<name>`.
     pub name: String,
-    #[serde(default)]
     pub label: Option<String>,
     /// The role that may take the action (a key of `roles`, with
     /// routes `handling`). Without it: every role that may use the handling.
-    #[serde(default)]
     pub role: Option<String>,
     /// The action of the decision this action belongs to: for a
     /// fact that follows a decision (a payment that executes it) and for a
@@ -328,71 +288,57 @@ pub struct ActionDefinition {
     /// decision of that action in the case, an amendment of it
     /// included. A follow-up finds its decision itself (see
     /// [`ActionKind::FollowUp`]).
-    #[serde(default)]
     pub decision: Option<String>,
     /// The parameter of the article that receives the id of the decision
     /// the action acts on (note on source and gram id): this is how the
     /// process calls its own policy that reads per decision, such as the
     /// payment administration. The law says which parameter it is (origin
     /// role `BESLUIT`, RFC-047) and `prepare_for` fills it in from there; a
-    /// value here that contradicts the law is an error.
-    #[serde(default)]
+    /// value set beforehand that contradicts the law is an error.
     pub decision_parameter: Option<String>,
-    /// Empty in `process.yaml`: the runtime fills it at load time with the
-    /// regulation of the decision order for which the process's authority
-    /// (`on_behalf_of`) is competent (see [`crate::authority::decision_orders_of`]).
-    #[serde(default)]
+    /// The regulation of the article. When it is empty, the runtime fills
+    /// it at load time with the regulation of the decision order for which
+    /// the process's authority (`on_behalf_of`) is competent (see
+    /// [`crate::authority::decision_orders_of`]).
     pub regulation: String,
     /// Outputs of an article. For a follow-up, the outputs of the hooks
     /// of that stage are added at load time.
-    #[serde(default)]
     pub outputs: Vec<String>,
     /// Synthesis per row: a table field becomes an array parameter.
-    #[serde(default)]
     pub rows: Vec<RowsDefinition>,
     /// Where the action is recorded as a gram.
     pub record: Record,
     /// The article of the outputs, as `<regulation>#<article>`; set at load
     /// time.
-    #[serde(skip)]
     pub article: String,
     /// What kind of action it is; derived from the event and the procedure.
-    #[serde(skip)]
     pub kind: ActionKind,
     /// The stage of the recording event, if it has one.
-    #[serde(skip)]
     pub stage: Option<String>,
     /// Whether the recording event opens, follows or amends a decision.
-    #[serde(skip)]
     pub decision_role: Option<crate::stream::Decision>,
     /// The verdicts: the parameters of the article with origin `OORDEEL`
     /// (see [`crate::origin::verdicts`]). Not for a follow-up: those verdicts
     /// the handler gave at the decision.
-    #[serde(skip)]
     pub verdicts: Vec<Verdict>,
     /// The facts the action records and the handler fills in: for
     /// a fact the `$external` fields of the event that are not an output,
     /// for a follow-up what the stage asks for (`requires`).
-    #[serde(skip)]
     pub facts: Vec<crate::form::Field>,
     /// Facts that only arise in a later stage, with their state at this
     /// action: derived from the procedure (RFC-008), only for a decision
     /// and only for what no lexostatus of the case supplies (see
     /// [`crate::action::load::not_yet`]).
-    #[serde(skip)]
     pub not_yet: BTreeMap<String, NotYet>,
     /// The boolean outputs of an assessment article ("TOETS") that is in the
     /// legal basis of the event: false means it cannot be taken (see
     /// [`crate::action::load::assessments`]).
-    #[serde(skip)]
     pub assessments: Vec<String>,
     /// For a follow-up: the hooks the law fires on that stage, as
     /// `<regulation>#<article>` (RFC-008).
-    #[serde(skip)]
     pub hooks: Vec<String>,
     /// The type and unit of each output and assessment, from the regulation
     /// (see [`crate::regulations::ValueType`]).
-    #[serde(skip)]
     pub types: BTreeMap<String, crate::regulations::ValueType>,
 }
 
@@ -442,7 +388,7 @@ pub struct NotYet {
 /// The cell and the event in which the process has an action recorded. The
 /// event has `case: follows`; its `$external` keys are outputs of the
 /// action or fields of its form.
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default)]
 pub struct Record {
     pub cell: String,
     pub stream: String,
@@ -547,8 +493,8 @@ impl SourceInput {
 
 /// The parameters a synthesis source supplies: per name at the source the name
 /// at the consumer. The source speaks the language of its own law; the
-/// translation belongs to the consumer. In `process.yaml` a list (the same
-/// name) or a table (source: consumer).
+/// translation belongs to the consumer. In `synthesis.yaml` a list (the
+/// same name) or a table (source: consumer).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Parameters(Vec<(String, String)>);
 
@@ -619,7 +565,7 @@ pub struct Verdict {
 
 /// The portal block: in which cell and which event a submission goes, and which
 /// output the assessment asks for.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct Portal {
     pub cell: String,
     pub stream: String,
@@ -627,9 +573,7 @@ pub struct Portal {
     pub assessment: Assessment,
     /// What the portal offers: an output of the actor's policy,
     /// optionally with the deadline shown with it.
-    #[serde(default)]
     pub offer: Option<Offer>,
-    #[serde(default)]
     pub form: Option<FormReference>,
 }
 
@@ -661,18 +605,17 @@ pub struct Offer {
     pub opening: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct Assessment {
     pub lexostatus: String,
     pub regulation: String,
     pub output: String,
     /// Synthesis per row, as for the decision: a table field of the
     /// assessment lexostatus becomes an array parameter.
-    #[serde(default)]
     pub rows: Vec<RowsDefinition>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct FormReference {
     pub path: String,
     pub screen: String,
@@ -760,22 +703,6 @@ impl CellDefinition {
 }
 
 impl ProcessDefinition {
-    /// The policy article (of the portal channel) this process follows
-    /// from (RFC-047); `None` for a process from `process.yaml`.
-    pub fn from_policy(&self) -> Option<&str> {
-        self.declared_by.as_deref()
-    }
-
-    /// Read a process definition from text and validate it against the schema.
-    pub fn parse(text: &str, source: &str) -> Result<Self, Vec<String>> {
-        load::definition(text, source, Kind::Process)
-    }
-
-    /// Load `process.yaml` from the directory of a process.
-    pub fn load(map: &Path) -> Result<Self, Vec<String>> {
-        load::load(&map.join(PROCESS_FILE), Self::parse)
-    }
-
     /// The roles that may use a route group.
     pub fn roles_with(&self, r: Routes) -> impl Iterator<Item = (&String, &RoleDefinition)> {
         self.roles.iter().filter(move |(_, d)| d.may(r))
@@ -806,12 +733,6 @@ impl ProcessDefinition {
     }
 }
 
-/// The directories under `PROCESSES_PATH` with a `process.yaml`, sorted. An
-/// empty directory is allowed: a runtime with only register cells has no process.
-pub fn process_dirs(processes_path: &Path) -> Result<Vec<PathBuf>, String> {
-    load::dirs_with(processes_path, PROCESS_FILE)
-}
-
 /// The directories under `CELLS_PATH` with a `cell.yaml`, sorted.
 pub fn cell_dirs(cells_path: &Path) -> Result<Vec<PathBuf>, String> {
     let dirs = load::dirs_with(cells_path, CELL_FILE)?;
@@ -835,12 +756,11 @@ mod tests {
 
     #[test]
     fn the_deployment_files_go_together() {
-        assert_eq!(check_deployment(true, true, false), Ok(()));
-        assert_eq!(check_deployment(false, false, true), Ok(()));
-        let e = check_deployment(false, true, false).unwrap_err();
+        assert_eq!(check_deployment(true, true), Ok(()));
+        assert_eq!(check_deployment(true, false), Ok(()));
+        assert_eq!(check_deployment(false, false), Ok(()));
+        let e = check_deployment(false, true).unwrap_err();
         assert!(e.contains("CELL_CHANNELS, which is not set"), "{e}");
-        let e = check_deployment(true, false, true).unwrap_err();
-        assert!(e.contains("not both"), "{e}");
     }
 
     #[test]
@@ -858,23 +778,6 @@ mod tests {
                 "test_instantie",
                 "test_register",
                 "test_toeslag"
-            ]
-        );
-    }
-
-    #[test]
-    fn fixture_processes_load() {
-        let dirs = process_dirs(&fixtures().join("processes")).unwrap();
-        let ids: Vec<String> = dirs
-            .iter()
-            .map(|m| ProcessDefinition::load(m).unwrap().id)
-            .collect();
-        assert_eq!(
-            ids,
-            [
-                "test_afnemer_proces",
-                "test_instantie_proces",
-                "test_toeslag_proces"
             ]
         );
     }
@@ -900,16 +803,9 @@ mod tests {
         assert!(error.iter().any(|f| f.contains("roles")), "{error:?}");
     }
 
-    #[test]
-    fn synthesis_source_with_url() {
-        let d = ProcessDefinition::parse(
-            "id: a\nactor: a\nsynthesis:\n  - {cell: b, url: 'http://localhost:7172', lexostatus: l, input: {}, parameters: [p]}\n",
-            "t",
-        )
-        .unwrap();
-        assert_eq!(d.synthesis[0].url.as_deref(), Some("http://localhost:7172"));
-        assert!(d.portal.is_none());
-        assert!(d.examples.is_none());
+    /// The synthesis of a process as `synthesis.yaml` gives it.
+    fn synthesis(yaml: &str) -> Vec<SynthesisSource> {
+        serde_yaml_ng::from_str(yaml).unwrap()
     }
 
     /// The parameters of a source: a list (the same name) or per name at
@@ -917,12 +813,10 @@ mod tests {
     /// value.
     #[test]
     fn parameters_with_translation_and_a_fixed_input() {
-        let d = ProcessDefinition::parse(
-            "id: a\nactor: a\nsynthesis:\n  - {cell: b, lexostatus: l, input: {x: {lexostatus: e, field: x}, orgaan: {value: raad}}, parameters: {is_ingeschreven_in_register: is_ingeschreven_raad}}\n  - {cell: c, lexostatus: m, input: {}, parameters: [p]}\n",
-            "t",
-        )
-        .unwrap();
-        let b = &d.synthesis[0];
+        let s = synthesis(
+            "- {cell: b, lexostatus: l, input: {x: {lexostatus: e, field: x}, orgaan: {value: raad}}, parameters: {is_ingeschreven_in_register: is_ingeschreven_raad}}\n- {cell: c, lexostatus: m, input: {}, parameters: [p]}\n",
+        );
+        let b = &s[0];
         assert_eq!(
             b.parameters.pairs().collect::<Vec<_>>(),
             [("is_ingeschreven_in_register", "is_ingeschreven_raad")]
@@ -933,89 +827,34 @@ mod tests {
         );
         assert!(matches!(&b.input["orgaan"], SourceInput::Value { value } if value == "raad"));
         assert_eq!(b.input["x"].field().unwrap().lexostatus, "e");
-        assert_eq!(
-            d.synthesis[1].parameters.pairs().collect::<Vec<_>>(),
-            [("p", "p")]
-        );
-        assert!(d.synthesis[1].parameters.translated().is_empty());
-    }
-
-    /// The windows and the state at decision are not in the configuration.
-    #[test]
-    fn choices_and_state_at_decision_are_rejected() {
-        let error = ProcessDefinition::parse(
-            "id: a\nactor: a\nportal:\n  cell: a\n  stream: s\n  event: e\n  assessment: {lexostatus: l, regulation: r, output: u}\n  offer: {regulation: r, output: u, keuzes: {jaren_vanaf_nu: [0]}}\n",
-            "t",
-        )
-        .unwrap_err();
-        assert!(error.iter().any(|f| f.contains("keuzes")), "{error:?}");
-        let error = ProcessDefinition::parse(
-            "id: a\nactor: a\nhandling:\n  worklist: {cell: a, lexostatus: w}\n  actions:\n    - name: b\n      outputs: [u]\n      record: {cell: a, stream: s, event: e}\n      stand_bij_besluit: {x: false}\n",
-            "t",
-        )
-        .unwrap_err();
-        assert!(
-            error.iter().any(|f| f.contains("stand_bij_besluit")),
-            "{error:?}"
-        );
+        assert_eq!(s[1].parameters.pairs().collect::<Vec<_>>(), [("p", "p")]);
+        assert!(s[1].parameters.translated().is_empty());
     }
 
     #[test]
-    fn a_case_source_names_no_input_or_parameters() {
-        let d = ProcessDefinition::parse(
-            "id: a\nactor: a\nsynthesis:\n  - {cell: b, lexostatus: l, case: true}\n  - {cell: c, lexostatus: m, input: {x: {lexostatus: l, field: x}}, parameters: [p]}\n",
-            "t",
-        )
-        .unwrap();
+    fn case_sources_and_other_sources() {
+        let d = ProcessDefinition {
+            synthesis: synthesis(
+                "- {cell: b, lexostatus: l, case: true}\n- {cell: c, lexostatus: m, input: {x: {lexostatus: l, field: x}}, parameters: [p]}\n",
+            ),
+            ..Default::default()
+        };
         assert_eq!(d.case_sources().count(), 1);
         assert_eq!(d.other_sources().count(), 1);
-        let error = ProcessDefinition::parse(
-            "id: a\nactor: a\nsynthesis:\n  - {cell: b, lexostatus: l, case: true, parameters: [p]}\n",
-            "t",
-        )
-        .unwrap_err();
-        assert!(
-            error.iter().any(|f| f.contains("/synthesis/0")),
-            "{error:?}"
-        );
-        let error = ProcessDefinition::parse(
-            "id: a\nactor: a\nsynthesis:\n  - {cell: b, lexostatus: l}\n",
-            "t",
-        )
-        .unwrap_err();
-        assert!(
-            error.iter().any(|f| f.contains("/synthesis/0")),
-            "{error:?}"
-        );
-    }
-
-    /// The decision form is not in `process.yaml`: it follows from the
-    /// parameters with origin OORDEEL.
-    #[test]
-    fn a_decision_form_in_the_configuration_is_rejected() {
-        let error = ProcessDefinition::parse(
-            "id: a\nactor: a\nhandling:\n  worklist: {cell: a, lexostatus: w}\n  actions:\n    - name: b\n      outputs: [u]\n      record: {cell: a, stream: s, event: e}\n      form: [{parameter: p, label: P}]\n",
-            "t",
-        )
-        .unwrap_err();
-        assert!(error.iter().any(|f| f.contains("form")), "{error:?}");
     }
 
     #[test]
-    fn examples_block() {
-        let d = ProcessDefinition::parse(
-            "id: a\nactor: a\nexamples:\n  logins: [login.json]\n  actions: {besluit: besluit.json}\n",
-            "t",
-        )
-        .unwrap();
-        let v = d.examples.unwrap();
+    fn examples_definition() {
+        let v: ExamplesDefinition =
+            serde_yaml_ng::from_str("logins: [login.json]\nactions: {besluit: besluit.json}\n")
+                .unwrap();
         assert_eq!(v.logins, ["login.json"]);
         assert_eq!(v.application, None);
         assert_eq!(v.actions["besluit"], "besluit.json");
-        let error =
-            ProcessDefinition::parse("id: a\nactor: a\nexamples:\n  inlog: [login.json]\n", "t")
-                .unwrap_err();
-        assert!(error.iter().any(|f| f.contains("inlog")), "{error:?}");
+        let error = serde_yaml_ng::from_str::<ExamplesDefinition>("inlog: [login.json]\n")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("inlog"), "{error}");
     }
 
     #[test]
@@ -1024,7 +863,5 @@ mod tests {
         assert!(cell_dirs(dir.path())
             .unwrap_err()
             .contains("no subdirectory"));
-        // Without processes: no error.
-        assert!(process_dirs(dir.path()).unwrap().is_empty());
     }
 }

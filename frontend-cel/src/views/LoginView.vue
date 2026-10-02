@@ -1,6 +1,6 @@
 <script setup>
-// Log in through a channel from the configuration of the process (`channels`
-// in process.yaml): the label, the explanation and the fields come from the
+// Log in through a channel of the process (declared in the actor's policy,
+// its technique in channels.yaml of the deployment, RFC-047): the label, the explanation and the fields come from the
 // channel. Every channel is simulated: the process only checks the form of
 // what you enter, not who you are. When more than one role logs in through
 // the channel, the chosen role is sent along. When the process provides

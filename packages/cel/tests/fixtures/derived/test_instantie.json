@@ -1,0 +1,114 @@
+{
+  "actor": "test_instantie",
+  "authority": "Test instantie",
+  "channels": {
+    "burger": {
+      "declared_by": "testbeleid_instantie#1",
+      "explanation": "Vul een burgernummer van negen cijfers in.",
+      "fields": [
+        {
+          "check": "elfproef",
+          "label": "Burgernummer",
+          "message": "dit is geen geldig burgernummer",
+          "name": "nummer",
+          "numeric": true,
+          "pattern": "[0-9]{9}"
+        }
+      ],
+      "intake": null,
+      "label": "Inloggen als burger",
+      "legal_basis": [],
+      "owner": "nummer",
+      "owner_path": "burger.nummer",
+      "supplied_by": null,
+      "supplies": {}
+    },
+    "eherkenning": {
+      "declared_by": "testbeleid_instantie#1",
+      "explanation": null,
+      "fields": [
+        {
+          "label": "Organisatienummer",
+          "message": "een organisatienummer heeft acht cijfers",
+          "name": "kvk",
+          "pattern": "[0-9]{8}"
+        },
+        {
+          "label": "Uw naam",
+          "name": "persoon"
+        }
+      ],
+      "intake": null,
+      "label": "Inloggen namens een organisatie",
+      "legal_basis": [],
+      "owner": "kvk",
+      "owner_path": "eherkenning.kvk",
+      "supplied_by": null,
+      "supplies": {}
+    },
+    "medewerker": {
+      "declared_by": "testbeleid_instantie#1",
+      "explanation": null,
+      "fields": [
+        {
+          "label": "Naam",
+          "name": "naam"
+        }
+      ],
+      "intake": null,
+      "label": "Inloggen als medewerker",
+      "legal_basis": [],
+      "owner": null,
+      "owner_path": null,
+      "supplied_by": null,
+      "supplies": {}
+    }
+  },
+  "declared_by": "testbeleid_instantie#1",
+  "handling": null,
+  "id": "test_instantie",
+  "mandates": [],
+  "portal": {
+    "assessment": [
+      "aanvraag_inhoud",
+      "testregeling_aanvraag",
+      "aanvraag_volledig"
+    ],
+    "form": [
+      "formulier-instantie.yaml",
+      "aanvraag"
+    ],
+    "offer": null,
+    "record": [
+      "test_instantie",
+      "test_aanvragen",
+      "aanvraag_ontvangen"
+    ]
+  },
+  "roles": {
+    "aanvrager": {
+      "channel": "eherkenning",
+      "label": null,
+      "legal_basis": null,
+      "routes": [
+        "portal"
+      ]
+    },
+    "burger": {
+      "channel": "burger",
+      "label": null,
+      "legal_basis": null,
+      "routes": [
+        "portal"
+      ]
+    },
+    "loket": {
+      "channel": "medewerker",
+      "label": "Loketmedewerker",
+      "legal_basis": null,
+      "routes": [
+        "counter"
+      ]
+    }
+  }
+}

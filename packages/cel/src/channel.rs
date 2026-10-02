@@ -1,5 +1,6 @@
 //! Channels and roles: how someone enters a process, and what they may do
-//! there (`channels` and `roles` in `process.yaml`).
+//! there. The policy of the actor declares them and the deployment gives a
+//! channel its technique (RFC-047, see [`crate::derive`]).
 //!
 //! A channel is a simulated login: a few identification fields, each
 //! with a label and a shape check (a pattern, and optionally the
@@ -11,7 +12,7 @@
 //!
 //! A role names its channel and the route groups it may use
 //! ([`Routes`]). Which routes are in a group is decided by the runtime; who
-//! may use them, by the configuration.
+//! may use them, by the policy.
 
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
@@ -25,30 +26,27 @@ use crate::config::ProcessDefinition;
 use crate::gram::set_path;
 use crate::stream::{Binding, Case, Event};
 
-/// A channel (`channels.<id>` in `process.yaml`).
-#[derive(Debug, Clone, Deserialize)]
+/// A channel of a process: declared in the policy, with the technique of
+/// its adapter from the deployment (RFC-047).
+#[derive(Debug, Clone)]
 pub struct ChannelDefinition {
     /// How the frontend names the channel, such as "Inloggen als medewerker".
     pub label: String,
     /// Explanation under the label on the login screen; the frontend itself adds
     /// that the login is simulated.
-    #[serde(default)]
     pub explanation: Option<String>,
     /// The identification fields, in the order of the login screen.
     pub fields: Vec<IdentificationField>,
     /// The field that designates the owner of a case: an applicant who
     /// follows a case must have a gram in that case with their value of this
     /// field.
-    #[serde(default)]
     pub owner: Option<String>,
     /// The path under `$intake` under which the fields arrive at the cell; without it:
     /// the id of the channel. A field `kvk` of channel `x` is then
     /// `$intake.x.kvk`.
-    #[serde(default)]
     pub intake: Option<String>,
     /// What the channel and its owner rest on, such as the rule that says by
     /// which means and on behalf of whom someone logs in (`<regulation>#<article>`).
-    #[serde(default)]
     pub legal_basis: Vec<String>,
     /// What the channel supplies to an application, per field of the gram:
     /// a field of the channel (`kvk_nummer: kvk`), the route it came in by
@@ -56,19 +54,13 @@ pub struct ChannelDefinition {
     /// (`$submitted_on`). A field with origin KANAAL in force binds to what
     /// the channel supplies (note "het gram uit de wet"); the channel's
     /// `legal_basis` is why it may.
-    #[serde(default)]
     pub supplies: BTreeMap<String, String>,
-    /// The policy article that declares the channel (RFC-047); `None` for a
-    /// channel from `process.yaml`.
-    #[serde(skip)]
-    pub declared_by: Option<String>,
+    /// The policy article that declares the channel (RFC-047).
+    pub declared_by: String,
     /// The policy article that says what it supplies (RFC-047).
-    #[serde(skip)]
     pub supplied_by: Option<String>,
-    /// For a channel from policy (RFC-047): the path under `$intake` (or the
-    /// supplied field) of its owner, resolved against the submission (see
-    /// [`owner_binding`]).
-    #[serde(skip)]
+    /// The path under `$intake` (or the supplied field) of its owner,
+    /// resolved against the submission (see [`owner_binding`]).
     pub owner_path: Option<String>,
 }
 
@@ -143,20 +135,18 @@ impl Routes {
     }
 }
 
-/// A role (`roles.<id>` in `process.yaml`).
-#[derive(Debug, Clone, Deserialize)]
+/// A role: the role of a channel in the policy (RFC-047).
+#[derive(Debug, Clone)]
 pub struct RoleDefinition {
     /// The channel through which the role logs in.
     pub channel: String,
     /// The route groups the role may use.
     pub routes: Vec<Routes>,
     /// How the frontend names the role; without it: the id.
-    #[serde(default)]
     pub label: Option<String>,
     /// Why this role may do this, such as a mandate regulation
     /// (`<regulation>#<article>`); a decision carries it along with the
     /// acting actor.
-    #[serde(default)]
     pub legal_basis: Option<String>,
 }
 
@@ -260,19 +250,8 @@ impl ChannelDefinition {
 
     /// The path under `$intake` of the owner field, if the channel names
     /// one; if the channel supplies it to a field of the gram, that field.
-    pub fn owner_path(&self, id: &str) -> Option<String> {
-        if let Some(path) = &self.owner_path {
-            return Some(path.clone());
-        }
-        // A channel from `process.yaml` (until Task 11): the owner is a
-        // field of the channel.
-        let owner = self.owner.as_ref()?;
-        Some(
-            match self.supplies.iter().find(|(_, from)| *from == owner) {
-                Some((field, _)) => field.clone(),
-                None => format!("{}.{owner}", self.intake_prefix(id)),
-            },
-        )
+    pub fn owner_path(&self) -> Option<&str> {
+        self.owner_path.as_deref()
     }
 
     /// Validate the input of a login: every field is present, as text, and
@@ -651,12 +630,30 @@ pub fn check_process(
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use serde_json::json;
 
-    fn channel(yaml: &str) -> ChannelDefinition {
-        serde_yaml_ng::from_str(yaml).unwrap()
+    /// A channel with these identification fields (YAML), owner and intake
+    /// prefix, as the derivation would build it.
+    pub(crate) fn channel(
+        label: &str,
+        fields: &str,
+        owner: Option<&str>,
+        intake: Option<&str>,
+    ) -> ChannelDefinition {
+        ChannelDefinition {
+            label: label.to_string(),
+            explanation: None,
+            fields: serde_yaml_ng::from_str(fields).unwrap(),
+            owner: owner.map(str::to_string),
+            intake: intake.map(str::to_string),
+            legal_basis: Vec::new(),
+            supplies: BTreeMap::new(),
+            declared_by: String::new(),
+            supplied_by: None,
+            owner_path: None,
+        }
     }
 
     /// The owner names a field of the submission (RFC-047): through the
@@ -713,13 +710,19 @@ mod tests {
 
     fn organisation() -> ChannelDefinition {
         channel(
-            "label: Organisatie\nfields:\n  - {name: nummer, label: Organisatienummer, pattern: '[0-9]{8}', message: een organisatienummer heeft acht cijfers}\n  - {name: persoon, label: Naam}\nowner: nummer\n",
+            "Organisatie",
+            "- {name: nummer, label: Organisatienummer, pattern: '[0-9]{8}', message: een organisatienummer heeft acht cijfers}\n- {name: persoon, label: Naam}\n",
+            Some("nummer"),
+            None,
         )
     }
 
     fn citizen() -> ChannelDefinition {
         channel(
-            "label: Burger\nfields:\n  - {name: nummer, label: Burgernummer, pattern: '[0-9]{9}', check: elfproef}\nowner: nummer\nintake: burger\n",
+            "Burger",
+            "- {name: nummer, label: Burgernummer, pattern: '[0-9]{9}', check: elfproef}\n",
+            Some("nummer"),
+            Some("burger"),
         )
     }
 
@@ -784,13 +787,15 @@ mod tests {
             o.intake_paths("organisatie"),
             ["organisatie.nummer", "organisatie.persoon"]
         );
-        assert_eq!(b.owner_path("burgerlogin").unwrap(), "burger.nummer");
     }
 
     #[test]
     fn a_channel_is_checked_at_startup() {
         let k = channel(
-            "label: X\nfields:\n  - {name: a, label: A, pattern: '[0-9'}\n  - {name: a, label: B}\nowner: c\n",
+            "X",
+            "- {name: a, label: A, pattern: '[0-9'}\n- {name: a, label: B}\n",
+            Some("c"),
+            None,
         );
         let f = k.check("x");
         assert_eq!(f.len(), 3, "{f:?}");

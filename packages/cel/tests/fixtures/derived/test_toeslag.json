@@ -1,0 +1,270 @@
+{
+  "actor": "test_toeslagdienst",
+  "authority": "De Toeslagdienst van Voorbeeld",
+  "channels": {
+    "medewerker": {
+      "declared_by": "testbeleid_toeslag#6",
+      "explanation": null,
+      "fields": [
+        {
+          "label": "Naam",
+          "name": "naam"
+        }
+      ],
+      "intake": null,
+      "label": "Inloggen als medewerker",
+      "legal_basis": [],
+      "owner": null,
+      "owner_path": null,
+      "supplied_by": null,
+      "supplies": {}
+    },
+    "persoon": {
+      "declared_by": "testbeleid_toeslag#6",
+      "explanation": "Vul een persoonsnummer van negen cijfers in.",
+      "fields": [
+        {
+          "label": "Persoonsnummer",
+          "message": "een persoonsnummer heeft negen cijfers",
+          "name": "nummer",
+          "numeric": true,
+          "pattern": "[0-9]{9}"
+        }
+      ],
+      "intake": null,
+      "label": "Inloggen als persoon",
+      "legal_basis": [
+        "testbeleid_toeslag#4 lid 1",
+        "testbeleid_toeslag#4 lid 2"
+      ],
+      "owner": "nummer",
+      "owner_path": "persoonsnummer",
+      "supplied_by": "testbeleid_toeslag#4",
+      "supplies": {
+        "kanaal": "$channel",
+        "ondertekening": "nummer",
+        "persoonsnummer": "nummer"
+      }
+    }
+  },
+  "declared_by": "testbeleid_toeslag#6",
+  "handling": {
+    "actions": [
+      {
+        "article": "testregeling_toeslag#2",
+        "decision": null,
+        "decision_parameter": null,
+        "label": "Voorschot verleend (Testregeling maandtoeslag, artikel 2)",
+        "name": "voorschot_verleend",
+        "outputs": [
+          "voorschot"
+        ],
+        "record": [
+          "test_toeslag",
+          "test_toeslag_zaakverloop",
+          "voorschot_verleend"
+        ],
+        "regulation": "testregeling_toeslag",
+        "role": null
+      },
+      {
+        "article": "testregeling_toeslag#3",
+        "decision": null,
+        "decision_parameter": null,
+        "label": "Toeslag vastgesteld (Testregeling maandtoeslag, artikel 3)",
+        "name": "toeslag_vastgesteld",
+        "outputs": [
+          "vastgestelde_toeslag"
+        ],
+        "record": [
+          "test_toeslag",
+          "test_toeslag_zaakverloop",
+          "toeslag_vastgesteld"
+        ],
+        "regulation": "testregeling_toeslag",
+        "role": null
+      },
+      {
+        "article": "testregeling_toeslag#4",
+        "decision": "toeslag_vastgesteld",
+        "decision_parameter": null,
+        "label": "Vaststelling gewijzigd (Testregeling maandtoeslag, artikel 4)",
+        "name": "vaststelling_gewijzigd",
+        "outputs": [
+          "gewijzigde_toeslag"
+        ],
+        "record": [
+          "test_toeslag",
+          "test_toeslag_zaakverloop",
+          "vaststelling_gewijzigd"
+        ],
+        "regulation": "testregeling_toeslag",
+        "role": null
+      },
+      {
+        "article": "testregeling_toeslag#5",
+        "decision": null,
+        "decision_parameter": null,
+        "label": "Terugvordering vastgesteld (Testregeling maandtoeslag, artikel 5)",
+        "name": "terugvordering_vastgesteld",
+        "outputs": [
+          "terug_te_vorderen"
+        ],
+        "record": [
+          "test_toeslag",
+          "test_toeslag_zaakverloop",
+          "terugvordering_vastgesteld"
+        ],
+        "regulation": "testregeling_toeslag",
+        "role": null
+      },
+      {
+        "article": "testregeling_toeslag#2",
+        "decision": null,
+        "decision_parameter": null,
+        "label": "Besluit bekendgemaakt (Testregeling verzuim, artikel 2) bij voorschot verleend",
+        "name": "besluit_bekendgemaakt_voorschot_verleend",
+        "outputs": [
+          "voorschot"
+        ],
+        "record": [
+          "test_toeslag",
+          "test_toeslag_zaakverloop",
+          "besluit_bekendgemaakt"
+        ],
+        "regulation": "testregeling_toeslag",
+        "role": null
+      },
+      {
+        "article": "testregeling_toeslag#3",
+        "decision": null,
+        "decision_parameter": null,
+        "label": "Besluit bekendgemaakt (Testregeling verzuim, artikel 2) bij toeslag vastgesteld",
+        "name": "besluit_bekendgemaakt_toeslag_vastgesteld",
+        "outputs": [
+          "vastgestelde_toeslag"
+        ],
+        "record": [
+          "test_toeslag",
+          "test_toeslag_zaakverloop",
+          "besluit_bekendgemaakt"
+        ],
+        "regulation": "testregeling_toeslag",
+        "role": null
+      },
+      {
+        "article": "testregeling_toeslag#4",
+        "decision": null,
+        "decision_parameter": null,
+        "label": "Besluit bekendgemaakt (Testregeling verzuim, artikel 2) bij vaststelling gewijzigd",
+        "name": "besluit_bekendgemaakt_vaststelling_gewijzigd",
+        "outputs": [
+          "gewijzigde_toeslag"
+        ],
+        "record": [
+          "test_toeslag",
+          "test_toeslag_zaakverloop",
+          "besluit_bekendgemaakt"
+        ],
+        "regulation": "testregeling_toeslag",
+        "role": null
+      },
+      {
+        "article": "testregeling_toeslag#5",
+        "decision": null,
+        "decision_parameter": null,
+        "label": "Besluit bekendgemaakt (Testregeling verzuim, artikel 2) bij terugvordering vastgesteld",
+        "name": "besluit_bekendgemaakt_terugvordering_vastgesteld",
+        "outputs": [
+          "terug_te_vorderen"
+        ],
+        "record": [
+          "test_toeslag",
+          "test_toeslag_zaakverloop",
+          "besluit_bekendgemaakt"
+        ],
+        "regulation": "testregeling_toeslag",
+        "role": null
+      },
+      {
+        "article": "testregeling_toeslag#8",
+        "decision": "voorschot_verleend",
+        "decision_parameter": null,
+        "label": "Voorschot betaald (Testregeling maandtoeslag, artikel 8)",
+        "name": "voorschot_betaald",
+        "outputs": [
+          "nog_te_betalen_voorschot"
+        ],
+        "record": [
+          "test_toeslag",
+          "test_toeslag_zaakverloop",
+          "voorschot_betaald"
+        ],
+        "regulation": "testregeling_toeslag",
+        "role": null
+      },
+      {
+        "article": "testregeling_awb#6",
+        "decision": "terugvordering_vastgesteld",
+        "decision_parameter": null,
+        "label": "Terugbetaling ontvangen (Testregeling verzuim, artikel 6)",
+        "name": "terugbetaling_ontvangen",
+        "outputs": [
+          "nog_terug_te_betalen"
+        ],
+        "record": [
+          "test_toeslag",
+          "test_toeslag_zaakverloop",
+          "terugbetaling_ontvangen"
+        ],
+        "regulation": "testregeling_awb",
+        "role": null
+      }
+    ],
+    "worklist": [
+      "test_toeslag",
+      "worklist"
+    ]
+  },
+  "id": "test_toeslag",
+  "mandates": [],
+  "portal": {
+    "assessment": [
+      "aanvraag",
+      "testregeling_toeslag",
+      "aanvraag_toelaatbaar"
+    ],
+    "form": null,
+    "offer": {
+      "deadline": "aanvraagtermijn",
+      "opening": null,
+      "output": "aanvraag_aangeboden",
+      "regulation": "testbeleid_toeslag",
+      "start": "begin_maand",
+      "windows": "aangeboden_maanden"
+    },
+    "record": [
+      "test_toeslag",
+      "test_toeslag_aanvragen",
+      "aanvraag_ontvangen"
+    ]
+  },
+  "roles": {
+    "aanvrager": {
+      "channel": "persoon",
+      "label": null,
+      "legal_basis": "testbeleid_toeslag#4 lid 1",
+      "routes": [
+        "portal"
+      ]
+    },
+    "behandelaar": {
+      "channel": "medewerker",
+      "label": "Behandelaar",
+      "legal_basis": null,
+      "routes": [
+        "handling"
+      ]
+    }
+  }
+}

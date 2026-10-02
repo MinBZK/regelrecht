@@ -1,6 +1,6 @@
 //! Examples: default data per action, for a test setup.
 //!
-//! `process.yaml` can name a JSON file per action (see
+//! `examples.yaml` of the deployment can name a JSON file per action (see
 //! [`crate::config::ExamplesDefinition`]): logins through a channel, an
 //! application and, per action in a case, a form. The frontend offers them
 //! to prefill a form or to perform the action with them directly.
@@ -192,11 +192,25 @@ mod tests {
     /// A process with a portal channel: an organization number of eight
     /// digits and a name.
     fn process() -> ProcessDefinition {
-        ProcessDefinition::parse(
-            "id: p\nactor: a\nchannels:\n  org:\n    label: Organisatie\n    fields:\n      - {name: kvk, label: Nummer, pattern: '[0-9]{8}', message: een nummer heeft acht cijfers}\n      - {name: persoon, label: Naam}\nroles:\n  aanvrager: {channel: org, routes: [portal]}\n",
-            "t",
-        )
-        .unwrap()
+        let org = crate::channel::tests::channel(
+            "Organisatie",
+            "- {name: kvk, label: Nummer, pattern: '[0-9]{8}', message: een nummer heeft acht cijfers}\n- {name: persoon, label: Naam}\n",
+            None,
+            None,
+        );
+        let aanvrager = crate::channel::RoleDefinition {
+            channel: "org".into(),
+            routes: vec![crate::channel::Routes::Portal],
+            label: None,
+            legal_basis: None,
+        };
+        ProcessDefinition {
+            id: "p".into(),
+            actor: "a".into(),
+            channels: [("org".to_string(), org)].into(),
+            roles: [("aanvrager".to_string(), aanvrager)].into(),
+            ..Default::default()
+        }
     }
 
     fn definition(

@@ -109,7 +109,6 @@ pub fn check(
             };
             check_parameter(
                 ParameterPlace {
-                    d,
                     execution,
                     b: &b,
                     p,
@@ -141,7 +140,6 @@ pub fn check(
 /// A parameter an execution asks for, with what the check knows
 /// about it.
 struct ParameterPlace<'a> {
-    d: &'a ProcessDefinition,
     execution: Execution<'a>,
     b: &'a Required,
     p: &'a Parameter,
@@ -158,13 +156,7 @@ fn check_parameter(
     report: &mut impl FnMut(&'static str, String, bool),
     unverifiable: &mut BTreeMap<String, BTreeSet<String>>,
 ) {
-    let ParameterPlace {
-        d,
-        execution,
-        b,
-        p,
-        g,
-    } = place;
+    let ParameterPlace { execution, b, p, g } = place;
     if execution.is_offer() && !beforehand_known(g) {
         let provenance = g
             .map(InForce::description)
@@ -179,16 +171,13 @@ fn check_parameter(
         );
     }
     let Some(g) = g else {
-        let strict = d.origin_check == OriginCheck::Strict;
         report(
             "zonder",
             format!(
-                "provenance: parameter '{}' of {} has no origin; who supplies it cannot be traced{}",
-                b.name,
-                b.article,
-                if strict { " (origin_check: strict)" } else { "" }
+                "provenance: parameter '{}' of {} has no origin; who supplies it cannot be traced",
+                b.name, b.article
             ),
-            strict,
+            true,
         );
         return;
     };

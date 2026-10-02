@@ -4,7 +4,8 @@
 //! An article can ask for a table as a parameter of which the submitter fills
 //! in only part; the agency establishes the rest itself, per row, from
 //! registers of other cells. The process does not build that table in code:
-//! `process.yaml` says which table field delivers the rows, which column goes
+//! `synthesis.yaml` of the deployment (until RFC-045) says which table field
+//! delivers the rows, which column goes
 //! along under which name, and which source is queried per row with which
 //! input.
 //!
