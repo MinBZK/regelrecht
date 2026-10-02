@@ -952,4 +952,12 @@ export default {
   'walkthrough.phone': 'On a larger screen the walkthrough runs through the real demo. On a phone you see it as a video.',
   'walkthrough.ai_voice': "The voice in the chapters is generated with AI, from the presenter's own voice.",
   'walkthrough.phone_none': 'This walkthrough can only be watched on a larger screen.',
+  'recorder.mic.label': 'Microphone',
+  'recorder.mic.test': 'Test microphone',
+  'recorder.mic.stop_test': 'Stop test',
+  'recorder.mic.level': 'Level {db} dB',
+  'recorder.mic.silent': 'No sound: wrong microphone, or is it off?',
+  'recorder.mic.quiet': 'Too quiet: raise the input volume (System Settings, Sound, Input) or move closer.',
+  'recorder.mic.good': 'Good.',
+  'recorder.mic.loud': 'Too loud: this distorts. Lower the input volume.',
 };

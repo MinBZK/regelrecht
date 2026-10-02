@@ -22,6 +22,7 @@
  * in dev (see App.vue); production has no microphone or camera permission.
  */
 import { reactive } from 'vue';
+import { micConstraints } from './micCheck.js';
 
 export const SNAPSHOT_KEY = 'rr-walkthrough-snapshots-v1';
 const ENDPOINT = '/__walkthrough/takes';
@@ -193,9 +194,9 @@ export async function startRecording({ meta = {} } = {}) {
     // Text and thin lines: favour sharpness over motion.
     screenTrack.contentHint = 'detail';
 
-    const mic = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1, sampleRate: 48000 },
-    });
+    // The microphone chosen in the panel's test, untouched by the browser's
+    // voice processing: the cleaning is done afterwards, and better.
+    const mic = await navigator.mediaDevices.getUserMedia({ audio: micConstraints() });
     streams.push(mic);
 
     let cam = null;

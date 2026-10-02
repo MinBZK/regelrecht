@@ -9,6 +9,20 @@ describe('recorder helpers', () => {
   });
 });
 
+describe('microphone test', () => {
+  it('judges a speaking level the way the pipeline check does', async () => {
+    const { levelPercent, levelVerdict } = await import('./micCheck.js');
+    // The first real take peaked at -15 dB but its voice sat around -40: the
+    // level, not the peak, is what "too quiet" has to catch.
+    expect(levelVerdict(-40, -15)).toBe('recorder.mic.quiet');
+    expect(levelVerdict(-20, -6)).toBe('recorder.mic.good');
+    expect(levelVerdict(-70)).toBe('recorder.mic.silent');
+    expect(levelVerdict(-20, -0.5)).toBe('recorder.mic.loud');
+    expect(levelPercent(-60)).toBe(0);
+    expect(levelPercent(0)).toBe(100);
+  });
+});
+
 describe('take endpoint', () => {
   it('accepts the four files of a take, appending or replacing', () => {
     expect(parseTakePath('/__walkthrough/takes/2026-10-02T09-05-07/app.webm?mode=append')).toEqual({ take: '2026-10-02T09-05-07', file: 'app.webm', mode: 'append' });

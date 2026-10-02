@@ -15,6 +15,7 @@ import { useDemo } from '../store/demoStore.js';
 import { usePresentation } from '../presentation/usePresentation.js';
 import { adoptLocale, currentLocale, useI18n } from '../i18n/index.js';
 import { captureActions } from './capture.js';
+import { levelPercent, levelVerdict, listInputs, mic, startTest, stopTest } from './micCheck.js';
 import { hasSnapshots, logEvent, markFlub, recorder, rememberSnapshot, snapshotFor, startRecording, stopRecording } from './recorder.js';
 
 const { t } = useI18n();
@@ -72,7 +73,20 @@ function unlisten() {
   while (cleanups.length) cleanups.pop()();
 }
 
+async function toggleTest() {
+  if (mic.testing) stopTest();
+  else await startTest().catch((e) => (recorder.error = String(e?.message ?? e)));
+}
+async function pickInput(id) {
+  mic.deviceId = id;
+  if (mic.testing) await startTest();
+}
+onMounted(() => listInputs().catch(() => {}));
+onUnmounted(stopTest);
+
 async function start() {
+  // The test holds the microphone open; the take opens it again itself.
+  stopTest();
   if (restore.value) {
     const snap = snapshotFor(startAt.value);
     if (snap) {
@@ -165,6 +179,21 @@ onUnmounted(() => {
               </select>
             </nldd-dropdown>
           </nldd-form-field>
+          <!-- The microphone test: pick the input, speak as in the take, read
+               the verdict. A take that is too quiet brings its noise along
+               when it is turned up afterwards. -->
+          <nldd-form-field :label="t('recorder.mic.label')">
+            <nldd-dropdown width="full">
+              <select :value="mic.deviceId" @change="pickInput($event.target.value)">
+                <option v-for="d in mic.devices" :key="d.id" :value="d.id">{{ d.label }}</option>
+              </select>
+            </nldd-dropdown>
+          </nldd-form-field>
+          <nldd-button size="sm" variant="secondary" :start-icon="mic.testing ? 'stop' : 'speaker'" :text="mic.testing ? t('recorder.mic.stop_test') : t('recorder.mic.test')" @click="toggleTest"></nldd-button>
+          <template v-if="mic.testing">
+            <nldd-progress-bar size="md" :color="levelVerdict(mic.levelDb, mic.peakDb) === 'recorder.mic.good' ? 'success' : 'warning'" :value="levelPercent(mic.levelDb)" max="100" value-display="none" :accessible-label="t('recorder.mic.level', { db: mic.levelDb })"></nldd-progress-bar>
+            <nldd-text size="sm">{{ t(levelVerdict(mic.levelDb, mic.peakDb)) }} ({{ mic.levelDb }} dB)</nldd-text>
+          </template>
           <nldd-switch-field :label="t('recorder.camera')" :checked="recorder.withCamera || undefined" @change="recorder.withCamera = !recorder.withCamera"></nldd-switch-field>
           <nldd-switch-field :label="t('recorder.restore')" :checked="restore || undefined" @change="restore = !restore"></nldd-switch-field>
           <nldd-text v-if="recorder.phase === 'done'" size="sm" color="secondary">{{ t('recorder.saved', { take: recorder.takeId }) }}</nldd-text>

@@ -847,4 +847,12 @@ export default {
   "walkthrough.phone": "Op in grutter skerm rint de rûnlieding troch de echte demo. Op in telefoan sjochst him as fideo.",
   "walkthrough.ai_voice": "De stim yn de haadstikken is makke mei AI, op basis fan de stim fan de presintator.",
   "walkthrough.phone_none": "Dizze rûnlieding is allinnich op in grutter skerm te besjen.",
+  "recorder.mic.label": "Mikrofoan",
+  "recorder.mic.test": "Mikrofoan teste",
+  "recorder.mic.stop_test": "Test stopje",
+  "recorder.mic.level": "Nivo {db} dB",
+  "recorder.mic.silent": "Gjin lûd: ferkearde mikrofoan, of stiet er út?",
+  "recorder.mic.quiet": "Te sêft: set it ynfierfolume heger (Systeemynstellingen, Lûd, Ynfier) of kom tichterby.",
+  "recorder.mic.good": "Goed sa.",
+  "recorder.mic.loud": "Te lûd: dit ferfoarmet. Set it ynfierfolume leger.",
 };

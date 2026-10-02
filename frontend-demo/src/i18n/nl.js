@@ -973,4 +973,12 @@ export default {
   'walkthrough.phone': 'Op een groter scherm loopt de rondleiding door de echte demo. Op een telefoon zie je hem als video.',
   'walkthrough.ai_voice': 'De stem in de hoofdstukken is gegenereerd met AI, op basis van de stem van de presentator.',
   'walkthrough.phone_none': 'Deze rondleiding is alleen op een groter scherm te bekijken.',
+  'recorder.mic.label': 'Microfoon',
+  'recorder.mic.test': 'Microfoon testen',
+  'recorder.mic.stop_test': 'Test stoppen',
+  'recorder.mic.level': 'Niveau {db} dB',
+  'recorder.mic.silent': 'Geen geluid: verkeerde microfoon, of staat hij uit?',
+  'recorder.mic.quiet': 'Te zacht: zet het invoervolume hoger (Systeeminstellingen, Geluid, Invoer) of kom dichterbij.',
+  'recorder.mic.good': 'Goed zo.',
+  'recorder.mic.loud': 'Te hard: dit vervormt. Zet het invoervolume lager.',
 };
