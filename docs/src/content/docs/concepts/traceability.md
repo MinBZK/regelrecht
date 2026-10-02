@@ -1,6 +1,6 @@
 ---
 title: "Traceability"
-description: "How to read an execution trace: the node types, the box-drawing tree, and a real zorgtoeslag trace with a cross-law chain, IoC delegation, and Awb hooks."
+description: "How to read an execution trace: the node types, the trace document, the box-drawing tree, and a real zorgtoeslag trace with a cross-law chain, IoC delegation, and Awb hooks."
 ---
 
 When the engine computes an output, it can record every step it took to get there: which articles applied, which inputs it fetched and from where, which operations ran, and what each one produced. That record is the **trace**. It is the legal reasoning behind a number, in a form you can read top to bottom.
@@ -25,6 +25,21 @@ A trace is a tree of nodes. Each node has a type (what kind of step it was), a n
 | `OverrideResolution` | A value replaced by lex specialis (RFC-007) |
 
 A `Resolve` node also records a **resolve type** saying where the value came from: `Parameter` (caller input), `Definition` (an article constant), `Output` (a value computed earlier), `DataSource` (an external register), `ResolvedInput` (a cached cross-law result), `OpenTerm`, `OpenTermSilent` (the delegating law's own default, taken because the implementing regulation returned null for this case, see [RFC-036](/rfcs/rfc-036)), `Hook`, `Override`, `Context` (the `referencedate`), `Local` (a loop variable), `Input`, or `Uri`. The resolve type is the difference between "this number is a hard-coded constant in the law" and "this number came from the Tax Authority". The full set is defined in `PathNodeType` and `ResolveType` in `packages/engine/src/types.rs`.
+
+## The trace document
+
+The published form of a trace is a JSON document specified by `schema/trace/v1/trace-schema.json` ([RFC-039](/rfcs/rfc-039)). It wraps the tree in an envelope, `{trace_version, root}`: `trace_version` is the format version (currently `1`, the `TRACE_VERSION` constant in `packages/engine/src/trace.rs`) and `root` is the outermost node, the evaluation the caller asked for. Consumers read `root`; before RFC-039 they were handed that node directly.
+
+Besides type, name, result and children, a node can carry fields that let a consumer work with it without parsing its text:
+
+- `node_id`, the node's address within the trace: the chain of child indices from the root, written `n0.2.1`. The same inputs produce the same address on a later run.
+- `anchor`, the provision the engine was executing when it took the step, taken from the law model.
+- `legal_basis`, the citation the YAML element carries, as written. It is kept apart from `anchor`, so a `legal_basis` hung on the wrong provision stays visible.
+- `source`, where a value came from, and `type_spec`, the unit and precision of the result.
+
+The `message` on a node is for a person reading a terminal. Its phrasing is not a contract; every fact it states is also available as a field. The format also defines `yaml_path` and `uri`, but the engine does not fill them yet.
+
+Not every caller sees the envelope. The WASM `*WithTrace` calls return the document. The Rust API and the [Execution Receipt](./execution-provenance) (`results.trace`) still hold the bare root node.
 
 ## How to read the tree
 
@@ -121,7 +136,7 @@ cargo run --example trace -- wet_op_de_zorgtoeslag hoogte_zorgtoeslag 2025-01-01
 
 (See `packages/engine/examples/trace.rs`.) For a simpler starting point, `packages/engine/tests/expected_standaardpremie_trace.txt` is a seven-line trace of a single law with no cross-law calls.
 
-In Rust, call `evaluate_law_output_with_trace(...)` and render the `trace` field with `render_box_drawing()`. In the browser, the WASM engine exposes `executeWithTrace(...)` (and `executeMultipleWithTrace(...)` for several outputs at once); both return the trace as a structured tree you can render in the UI. The editor's execution view and the [TUI](../components/tui)'s trace screen both build on this.
+In Rust, call `evaluate_law_output_with_trace(...)` and render the `trace` field with `render_box_drawing()`. In the browser, the WASM engine exposes `executeWithTrace(...)` (and `executeMultipleWithTrace(...)` for several outputs at once); both return the trace document under `trace` and the box-drawing rendering under `trace_text`. The editor's execution view and the [TUI](../components/tui)'s trace screen both build on this.
 
 ## Further reading
 
