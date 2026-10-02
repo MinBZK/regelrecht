@@ -960,4 +960,11 @@ export default {
   'recorder.mic.quiet': 'Too quiet: raise the input volume (System Settings, Sound, Input) or move closer.',
   'recorder.mic.good': 'Good.',
   'recorder.mic.loud': 'Too loud: this distorts. Lower the input volume.',
+  'recorder.cam.label': 'Which camera',
+  'recorder.cam.test': 'Test camera',
+  'recorder.cam.stop_test': 'Stop test',
+  'recorder.cam.preview': 'What the camera sees, cut round as in the walkthrough',
+  'recorder.cam.dark': 'Too dark: put light in front of you, not behind you.',
+  'recorder.cam.bright': 'Too bright: less light straight on your face, or turn away from the window.',
+  'recorder.cam.good': 'Light is good.',
 };

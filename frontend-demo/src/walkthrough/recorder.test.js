@@ -9,6 +9,16 @@ describe('recorder helpers', () => {
   });
 });
 
+describe('camera test', () => {
+  it('judges the light from the mean brightness', async () => {
+    const { lightVerdict, meanLuma } = await import('./camCheck.js');
+    expect(meanLuma(new Uint8ClampedArray([100, 100, 100, 255, 100, 100, 100, 255]))).toBe(100);
+    expect(lightVerdict(30)).toBe('recorder.cam.dark');
+    expect(lightVerdict(120)).toBe('recorder.cam.good');
+    expect(lightVerdict(230)).toBe('recorder.cam.bright');
+  });
+});
+
 describe('microphone test', () => {
   it('judges a speaking level the way the pipeline check does', async () => {
     const { levelPercent, levelVerdict } = await import('./micCheck.js');

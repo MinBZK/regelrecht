@@ -981,4 +981,11 @@ export default {
   'recorder.mic.quiet': 'Te zacht: zet het invoervolume hoger (Systeeminstellingen, Geluid, Invoer) of kom dichterbij.',
   'recorder.mic.good': 'Goed zo.',
   'recorder.mic.loud': 'Te hard: dit vervormt. Zet het invoervolume lager.',
+  'recorder.cam.label': 'Welke camera',
+  'recorder.cam.test': 'Camera testen',
+  'recorder.cam.stop_test': 'Test stoppen',
+  'recorder.cam.preview': 'Wat de camera ziet, rond uitgesneden zoals in de rondleiding',
+  'recorder.cam.dark': 'Te donker: zet licht vóór je, niet achter je.',
+  'recorder.cam.bright': 'Te fel: minder licht recht op je gezicht, of draai weg van het raam.',
+  'recorder.cam.good': 'Licht is goed.',
 };

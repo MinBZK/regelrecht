@@ -855,4 +855,11 @@ export default {
   "recorder.mic.quiet": "Te sêft: set it ynfierfolume heger (Systeemynstellingen, Lûd, Ynfier) of kom tichterby.",
   "recorder.mic.good": "Goed sa.",
   "recorder.mic.loud": "Te lûd: dit ferfoarmet. Set it ynfierfolume leger.",
+  "recorder.cam.label": "Hokker kamera",
+  "recorder.cam.test": "Kamera teste",
+  "recorder.cam.stop_test": "Test stopje",
+  "recorder.cam.preview": "Wat de kamera sjocht, rûn útsnien lykas yn de rûnlieding",
+  "recorder.cam.dark": "Te tsjuster: set ljocht foar dy, net efter dy.",
+  "recorder.cam.bright": "Te fel: minder ljocht rjocht op dyn gesicht, of draai fan it finster ôf.",
+  "recorder.cam.good": "It ljocht is goed.",
 };

@@ -23,6 +23,7 @@
  */
 import { reactive } from 'vue';
 import { micConstraints } from './micCheck.js';
+import { camConstraints } from './camCheck.js';
 
 export const SNAPSHOT_KEY = 'rr-walkthrough-snapshots-v1';
 const ENDPOINT = '/__walkthrough/takes';
@@ -201,7 +202,7 @@ export async function startRecording({ meta = {} } = {}) {
 
     let cam = null;
     if (recorder.withCamera) {
-      cam = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: 30 }, audio: false });
+      cam = await navigator.mediaDevices.getUserMedia({ video: camConstraints(), audio: false });
       streams.push(cam);
     }
 

@@ -16,6 +16,7 @@ import { usePresentation } from '../presentation/usePresentation.js';
 import { adoptLocale, currentLocale, useI18n } from '../i18n/index.js';
 import { captureActions } from './capture.js';
 import { levelPercent, levelVerdict, listInputs, mic, startTest, stopTest } from './micCheck.js';
+import { cam, lightVerdict, listCameras, startCamTest, stopCamTest } from './camCheck.js';
 import { hasSnapshots, logEvent, markFlub, recorder, rememberSnapshot, snapshotFor, startRecording, stopRecording } from './recorder.js';
 
 const { t } = useI18n();
@@ -84,9 +85,28 @@ async function pickInput(id) {
 onMounted(() => listInputs().catch(() => {}));
 onUnmounted(stopTest);
 
+const preview = ref(null);
+watch(
+  () => [cam.stream, preview.value],
+  ([stream, el]) => {
+    if (el && el.srcObject !== stream) el.srcObject = stream;
+  },
+);
+async function toggleCamTest() {
+  if (cam.testing) stopCamTest();
+  else await startCamTest().catch((e) => (recorder.error = String(e?.message ?? e)));
+}
+async function pickCamera(id) {
+  cam.deviceId = id;
+  if (cam.testing) await startCamTest();
+}
+onMounted(() => listCameras().catch(() => {}));
+onUnmounted(stopCamTest);
+
 async function start() {
-  // The test holds the microphone open; the take opens it again itself.
+  // The tests hold the microphone and camera open; the take opens them again itself.
   stopTest();
+  stopCamTest();
   if (restore.value) {
     const snap = snapshotFor(startAt.value);
     if (snap) {
@@ -195,6 +215,22 @@ onUnmounted(() => {
             <nldd-text size="sm">{{ t(levelVerdict(mic.levelDb, mic.peakDb)) }} ({{ mic.levelDb }} dB)</nldd-text>
           </template>
           <nldd-switch-field :label="t('recorder.camera')" :checked="recorder.withCamera || undefined" @change="recorder.withCamera = !recorder.withCamera"></nldd-switch-field>
+          <!-- The camera test: the round cut the viewer will see, to set up
+               light and background before the take. -->
+          <template v-if="recorder.withCamera">
+            <nldd-form-field v-if="cam.devices.length > 1" :label="t('recorder.cam.label')">
+              <nldd-dropdown width="full">
+                <select :value="cam.deviceId" @change="pickCamera($event.target.value)">
+                  <option v-for="d in cam.devices" :key="d.id" :value="d.id">{{ d.label }}</option>
+                </select>
+              </nldd-dropdown>
+            </nldd-form-field>
+            <nldd-button size="sm" variant="secondary" :start-icon="cam.testing ? 'stop' : 'video-camera'" :text="cam.testing ? t('recorder.cam.stop_test') : t('recorder.cam.test')" @click="toggleCamTest"></nldd-button>
+            <template v-if="cam.testing">
+              <video ref="preview" class="cam-preview" autoplay muted playsinline :aria-label="t('recorder.cam.preview')"></video>
+              <nldd-text size="sm">{{ t(lightVerdict(cam.brightness)) }}</nldd-text>
+            </template>
+          </template>
           <nldd-switch-field :label="t('recorder.restore')" :checked="restore || undefined" @change="restore = !restore"></nldd-switch-field>
           <nldd-text v-if="recorder.phase === 'done'" size="sm" color="secondary">{{ t('recorder.saved', { take: recorder.takeId }) }}</nldd-text>
           <nldd-text v-if="recorder.error" size="sm" color="critical">{{ recorder.errorKey ? t(recorder.errorKey) : recorder.error }}</nldd-text>
@@ -207,6 +243,20 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* Custom CSS: the camera preview, cut round like the presenter bubble and
+   mirrored like a mirror, so moving left moves left. The design system has
+   no live video element. */
+.cam-preview {
+  display: block;
+  width: 10rem;
+  aspect-ratio: 1;
+  margin-inline: auto;
+  object-fit: cover;
+  border-radius: 50%;
+  transform: scaleX(-1);
+  background: var(--primitives-color-neutral-900, #111);
+}
+
 /* Custom CSS: the design system has no floating panel. Position only; the
    panel itself is an nldd-card. Over the rail, never over the captured area. */
 .recorder {
