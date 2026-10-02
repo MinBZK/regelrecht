@@ -1,0 +1,37 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.7/schema/v0.5.7/schema.json
+$id: test_scoped_source_afnemer
+name: Testwet gescoopte databron (afnemer)
+regulatory_layer: WET
+bwb_id: BWBR9999908
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.com/test_scoped_source_afnemer
+
+articles:
+  - number: '1'
+    url: https://example.com/test_scoped_source_afnemer/1
+    text: >-
+      De uitkomst is het toetsingsinkomen, bedoeld in artikel 1 van de
+      Testwet gescoopte databron (bron).
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: inkomen
+            type: number
+            source:
+              regulation: test_scoped_source_bron
+              output: inkomen
+              parameters:
+                bsn: $bsn
+        output:
+          - name: uitkomst
+            type: number
+        actions:
+          - output: uitkomst
+            value: $inkomen

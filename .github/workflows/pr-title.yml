@@ -37,6 +37,7 @@ jobs:
             github
             frontend
             lawmaking
+            demo
             docs
             grafana
             ci

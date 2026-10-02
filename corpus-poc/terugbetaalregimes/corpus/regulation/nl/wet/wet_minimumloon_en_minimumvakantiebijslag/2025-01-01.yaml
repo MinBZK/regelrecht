@@ -1,0 +1,46 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.6/schema/v0.5.6/schema.json
+$id: wet_minimumloon_en_minimumvakantiebijslag
+regulatory_layer: WET
+publication_date: '2024-11-15'
+valid_from: '2025-01-01'
+valid_to: '2025-12-31'
+bwb_id: BWBR0002638
+url: https://wetten.overheid.nl/BWBR0002638/2025-01-01
+name: Wet minimumloon en minimumvakantiebijslag
+competent_authority:
+  name: Minister van Sociale Zaken en Werkgelegenheid
+articles:
+  # Alleen het voor studiefinanciering relevante deel is machine-uitvoerbaar
+  # gemaakt: artikel 8, eerste lid, onderdeel b — het maandbedrag waarnaar
+  # verwijzende wetten (zoals het Besluit studiefinanciering 2000, artikel 2)
+  # verwijzen. Bedrag geldend per 1 januari 2025.
+  - number: '8'
+    text: >-
+      Het minimumloon bedraagt: (...) b. voor de toepassing van bij of
+      krachtens andere wetten dan deze wet vastgestelde bepalingen die
+      naar dit bedrag verwijzen: over elke uitbetalingstermijn van een
+      maand € 2.191,80 (per 1 januari 2025).
+    url: https://wetten.overheid.nl/BWBR0002638/2025-01-01#Artikel8
+    machine_readable:
+      definitions:
+        maandbedrag_verwijzende_wetten:
+          value: 219180
+          type: amount
+          type_spec:
+            unit: eurocent
+          description: >-
+            Artikel 8, eerste lid, onderdeel b: maandbedrag voor verwijzende
+            wetten, januari 2025
+      execution:
+        output:
+          - name: minimumloon_per_maand_verwijzende_wetten
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: >-
+              Maandbedrag minimumloon voor bepalingen in andere wetten die
+              naar artikel 8, eerste lid, onderdeel b verwijzen
+        actions:
+          - output: minimumloon_per_maand_verwijzende_wetten
+            value: $maandbedrag_verwijzende_wetten

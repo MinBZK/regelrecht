@@ -1,0 +1,93 @@
+{
+  "fases": [
+    {
+      "id": "wat",
+      "volgnummer": 1,
+      "naam": "Fase I",
+      "ondertitel": "Wat · Fundering en definitie"
+    },
+    {
+      "id": "wat-fase-2",
+      "volgnummer": 2,
+      "naam": "Fase II",
+      "ondertitel": "Wat · Verdieping en onderzoek"
+    },
+    {
+      "id": "hoe",
+      "volgnummer": 3,
+      "naam": "Fase III",
+      "ondertitel": "Hoe · Operationalisering en tooling"
+    },
+    {
+      "id": "waar",
+      "volgnummer": 4,
+      "naam": "Fase IV",
+      "ondertitel": "Waar · Institutionele verankering"
+    },
+    {
+      "id": "garantie",
+      "volgnummer": 5,
+      "naam": "Fase V",
+      "ondertitel": "Garantie · Maturiteit en systeemwaarborging"
+    }
+  ],
+  "disciplines": [
+    {
+      "id": "techniek",
+      "naam": "Techniek & Architectuur",
+      "ondertitel": "Van standaarden naar intelligente tooling"
+    },
+    {
+      "id": "service-design",
+      "naam": "Ontwerp",
+      "ondertitel": ""
+    },
+    {
+      "id": "mensen",
+      "naam": "Mensen & Proces",
+      "ondertitel": "Van competenties naar een interdisciplinaire cultuur"
+    },
+    {
+      "id": "recht",
+      "naam": "Recht & Instituties",
+      "ondertitel": "Van kaders naar herinrichting van de macht"
+    },
+    {
+      "id": "ethiek",
+      "naam": "Ethiek & Waarden",
+      "ondertitel": "Van principes naar toetsbare waarborgen"
+    },
+    {
+      "id": "samenwerking",
+      "naam": "Samenwerking met andere initiatieven",
+      "ondertitel": ""
+    },
+    {
+      "id": "transitie-ondersteuning",
+      "naam": "Transitie-ondersteuning",
+      "ondertitel": ""
+    }
+  ],
+  "swimlanes": [
+    {
+      "id": "invloedssfeer",
+      "naam": "Scope RegelRecht",
+      "disciplineIds": ["techniek", "service-design", "mensen"]
+    },
+    {
+      "id": "onderzoek",
+      "naam": "Onderzoek",
+      "disciplineIds": ["recht", "ethiek"]
+    },
+    {
+      "id": "samenwerking",
+      "naam": "Samenwerking met andere initiatieven",
+      "disciplineIds": ["samenwerking"]
+    },
+    {
+      "id": "transitie-ondersteuning",
+      "naam": "Transitie-ondersteuning",
+      "disciplineIds": ["transitie-ondersteuning"]
+    }
+  ]
+}

@@ -1,0 +1,66 @@
+/*
+ * Styles for the scenario runner (/concepts/scenarios).
+ *
+ * Almost nothing, and that is the point: the design system owns the overlay
+ * (nldd-sheet), the editing surface (nldd-code-editor), the step results
+ * (nldd-list with its icon, spacer and text cells), the verdict (nldd-banner),
+ * the controls (nldd-button) and every gap and padding between them
+ * (nldd-container's tokens). What is left is one layout fix the system cannot
+ * know about and the monospace the step text needs.
+ *
+ * Imported by components/ScenarioPlayground.astro and
+ * components/StepVocabulary.astro.
+ */
+
+/* The runner sits in the markdown column, which nldd-rich-text lays out as a
+   grid with a fixed main track. A custom element is display: inline until told
+   otherwise, and as a grid item with an automatic width it then sized to the
+   longest line of the scenario inside it: 1530px of element in a 343px track,
+   and a phone scrolling the whole page sideways. A definite inline size stops
+   the item sizing to its contents, and the code viewer goes back to scrolling
+   inside itself, which is what it is built to do. `min-inline-size: 0` does not
+   fix this and containment collapses the item to nothing; the width does it. */
+rr-scenario-runner {
+  display: block;
+  inline-size: 100%;
+  /* nldd-rich-text lays the markdown column out on named grid lines and places
+     an element it does not know in `full`, which is wider than the prose track.
+     The runner then started 40px left of every paragraph around it. It is part
+     of the argument, not a figure breaking out of it, so it goes in `main` with
+     the text. */
+  grid-column: main;
+}
+
+/* Same placement for the generated step table, so the page keeps one left
+   edge. */
+.rr-steps-table {
+  grid-column: main;
+}
+
+/* A step, and an output name, in the phrasing the reader is editing. The cell
+   around it supplies size and colour; this is only the face. */
+.rr-play__step {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The step vocabulary table (components/StepVocabulary.astro).
+
+   Below the design system's md breakpoint the Id column is dropped, so the id
+   rides along under the step instead. Mirror of the hide-below="md" on that
+   cell; 641px is the breakpoint the schema reference uses for the same move. */
+.rr-steps-id-inline {
+  display: block;
+}
+
+@media (min-width: 641px) {
+  .rr-steps-id-inline {
+    display: none;
+  }
+}
+
+/* A step phrasing is one line to copy, so it scrolls with the table rather than
+   wrapping mid-sentence. */
+.rr-steps-step {
+  white-space: pre;
+}

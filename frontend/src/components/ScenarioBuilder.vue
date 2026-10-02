@@ -24,7 +24,7 @@ import { apiFetchJson } from '../lib/apiFetch.js';
 import { useLatest } from '../lib/useLatest.js';
 import { parseFeature } from '../gherkin/parser.js';
 import { mapFeatureToForm, getEffectiveSetup, formStateToGherkin, syncEditedValues } from '../gherkin/formMapper.js';
-import { matchStatus, humanize } from '../utils/outputFormat.js';
+import { matchStatus, humanize, formatOutputValue, normalizeForCompare, expectationsFromAssertions } from '../utils/outputFormat.js';
 import * as yaml from 'js-yaml';
 import { buildArticleMap, buildTypeMap, buildExternalFieldTypeMap } from '../utils/articleMapping.js';
 import ScenarioForm from './ScenarioForm.vue';
@@ -80,6 +80,7 @@ const {
   featureText,
   loading: scenariosLoading,
   saving,
+  error: scenariosError,
   saveError,
   selectScenario: selectScenarioFile,
   saveScenario,
@@ -108,9 +109,10 @@ const isDirty = ref(false);
 const selectedScenarioIndex = ref(null);
 const scenarioSheetEl = ref(null);
 
-// Name of the data source the active ScenarioForm is drilled into (null =
-// scenario overview). Reported by ScenarioForm via @drill-change; the
-// top-title-bar back button uses it to pop one level back out.
+// Name of the data source or collection parameter the active ScenarioForm
+// is drilled into (null = scenario overview). Reported by ScenarioForm via
+// @drill-change; the top-title-bar back button uses it to pop one level
+// back out.
 const drilledSourceName = ref(null);
 
 watch(selectedScenarioIndex, async (idx) => {
@@ -161,11 +163,15 @@ function markDirty() {
   isDirty.value = editSnapshot() !== dirtyBaseline;
 }
 
+// The same map the result views compare against, rendered the way they
+// render an outcome, so the card says `geen` / `onbekend` where the sheet
+// does (RFC-036).
 function scenarioExpectations(index) {
   const assertions = formState.value?.scenarios?.[index]?.assertions || [];
-  return assertions
-    .filter((a) => a.outputName && a.value !== null && a.value !== undefined)
-    .map((a) => ({ name: humanize(a.outputName), value: humanize(String(a.value)) }));
+  return Object.entries(expectationsFromAssertions(assertions)).map(([name, expected]) => ({
+    name: humanize(name),
+    value: humanize(formatOutputValue(normalizeForCompare(expected), null)),
+  }));
 }
 
 // Parse feature file when loaded
@@ -357,18 +363,12 @@ function scenarioStatus(index) {
   const scenario = formState.value?.scenarios[index];
   if (!scenario) return null;
 
-  const checkable = (scenario.assertions || []).filter(
-    (a) => a.outputName && a.value != null,
-  );
-  if (checkable.length === 0) return null;
+  const expectations = expectationsFromAssertions(scenario.assertions);
+  const names = Object.keys(expectations);
+  if (names.length === 0) return null;
 
-  for (const a of checkable) {
-    const status = matchStatus(
-      a.outputName,
-      data.result.outputs?.[a.outputName],
-      { [a.outputName]: String(a.value) },
-    );
-    if (status === 'failed') return 'failed';
+  for (const name of names) {
+    if (matchStatus(name, data.result.outputs?.[name], expectations) === 'failed') return 'failed';
   }
   return 'passed';
 }
@@ -580,6 +580,13 @@ defineExpose({ save: onSave });
 
       <nldd-inline-dialog v-if="depsError" variant="alert" text="Fout" :supporting-text="String(depsError)"></nldd-inline-dialog>
 
+      <nldd-inline-dialog
+        v-if="scenariosError"
+        variant="alert"
+        text="Scenario's konden niet worden geladen"
+        :supporting-text="scenariosError.message || String(scenariosError)"
+      ></nldd-inline-dialog>
+
       <template v-if="formState">
         <nldd-collection layout="grid" item-width="320px">
           <nldd-card v-for="(scenario, i) in formState.scenarios" :key="i">
@@ -629,7 +636,7 @@ defineExpose({ save: onSave });
       </template>
 
       <nldd-inline-dialog
-        v-else-if="!articleLoading && !scenariosLoading && !depsLoading"
+        v-else-if="!articleLoading && !scenariosLoading && !depsLoading && !scenariosError"
         text="Geen scenario's beschikbaar voor dit artikel."
       ></nldd-inline-dialog>
     </nldd-simple-section>

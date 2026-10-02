@@ -4,16 +4,17 @@
 set dotenv-load := true
 
 # CI uses RUSTFLAGS=-Dwarnings; ci_flags mirrors that for quality/test recipes
-# but not for dev (hot-reload), where in-flight warnings would kill cargo watch.
+# but not for dev, where a warning should not stop the stack from starting.
 # We also pass the mold link-arg here: an explicit RUSTFLAGS overrides the
 # target.rustflags in packages/.cargo/config.toml, so without it these recipes
 # would fall back to the slow default linker. (dev has no RUSTFLAGS, so it picks
 # up mold straight from .cargo/config.toml.)
 #
-# The mold link-arg is Linux-only, mirroring the [target.x86_64-unknown-linux-gnu]
-# scoping in packages/.cargo/config.toml — otherwise quality/test recipes would
-# force `-fuse-ld=mold` on macOS where mold typically isn't installed.
-ci_flags := if os() == "linux" {
+# The mold link-arg is x86_64-Linux-only, mirroring the [target.x86_64-unknown-linux-gnu]
+# scoping in packages/.cargo/config.toml (and dev_needs_mold in script/dev-lib.sh)
+# — otherwise quality/test recipes would force `-fuse-ld=mold` on macOS or
+# aarch64 Linux, where nothing else asks for mold to be installed.
+ci_flags := if os() + "-" + arch() == "linux-x86_64" {
     "RUSTFLAGS='-Dwarnings -C link-arg=-fuse-ld=mold'"
 } else {
     "RUSTFLAGS=-Dwarnings"
@@ -27,12 +28,52 @@ default:
 
 # Build WASM module for browser use
 wasm-build:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Find wasm-bindgen and check its version BEFORE the minutes-long cargo
+    # build. `cargo install` puts it in $CARGO_HOME/bin, which is not always on
+    # the PATH a recipe gets (cargo itself may be reachable through a symlink
+    # elsewhere). The CLI must match the wasm-bindgen crate in Cargo.lock
+    # exactly; the Docker build and CI enforce the same pin.
+    locked=$(grep -A1 '^name = "wasm-bindgen"$' packages/Cargo.lock \
+      | sed -n '/^version = /{s/^version = "\(.*\)"$/\1/p;q;}' || true)
+    if [ -z "$locked" ]; then
+      echo "could not read the wasm-bindgen version from packages/Cargo.lock" >&2
+      exit 1
+    fi
+    bindgen=$(command -v wasm-bindgen || true)
+    if [ -z "$bindgen" ] && [ -x "${CARGO_HOME:-$HOME/.cargo}/bin/wasm-bindgen" ]; then
+      bindgen="${CARGO_HOME:-$HOME/.cargo}/bin/wasm-bindgen"
+    fi
+    if [ -z "$bindgen" ]; then
+      echo "wasm-bindgen not found. Install the version packages/Cargo.lock uses:" >&2
+      echo "  cargo install wasm-bindgen-cli --version $locked --locked" >&2
+      exit 1
+    fi
+    have=$("$bindgen" --version | awk '{print $2}')
+    if [ "$have" != "$locked" ]; then
+      echo "wasm-bindgen $have found at $bindgen, but packages/Cargo.lock uses $locked. Install the matching version:" >&2
+      echo "  cargo install wasm-bindgen-cli --version $locked --locked --force" >&2
+      exit 1
+    fi
     # Pin the target dir explicitly. A CLI --target-dir overrides any shared
     # [build] target-dir from `just dev-setup` (root .cargo/config.toml), so the
     # artifact always lands at packages/target — no metadata lookup (and no jq/
     # python3 dependency) needed, and it works with or without dev-setup.
     cargo build --manifest-path packages/engine/Cargo.toml --target wasm32-unknown-unknown --release --features wasm --target-dir packages/target
-    wasm-bindgen --target web --out-dir frontend/public/wasm/pkg packages/target/wasm32-unknown-unknown/release/regelrecht_engine.wasm
+    "$bindgen" --target web --out-dir frontend/public/wasm/pkg packages/target/wasm32-unknown-unknown/release/regelrecht_engine.wasm
+    # The demo runs the same engine in the browser; keep the two copies identical.
+    mkdir -p frontend-demo/public/wasm/pkg && cp frontend/public/wasm/pkg/* frontend-demo/public/wasm/pkg/
+    # The landing page runs the zorgtoeslag scenario in the visitor's browser
+    # when the panel scrolls into view, so the amount it shows is computed there
+    # and then rather than asserted. Same artifact again: one engine, three
+    # places.
+    mkdir -p docs/public/wasm/pkg && cp frontend/public/wasm/pkg/* docs/public/wasm/pkg/
+
+# Copy the laws, the scenario and the canonical-grammar runner into the docs
+# project, so the landing page can run the scenario in the visitor's browser.
+landing-laws:
+    ./script/landing-laws.sh
 
 # --- Quality checks ---
 
@@ -41,16 +82,15 @@ format:
     cd packages && cargo fmt --check --all
 
 # The features a deployed artefact or a `just` recipe actually turns on.
-# Deliberately not --all-features: that also builds `engine/otel` (the whole
-# OpenTelemetry stack, enabled by no Dockerfile, CI job or recipe),
-# `engine/wasm` and the two `test-utils` features, together 46 crates. Those
-# three still get compiled by `just test`, which does run --all-features, so
-# leaving them out here costs clippy coverage on that code and nothing else.
+# Deliberately not --all-features: that also builds `engine/wasm` and the two
+# `test-utils` features. Those still get compiled by `just test`, which does run
+# --all-features, so leaving them out here costs clippy coverage on that code
+# and nothing else.
 check_features := "regelrecht-engine/validate,regelrecht-corpus/annotation-validation"
 
 # Run clippy lints
 lint:
-    cd packages && {{ci_flags}} cargo clippy --workspace --features {{check_features}}
+    cd packages && {{ci_flags}} cargo clippy --workspace --all-targets --features {{check_features}}
 
 # Run cargo check
 build-check:
@@ -59,6 +99,17 @@ build-check:
 # Validate regulation YAML files
 validate *FILES:
     script/validate.sh {{FILES}}
+
+# Validate the demo corpus (schema + type check, RFC-036/RFC-037)
+#
+# `validate` without arguments walks corpus/regulation only, so the eighty demo
+# laws would be seen by the pre-commit hook and by nothing else. This recipe
+# hands them to the same binary, so a law that stops type-checking is caught by
+# `just demo` and not first by a red scenario run.
+[doc("Validate the demo corpus (schema + type check)")]
+validate-demo:
+    find corpus/demo/regulation -name '*.yaml' ! -name '.*' -print0 \
+        | sort -z | xargs -0 script/validate.sh
 
 # Validate note sidecar files (RFC-005, RFC-016)
 # Orphaned/ambiguous notes and unknown tags are warnings, not errors.
@@ -79,6 +130,14 @@ conformance:
 [doc("Check the deploy filters against the real cargo dependency graph")]
 deploy-filters-test:
     node --test script/deploy-filters.test.mjs
+
+# Pins the GHCR cleaner against its safety rules. It deletes manifests from a
+# production registry and there is no undo, so every rule that decides "delete"
+# versus "keep" is covered here. Same reasoning as deploy-filters-test: node's
+# built-in runner, no dependency.
+[doc("Check the GHCR cleanup safety rules")]
+ghcr-cleanup-test:
+    node --test script/ghcr-cleanup.test.mjs
 
 # Pins the build-time asset precompression the editor image relies on. Same
 # reasoning as deploy-filters-test: node's built-in runner, no dependency.
@@ -106,6 +165,51 @@ first-load-test:
 [doc("Check that the Test gate in ci.yml blocks on a failed predecessor")]
 ci-gate-test:
     node --test script/ci-gate.test.mjs
+
+# De merge queue deelt zijn lijst verplichte checks met de pull request. Een
+# check die op de queue-branch niet rapporteert laat elke entry vastlopen, en
+# dat gebeurt stil: de melding staat daar en niet op de pull request.
+[doc("Check that every required check also reports in the merge queue")]
+merge-queue-checks-test:
+    node --test script/merge-queue-checks.test.mjs
+
+# De guard die de per-component imports bij de gebruikte tags houdt. Zonder
+# deze test is het verschil tussen een gerenderde tag en een tag die de
+# documentatie alleen noemt niet vastgelegd, en dat verschil is precies waar hij
+# eerder op omviel.
+[doc("Check the design-system import guard")]
+nldd-imports-test:
+    node --test script/nldd-imports.test.mjs
+
+# Een `slot="..."` die het component niet kent, is nergens een fout: het
+# element blijft in de light-DOM, wordt nooit toegewezen en is 0x0. Zo stonden
+# de persona-tags op het portaal en de startknop van de presentatie er wel,
+# maar zag niemand ze. Deze guard laat de build erop omvallen.
+[doc("Check that every nldd slot assignment exists")]
+nldd-slots:
+    node script/check-nldd-slots.mjs frontend-demo/src frontend/src frontend-lawmaking/src
+
+[doc("Check the design-system slot guard")]
+nldd-slots-test:
+    node --test script/nldd-slots.test.mjs
+
+# De Awb staat in twee corpora en moet daar hetzelfde zeggen. Het overzetten
+# ging twee keer mis op een weggevallen laatste regel — één keer de termijn in
+# artikel 6:8, waardoor de einddatum van de bezwaartermijn gelijk werd aan de
+# bekendmakingsdatum. Geldige YAML, dus de schemacontrole zag het niet, en geen
+# scenario raakt 6:8.
+[doc("Check that the Awb says the same in both corpora")]
+awb-parity-test:
+    node --test script/awb-parity.test.mjs
+
+# Welke organisatie een wet uitvoert staat in services.yaml en niet in het
+# wetsbestand: het stuurt logo's, kleuren en groepering, en waarden als
+# GEMEENTE_ROTTERDAM volgen uit geen wet. Een wet die in die kaart ontbreekt
+# krijgt stil `service: null`: geen logo, geen kleur, geen foutmelding. Deze
+# controle is wat de garantie vervangt die het oude veld gratis gaf.
+[doc("Check that services.yaml covers every demo law")]
+service-map-check:
+    node frontend-demo/scripts/check-service-map.mjs
 
 # Houdt de drie Rust-Dockerfiles bij de workspace: elke member wordt ge-COPYd
 # of weggeknipt, de rust-tag volgt rust-toolchain.toml en elke binary-naam
@@ -136,7 +240,7 @@ preview-environments-test:
 # container-backed suites; on a machine without a daemon, swap `test` for
 # `test-no-docker`.
 [doc("Run all quality checks, exactly what CI runs (needs Docker)")]
-check: format lint build-check validate validate-annotations deploy-filters-test precompress-test security-headers-test first-load-test ci-gate-test dockerfile-consistency-test deploy-gate-test deployed-urls-test preview-environments-test advisories-report-test test
+check: format lint build-check validate validate-annotations deploy-filters-test ghcr-cleanup-test precompress-test security-headers-test first-load-test ci-gate-test merge-queue-checks-test nldd-imports-test nldd-slots nldd-slots-test dockerfile-consistency-test deploy-gate-test deployed-urls-test preview-environments-test advisories-report-test dev-preflight-test test
 
 # --- Tests ---
 
@@ -174,6 +278,59 @@ test-db:
 bdd:
     cd packages/engine && {{ci_flags}} cargo test --test bdd -- --nocapture
 
+# Bucket A over de democorpus: REGULATION_PATH wijst wetten en scenario's naar corpus/demo.
+#
+# De Awb-levensloop draait er achteraan, over hetzelfde corpus. Een scenario
+# toetst één wet; de levensloop-test toetst wat de Awb aan elk besluit toevoegt
+# (RFC-007, RFC-008) en daar kwam een fout in dit corpus aan het licht die geen
+# enkel scenario zag: artikel 6:8 rekende met een afgekapte formule en gaf de
+# bekendmakingsdatum terug als einddatum van de bezwaartermijn.
+bdd-demo:
+    cd packages/engine && {{ci_flags}} BDD_BUCKET=corpus REGULATION_PATH="$(pwd)/../../corpus/demo/regulation" cargo test --test bdd -- --nocapture
+    cd packages/engine && {{ci_flags}} REGULATION_PATH="$(pwd)/../../corpus/demo/regulation" cargo test --test awb_lifecycle
+
+# Start the demo and open it. One command for anyone who just wants to see it:
+# it builds the engine to WASM, starts Vite and opens the browser on the
+# presentation. Stop it with ctrl-c.
+[doc("Start the demo and open it in a browser")]
+demo: wasm-build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Vite's own --open races the server on a cold start and lands on an error
+    # page, so wait for the port to answer before opening the browser.
+    ( until curl -sf -o /dev/null http://127.0.0.1:7400/; do sleep 0.3; done
+      case "$(uname -s)" in
+        Darwin) open http://127.0.0.1:7400/ ;;
+        *) xdg-open http://127.0.0.1:7400/ >/dev/null 2>&1 || true ;;
+      esac ) &
+    cd frontend-demo && npm run dev -- --port 7400 --strictPort --host 0.0.0.0
+
+# The backend behind the demo's "why" button, on :7401, next to `just demo`
+# (Vite proxies /api/why to it). Runs the Claude Code CLI with your own login, or
+# with CLAUDE_CODE_OAUTH_TOKEN / ANTHROPIC_API_KEY when set. Unlock the button in
+# the demo menu with the password below.
+[doc("Start the demo's 'why' backend (needs the Claude Code CLI)")]
+demo-why password="lokaal-demo-wachtwoord":
+    DEMO_WHY_PASSWORD="${DEMO_WHY_PASSWORD:-{{password}}}" node frontend-demo/server/why.mjs
+
+# Run the demo frontend locally without opening a browser (same server as `demo`)
+dev-demo: wasm-build
+    cd frontend-demo && npm run dev -- --port 7400 --strictPort --host 0.0.0.0
+
+# Everything the demo consists of, in the order a failure is cheapest to read:
+# the laws themselves, then what they compute, then the app around them.
+#
+# The demo is a corpus plus a frontend plus the engine compiled to WASM, and
+# each of the three used to be checked by a different command. Running them
+# separately meant a law could be schema-valid, its scenarios green, and the
+# app still broken on a stale WASM build. This is the one command to run before
+# pushing anything demo-related; CI runs the same four steps in its own jobs.
+[doc("Check the whole demo: laws, scenarios, frontend tests, WASM and build")]
+demo-check: validate-demo awb-parity-test service-map-check bdd-demo
+    cd frontend-demo && npx vitest run
+    just wasm-build
+    cd frontend-demo && npm run build
+
 # Regenerate all BDD step bindings from bdd/grammar.yaml
 bdd-codegen:
     node bdd/codegen/gen-js.mjs
@@ -192,11 +349,14 @@ github-test:
 harvester-test:
     cd packages/harvester && {{ci_flags}} cargo test
 
-# Run the pipeline unit tests in `src/`. The container-backed suites live in
-# `tests/` and run via `pipeline-integration-test`, not here.
-[doc("Run pipeline unit tests (src/ only, no Docker)")]
+# Run pipeline unit tests. Five of these are container-backed and carry
+# #[ignore]; add `-- --ignored` to run those instead. The two CLI test
+# suites run the built binaries against temp directories and need no
+# Docker either, so they belong in this recipe, not only in the db-leg.
+[doc("Run pipeline unit tests (the container-backed ones are #[ignore]d)")]
 pipeline-test:
     cd packages/pipeline && {{ci_flags}} cargo test --lib
+    cd packages/pipeline && {{ci_flags}} cargo test --test law_source_cli --test law_check_cli --test enrich_once_cli
 
 # Run pipeline integration tests (requires Docker for testcontainers)
 pipeline-integration-test:
@@ -276,18 +436,24 @@ mutants *ARGS:
 # Driepunts (`BASE...HEAD`), niet tweepunts: tweepunts vergelijkt twee bomen,
 # dus alles wat main na jouw aftakking veranderde komt in de diff terecht als
 # jouw wijziging. Op een branch die achterloopt muteer je dan andermans regels.
+#
+# Pakketten, werkmap en timeout volgen `.github/workflows/mutation-diff.yml`.
+# Dit recept keek eerst alleen naar engine, terwijl de poort ook pipeline
+# muteert; een pipeline-PR was hier dan groen zonder één mutant te zien en
+# viel pas in CI om (#1549, 14 overlevers). Verander je het één, verander dan
+# het ander mee.
 [doc("Mutation testing on your own changed lines only")]
 mutants-diff BASE="origin/main":
     #!/usr/bin/env bash
     set -euo pipefail
     diff_file="$(mktemp -t mutants-diff-XXXXXX.diff)"
-    git -C packages diff --relative "{{BASE}}...HEAD" -- engine > "$diff_file"
+    git -C packages diff --relative "{{BASE}}...HEAD" -- engine pipeline > "$diff_file"
     if [ ! -s "$diff_file" ]; then
-        echo "Geen gewijzigde regels in packages/engine ten opzichte van {{BASE}}."
+        echo "Geen gewijzigde regels in packages/engine of packages/pipeline ten opzichte van {{BASE}}."
         exit 0
     fi
-    cd packages/engine
-    cargo mutants --in-place --timeout-multiplier 3 --in-diff "$diff_file"
+    cd packages
+    cargo mutants --in-place --timeout 120 --in-diff "$diff_file"
 
 # --- Benchmarks ---
 
@@ -328,6 +494,11 @@ audit-advisories:
 # De meldlogica van de advisory-controle
 advisories-report-test:
     script/report-advisories.test.sh
+
+# De preflight van `just dev`: mold alleen eisen waar cargo ermee linkt
+[doc("Check that the dev preflight only requires mold on x86_64 Linux")]
+dev-preflight-test:
+    script/dev-lib.test.sh
 
 # --- Admin ---
 
@@ -398,7 +569,20 @@ compose-local := compose + " -f dev/compose.local.yaml"
 compose-native := compose + " -f dev/compose.native.yaml"
 pidfile := ".dev-pids"
 
-# One-time build-speed setup: install mold + sccache, share one target dir across worktrees
+# Geef deze worktree een eigen cargo-target-dir. Kost een koude build (~40 s voor
+# `just validate`, ~170 s voor `just build-check`) en levert op dat een lange build
+# hier geen andere worktree meer laat wachten op de build-lock. De meting waarop
+# die afweging rust staat bovenin script/target-dir.sh.
+[doc("Geef deze worktree een eigen cargo-target-dir (geen gedeelde build-lock)")]
+target-isolated:
+    script/target-dir.sh isolated
+
+# Terug naar de gedeelde target-dir van de hoofdcheckout.
+[doc("Zet deze worktree terug op de gedeelde cargo-target-dir")]
+target-shared:
+    script/target-dir.sh shared
+
+# One-time build-speed setup: install mold (x86_64 Linux) + sccache, share one target dir across worktrees
 dev-setup:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -414,27 +598,32 @@ dev-setup:
         if "$@" >/dev/null 2>&1; then printf "${green}done${reset}\n"; return 0; else printf "${red}failed${reset} (install %s manually)\n" "$bin"; return 1; fi
     }
 
-    # Track whether mold ended up available — the shared-target setup is harmless
-    # without it, but mold linking (the headline feature) needs it on PATH.
-    mold_ok=false
+    # mold is only the linker on x86_64 Linux (dev_needs_mold, shared with the
+    # dev recipes' preflight). Elsewhere it is neither installed nor asked for.
+    source script/dev-lib.sh
+    needs_mold=false
+    if dev_needs_mold; then needs_mold=true; fi
+    # install_mold <installer…>: install mold where cargo links with it, no-op elsewhere.
+    install_mold() { [ "$needs_mold" = true ] || return 0; install_one mold "$@" || true; }
+
     if command -v apt-get >/dev/null 2>&1; then
         sudo_if_needed apt-get update -qq || true
-        if install_one mold sudo_if_needed apt-get install -y mold; then mold_ok=true; fi
+        install_mold sudo_if_needed apt-get install -y mold
         install_one sccache sudo_if_needed apt-get install -y sccache || true
     elif command -v dnf >/dev/null 2>&1; then
-        if install_one mold sudo_if_needed dnf install -y mold; then mold_ok=true; fi
+        install_mold sudo_if_needed dnf install -y mold
         install_one sccache sudo_if_needed dnf install -y sccache || true
     elif command -v brew >/dev/null 2>&1; then
-        if install_one mold brew install mold; then mold_ok=true; fi
+        install_mold brew install mold
         install_one sccache brew install sccache || true
     else
         printf "${yellow}No supported package manager found.${reset}\n"
-        printf "  Install mold:    https://github.com/rui314/mold\n"
+        if [ "$needs_mold" = true ]; then printf "  Install mold:    https://github.com/rui314/mold\n"; fi
         printf "  Install sccache: cargo install sccache --locked\n"
     fi
-    # `install_one` returns 0 when the binary is already present, so a pre-existing
-    # mold also counts as OK regardless of which package-manager branch ran.
-    command -v mold >/dev/null 2>&1 && mold_ok=true
+    # Decided by what is on PATH afterwards, so a pre-existing mold counts too.
+    mold_ok=true
+    if [ "$needs_mold" = true ] && ! command -v mold >/dev/null 2>&1; then mold_ok=false; fi
     # sccache may not be packaged everywhere — fall back to cargo install.
     command -v sccache >/dev/null 2>&1 || install_one sccache cargo install sccache --locked
 
@@ -442,6 +631,13 @@ dev-setup:
     # checkout, so cargo's upward config search finds this root .cargo/config.toml
     # from every worktree. It is gitignored (machine-specific absolute path), so
     # CI keeps its own packages/target.
+    #
+    # The sharing is worth it — a first `just build-check` in a fresh worktree
+    # takes 1 second instead of 170 — but cargo locks a target dir exclusively
+    # for the length of a build, so concurrent worktrees serialize: a `just
+    # validate` measured 2 s alone and 38 s next to a 45 s `just lint`. A worktree
+    # that runs long builds can opt out with `just target-isolated`; the numbers
+    # behind the trade-off are in script/target-dir.sh.
     root="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
 
     # A Rust build writes tens of thousands of small files. On a slow/remote
@@ -468,7 +664,9 @@ dev-setup:
     printf "${green}=> Shared target dir:${reset} %s\n" "$shared"
 
     printf "\n"
-    if [ "$mold_ok" = true ]; then
+    if [ "$needs_mold" = false ]; then
+        printf "${bold}${green}Done.${reset} Shared target is active for all worktrees (mold only links on x86_64 Linux, not needed here).\n"
+    elif [ "$mold_ok" = true ]; then
         printf "${bold}${green}Done.${reset} Mold linking + shared target are active for all worktrees.\n"
     else
         printf "${bold}${yellow}Partly done.${reset} Shared target is set up, but ${red}mold is missing${reset} — dev builds will fail to link.\n"
@@ -478,59 +676,12 @@ dev-setup:
     printf "${dim}Optional: enable sccache locally (disables incremental, best for cold/flag-varying builds):${reset}\n"
     printf "  export RUSTC_WRAPPER=sccache CARGO_INCREMENTAL=0\n"
 
-# Start development: infra in Docker, services native with hot reload
-dev:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    export COMPOSE="{{ compose-native }}"  PIDFILE="{{ pidfile }}"
-    source script/dev-lib.sh
-
-    dev_preflight --rust --node --watch
-
-    dev_compose_up postgres prometheus grafana
-    dev_wait_postgres
-
-    if dev_ensure_deps frontend "editor frontend"; then editor_fe=true; else editor_fe=false; fi
-
-    rm -f "$PIDFILE"
-
-    db_url="postgres://regelrecht:regelrecht_dev@${DB_HOST:-localhost}:${POSTGRES_PORT:-5433}/regelrecht_pipeline"
-    dev_start "admin API (cargo watch on :8000)" .dev-admin.log \
-      "DATABASE_URL='$db_url' RUST_LOG='${RUST_LOG:-info}' cargo watch -C packages -x 'run --package regelrecht-admin'"
-
-    if [ "$editor_fe" = true ]; then
-        dev_start "editor frontend (vite on :3000)" .dev-editor.log \
-          "cd frontend && npx vite"
-    fi
-
-    printf "${bold}=> Waiting for services…${reset} "
-    sleep 4
-    printf "${green}done${reset}\n"
-
-    printf "\n"
-    printf "${bold}${green}  Dev stack is running with hot reload${reset}\n\n"
-    if [ "$editor_fe" = true ]; then
-        echo "  Editor:     http://localhost:3000     (hot reload)"
-    fi
-    echo   "  Admin API:  http://localhost:8000     (auto-recompile on save)"
-    echo   "  Grafana:    http://localhost:${GRAFANA_PORT:-3002}"
-    echo   "  Prometheus: http://localhost:${PROMETHEUS_PORT:-9090}"
-    echo   "  PostgreSQL: localhost:${POSTGRES_PORT:-5433}"
-    printf "\n"
-    printf "  ${dim}Admin API log:${reset}      tail -f .dev-admin.log\n"
-    if [ "$editor_fe" = true ]; then
-        printf "  ${dim}Editor log:${reset}         tail -f .dev-editor.log\n"
-    fi
-    printf "  ${dim}Infra logs:${reset}         just dev-logs\n"
-    printf "  ${dim}Database:${reset}           just dev-psql\n"
-    printf "  ${dim}Stop everything:${reset}    just dev-down\n"
-
 # Vite ports default to 7300/7400/7500 (the redirect URIs already registered on
 # the regelrecht-local Keycloak client); override via EDITOR_PORT /
 # LAWMAKING_PORT. No grafana / prometheus / workers are started.
 #
-# Frontend-focused dev: start only what a frontend needs (backend, DB, WASM, vite). No arg = all frontends; APP = editor | admin | lawmaking | all
-dev-frontend APP="all":
+# Start the dev stack: only what the chosen app needs (backend, DB, WASM, vite). No arg = all apps; APP = editor | admin | lawmaking | all
+dev APP="all":
     #!/usr/bin/env bash
     set -euo pipefail
     export COMPOSE="{{ compose-native }}"  PIDFILE="{{ pidfile }}"
@@ -560,7 +711,7 @@ dev-frontend APP="all":
     # When both editor and admin run (i.e. 'all'), point editor-api's
     # harvester-admin proxy at the local admin API so the editor's Corpusinwinning
     # section reaches it. In editor-only mode the proxy is unset and the Corpusinwinning
-    # screens 503 (run `just dev-frontend all` for the full harvester flow).
+    # screens 503 (run `just dev all` for the full harvester flow).
     harvest_admin_env=""
     if [ "$run_admin" = true ]; then
         harvest_admin_env="HARVEST_ADMIN_URL=http://localhost:${admin_api_port} "
@@ -622,7 +773,7 @@ dev-frontend APP="all":
     sleep 4
     printf "${green}done${reset}\n\n"
 
-    printf "${bold}${green}  Frontend dev stack (%s) is running (vite HMR; backends run-once)${reset}\n\n" "$app"
+    printf "${bold}${green}  Dev stack (%s) is running (vite HMR; backends run-once)${reset}\n\n" "$app"
     if [ "$run_editor" = true ]; then
         echo "  Editor:     http://localhost:${editor_port}     (vite HMR → editor-api :8000, SSO)"
     fi
@@ -639,7 +790,10 @@ dev-frontend APP="all":
     printf "  ${dim}Logs:${reset}            tail -f .dev-*.log\n"
     printf "  ${dim}Stop everything:${reset} just dev-down\n"
 
-# Stop dev: kill native processes and stop infra (works for dev and dev-frontend)
+# The recipe was called dev-frontend until the backend-only `dev` was dropped.
+alias dev-frontend := dev
+
+# Stop dev: kill native processes and stop infra
 dev-down:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -726,6 +880,96 @@ docs-preview:
 # Run the accessibility gate (build + mermaid-alt + heading-order + pa11y-ci htmlcs+axe, WCAG 2.1 AA)
 docs-a11y:
     cd docs && npm run a11y
+
+# --- PoC-portaal ---
+
+# Bouw de assets van het portaal (het ontwerpsysteem voor zijn eigen twee pagina's)
+poc-assets:
+    npm run build -w poc-portal-assets
+
+# Bouw elke statische poc met zijn eigen basis, en zet alles klaar in .poc-static/
+#
+# De WASM-engine komt uit `just wasm-build`; copy-assets.js van elke poc stopt
+# met een duidelijke melding als die er niet is.
+poc-build: wasm-build poc-assets
+    #!/usr/bin/env bash
+    set -euo pipefail
+    rm -rf .poc-static
+    mkdir -p .poc-static/_assets
+    cp -R frontend-poc-portal/dist/. .poc-static/_assets/
+    POC_BASE=/terugbetaalregimes/ npm run build -w poc-terugbetaalregimes
+    mkdir -p .poc-static/terugbetaalregimes
+    cp -R frontend-poc-terugbetaalregimes/dist/. .poc-static/terugbetaalregimes/
+    POC_BASE=/nieuwkomersbekostiging/ npm run build -w poc-nieuwkomersbekostiging
+    mkdir -p .poc-static/nieuwkomersbekostiging
+    cp -R frontend-poc-nieuwkomersbekostiging/dist/. .poc-static/nieuwkomersbekostiging/
+
+# Start het poc-portaal op http://localhost:8611
+#
+# De wachtwoorden zijn hier bewust hardcoded en flauw: dit recept draait alleen
+# lokaal, en een ontwikkelaar die ze moet opzoeken gebruikt het niet. In ZAD
+# komen ze uit `zad env`; het portaal weigert te starten als er één ontbreekt.
+#
+# De statische pocs worden verwacht in .poc-static/<slug>/. Zolang die er niet
+# zijn toont het overzicht ze wel en geeft de poc zelf een 404 achter de poort —
+# de poort werkt dus los van de vraag of er al een poc gebouwd is.
+poc: poc-build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "poc-portaal → http://localhost:8611"
+    echo "wachtwoorden: terugbetaalregimes/nieuwkomersbekostiging/napp = 'demo'"
+    POC_COOKIE_SECRET=lokale-ontwikkelsleutel-niet-geheim-0123 \
+    POC_PW_TERUGBETAALREGIMES=demo \
+    POC_PW_NIEUWKOMERSBEKOSTIGING=demo \
+    POC_PW_NAPP=demo \
+    POC_STATIC_DIR="$(pwd)/.poc-static" \
+    POC_PORT=8611 \
+    cargo run --manifest-path packages/Cargo.toml --package regelrecht-poc-portal
+
+# Start de beleidsassistent van één casus, naast `just poc` in een tweede terminal
+#
+# In het image doet start.sh dit met een poort per casus; lokaal is één casus
+# tegelijk genoeg. Het portaal proxyt /<casus>/api hiernaartoe zodra
+# POC_ASSISTENT_<CASUS> gezet is, dus `just poc` moet die variabele kennen:
+#
+#     POC_ASSISTENT_TERUGBETAALREGIMES=http://127.0.0.1:3600 just poc
+#     POC_ASSISTENT_NIEUWKOMERSBEKOSTIGING=http://127.0.0.1:3700 just poc
+#
+# Wie de vite-dev-server gebruikt (`npm run dev -w poc-<casus>`) heeft dat niet
+# nodig: die proxyt /api zelf naar dezelfde poort.
+#
+# Vereist een ingelogde Claude CLI (`claude setup-token`) of ANTHROPIC_API_KEY;
+# zonder allebei weigert de assistent te starten.
+
+# Start de beleidsassistent van één casus (naast `just poc`)
+#
+# De poort leidt standaard uit de casus, want elke app proxyt /api naar een
+# eigen poort (vite.config.js): terugbetaalregimes naar 3600,
+# nieuwkomersbekostiging naar 3700. Een vaste standaard van 3600 startte de
+# assistent van nieuwkomers op een poort waar zijn app niet keek, en dat
+# leest als "de backend draait niet" zonder dat er iets faalt.
+poc-assistent casus="terugbetaalregimes" poort="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}${ANTHROPIC_API_KEY:-}" ]; then
+      echo "geen CLAUDE_CODE_OAUTH_TOKEN of ANTHROPIC_API_KEY; draai eerst \`claude setup-token\`" >&2
+      exit 1
+    fi
+    poort="{{poort}}"
+    if [ -z "$poort" ]; then
+      case "{{casus}}" in
+        terugbetaalregimes) poort=3600 ;;
+        nieuwkomersbekostiging) poort=3700 ;;
+        *) echo "onbekende casus {{casus}}: geef de poort mee" >&2; exit 1 ;;
+      esac
+    fi
+    echo "beleidsassistent {{casus}} → http://127.0.0.1:$poort"
+    POC_CASUS={{casus}} \
+    POC_CASUS_DIR="$(pwd)/corpus-poc/{{casus}}" \
+    POC_WASM_DIR="$(pwd)/.poc-static/{{casus}}/wasm/pkg" \
+    POC_VARIANT_OPSLAG=0 \
+    PORT="$poort" \
+    node packages/poc-assistent/index.js
 
 # --- Architecture model ---
 

@@ -31,8 +31,10 @@ pub mod article;
 pub mod config;
 pub mod context;
 pub mod data_source;
+mod demand;
 pub mod engine;
 pub mod error;
+mod load_check;
 pub mod operations;
 pub mod priority;
 pub mod receipt;
@@ -41,19 +43,13 @@ pub mod resolver;
 pub mod schema;
 pub mod service;
 pub mod trace;
+pub mod typecheck;
 pub mod types;
 pub mod units;
 pub mod uri;
 
 #[cfg(feature = "wasm")]
 pub mod wasm;
-
-/// OpenTelemetry integration (requires `otel` feature).
-///
-/// **Note:** The `otel` and `wasm` features are mutually exclusive in practice —
-/// OTel requires network I/O that WASM cannot provide.
-#[cfg(feature = "otel")]
-pub mod telemetry;
 
 // Re-export commonly used items
 pub use annotation::{
@@ -75,12 +71,15 @@ pub use engine::{ArticleEngine, ArticleResult, OutputProvenance};
 pub use error::{EngineError, ExternalError, Result};
 pub use operations::{evaluate_value, execute_operation, ValueResolver};
 pub use receipt::ExecutionReceipt;
-pub use resolver::RuleResolver;
+pub use resolver::{
+    DeclarationKind, DeclarationNotInForce, DeclarationsFromOtherVersion, DelegationRefusal,
+    ImplementationLookup, ProcedureMiss, RuleResolver,
+};
 pub use service::{ExecutionOutcome, LawExecutionService, LawInfo, ServiceProvider, StageState};
 pub use trace::{PathNode, TraceBuilder};
 pub use types::{
-    Connectivity, LegalStatus, Operation, ParameterType, PathNodeType, RegulatoryLayer,
-    ResolveType, UntranslatableMode, Value,
+    Connectivity, LegalStatus, MissingFact, MissingKind, Operation, ParameterType, PathNodeType,
+    RegulatoryLayer, ResolveType, UntranslatableMode, Value,
 };
 pub use uri::{internal_reference, ReferenceType, RegelrechtUri, RegelrechtUriBuilder};
 

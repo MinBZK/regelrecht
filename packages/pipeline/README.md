@@ -57,8 +57,8 @@ In the [C4 container diagram](../../docs/architecture/overview.md), the pipeline
 ### Setup
 
 ```bash
-# Start the local stack, including PostgreSQL and the migrations
-just dev
+# Start PostgreSQL and the admin API, which runs the migrations
+just dev admin
 
 # Run tests (uses testcontainers — no local DB needed)
 just pipeline-test
@@ -239,7 +239,7 @@ Key design choices:
 ### Migrations
 
 ```bash
-# Migrations run automatically when `just dev` brings the stack up.
+# Migrations run automatically when `just dev admin` brings the admin API up.
 # To run them by hand (requires DATABASE_URL):
 cd packages/pipeline && cargo sqlx migrate run
 ```
@@ -247,8 +247,8 @@ cd packages/pipeline && cargo sqlx migrate run
 ## Development
 
 ```bash
-# Start the local stack (Docker)
-just dev
+# Start PostgreSQL and the admin API
+just dev admin
 
 # Run the unit tests (no DB needed)
 just pipeline-test

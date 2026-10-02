@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue';
-import { formatValue, formatOutputValueParts, normalizeForCompare, matchStatus as _matchStatus, humanize } from '../utils/outputFormat.js';
+import { formatValue, formatOutputValueParts, formatMissing, normalizeForCompare, matchStatus as _matchStatus, humanize } from '../utils/outputFormat.js';
 
 const props = defineProps({
   /** Execution result with outputs */
@@ -30,6 +30,12 @@ function outputParts(name) {
     props.result?.outputs?.[name],
     props.outputTypes?.get(name)?.unit ?? null,
   );
+}
+
+// A collection or record output renders as JSON; de-snaking its keys would
+// change the text, so humanize only a scalar.
+function humanizeOutput(text) {
+  return /^[[{]/.test(text) ? text : humanize(text);
 }
 
 const hasContent = computed(() =>
@@ -95,12 +101,13 @@ const overallStatus = computed(() => {
             horizontal-alignment="right"
             width="100px"
             :text="humanize(formatValue(normalizeForCompare(expectations[name])))"
+            :supporting-text="formatMissing(expectations[name]) || undefined"
           ></nldd-text-cell>
           <nldd-text-cell
             size="md"
             horizontal-alignment="right"
             width="100px"
-            :text="humanize(outputParts(name).text)"
+            :text="humanizeOutput(outputParts(name).text)"
             :supporting-text="outputParts(name).supportingText"
           ></nldd-text-cell>
           <nldd-spacer-cell size="8"></nldd-spacer-cell>

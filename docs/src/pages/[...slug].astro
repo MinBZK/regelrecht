@@ -15,9 +15,34 @@ export async function getStaticPaths() {
 }
 
 const { entry } = Astro.props;
-const { Content, headings } = await render(entry);
+const { Content, headings: markdownHeadings } = await render(entry);
 
 const pathname = '/' + entry.id.replace(/\.mdx?$/, '');
+
+/*
+ * The schema reference generates most of its own headings inside an Astro
+ * component, and `render()` only reports the ones written in the markdown —
+ * so its outline listed four entries for a page with forty-five. Splice the
+ * generated ones in where the component sits: after the last hand-written
+ * heading above it ("Validation"), before the one below it.
+ *
+ * Keyed off the page id rather than a frontmatter flag because exactly one
+ * page does this; a second one would be the moment to generalise.
+ */
+let headings = markdownHeadings;
+if (pathname === '/reference/schema') {
+  const { referenceHeadings } = await import('~/lib/schema-reference');
+  const generated = referenceHeadings();
+  const at = markdownHeadings.findIndex((h) => h.slug === 'about-this-reference');
+  headings =
+    at === -1
+      ? [...markdownHeadings, ...generated]
+      : [
+          ...markdownHeadings.slice(0, at),
+          ...generated,
+          ...markdownHeadings.slice(at),
+        ];
+}
 // Edit-link base for this page (whole-file sidebar link + the per-selection
 // line-range affordance both build off it).
 const editBase = entry.filePath

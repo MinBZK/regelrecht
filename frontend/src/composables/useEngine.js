@@ -129,7 +129,9 @@ export function loadLawVersions(engine, yamls, lawId) {
       engine.loadLaw(versionYaml);
       anyLoaded = true;
     } catch (e) {
-      console.warn(`Skipped an unloadable version of '${lawId}':`, e);
+      // A plain first argument: a law id is user-controlled text and must never
+      // act as a console format string.
+      console.warn('Skipped an unloadable version of a law:', lawId, e);
     }
   }
   return anyLoaded;

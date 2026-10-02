@@ -13,7 +13,7 @@ const nodeModuleShim = fileURLToPath(
 );
 
 // Backend port the dev proxy forwards /api, /auth and /health to. Defaults to
-// 8000 (editor-api); `just dev-frontend` sets API_PORT so multiple backends can
+// 8000 (editor-api); `just dev` sets API_PORT so multiple backends can
 // coexist on distinct ports.
 const apiTarget = `http://localhost:${process.env.API_PORT || '8000'}`;
 
@@ -95,7 +95,7 @@ export default defineConfig({
           groups: [
             {
               name: 'echarts',
-              test: /node_modules[\\/](echarts|zrender|vue-echarts)[\\/]/,
+              test: /node_modules[\\/](echarts|zrender|vue-echarts|tslib)[\\/]/,
               includeDependenciesRecursively: false,
             },
           ],

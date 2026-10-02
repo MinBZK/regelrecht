@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import router from '../router.js';
-import { reviewTarget, proposalDivergence } from './taskReview.js';
+import { reviewTarget, sameTraject, proposalDivergence } from './taskReview.js';
 
 describe('reviewTarget', () => {
   it('bouwt de editor-traject-route met ?task= voor een job_review-taak', () => {
@@ -103,6 +103,38 @@ describe('reviewTarget', () => {
     expect(resolved.fullPath).toBe(
       '/trajecten/mijn-traject-1a2b3c4d/editor/werkinstructie_toetsing?task=t8',
     );
+  });
+});
+
+describe('sameTraject', () => {
+  it('herkent hetzelfde traject', () => {
+    expect(sameTraject('mijn-traject-1a2b3c4d', 'mijn-traject-1a2b3c4d')).toBe(true);
+  });
+
+  it('onderscheidt twee trajecten', () => {
+    expect(sameTraject('mijn-traject-1a2b3c4d', 'ander-traject-9f8e7d6c')).toBe(false);
+  });
+
+  // Het slug-deel komt uit de naam van het moment van aanmaken; hernoemen
+  // verandert het zonder dat het traject een ander traject wordt. De backend
+  // zoekt alleen op de 8-hex-staart op, dus dit moet meebewegen - anders
+  // verdwijnt een klaarstaand voorstel uit de pane zodra iemand zijn traject
+  // hernoemt.
+  it('negeert het cosmetische slug-deel, zodat hernoemen niets breekt', () => {
+    expect(sameTraject('oude-naam-1a2b3c4d', 'nieuwe-naam-1a2b3c4d')).toBe(true);
+  });
+
+  it('vergelijkt de hex-staart hoofdletterongevoelig', () => {
+    expect(sameTraject('traject-1A2B3C4D', 'traject-1a2b3c4d')).toBe(true);
+  });
+
+  // Een ref zonder herkenbare staart hoort bij geen enkel traject; "matcht met
+  // alles" zou precies de kaping terugbrengen die de traject-check afsluit.
+  it('matcht niets bij een ontbrekende of vormloze ref', () => {
+    expect(sameTraject(null, 'mijn-traject-1a2b3c4d')).toBe(false);
+    expect(sameTraject('mijn-traject-1a2b3c4d', undefined)).toBe(false);
+    expect(sameTraject('', '')).toBe(false);
+    expect(sameTraject('geen-hex-staart', 'geen-hex-staart')).toBe(false);
   });
 });
 

@@ -1,0 +1,68 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.2/schema/v0.5.2/schema.json
+$id: algemene_termijnenwet
+regulatory_layer: WET
+publication_date: '1964-02-25'
+valid_from: '1964-04-01'
+bwb_id: BWBR0002448
+url: https://wetten.overheid.nl/BWBR0002448/2010-10-10
+name: Algemene termijnenwet
+
+articles:
+  - number: '1'
+    text: |-
+      Een in een wet gestelde termijn die op een zaterdag, zondag of algemeen
+      erkende feestdag eindigt, wordt verlengd tot en met de eerstvolgende dag
+      die niet een zaterdag, zondag of algemeen erkende feestdag is.
+    url: https://wetten.overheid.nl/BWBR0002448/2010-10-10#Artikel1
+    machine_readable:
+      untranslatables:
+        - construct: algemeen erkende feestdagen
+          reason: >-
+            De engine kent geen datumdeel-extractie (maand/dag) op willekeurige
+            datums en geen computus voor Pasen, dus feestdagen (art. 3) kunnen
+            niet worden getoetst. Alleen de zaterdag/zondag-verlenging is
+            uitvoerbaar.
+          suggestion: >-
+            Voeg MONTH/DAY-operaties toe aan de engine, of laat de
+            orchestratielaag een feestdagenkalender als databron aanleveren.
+          legal_text_excerpt: zaterdag, zondag of algemeen erkende feestdag
+          accepted: true
+      execution:
+        parameters:
+          - name: einddatum
+            type: date
+            required: true
+            description: De einddatum van de wettelijke termijn
+        output:
+          - name: einddag_van_de_week
+            type: number
+          - name: verlengde_einddatum
+            type: date
+        actions:
+          - output: einddag_van_de_week
+            value:
+              operation: DAY_OF_WEEK
+              date: $einddatum
+          # 0 = maandag … 5 = zaterdag, 6 = zondag
+          - output: verlengde_einddatum
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $einddag_van_de_week
+                    value: 5
+                  then:
+                    operation: DATE_ADD
+                    date: $einddatum
+                    days: 2
+                - when:
+                    operation: EQUALS
+                    subject: $einddag_van_de_week
+                    value: 6
+                  then:
+                    operation: DATE_ADD
+                    date: $einddatum
+                    days: 1
+              default: $einddatum

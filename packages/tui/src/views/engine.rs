@@ -653,5 +653,7 @@ fn format_value(value: &Value) -> String {
         Value::Untranslatable { article, construct } => {
             format!("UNTRANSLATABLE(art. {article}: {construct})")
         }
+        // RFC-036: an unknown names the facts nobody supplied.
+        Value::Unknown(_) => value.to_string(),
     }
 }

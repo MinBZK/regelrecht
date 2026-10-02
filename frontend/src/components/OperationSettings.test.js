@@ -305,3 +305,121 @@ describe('OperationSettings - DATE_DIFF op', () => {
     });
   });
 });
+
+describe('OperationSettings - FOREACH op', () => {
+  function foreachNode() {
+    return {
+      operation: 'FOREACH',
+      collection: '$medebewoners',
+      as: 'medebewoner',
+      body: '$medebewoner.bijdrage',
+      combine: 'ADD',
+    };
+  }
+
+  describe('operationValues', () => {
+    it('returns the collection, binding, body and combine rows', () => {
+      const wrapper = mountOp(foreachNode());
+      const rows = wrapper.vm.operationValues;
+      expect(rows).toHaveLength(4);
+      expect(rows[0]).toMatchObject({ _label: 'Verzameling', _value: '$medebewoners', _kind: 'collection' });
+      expect(rows[1]).toMatchObject({ _label: 'Naam per element', _value: 'medebewoner', _kind: 'as' });
+      expect(rows[2]).toMatchObject({ _label: 'Per element', _value: '$medebewoner.bijdrage', _kind: 'body' });
+      expect(rows[3]).toMatchObject({ _label: 'Samenvoegen', _value: 'ADD', _kind: 'combine' });
+    });
+
+    it('shows the filter row between the binding and the body when present', () => {
+      const node = { ...foreachNode(), filter: { operation: 'GREATER_THAN', subject: '$x', value: 21 } };
+      const rows = mountOp(node).vm.operationValues;
+      expect(rows.map((r) => r._kind)).toEqual(['collection', 'as', 'filter', 'body', 'combine']);
+    });
+
+    it('omits the optional filter and combine rows when absent', () => {
+      const rows = mountOp({ operation: 'FOREACH', collection: '$x', as: 'i', body: '$i' }).vm.operationValues;
+      expect(rows.map((r) => r._kind)).toEqual(['collection', 'as', 'body']);
+    });
+  });
+
+  describe('changeOperationType to FOREACH', () => {
+    it('seeds an empty collection and body, and the schema default binding', () => {
+      const node = { operation: 'EQUALS', subject: '$foo', value: 42 };
+      const wrapper = mountOp(node);
+
+      wrapper.vm.changeOperationType('FOREACH');
+
+      expect(node.operation).toBe('FOREACH');
+      expect(node.collection).toBe('');
+      expect(node.body).toBe('');
+      // 'item' is the schema default, so the seeded node already validates.
+      expect(node.as).toBe('item');
+      // filter and combine are optional and stay absent until asked for.
+      expect(node.filter).toBeUndefined();
+      expect(node.combine).toBeUndefined();
+      expect(node.subject).toBeUndefined();
+      expect(node.value).toBeUndefined();
+    });
+
+    it.each([['EQUALS'], ['AND'], ['IF'], ['NOT'], ['ADD'], ['AGE'], ['DATE_DIFF']])(
+      'strips FOREACH fields when switching to %s',
+      (newType) => {
+        const node = { ...foreachNode(), filter: { operation: 'NOT', value: '$x' } };
+        const wrapper = mountOp(node);
+
+        wrapper.vm.changeOperationType(newType);
+
+        expect(node.operation).toBe(newType);
+        // `additionalProperties: false` on every operation type means a leaked
+        // collection/as/body would fail validation on save.
+        expect(node.collection).toBeUndefined();
+        expect(node.as).toBeUndefined();
+        expect(node.body).toBeUndefined();
+        expect(node.filter).toBeUndefined();
+        expect(node.combine).toBeUndefined();
+      },
+    );
+  });
+
+  describe('applyValueMutation', () => {
+    it('writes every FOREACH slot on the node', () => {
+      const node = { operation: 'FOREACH', collection: '', as: 'item', body: '' };
+      const wrapper = mountOp(node);
+      wrapper.vm.applyValueMutation({ _kind: 'collection' }, '$kinderen');
+      wrapper.vm.applyValueMutation({ _kind: 'as' }, 'kind');
+      wrapper.vm.applyValueMutation({ _kind: 'body' }, '$kind.bedrag');
+      wrapper.vm.applyValueMutation({ _kind: 'combine' }, 'MAX');
+      expect(node.collection).toBe('$kinderen');
+      expect(node.as).toBe('kind');
+      expect(node.body).toBe('$kind.bedrag');
+      expect(node.combine).toBe('MAX');
+    });
+  });
+
+  describe('canRemoveValue', () => {
+    it('blocks the three required slots and allows the two optional ones', () => {
+      const wrapper = mountOp(foreachNode());
+      expect(wrapper.vm.canRemoveValue({ _kind: 'collection' })).toBe(false);
+      expect(wrapper.vm.canRemoveValue({ _kind: 'as' })).toBe(false);
+      expect(wrapper.vm.canRemoveValue({ _kind: 'body' })).toBe(false);
+      expect(wrapper.vm.canRemoveValue({ _kind: 'filter' })).toBe(true);
+      expect(wrapper.vm.canRemoveValue({ _kind: 'combine' })).toBe(true);
+    });
+  });
+
+  describe('canAddValue', () => {
+    it('disables the add-value button for FOREACH', () => {
+      expect(mountOp(foreachNode()).vm.canAddValue).toBe(false);
+    });
+  });
+
+  describe('canChangeValueKind', () => {
+    it('keeps the binding and combine literal-only', () => {
+      const wrapper = mountOp(foreachNode());
+      expect(wrapper.vm.canChangeValueKind({ _kind: 'collection' })).toBe(true);
+      expect(wrapper.vm.canChangeValueKind({ _kind: 'body' })).toBe(true);
+      expect(wrapper.vm.canChangeValueKind({ _kind: 'filter' })).toBe(true);
+      // `as` is an identifier and `combine` an enum from a fixed list.
+      expect(wrapper.vm.canChangeValueKind({ _kind: 'as' })).toBe(false);
+      expect(wrapper.vm.canChangeValueKind({ _kind: 'combine' })).toBe(false);
+    });
+  });
+});

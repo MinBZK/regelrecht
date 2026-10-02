@@ -1,13 +1,12 @@
 ---
-title: "Issue: Article ID Collision (420bis.1)"
-description: "When article numbering produces the same identifier for two different articles, and the proposed fix."
+title: "Article ID Collision (420bis.1)"
+description: "Open. Article numbering can give two different articles the same identifier; this page describes the problem and the proposed fix."
 ---
 
-**Status**: Open
-**Priority**: High
-**Scope**: Future PR (too large for current harvester PR)
-
----
+> **Open.** Article numbering can still produce one identifier for two
+> different articles. The collision point is `number_parts.join(".")` in
+> `packages/harvester/src/splitting/types.rs`. The options below are a proposal,
+> not a decision.
 
 ## Problem Description
 

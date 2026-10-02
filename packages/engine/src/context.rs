@@ -8,9 +8,10 @@
 //! 1. **Context variables** - Built-in variables like `referencedate`
 //! 2. **Local scope** - Loop variables from FOREACH operations
 //! 3. **Outputs** - Previously calculated output values
-//! 4. **Resolved inputs** - Cached results from cross-law references
-//! 5. **Definitions** - Article-level constants
+//! 4. **Definitions** - Article-level constants
+//! 5. **Inputs and open terms** - Resolved on first read by the service (RFC-043)
 //! 6. **Parameters** - Direct input parameters (e.g., BSN)
+//! 7. **Unpassed optional parameters** - Unknown for lack of them (RFC-036)
 //!
 //! # Dot Notation
 //!
@@ -30,15 +31,15 @@
 //! If you need to pass values between iterations, use parameters or store them
 //! in outputs rather than relying on local scope inheritance.
 
-use crate::article::Definition;
+use crate::article::{ActionValue, CombineOp, Definition};
 use crate::config;
 use crate::error::{EngineError, Result};
 use crate::operations::ValueResolver;
-use crate::trace::TraceBuilder;
-use crate::types::{PathNodeType, ResolveType, Value};
+use crate::trace::{LegalAnchor, TraceBuilder};
+use crate::types::{MissingKind, PathNodeType, ResolveType, TypeSpec, Value};
 use chrono::{Datelike, NaiveDate};
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
 
 /// Execution context for article evaluation.
@@ -50,9 +51,10 @@ use std::rc::Rc;
 ///
 /// Variables in higher-priority scopes shadow those in lower scopes.
 /// For example, a local variable named "x" will shadow a parameter "x".
-/// The priority order is: local > outputs > resolved_inputs > definitions > parameters.
+/// The priority order is: local > outputs > definitions > inputs and open
+/// terms > parameters.
 #[derive(Debug, Clone)]
-pub struct RuleContext {
+pub struct RuleContext<'l> {
     /// Article-level definitions (constants)
     definitions: Rc<BTreeMap<String, Value>>,
 
@@ -65,9 +67,6 @@ pub struct RuleContext {
     /// Local scope variables (for FOREACH loops)
     local: BTreeMap<String, Value>,
 
-    /// Cached resolved inputs from cross-law references
-    resolved_inputs: Rc<BTreeMap<String, Value>>,
-
     /// Reference date for calculations
     reference_date: NaiveDate,
 
@@ -76,9 +75,64 @@ pub struct RuleContext {
 
     /// Optional shared trace builder for execution tracing
     trace: Option<Rc<RefCell<TraceBuilder>>>,
+
+    /// `$id` of the law being executed; the provenance of an Unknown produced
+    /// here names it (RFC-036). Empty for a bare context.
+    law_id: Rc<str>,
+
+    /// Parameters the article declares with `required: false` that the caller
+    /// did not pass. A reference to one resolves to an Unknown for lack of that
+    /// parameter, not to a `VariableNotFound` (RFC-036).
+    unpassed_optional: Rc<BTreeSet<String>>,
+
+    /// The provision whose rules this context executes (RFC-039). Every trace
+    /// step pushed from here inherits it, which is what gives an arithmetic
+    /// step an article: the operation evaluator knows no law, but the context
+    /// it resolves against does.
+    anchor: Option<LegalAnchor>,
+
+    /// Resolves a declared input or open term the first time an operation
+    /// reads it (RFC-043). Absent for a bare context, whose inputs are its
+    /// parameters.
+    lazy: Option<LazyHook<'l>>,
 }
 
-impl RuleContext {
+/// Resolution on first read (RFC-043): the service implements this for the
+/// article being executed, so an input is fetched when an operation reads it,
+/// and not at all when none does.
+pub(crate) trait LazyInputs {
+    /// The value of `name` if it is an input or open term this article
+    /// resolves itself; `None` if it is not, or if it stays unresolved (a
+    /// reference to it then fails like any unknown variable).
+    /// The value comes with how the trace names where it came from.
+    fn resolve_input(&self, name: &str) -> Option<Result<(Value, ResolveType)>>;
+
+    /// What output `name` becomes once this article has computed it as
+    /// `value`, with `outputs` the ones computed before it. `None` keeps
+    /// `value`; `Some` is what a replacing override made of it (RFC-007),
+    /// which the later actions of this article then read.
+    fn replace_output(
+        &self,
+        _name: &str,
+        _value: &Value,
+        _outputs: &BTreeMap<String, Value>,
+    ) -> Option<Result<Value>> {
+        None
+    }
+}
+
+/// The hook as a context field: a reference, copied into every child scope,
+/// so a FOREACH body resolves against the same memo as the article.
+#[derive(Clone, Copy)]
+struct LazyHook<'l>(&'l dyn LazyInputs);
+
+impl std::fmt::Debug for LazyHook<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("LazyHook")
+    }
+}
+
+impl<'l> RuleContext<'l> {
     /// Create a new execution context.
     ///
     /// # Arguments
@@ -95,11 +149,43 @@ impl RuleContext {
             parameters: Rc::new(parameters),
             outputs: Rc::new(BTreeMap::new()),
             local: BTreeMap::new(),
-            resolved_inputs: Rc::new(BTreeMap::new()),
             reference_date,
             reference_date_value,
             trace: None,
+            law_id: Rc::from(""),
+            unpassed_optional: Rc::new(BTreeSet::new()),
+            anchor: None,
+            lazy: None,
         })
+    }
+
+    /// What output `name`, just computed as `value`, becomes: see
+    /// [`LazyInputs::replace_output`]. `None` for a bare context.
+    pub(crate) fn replaced_output(&self, name: &str, value: &Value) -> Option<Result<Value>> {
+        let LazyHook(lazy) = self.lazy?;
+        lazy.replace_output(name, value, &self.outputs)
+    }
+
+    /// Resolve declared inputs and open terms on first read (RFC-043).
+    pub(crate) fn set_lazy(&mut self, lazy: &'l dyn LazyInputs) {
+        self.lazy = Some(LazyHook(lazy));
+    }
+
+    /// Name the law this context executes and the optional parameters the
+    /// caller left out (RFC-036).
+    ///
+    /// Both feed the provenance of an Unknown: a reference to an unpassed
+    /// optional parameter resolves to `Unknown` for lack of `law_id.name`, so a
+    /// decision process can ask for exactly that fact. A required parameter is
+    /// never in this set; leaving it out stays the error it always was.
+    pub fn set_law_scope(&mut self, law_id: &str, unpassed_optional: BTreeSet<String>) {
+        self.law_id = Rc::from(law_id);
+        self.unpassed_optional = Rc::new(unpassed_optional);
+    }
+
+    /// `$id` of the law this context executes (empty for a bare context).
+    pub fn law_id(&self) -> &str {
+        &self.law_id
     }
 
     /// Set definitions from an article's definitions section.
@@ -144,16 +230,6 @@ impl RuleContext {
         self.local.clear();
     }
 
-    /// Set a resolved input value (cached cross-law result).
-    pub fn set_resolved_input(&mut self, name: impl Into<String>, value: Value) {
-        Rc::make_mut(&mut self.resolved_inputs).insert(name.into(), value);
-    }
-
-    /// Get all resolved inputs (cached cross-law results).
-    pub fn resolved_inputs(&self) -> &BTreeMap<String, Value> {
-        &self.resolved_inputs
-    }
-
     /// Get all input parameters.
     pub fn parameters(&self) -> &BTreeMap<String, Value> {
         &self.parameters
@@ -179,7 +255,7 @@ impl RuleContext {
 
     /// Create a child context for nested evaluation (e.g., FOREACH).
     ///
-    /// The child inherits definitions, parameters, resolved_inputs, and outputs,
+    /// The child inherits definitions, parameters, and outputs,
     /// but starts with an **empty local scope**. This ensures that FOREACH loop
     /// variables from a parent context don't leak into child iterations.
     ///
@@ -203,10 +279,19 @@ impl RuleContext {
             parameters: Rc::clone(&self.parameters),
             outputs: Rc::clone(&self.outputs),
             local: BTreeMap::new(), // Child starts with empty local scope
-            resolved_inputs: Rc::clone(&self.resolved_inputs),
             reference_date: self.reference_date,
             reference_date_value: self.reference_date_value.clone(),
             trace: self.trace.clone(), // Share the same trace builder
+            law_id: Rc::clone(&self.law_id),
+            unpassed_optional: Rc::clone(&self.unpassed_optional),
+            // A child context evaluates inside the same article as its parent:
+            // `create_child` is what a FOREACH body runs in, and that body is
+            // no less anchored than the operation containing it. Resetting this
+            // to `None` dropped the anchor from every trace step inside a loop
+            // (participatiewet uses FOREACH in the live corpus), because
+            // `trace_push` only stamps one when the context carries it.
+            anchor: self.anchor.clone(),
+            lazy: self.lazy,
         }
     }
 
@@ -224,10 +309,23 @@ impl RuleContext {
         self.trace.as_ref()
     }
 
+    /// The provision whose rules this context executes (RFC-039).
+    pub fn set_anchor(&mut self, anchor: LegalAnchor) {
+        self.anchor = Some(anchor);
+    }
+
     /// Push a new node onto the trace stack. No-op if trace is None.
+    ///
+    /// Stamps the provision this context is executing (RFC-039), so a bare
+    /// `ADD` inside an article names that article without the operation
+    /// evaluator having to know one.
     pub fn trace_push(&self, name: &str, node_type: PathNodeType) {
         if let Some(ref trace) = self.trace {
-            trace.borrow_mut().push(name, node_type);
+            let mut tb = trace.borrow_mut();
+            tb.push(name, node_type);
+            if let Some(ref anchor) = self.anchor {
+                tb.set_anchor(anchor.clone());
+            }
         }
     }
 
@@ -249,6 +347,22 @@ impl RuleContext {
     pub fn trace_set_resolve_type(&self, rt: ResolveType) {
         if let Some(ref trace) = self.trace {
             trace.borrow_mut().set_resolve_type(rt);
+        }
+    }
+
+    /// Record the unit and precision the law declares for the current step's
+    /// value (RFC-023). No-op if trace is None.
+    pub fn trace_set_type_spec(&self, type_spec: TypeSpec) {
+        if let Some(ref trace) = self.trace {
+            trace.borrow_mut().set_type_spec(type_spec);
+        }
+    }
+
+    /// Record what the corpus cites as the basis of the current step (RFC-039).
+    /// No-op if trace is None.
+    pub fn trace_set_legal_basis(&self, legal_basis: LegalAnchor) {
+        if let Some(ref trace) = self.trace {
+            trace.borrow_mut().set_legal_basis(legal_basis);
         }
     }
 
@@ -277,9 +391,10 @@ impl RuleContext {
     /// 1. Context variables (referencedate)
     /// 2. Local scope (loop variables)
     /// 3. Outputs (calculated values)
-    /// 4. Resolved inputs (cached cross-law results)
-    /// 5. Definitions (constants)
+    /// 4. Definitions (constants)
+    /// 5. Inputs and open terms (resolved on first read, RFC-043)
     /// 6. Parameters (direct inputs)
+    /// 7. Unpassed optional parameters (unknown, RFC-036)
     ///
     /// # Dot Notation
     /// Supports nested property access: `referencedate.year`, `person.name`
@@ -361,16 +476,22 @@ impl RuleContext {
             return Ok(value.clone());
         }
 
-        // 4. Resolved inputs (cached cross-law results)
-        if let Some(value) = self.resolved_inputs.get(path) {
-            self.trace_set_resolve_type(ResolveType::ResolvedInput);
-            return Ok(value.clone());
-        }
-
-        // 5. Definitions (constants)
+        // 4. Definitions (constants)
         if let Some(value) = self.definitions.get(path) {
             self.trace_set_resolve_type(ResolveType::Definition);
             return Ok(value.clone());
+        }
+
+        // 5. An input or open term of this article, resolved on its first
+        // read (RFC-043). Where a value was passed under the input's name the
+        // hook answers `None`, and the parameter below wins.
+        if let Some(LazyHook(lazy)) = self.lazy {
+            if let Some(result) = lazy.resolve_input(path) {
+                return result.map(|(value, resolve_type)| {
+                    self.trace_set_resolve_type(resolve_type);
+                    value
+                });
+            }
         }
 
         // 6. Parameters (direct inputs)
@@ -379,12 +500,29 @@ impl RuleContext {
             return Ok(value.clone());
         }
 
+        // 7. An optional parameter the caller did not pass (RFC-036). The
+        // article said it can do without, so the fact is unknown rather than
+        // the reference being an error; the Unknown names it, so whoever
+        // completes the case knows what to ask for. Top-level and cross-law
+        // calls are treated alike here.
+        if self.unpassed_optional.contains(path) {
+            self.trace_set_resolve_type(ResolveType::Parameter);
+            self.trace_set_message(format!(
+                "Parameter '{path}' is optional and was not passed: unknown"
+            ));
+            return Ok(Value::unknown(
+                self.law_id.as_ref(),
+                path,
+                MissingKind::NotPassed,
+            ));
+        }
+
         // Not found
         Err(EngineError::VariableNotFound(path.to_string()))
     }
 }
 
-impl ValueResolver for RuleContext {
+impl ValueResolver for RuleContext<'_> {
     fn resolve(&self, name: &str) -> Result<Value> {
         self.resolve_variable(name)
     }
@@ -411,6 +549,22 @@ impl ValueResolver for RuleContext {
 
     fn has_trace(&self) -> bool {
         RuleContext::has_trace(self)
+    }
+
+    /// `RuleContext` can create child scopes, so it is the resolver that can
+    /// run a FOREACH (RFC-016).
+    fn execute_foreach_op(
+        &self,
+        collection: &ActionValue,
+        as_name: &str,
+        body: &ActionValue,
+        filter: Option<&ActionValue>,
+        combine: Option<&CombineOp>,
+        depth: usize,
+    ) -> Option<Result<Value>> {
+        Some(crate::operations::execute_foreach(
+            collection, as_name, body, filter, combine, self, depth,
+        ))
     }
 }
 
@@ -465,6 +619,13 @@ fn get_property(value: &Value, property_path: &str, depth: usize) -> Result<Valu
             .get(property_path)
             .cloned()
             .ok_or_else(|| EngineError::VariableNotFound(format!(".{}", property_path))),
+        // A property of an absent record is absent: the register says there is
+        // no WIA decision, no partner, so every field of it is "geen" too, and
+        // the law's own absence checks decide (RFC-036). Failing here would fail
+        // the whole calculation for a person the record does not apply to.
+        Value::Null => Ok(Value::Null),
+        // A property of a record nobody has yet is unknown for the same facts.
+        Value::Unknown(_) => Ok(value.clone()),
         Value::Array(arr) => {
             // Support numeric indexing for arrays
             if let Ok(index) = property_path.parse::<usize>() {
@@ -490,7 +651,7 @@ mod tests {
     use super::*;
     use crate::config;
 
-    fn make_context() -> RuleContext {
+    fn make_context() -> RuleContext<'static> {
         let mut params = BTreeMap::new();
         params.insert("BSN".to_string(), Value::String("123456789".to_string()));
         params.insert("income".to_string(), Value::Int(30000));
@@ -795,28 +956,6 @@ mod tests {
         assert!(matches!(result, Err(EngineError::VariableNotFound(_))));
     }
 
-    #[test]
-    fn test_resolved_inputs() {
-        let mut ctx = make_context();
-        ctx.set_resolved_input("external_value", Value::Int(12345));
-
-        let value = ctx.resolve("external_value").unwrap();
-        assert_eq!(value, Value::Int(12345));
-    }
-
-    #[test]
-    fn test_priority_resolved_input_over_definition() {
-        let mut ctx = make_context();
-        let mut defs = BTreeMap::new();
-        defs.insert("x".to_string(), Value::Int(100));
-        ctx.set_definitions_raw(defs);
-        ctx.set_resolved_input("x", Value::Int(200));
-
-        // Resolved input should win over definition
-        let x = ctx.resolve("x").unwrap();
-        assert_eq!(x, Value::Int(200));
-    }
-
     // -------------------------------------------------------------------------
     // Accessor Tests
     // -------------------------------------------------------------------------
@@ -851,7 +990,7 @@ mod tests {
     // Trace Tests
     // -------------------------------------------------------------------------
 
-    fn traced_context() -> (RuleContext, Rc<RefCell<TraceBuilder>>) {
+    fn traced_context() -> (RuleContext<'static>, Rc<RefCell<TraceBuilder>>) {
         let mut ctx = make_context();
         let trace = Rc::new(RefCell::new(TraceBuilder::new_untimed()));
         ctx.set_trace(Rc::clone(&trace));
@@ -961,6 +1100,103 @@ mod tests {
             ctx.resolve("period.iso").unwrap(),
             Value::String("1999-01-02".to_string())
         );
+    }
+
+    #[test]
+    fn test_property_of_null_is_null() {
+        // An unresolved register record reads as null; so does every field of
+        // it, however deep the path. The law's null checks decide what that
+        // means instead of the calculation failing.
+        assert_eq!(
+            get_property(&Value::Null, "status", 0).unwrap(),
+            Value::Null
+        );
+        assert_eq!(
+            get_property(&Value::Null, "adres.postcode", 0).unwrap(),
+            Value::Null
+        );
+        let mut obj = BTreeMap::new();
+        obj.insert("partner".to_string(), Value::Null);
+        assert_eq!(
+            get_property(&Value::Object(obj), "partner.geboortedatum", 0).unwrap(),
+            Value::Null
+        );
+    }
+
+    #[test]
+    fn test_property_of_unknown_is_unknown() {
+        // A field of a record nobody has yet is unknown for the same facts;
+        // nested paths too (RFC-036).
+        let unknown = Value::unknown("testwet", "beschikking", MissingKind::NoData);
+        assert_eq!(get_property(&unknown, "status", 0).unwrap(), unknown);
+        assert_eq!(
+            get_property(&unknown, "adres.postcode", 0).unwrap(),
+            unknown
+        );
+        let mut obj = BTreeMap::new();
+        obj.insert("partner".to_string(), unknown.clone());
+        assert_eq!(
+            get_property(&Value::Object(obj), "partner.naam", 0).unwrap(),
+            unknown
+        );
+    }
+
+    #[test]
+    fn test_unpassed_optional_parameter_resolves_to_unknown() {
+        // The article declared `aanvraag_bedrag` with `required: false` and the
+        // caller left it out: a reference to it is an Unknown that names the
+        // law and the parameter, so a decision process can ask for it (RFC-036).
+        let (mut ctx, trace) = traced_context();
+        ctx.set_law_scope("testwet", BTreeSet::from(["aanvraag_bedrag".to_string()]));
+        trace.borrow_mut().push("root", PathNodeType::Action);
+
+        let value = ctx.resolve("aanvraag_bedrag").unwrap();
+        assert_eq!(
+            value.missing_facts(),
+            &[crate::types::MissingFact {
+                law: "testwet".to_string(),
+                name: "aanvraag_bedrag".to_string(),
+                kind: MissingKind::NotPassed,
+            }]
+        );
+        // A property of it is that same unknown.
+        assert_eq!(ctx.resolve("aanvraag_bedrag.bedrag").unwrap(), value);
+
+        let root = trace.borrow_mut().pop().expect("root node should pop");
+        let node = root
+            .children
+            .first()
+            .expect("resolving should record a node");
+        assert_eq!(node.resolve_type, Some(ResolveType::Parameter));
+        assert_eq!(
+            node.message.as_deref(),
+            Some("Parameter 'aanvraag_bedrag' is optional and was not passed: unknown")
+        );
+        assert_eq!(node.result.as_ref(), Some(&value));
+    }
+
+    #[test]
+    fn test_missing_required_parameter_stays_not_found() {
+        // Only the declared optional parameters resolve to unknown; anything
+        // else the article forgot to pass is the error it always was, so a
+        // misspelled key cannot quietly become an unknown outcome.
+        let mut ctx = make_context();
+        ctx.set_law_scope("testwet", BTreeSet::from(["aanvraag_bedrag".to_string()]));
+        assert!(matches!(
+            ctx.resolve("kvk_nummer"),
+            Err(EngineError::VariableNotFound(_))
+        ));
+        // A passed value always wins over the unpassed set.
+        assert_eq!(ctx.resolve("income").unwrap(), Value::Int(30000));
+    }
+
+    #[test]
+    fn test_child_context_inherits_law_scope() {
+        let mut ctx = make_context();
+        ctx.set_law_scope("testwet", BTreeSet::from(["aanvraag_bedrag".to_string()]));
+        let child = ctx.create_child();
+        let value = child.resolve("aanvraag_bedrag").unwrap();
+        assert_eq!(value.missing_facts()[0].law, "testwet");
     }
 
     #[test]

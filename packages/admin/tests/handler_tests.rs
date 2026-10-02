@@ -43,6 +43,11 @@ fn test_app(pool: sqlx::PgPool) -> Router {
         .route("/api/jobs", get(handlers::list_jobs))
         .route("/api/jobs/summary", get(handlers::list_jobs_summary))
         .route("/api/untranslatables", get(handlers::list_untranslatables))
+        .route("/api/markings", get(handlers::list_markings))
+        .route(
+            "/api/markings/clusters",
+            get(handlers::list_marking_clusters),
+        )
         .route("/api/dashboard-stats", get(handlers::dashboard_stats))
         .route("/api/harvest-jobs", post(handlers::create_harvest_job))
         .with_state(state)
@@ -93,6 +98,1025 @@ async fn get_untranslatables(pool: &sqlx::PgPool, query: &str) -> Value {
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     body_json(response).await
+}
+
+// --- markings ---
+
+#[allow(clippy::too_many_arguments)]
+async fn seed_marking(
+    pool: &sqlx::PgPool,
+    law_id: &str,
+    law_name: &str,
+    provider: &str,
+    article: &str,
+    about: &str,
+    resolution: &str,
+    resolved_by: Option<&str>,
+    target: &[&str],
+    accepted: bool,
+) {
+    regelrecht_pipeline::law_status::upsert_law(pool, law_id, Some(law_name), None)
+        .await
+        .unwrap();
+    let job = job_queue::create_job(pool, CreateJobRequest::new(JobType::Enrich, law_id))
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO markings \
+         (law_id, enrich_job_id, provider, article, about, resolution, \
+          resolved_by, target, legal_text_excerpt, accepted) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'de wettekst', $9)",
+    )
+    .bind(law_id)
+    .bind(job.id)
+    .bind(provider)
+    .bind(article)
+    .bind(about)
+    .bind(resolution)
+    .bind(resolved_by)
+    .bind(
+        target
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>(),
+    )
+    .bind(accepted)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+async fn get_markings(pool: &sqlx::PgPool, query: &str) -> Value {
+    let app = test_app(pool.clone());
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/markings{query}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    body_json(response).await
+}
+
+async fn get_clusters(pool: &sqlx::PgPool, query: &str) -> Value {
+    let app = test_app(pool.clone());
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/markings/clusters{query}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    // The endpoint wraps its rows in the standard {data,total} envelope; the
+    // tests below are about the clusters themselves.
+    body_json(response).await["data"].clone()
+}
+
+#[tokio::test]
+async fn markings_list_is_empty_without_rows() {
+    let db = TestDb::new().await;
+    let json = get_markings(&db.pool, "").await;
+    assert_eq!(json["total"], 0);
+    assert_eq!(json["data"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn a_marking_comes_back_whole() {
+    let db = TestDb::new().await;
+    seed_marking(
+        &db.pool,
+        "test_wet",
+        "Testwet",
+        "opencode",
+        "5",
+        "de eerstvolgende werkdag",
+        "operation",
+        Some("een WORKING_DAY-bewerking"),
+        &["datum_van_betaling"],
+        false,
+    )
+    .await;
+
+    let json = get_markings(&db.pool, "").await;
+    assert_eq!(json["total"], 1);
+    let row = &json["data"][0];
+    assert_eq!(row["law_id"], "test_wet");
+    assert_eq!(row["law_name"], "Testwet", "the LEFT JOIN must fill this");
+    assert_eq!(row["about"], "de eerstvolgende werkdag");
+    assert_eq!(row["resolution"], "operation");
+    assert_eq!(row["resolved_by"], "een WORKING_DAY-bewerking");
+    assert_eq!(row["legal_text_excerpt"], "de wettekst");
+    // The array survives as an array rather than a stringified Vec.
+    assert_eq!(row["target"][0], "datum_van_betaling");
+    assert_eq!(row["target"].as_array().unwrap().len(), 1);
+}
+
+/// An empty `target` is a claim, not a missing value: the article stays
+/// executable. It has to reach the client as `[]`, because a reader tells that
+/// apart from "we do not know what is blocked".
+#[tokio::test]
+async fn an_empty_target_arrives_as_an_empty_array() {
+    let db = TestDb::new().await;
+    seed_marking(
+        &db.pool,
+        "test_wet",
+        "Testwet",
+        "opencode",
+        "1",
+        "iets",
+        "model",
+        None,
+        &[],
+        false,
+    )
+    .await;
+
+    let json = get_markings(&db.pool, "").await;
+    let row = &json["data"][0];
+    assert!(row["target"].as_array().unwrap().is_empty());
+    assert!(row["resolved_by"].is_null());
+}
+
+#[tokio::test]
+async fn markings_filter_on_the_closed_resolution_vocabulary() {
+    let db = TestDb::new().await;
+    seed_marking(
+        &db.pool,
+        "wet_a",
+        "A",
+        "opencode",
+        "1",
+        "x",
+        "operation",
+        None,
+        &[],
+        false,
+    )
+    .await;
+    seed_marking(
+        &db.pool,
+        "wet_b",
+        "B",
+        "opencode",
+        "1",
+        "y",
+        "model",
+        None,
+        &[],
+        false,
+    )
+    .await;
+
+    let json = get_markings(&db.pool, "?resolution=operation").await;
+    assert_eq!(json["total"], 1);
+    assert_eq!(json["data"][0]["resolution"], "operation");
+}
+
+#[tokio::test]
+async fn markings_filter_by_law_is_a_partial_match() {
+    let db = TestDb::new().await;
+    seed_marking(
+        &db.pool,
+        "wet_op_de_zorgtoeslag",
+        "Zorgtoeslag",
+        "opencode",
+        "1",
+        "x",
+        "model",
+        None,
+        &[],
+        false,
+    )
+    .await;
+    seed_marking(
+        &db.pool,
+        "participatiewet",
+        "P",
+        "opencode",
+        "1",
+        "y",
+        "model",
+        None,
+        &[],
+        false,
+    )
+    .await;
+
+    let json = get_markings(&db.pool, "?law_id=zorgtoeslag").await;
+    assert_eq!(json["total"], 1);
+    assert_eq!(json["data"][0]["law_id"], "wet_op_de_zorgtoeslag");
+}
+
+#[tokio::test]
+async fn markings_reject_a_sort_column_outside_the_allowlist() {
+    let db = TestDb::new().await;
+    let app = test_app(db.pool.clone());
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/markings?sort=law_name")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    // 400, not merely "not 200". The sort column is interpolated into the SQL,
+    // so the allowlist is what keeps that safe; asserting `!= OK` would pass
+    // just as well on the 500 an unguarded column name produces, and a test
+    // that accepts the crash it is meant to prevent pins nothing.
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+/// The allowlist is the only thing between a query parameter and the SQL it is
+/// interpolated into, so it has to reject rather than pass through. A name
+/// that would be syntactically valid inside an ORDER BY is the case worth
+/// proving: it cannot reach the query at all.
+#[tokio::test]
+async fn markings_reject_a_sort_column_that_would_be_valid_sql() {
+    let db = TestDb::new().await;
+    // Percent-encoded by hand rather than pulling in a dependency for four
+    // literals.
+    for sort in [
+        "law_name",
+        "1",
+        "m.id%3B%20DROP%20TABLE%20markings",
+        "%28SELECT%201%29",
+    ] {
+        let app = test_app(db.pool.clone());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/api/markings?sort={sort}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "sort={sort} must be refused, not interpolated"
+        );
+    }
+
+    // And the table is still there.
+    let json = get_markings(&db.pool, "").await;
+    assert_eq!(json["total"], 0);
+}
+
+/// Every filter at once, which is where hand-rolled dynamic SQL goes wrong.
+///
+/// The placeholders are numbered while the clauses are built and the values
+/// are pushed in the same step, so a desync would need the two to drift apart
+/// within one block. The existing untranslatable tests each exercise a single
+/// filter, so this combination was untested on either endpoint; a swapped pair
+/// would have returned plausible-looking rows rather than an error.
+#[tokio::test]
+async fn every_filter_at_once_still_binds_in_the_right_order() {
+    let db = TestDb::new().await;
+    // The row that matches all five.
+    seed_marking(
+        &db.pool,
+        "wet_op_de_zorgtoeslag",
+        "Zorgtoeslag",
+        "claude",
+        "5",
+        "de eerstvolgende werkdag",
+        "operation",
+        Some("een WORKING_DAY-bewerking"),
+        &[],
+        true,
+    )
+    .await;
+    // Each of these differs from it in exactly one filtered field.
+    seed_marking(
+        &db.pool,
+        "participatiewet",
+        "P",
+        "claude",
+        "5",
+        "werkdag",
+        "operation",
+        None,
+        &[],
+        true,
+    )
+    .await;
+    seed_marking(
+        &db.pool,
+        "wet_op_de_zorgtoeslag",
+        "Zorgtoeslag",
+        "opencode",
+        "5",
+        "werkdag",
+        "operation",
+        None,
+        &[],
+        true,
+    )
+    .await;
+    seed_marking(
+        &db.pool,
+        "wet_op_de_zorgtoeslag",
+        "Zorgtoeslag",
+        "claude",
+        "5",
+        "werkdag",
+        "model",
+        None,
+        &[],
+        true,
+    )
+    .await;
+    seed_marking(
+        &db.pool,
+        "wet_op_de_zorgtoeslag",
+        "Zorgtoeslag",
+        "claude",
+        "5",
+        "iets anders",
+        "operation",
+        None,
+        &[],
+        true,
+    )
+    .await;
+    seed_marking(
+        &db.pool,
+        "wet_op_de_zorgtoeslag",
+        "Zorgtoeslag",
+        "claude",
+        "5",
+        "werkdag",
+        "operation",
+        None,
+        &[],
+        false,
+    )
+    .await;
+
+    let json = get_markings(
+        &db.pool,
+        "?law_id=zorgtoeslag&provider=claude&resolution=operation&about=werkdag&accepted=true",
+    )
+    .await;
+
+    assert_eq!(json["total"], 1, "exactly the row that matches all five");
+    assert_eq!(json["data"][0]["about"], "de eerstvolgende werkdag");
+}
+
+/// The same combination on the cluster endpoint, which shares the WHERE
+/// builder. If the backlog grouped a different set than the list, the page
+/// would state a count for rows the reader cannot see.
+#[tokio::test]
+async fn the_backlog_narrows_with_the_same_filters_as_the_list() {
+    let db = TestDb::new().await;
+    seed_marking(
+        &db.pool,
+        "wet_a",
+        "A",
+        "claude",
+        "1",
+        "werkdag",
+        "operation",
+        Some("de gezochte wijziging"),
+        &[],
+        false,
+    )
+    .await;
+    seed_marking(
+        &db.pool,
+        "wet_a",
+        "A",
+        "opencode",
+        "2",
+        "werkdag",
+        "operation",
+        Some("een andere wijziging"),
+        &[],
+        false,
+    )
+    .await;
+
+    let list = get_markings(&db.pool, "?provider=claude&resolution=operation").await;
+    let clusters = get_clusters(&db.pool, "?provider=claude&resolution=operation").await;
+
+    assert_eq!(list["total"], 1);
+    assert_eq!(
+        clusters.as_array().unwrap().len(),
+        1,
+        "the backlog describes the same selection as the rows"
+    );
+    assert_eq!(clusters[0]["resolved_by"], "de gezochte wijziging");
+    assert_eq!(clusters[0]["markings"], 1);
+}
+
+/// `resolved_by` is nullable, and a marking that cannot say what would fix it
+/// still has to appear: it is exactly the one a reader should look at. Postgres
+/// groups NULLs together, so those land in one cluster rather than vanishing.
+#[tokio::test]
+async fn markings_without_a_named_change_still_form_a_cluster() {
+    let db = TestDb::new().await;
+    seed_marking(
+        &db.pool,
+        "wet_a",
+        "A",
+        "opencode",
+        "1",
+        "x",
+        "model",
+        None,
+        &[],
+        false,
+    )
+    .await;
+    seed_marking(
+        &db.pool,
+        "wet_b",
+        "B",
+        "opencode",
+        "1",
+        "y",
+        "model",
+        None,
+        &[],
+        false,
+    )
+    .await;
+
+    let json = get_clusters(&db.pool, "").await;
+    let clusters = json.as_array().unwrap();
+    assert_eq!(clusters.len(), 1);
+    assert!(clusters[0]["resolved_by"].is_null());
+    assert_eq!(clusters[0]["markings"], 2);
+    assert_eq!(clusters[0]["laws"], 2);
+}
+
+/// A marking whose law has no `law_entries` row still has to appear. The join
+/// is a LEFT JOIN for that reason, and an inner one would hide exactly the
+/// markings worth seeing: a law that failed partway through harvesting is more
+/// likely to carry gaps, not less.
+///
+/// Reachable in practice because `markings` has no foreign key to
+/// `law_entries`, only to `jobs`.
+#[tokio::test]
+async fn a_marking_survives_a_missing_law_entry() {
+    let db = TestDb::new().await;
+    seed_marking(
+        &db.pool,
+        "wet_a",
+        "A",
+        "opencode",
+        "1",
+        "x",
+        "model",
+        None,
+        &[],
+        false,
+    )
+    .await;
+
+    // Drop the law_entries row, leaving the marking behind.
+    sqlx::query("DELETE FROM law_entries WHERE law_id = $1")
+        .bind("wet_a")
+        .execute(&db.pool)
+        .await
+        .unwrap();
+
+    let json = get_markings(&db.pool, "").await;
+    assert_eq!(json["total"], 1, "the marking is still listed");
+    assert!(
+        json["data"][0]["law_name"].is_null(),
+        "with no name to show for it"
+    );
+    assert_eq!(json["data"][0]["law_id"], "wet_a");
+}
+
+/// Clicking a cluster narrows the list to the markings behind it, which needs
+/// an exact match on the change it names. `resolution` alone has two possible
+/// values, so it would land the reader on half the corpus.
+#[tokio::test]
+async fn markings_filter_on_the_change_a_cluster_names() {
+    let db = TestDb::new().await;
+    seed_marking(
+        &db.pool,
+        "wet_a",
+        "A",
+        "opencode",
+        "1",
+        "werkdag",
+        "operation",
+        Some("een WORKING_DAY-bewerking"),
+        &[],
+        false,
+    )
+    .await;
+    seed_marking(
+        &db.pool,
+        "wet_b",
+        "B",
+        "opencode",
+        "1",
+        "jaardeel",
+        "operation",
+        Some("een YEAR-bewerking"),
+        &[],
+        false,
+    )
+    .await;
+
+    let json = get_markings(&db.pool, "?resolved_by=een%20WORKING_DAY-bewerking").await;
+    assert_eq!(json["total"], 1, "exact match, not a partial one");
+    assert_eq!(json["data"][0]["law_id"], "wet_a");
+}
+
+// --- the backlog: clusters ---
+
+/// The point of the whole view: the same change asked for by several articles
+/// across several laws is one item of work, not four observations.
+#[tokio::test]
+async fn markings_that_name_the_same_change_form_one_cluster() {
+    let db = TestDb::new().await;
+    let same = Some("een WORKING_DAY-bewerking");
+    seed_marking(
+        &db.pool,
+        "wet_a",
+        "A",
+        "opencode",
+        "1",
+        "werkdag",
+        "operation",
+        same,
+        &[],
+        false,
+    )
+    .await;
+    seed_marking(
+        &db.pool,
+        "wet_a",
+        "A",
+        "opencode",
+        "2",
+        "werkdag",
+        "operation",
+        same,
+        &[],
+        false,
+    )
+    .await;
+    seed_marking(
+        &db.pool,
+        "wet_b",
+        "B",
+        "opencode",
+        "7",
+        "werkdag",
+        "operation",
+        same,
+        &[],
+        false,
+    )
+    .await;
+
+    let json = get_clusters(&db.pool, "").await;
+    let clusters = json.as_array().unwrap();
+    assert_eq!(clusters.len(), 1, "one change, one cluster");
+    let c = &clusters[0];
+    assert_eq!(c["markings"], 3);
+    assert_eq!(c["laws"], 2, "two distinct laws");
+    assert_eq!(c["articles"], 3, "three distinct (law, article) pairs");
+    assert_eq!(c["resolution"], "operation");
+}
+
+/// An article number repeats across laws. Counting articles by number alone
+/// would read "art. 1 in two laws" as one article and undercount the reach of
+/// a change, so the count is over (law, article) pairs.
+#[tokio::test]
+async fn the_same_article_number_in_two_laws_counts_twice() {
+    let db = TestDb::new().await;
+    let same = Some("dezelfde wijziging");
+    seed_marking(
+        &db.pool,
+        "wet_a",
+        "A",
+        "opencode",
+        "1",
+        "x",
+        "model",
+        same,
+        &[],
+        false,
+    )
+    .await;
+    seed_marking(
+        &db.pool,
+        "wet_b",
+        "B",
+        "opencode",
+        "1",
+        "x",
+        "model",
+        same,
+        &[],
+        false,
+    )
+    .await;
+
+    let json = get_clusters(&db.pool, "").await;
+    assert_eq!(json[0]["articles"], 2);
+    assert_eq!(json[0]["laws"], 2);
+}
+
+/// The triage signal. A change only one provider ever asks for, while another
+/// ran over the same corpus without complaint, points at the enricher rather
+/// than at the format. The cluster carries the providers so a reader can see
+/// that difference instead of guessing at it.
+#[tokio::test]
+async fn a_cluster_names_the_providers_that_asked_for_it() {
+    let db = TestDb::new().await;
+    let same = Some("een WORKING_DAY-bewerking");
+    seed_marking(
+        &db.pool,
+        "wet_a",
+        "A",
+        "opencode",
+        "1",
+        "x",
+        "operation",
+        same,
+        &[],
+        false,
+    )
+    .await;
+    seed_marking(
+        &db.pool,
+        "wet_b",
+        "B",
+        "claude",
+        "1",
+        "x",
+        "operation",
+        same,
+        &[],
+        false,
+    )
+    .await;
+
+    let json = get_clusters(&db.pool, "").await;
+    let providers = json[0]["providers"].as_array().unwrap();
+    assert_eq!(providers.len(), 2);
+    assert!(providers.iter().any(|p| p == "opencode"));
+    assert!(providers.iter().any(|p| p == "claude"));
+}
+
+/// Several markings from one provider must collapse to one entry, or the
+/// triage signal inverts: `providerHint` only fires when a single provider
+/// asked, so an unaggregated list of three identical names would read as three
+/// providers and hide exactly the case the hint exists for.
+#[tokio::test]
+async fn one_provider_asking_repeatedly_stays_one_provider() {
+    let db = TestDb::new().await;
+    for article in ["1", "2", "3"] {
+        seed_marking(
+            &db.pool,
+            "wet_a",
+            "A",
+            "opencode",
+            article,
+            "x",
+            "operation",
+            Some("dezelfde wijziging"),
+            &[],
+            false,
+        )
+        .await;
+    }
+
+    let json = get_clusters(&db.pool, "").await;
+    let providers = json[0]["providers"].as_array().unwrap();
+    assert_eq!(providers.len(), 1, "three markings, one provider");
+    assert_eq!(providers[0], "opencode");
+    assert_eq!(json[0]["markings"], 3);
+}
+
+/// `providers_on_these_laws` is what makes the triage hint mean anything: the
+/// frontend only says "only opencode asked" when another provider went over
+/// the same laws and did not. Until now it was exercised only against a mocked
+/// value in the frontend tests, so the query that computes it was unpinned.
+///
+/// One provider in the corpus: every cluster has exactly one, so the hint must
+/// stay quiet.
+#[tokio::test]
+async fn one_provider_over_these_laws_is_counted_as_one() {
+    let db = TestDb::new().await;
+    seed_marking(
+        &db.pool,
+        "wet_a",
+        "A",
+        "opencode",
+        "1",
+        "x",
+        "operation",
+        Some("a"),
+        &[],
+        false,
+    )
+    .await;
+
+    let json = get_clusters(&db.pool, "").await;
+    assert_eq!(json[0]["providers_on_these_laws"], 1);
+}
+
+/// Two providers over the same law, each asking for something different. The
+/// count is over the laws, not over the cluster, which is exactly the point: a
+/// cluster of one provider only says something when another one was there.
+#[tokio::test]
+async fn a_second_provider_on_the_same_law_is_counted() {
+    let db = TestDb::new().await;
+    seed_marking(
+        &db.pool,
+        "wet_a",
+        "A",
+        "opencode",
+        "1",
+        "x",
+        "operation",
+        Some("a"),
+        &[],
+        false,
+    )
+    .await;
+    seed_marking(
+        &db.pool,
+        "wet_a",
+        "A",
+        "claude",
+        "2",
+        "y",
+        "model",
+        Some("b"),
+        &[],
+        false,
+    )
+    .await;
+
+    let json = get_clusters(&db.pool, "").await;
+    let clusters = json.as_array().unwrap();
+    assert_eq!(clusters.len(), 2, "two changes, two clusters");
+    for cluster in clusters {
+        assert_eq!(
+            cluster["providers_on_these_laws"], 2,
+            "both clusters sit on a law two providers went over"
+        );
+        assert_eq!(
+            cluster["providers"].as_array().unwrap().len(),
+            1,
+            "but each change was asked for by one of them"
+        );
+    }
+}
+
+/// A provider working on a different law must not raise the count: the
+/// question is who went over *these* laws, not who ran at all. Counting every
+/// provider in the corpus would turn the hint on everywhere the moment a
+/// second one exists.
+#[tokio::test]
+async fn a_provider_on_another_law_does_not_count() {
+    let db = TestDb::new().await;
+    seed_marking(
+        &db.pool,
+        "wet_a",
+        "A",
+        "opencode",
+        "1",
+        "x",
+        "operation",
+        Some("a"),
+        &[],
+        false,
+    )
+    .await;
+    seed_marking(
+        &db.pool,
+        "wet_b",
+        "B",
+        "claude",
+        "1",
+        "y",
+        "model",
+        Some("b"),
+        &[],
+        false,
+    )
+    .await;
+
+    let json = get_clusters(&db.pool, "").await;
+    for cluster in json.as_array().unwrap() {
+        assert_eq!(
+            cluster["providers_on_these_laws"], 1,
+            "each cluster sits on a law only its own provider touched"
+        );
+    }
+}
+
+/// Reach decides the order, and reach means laws before sheer count: five
+/// markings inside one law may be that law's peculiarity, while three spread
+/// over three laws is a property of the format.
+#[tokio::test]
+async fn clusters_are_ordered_by_how_far_they_reach() {
+    let db = TestDb::new().await;
+    // Narrow: four markings, one law.
+    for article in ["1", "2", "3", "4"] {
+        seed_marking(
+            &db.pool,
+            "wet_a",
+            "A",
+            "opencode",
+            article,
+            "x",
+            "model",
+            Some("smalle wijziging"),
+            &[],
+            false,
+        )
+        .await;
+    }
+    // Wide: three markings, three laws.
+    for (law, name) in [("wet_b", "B"), ("wet_c", "C"), ("wet_d", "D")] {
+        seed_marking(
+            &db.pool,
+            law,
+            name,
+            "opencode",
+            "1",
+            "y",
+            "operation",
+            Some("brede wijziging"),
+            &[],
+            false,
+        )
+        .await;
+    }
+
+    let json = get_clusters(&db.pool, "").await;
+    assert_eq!(
+        json[0]["resolved_by"], "brede wijziging",
+        "three laws outranks four markings in one law"
+    );
+    assert_eq!(json[0]["laws"], 3);
+    assert_eq!(json[1]["resolved_by"], "smalle wijziging");
+    assert_eq!(json[1]["markings"], 4);
+}
+
+/// Free text does not cluster itself. Two agents asking for the same operation
+/// in different words land in two clusters, and that is visible rather than
+/// hidden: a cluster of one is what a reader should look at twice. Closing
+/// this needs grouping that understands the words, which needs real markings
+/// to calibrate against.
+#[tokio::test]
+async fn differently_worded_requests_do_not_merge_yet() {
+    let db = TestDb::new().await;
+    seed_marking(
+        &db.pool,
+        "wet_a",
+        "A",
+        "opencode",
+        "1",
+        "werkdag",
+        "operation",
+        Some("Een WORKING_DAY-bewerking die weekenden overslaat"),
+        &[],
+        false,
+    )
+    .await;
+    seed_marking(
+        &db.pool,
+        "wet_b",
+        "B",
+        "opencode",
+        "1",
+        "werkdag",
+        "operation",
+        Some("Een bewerking die de eerstvolgende werkdag bepaalt"),
+        &[],
+        false,
+    )
+    .await;
+
+    let json = get_clusters(&db.pool, "").await;
+    assert_eq!(
+        json.as_array().unwrap().len(),
+        2,
+        "same need, two wordings, two clusters — the known limit of exact grouping"
+    );
+}
+
+/// The cluster view answers the same question as the list above it, so a
+/// filter has to reach both. Otherwise the backlog describes a different set
+/// of markings than the rows a reader is looking at.
+#[tokio::test]
+async fn a_filter_reaches_the_clusters_too() {
+    let db = TestDb::new().await;
+    seed_marking(
+        &db.pool,
+        "wet_a",
+        "A",
+        "opencode",
+        "1",
+        "x",
+        "operation",
+        Some("a"),
+        &[],
+        false,
+    )
+    .await;
+    seed_marking(
+        &db.pool,
+        "wet_b",
+        "B",
+        "claude",
+        "1",
+        "y",
+        "model",
+        Some("b"),
+        &[],
+        false,
+    )
+    .await;
+
+    let json = get_clusters(&db.pool, "?provider=claude").await;
+    let clusters = json.as_array().unwrap();
+    assert_eq!(clusters.len(), 1);
+    assert_eq!(clusters[0]["resolved_by"], "b");
+}
+
+/// `all_accepted` says whether a human has been past every marking in the
+/// cluster. A cluster nobody has reviewed reads differently from one that has
+/// been weighed and accepted as a real gap.
+#[tokio::test]
+async fn a_cluster_reports_whether_all_its_markings_are_accepted() {
+    let db = TestDb::new().await;
+    seed_marking(
+        &db.pool,
+        "wet_a",
+        "A",
+        "opencode",
+        "1",
+        "x",
+        "model",
+        Some("a"),
+        &[],
+        true,
+    )
+    .await;
+    seed_marking(
+        &db.pool,
+        "wet_a",
+        "A",
+        "opencode",
+        "2",
+        "x",
+        "model",
+        Some("a"),
+        &[],
+        false,
+    )
+    .await;
+
+    let json = get_clusters(&db.pool, "").await;
+    assert_eq!(json[0]["all_accepted"], false, "one is still unreviewed");
+}
+
+/// The positive path, which the mixed case above cannot reach: with only that
+/// test, an implementation that always answered `false` would pass, and the
+/// backlog would never mark a cluster as weighed and accepted.
+#[tokio::test]
+async fn a_cluster_whose_markings_are_all_accepted_says_so() {
+    let db = TestDb::new().await;
+    for article in ["1", "2"] {
+        seed_marking(
+            &db.pool,
+            "wet_a",
+            "A",
+            "opencode",
+            article,
+            "x",
+            "model",
+            Some("a"),
+            &[],
+            true,
+        )
+        .await;
+    }
+
+    let json = get_clusters(&db.pool, "").await;
+    assert_eq!(json[0]["all_accepted"], true);
 }
 
 // --- list_untranslatables ---

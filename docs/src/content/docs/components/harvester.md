@@ -12,7 +12,7 @@ The harvester downloads Dutch legislation and converts it to the RegelRecht YAML
 - **Sources**: BWB / wetten.nl (national law) and CVDR (local/decentralized regulations)
 - **Output**: YAML law files with textual content (no `machine_readable` yet)
 
-## How It Works
+## How it works
 
 ```mermaid
 flowchart LR
@@ -32,7 +32,7 @@ flowchart LR
 4. **Download content XML** - the consolidated law text (with size limit check)
 5. **Parse elements** - via extensible registry of element handlers
 6. **Split articles** - hierarchical splitting into artikel → lid → lijst → li with dot-notation numbering (e.g., `1`, `1.1`, `1.1.a`)
-7. **Normalize text** - fix spacing, Unicode NFKD, wrap at 115 chars
+7. **Normalize text** - fix spacing, wrap at 115 chars (the slug in the output path is ASCII-folded through Unicode NFKD; article text keeps its accents)
 8. **Generate YAML** - schema-compliant output with yamllint compliance
 9. **Atomic write** - temp file → sync → rename
 
@@ -44,8 +44,17 @@ The harvester uses an extensible **registry system** for XML element handling:
 |-------------|----------|----------|
 | **Inline** | `nadruk`, `extref`, `intref`, `al` | Pass through with text |
 | **Structural** | `lid`, `lidnr`, `lijst`, `li` | Manage numbering, recurse |
-| **Skip** | `meta-data`, `jci`, `redactie`, `plaatje` | Excluded from output |
+| **Skip** | `meta-data`, `jci`, `kop`, `brondata` | Excluded from output |
 | **Passthrough** | `sup`, `sub` | Extract without special handling |
+| **Marker** | `plaatje`, `illustratie`, `formule` | Text where there is any, otherwise `[formule niet in tekst beschikbaar]` |
+
+The marker matters more than it looks. The BWB XML states some norms as a
+picture: artikel 22a Participatiewet puts the whole kostendelersnorm formula in
+an `<illustratie>`. Those elements used to be skipped, so the sentence that
+introduces the formula ended on its colon and the norm vanished with nothing to
+show it had. An incomplete article then read as a complete one. The harvester
+still cannot render an image, but it no longer drops it in silence, and a
+`<formule>` carrying a readable fallback keeps that text.
 
 ### Dutch Law Hierarchy
 
@@ -84,19 +93,20 @@ regelrecht-harvester download CVDR681386
 ### As Library
 
 ```rust
-use regelrecht_harvester::{download_law, validate_bwb_id, validate_date};
+use regelrecht_harvester::{download_law, http::create_client, validate_bwb_id, validate_date};
 
 validate_bwb_id("BWBR0018451")?;
 validate_date("2025-01-01")?;
 
-let law = download_law("BWBR0018451", "2025-01-01")?;
+let client = create_client()?;
+let law = download_law(&client, "BWBR0018451", "2025-01-01").await?;
 println!("Title: {}", law.metadata.title);
 println!("Articles: {}", law.articles.len());
 ```
 
-For CVDR regulations use `download_cvdr_law`; `detect_source` returns the right source for either kind of identifier.
+For CVDR regulations use `download_cvdr_law(&client, cvdr_id, date)`, where the date is optional; `detect_source` returns the right source for either kind of identifier.
 
-## Output Path Convention
+## Output path convention
 
 ```
 {output}/{regulatory_layer}/{slug}/{date}.yaml
@@ -114,12 +124,12 @@ The regulatory layer is determined from the WTI metadata (`soort-regeling` field
 - **Retry triggers**: Connection errors, timeouts, 5xx responses
 - **No retry on**: 4xx client errors
 
-## Current Limitations
+## Current limitations
 
 - **Text-only extraction** - tables and complex formatting simplified to text
 - **No machine_readable** - output contains text only; executable logic added separately
 - **Reference extraction incomplete** - cross-references detected but not fully resolved
-- **Large laws** require `--max-size` flag (e.g., Wet op het financieel toezicht at 52.6 MB)
+- **Large laws** - a large law such as the Wet op het financieel toezicht (52.6 MB) fits in the default 100 MB limit; anything larger needs `--max-size`
 
 ## Testing
 
@@ -129,7 +139,7 @@ just harvester-test
 
 Integration tests use fixtures from `tests/fixtures/zorgtoeslag/` (real WTI and content XML) to validate the complete pipeline from XML to valid YAML.
 
-## Further Reading
+## Further reading
 
 - [Law Format](/concepts/law-format) - the YAML format the harvester produces
 - [Pipeline](./pipeline) - job orchestration for harvesting tasks

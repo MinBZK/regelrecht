@@ -1,0 +1,362 @@
+# Persona's voor de school- en burgerview. Elk record heeft hetzelfde schema
+# als een populatierecord uit de generator (zie data/distributions.yaml en
+# docs/datamodel.md §1), zodat echte DUO/OCW-microdata (ROD, bestand
+# Nieuwkomers) later drop-in vervangbaar is. Veldnamen zijn de inputnamen in
+# de wet-YAML; de engine registreert deze lijst als databron 'personas' met
+# sleutel bsn. Datums ISO, booleans echt boolean, null = onbekend. Het veld
+# `gewicht` ontbreekt bewust: dat heeft alleen de populatie.
+#
+# De categorie (ASIELZOEKER / OVERIGE_VREEMDELING / BESTUUR_BEOORDEELT / GEEN),
+# de aftrek voor de periode vóór de vierde verjaardag en het aantal
+# bekostigbare kwartalen worden in de wet afgeleid (regeling art. 34), niet
+# hier: verblijfstitel_code, datum_vestiging_nederland, geboortedatum en
+# eerste_inschrijfdatum bepalen de uitkomst. De verwachte uitkomst staat per
+# persona in de omschrijving en is de toetssteen voor de Gherkin-scenario's.
+#
+# C1-C6 zijn de zes voorbeelden uit de OCW/DUO-visual "Bekostiging voor
+# nieuwkomers in het primair onderwijs" (open.overheid.nl, document
+# 2b78b15c-82f4-45de-8c80-9a47671ccc23): p. 3 normale situatie, p. 4 rekening
+# houdend met de vierde verjaardag, p. 5 gat tussen vierde verjaardag en
+# inschrijving, p. 6 het bestand Nieuwkomers (tabblad 1 eenduidig, 2 ambigu,
+# 3 onderwijsnummer), p. 7 de aanvraag en de drempel van vier. De visual noemt
+# geen namen, geboortedata of verblijfstitelcodes; die zijn hier zo gekozen
+# dat de afleiding exact de kwartalen uit de visual oplevert.
+#
+# Scholen: 05AB basisschool met vier tellende nieuwkomers in 2025/26 (boven
+# de drempel, art. 34 lid 2); 12CD basisschool met twee tellende nieuwkomers
+# plus twee leerlingen die niet tellen (onder de drempel); 31GH IGBO-afdeling;
+# 20EF vo-vestiging met een internationale schakelklas.
+# Datums: de visual speelt in 2024-2026; hier is alles één jaar opgeschoven
+# (2024 -> 2025), net als in scenarios/nieuwkomers_po.feature, omdat het corpus
+# versies vanaf 2025 kent en de engine geen peildatum vóór de eerste versie
+# accepteert. De mechaniek is jaar-onafhankelijk.
+personas:
+  - bsn: '100000001'
+    naam: Amina
+    omschrijving: >-
+      Casus 1 uit de visual (p. 3, asielzoeker, normale situatie). Kwam op
+      1 februari 2025 uit Syrië naar Nederland en werd op 1 mei 2025
+      ingeschreven op 05AB. Geen aftrek: acht kwartalen, voor het eerst
+      meegeteld op peildatum 1 juli 2025 en voor het laatst op 1 april 2027.
+    geboortedatum: '2017-03-10'
+    is_vreemdeling: true
+    verblijfstitel_code: 26
+    heeft_bsn: true
+    datum_vestiging_nederland: '2025-02-01'
+    eerste_inschrijfdatum: '2025-05-01'
+    woonachtig_in_nederland: true
+    werkelijk_schoolgaand: true
+    sector: po
+    schoolsoort: basisschool
+    internationaal_georienteerd: false
+    school_id: '05AB'
+    in_telling_1_februari: false
+    oordeel_bevoegd_gezag: null
+
+  - bsn: '100000002'
+    naam: Mateusz
+    omschrijving: >-
+      Casus 2 uit de visual (p. 3, overige vreemdeling, normale situatie).
+      EU-burger uit Polen, kwam 15 november 2025 naar Nederland en werd op
+      15 februari 2026 ingeschreven op 12CD. Vier kwartalen, van peildatum
+      1 april 2026 tot en met 1 januari 2027; 12CD blijft met twee tellende
+      nieuwkomers onder de drempel van vier, dus het bestuur kan voor hem
+      geen eerstejaarsbekostiging aanvragen.
+    geboortedatum: '2014-06-20'
+    is_vreemdeling: true
+    verblijfstitel_code: 22
+    heeft_bsn: true
+    datum_vestiging_nederland: '2025-11-15'
+    eerste_inschrijfdatum: '2026-02-15'
+    woonachtig_in_nederland: true
+    werkelijk_schoolgaand: true
+    sector: po
+    schoolsoort: basisschool
+    internationaal_georienteerd: false
+    school_id: '12CD'
+    in_telling_1_februari: false
+    oordeel_bevoegd_gezag: null
+
+  - bsn: '100000003'
+    naam: Yusuf
+    omschrijving: >-
+      Casus 3 uit de visual (p. 4, asielzoeker, vierde verjaardag). Kwam
+      1 februari 2025 naar Nederland, werd op 1 september 2025 vier en werd
+      diezelfde dag ingeschreven op 05AB. Zeven maanden vóór de vierde
+      verjaardag, naar beneden afgerond twee kwartalen aftrek: zes
+      kwartalen, van 1 oktober 2025 tot en met 1 januari 2027.
+    geboortedatum: '2021-09-01'
+    is_vreemdeling: true
+    verblijfstitel_code: 26
+    heeft_bsn: true
+    datum_vestiging_nederland: '2025-02-01'
+    eerste_inschrijfdatum: '2025-09-01'
+    woonachtig_in_nederland: true
+    werkelijk_schoolgaand: true
+    sector: po
+    schoolsoort: basisschool
+    internationaal_georienteerd: false
+    school_id: '05AB'
+    in_telling_1_februari: false
+    oordeel_bevoegd_gezag: null
+
+  - bsn: '100000004'
+    naam: Sofia
+    omschrijving: >-
+      Casus 4 uit de visual (p. 4, overige vreemdeling, vierde verjaardag).
+      Kwam 1 februari 2025, werd op 1 juli 2025 vier en werd diezelfde dag
+      ingeschreven op 05AB. Vijf maanden vóór de vierde verjaardag is één
+      kwartaal aftrek: drie kwartalen, van 1 juli 2025 tot en met
+      1 januari 2026.
+    geboortedatum: '2021-07-01'
+    is_vreemdeling: true
+    verblijfstitel_code: 22
+    heeft_bsn: true
+    datum_vestiging_nederland: '2025-02-01'
+    eerste_inschrijfdatum: '2025-07-01'
+    woonachtig_in_nederland: true
+    werkelijk_schoolgaand: true
+    sector: po
+    schoolsoort: basisschool
+    internationaal_georienteerd: false
+    school_id: '05AB'
+    in_telling_1_februari: false
+    oordeel_bevoegd_gezag: null
+
+  - bsn: '100000005'
+    naam: Daria
+    omschrijving: >-
+      Casus 5 uit de visual (p. 5, asielzoeker, gat tussen vierde verjaardag
+      en inschrijving). Ontheemde uit Oekraïne, kwam 1 februari 2025, werd
+      op 15 augustus 2025 vier en werd pas op 1 november 2025 ingeschreven op
+      05AB. Zes en een halve maand aftrek, afgerond twee kwartalen: zes
+      kwartalen, van 1 januari 2026 tot en met 1 april 2027. De maanden
+      tussen verjaardag en inschrijving tellen niet als aftrek, maar
+      schuiven het venster wel op.
+    geboortedatum: '2021-08-15'
+    is_vreemdeling: true
+    verblijfstitel_code: 46
+    heeft_bsn: true
+    datum_vestiging_nederland: '2025-02-01'
+    eerste_inschrijfdatum: '2025-11-01'
+    woonachtig_in_nederland: true
+    werkelijk_schoolgaand: true
+    sector: po
+    schoolsoort: basisschool
+    internationaal_georienteerd: false
+    school_id: '05AB'
+    in_telling_1_februari: false
+    oordeel_bevoegd_gezag: null
+
+  - bsn: '100000006'
+    naam: Luca
+    omschrijving: >-
+      Casus 6 uit de visual (p. 5, overige vreemdeling, gat). Kwam
+      1 februari 2025 uit Brazilië, werd op 1 oktober 2025 vier en werd op
+      1 november 2025 ingeschreven op 12CD. Acht maanden aftrek, afgerond
+      twee kwartalen: nog twee kwartalen over, 1 januari en 1 april 2026.
+      Zit met Mateusz op de school onder de drempel.
+    geboortedatum: '2021-10-01'
+    is_vreemdeling: true
+    verblijfstitel_code: 23
+    heeft_bsn: true
+    datum_vestiging_nederland: '2025-02-01'
+    eerste_inschrijfdatum: '2025-11-01'
+    woonachtig_in_nederland: true
+    werkelijk_schoolgaand: true
+    sector: po
+    schoolsoort: basisschool
+    internationaal_georienteerd: false
+    school_id: '12CD'
+    in_telling_1_februari: false
+    oordeel_bevoegd_gezag: null
+
+  - bsn: '100000007'
+    naam: Karim
+    omschrijving: >-
+      Veertien, asielzoeker uit Eritrea, kwam in juni 2026 naar Nederland en
+      zit sinds 1 september 2026 in de internationale schakelklas van
+      vo-vestiging 20EF. Vo kent geen aanvraag en geen drempel: DUO leest
+      hem ambtshalve uit ROD. Nieuwkomer eerste categorie tot een jaar na
+      de eerste inschrijving, daarna tweede categorie, na twee jaar valt
+      hij weg.
+    geboortedatum: '2012-04-18'
+    is_vreemdeling: true
+    verblijfstitel_code: 26
+    heeft_bsn: true
+    datum_vestiging_nederland: '2026-06-12'
+    eerste_inschrijfdatum: '2026-09-01'
+    woonachtig_in_nederland: true
+    werkelijk_schoolgaand: true
+    sector: vo
+    schoolsoort: vo
+    internationaal_georienteerd: false
+    school_id: '20EF'
+    in_telling_1_februari: false
+    oordeel_bevoegd_gezag: null
+
+  - bsn: '100000008'
+    naam: Elena
+    omschrijving: >-
+      Veertien, EU-burger uit Roemenië. Kwam in januari 2025, werd op
+      1 maart 2025 ingeschreven in groep 8 van een basisschool en zit sinds
+      augustus 2025 op 20EF. De datum van eerste inschrijving telt door over
+      de sectorgrens: op 1 januari 2027 is zij nieuwkomer tweede categorie,
+      vanaf de peildatum na 1 maart 2027 telt zij niet meer mee.
+    geboortedatum: '2012-06-20'
+    is_vreemdeling: true
+    verblijfstitel_code: 22
+    heeft_bsn: true
+    datum_vestiging_nederland: '2025-01-20'
+    eerste_inschrijfdatum: '2025-03-01'
+    woonachtig_in_nederland: true
+    werkelijk_schoolgaand: true
+    sector: vo
+    schoolsoort: vo
+    internationaal_georienteerd: false
+    school_id: '20EF'
+    in_telling_1_februari: false
+    oordeel_bevoegd_gezag: null
+
+  - bsn: '100000009'
+    naam: Noor
+    omschrijving: >-
+      In Nederland geboren uit ouders die als asielzoeker kwamen; zelf
+      vreemdeling, met de geboortedatum als datum van vestiging. Op haar
+      vierde verjaardag ingeschreven op 12CD. Artikel 34, twaalfde lid: voor
+      een in Nederland geboren leerling met de verblijfsstatus van een ouder
+      kan geen aanvullende bekostiging worden aangevraagd. Categorie GEEN,
+      zij telt op geen enkele peildatum mee.
+    geboortedatum: '2022-04-01'
+    is_vreemdeling: true
+    verblijfstitel_code: 26
+    heeft_bsn: true
+    datum_vestiging_nederland: '2022-04-01'
+    eerste_inschrijfdatum: '2026-04-01'
+    woonachtig_in_nederland: true
+    werkelijk_schoolgaand: true
+    sector: po
+    schoolsoort: basisschool
+    internationaal_georienteerd: false
+    school_id: '12CD'
+    in_telling_1_februari: false
+    oordeel_bevoegd_gezag: null
+
+  - bsn: '100000010'
+    naam: Ahmed
+    omschrijving: >-
+      Negen, kwam in maart 2026 uit Turkije en zit sinds 14 april 2026 op
+      05AB. Verblijfstitelcode 21 wordt in de praktijk aan asielzoekers én
+      aan andere vreemdelingen toegekend (tabblad 2 van het bestand
+      Nieuwkomers, visual p. 6). Het bestuur heeft nog geen oordeel
+      vastgelegd: BESTUUR_BEOORDEELT, en zonder dat oordeel kan hij niet op
+      de aanvraag.
+    geboortedatum: '2016-11-03'
+    is_vreemdeling: true
+    verblijfstitel_code: 21
+    heeft_bsn: true
+    datum_vestiging_nederland: '2026-03-10'
+    eerste_inschrijfdatum: '2026-04-14'
+    woonachtig_in_nederland: true
+    werkelijk_schoolgaand: true
+    sector: po
+    schoolsoort: basisschool
+    internationaal_georienteerd: false
+    school_id: '05AB'
+    in_telling_1_februari: false
+    oordeel_bevoegd_gezag: null
+
+  - bsn: '100000011'
+    naam: Lin
+    omschrijving: >-
+      Tien, sinds 2 juni 2026 op 05AB, ingeschreven op een onderwijsnummer
+      omdat er nog geen BSN is (tabblad 3, visual p. 6); de sleutel hier is
+      dat onderwijsnummer en ROD kent geen verblijfstitel. Het bestuur heeft
+      op basis van de aanmeldgegevens (COA-opvang) vastgelegd dat zij
+      asielzoeker is: acht kwartalen vanaf peildatum 1 juli 2026, op grond
+      van het oordeel van het bestuur en niet van een code.
+    geboortedatum: '2015-07-22'
+    is_vreemdeling: true
+    verblijfstitel_code: null
+    heeft_bsn: false
+    datum_vestiging_nederland: '2026-05-05'
+    eerste_inschrijfdatum: '2026-06-02'
+    woonachtig_in_nederland: true
+    werkelijk_schoolgaand: true
+    sector: po
+    schoolsoort: basisschool
+    internationaal_georienteerd: false
+    school_id: '05AB'
+    in_telling_1_februari: false
+    oordeel_bevoegd_gezag: ASIELZOEKER
+
+  - bsn: '100000012'
+    naam: Jasper
+    omschrijving: >-
+      Nederlander, opgegroeid in Dubai en in augustus 2026 met zijn ouders
+      naar Nederland verhuisd; spreekt nauwelijks Nederlands. Sinds
+      25 augustus 2026 op 12CD. Geen vreemdeling in de zin van de
+      Vreemdelingenwet 2000, dus categorie GEEN: de taalachterstand geeft
+      geen recht op nieuwkomersbekostiging.
+    geboortedatum: '2018-01-15'
+    is_vreemdeling: false
+    verblijfstitel_code: null
+    heeft_bsn: true
+    datum_vestiging_nederland: '2026-08-04'
+    eerste_inschrijfdatum: '2026-08-25'
+    woonachtig_in_nederland: true
+    werkelijk_schoolgaand: true
+    sector: po
+    schoolsoort: basisschool
+    internationaal_georienteerd: false
+    school_id: '12CD'
+    in_telling_1_februari: false
+    oordeel_bevoegd_gezag: null
+
+  - bsn: '100000013'
+    naam: Maria
+    omschrijving: >-
+      Acht, dochter van een kennismigrant uit Brazilië, sinds 25 augustus
+      2026 op de IGBO-afdeling 31GH. Naar verblijfstitel een overige
+      vreemdeling, maar internationaal georiënteerd basisonderwijs (WPO
+      art. 85a) is uitgesloten van de nieuwkomersbekostiging: categorie
+      GEEN.
+    geboortedatum: '2017-09-09'
+    is_vreemdeling: true
+    verblijfstitel_code: 23
+    heeft_bsn: true
+    datum_vestiging_nederland: '2026-07-14'
+    eerste_inschrijfdatum: '2026-08-25'
+    woonachtig_in_nederland: true
+    werkelijk_schoolgaand: true
+    sector: po
+    schoolsoort: basisschool
+    internationaal_georienteerd: true
+    school_id: '31GH'
+    in_telling_1_februari: false
+    oordeel_bevoegd_gezag: null
+
+  - bsn: '100000014'
+    naam: Omar
+    omschrijving: >-
+      Asielzoeker uit Soedan, sinds 13 januari 2026 op 05AB en daardoor als
+      eerstejaars asielzoeker meegeteld in de reguliere 1-februari-telling
+      van schooljaar 2025/26. Acht kwartalen, van 1 april 2026 tot en met
+      1 januari 2028. De reguliere bekostiging 2026/27 is op die telling
+      gebaseerd; op peildatum 1 januari 2027 corrigeert de formule van
+      art. 34 lid 9 daarom met At, zodat 05AB hem niet dubbel vergoed
+      krijgt.
+    geboortedatum: '2018-02-20'
+    is_vreemdeling: true
+    verblijfstitel_code: 26
+    heeft_bsn: true
+    datum_vestiging_nederland: '2025-12-02'
+    eerste_inschrijfdatum: '2026-01-13'
+    woonachtig_in_nederland: true
+    werkelijk_schoolgaand: true
+    sector: po
+    schoolsoort: basisschool
+    internationaal_georienteerd: false
+    school_id: '05AB'
+    in_telling_1_februari: true
+    oordeel_bevoegd_gezag: null

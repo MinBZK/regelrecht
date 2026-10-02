@@ -1,0 +1,64 @@
+---
+/*
+ * One representation sliding over another.
+ *
+ * Used twice on the landing page: the statute over its machine-readable rule,
+ * and the memorandum over the scenario that checks it. Both are the same move,
+ * so they are the same component; only the direction differs, which is what
+ * makes the pair read as one gesture made from either side rather than as the
+ * same gesture twice.
+ *
+ * The behaviour lives in ~/scripts/landing-demo.ts, which picks up every
+ * `[data-wipe]` on the page.
+ */
+interface Props {
+  /** Which way the covering pane retreats: to the left, or to the right. */
+  direction?: 'ltr' | 'rtl';
+  /** Accessible name for the slider. */
+  label: string;
+  /** The captions under the two ends of the track. */
+  leftLabel: string;
+  rightLabel: string;
+  /**
+   * Height of both panes. Worth setting per instance: content that nearly
+   * fits needs no scrolling at all if the frame is a little taller, and a
+   * frame sized for the longest content would tower over the short one.
+   */
+  height?: string;
+}
+
+const { direction = 'ltr', label, leftLabel, rightLabel, height } = Astro.props;
+---
+
+<div
+  class:list={['rr-wipe', direction === 'rtl' && 'rr-wipe--rtl']}
+  style={height ? `--rr-wipe-height: ${height}` : undefined}
+  data-wipe
+>
+  <div class="rr-wipe__pane rr-wipe__pane--under">
+    <slot name="under" />
+  </div>
+  <div class="rr-wipe__pane rr-wipe__pane--over" data-wipe-over>
+    <div class="rr-wipe__prose">
+      <slot name="over" />
+    </div>
+  </div>
+  {/* The divider is drawn on its own so the control can let everything but its
+      own thumb through: whatever sits underneath has to stay scrollable.
+      Keeping a real <input type="range"> means the keyboard, the arrow keys
+      and assistive technology all work unchanged. */}
+  <div class="rr-wipe__rule" aria-hidden="true"></div>
+  <input
+    class="rr-wipe__handle"
+    type="range"
+    min="0"
+    max="100"
+    value="100"
+    step="1"
+    aria-label={label}
+    data-wipe-input
+  />
+</div>
+<p class="rr-wipe__legend">
+  <span>{leftLabel}</span><span>{rightLabel}</span>
+</p>

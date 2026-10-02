@@ -1,0 +1,25 @@
+---
+id: herzieningsplicht-bij-gedetecteerde-wetseffecten
+titel: Herzieningsplicht bij gedetecteerde wetseffecten
+faseId: hoe
+disciplineId: recht
+prioriteit: ''
+omvang: ''
+categorie: bar
+capability: ''
+capaciteit: ''
+toelichting: ''
+volgorde: 1000
+onderzoeksvragen:
+  - vraag: >-
+      Als we nu technisch in staat zijn om automatisch te detecteren wanneer
+      wetswijzigingen of complexe afhankelijkheden tussen wetten invloed hebben op
+      oude besluiten, creëert dat dan een juridische plicht om die besluiten
+      proactief te herzien, en verhoogt dit de lat voor het
+      'zorgvuldigheidsbeginsel' (Art. 3:2 Awb)?
+    paper: sec:versioning
+onderzoek: ''
+bouw: ''
+rfcs: []
+samenhangIds: []
+---

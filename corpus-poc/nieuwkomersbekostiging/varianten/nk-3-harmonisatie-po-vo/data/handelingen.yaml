@@ -1,0 +1,267 @@
+# Standaardkostenmodel voor de uitvoeringslast van de nieuwkomersbekostiging
+# (docs/datamodel.md §4): handelingen met een aanleiding, minuten en een
+# tarief, plus eenmalige investeringen en de budgetparameters. De simulatie
+# telt per jaar het aantal aanleidingen uit de populatie (scholen x peildata,
+# aanvragen, ambigu-leerlingen, bezwaren) en vermenigvuldigt met minuten x
+# tarief. Een variant-branch wijzigt dit bestand samen met het corpus:
+# vervalt de aanvraag, dan verdwijnen de handelingen met aanleiding
+# per_aanvraag en wordt de investering ambtshalve_po_it actief.
+#
+# Aanleidingen (de simulatie levert het aantal per jaar):
+#   per_school_peildatum              elke school met >= 1 nieuwkomer (ook
+#                                     onder de drempel) op elke peildatum
+#   per_ambigu_leerling               leerling met ambigu-code of
+#                                     onderwijsnummer (tabblad 2 en 3),
+#                                     eenmalig per leerling
+#   per_aanvraag                      één school x één peildatum met >= 1
+#                                     tellende leerling; het eerstejaars- en
+#                                     het tweedejaarsformulier samen
+#   per_aanvraag_1_januari            idem, alleen op peildatum 1 januari
+#   per_leerling_peildatum            elke tellende leerling op elke peildatum
+#   per_school_jaar                   elke school met >= 1 nieuwkomer in het
+#                                     jaar
+#   per_bezwaar                       fracties.bezwaar_per_aanvraag x aanvragen
+#   per_leerling_zonder_bsn           leerling op onderwijsnummer, eenmalig
+#   per_aanvraag_voorbereidingskosten vo-vestiging die voor het eerst >= 10
+#                                     nieuwkomers heeft (art. 3 vo-regeling)
+#
+# Minuten zijn overal AANNAME (geen tijdmeting beschikbaar; DUO en een paar
+# schoolbesturen kunnen ze in een middag ijken).
+
+# TARIEVEN, eurocent per uur.
+# Bron: Handleiding Overheidstarieven 2026 (HOT 2026, ministerie van
+# Financiën, https://www.nwo.nl/sites/nwo/files/media-files/handleiding_overheidstarieven_2026_0.pdf),
+# tabel 2 "integrale kosten per salarisschaal 2026": loonkosten plus
+# EUR 28.000 overhead per fte, gedeeld door 1.354 productieve uren, exclusief
+# btw. Schaal 6 EUR 64, schaal 8 EUR 73, schaal 11 EUR 95, schaal 12
+# EUR 107. De HOT is op de CAO Rijk gebaseerd; de koppeling van school-
+# functies (CAO PO) aan een Rijksschaal is AANNAME: administratief
+# medewerker OOP schaal 5-6 op schaal 6, directeur D12 op schaal 11,
+# DUO-medewerker bekostiging op schaal 8. Accountant staat niet in de HOT:
+# markttarief voor de controle van de jaarrekening onderwijs, AANNAME.
+tarieven:
+  schooladministratie: 6400     # HOT 2026 tabel 2, schaal 6
+  schoolleiding: 9500           # HOT 2026 tabel 2, schaal 11
+  duo_medewerker: 7300          # HOT 2026 tabel 2, schaal 8
+  ocw_beleidsmedewerker: 10700  # HOT 2026 tabel 2, schaal 12
+  accountant: 15000             # AANNAME, markttarief exclusief btw
+
+handelingen:
+  # --- po, ist: aanvraag per peildatum (regeling art. 34 en 35) ---
+  - id: bestand_nieuwkomers_doorlopen
+    tot_jaar: 2028             # vervalt bij invoering van deze variant
+    omschrijving: >-
+      Bestand Nieuwkomers downloaden uit Mijn DUO op de achtste dag na de
+      peildatum en per tabblad doorlopen: kloppen de datum van eerste
+      inschrijving, de verblijfstitel en de aftrek voor de vierde verjaardag,
+      ontbreken er nieuwkomers (visual p. 6-7, stap 2).
+    partij: school
+    sector: po
+    aanleiding: per_school_peildatum
+    minuten: 45                # AANNAME
+    tarief: schooladministratie
+    grondslag: { regulation: regeling_bekostiging_wpo_en_wec, article: '34', lid: 6 }
+
+  - id: categorie_bepalen_ambigu
+    tot_jaar: 2028             # vervalt bij invoering van deze variant
+    omschrijving: >-
+      Voor een leerling op tabblad 2 (ambigu verblijfstitel) of tabblad 3
+      (onderwijsnummer) op basis van de aanmeldgegevens vaststellen of het
+      om een asielzoeker of een overige vreemdeling gaat en dat oordeel
+      vastleggen (visual p. 7, stap 3).
+    partij: school
+    sector: po
+    aanleiding: per_ambigu_leerling
+    minuten: 20                # AANNAME
+    tarief: schoolleiding
+    grondslag: { regulation: regeling_bekostiging_wpo_en_wec, article: '34', lid: 11 }
+
+  - id: aanvraag_indienen
+    tot_jaar: 2028             # vervalt bij invoering van deze variant
+    omschrijving: >-
+      Aantallen uit de tabbladen optellen en de aanvraag digitaal indienen
+      bij DUO vóór de deadline, met de rol Medewerker bekostiging: het
+      eerstejaarsformulier (asielzoekers en overige vreemdelingen apart,
+      art. 34) en het tweedejaarsformulier (asielzoekers, art. 35) samen
+      (visual p. 7, stap 4-5). Alleen bij minimaal vier eerstejaars
+      nieuwkomers; voor het tweede jaar geldt geen drempel.
+    partij: school
+    sector: po
+    aanleiding: per_aanvraag
+    minuten: 30                # AANNAME
+    tarief: schooladministratie
+    grondslag: { regulation: regeling_bekostiging_wpo_en_wec, article: '34', lid: 6 }
+
+  - id: aanvraag_beoordelen
+    tot_jaar: 2028             # vervalt bij invoering van deze variant
+    omschrijving: >-
+      Aanvraag toetsen aan ROD en het bestand Nieuwkomers, drempel en
+      aantallen controleren, beschikking opstellen en betaalbaar stellen.
+    partij: duo
+    sector: po
+    aanleiding: per_aanvraag
+    minuten: 25                # AANNAME
+    tarief: duo_medewerker
+    grondslag: { regulation: regeling_bekostiging_wpo_en_wec, article: '34', lid: 6 }
+
+  - id: at_correctie_1_januari
+    tot_jaar: 2028             # vervalt bij invoering van deze variant
+    omschrijving: >-
+      Op peildatum 1 januari het aantal eerstejaars asielzoekers uit de
+      1-februari-telling van het vorige schooljaar (At) ophalen en in
+      mindering brengen, omdat de reguliere bekostiging die leerlingen al
+      dekt.
+    partij: duo
+    sector: po
+    aanleiding: per_aanvraag_1_januari
+    minuten: 10                # AANNAME
+    tarief: duo_medewerker
+    grondslag: { regulation: regeling_bekostiging_wpo_en_wec, article: '34', lid: 9 }
+
+  - id: bezwaar_indienen
+    omschrijving: >-
+      Bezwaar tegen de beschikking opstellen en indienen (Awb art. 7:1),
+      meestal over de drempel, een afgekeurde leerling of een gemiste
+      deadline. Aanvulling op de lijst uit het datamodel: een bezwaar kost
+      ook de school tijd.
+    partij: school
+    sector: po
+    aanleiding: per_bezwaar
+    minuten: 90                # AANNAME
+    tarief: schoolleiding
+    grondslag: { regulation: regeling_bekostiging_wpo_en_wec, article: '34', lid: 6 }
+
+  - id: bezwaar_afhandelen
+    omschrijving: >-
+      Bezwaar tegen de beschikking behandelen (Awb art. 7:1 e.v.): dossier
+      opvragen, horen, beslissing op bezwaar opstellen.
+    partij: duo
+    sector: po
+    aanleiding: per_bezwaar
+    minuten: 120               # AANNAME
+    tarief: duo_medewerker
+    grondslag: { regulation: regeling_bekostiging_wpo_en_wec, article: '34', lid: 6 }
+
+  - id: verantwoording_jaarverslag
+    omschrijving: >-
+      De ontvangen nieuwkomersbekostiging verantwoorden in het bestuurs-
+      verslag en de jaarrekening (Regeling jaarverslaggeving onderwijs),
+      per bestuur toegerekend aan de scholen met nieuwkomers.
+    partij: school
+    sector: po
+    aanleiding: per_school_jaar
+    minuten: 30                # AANNAME
+    tarief: schoolleiding
+    grondslag: { regulation: regeling_bekostiging_wpo_en_wec, article: '34' }
+
+  # --- vo, ist: ambtshalve op basis van ROD (vo-regeling art. 3-5) ---
+  - id: rod_uitlezing
+    omschrijving: >-
+      Per peildatum de nieuwkomers per vestiging ambtshalve uit ROD
+      bepalen, de categorie (eerste of tweede) toekennen en de betaling
+      klaarzetten; geautomatiseerd, alleen uitval wordt handmatig bekeken.
+    partij: duo
+    sector: vo
+    aanleiding: per_school_peildatum
+    minuten: 2                 # AANNAME
+    tarief: duo_medewerker
+    grondslag: { regulation: regeling_aanvullende_bekostiging_eerste_opvang_nieuwkomers_vo, article: '3' }
+
+  - id: accountantsvalidatie_nieuwkomers
+    omschrijving: >-
+      De instellingsaccountant controleert bij de jaarrekening de
+      nieuwkomersgegevens (inschrijving, nationaliteit, bewijsstukken) volgens
+      het onderwijsaccountantsprotocol; de school betaalt de accountant.
+    partij: school
+    sector: vo
+    aanleiding: per_school_jaar
+    minuten: 90                # AANNAME
+    tarief: accountant
+    grondslag: { regulation: regeling_aanvullende_bekostiging_eerste_opvang_nieuwkomers_vo, article: '5' }
+
+  - id: bewijsstuk_onderwijsnummer
+    omschrijving: >-
+      Voor een leerling op onderwijsnummer het bewijsstuk (inschrijfformulier
+      met naam en nationaliteit, of de COA-bevestiging) verzamelen en in het
+      dossier bewaren voor de accountant.
+    partij: school
+    sector: vo
+    aanleiding: per_leerling_zonder_bsn
+    minuten: 15                # AANNAME
+    tarief: schooladministratie
+    grondslag: { regulation: regeling_aanvullende_bekostiging_eerste_opvang_nieuwkomers_vo, article: '5' }
+
+  - id: aanvraag_voorbereidingskosten
+    omschrijving: >-
+      Eenmalige aanvraag van de aanvullende bekostiging voor voorbereidings-
+      en coördinatiekosten bij de start van eerste opvang met minimaal tien
+      nieuwkomers op de peildatum.
+    partij: school
+    sector: vo
+    aanleiding: per_aanvraag_voorbereidingskosten
+    minuten: 60                # AANNAME
+    tarief: schoolleiding
+    grondslag: { regulation: regeling_aanvullende_bekostiging_eerste_opvang_nieuwkomers_vo, article: '3' }
+
+  - id: rod_uitlezing_po
+    omschrijving: >-
+      Nieuwkomers per basisschool op de peildatum uit ROD lezen en de
+      bekostiging ambtshalve vaststellen, zoals in het vo.
+    partij: duo
+    sector: po
+    aanleiding: per_school_peildatum
+    vanaf_jaar: 2028
+    minuten: 2                 # AANNAME, gelijk aan vo
+    tarief: duo_medewerker
+    grondslag: { regulation: regeling_bekostiging_wpo_en_wec, article: '34', lid: 6 }
+
+  - id: accountantsvalidatie_nieuwkomers_po
+    omschrijving: >-
+      De accountant valideert jaarlijks het aantal nieuwkomers per
+      basisschool, zoals in het vo.
+    partij: school
+    sector: po
+    aanleiding: per_school_jaar
+    vanaf_jaar: 2028
+    minuten: 90                # AANNAME, gelijk aan vo
+    tarief: accountant
+    grondslag: { regulation: regeling_bekostiging_wpo_en_wec, article: '34', lid: 6 }
+
+fracties:
+  bezwaar_per_aanvraag: 0.02   # AANNAME
+  # Aandeel aanvragen dat na de deadline binnenkomt en daarmee vervalt
+  # (art. 34 lid 6: te laat is afgewezen). DUO kent het echte cijfer.
+  aanvraag_te_laat: 0.03       # AANNAME
+
+# Eenmalige investeringen. `actief: false` in de ist: deze posten horen bij
+# een variant en tellen pas mee als een variant-branch ze op true zet
+# (of ze via de sessie worden aangezet). Afschrijving lineair vanaf
+# vanaf_jaar.
+investeringen:
+  - id: ambtshalve_po_it
+    omschrijving: >-
+      Ambtshalve berekenen en betalen in po, naar het model van vo:
+      DUO-opdracht voor de ROD-koppeling, de drempel- en aftrekberekening
+      en de beschikkingen zonder aanvraag.
+    partij: duo
+    bedrag: 300000000          # eurocent, AANNAME
+    afschrijving_jaren: 5
+    vanaf_jaar: 2028
+    actief: true
+  - id: een_definitie_beleidstraject
+    omschrijving: >-
+      Beleidstraject voor één definitie van nieuwkomer over po en vo
+      (wijziging van de regelingen, consultatie, uitvoeringstoets DUO).
+    partij: ocw
+    bedrag: 20000000           # eurocent, AANNAME
+    afschrijving_jaren: 1
+    vanaf_jaar: 2027
+    actief: false
+
+# Budgetparameters voor de budgettoets, eurocent per jaar. AANNAME als
+# sessieparameters: po afgerond op de ADR-onzekerheidspost, vo op de
+# realisatie 2025, uitvoering als ruwe schatting van de DUO- en OCW-kosten.
+budget:
+  regeling_po: 20000000000
+  regeling_vo: 26300000000
+  uitvoering: 500000000

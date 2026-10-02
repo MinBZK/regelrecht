@@ -5,9 +5,14 @@
 //! status machine without ever stranding a law in `enriching` without an
 //! active/pending job.
 
+// Allowed crate-wide: test helpers outside a `#[test]` fn may unwrap, expect and
+// panic too, because that is how a failing fixture reports itself.
+// `allow-*-in-tests` in clippy.toml only reaches `#[test]` fns.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 use serde_json::json;
 
-use regelrecht_pipeline::enrich::{EnrichPayload, EnrichResult};
+use regelrecht_pipeline::enrich::{EnrichPayload, EnrichResult, Pass};
 use regelrecht_pipeline::job_queue::{self, CreateJobRequest};
 use regelrecht_pipeline::models::{Job, JobStatus, JobType, LawStatusValue, Priority};
 use regelrecht_pipeline::test_utils::TestDb;
@@ -30,6 +35,10 @@ fn payload(provider: &str) -> EnrichPayload {
         new_law: None,
         chunk_articles: None,
         skip_mvt: None,
+        // Niet geserialiseerd; een payload uit de wachtrij is altijd een
+        // vertaalslag, en de terugkoppelpassen ontstaan binnen de run.
+        pass: Pass::Translate,
+        session: None,
     }
 }
 
@@ -44,8 +53,13 @@ fn chunk_result(provider: &str, law_complete: bool, enrich_cursor: usize) -> Enr
         branch: format!("enrich/{provider}"),
         related_legislation: Vec::new(),
         untranslatables: Vec::new(),
+        markings: Vec::new(),
         law_complete,
         enrich_cursor,
+        feedback: Vec::new(),
+        usage: None,
+        agent_calls: Vec::new(),
+        session_reuse: "off".into(),
     }
 }
 
@@ -420,4 +434,46 @@ async fn legacy_result_json_counts_as_complete() {
         law_status::get_law(&db.pool, LAW_ID).await.unwrap().status,
         LawStatusValue::Enriched
     );
+}
+
+/// The worker must mirror markings, not just untranslatables.
+///
+/// This goes through `complete_enrich_success_tx` rather than calling
+/// `replace_markings` directly, because the bug being guarded against was in
+/// the wiring: the worker mirrored one channel and silently dropped the other.
+/// A test that calls the persistence function itself proves the function works
+/// and says nothing about whether anyone calls it. Delete the
+/// `replace_markings` call in the worker and this is the test that goes red.
+#[tokio::test]
+async fn completing_an_enrich_run_mirrors_its_markings() {
+    let db = TestDb::new().await;
+    let job = setup_processing_enrich_job(&db, "opencode").await;
+
+    let mut result = chunk_result("opencode", true, 30);
+    result.markings = vec![regelrecht_pipeline::enrich::CapturedMarking {
+        article: "5".into(),
+        about: "de eerstvolgende werkdag".into(),
+        resolution: "operation".into(),
+        resolved_by: Some("een WORKING_DAY-bewerking".into()),
+        target: vec!["datum_van_betaling".into()],
+        legal_text_excerpt: "De betaling geschiedt op de eerstvolgende werkdag".into(),
+        accepted: false,
+    }];
+
+    worker::complete_enrich_success_tx(
+        &db.pool,
+        &job,
+        &payload("opencode"),
+        &result,
+        Some(serde_json::to_value(&result).unwrap()),
+    )
+    .await
+    .unwrap();
+
+    let (law_id, about): (String, String) = sqlx::query_as("SELECT law_id, about FROM markings")
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+    assert_eq!(law_id, LAW_ID);
+    assert_eq!(about, "de eerstvolgende werkdag");
 }

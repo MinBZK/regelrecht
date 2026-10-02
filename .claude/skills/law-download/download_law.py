@@ -27,6 +27,29 @@ WTI_NS = {
 }
 
 
+def schema_url():
+    """The `$schema` URL for the current schema version.
+
+    Read from the `schema/latest` symlink rather than hardcoded: a literal here
+    drifts on every schema bump, and nothing catches it (the Rust constant in
+    `packages/shared/src/schema_version.rs` has a test, this script does not).
+
+    The tag form is required by RFC-013 — a `refs/heads/main` URL points at a
+    moving target, so the schema a law validates against could change under it.
+    """
+    for parent in [Path.cwd(), *Path.cwd().parents]:
+        link = parent / "schema" / "latest"
+        if link.is_symlink():
+            version = Path(link.readlink()).name
+            return (
+                "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/"
+                f"schema-{version}/schema/{version}/schema.json"
+            )
+    raise FileNotFoundError(
+        "Could not find schema/latest; run this from inside the regelrecht repo."
+    )
+
+
 def slugify(text):
     """Convert text to URL-friendly slug."""
     text = text.lower()
@@ -92,7 +115,7 @@ def parse_wti_metadata(wti_tree):
         if layer not in VALID_LAYERS:
             raise ValueError(
                 f"'{soort_text}' maps to '{layer}' which is not a valid "
-                f"schema v0.5.6 regulatory_layer. Map manually to e.g. AMVB."
+                f"schema regulatory_layer. Map manually to e.g. AMVB."
             )
         metadata["regulatory_layer"] = layer
 
@@ -199,9 +222,9 @@ def generate_yaml(metadata, articles, effective_date):
     bwb_id = metadata.get("bwb_id")
     law_id = slugify(metadata.get("title", bwb_id or "unknown"))
 
-    # Create YAML structure matching schema v0.5.6
+    # Create YAML structure matching the current schema version
     law_data = {
-        "$schema": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.6/schema.json",
+        "$schema": schema_url(),
         "$id": law_id,
         "name": metadata.get("title", law_id),
         "regulatory_layer": metadata.get("regulatory_layer", "WET"),

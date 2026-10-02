@@ -1,0 +1,207 @@
+{
+  "_toelichting": "Cast voor seed_productie.py: de landelijke partijen met realistische eigen opgaven (ledentallen in de orde van de DNPP-cijfers, neveninstellingen zoals ze echt bestaan) plus de verhaal-dossiers. De decentrale bulk komt rechtstreeks uit backend/data/partijregister.json (deterministische steekproef in het script). PVV dient bewust geen aanvraag in; de ledendrempel-afwijzing wordt gedemonstreerd door een fictieve rechtspersoon (90000002), niet door een echte partij.",
+  "landelijk": [
+    {
+      "kvk_nummer": "92525446",
+      "naam": "D66",
+      "aantal_betalende_leden": 30200,
+      "heeft_wetenschappelijk_instituut": true,
+      "heeft_jongerenorganisatie": true,
+      "aantal_leden_jongerenorganisatie": 7400,
+      "heeft_instelling_buitenland": true
+    },
+    {
+      "kvk_nummer": "92230197",
+      "naam": "VVD",
+      "aantal_betalende_leden": 22800,
+      "heeft_wetenschappelijk_instituut": true,
+      "heeft_jongerenorganisatie": true,
+      "aantal_leden_jongerenorganisatie": 2900,
+      "heeft_instelling_buitenland": true
+    },
+    {
+      "kvk_nummer": "94766276",
+      "naam": "GROENLINKS / Partij van de Arbeid (PvdA)",
+      "aantal_betalende_leden": 77600,
+      "heeft_wetenschappelijk_instituut": true,
+      "heeft_jongerenorganisatie": true,
+      "aantal_leden_jongerenorganisatie": 6300,
+      "heeft_instelling_buitenland": true
+    },
+    {
+      "kvk_nummer": "99727422",
+      "naam": "CDA",
+      "aantal_betalende_leden": 29800,
+      "heeft_wetenschappelijk_instituut": true,
+      "heeft_jongerenorganisatie": true,
+      "aantal_leden_jongerenorganisatie": 1900,
+      "heeft_instelling_buitenland": true
+    },
+    {
+      "kvk_nummer": "94388981",
+      "naam": "JA21",
+      "aantal_betalende_leden": 6100,
+      "heeft_wetenschappelijk_instituut": false,
+      "heeft_jongerenorganisatie": false,
+      "aantal_leden_jongerenorganisatie": 0,
+      "heeft_instelling_buitenland": false
+    },
+    {
+      "kvk_nummer": "94813790",
+      "naam": "Forum voor Democratie",
+      "aantal_betalende_leden": 41500,
+      "heeft_wetenschappelijk_instituut": true,
+      "heeft_jongerenorganisatie": true,
+      "aantal_leden_jongerenorganisatie": 4100,
+      "heeft_instelling_buitenland": false
+    },
+    {
+      "kvk_nummer": "98786584",
+      "naam": "BBB",
+      "aantal_betalende_leden": 9400,
+      "heeft_wetenschappelijk_instituut": false,
+      "heeft_jongerenorganisatie": true,
+      "aantal_leden_jongerenorganisatie": 850,
+      "heeft_instelling_buitenland": false
+    },
+    {
+      "kvk_nummer": "94876288",
+      "naam": "ChristenUnie",
+      "aantal_betalende_leden": 20900,
+      "heeft_wetenschappelijk_instituut": true,
+      "heeft_jongerenorganisatie": true,
+      "aantal_leden_jongerenorganisatie": 1550,
+      "heeft_instelling_buitenland": false
+    },
+    {
+      "kvk_nummer": "94505115",
+      "naam": "DENK",
+      "aantal_betalende_leden": 3700,
+      "heeft_wetenschappelijk_instituut": false,
+      "heeft_jongerenorganisatie": false,
+      "aantal_leden_jongerenorganisatie": 0,
+      "heeft_instelling_buitenland": false
+    },
+    {
+      "kvk_nummer": "94353423",
+      "naam": "Partij voor de Dieren",
+      "aantal_betalende_leden": 25900,
+      "heeft_wetenschappelijk_instituut": true,
+      "heeft_jongerenorganisatie": true,
+      "aantal_leden_jongerenorganisatie": 1750,
+      "heeft_instelling_buitenland": false
+    },
+    {
+      "kvk_nummer": "91377023",
+      "naam": "SP (Socialistische Partij)",
+      "aantal_betalende_leden": 25600,
+      "heeft_wetenschappelijk_instituut": true,
+      "heeft_jongerenorganisatie": false,
+      "aantal_leden_jongerenorganisatie": 0,
+      "heeft_instelling_buitenland": false
+    },
+    {
+      "kvk_nummer": "98229479",
+      "naam": "Staatkundig Gereformeerde Partij (SGP)",
+      "aantal_betalende_leden": 30400,
+      "heeft_wetenschappelijk_instituut": true,
+      "heeft_jongerenorganisatie": true,
+      "aantal_leden_jongerenorganisatie": 8900,
+      "heeft_instelling_buitenland": false
+    },
+    {
+      "kvk_nummer": "94619188",
+      "naam": "50PLUS",
+      "aantal_betalende_leden": 4600,
+      "heeft_wetenschappelijk_instituut": false,
+      "heeft_jongerenorganisatie": false,
+      "aantal_leden_jongerenorganisatie": 0,
+      "heeft_instelling_buitenland": false,
+      "blijft_in_behandeling": true
+    },
+    {
+      "kvk_nummer": "96544090",
+      "naam": "Volt",
+      "aantal_betalende_leden": 13900,
+      "heeft_wetenschappelijk_instituut": false,
+      "heeft_jongerenorganisatie": false,
+      "aantal_leden_jongerenorganisatie": 0,
+      "heeft_instelling_buitenland": true
+    }
+  ],
+  "dient_niet_in": ["99727328"],
+  "verhalen": {
+    "afwijzing_ledendrempel": {
+      "_": "Fictieve rechtspersoon zonder registratie of zetels: de wet wijst af; daarna bezwaar dat ongegrond wordt verklaard.",
+      "kvk_nummer": "90000002",
+      "aantal_betalende_leden": 650,
+      "bezwaar": {
+        "naam_indiener": "L. Jansen (secretaris)",
+        "adres_indiener": "Postbus 1212, 3500 AE Utrecht",
+        "gronden": "Onze beweging is volop in opbouw en doet bij de eerstvolgende Tweede Kamerverkiezing mee. Het ontbreken van een zetel op de peildatum is een momentopname; wij verzoeken de Napp de aanvraag alsnog toe te kennen.",
+        "ondertekend": true,
+        "beslissing": "ONGEGROND"
+      }
+    },
+    "bezwaar_gegrond_jongerenorganisatie": {
+      "_": "JA21 vergeet de jongerenorganisatie aan te kruisen; bezwaar gegrond, volledige heroverweging (AWB 7:11) levert een herzien, hoger besluit.",
+      "kvk_nummer": "94388981",
+      "bezwaar": {
+        "naam_indiener": "Bestuur JA21",
+        "adres_indiener": "Postbus 891, 2501 CW Den Haag",
+        "gronden": "In de aanvraag is abusievelijk niet opgegeven dat aan de partij een politieke jongerenorganisatie is verbonden. Wij verzoeken het besluit te herzien en het deel voor de jongerenorganisatie alsnog toe te kennen.",
+        "ondertekend": true,
+        "beslissing": "GEGROND",
+        "gecorrigeerde_parameters": {
+          "heeft_jongerenorganisatie": true,
+          "aantal_leden_jongerenorganisatie": 1200
+        }
+      }
+    },
+    "aangehouden_betaling": {
+      "_": "CDA-afdeling 's-Gravenhage geeft bewust geen rekening op: toekenning met AANGEHOUDEN betaalopdracht (art. 27 Wpp).",
+      "kvk_nummer": "99399789"
+    },
+    "bezwaar_open_staffel": {
+      "_": "DemocratenGorinchem (Gorinchem, 39.046 inwoners) betwist de inwonerstaffel; bezwaar blijft in behandeling als werkvoorraad.",
+      "kvk_nummer": "90066747",
+      "bezwaar": {
+        "naam_indiener": "F. den Hartog (penningmeester)",
+        "adres_indiener": "Postbus 42, 4200 AA Gorinchem",
+        "gronden": "Het bedrag per raadszetel is berekend op de staffel tot en met 40.000 inwoners. Gorinchem is door de oplevering van de nieuwbouwwijk Hoog Dalem de 40.000 inwoners inmiddels gepasseerd; wij verzoeken het bedrag per zetel op de hogere staffel vast te stellen.",
+        "ondertekend": true
+      }
+    },
+    "bezwaar_vormgebrek": {
+      "_": "Hart voor Heemskerk dient een niet-ondertekend bezwaarschrift in: herstelfase (AWB 6:6) als werkvoorraad.",
+      "kvk_nummer": "94602794",
+      "bezwaar": {
+        "naam_indiener": "Hart voor Heemskerk",
+        "gronden": "Het toegekende bedrag is lager dan verwacht.",
+        "ondertekend": false
+      }
+    },
+    "open_claim": {
+      "_": "Fictieve rechtspersoon claimt de ongekoppelde aanduiding Wakker Emmen; blijft OPEN ter beoordeling. EVB en Leefbaar Capelle blijven vrij voor bezoekers die de claim-flow zelf willen proberen.",
+      "kvk_nummer": "90000003",
+      "doel_kvk": "92256736"
+    },
+    "werkvoorraad_decentraal": {
+      "_": "Deze decentrale aanvragen blijven in BEHANDELING zodat de werkvoorraad gevuld is.",
+      "kvk_nummers": [
+        "94175607",
+        "92568997",
+        "99296925",
+        "95506145",
+        "91137686",
+        "95186470"
+      ]
+    }
+  },
+  "speeltuin": {
+    "_": "Demo-voorbeelden uit het eHerkenning-loginscherm die bezoekers zelf moeten kunnen doorlopen: geen geseed dossier (een tweede aanvraag zou op art. 13 stranden). CDA-afdeling 's-Gravenhage krijgt wél een dossier: de aangehouden betaalopdracht is daar juist het interactieve demomateriaal (rekening opgeven heft de aanhouding op).",
+    "kvk_nummers": ["98626816", "96477294", "93178212", "97373758", "90000001"]
+  },
+  "uitbetaald_fractie": 0.85,
+  "decentrale_uptake": 0.65
+}

@@ -1,10 +1,20 @@
 //! Print an execution trace for a law evaluation.
 //!
 //! Usage:
-//!   cargo run --example trace -- <law_id> <output_name> <date> [key=value ...]
+//!   cargo run --example trace -- [--json] <law_id> <output_name> <date> [key=value ...]
+//!
+//! Without `--json` it prints the box-drawing rendering, which is presentation.
+//! With `--json` it prints the trace document (RFC-039,
+//! `schema/trace/v1/trace-schema.json`): the same tree, with every step
+//! addressed and anchored to the provision it came from.
 //!
 //! Example:
 //!   cargo run --example trace -- wet_op_de_zorgtoeslag hoogte_zorgtoeslag 2025-01-01 bsn=999993653
+
+// Allowed crate-wide: this example outside a `#[test]` fn may unwrap, expect and
+// panic too, because that is how a failing fixture reports itself.
+// `allow-*-in-tests` in clippy.toml only reaches `#[test]` fns.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use regelrecht_engine::{LawExecutionService, Value};
 use std::collections::BTreeMap;
@@ -12,9 +22,13 @@ use std::path::Path;
 use walkdir::WalkDir;
 
 fn main() {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut args: Vec<String> = std::env::args().skip(1).collect();
+    let as_json = args.first().is_some_and(|a| a == "--json");
+    if as_json {
+        args.remove(0);
+    }
     if args.len() < 3 {
-        eprintln!("Usage: trace <law_id> <output_name> <date> [key=value ...]");
+        eprintln!("Usage: trace [--json] <law_id> <output_name> <date> [key=value ...]");
         eprintln!(
             "Example: trace wet_op_de_zorgtoeslag hoogte_zorgtoeslag 2025-01-01 bsn=999993653"
         );
@@ -70,7 +84,15 @@ fn main() {
     match service.evaluate_law_output_with_trace(law_id, output_name, params, date) {
         Ok(result) => {
             if let Some(trace) = result.trace {
-                println!("{}", trace.render_box_drawing());
+                if as_json {
+                    let doc = regelrecht_engine::trace::TraceDocument::new(trace);
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&doc).expect("a trace serializes")
+                    );
+                } else {
+                    println!("{}", trace.render_box_drawing());
+                }
             } else {
                 eprintln!("No trace produced");
             }

@@ -3,6 +3,11 @@
 //! These tests verify that the Rust engine produces the correct outputs
 //! for a comprehensive set of test cases using pre-generated fixtures.
 
+// Allowed crate-wide: test helpers outside a `#[test]` fn may unwrap, expect and
+// panic too, because that is how a failing fixture reports itself.
+// `allow-*-in-tests` in clippy.toml only reaches `#[test]` fns.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 use regelrecht_engine::{LawExecutionService, Value};
 use rust_decimal::prelude::ToPrimitive;
 use serde::Deserialize;
@@ -143,8 +148,17 @@ fn run_test_case(test: &TestCase) -> Result<(), String> {
         .map(|(k, v)| (k.clone(), json_to_value(v)))
         .collect();
 
-    // Execute
-    let result = service.evaluate_law_output(law_id, output_name, params, calculation_date);
+    // Execute. The engine computes only what is asked for (RFC-043), so ask
+    // for every output the fixture checks, not just the one it names.
+    let mut requested: Vec<&str> = vec![output_name.as_str()];
+    if expected.success {
+        for name in expected.outputs.keys() {
+            if !requested.contains(&name.as_str()) {
+                requested.push(name);
+            }
+        }
+    }
+    let result = service.evaluate_law(law_id, &requested, params, calculation_date);
 
     // Verify result
     if expected.success {

@@ -52,7 +52,7 @@ RUN set -eu; \
 # When adding a new workspace member that this image does NOT build, add it
 # to this exclusion list as well; otherwise chef will fail to find its source.
 RUN grep -qE '^members = \[$' Cargo.toml && \
-    sed -i '/"admin"/d; /"arch-extract"/d; /"auth"/d; /"corpus"/d; /"editor-api"/d; /"github"/d; /"harvester"/d; /"pipeline"/d; /"tui"/d' Cargo.toml
+    sed -i '/"admin"/d; /"arch-extract"/d; /"auth"/d; /"corpus"/d; /"editor-api"/d; /"github"/d; /"harvester"/d; /"pipeline"/d; /"poc-napp"/d; /"poc-portal"/d; /"tui"/d' Cargo.toml
 COPY packages/engine/ engine/
 COPY packages/law-model/ law-model/
 COPY packages/shared/ shared/
@@ -61,13 +61,15 @@ RUN cargo build --target wasm32-unknown-unknown --release --features wasm -p reg
       target/wasm32-unknown-unknown/release/regelrecht_engine.wasm
 
 # Stage 1b: Build frontend (with WASM module)
-FROM node:26-alpine@sha256:aadf416b2cdce311a8811ba3f0608a61b77dbf997500e2eafe781b51f6a0b019 AS frontend-builder
+FROM node:26-alpine@sha256:0b36e8c136b94cd4fcf02188228e76c31ad5872eef3fec8cbd2eee500cfd9e80 AS frontend-builder
 WORKDIR /app
 # Workspace manifests first so `npm ci` is cached independently of source.
 COPY package.json package-lock.json .npmrc ./
 COPY packages/frontend-shared/package.json packages/frontend-shared/
 COPY frontend/package.json frontend/
 COPY frontend-lawmaking/package.json frontend-lawmaking/
+COPY frontend-demo/package.json frontend-demo/
+COPY frontend-poc-portal/package.json frontend-poc-portal/
 # --ignore-scripts: een gekaapte release mag zijn install-hooks hier niet
 # draaien; de build eronder heeft ze niet nodig.
 RUN npm ci --ignore-scripts
@@ -115,7 +117,7 @@ COPY packages/Cargo.lock packages/Cargo.toml ./
 # When adding a new workspace member that this image does NOT build, add it
 # to this exclusion list as well; otherwise chef will fail to find its source.
 RUN grep -qE '^members = \[$' Cargo.toml && \
-    sed -i '/"admin"/d; /"arch-extract"/d; /"tui"/d' Cargo.toml
+    sed -i '/"admin"/d; /"arch-extract"/d; /"poc-napp"/d; /"poc-portal"/d; /"tui"/d' Cargo.toml
 COPY packages/auth/ auth/
 COPY packages/editor-api/ editor-api/
 COPY packages/corpus/ corpus/
@@ -160,7 +162,7 @@ RUN find . -name '*.rs' -exec touch {} + && \
     cargo build --release --bin regelrecht-editor-api
 
 # Stage 5: Runtime
-FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
 RUN apk add --no-cache ca-certificates git && \
     addgroup -S app && adduser -S app -G app
 

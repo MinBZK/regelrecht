@@ -1,6 +1,6 @@
 <script setup>
-// Integriteitsrapport van een traject: wat er mis is met de configuratie van
-// het traject-corpus, en per bevinding wat je eraan doet.
+// Structuurrapport van een traject: wat er mis is met de inrichting van het
+// traject-corpus, en per bevinding wat je eraan doet.
 //
 // De aanleiding: de wettenindex leest een wet-id af van de mapnaam, terwijl de
 // editor na het laden overgaat op het `$id` uit de YAML. Wijken die af, dan
@@ -42,7 +42,7 @@ function scopeSummary(r) {
 
 <template>
   <nldd-simple-section>
-    <nldd-title v-if="paneChromeVisible(loading)" id="integriteit-pane-titel" size="3"><h3>Integriteit</h3></nldd-title>
+    <nldd-title v-if="paneChromeVisible(loading)" id="structuur-controle-titel" size="3"><h3>Traject-structuur controleren</h3></nldd-title>
     <nldd-spacer v-if="paneChromeVisible(loading)" size="8"></nldd-spacer>
     <nldd-rich-text v-if="paneChromeVisible(loading)">
       <p>
@@ -67,14 +67,14 @@ function scopeSummary(r) {
 
     <nldd-activity-indicator
       v-if="loading"
-      text="Integriteit controleren"
+      text="Structuur controleren"
       show-text
     ></nldd-activity-indicator>
 
     <nldd-inline-dialog
       v-else-if="error"
       variant="alert"
-      text="Integriteitscontrole niet gelukt"
+      text="Structuurcontrole niet gelukt"
       :supporting-text="error.message || 'De gegevens konden niet worden opgehaald.'"
     >
       <nldd-button slot="actions" variant="primary" text="Probeer opnieuw" @click="reload"></nldd-button>
@@ -101,7 +101,7 @@ function scopeSummary(r) {
         <template v-for="group in groups" :key="group.key">
           <nldd-title size="5"><h4>{{ group.title }} ({{ group.counts }})</h4></nldd-title>
           <nldd-spacer size="8"></nldd-spacer>
-          <nldd-list variant="box">
+          <nldd-list variant="box-tinted">
             <nldd-list-item
               v-for="(finding, i) in group.findings"
               :key="`${group.key}-${i}`"

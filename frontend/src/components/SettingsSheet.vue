@@ -13,10 +13,9 @@
 // The composables backing this are singletons, so the sheet reads them
 // directly instead of taking the whole set as props.
 import { computed, ref } from 'vue';
-import { useAuth } from '../composables/useAuth.js';
-import { useColorScheme } from '../composables/useColorScheme.js';
 import { useFeatureFlags } from '../composables/useFeatureFlags.js';
 import { useGithubAuth } from '../composables/useGithubAuth.js';
+import { useSettingsSections } from '../composables/useSettingsSections.js';
 
 const sheetEl = ref(null);
 
@@ -29,20 +28,12 @@ function hide() {
 
 defineExpose({ show, hide });
 
-const { authenticated, loading: authLoading, hasRole } = useAuth();
-const { colorScheme, setColorScheme } = useColorScheme();
 const { isEnabled, toggle: toggleFlag } = useFeatureFlags();
 const {
   status: githubStatus,
   connect: connectGithub,
   disconnect: disconnectGithub,
 } = useGithubAuth();
-
-const colorSchemeOptions = [
-  ['auto', 'Systeem', 'display'],
-  ['light', 'Licht', 'light-mode'],
-  ['dark', 'Donker', 'dark-mode'],
-];
 
 const editorPanelFlags = [
   ['panel.article_text', 'Tekst editor'],
@@ -52,13 +43,11 @@ const editorPanelFlags = [
   ['panel.notes', 'Notities'],
 ];
 
-const signedIn = computed(() => !authLoading.value && authenticated.value);
-// Feature flags are deployment-wide and the PUT is behind `editor-admin`
-// (main.rs, "Admin routes"). Showing the switches to anyone else would give
-// them controls that silently revert on the 403.
-const isAdmin = computed(() => signedIn.value && hasRole('editor-admin'));
-// `configured: false` means this deployment has no GitHub OAuth App wired up,
-// so the whole section stays hidden.
+// De sectie-poorten staan in useSettingsSections, want AppShell stelt dezelfde
+// vraag om te bepalen of het menu-item "Instellingen" er hoort te staan.
+const { signedIn, showBeheer: isAdmin, showKoppelingen } = useSettingsSections();
+// Alleen "is er hier een GitHub-app geconfigureerd", zonder de required-helft:
+// de schakelaar in Beheer is juist wat `required` aan- of uitzet.
 const githubConfigured = computed(() => signedIn.value && !!githubStatus.value?.configured);
 // Two different questions, deliberately not the same computed:
 //   `required` — does the write path actually demand a personal token? The
@@ -138,33 +127,14 @@ function confirmDisconnect() {
         ></nldd-top-title-bar>
 
         <nldd-simple-section width="full">
-          <nldd-title size="5">
-            <h2>Weergave</h2>
-          </nldd-title>
-          <nldd-spacer size="8"></nldd-spacer>
-          <nldd-segmented-control
-            variant="icon-and-text"
-            width="full"
-            accessible-label="Kleurschema"
-            :value="colorScheme"
-            @change="setColorScheme($event.detail.value)"
-          >
-            <nldd-segmented-control-item
-              v-for="[value, label, icon] in colorSchemeOptions"
-              :key="value"
-              :value="value"
-              :text="label"
-              :icon="icon"
-            ></nldd-segmented-control-item>
-          </nldd-segmented-control>
 
-          <template v-if="githubConfigured && githubRequired">
+          <template v-if="showKoppelingen">
             <nldd-spacer size="24"></nldd-spacer>
             <nldd-title size="5">
               <h2>Koppelingen</h2>
             </nldd-title>
             <nldd-spacer size="8"></nldd-spacer>
-            <nldd-list variant="box">
+            <nldd-list variant="box-tinted">
               <nldd-list-item>
                 <nldd-text-cell
                   text="GitHub"
@@ -196,7 +166,7 @@ function confirmDisconnect() {
               <span slot="subtitle">Geldt voor alle gebruikers en trajecten in deze installatie.</span>
             </nldd-title>
             <nldd-spacer size="8"></nldd-spacer>
-            <nldd-list variant="box">
+            <nldd-list variant="box-tinted">
               <nldd-list-item v-for="[key, label] in editorPanelFlags" :key="key">
                 <nldd-text-cell :text="label"></nldd-text-cell>
                 <nldd-cell>

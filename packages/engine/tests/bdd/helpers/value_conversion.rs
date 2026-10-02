@@ -10,9 +10,16 @@ use rust_decimal::Decimal;
 /// Supports:
 /// - `true` / `false` -> Bool
 /// - `null` -> Null
+/// - A JSON array or object literal (`[...]` / `{...}`) -> Array / Object
 /// - Integer literals -> Int
 /// - Decimal literals -> Decimal
 /// - Everything else -> String
+///
+/// The JSON form exists because a Gherkin cell is otherwise a scalar: a
+/// register input of type `array` or `object` (a list of children, an address)
+/// has no other way into a data-source table. A cell that starts like JSON but
+/// does not parse stays a string, so a stray bracket cannot turn into a
+/// silent Null.
 pub fn convert_gherkin_value(val: &str) -> Value {
     let trimmed = val.trim();
 
@@ -27,6 +34,13 @@ pub fn convert_gherkin_value(val: &str) -> Value {
     // Null
     if trimmed == "null" || trimmed.is_empty() {
         return Value::Null;
+    }
+
+    // JSON array / object
+    if trimmed.starts_with('[') || trimmed.starts_with('{') {
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(trimmed) {
+            return Value::from(json);
+        }
     }
 
     // Try integer first
@@ -89,6 +103,34 @@ mod tests {
         assert_eq!(convert_gherkin_value("3.14"), Value::Decimal(dec!(3.14)));
         assert_eq!(convert_gherkin_value("-1.5"), Value::Decimal(dec!(-1.5)));
         assert_eq!(convert_gherkin_value("0.5"), Value::Decimal(dec!(0.5)));
+    }
+
+    #[test]
+    fn test_convert_json_array_and_object() {
+        assert_eq!(
+            convert_gherkin_value("[5, 7]"),
+            Value::Array(vec![Value::Int(5), Value::Int(7)])
+        );
+        assert_eq!(convert_gherkin_value("[]"), Value::Array(vec![]));
+        let obj = convert_gherkin_value(r#"{"postcode": "1234AB", "huisnummer": "10"}"#);
+        match obj {
+            Value::Object(map) => {
+                assert_eq!(
+                    map.get("postcode"),
+                    Some(&Value::String("1234AB".to_string()))
+                );
+                assert_eq!(
+                    map.get("huisnummer"),
+                    Some(&Value::String("10".to_string()))
+                );
+            }
+            other => panic!("expected Object, got {other:?}"),
+        }
+        // A cell that merely starts with a bracket but is not JSON stays a string.
+        assert_eq!(
+            convert_gherkin_value("[not json"),
+            Value::String("[not json".to_string())
+        );
     }
 
     #[test]

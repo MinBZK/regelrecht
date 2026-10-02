@@ -1,0 +1,28 @@
+---
+# Schema-geldig, maar de wet toetst een niet-nullable input op afwezigheid
+# (RFC-036, regel N1). Alleen de statische typecontrole vangt dit.
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$id: test_validate_cli_type_error
+regulatory_layer: WET
+publication_date: '2025-01-01'
+bwb_id: BWBR0123457
+url: https://example.invalid/law
+articles:
+  - number: '1'
+    text: Van huur is geen sprake indien in de registratie geen huur is opgenomen.
+    url: https://example.invalid/law/artikel/1
+    machine_readable:
+      execution:
+        input:
+          - name: huur
+            type: amount
+            source: {}
+        output:
+          - name: geen_huur
+            type: boolean
+        actions:
+          - output: geen_huur
+            value:
+              operation: EQUALS
+              subject: $huur
+              value: null

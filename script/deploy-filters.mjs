@@ -26,8 +26,9 @@ import { fileURLToPath } from 'node:url';
 // build op die niets uitrolt.
 const NGINX_SHARED = 'deploy/nginx/';
 
-// Per component: de crate waar het image aan hangt (of null), plus de paden
-// buiten de graaf die het image beïnvloeden.
+// Per component: de crate waar het image aan hangt (of null, of een lijst als
+// het image er meer dan één bouwt), plus de paden buiten de graaf die het image
+// beïnvloeden.
 export const COMPONENTS = {
   editor: {
     crate: 'regelrecht-editor-api',
@@ -59,7 +60,69 @@ export const COMPONENTS = {
     crate: null,
     paths: ['frontend-lawmaking/', 'packages/frontend-shared/', NGINX_SHARED],
   },
-  docs: { crate: null, paths: ['docs/', NGINX_SHARED] },
+  // De landingspagina bakt het corpus in (de wettekst en de YAML die ze naast
+  // elkaar zet, de annotatie eronder) en draait het zorgtoeslag-scenario als
+  // WASM in de browser van de bezoeker. Daarmee hangt docs aan dezelfde dingen
+  // als de demo: de engine-crate, het gedeelde frontend-pakket waar de
+  // Gherkin-runner uit komt, en de wetten die script/landing-laws.sh meeneemt.
+  // Zonder die paden bleef productie na een corpuswijziging de oude wettekst
+  // tonen, precies de drift die landing-demo.ts zegt te voorkomen.
+  docs: {
+    crate: 'regelrecht-engine',
+    paths: [
+      'docs/',
+      'packages/frontend-shared/',
+      'corpus/regulation/',
+      'corpus/annotations/',
+      'script/landing-laws.sh',
+      NGINX_SHARED,
+    ],
+  },
+  // De demo bouwt de engine als WASM (zie frontend-demo/Dockerfile), dus hij
+  // hangt aan de engine-crate; daarnaast aan zijn eigen map, het gedeelde
+  // frontend-pakket en het demo-corpus dat hij bundelt. `build-demo` in
+  // deploy.yml leest deze uitkomst.
+  demo: {
+    crate: 'regelrecht-engine',
+    paths: ['frontend-demo/', 'packages/frontend-shared/', 'corpus/demo/', NGINX_SHARED],
+  },
+  // napp draait als eigen, niet-gepubliceerd component; het portaal proxyt
+  // ernaartoe. Eigen image, dus eigen filter.
+  'poc-napp': {
+    crate: 'regelrecht-poc-napp',
+    paths: [
+      'pocs/',
+      'corpus-poc/napp/',
+      'frontend-poc-napp/',
+      'packages/frontend-shared/',
+      'packages/poc-napp/Dockerfile',
+    ],
+  },
+  // Het poc-portaal bakt de statische pocs in zijn eigen image, dus het raakt
+  // ook aan hun frontends en hun casus-corpus. De crate-kant volgt uit de graaf,
+  // over twee crates: de portaal-binary, en de engine die het image als WASM
+  // voor de pocs bouwt (packages/poc-portal/Dockerfile, de wasm-builder). Het
+  // portaal zelf hangt niet aan de engine, dus met alleen de eerste bleef
+  // productie na een engine-wijziging stil op de oude WASM draaien.
+  //
+  // `packages/poc-assistent/` staat er met de hand bij en moet er blijven: het
+  // is JavaScript, dus geen crate, en de graaf vindt het nooit. Het image
+  // kopieert het wel (poc-portal/Dockerfile). Zonder deze regel bouwt een
+  // wijziging aan de assistent geen image en blijft productie stil op de oude
+  // staan — precies de fout die dit script hoort uit te bannen.
+  poc: {
+    crate: ['regelrecht-poc-portal', 'regelrecht-engine'],
+    paths: [
+      'pocs/',
+      'corpus-poc/',
+      'frontend-poc-portal/',
+      'frontend-poc-terugbetaalregimes/',
+      'frontend-poc-nieuwkomersbekostiging/',
+      'packages/frontend-shared/',
+      'packages/poc-assistent/',
+      'packages/poc-portal/Dockerfile',
+    ],
+  },
 };
 
 // Raakt elk component met een Rust-image: de workspace zelf.
@@ -118,14 +181,16 @@ export function prefixesFor(spec, graph) {
   const prefixes = [...spec.paths];
   if (!spec.crate) return prefixes;
 
-  if (!graph.byName.has(spec.crate)) {
-    throw new Error(`crate ${spec.crate} niet gevonden in de workspace`);
-  }
   prefixes.push(...RUST_WIDE);
-  for (const dep of [spec.crate, ...graph.closure(spec.crate)]) {
-    const dir = graph.dirOf(dep);
-    if (!dir) throw new Error(`geen pad voor crate ${dep}`);
-    prefixes.push(dir);
+  for (const crate of [spec.crate].flat()) {
+    if (!graph.byName.has(crate)) {
+      throw new Error(`crate ${crate} niet gevonden in de workspace`);
+    }
+    for (const dep of [crate, ...graph.closure(crate)]) {
+      const dir = graph.dirOf(dep);
+      if (!dir) throw new Error(`geen pad voor crate ${dep}`);
+      prefixes.push(dir);
+    }
   }
   return prefixes;
 }

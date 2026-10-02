@@ -1,0 +1,31 @@
+---
+/*
+ * Hoogstens drie bronnen per hoofdstuk: de plekken om te beginnen.
+ * check-basiswerk.mjs telt ze. Links in de lopende tekst vallen daarbuiten.
+ */
+import '~/styles/basiswerk.css';
+
+interface Bron {
+  text: string;
+  href?: string;
+  toelichting?: string;
+}
+interface Props {
+  items: Bron[];
+}
+const { items } = Astro.props;
+---
+
+<div class="rr-bronnen">
+  <p class="rr-bronnen__kop">Bij dit hoofdstuk</p>
+  <ul>
+    {
+      items.map((b) => (
+        <li>
+          {b.href ? <a href={b.href}>{b.text}</a> : b.text}
+          {b.toelichting && <span>: {b.toelichting}</span>}
+        </li>
+      ))
+    }
+  </ul>
+</div>

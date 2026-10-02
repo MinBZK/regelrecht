@@ -1,0 +1,200 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.6/schema/v0.5.6/schema.json
+$id: uitvoeringsbesluit_wvo_2020
+regulatory_layer: AMVB
+publication_date: '2025-07-15'
+valid_from: '2026-01-01'
+bwb_id: BWBR0045787
+url: https://wetten.overheid.nl/BWBR0045787/2026-01-01
+name: Uitvoeringsbesluit WVO 2020
+competent_authority:
+  name: Minister van Onderwijs, Cultuur en Wetenschap
+legal_basis:
+  - law_id: wet_voortgezet_onderwijs_2020
+    article: '5.8'
+    description: >-
+      Artikel 5.8, derde lid: bij of krachtens algemene maatregel van
+      bestuur nadere regels over de leerlingen die niet worden meegeteld
+articles:
+  # Versie met de redactie van Stb. 2025, 188 (Besluit van 14 juli 2025,
+  # uitgegeven 15 juli 2025, in werking 1 oktober 2025). Artikel II van dat
+  # besluit bepaalt dat het oude onderdeel d van de begripsbepaling
+  # "nieuwkomer" tot 1 januari 2026 van toepassing blijft op de vaststelling
+  # van de aanvullende bekostiging eerste opvang nieuwkomers vo. Omdat deze
+  # casus die bekostiging modelleert, wisselt de corpusversie op 1 januari
+  # 2026 (peildatum 1 januari 2026 is de eerste onder de nieuwe redactie).
+  # Voor de reguliere telling (artikel 6.8) geldt de nieuwe redactie
+  # strikt genomen al op teldatum 1 oktober 2025; die ene teldatum valt in
+  # dit corpus nog onder de oude redactie.
+  #
+  # Alleen de begripsbepaling "nieuwkomer" (artikel 1.1) en artikel 6.8,
+  # eerste lid, onderdeel d, zijn opgenomen.
+  # ---------------------------------------------------------------- 1.1
+  - number: '1.1'
+    text: >-
+      In dit besluit wordt verstaan onder: (...) nieuwkomer: leerling die:
+      a. vreemdeling als bedoeld in artikel 1 van de Vreemdelingenwet 2000
+      is, b. als werkelijk schoolgaand staat ingeschreven bij een school, c.
+      geen Internationaal georiënteerd voortgezet onderwijs of Europees
+      secundair onderwijs volgt, en; d. in Nederland verblijft en korter dan
+      twee jaar geleden voor het eerst is ingeschreven op een school als
+      bedoeld in artikel 1 van de Wet op het primair onderwijs, artikel 1
+      van de Wet op de expertisecentra of artikel 1.1 van de wet; (...)
+    url: https://wetten.overheid.nl/BWBR0045787/2026-01-01#Hoofdstuk1_Artikel1.1
+    machine_readable:
+      definitions:
+        maximale_termijn_sinds_eerste_inschrijving_jaren:
+          value: 2
+          type: number
+          description: >-
+            Onderdeel d: korter dan twee jaar geleden voor het eerst
+            ingeschreven op een school (po, wec of vo)
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+            description: Persoonsgebonden nummer van de leerling
+        input:
+          - name: is_vreemdeling
+            type: boolean
+            source:
+              description: >-
+                Onderdeel a: vreemdeling als bedoeld in artikel 1
+                Vreemdelingenwet 2000 (geen Nederlandse nationaliteit)
+          - name: werkelijk_schoolgaand
+            type: boolean
+            source:
+              description: >-
+                Onderdeel b: als werkelijk schoolgaand ingeschreven bij een
+                school op de teldatum (register onderwijsdeelnemers)
+          - name: internationaal_georienteerd
+            type: boolean
+            source:
+              description: >-
+                Onderdeel c: volgt Internationaal georiënteerd voortgezet
+                onderwijs of Europees secundair onderwijs
+          - name: woonachtig_in_nederland
+            type: boolean
+            source:
+              description: 'Onderdeel d: verblijft in Nederland'
+          - name: eerste_inschrijfdatum
+            type: date
+            source:
+              description: >-
+                Onderdeel d: eerste dag van inschrijving op een school als
+                bedoeld in artikel 1 WPO, artikel 1 WEC of artikel 1.1 WVO
+                2020 (register onderwijsdeelnemers)
+        output:
+          - name: jaren_sinds_eerste_inschrijving
+            type: number
+            description: >-
+              Gehele jaren tussen de eerste inschrijfdatum en de teldatum
+          - name: is_nieuwkomer
+            type: boolean
+            description: >-
+              Nieuwkomer in de zin van artikel 1.1: voldoet aan de
+              onderdelen a tot en met d op de teldatum
+        actions:
+          - output: jaren_sinds_eerste_inschrijving
+            value:
+              operation: DATE_DIFF
+              from: $eerste_inschrijfdatum
+              to: $referencedate.iso
+              in: years
+          - output: is_nieuwkomer
+            value:
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $is_vreemdeling
+                  value: true
+                - operation: EQUALS
+                  subject: $werkelijk_schoolgaand
+                  value: true
+                - operation: EQUALS
+                  subject: $internationaal_georienteerd
+                  value: false
+                - operation: EQUALS
+                  subject: $woonachtig_in_nederland
+                  value: true
+                # "geleden": de eerste inschrijving ligt op of voor de teldatum
+                - operation: LESS_THAN_OR_EQUAL
+                  subject: $eerste_inschrijfdatum
+                  value: $referencedate.iso
+                - operation: LESS_THAN
+                  subject: $jaren_sinds_eerste_inschrijving
+                  value: $maximale_termijn_sinds_eerste_inschrijving_jaren
+
+  # ---------------------------------------------------------------- 6.8
+  - number: '6.8'
+    text: >-
+      1. Voor het bepalen van de hoogte van de bekostiging van een school of
+      scholengemeenschap worden niet meegeteld de leerlingen die: (...) d.
+      voor zover het betreft de bekostiging bedoeld in de artikelen 5.4,
+      eerste lid, onderdeel b, en 5.5 van de wet, nieuwkomers zijn die op de
+      teldatum korter dan 1 jaar in Nederland als werkelijk schoolgaand
+      staan ingeschreven op een school als bedoeld in artikel 1 van de Wet
+      op het primair onderwijs, artikel 1 van de Wet op de expertisecentra
+      of artikel 1.1 van de wet.
+    url: https://wetten.overheid.nl/BWBR0045787/2026-01-01#Hoofdstuk6_Paragraaf2_Artikel6.8
+    machine_readable:
+      implements:
+        - law: wet_voortgezet_onderwijs_2020
+          article: '5.8'
+          open_term: niet_meegetelde_leerlingen
+          gelet_op: Gelet op artikel 5.8, derde lid, van de Wet voortgezet onderwijs 2020
+      definitions:
+        maximale_termijn_ingeschreven_jaren:
+          value: 1
+          type: number
+          description: >-
+            Onderdeel d: op de teldatum korter dan 1 jaar in Nederland als
+            werkelijk schoolgaand ingeschreven
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+            description: Persoonsgebonden nummer van de leerling
+        input:
+          - name: is_nieuwkomer
+            type: boolean
+            source:
+              output: is_nieuwkomer
+            description: Nieuwkomer als bedoeld in artikel 1.1
+          - name: eerste_inschrijfdatum
+            type: date
+            source:
+              description: >-
+                Eerste dag van inschrijving op een school als bedoeld in
+                artikel 1 WPO, artikel 1 WEC of artikel 1.1 WVO 2020
+        output:
+          - name: jaren_ingeschreven_op_teldatum
+            type: number
+            description: >-
+              Gehele jaren tussen de eerste inschrijfdatum en de teldatum
+          - name: korter_dan_een_jaar_ingeschreven
+            type: boolean
+            description: >-
+              Onderdeel d: nieuwkomer die op de teldatum korter dan 1 jaar
+              als werkelijk schoolgaand staat ingeschreven en daarom niet
+              meetelt voor de reguliere bekostiging (artikelen 5.4, eerste
+              lid, onderdeel b, en 5.5 van de wet)
+        actions:
+          - output: jaren_ingeschreven_op_teldatum
+            value:
+              operation: DATE_DIFF
+              from: $eerste_inschrijfdatum
+              to: $referencedate.iso
+              in: years
+          - output: korter_dan_een_jaar_ingeschreven
+            value:
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $is_nieuwkomer
+                  value: true
+                - operation: LESS_THAN
+                  subject: $jaren_ingeschreven_op_teldatum
+                  value: $maximale_termijn_ingeschreven_jaren

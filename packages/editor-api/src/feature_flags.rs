@@ -14,39 +14,47 @@ use crate::state::AppState;
 /// decide whether traject writes must carry the acting user's own token.
 pub const GITHUB_USER_OAUTH: &str = "github.user_oauth";
 
+/// Every flag the editor knows, with its default. This is also the allow-list
+/// for `PUT /api/feature-flags/{key}`: a key missing here is rejected with 400,
+/// and the frontend then silently reverts the toggle. The frontend keeps its
+/// own copy in `frontend/src/composables/useFeatureFlags.js` (it must render
+/// before the API answers); `useFeatureFlags.drift.test.js` reads this block
+/// and fails when the two drift apart.
 static DEFAULTS: LazyLock<HashMap<String, bool>> = LazyLock::new(|| {
     HashMap::from([
         ("panel.article_text".into(), true),
         ("panel.scenario_form".into(), true),
         ("panel.yaml_editor".into(), true),
         ("panel.machine_readable".into(), true),
-        ("panel.law_graph".into(), false),
-        // Note authoring (RFC-018 write path, MVP: localStorage + manual
-        // export). Same allow-list rule: without this key the toggle PUT 400s
-        // and the frontend silently reverts it.
-        ("notes.create".into(), false),
-        // Editor capability flags — visibility is panel.*, editability is editor.*.
-        // The frontend wires editor.article_text_edit (default off) to gate
-        // write access on the Tekst pane. Without the key here the backend's
-        // allow-list check rejects the toggle PUT with 400, and the frontend
-        // treats that as a failure and silently reverts the user's change —
-        // so the editor would stay read-only no matter how many times the
-        // menu toggle is flipped.
-        ("editor.article_text_edit".into(), false),
+        ("panel.notes".into(), true),
         // GitHub user-OAuth (spike, PR #887). One switch, two effects: it
         // shows the "Koppel GitHub-account" affordance in the account menu
         // AND makes traject writes require the acting user's own GitHub token
         // (`credentials::write_requires_user_token`) — linking is never
         // offered-but-inert. Default off so the spike stays invisible until
-        // opted in. Same allow-list rule: without this key the toggle PUT
-        // 400s and the frontend silently reverts it, so the toggle would
-        // never stick.
+        // opted in.
         (GITHUB_USER_OAUTH.into(), false),
     ])
 });
 
 fn defaults() -> HashMap<String, bool> {
     DEFAULTS.clone()
+}
+
+/// Overlay stored rows on the defaults, skipping keys that are no longer
+/// registered. The `feature_flags` table keeps rows for retired flags (the
+/// 0012 seed's `panel.execution_trace`, and any toggle ever written for a flag
+/// since removed); without this filter they would still reach the frontend as
+/// flags that no code reads and no PUT accepts.
+fn merge_rows(
+    flags: &mut HashMap<String, bool>,
+    rows: Vec<regelrecht_pipeline::models::FeatureFlag>,
+) {
+    for flag in rows {
+        if DEFAULTS.contains_key(&flag.key) {
+            flags.insert(flag.key, flag.enabled);
+        }
+    }
 }
 
 /// Effective value of a single flag: the stored row when present, else the
@@ -70,9 +78,7 @@ pub async fn list_feature_flags(State(state): State<AppState>) -> Json<HashMap<S
     match regelrecht_pipeline::feature_flags::list_flags(pool).await {
         Ok(rows) => {
             let mut flags = defaults();
-            for flag in rows {
-                flags.insert(flag.key, flag.enabled);
-            }
+            merge_rows(&mut flags, rows);
             Json(flags)
         }
         Err(e) => {
@@ -114,9 +120,7 @@ pub async fn update_feature_flag(
             match regelrecht_pipeline::feature_flags::list_flags(pool).await {
                 Ok(rows) => {
                     let mut flags = defaults();
-                    for flag in rows {
-                        flags.insert(flag.key, flag.enabled);
-                    }
+                    merge_rows(&mut flags, rows);
                     Json(flags).into_response()
                 }
                 Err(e) => {
@@ -129,5 +133,37 @@ pub async fn update_feature_flag(
             tracing::error!(error = %e, "failed to update feature flag");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use regelrecht_pipeline::models::FeatureFlag;
+
+    fn row(key: &str, enabled: bool) -> FeatureFlag {
+        FeatureFlag {
+            key: key.into(),
+            enabled,
+            description: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+
+    #[test]
+    fn stored_rows_override_registered_flags_only() {
+        let mut flags = defaults();
+        merge_rows(
+            &mut flags,
+            vec![
+                row("panel.notes", false),
+                row("panel.execution_trace", true),
+            ],
+        );
+        assert_eq!(flags.get("panel.notes"), Some(&false));
+        assert!(!flags.contains_key("panel.execution_trace"));
+        assert_eq!(flags.len(), DEFAULTS.len());
     }
 }

@@ -64,6 +64,30 @@ export function checkFirstLoad(dist) {
     );
   }
 
+  // The echarts chunk must not import back from a route chunk. A cycle there
+  // is not a size problem but a crash: the route chunk imports echarts, so
+  // echarts evaluates while the route chunk is still initialising, and any
+  // binding it reaches back for is still undefined. That is exactly what
+  // happened when echarts' TypeScript `__extends` helper landed in
+  // OverviewView instead of beside the code using it: the harvester section
+  // died on "M is not a function" before it rendered, while the build stayed
+  // green and every unit test passed. Keeping the helper's package inside the
+  // group (see the `test` pattern in vite.config.js) is what breaks the cycle.
+  for (const chunk of echartsChunks) {
+    const src = readFileSync(join(dist, 'assets', chunk), 'utf8');
+    const backImports = [...src.matchAll(/from"\.\/([A-Za-z0-9_$-]+-[^"]*\.js)"/g)]
+      .map((m) => m[1])
+      .filter((name) => LAZY_ROUTE_CHUNK.test(`/${name}`));
+    if (backImports.length > 0) {
+      problems.push(
+        `${chunk} imports back from a lazy-route chunk: ${[...new Set(backImports)].join(', ')}. ` +
+          'That is a circular chunk import, and it throws at runtime rather than ' +
+          'merely costing bytes. Add the package owning the shared helper to the ' +
+          'codeSplitting group in vite.config.js.',
+      );
+    }
+  }
+
   return { problems, echartsChunk: echartsChunks[0], loaded };
 }
 

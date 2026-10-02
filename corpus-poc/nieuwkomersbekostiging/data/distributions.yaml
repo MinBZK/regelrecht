@@ -1,0 +1,479 @@
+# Verdelingsparameters voor de synthetische nieuwkomerspopulatie 2025-2028.
+#
+# BRONNEN / STATUS
+# ----------------
+# Geankerd op CBS StatLine (85371NED, 84809NED/84808NED, 83102NED, 85848NED),
+# de OCW-factsheet "Data / aantallen nieuwkomers" (intern OCW, directie PO,
+# gedeeld met toestemming) en DUO-open data (bron per blok), AANNAME waar
+# microdata ontbreekt (expliciet gemarkeerd). Te vervangen door DUO-microdata
+# (ROD, bestand Nieuwkomers per peildatum) zodra beschikbaar. De generator in
+# app/src/sim/population.js consumeert exact deze structuur; houd de sleutels
+# stabiel bij vervanging.
+#
+# Conventies: bedragen eurocent; percentieltabellen als lijst {p, value} met
+# p de cumulatieve kans (lineair interpoleren tussen de punten); categorische
+# verdelingen als {naam: gewicht} met gewichten die sommeren tot 1,0.
+#
+# GENERATOR-SEMANTIEK (contract met population.js)
+# 1. Per jaar en per sector `instroom_per_jaar[jaar][sector]` nieuwe
+#    nieuwkomers, als steekproef van `steekproef_records_per_jaar` records met
+#    `gewicht` = instroom / records. Het instroomjaar is het jaar van eerste
+#    inschrijving. 2023 en 2024 zitten erin omdat de stand van 2025 uit die
+#    cohorten komt (asielzoekers po en alle vo tellen twee jaar).
+# 2. Per record: categorie (categorie_verdeling: asielzoeker,
+#    overige_vreemdeling, ambigu_code of zonder_bsn), verblijfstitel_code
+#    (verblijfstitel_codes; null bij zonder_bsn), leeftijd bij vestiging
+#    (leeftijd_bij_vestiging per sector en categorie; ambigu_code en
+#    zonder_bsn gebruiken de tabel van de categorie die het oordeel
+#    oplevert), aankomstmaand en wachttijd (per categorie; oekraine bij
+#    code 46).
+# 3. eerste_inschrijfdatum = datum_vestiging + wachttijd, maar nooit vóór de
+#    vierde verjaardag; wie vóór het vierde jaar kwam, wordt op of kort na de
+#    vierde verjaardag ingeschreven (gat_na_vierde_verjaardag_dagen). De
+#    aftrek voor die periode volgt in de wet (art. 34 lid 4), niet hier.
+# 4. school_id: `scholen[sector].aantal` echte scholen met minstens één
+#    nieuwkomer; per school een jaarlijks aantal uit nieuwkomers_per_school.
+#    De lange staart geeft veel scholen onder de drempel van vier (art. 34
+#    lid 2) en enkele nieuwkomersvoorzieningen met tientallen.
+# 5. Alle records: is_vreemdeling true, woonachtig_in_nederland true,
+#    heeft_bsn false alleen bij zonder_bsn; werkelijk_schoolgaand per
+#    werkelijk_schoolgaand_fractie; internationaal_georienteerd per
+#    internationaal_georienteerd_fractie (die leerlingen tellen niet, maar
+#    staan wel in het bestand Nieuwkomers en kosten dus uitvoeringstijd).
+
+basisjaar: 2025
+jaren: [2025, 2026, 2027, 2028, 2029, 2030]
+
+# Peildata van beide regelingen (po: art. 34; vo: art. 4), als maand-dag.
+peildata: ['01-01', '04-01', '07-01', '10-01']
+
+# Steekproefomvang per instroomjaar en sector; gewicht = instroom / records.
+steekproef_records_per_jaar: 2000  # AANNAME, prestatieknop
+
+# STAND 1 OKTOBER (referentie en plausibiliteitstoets; niet door de
+# generator gebruikt).
+# Bron: OCW-factsheet "Data / aantallen nieuwkomers" (intern OCW, directie
+# PO, gedeeld met toestemming). Aantal bekostigde nieuwkomers op 1 oktober.
+# Correctie op de factsheet: de samenvatting moet "19.586 in het vo" lezen.
+# Kanttekeningen: (a) scholen onder de drempel van vier ontbreken, want die
+# krijgen geen bekostiging; (b) leerlingen verdwijnen na twee jaar (po:
+# overige vreemdelingen al na één jaar) uit de cijfers; (c) de po-waarden
+# 2021 (8.819) en 2022 (19.177) vallen samen met cijfers die de VO-raad in
+# november 2022 als vo-cijfers publiceerde. Kolommen mogelijk verwisseld, te
+# checken met OCW.
+stand_1_oktober:
+  2019: { po: 9383, vo: 10001 }
+  2020: { po: 8260, vo: 8351 }
+  2021: { po: 8819, vo: 11778 }
+  2022: { po: 19177, vo: 24983 }
+  2023: { po: 23344, vo: 24728 }
+  2024: { po: 19472, vo: 20262 }
+  2025: { po: 19358, vo: 19586 }
+
+# INSTROOM: nieuwe nieuwkomers die in een kalenderjaar voor het eerst op een
+# Nederlandse school worden ingeschreven, per sector.
+#
+# Anker 1, aankomsten (CBS 85371NED, bevolking geboren buiten Nederland naar
+# leeftijd en verblijfsduur op 1 januari; verblijfsduur < 1 jaar op 1
+# januari van jaar Y+1 = aankomsten in jaar Y,
+# https://opendata.cbs.nl/statline/#/CBS/nl/dataset/85371NED):
+#   aankomstjaar   0-3     4-11    12-17
+#   2022          12.565  28.792  19.900   (Oekraïne: 11.558 / 9.060)
+#   2023           9.726  19.339  13.659   (Oekraïne:  2.391 / 2.447)
+#   2024           8.288  17.547  14.867   (Oekraïne:  1.992 / 2.248)
+#   2025           7.860  18.277  15.798   (Oekraïne:  1.349 / 1.658)
+# Van de in het buitenland geboren kinderen heeft ca. 80 % geen Nederlandse
+# nationaliteit (vergelijking met CBS 85848NED, immigratie niet-Nederlanders
+# 2025: 0-5 7.848, 5-10 10.645, 10-15 10.063,
+# https://opendata.cbs.nl/statline/#/CBS/nl/dataset/85848NED); alleen die
+# zijn vreemdeling en dus nieuwkomer. AANNAME 0,8.
+# - po(Y) = 0,8 x aankomsten 4-11 in Y, plus het cohort dat vóór het vierde
+#   jaar kwam en in Y vier wordt: ca. 8.000 aankomsten 0-3 per jaar, een
+#   kwart wordt per jaar vier, 0,8 vreemdeling, 0,8 nog in Nederland, dus
+#   ca. 1.300 per jaar (AANNAME).
+#   2023: 0,8 x 19.339 + 1.300 = 16.800; 2024: 0,8 x 17.547 + 1.300 =
+#   15.300; 2025: 0,8 x 18.277 + 1.300 = 16.000.
+# - vo(Y) = 0,72 x aankomsten 12-17 in Y: 0,8 vreemdeling en 0,9 omdat
+#   zeventienjarigen deels direct naar mbo of werk gaan (AANNAME).
+#   2023: 9.800; 2024: 10.700; 2025: 11.400.
+#
+# Anker 2, de stand (OCW-factsheet, stand_1_oktober) als toets:
+# - vo: cohorten 2024 + 2025 = 22.100, x ca. 0,9 voor uitschrijving en
+#   vertrek = ca. 19.900 tegenover 19.586. Klopt met een tweejaarsvenster
+#   voor iedereen; een stand die alleen de eerste categorie telt (venster
+#   één jaar) zou 19.600 instromers per jaar vergen en dat laten de
+#   aankomsten (12-17: 15.798 inclusief Nederlanders) niet toe.
+# - po: gewogen venster 0,45 x 2 + 0,55 x 1 = 1,45 jaar, gecorrigeerd voor
+#   de aftrek (ca. 28 % vestigt zich vóór het vierde jaar en verliest
+#   gemiddeld ruim de helft van het venster, factor ca. 0,85) en de drempel
+#   (ca. 0,9): 16.000 x 1,45 x 0,85 x 0,9 = ca. 17.700 tegenover 19.358,
+#   ca. 10 % te laag. Bekostigd aandeel van de buitenlands geboren 4-11-
+#   jarigen met < 2 jaar in Nederland (85371NED 1-1-2026: 34.793):
+#   19.358 / 34.793 = 56 %; in dit model 17.700 / (0,8 x 34.793 + 2.600)
+#   = 58 %. Consistent; de rest is de onzekerheid in de stand zelf.
+# Vergeleken met de simpele afleiding uit de stand alleen (19.358 / 1,55
+# = 12.500, zonder correcties) liggen de CBS-aankomsten dus hoger; de
+# aankomsten zijn de hardere bron, de stand de toets.
+#
+# Anker 3, uitgaven: zie uitgaven_realisatie.
+#
+# 2026-2028 vlak op 2025. Kernprognose 2025 (brief aan de Eerste Kamer
+# 24 april 2026, https://www.eerstekamer.nl/brief_in/20260424/kernprognose_2025_en_actuele/f=/vmx4e3mq29al.pdf):
+# eerste asielverzoeken mediaan 25.000 per jaar 2026-2029, nareis ca.
+# 23.000 per jaar, Oekraïne ca. 290 registraties per week; geen trend die
+# een andere instroom rechtvaardigt. Per jaar aanpasbaar (knop).
+# KALIBRATIE (8 september 2026, na de drempelfix): de simulatie wordt geijkt
+# op de bekostigde standen van 1 oktober uit de OCW-factsheet, want dat is het
+# hardere anker (de factsheet telt bekostigde leerlingen; de CBS-aankomsten
+# vergen aannames over paspoorten en leeftijdsopbouw).
+#   po: CBS-afleiding 16.000 x 1,35 = 21.600 -> stand 20.193 (factsheet 19.358)
+#   vo: CBS-afleiding 11.400 x 0,91 = 10.400 -> stand 19.812 (factsheet 19.586)
+# De vo-uitgaven 2025 komen daarmee op ca. EUR 248 mln (realisatie 262,9) en
+# de po-uitgaven op ca. EUR 152 mln (ADR-onzekerheidspost 207,5 in 2023, een
+# piekjaar met 23.344 leerlingen). De drempel van vier houdt 13 procent van de
+# po-leerlingen buiten de bekostiging, binnen de 10 tot 15 procent die deze
+# YAML raamt.
+# De vorige kalibratie (po x1,2) is van 3 september en dateert van vóór de
+# drempelfix; toen bond de drempel niet en telde de stand dus te veel mee.
+# De CBS-waarden staan tussen haakjes.
+instroom_per_jaar:
+  2023: { po: 22700, vo: 8900 }    # (CBS-afleiding po 16.800, vo 9.800)
+  2024: { po: 20600, vo: 9800 }    # (po 15.300, vo 10.700)
+  2025: { po: 21600, vo: 10400 }   # (po 16.000, vo 11.400)
+  2026: { po: 21600, vo: 10400 }   # AANNAME, vlak
+  2027: { po: 21600, vo: 10400 }   # AANNAME, vlak
+  2028: { po: 21600, vo: 10400 }   # AANNAME, vlak
+  2029: { po: 21600, vo: 10400 }   # AANNAME, vlak
+  2030: { po: 21600, vo: 10400 }   # AANNAME, vlak
+
+# CATEGORIE per sector; de vier sleutels sommeren tot 1. asielzoeker en
+# overige_vreemdeling hebben een eenduidige verblijfstitelcode (tabblad 1
+# van het bestand Nieuwkomers); ambigu_code krijgt een code die bij beide
+# groepen voorkomt (tabblad 2, art. 34 lid 11); zonder_bsn zit op een
+# onderwijsnummer met code null (tabblad 3). Voor de laatste twee beslist
+# oordeel_bevoegd_gezag_asielzoeker_fractie. In po stuurt de categorie het
+# venster (8 of 4 kwartalen) en het bedrag; in vo alleen codes, oordeel en
+# uitvoeringslast (art. 1.1 Uitvoeringsbesluit WVO 2020 maakt geen
+# onderscheid).
+#
+# Afleiding van het asielzoekersaandeel (2025):
+# - CBS 84809NED/84808NED, immigranten 0-18 naar migratiemotief
+#   (https://opendata.cbs.nl/statline/#/CBS/nl/dataset/84809NED en
+#   84808NED): niet-EU/EFTA 33.880, waarvan asiel excl. nareis 5.105,
+#   nareis 8.920, gezin 14.430 (waarvan meegekomen met een asielmigrant
+#   3.705), tijdelijke bescherming Oekraïne 4.455, studie 790, overig 175;
+#   EU/EFTA thuiswonend ca. 14.000 (2024: 14.280), vrijwel allemaal
+#   overige vreemdeling. Nareizigers en meegekomen gezinsleden van een
+#   asielmigrant hebben een afgeleide asielvergunning en vallen onder de
+#   asielzoekerscodes.
+#   Asiel-gerelateerd: 5.105 + 8.920 + 3.705 + 4.455 = 22.185 van 47.880
+#   = 46 %. Daar komen asielzoekers in procedure bij die nog niet in de BRP
+#   staan (CBS 83102NED: 7.055 eerste asielverzoeken van minderjarigen in
+#   2025 tegenover 5.105 geregistreerd): ca. 48 %.
+# - Per sector, met de leeftijdsopbouw (83102NED: eerste verzoeken 2025
+#   0-5 1.645, 5-12 1.220, 12-18 4.190; nareis 0-5 1.850, 5-12 4.610,
+#   12-18 2.545; overige immigratie is jonger, 85848NED): asiel-gerelateerd
+#   po ca. 10.700 tegenover overig ca. 14.100 (43 %), vo ca. 9.700
+#   tegenover 7.200 (57 %). SEO/Kohnstamm 2022 vond voor 2020 asiel 38 %
+#   over beide sectoren (https://www.seo.nl/wp-content/uploads/2022/08/2022-56-Nieuwkomers-in-het-primair-en-voortgezet-onderwijs-2.pdf);
+#   sindsdien is de asielinstroom gestegen en de EU-instroom gedaald.
+# AANNAME: asielzoeker / overige vreemdeling binnen de eenduidige groep
+# po 0,45 / 0,55, vo 0,55 / 0,45; ambigu_code 0,05 en zonder_bsn 0,03
+# (vo 0,05, amv's in COA-opvang) AANNAME, uit de tabbladen te halen.
+categorie_verdeling:
+  po: { asielzoeker: 0.41, overige_vreemdeling: 0.51, ambigu_code: 0.05, zonder_bsn: 0.03 }
+  vo: { asielzoeker: 0.50, overige_vreemdeling: 0.40, ambigu_code: 0.05, zonder_bsn: 0.05 }
+
+# VERBLIJFSTITELCODES (BRP-tabel 56 zoals in ROD, art. 34 lid 10), per
+# categorie met gewichten. Indeling per de bijlage bij de regeling en het
+# bestand Nieuwkomers; de betekenis per code staat in het corpus. Gewichten
+# AANNAME. Oekraïne (code 46): 85371NED aankomsten 2025 4-11 1.349 en
+# 12-17 1.658 tegenover ca. 20.000 asiel-gerelateerde minderjarigen, dus
+# ca. 15 % van de asielcategorie.
+verblijfstitel_codes:
+  asielzoeker:
+    26: 0.65   # AANNAME
+    27: 0.12   # AANNAME
+    32: 0.08   # AANNAME
+    46: 0.15   # AANNAME, ontheemden Oekraïne
+  overige_vreemdeling:
+    22: 0.30   # AANNAME, EU-burgers en gezinsmigranten dragen het meest bij
+    23: 0.15   # AANNAME
+    24: 0.05   # AANNAME
+    25: 0.15   # AANNAME
+    28: 0.05   # AANNAME
+    29: 0.03   # AANNAME
+    30: 0.03   # AANNAME
+    31: 0.02   # AANNAME
+    35: 0.03   # AANNAME
+    36: 0.03   # AANNAME
+    37: 0.02   # AANNAME
+    38: 0.02   # AANNAME
+    40: 0.03   # AANNAME
+    41: 0.02   # AANNAME
+    42: 0.02   # AANNAME
+    43: 0.02   # AANNAME
+    45: 0.03   # AANNAME
+  ambigu_code:
+    21: 0.55   # AANNAME
+    33: 0.15   # AANNAME
+    34: 0.15   # AANNAME
+    98: 0.15   # AANNAME
+
+# LEEFTIJD BIJ VESTIGING in jaren (mag fractioneel), per sector en
+# categorie. Het aandeel onder vier jaar bepaalt hoeveel van het venster de
+# aftrek van art. 34 lid 4 wegneemt.
+#
+# Bronnen:
+# - CBS 83102NED (asielverzoeken en nareizigers naar leeftijd,
+#   https://opendata.cbs.nl/statline/#/CBS/nl/dataset/83102NED), 2025:
+#   eerste asielverzoeken onder 18: 0-5 1.645, 5-12 1.220, 12-14 305,
+#   14-16 1.170, 16-18 2.715 (zwaar 16-18 door amv's); nareis 0-5 1.850,
+#   5-12 4.610, 12-14 920, 14-16 865, 16-18 760. Samen onder de twaalf:
+#   0-5 37 %, 5-12 63 %; onder vier ca. 28-30 % van de po-instroom.
+#   Twaalf tot achttien: 12-14 23 %, 14-16 31 %, 16-18 46 % (met Oekraïne
+#   en meegekomen gezinsleden gelijkmatig verdeeld).
+# - CBS 85848NED (immigratie niet-Nederlanders naar leeftijd, 2025): 0-5
+#   7.848, 5-10 10.645, 10-15 10.063. Onder de twaalf: 0-5 35 %, 5-10
+#   47 %, 10-12 18 %; onder vier ca. 28 %. Twaalf tot achttien: 12-15
+#   ca. twee derde, 15-18 een derde.
+# - SEO 2022: kinderen van kennismigranten zijn gemiddeld jonger; zit in
+#   het 0-5-aandeel.
+# De percentielpunten binnen de CBS-klassen zijn AANNAME (uniform binnen
+# de klasse). Kanttekening: kinderen die op 0-2 jaar komen, kunnen weer
+# vertrokken zijn voor ze vier worden (mobiele EU- en expatgezinnen); het
+# aandeel onder vier is daarmee eerder een boven- dan een ondergrens.
+leeftijd_bij_vestiging:
+  po:
+    asielzoeker:
+      - { p: 0.0, value: 0.0 }
+      - { p: 0.15, value: 2.0 }
+      - { p: 0.28, value: 4.0 }
+      - { p: 0.37, value: 5.0 }
+      - { p: 0.55, value: 7.0 }
+      - { p: 0.73, value: 9.0 }
+      - { p: 0.91, value: 11.0 }
+      - { p: 1.0, value: 12.0 }
+    overige_vreemdeling:
+      - { p: 0.0, value: 0.0 }
+      - { p: 0.14, value: 2.0 }
+      - { p: 0.28, value: 4.0 }
+      - { p: 0.35, value: 5.0 }
+      - { p: 0.59, value: 7.5 }
+      - { p: 0.82, value: 10.0 }
+      - { p: 1.0, value: 12.0 }
+  vo:
+    asielzoeker:
+      - { p: 0.0, value: 12.0 }
+      - { p: 0.23, value: 14.0 }
+      - { p: 0.54, value: 16.0 }
+      - { p: 0.80, value: 17.0 }
+      - { p: 1.0, value: 18.0 }
+    overige_vreemdeling:
+      - { p: 0.0, value: 12.0 }
+      - { p: 0.35, value: 13.5 }
+      - { p: 0.67, value: 15.0 }
+      - { p: 0.85, value: 16.5 }
+      - { p: 1.0, value: 18.0 }
+
+# SECTOR: po bij eerste inschrijving jonger dan 12, vo bij 12 tot 18.
+# AANNAME; in de praktijk gaan sommige 12-jarigen nog naar groep 8 (zie
+# persona Elena) en zitten sommige 11-jarigen al in een ISK. Ter controle:
+# SEO 2022 vindt grofweg 60 % po / 40 % vo over alle nieuwkomers, wat
+# spoort met instroom_per_jaar 16.000 / 11.400 (58 / 42).
+sector_regel:
+  po_tot_leeftijd: 12
+  vo_tot_leeftijd: 18
+  aandeel_po_check: 0.60
+
+# GAT tussen vierde verjaardag en eerste inschrijving in dagen, alleen voor
+# kinderen die vóór hun vierde in Nederland kwamen (visual p. 5). AANNAME:
+# de helft wordt op de verjaardag zelf ingeschreven, de rest binnen een
+# kwartaal, een staart wacht op een plek in een nieuwkomersvoorziening.
+gat_na_vierde_verjaardag_dagen:
+  - { p: 0.0, value: 0 }
+  - { p: 0.5, value: 0 }
+  - { p: 0.75, value: 30 }
+  - { p: 0.9, value: 90 }
+  - { p: 1.0, value: 180 }
+
+# WACHTTIJD tussen vestiging en eerste inschrijving in dagen, per categorie
+# (ambigu_code en zonder_bsn: tabel van de categorie die het oordeel
+# oplevert; code 46: oekraine).
+# Norm: binnen drie maanden onderwijs (factsheet inspecties 2023,
+# https://www.onderwijsinspectie.nl/onderwerpen/nieuwkomers). Praktijk:
+# mediaan zes tot acht weken, staart boven zes maanden in noodopvang en
+# bij verhuizingen tussen opvanglocaties; Oekraïners snel via gemeenten.
+# Percentielen AANNAME.
+wachttijd_tot_inschrijving_dagen:
+  asielzoeker:
+    - { p: 0.0, value: 3 }
+    - { p: 0.1, value: 14 }
+    - { p: 0.25, value: 28 }
+    - { p: 0.5, value: 49 }
+    - { p: 0.75, value: 90 }
+    - { p: 0.9, value: 180 }
+    - { p: 1.0, value: 365 }
+  oekraine:
+    - { p: 0.0, value: 1 }
+    - { p: 0.1, value: 7 }
+    - { p: 0.25, value: 14 }
+    - { p: 0.5, value: 21 }
+    - { p: 0.75, value: 42 }
+    - { p: 0.9, value: 90 }
+    - { p: 1.0, value: 180 }
+  overige_vreemdeling:
+    - { p: 0.0, value: 1 }
+    - { p: 0.1, value: 7 }
+    - { p: 0.25, value: 14 }
+    - { p: 0.5, value: 30 }
+    - { p: 0.75, value: 60 }
+    - { p: 0.9, value: 120 }
+    - { p: 1.0, value: 270 }
+
+# AANKOMSTMAAND (maand van vestiging), gewichten per categorie.
+# Asiel: najaarspiek. CBS 83102NED maandcijfers eerste asielverzoeken 2023:
+# oktober 5.010, november 4.135, december 3.830 tegenover februari 2.215.
+# Overige vreemdelingen: AANNAME, zomerpiek rond de start van het
+# schooljaar (arbeids- en kennismigratie volgt het academische en het
+# bedrijfsjaar).
+aankomstmaand:
+  asielzoeker:
+    1: 0.070
+    2: 0.060
+    3: 0.065
+    4: 0.065
+    5: 0.070
+    6: 0.075
+    7: 0.085
+    8: 0.095
+    9: 0.100
+    10: 0.115
+    11: 0.105
+    12: 0.095
+  overige_vreemdeling:
+    1: 0.090
+    2: 0.070
+    3: 0.070
+    4: 0.070
+    5: 0.075
+    6: 0.080
+    7: 0.100
+    8: 0.130
+    9: 0.115
+    10: 0.075
+    11: 0.065
+    12: 0.060
+
+# SCHOLEN. `aantal` = echte scholen met minstens één nieuwkomer per jaar;
+# de generator schaalt het aantal gesimuleerde scholen mee met de steekproef
+# zodat de drempel van vier per school realistisch uitpakt.
+# `aantal` telt scholen met minstens een nieuwkomer PER JAAR; de generator
+# schaalt daarom tegen de instroom van een jaar, niet tegen de instroom over
+# de hele horizon (tot 8 september 2026 deed hij dat wel, waardoor er acht
+# keer te weinig gesimuleerde scholen waren, elke school tientallen
+# nieuwkomers had en de drempel van vier nooit bond).
+# aantal_scholen_totaal: DUO-open data, ca. 6.100 basisscholen en ca.
+# 1.400 vo-vestigingen (https://duo.nl/open_onderwijsdata/primair-onderwijs/scholen-en-adressen/
+# en https://duo.nl/open_onderwijsdata/voortgezet-onderwijs/scholen-en-adressen/),
+# afgerond. Aandeel met nieuwkomers en de verdeling per school per jaar
+# zijn AANNAME met lange staart: de meeste scholen met nieuwkomers hebben
+# er één tot drie (onder de drempel op een peildatum), enkele nieuwkomers-
+# voorzieningen, taalklassen en ISK's hebben er tientallen tot honderden
+# (LOWAN telt ruim honderd ISK's). Rekenslag: po 2.700 scholen x
+# gemiddeld ca. 5,9 uit de tabel = ca. 15.900; vo 640 x ca. 18 = ca.
+# 11.500. Met een venster van 1,2 tot 2 jaar staat op een peildatum ruwweg
+# 60 % van de po-scholen met nieuwkomers onder de drempel, samen goed voor
+# ca. 10-15 % van de leerlingen. Een betere anker is de DUO-reeks
+# "leerlingen per vestiging naar NOAT" (duo_brin6_noat) zodra iemand die
+# aan nieuwkomers koppelt.
+scholen:
+  po:
+    aantal: 2700                  # AANNAME, ca. 45 % van de basisscholen
+    aantal_scholen_totaal: 6000
+    nieuwkomers_per_school:
+      - { p: 0.0, value: 1 }
+      - { p: 0.25, value: 1 }
+      - { p: 0.5, value: 2 }
+      - { p: 0.75, value: 4 }
+      - { p: 0.9, value: 10 }
+      - { p: 0.95, value: 25 }
+      - { p: 0.99, value: 60 }
+      - { p: 1.0, value: 120 }
+  vo:
+    aantal: 640                   # AANNAME, ca. 45 % van de vo-vestigingen
+    aantal_scholen_totaal: 1400
+    nieuwkomers_per_school:
+      - { p: 0.0, value: 1 }
+      - { p: 0.25, value: 2 }
+      - { p: 0.5, value: 4 }
+      - { p: 0.75, value: 10 }
+      - { p: 0.9, value: 40 }
+      - { p: 0.95, value: 80 }
+      - { p: 0.99, value: 200 }
+      - { p: 1.0, value: 350 }
+
+# Schoolsoort binnen po; nieuwkomers in sbo zijn zeldzaam. AANNAME.
+schoolsoort_verdeling_po: { basisschool: 0.97, sbo: 0.03 }
+
+# Aandeel records op internationaal georiënteerd onderwijs (IGBO, WPO
+# art. 85a; IGVO), uitgesloten van de bekostiging. AANNAME.
+internationaal_georienteerd_fractie: { po: 0.02, vo: 0.01 }
+
+# Kans dat een asielzoeker die vóór 1 februari is ingeschreven ook
+# daadwerkelijk als eerstejaars asielzoeker in die 1-februari-telling is
+# meegeteld (At in art. 34 lid 9; anders geen 1-januari-correctie).
+# AANNAME: niet elke school levert de telling met de nieuwkomer erin aan,
+# en een deel is tussen inschrijving en telling al verhuisd.
+in_telling_1_februari_prior: 0.6
+
+# Bij ambigu_code en zonder_bsn: aandeel waarvoor het bestuur ASIELZOEKER
+# vastlegt (rest OVERIGE_VREEMDELING). AANNAME; bij zonder_bsn ligt het in
+# werkelijkheid hoger (asielzoekers in procedure hebben nog geen BSN), bij
+# ambigu_code lager.
+oordeel_bevoegd_gezag_asielzoeker_fractie: 0.6
+
+# Aandeel van die records waarvoor het bestuur (nog) geen oordeel heeft
+# vastgelegd: oordeel_bevoegd_gezag null, engine geeft BESTUUR_BEOORDEELT.
+# AANNAME.
+oordeel_ontbreekt_fractie: 0.1
+
+# Aandeel records dat op een peildatum werkelijk schoolgaand is; de rest is
+# uitgeschreven, verhuisd of langdurig afwezig. AANNAME.
+werkelijk_schoolgaand_fractie: 0.98
+
+# INDEXATIE van de bedragen in het corpus (bedragen 2026) per jaar.
+# 2025: het corpus draagt de bedragen 2026; voor 2025 rekenen we daarmee,
+# tenzij het corpus de regeling 2025 bevat. 2027 en 2028: loon- en
+# prijsbijstelling 3 % per jaar, cumulatief. AANNAME.
+bedragen_index_per_jaar:
+  2025: 1.0
+  2026: 1.0
+  2027: 1.03
+  2028: 1.0609
+  2029: 1.0927
+  2030: 1.1255
+
+# UITGAVEN-ANKERS voor de plausibiliteitstoets, eurocent per jaar.
+# vo: aanvullende bekostiging eerste opvang nieuwkomers, OCW-jaarverslagen
+# artikel 3 (rijksfinancien.nl): 2023 EUR 291,3 mln, 2024 EUR 260,9 mln,
+# 2025 EUR 262,9 mln. po: geen aparte regel in het jaarverslag; de ADR
+# voert een onzekerheidspost van EUR 207,5 mln (2023) op voor de
+# nieuwkomersbekostiging po, dus ca. EUR 200-210 mln.
+# Rekenslag vo: EUR 262,9 mln / 4 peildata / 19.586 = ca. EUR 3.350 per
+# leerling per peildatum, dicht bij het eerste-categoriebedrag (art. 4:
+# EUR 3.909,08 per kwartaal in 2026; tweede categorie EUR 1.426,33),
+# terwijl een tweejaarsvenster een mix van grofweg de helft eerste en de
+# helft tweede categorie geeft (ca. EUR 2.700). Mogelijke verklaring: de
+# 1-oktoberstand is een dieptepunt in het jaar (de najaarspiek komt erna;
+# de standen van 1 januari en 1 april liggen hoger), zodat het jaargemiddelde
+# boven 19.586 ligt. Open vraag voor OCW.
+# Rekenslag po: EUR 207,5 mln / 4 / 19.358 = ca. EUR 2.680 per leerling
+# per peildatum, te toetsen aan de gewogen mix van de bedragen in art. 34.
+uitgaven_realisatie:
+  vo:
+    2023: 29130000000
+    2024: 26090000000
+    2025: 26290000000
+  po:
+    2023: 20750000000   # ADR-onzekerheidspost, geen realisatiecijfer

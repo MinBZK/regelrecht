@@ -3,15 +3,17 @@
  * Signup form, built on @nldd/design-system form components.
  *
  * NLDD controls (upgraded by the single body <script> import in Base.astro):
- *  - email + name: nldd-form-field > nldd-text-field + nldd-form-field-error-text.
- *    The form-field auto-wires the accessible label (aria-label), aria-invalid
- *    (from the field's `invalid` attribute), aria-describedby (via the field's
- *    error-message-ids), and toggles the error-text visibility. We drive
- *    `invalid` + `error-message` from the same validation as before.
+ *  - email + name: nldd-form-field > nldd-text-field + nldd-validation-list.
+ *    The form-field auto-wires the accessible label (aria-label) and aria-invalid
+ *    (from the field's `invalid` attribute). The field names its item in
+ *    `unmet`, so the list shows that item while the field is `invalid`. We drive
+ *    `invalid` and the item's text from the same validation as before.
  *  - org + role: optional nldd-form-field > nldd-text-field (no validation).
- *  - bijdragen: nldd-form-field (group label) > nldd-radio-button-group >
- *    nldd-radio-button-field. The group renders role=radiogroup with the label
- *    forwarded as aria-label.
+ *  - bijdragen: nldd-form-field (no label) > nldd-radio-button-group >
+ *    nldd-radio-button-field. The page title above the form already asks the
+ *    question and both answers are full sentences, so the group carries no
+ *    visible label of its own: it renders role=radiogroup and is named by that
+ *    title through accessible-labeled-by.
  *
  * The <form> is wrapped in <nldd-form> in user-provided-form mode: nldd-form
  * is a shadow-less plain element that renders a real light-DOM <form>, and when
@@ -88,8 +90,12 @@ const successUrl = lang === 'en' ? '/en/signup/thanks' : '/aanmelden/bedankt';
       />
     </div>
 
-    <nldd-form-field label={s.legend}>
-      <nldd-radio-button-group name="bijdragen" data-field="bijdragen">
+    <nldd-form-field>
+      <nldd-radio-button-group
+        name="bijdragen"
+        data-field="bijdragen"
+        accessible-labeled-by="rr-signup-title"
+      >
         <nldd-radio-button-field value="Ja" label={s.radioYes} checked />
         <nldd-radio-button-field value="Nee" label={s.radioNo} />
       </nldd-radio-button-group>
@@ -102,9 +108,11 @@ const successUrl = lang === 'en' ? '/en/signup/thanks' : '/aanmelden/bedankt';
         name="email"
         data-autocomplete="email"
         required
-        error-message="rr-email-error"
+        unmet="rr-email-error"
       ></nldd-text-field>
-      <nldd-form-field-error-text id="rr-email-error"></nldd-form-field-error-text>
+      <nldd-validation-list>
+        <nldd-validation-item id="rr-email-error"></nldd-validation-item>
+      </nldd-validation-list>
     </nldd-form-field>
 
     <nldd-form-field label={s.nameLabel}>
@@ -114,9 +122,11 @@ const successUrl = lang === 'en' ? '/en/signup/thanks' : '/aanmelden/bedankt';
         name="naam"
         data-autocomplete="name"
         required
-        error-message="rr-naam-error"
+        unmet="rr-naam-error"
       ></nldd-text-field>
-      <nldd-form-field-error-text id="rr-naam-error"></nldd-form-field-error-text>
+      <nldd-validation-list>
+        <nldd-validation-item id="rr-naam-error"></nldd-validation-item>
+      </nldd-validation-list>
     </nldd-form-field>
 
     <nldd-form-field label={s.orgLabel} optional optional-label={optionalLabel}>
@@ -266,9 +276,9 @@ const successUrl = lang === 'en' ? '/en/signup/thanks' : '/aanmelden/bedankt';
       '.rr-status-box--err'
     ) as HTMLElement;
 
-    // Setting `invalid` + filling the error-text drives nldd-form-field's
-    // _syncErrorText: it toggles the error-text visible and forwards the id to
-    // the inner <input aria-describedby>. aria-invalid follows `invalid`.
+    // The field names this item in `unmet`, so filling the item and setting
+    // `invalid` is what shows it; clearing `invalid` hides it again.
+    // aria-invalid follows `invalid`.
     function setFieldError(
       field: NlddValueField,
       el: HTMLElement,
@@ -278,18 +288,36 @@ const successUrl = lang === 'en' ? '/en/signup/thanks' : '/aanmelden/bedankt';
       field.invalid = Boolean(msg);
     }
 
-    function validate(): boolean {
-      let emailMsg = '';
-      let naamMsg = '';
+    function emailError(): string {
       const email = emailField.value.trim();
-      const naam = naamField.value.trim();
-      if (!email) emailMsg = labels.emailEmpty;
-      else if (!EMAIL_RE.test(email)) emailMsg = labels.emailInvalid;
-      if (!naam) naamMsg = labels.name;
+      if (!email) return labels.emailEmpty;
+      if (!EMAIL_RE.test(email)) return labels.emailInvalid;
+      return '';
+    }
+
+    function naamError(): string {
+      return naamField.value.trim() ? '' : labels.name;
+    }
+
+    function validate(): boolean {
+      const emailMsg = emailError();
+      const naamMsg = naamError();
       setFieldError(emailField, emailErr, emailMsg);
       setFieldError(naamField, naamErr, naamMsg);
       return !emailMsg && !naamMsg;
     }
+
+    // From the first submit on, a field's mark follows its value both ways, the
+    // way nldd-form does it for native constraints: fix the value and the
+    // message goes, break it again and it comes back. Before that first submit,
+    // typing says nothing.
+    let judged = false;
+    emailField.addEventListener('input', () => {
+      if (judged) setFieldError(emailField, emailErr, emailError());
+    });
+    naamField.addEventListener('input', () => {
+      if (judged) setFieldError(naamField, naamErr, naamError());
+    });
 
     // Success navigates to a dedicated page; this only drives the in-form busy
     // state. The error case is handled inline (errorBox) so the user keeps their
@@ -313,6 +341,7 @@ const successUrl = lang === 'en' ? '/en/signup/thanks' : '/aanmelden/bedankt';
       e.preventDefault();
       if (honeypot.value) return;
 
+      judged = true;
       if (!validate()) {
         if (emailField.invalid) {
           emailField.focus();

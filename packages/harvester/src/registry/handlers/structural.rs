@@ -178,6 +178,55 @@ impl ElementHandler for SkipHandler {
     }
 }
 
+/// Marker left where an element carried part of the norm as an image.
+///
+/// Deliberately unmistakable: a reader can see it, a grep can find it, and it
+/// cannot be confused for wettekst.
+pub const UNRENDERABLE_MARKER: &str = "[formule niet in tekst beschikbaar]";
+
+/// Handler for elements that may hold a norm as an image rather than as text.
+///
+/// The BWB XML states some norms as a picture: artikel 22a Participatiewet puts
+/// the whole kostendelersnorm formula in an `<illustratie>`, and `<formule>`
+/// elements appear elsewhere. The harvester cannot render an image, and that is
+/// not the problem — dropping it *silently* is. The sentence introducing the
+/// formula then ends on its colon, and nothing downstream can tell an
+/// incomplete article from one that genuinely says nothing there.
+///
+/// So the element leaves a marker, and what the text misses becomes visible in
+/// the text itself, which is the only place a reader of the corpus will look.
+///
+/// The marker is a last resort, never a replacement. These elements do not
+/// always wrap an image: a `<formule>` can carry a readable fallback in its
+/// children. Emitting the marker over that text would be worse than the bug
+/// this fixes — it would state that the formula is unavailable at the moment it
+/// was available and was discarded. Text wins whenever there is any.
+pub struct UnrenderableHandler;
+
+impl ElementHandler for UnrenderableHandler {
+    fn element_type(&self) -> ElementType {
+        ElementType::Inline
+    }
+
+    fn handle<'a, 'input>(
+        &self,
+        node: Node<'a, 'input>,
+        context: &mut ParseContext<'_>,
+        recurse: &RecurseFn<'a, 'input>,
+    ) -> ParseResult {
+        let rendered = extract_text_with_tail(node, context, recurse);
+        if !rendered.trim().is_empty() {
+            return ParseResult::new(rendered);
+        }
+
+        tracing::warn!(
+            tag = %get_tag_name(node),
+            "Element carries no text (image-only); leaving a marker in the law text"
+        );
+        ParseResult::new(UNRENDERABLE_MARKER)
+    }
+}
+
 /// Handler that extracts text from element and all children.
 ///
 /// Used for container elements that should contribute their text content.

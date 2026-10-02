@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { parseValue, createStepDefinitions, SUPPORTED_TIERS } from './steps.js';
+import {
+  parseValue,
+  createStepDefinitions,
+  SUPPORTED_TIERS,
+  matchStep,
+  typedArgs,
+} from './steps.js';
 import { GRAMMAR, VALUE_TYPING } from './grammar.generated.js';
 
 describe('parseValue', () => {
@@ -49,6 +55,58 @@ describe('createStepDefinitions', () => {
   });
 });
 
+// `matchStep` is the one walk over the grammar, shared by every runner that is
+// handed raw step text: the editor, the demo's Dutch renderer, and both panels
+// on the docs site. It used to be hand-rolled identically in three of those, and
+// the point of moving it here is that they can no longer disagree about what a
+// step means.
+describe('matchStep', () => {
+  it('returns the entry and the raw captures', () => {
+    const match = matchStep('parameter "bsn" is "999993653"');
+    expect(match?.entry.id).toBe('set_parameter_string');
+    expect(match?.args).toEqual(['bsn', '999993653']);
+  });
+
+  it('returns null for a phrasing the grammar does not have', () => {
+    // The guarantee the language rests on: a step that is not in
+    // bdd/grammar.yaml does not exist, and no runner may invent one.
+    expect(matchStep('the vibes are good')).toBe(null);
+    expect(matchStep('output "x" is roughly 42')).toBe(null);
+  });
+
+  it('tells the two parameter forms apart by their argument, not their words', () => {
+    expect(matchStep('parameter "age" is 25')?.entry.id).toBe('set_parameter_number');
+    expect(matchStep('parameter "age" is "25"')?.entry.id).toBe('set_parameter_string');
+  });
+});
+
+// `typedArgs` applies `value_typing` from bdd/grammar.yaml to a step's captures.
+// It deliberately stops there: the grammar literals are appended by `buildArgs`
+// for the callers that dispatch, because a caller that only wants to *show* a
+// step wants the captures alone.
+describe('typedArgs', () => {
+  const entryFor = (line) => matchStep(line).entry;
+
+  it('reads a quoted capture by its content', () => {
+    const line = 'parameter "bsn" is "999993653"';
+    expect(typedArgs(entryFor(line), matchStep(line).args)).toEqual(['bsn', 999993653]);
+  });
+
+  it('reads a bare capture as a number', () => {
+    const line = 'output "hoogte" equals 133084';
+    expect(typedArgs(entryFor(line), matchStep(line).args)).toEqual(['hoogte', 133084]);
+  });
+
+  it('leaves the grammar literals out', () => {
+    // `output "x" is true` carries the boolean as a literal, not a capture.
+    // typedArgs yields one value; the dispatch path adds the literal after it.
+    const line = 'output "x" is true';
+    const entry = entryFor(line);
+    expect(entry.literals).toEqual([true]);
+    expect(typedArgs(entry, matchStep(line).args)).toEqual(['x']);
+  });
+});
+
 // Each canonical example line is parsed by exactly one core grammar pattern,
 // and that pattern carries the expected action. This is the proof that the
 // generated patterns match their canonical phrasings.
@@ -68,7 +126,7 @@ describe('core grammar patterns match their canonical example lines', () => {
     { line: 'output "x" is false', action: 'assert_boolean' },
     { line: 'output "x" equals 42', action: 'assert_equals' },
     { line: 'output "x" equals "hello"', action: 'assert_equals' },
-    { line: 'output "x" is null', action: 'assert_null' },
+    { line: 'output "x" is absent', action: 'assert_null' },
     { line: 'output "x" contains "sub"', action: 'assert_contains' },
   ];
 

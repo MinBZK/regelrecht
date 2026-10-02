@@ -1,0 +1,154 @@
+# Scenario's voor de burger- en scenarioview (in de code nog `personas`; op
+# het scherm heten ze scenario's). Elk record heeft hetzelfde schema als een
+# populatierecord (zie data/distributions.yaml), zodat interne DUO/OCW-data
+# later drop-in vervangbaar is. Bedragen in eurocent, inkomens per jaar (bruto).
+#
+# NAMEN. De set weerspiegelt de Nederlandse studentenpopulatie breder dan
+# alleen Nederlandse en Marokkaans/Turks-Nederlandse namen: Priya
+# (Hindoestaans-Surinaams), Kwame (Ghanees), Aisha, Yusuf, en Wouter, Els en
+# Mariska. Namen zijn los van de financiële situatie gekozen, zodat geen enkel
+# scenario een groep aan een uitkomst koppelt.
+#
+# OPEN VRAAG VOOR DE SESSIE. Studieleningen zijn rentedragend, en voor wie op
+# religieuze gronden geen rente wil betalen (in het bijzonder moslims) is dat
+# een reden om niet te lenen, of om de schuld versneld af te lossen. De WSF
+# 2000 kent geen rentevrije variant: artikel 6.3 stelt het rentepercentage
+# vast, en artikel 6.2 zet het op nul alleen als de berekening onder nul
+# uitkomt. Dat raakt wie er gebruikmaakt van studiefinanciering en dus wie in
+# de terugbetaalregimes zit; het is geen knop in deze demo, maar hoort wel op
+# tafel bij een gesprek over toegankelijkheid.
+#
+# Regime-afleiding gebeurt in de wet (cohortroutering), niet hier: de velden
+# eerste_studiefinanciering en onderwijssoort bepalen het regime.
+personas:
+  - bsn: '100000001'
+    naam: Priya
+    geboortejaar: 1987
+    omschrijving: >-
+      Studeerde hbo vóór 2009 en lost af onder SF15-oud. Werkt fulltime,
+      modaal inkomen. Vraagt zich af of de overstap naar SF15-nieuw en het
+      aanvragen van de draagkrachtmeting uitmaken.
+    huishoudtype: alleenstaand
+    heeft_partner: false
+    partnerinkomen: 0
+    inkomen: 4500000
+    inkomensgroei: 0.02
+    schuld: 2500000
+    eerste_studiefinanciering: '2005-09-01'
+    onderwijssoort: hbo
+    is_levenlanglerenkrediet: false
+    keuzemomenten: [overstap, draagkrachtmeting]
+
+  - bsn: '100000002'
+    naam: Wouter
+    geboortejaar: 1968
+    omschrijving: >-
+      SF15-oud-debiteur die het inkomen van zijn partner niet laat meetellen.
+      Eigen draagkracht is nihil; elke jaargang verlengt zijn aflosperiode.
+      Betaalt al jaren niets en blijft debiteur, mogelijk levenslang.
+    huishoudtype: paar
+    heeft_partner: true
+    partnerinkomen: 6200000
+    inkomen: 800000
+    inkomensgroei: 0.01
+    schuld: 1800000
+    eerste_studiefinanciering: '1990-09-01'
+    onderwijssoort: hbo
+    is_levenlanglerenkrediet: false
+    keuzemomenten: [partner_meetellen, draagkrachtmeting]
+
+  - bsn: '100000003'
+    naam: Kwame
+    geboortejaar: 1985
+    omschrijving: >-
+      SF15-oud-debiteur die nooit een draagkrachtmeting heeft aangevraagd
+      (zoals 63% van deze groep) en daardoor het volledige wettelijke
+      maandbedrag betaalt, terwijl zijn draagkracht lager ligt.
+    huishoudtype: alleenstaand_met_kind
+    heeft_partner: false
+    partnerinkomen: 0
+    inkomen: 3200000
+    inkomensgroei: 0.015
+    schuld: 3000000
+    eerste_studiefinanciering: '2004-09-01'
+    onderwijssoort: wo
+    is_levenlanglerenkrediet: false
+    keuzemomenten: [draagkrachtmeting, overstap]
+
+  - bsn: '100000004'
+    naam: Aisha
+    geboortejaar: 1995
+    omschrijving: >-
+      Studeerde hbo vanaf 2010 (SF15-nieuw), alleenstaande ouder met een
+      bescheiden inkomen. Draagkracht gaat automatisch; de Nibud-marge is
+      krap en een groot deel van de restschuld wordt kwijtgescholden.
+    huishoudtype: alleenstaand_met_kind
+    heeft_partner: false
+    partnerinkomen: 0
+    inkomen: 2800000
+    inkomensgroei: 0.02
+    schuld: 2200000
+    eerste_studiefinanciering: '2013-09-01'
+    onderwijssoort: hbo
+    is_levenlanglerenkrediet: false
+    keuzemomenten: [peiljaarverlegging, jokerjaren]
+
+  - bsn: '100000005'
+    naam: Yusuf
+    geboortejaar: 1999
+    omschrijving: >-
+      Begon in 2018 met een wo-studie onder het studievoorschot (SF35).
+      Hoge schuld, starterssalaris, en de vraag of jokerjaren inzetten
+      verstandig is rond de aankoop van een huis.
+    huishoudtype: alleenstaand
+    heeft_partner: false
+    partnerinkomen: 0
+    inkomen: 3800000
+    inkomensgroei: 0.03
+    schuld: 4000000
+    eerste_studiefinanciering: '2018-09-01'
+    onderwijssoort: wo
+    is_levenlanglerenkrediet: false
+    keuzemomenten: [jokerjaren]
+
+  - bsn: '100000006'
+    naam: Els
+    geboortejaar: 1974
+    omschrijving: >-
+      Nam in 2019 een levenlanglerenkrediet voor een omscholing (SF15-LLLK).
+      Haar inkomen daalde in 2025 van 30.000 naar 21.000 euro (70%, dus
+      ruim onder de 85%-grens van artikel 6.12); met peiljaarverlegging
+      telt het actuele inkomen, dat onder de draagkrachtvrije voet ligt,
+      en betaalt ze direct minder, tot het peiljaar de daling heeft
+      ingehaald. Een aflosvrije periode kent haar regime niet.
+    huishoudtype: alleenstaand
+    heeft_partner: false
+    partnerinkomen: 0
+    inkomen: 2100000
+    inkomen_voorheen: 3000000
+    inkomensdaling_jaar: 2025
+    inkomensgroei: 0.0
+    schuld: 900000
+    eerste_studiefinanciering: '2019-09-01'
+    onderwijssoort: hbo
+    is_levenlanglerenkrediet: true
+    keuzemomenten: [peiljaarverlegging]
+
+  - bsn: '100000007'
+    naam: Mariska
+    geboortejaar: 1981
+    omschrijving: >-
+      SF15-oud-debiteur met een goedverdienende partner. Overweegt het
+      partnerinkomen niet mee te laten tellen: dat scheelt nu fors per
+      maand, maar de aflosperiode verlengt elk jaar en kwijtschelding
+      vervalt.
+    huishoudtype: paar_met_kind
+    heeft_partner: true
+    partnerinkomen: 7500000
+    inkomen: 2600000
+    inkomensgroei: 0.015
+    schuld: 2800000
+    eerste_studiefinanciering: '2002-09-01'
+    onderwijssoort: wo
+    is_levenlanglerenkrediet: false
+    keuzemomenten: [partner_meetellen, draagkrachtmeting, overstap]

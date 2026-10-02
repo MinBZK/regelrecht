@@ -23,6 +23,11 @@ being redesigned.
 Open one anyway and we will read it. The likely outcome is an issue that
 records your point, with the change made separately.
 
+Our own pull requests end with a `Werkpakket:` line naming the work package on
+[the roadmap](https://regelrecht.rijks.app/roadmap) they contribute to, and a
+check enforces it. Pull requests from a fork are exempt, so this is nothing you
+have to fill in.
+
 ## Legal expertise
 
 If you work on legislation or public administration and you see something that

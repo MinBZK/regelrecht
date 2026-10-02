@@ -1,0 +1,47 @@
+[package]
+name = "regelrecht-poc-napp"
+version = "0.1.0"
+edition = "2021"
+authors = ["MinBZK <noreply@minbzk.nl>"]
+description = "PoC: het subsidieproces uit het wetsvoorstel Wet op de politieke partijen, uitgevoerd door de engine"
+license = "EUPL-1.2"
+repository = "https://github.com/MinBZK/regelrecht"
+
+[[bin]]
+name = "regelrecht-poc-napp"
+path = "src/main.rs"
+
+[dependencies]
+regelrecht-engine = { path = "../engine" }
+regelrecht-auth = { path = "../auth" }
+axum.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml_ng.workspace = true
+sqlx = { workspace = true, features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "sqlite", "uuid", "chrono"] }
+chrono.workspace = true
+uuid = { workspace = true, features = ["v4"] }
+tower-http = { workspace = true, features = ["cors", "fs", "trace"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+anyhow = "1"
+# Voor het lezen van Value::Decimal uit de engine (was ooit Value::Float).
+rust_decimal = { workspace = true }
+# 0.12 en niet de 0.13 die corpus/github/pipeline gebruiken: deze crate hangt aan
+# regelrecht-auth, en die is door openidconnect/oauth2 op 0.12 gepind. Twee
+# versies naast elkaar in één binary zou een tweede TLS-stack meecompileren.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-webpki-roots-no-provider", "json"] }
+tower-sessions.workspace = true
+tower-sessions-memory-store.workspace = true
+time.workspace = true
+
+[dev-dependencies]
+cucumber = "0.23"
+
+[[test]]
+name = "bdd"
+harness = false
+
+[lints]
+workspace = true

@@ -24,9 +24,26 @@ Verifies that every cross-law source binding is REAL and RESOLVABLE:
 All findings are MODELLING ERRORS, never engine limitations. Exit code != 0 if
 any are found (usable as a CI gate).
 
-Usage:  python3 cross-law-integriteit.py [corpus_root]   (default: regulation)
+ONE STATE PER LAW, CHOSEN BY DATE. A law with several `valid_from` states shares
+one `$id`. Until now the loader kept whichever file glob happened to yield last,
+so the check ran against an arbitrary state: a binding onto a term introduced in
+a newer state was reported as dangling because the older text was consulted. That
+is worse than no check - six false findings teach a reader to ignore the gate.
+The state that APPLIES on the reference date is now selected, the same rule the
+engine uses. States that begin after the reference date are ignored; if every
+state is in the future the earliest one is used, so a fully forward-dated corpus
+still gets checked.
+
+A state whose `valid_to` lies before the reference date is still the one that is
+checked: the engine does not fall back to an older state either, it reports the
+law as no longer in force. The check follows the same text and says in its output
+that the law has ended, rather than silently reading a predecessor the engine
+would never use.
+
+Usage:  python3 cross-law-integriteit.py [corpus_root] [--peildatum YYYY-MM-DD]
+        (defaults: regulation, today)
 """
-import sys, glob
+import sys, glob, datetime
 
 try:
     import yaml
@@ -34,16 +51,43 @@ except ImportError:
     sys.stderr.write("cross-law-integriteit.py requires pyyaml (pip install pyyaml)\n")
     sys.exit(2)
 
-root = sys.argv[1] if len(sys.argv) > 1 else 'regulation'
+args = [a for a in sys.argv[1:]]
+peildatum = datetime.date.today().isoformat()
+for i, a in enumerate(list(args)):
+    if a.startswith('--peildatum'):
+        peildatum = a.split('=', 1)[1] if '=' in a else args[i + 1]
+        args = [x for j, x in enumerate(args)
+                if j != i and not (j == i + 1 and '=' not in a)]
+        break
+root = args[0] if args else 'regulation'
 
-laws = {}
+
+def _valid_from(doc):
+    """Sortable start date; a law without one is treated as always in force."""
+    return str(doc.get('valid_from') or '')
+
+
+toestanden = {}
 for path in glob.glob(f'{root}/**/*.yaml', recursive=True):
     try:
         doc = yaml.safe_load(open(path))
     except Exception:
         continue
     if isinstance(doc, dict) and '$id' in doc:
-        laws[doc['$id']] = doc
+        toestanden.setdefault(doc['$id'], []).append((path, doc))
+
+laws, gekozen, vervallen = {}, [], []
+for lid, versies in toestanden.items():
+    versies.sort(key=lambda pd: _valid_from(pd[1]))
+    geldig = [pd for pd in versies if _valid_from(pd[1]) <= peildatum]
+    path, doc = (geldig[-1] if geldig else versies[0])
+    laws[lid] = doc
+    if len(versies) > 1:
+        gekozen.append(f'{lid}: {path.split("/")[-1]} (uit {len(versies)} toestanden)')
+    # Upper bound is inclusive, as in the engine: in force while peildatum <= valid_to.
+    valid_to = str(doc.get('valid_to') or '')
+    if valid_to and peildatum > valid_to:
+        vervallen.append(f'{lid}: {path.split("/")[-1]} vervallen op {valid_to}')
 
 
 def action_outputs(doc):
@@ -144,6 +188,17 @@ for lid, doc in laws.items():
 
 print(f'clean={ok} misplaced={len(misplaced)} dangling={len(dangling)} '
       f'plain-param={len(plain)} impl-dangling={len(impl_dangling)} impl-no-date={len(impl_nodate)}')
+# Show which state was consulted wherever there was a choice. A silent choice is
+# what made the old loader dangerous: the reader could not see that the check had
+# read a different text than the one in force.
+if gekozen:
+    print(f'  toestand op peildatum {peildatum}:')
+    for g in gekozen:
+        print(f'    {g}')
+if vervallen:
+    print(f'  niet meer in werking op peildatum {peildatum} (wel gecontroleerd):')
+    for v in vervallen:
+        print(f'    {v}')
 for x in misplaced:
     print('  MISPLACED', x)
 for x in dangling:

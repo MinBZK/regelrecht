@@ -22,7 +22,7 @@ For every candidate law document `d`, with schema-valid set `S` and model-parsea
   it and a re-serialize round-trips to a schema-valid, value-equal document (the model is not
   *more restrictive*, and does not silently drop data).
 
-## Two tiers
+## Three tiers
 
 - **Tier A — corpus differential** (`tier_a_corpus_differential`). Walks every
   `corpus/regulation/**/*.yaml` with a recognised `$schema`. Hard assertions (also guaranteed
@@ -31,8 +31,30 @@ For every candidate law document `d`, with schema-valid set `S` and model-parsea
   value-stable — these quantify lossy serialization (the model emits `None` as `null`, etc.).
 - **Tier B — synthetic fixtures** (`tier_b_fixtures`), under `valid/` and `invalid/`. Each
   fixture is a single, isolated construct.
-  - `valid/`: schema accepts ∧ model parses ∧ re-serialized (null-normalized) still schema-valid.
+  - `valid/`: schema accepts ∧ model parses ∧ re-serialized (null-normalized) still schema-valid
+    ∧ the round-trip loses nothing the fixture states. That last one is a hard assertion here,
+    where Tier A only reports it: a field the model silently drops passes every other check,
+    because the document still parses and every optional field may be absent.
   - `invalid/`: schema **rejects** (asserted). The model verdict is *measured* against `KNOWN_GAPS`.
+- **Tier C — schema-property coverage** (`tier_c_schema_property_coverage`). Derives the fixture
+  set from the schema instead of from what someone thought to write down: every property the
+  latest schema defines must be exercised by some `valid/` fixture, or carry a reasoned entry in
+  `UNCOVERED_SCHEMA_KEYS`. Coverage is keyed on `(definition, property)`, not on the position in
+  the document, because a definition reused at fifteen places yields fifteen paths that no single
+  fixture can reach. Only fixtures count; the corpus does not, because only fixtures carry the
+  no-loss assertion and a corpus law can stop using a field at any time.
+
+## Why Tier C exists
+
+Tier B proves things about the fixtures that exist. It says nothing about a schema-valid law the
+model refuses or mangles through a field no fixture happens to use, and that is the dangerous
+direction: the schema is the contract an author writes against, so no amount of care while
+writing a law protects against it. `machine_readable.requires` is a list of objects in the schema
+and was `Vec<String>` in the model. A law the schema accepted made the engine fail to load, and
+no fixture used `requires`.
+
+Tier C plus the Tier-B no-loss assertion closes that: a new schema property cannot land without
+either a fixture proving the model carries it, or an explicit statement that it may be lost.
 
 ## `KNOWN_GAPS` (the measurement)
 
@@ -50,3 +72,9 @@ decision driven by this measurement.
    is attributable to it — mind conditional `required` rules, e.g. `WET` requires `bwb_id`).
 2. Run `just conformance`. For an `invalid/` fixture the model also accepts, add its filename to
    `KNOWN_GAPS` with a one-line note on *why* the model is lenient.
+
+The one-construct-per-fixture rule holds for `invalid/`, where attribution is the whole point. The
+`valid/` set also carries a few deliberately dense fixtures (`machine_readable_full.yaml`,
+`all_operations.yaml`, `law_metadata.yaml`) that exist to satisfy Tier C; a fixture per property
+would mean a hundred near-identical files. The layer identifiers are split one per file, since the
+schema's conditional `required` rules make them mutually exclusive.

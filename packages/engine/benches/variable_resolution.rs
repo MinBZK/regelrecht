@@ -1,8 +1,14 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+// Allowed crate-wide: benchmark setup outside a `#[test]` fn may unwrap, expect and
+// panic too, because that is how a failing fixture reports itself.
+// `allow-*-in-tests` in clippy.toml only reaches `#[test]` fns.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
+use criterion::{criterion_group, criterion_main, Criterion};
 use regelrecht_engine::{RuleContext, Value, ValueResolver};
 use std::collections::BTreeMap;
+use std::hint::black_box;
 
-fn make_context() -> RuleContext {
+fn make_context() -> RuleContext<'static> {
     let mut parameters = BTreeMap::new();
     parameters.insert("bsn".to_string(), Value::String("999993653".to_string()));
     parameters.insert("inkomen".to_string(), Value::Int(35000));
@@ -17,8 +23,6 @@ fn make_context() -> RuleContext {
 
     ctx.set_output("is_verzekerd", Value::Bool(true));
     ctx.set_output("toetsingsinkomen", Value::Int(35000));
-
-    ctx.set_resolved_input("standaardpremie", Value::Int(211200));
 
     ctx.set_local("item", Value::String("test_item".to_string()));
 
@@ -46,11 +50,6 @@ fn bench_resolve_variable(c: &mut Criterion) {
     // Outputs
     group.bench_function("output_lookup", |b| {
         b.iter(|| ctx.resolve(black_box("is_verzekerd")))
-    });
-
-    // Resolved inputs (cross-law cache)
-    group.bench_function("resolved_input", |b| {
-        b.iter(|| ctx.resolve(black_box("standaardpremie")))
     });
 
     // Definitions

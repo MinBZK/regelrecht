@@ -28,6 +28,10 @@ const { authenticated, oidcConfigured, login } = useAuth();
 const needsLogin = computed(() => oidcConfigured.value && !authenticated.value);
 
 const search = ref('');
+// What the search actually runs on: the watch below trims before it compares
+// against MIN_QUERY_LENGTH, so the hints in the template have to compare the
+// same thing, or "ab " says "no results" instead of "type more".
+const searchTerm = computed(() => search.value.trim());
 const popoverRef = ref(null);
 const useCenteredPosition = ref(true);
 // md only: popover anchors below the trigger button - clicking outside closes
@@ -411,11 +415,17 @@ defineExpose({ show });
         height="min(70vh, 560px)"
         :accessible-label="SEARCH_ACCESSIBLE_LABEL"
         :translations="listTranslations"
-        empty-text="Geen resultaten gevonden"
-        empty-supporting-text="Pas je zoektermen of voorkeuren aan"
         @input="onListInput"
         @keydown="onListKeydown"
       >
+        <!-- Tijdelijk, tot de DS-fix is uitgebracht: sinds 0.8.84 haalt een
+             listbox zonder rijen zijn eigen zoekveld weg ("er valt niets te
+             doorzoeken"), terwijl onze rijen juist de treffers van de
+             serverquery zijn. Deze verborgen rij houdt de lijst in de
+             "niets gevonden"-staat, waarin het zoekveld en de Sluit-knop
+             blijven staan. Weghalen zodra de listbox zijn zoekveld zelf houdt. -->
+        <nldd-list-item hidden></nldd-list-item>
+
         <!-- Op md anchort de popover naast de trigger - naast de popover
              klikken sluit 'm. Op sm (full-height sheet) en lg (centered
              overlay) heeft de gebruiker een expliciete sluit-knop nodig. -->
@@ -483,7 +493,7 @@ defineExpose({ show });
             supporting-text="De wetten konden niet worden doorzocht. Probeer het opnieuw."
           ></nldd-inline-dialog>
           <nldd-inline-dialog
-            v-else-if="needsLogin && search.length >= MIN_QUERY_LENGTH"
+            v-else-if="needsLogin && searchTerm.length >= MIN_QUERY_LENGTH"
             icon="login"
             text="Log in om externe bronnen te doorzoeken"
             supporting-text="Inloggen is vereist om wetten op te halen van wetten.overheid.nl"
@@ -495,8 +505,8 @@ defineExpose({ show });
             text="Zoeken op wetten.overheid.nl..."
           ></nldd-inline-dialog>
           <nldd-inline-dialog
-            v-else-if="search.length > 0 && search.length < MIN_QUERY_LENGTH"
-            text="Typ minimaal twee letters om te zoeken"
+            v-else-if="searchTerm.length > 0 && searchTerm.length < MIN_QUERY_LENGTH"
+            text="Typ minimaal drie tekens om te zoeken"
           ></nldd-inline-dialog>
           <nldd-inline-dialog
             v-else

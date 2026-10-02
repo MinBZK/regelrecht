@@ -4,6 +4,11 @@
 //! on stdin, a JSON response on stdout, and flags that change the shape of that
 //! response. These tests pin that contract, not the engine internals behind it.
 
+// Allowed crate-wide: test helpers outside a `#[test]` fn may unwrap, expect and
+// panic too, because that is how a failing fixture reports itself.
+// `allow-*-in-tests` in clippy.toml only reaches `#[test]` fns.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 use std::io::Write;
 use std::process::{Command, Stdio};
 

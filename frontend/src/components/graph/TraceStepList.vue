@@ -66,7 +66,7 @@ watch(
         <span class="step-row__name">{{ entry.step.name }}</span>
         <span v-if="entry.step.resolveType" class="step-row__resolve">[{{ entry.step.resolveType }}]</span>
       </div>
-      <div v-if="entry.step.result !== undefined && entry.step.result !== null" class="step-row__result">
+      <div v-if="entry.step.result !== undefined" class="step-row__result">
         = {{ truncate(entry.step.result) }}
       </div>
       <div v-if="entry.step.message" class="step-row__message">{{ entry.step.message }}</div>

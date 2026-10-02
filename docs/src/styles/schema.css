@@ -1,0 +1,128 @@
+/*
+ * Styles for the generated schema reference (/reference/schema).
+ *
+ * Deliberately small. The design system owns everything it can: nldd-table
+ * (surface, dividers, column tracks, its own horizontal scrolling, responsive
+ * column dropping), nldd-tag (keywords, enum members, the required marker),
+ * nldd-code-viewer (the YAML examples, with highlighting and a copy button),
+ * nldd-text and nldd-link. What is left here is the filter's empty states and
+ * the vertical rhythm between one generated block and the next.
+ *
+ * Imported by components/SchemaReference.astro.
+ */
+
+/* A row the filter ruled out. `display: none` from a class rather than the
+   script writing element.style, so the stylesheet keeps ownership of display.
+   `!important` because nldd-table-row sets its own display for the subgrid. */
+.rr-schema-row--geen-treffer {
+  display: none !important;
+}
+
+/* A block whose rows all hid: without this its heading and table header keep
+   rendering over nothing. */
+.rr-schema-block--leeg {
+  display: none !important;
+}
+
+/* Space between the generated blocks. Without this every heading, tag row,
+   example and table stacks flush against the next and the page reads as one
+   dense wall. */
+.rr-schema-table {
+  margin-block: 1rem;
+}
+
+.rr-schema-op {
+  margin-block-start: 2.5rem;
+}
+
+.rr-schema-keywords {
+  margin-block: 0.5rem 0.75rem;
+}
+
+.rr-schema-row nldd-code-viewer {
+  display: block;
+  margin-block: 0.75rem;
+}
+
+/* The type repeated under the field name, for the narrow layout where the
+   Type column is dropped. Hidden at md and up, where that column is back. */
+.rr-schema-type-inline {
+  display: block;
+}
+
+@media (min-width: 641px) {
+  .rr-schema-type-inline {
+    display: none;
+  }
+}
+
+/* The hand-written Version History table (markdown, styled by nldd-rich-text).
+   Its last column is a list of RFC links, which automatic table layout squeezes
+   until "RFC-038" wraps to two lines mid-token. Sizing the Version and RFC
+   columns to their content gives the wide Introduces column the slack instead,
+   and nowrap keeps an RFC number whole.
+
+   Scoped under .rr-version-history, the class on the wrapper in schema.mdx.
+   Astro hoists an imported stylesheet into the global bundle, so a bare
+   `table` selector here would restyle the tables on all 52 docs pages — the
+   same reason roadmap.css puts .rr-roadmap in front of every one of its
+   rules. */
+.rr-version-history td:first-child,
+.rr-version-history th:first-child,
+.rr-version-history td:last-child,
+.rr-version-history th:last-child {
+  width: 1%;
+  white-space: nowrap;
+}
+
+/* The RFC cell can hold several links ("RFC-005, RFC-018"); those may wrap
+   between entries, just never inside one. */
+.rr-version-history td:last-child {
+  white-space: normal;
+}
+
+.rr-version-history td:last-child a {
+  white-space: nowrap;
+}
+
+/* A nested object (source, type_spec, temporal) sits on a card inside the
+   section that owns it. The indent plus the card surface is what says "this
+   belongs to the heading above" — rendered flat, `source` read as a sibling
+   of Output and appeared to describe it. */
+/* A nested object (source, type_spec, temporal) belongs to the section above
+   it, and the indent plus the rule down the left says so. Rendered flat,
+   `source` read as a sibling of Output and appeared to describe it.
+
+   A plain div rather than nldd-card: the card sizes to its content, and as a
+   direct child of nldd-rich-text that resolved to zero width (2700px tall,
+   0 wide). The landing page only ever puts cards inside an nldd-container
+   grid, which is what gives them a width there. */
+.rr-schema-nested {
+  margin-block: 1.25rem;
+  padding-inline-start: 1.25rem;
+  border-inline-start: 2px solid var(--semantics-dividers-color);
+}
+
+/* The h4 is the nested heading; nldd-rich-text sizes it, so this only tightens
+   the space above it, which would otherwise read as a gap after the rule. */
+.rr-schema-nested > h4:first-child {
+  margin-block-start: 0;
+}
+
+@media (max-width: 640px) {
+  /* The indent costs more than it says on a phone; the rule alone carries it. */
+  .rr-schema-nested {
+    padding-inline-start: 0.75rem;
+  }
+}
+
+/* The filter sits above the generated sections. It ships `hidden`; the script
+   unhides it, so it never appears without the behaviour behind it. */
+.rr-schema-zoek {
+  margin-block: 1.5rem;
+}
+
+.rr-schema-zoek__count {
+  display: block;
+  min-height: 1.5em;
+}

@@ -397,7 +397,7 @@ const sectionLabels = {
       <nldd-simple-section v-if="item">
           <!-- Definition -->
           <template v-if="item.section === 'definition' || item.section === 'add-definition'">
-            <nldd-list variant="box" class="edit-settings-list">
+            <nldd-list variant="box-tinted" class="edit-settings-list">
               <nldd-list-item size="md">
                 <nldd-text-cell text="Naam" max-width="140px"></nldd-text-cell>
                 <nldd-spacer-cell size="8"></nldd-spacer-cell>
@@ -450,7 +450,7 @@ const sectionLabels = {
 
           <!-- Parameter -->
           <template v-if="item.section === 'parameter' || item.section === 'add-parameter'">
-            <nldd-list variant="box" class="edit-settings-list">
+            <nldd-list variant="box-tinted" class="edit-settings-list">
               <nldd-list-item size="md">
                 <nldd-text-cell text="Naam" max-width="140px"></nldd-text-cell>
                 <nldd-spacer-cell size="8"></nldd-spacer-cell>
@@ -481,7 +481,7 @@ const sectionLabels = {
 
           <!-- Input -->
           <template v-if="item.section === 'input' || item.section === 'add-input'">
-            <nldd-list variant="box" class="edit-settings-list">
+            <nldd-list variant="box-tinted" class="edit-settings-list">
               <nldd-list-item size="md">
                 <nldd-text-cell text="Naam" max-width="140px"></nldd-text-cell>
                 <nldd-spacer-cell size="8"></nldd-spacer-cell>
@@ -556,39 +556,41 @@ const sectionLabels = {
               </nldd-list-item>
             </nldd-list>
 
-            <nldd-spacer size="12"></nldd-spacer>
-            <nldd-title size="6"><h6>Bron parameters</h6></nldd-title>
-            <nldd-spacer size="8"></nldd-spacer>
-            <nldd-list variant="box" class="edit-settings-list" data-testid="source-parameters-list">
-              <nldd-list-item
-                v-for="param in values.sourceParameters"
-                :key="param._rowId"
-                size="md"
-              >
-                <nldd-text-cell
-                  :text="param.key"
-                  max-width="140px"
-                  :data-testid="`source-param-key-${param._rowId}`"
-                ></nldd-text-cell>
-                <nldd-spacer-cell size="8"></nldd-spacer-cell>
-                <nldd-cell>
-                  <nldd-dropdown size="md" :data-testid="`source-param-value-${param._rowId}`">
-                    <select :value="param.value" :aria-label="`Waarde voor ${param.key}`" @change="param.value = $event.target.value">
-                      <option value="">Selecteer...</option>
-                      <option v-if="param.value && !param.value.startsWith('$')" :value="param.value" :selected="true">{{ param.value }}</option>
-                      <optgroup v-for="[category, opts] in paramValueGroups" :key="category" :label="category">
-                        <option v-for="opt in opts" :key="opt.value" :value="opt.value" :selected="opt.value === param.value">{{ opt.label }}</option>
-                      </optgroup>
-                    </select>
-                  </nldd-dropdown>
-                </nldd-cell>
-              </nldd-list-item>
-            </nldd-list>
+            <template v-if="values.sourceParameters?.length">
+              <nldd-spacer size="12"></nldd-spacer>
+              <nldd-title size="6"><h6>Bron parameters</h6></nldd-title>
+              <nldd-spacer size="8"></nldd-spacer>
+              <nldd-list variant="box-tinted" class="edit-settings-list" data-testid="source-parameters-list">
+                <nldd-list-item
+                  v-for="param in values.sourceParameters"
+                  :key="param._rowId"
+                  size="md"
+                >
+                  <nldd-text-cell
+                    :text="param.key"
+                    max-width="140px"
+                    :data-testid="`source-param-key-${param._rowId}`"
+                  ></nldd-text-cell>
+                  <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                  <nldd-cell>
+                    <nldd-dropdown size="md" :data-testid="`source-param-value-${param._rowId}`">
+                      <select :value="param.value" :aria-label="`Waarde voor ${param.key}`" @change="param.value = $event.target.value">
+                        <option value="">Selecteer...</option>
+                        <option v-if="param.value && !param.value.startsWith('$')" :value="param.value" :selected="true">{{ param.value }}</option>
+                        <optgroup v-for="[category, opts] in paramValueGroups" :key="category" :label="category">
+                          <option v-for="opt in opts" :key="opt.value" :value="opt.value" :selected="opt.value === param.value">{{ opt.label }}</option>
+                        </optgroup>
+                      </select>
+                    </nldd-dropdown>
+                  </nldd-cell>
+                </nldd-list-item>
+              </nldd-list>
+            </template>
           </template>
 
           <!-- Output -->
           <template v-if="item.section === 'output' || item.section === 'add-output'">
-            <nldd-list variant="box" class="edit-settings-list">
+            <nldd-list variant="box-tinted" class="edit-settings-list">
               <nldd-list-item size="md">
                 <nldd-text-cell text="Naam" max-width="140px"></nldd-text-cell>
                 <nldd-spacer-cell size="8"></nldd-spacer-cell>

@@ -24,6 +24,8 @@ const props = defineProps({
   /** Whether an enrichment can be requested here. The run covers the whole
    *  law, not just this article, so the empty state says so. */
   canEnrich: { type: Boolean, default: false },
+  /** Doorgegeven aan MachineEmptyState: '' | 'login' | 'traject'. */
+  needs: { type: String, default: '' },
   /** An enrichment for this law is already pending or processing. The empty
    *  state then reports that instead of offering the buttons again. */
   enriching: { type: Boolean, default: false },
@@ -105,11 +107,15 @@ const produces = computed(() => execution.value?.produces ?? null);
 
 // Enum values copied from the law schema. Keep in sync with
 // schema/latest/schema.json → execution.produces.legal_character.enum
-// and .decision_type.enum. Currently identical across v0.4.0..v0.5.2;
-// if the schema adds a value here, add it here too or the dropdown
-// silently can't set it.
+// and .decision_type.enum. If the schema adds a value here, add it here
+// too or the dropdown silently can't set it.
+//
+// That is not hypothetical: RECHTSPOSITIE was added to legal_character in
+// schema v0.5.9 (RFC-038) and this list was not updated, so the editor could
+// not set it on a law for the whole of that release. Current as of v0.6.0.
 const LEGAL_CHARACTERS = [
   'BESCHIKKING', 'TOETS', 'WAARDEBEPALING', 'BESLUIT_VAN_ALGEMENE_STREKKING', 'INFORMATIEF',
+  'RECHTSPOSITIE',
 ];
 const DECISION_TYPES = [
   'TOEKENNING', 'AFWIJZING', 'GOEDKEURING', 'GEEN_BESLUIT',
@@ -297,6 +303,7 @@ function addOutput() {
     :review-article="reviewArticle"
     :enriching="enriching"
     :can-enrich="canEnrich"
+    :needs="needs"
     :can-write-here="editable"
     :can-create="canCreate"
     :create-href="createHref"
@@ -310,7 +317,7 @@ function addOutput() {
 
   <div v-else data-testid="machine-readable">
     <!-- Metadata: produces -->
-    <nldd-list v-if="produces" variant="box">
+    <nldd-list v-if="produces" variant="box-tinted">
       <nldd-list-item v-if="produces.legal_character || editable" size="md">
         <nldd-text-cell text="Juridische basis" min-width="120px"></nldd-text-cell>
         <nldd-spacer-cell size="8"></nldd-spacer-cell>
@@ -368,7 +375,7 @@ function addOutput() {
       <nldd-spacer size="16"></nldd-spacer>
       <nldd-title size="5" data-testid="section-definitions"><h5>Definities</h5></nldd-title>
       <nldd-spacer size="8"></nldd-spacer>
-      <nldd-list variant="box">
+      <nldd-list variant="box-tinted">
         <nldd-list-item v-for="def in definitions" :key="def.name" size="md">
           <template v-if="editable">
             <nldd-text-cell><BreakableName :name="def.name" /> = {{ formatValue(def.value, def.unit) }}</nldd-text-cell>
@@ -413,7 +420,7 @@ function addOutput() {
       <nldd-spacer size="16"></nldd-spacer>
       <nldd-title size="5" data-testid="section-parameters"><h5>Parameters</h5></nldd-title>
       <nldd-spacer size="8"></nldd-spacer>
-      <nldd-list variant="box">
+      <nldd-list variant="box-tinted">
         <nldd-list-item v-for="(param, index) in parameters" :key="param.name" size="md">
           <nldd-text-cell><BreakableName :name="param.name" /> <nldd-tag size="sm" :text="param.type"></nldd-tag></nldd-text-cell>
           <nldd-spacer-cell v-if="editable" size="8"></nldd-spacer-cell>
@@ -439,7 +446,7 @@ function addOutput() {
       <nldd-spacer size="16"></nldd-spacer>
       <nldd-title size="5" data-testid="section-inputs"><h5>Inputs</h5></nldd-title>
       <nldd-spacer size="8"></nldd-spacer>
-      <nldd-list variant="box">
+      <nldd-list variant="box-tinted">
         <nldd-list-item v-for="(input, index) in inputs" :key="input.name" :data-testid="`input-row-${input.name}`" size="md">
           <nldd-text-cell
             :supporting-text="input.sourceRegulation ? lawDisplayName(input.sourceRegulation) : undefined"
@@ -468,7 +475,7 @@ function addOutput() {
       <nldd-spacer size="16"></nldd-spacer>
       <nldd-title size="5" data-testid="section-outputs"><h5>Outputs</h5></nldd-title>
       <nldd-spacer size="8"></nldd-spacer>
-      <nldd-list variant="box">
+      <nldd-list variant="box-tinted">
         <nldd-list-item v-for="(output, index) in outputs" :key="output.name" size="md">
           <nldd-text-cell><BreakableName :name="output.name" /> <nldd-tag size="sm" :text="output.type"></nldd-tag></nldd-text-cell>
           <nldd-spacer-cell v-if="editable" size="8"></nldd-spacer-cell>
@@ -494,7 +501,7 @@ function addOutput() {
       <nldd-spacer size="16"></nldd-spacer>
       <nldd-title size="5" data-testid="section-actions"><h5>Acties</h5></nldd-title>
       <nldd-spacer size="8"></nldd-spacer>
-      <nldd-list variant="box">
+      <nldd-list variant="box-tinted">
         <nldd-list-item
           v-for="(action, index) in actions"
           :key="index"

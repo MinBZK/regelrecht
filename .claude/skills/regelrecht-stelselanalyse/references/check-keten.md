@@ -42,9 +42,11 @@ expert-workshop.
 ## Cross-law specifiek
 
 Twee mechanismen:
-- **Directe sourcing** — `source: {regulation, output, parameters}` op een `input:`-veld;
+- **Directe sourcing**: `source: {regulation, output, parameters}` op een `input:`-veld;
   engine resolt via een `output_index`. Faalt pas bij uitvoering als de output ontbreekt.
-- **IoC / delegatie** — `open_terms` (hogere wet) ↔ `implements` (lagere regeling), met
+- **IoC / delegatie en medebewind**: `open_terms` (de wet) ↔ `implements` (de invullende
+  regeling; bij medebewind is dat een verordening die niet gedelegeerd is maar wel
+  aan de wet gebonden, Gemeentewet art. 121-122), met
   temporele (`valid_from`) en scope-filtering (`gemeente_code`) en *lex superior > lex
   posterior*.
 

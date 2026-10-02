@@ -1,0 +1,86 @@
+---
+id: specificaties-vi-uitbreiding-naar-nieuwe-rechtsgebieden
+titel: 'Specificaties VI: uitbreiding naar nieuwe rechtsgebieden'
+faseId: wat-fase-2
+disciplineId: techniek
+prioriteit: midden
+omvang: XL
+categorie: bet
+capability: basis
+capaciteit: analist per domein, juridische expertise uit het domein zelf
+toelichting: |-
+  Fase I speelt zich af in het bestuursrecht, met de rand van het belastingrecht
+  erbij. De concepten die de taal nu kent komen daar vandaan: bedragen,
+  percentages, afronding, peildata, verwijzingen tussen wetten, delegatie naar
+  lagere regelgeving. Een nieuw domein brengt concepten mee die daar niet in
+  zitten, en dat is de reden om er heen te gaan. De volgorde komt uit
+  "Verkenning rechtsgebieden" in Fase I.
+
+  **Belastingrecht, volledig**
+
+  Schijven en tarieven kent de taal grotendeels. Nieuw zijn het subject dat uit
+  meerdere personen bestaat (fiscale eenheid, fiscaal partnerschap over een heel
+  jaar), verrekening over jaren heen, en het formele recht met zijn termijnen
+  voor aanslag en navordering.
+
+  **Subsidierecht**
+
+  Hier zit het scherpste nieuwe concept: schaarste. Een subsidieplafond maakt de
+  uitkomst van jouw aanvraag afhankelijk van andermans aanvraag, via volgorde van
+  binnenkomst, loting of rangschikking. De taal gaat er nu vanuit dat een besluit
+  te berekenen is uit feiten over één subject.
+
+  **Omgevings- en milieurecht**
+
+  Brengt locatie binnen: een norm die alleen geldt binnen een gebied, en een regel
+  die per gemeente verschilt omdat het omgevingsplan hem invult. Daarnaast
+  beoordelingsruimte die zich niet tot een open norm laat terugbrengen.
+
+  **Strafrecht**
+
+  Sterk procedureel, en daarmee beter te modelleren dan de eerste indruk zegt.
+  Menselijk oordeel is er een stap in de procedure, en die stap leggen we vast in
+  plaats van hem weg te rekenen. De taal moet een oordeelsstap dan net zo precies
+  vastleggen als een rekenstap: wie oordeelt, waarover, op welk moment, en wat
+  het gevolg is.
+
+  **Europees recht**
+
+  Dit ligt als laag over alle andere domeinen heen, en komt dus in elk van de
+  bovenstaande stappen mee: rechtstreekse werking van verordeningen, omzetting
+  van richtlijnen, en voorrang bij strijd.
+volgorde: 1100
+onderzoeksvragen:
+  - Welk concept voegt elk domein toe aan de taal, en welke domeinen voegen niets
+    toe dat we nog niet hebben?
+  - Hoe legt de taal een oordeelsstap vast (wie oordeelt, waarover, wanneer,
+    met welk gevolg) zonder te suggereren dat het oordeel zelf berekend is?
+  - Hoe modelleren we schaarste, waarbij de uitkomst voor de een afhangt van de
+    aanvragen van de ander?
+  - 'Wat doet locatie met het schema: een gebied als input, of een regel die per
+    gebied een andere invulling krijgt?'
+  - vraag: >-
+      Welke wetten raken zoveel andere wetten dat ze als eerste in aanmerking
+      komen, en wie is eigenaar van zo'n specificatie?
+    paper: sec:crosscutting
+  - vraag: >-
+      Hoe verhoudt een nationale uitvoerbare specificatie zich tot rechtstreeks
+      werkend Europees recht en tot richtlijnen die nog omgezet moeten worden?
+    paper: sec:european
+  - vraag: >-
+      Hoe leggen we discretionaire ruimte en afwijkingsbevoegdheid vast, zodat
+      zichtbaar blijft waar een mens heeft besloten?
+    paper: sec:overrides
+onderzoek: open
+bouw: niet
+rfcs:
+  - 3
+  - 10
+afhankelijkVan:
+  - verkenning-rechtsgebieden
+  - specificaties-iv-de-ontbrekende-delen-bouwen
+samenhangIds:
+  - verkenning-rechtsgebieden
+  - specificaties-v-beproeving-van-de-taal
+  - discretionaire-ruimte
+---
