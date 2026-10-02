@@ -505,12 +505,12 @@ fn check_duplicate_ids(
             law_id: Some(id.to_string()),
             message: format!(
                 "Het id '{id}' wordt door meerdere mappen gedeclareerd: '{list}'. Bij een \
-                 dubbel id houdt de index er één over; de andere regeling verdwijnt uit de \
+                 dubbel id houdt de index er één over; het andere regelwerk verdwijnt uit de \
                  bibliotheek."
             ),
             remedy: format!(
-                "Geef elke regeling een eigen $id, of verwijder de map die er niet meer hoort te \
-                 staan. Zijn het twee versies van dezelfde regeling, zet ze dan als losse \
+                "Geef elk regelwerk een eigen $id, of verwijder de map die er niet meer hoort te \
+                 staan. Zijn het twee versies van hetzelfde regelwerk, zet ze dan als losse \
                  datumbestanden in één map '{id}'."
             ),
         });
@@ -629,7 +629,7 @@ fn check_law_references(scan: &CorpusScan, known_ids: &HashSet<&str>, out: &mut 
                      heeft dat $id. Een berekening die deze verwijzing volgt, loopt vast."
                 ),
                 remedy: format!(
-                    "Corrigeer '{target}' naar het $id van het bedoelde regelwerk, of voeg dat toe \
+                    "Corrigeer '{target}' naar het $id van het bedoelde regelwerk, of voeg dat regelwerk toe \
                      aan dit traject."
                 ),
             });
@@ -659,7 +659,7 @@ fn check_scenario_references(scan: &CorpusScan, known_ids: &HashSet<&str>, out: 
                 ),
                 remedy: format!(
                     "Corrigeer '{target}' in de stap naar het $id van het bedoelde regelwerk, of voeg \
-                     dat toe aan dit traject."
+                     dat regelwerk toe aan dit traject."
                 ),
             });
         }

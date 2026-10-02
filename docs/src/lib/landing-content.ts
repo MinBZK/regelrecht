@@ -286,7 +286,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           title: 'Regelformaat',
           meta: 'YAML + JSON Schema',
           link: { label: 'Schemadocumentatie', href: '/reference/schema' },
-          text: 'Elke regeling als regelwerk: één YAML-bestand met de wettekst en de machine-uitvoerbare regels naast elkaar. Een versioned JSON Schema bewaakt de structuur.',
+          text: 'Elke regeling als regelwerk: YAML met de wettekst en de machine-uitvoerbare regels naast elkaar, één bestand per versie. Een versioned JSON Schema bewaakt de structuur.',
         },
         {
           title: 'BDD-scenario’s',
@@ -552,7 +552,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         },
         {
           q: 'Waarom een eigen regelformaat?',
-          a: 'Het formaat heet Regelrechts: YAML met wettekst en machine-uitvoerbare regels naast elkaar in één bestand, het regelwerk. Een versioned JSON Schema bewaakt de structuur, BDD-scenario’s leggen de bedoelde uitkomsten vast. Zo kunnen juristen meelezen, ontwikkelaars meebouwen, en verschillende overheidssystemen dezelfde regels gebruiken.',
+          a: 'De taal heet Regelrechts. Een regeling in die taal is een regelwerk: YAML met wettekst en machine-uitvoerbare regels naast elkaar. Een versioned JSON Schema bewaakt de structuur, BDD-scenario’s leggen de bedoelde uitkomsten vast. Zo kunnen juristen meelezen, ontwikkelaars meebouwen, en verschillende overheidssystemen dezelfde regels gebruiken.',
           link: { label: 'Lees RFC-011', href: '/rfcs/rfc-011' },
         },
         {
@@ -779,7 +779,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           title: 'Rule format',
           meta: 'YAML + JSON Schema',
           link: { label: 'Schema reference', href: '/reference/schema' },
-          text: 'Every regulation as a rulework: one YAML file with the legal text and the machine-executable rules side by side. A versioned JSON Schema guards the structure.',
+          text: 'Every regulation as a rulework: YAML with the legal text and the machine-executable rules side by side, one file per version. A versioned JSON Schema guards the structure.',
         },
         {
           title: 'BDD scenarios',
@@ -1041,7 +1041,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         },
         {
           q: 'Why a dedicated rule format?',
-          a: 'The format is called Regelrechts: YAML, with legal text and machine-executable rules side by side in a single file, the rulework. A versioned JSON Schema guards the structure, and BDD scenarios capture the intended outcomes. Legal experts can read along, developers can contribute, and different government systems can use the same rules.',
+          a: 'The language is called Regelrechts. A regulation written in it is a rulework: YAML, with legal text and machine-executable rules side by side. A versioned JSON Schema guards the structure, and BDD scenarios capture the intended outcomes. Legal experts can read along, developers can contribute, and different government systems can use the same rules.',
           link: { label: 'Read RFC-011', href: '/rfcs/rfc-011' },
         },
         {

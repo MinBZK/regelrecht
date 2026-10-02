@@ -19,14 +19,14 @@ toelichting: |-
   kunnen werken: lezerschap moet georganiseerd worden, niet verondersteld.
 volgorde: 1000
 onderzoeksvragen:
-  - Hoe kan een machine-uitvoerbaar regelwerk een rol krijgen in de
+  - Hoe kan een regelwerk een rol krijgen in de
     internetconsultatie, zodat belanghebbenden ook de uitvoerbare gevolgen
     kunnen beoordelen, niet alleen de wettekst?
-  - Wat heeft de Raad van State nodig om een machine-uitvoerbaar regelwerk
+  - Wat heeft de Raad van State nodig om een regelwerk
     te kunnen beoordelen als onderdeel van zijn adviesrol?
   - Hoe kan de behandeling van wetsvoorstellen in Tweede en Eerste Kamer
     gebruikmaken van gesimuleerde of geverifieerde effecten uit een
-    machine-uitvoerbaar regelwerk?
+    regelwerk?
   - Welke aanpassingen aan de werkprocessen van deze organisaties zijn nodig
     om machine-uitvoerbare wet- en regelgeving structureel te integreren?
   - vraag: >-

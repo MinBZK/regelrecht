@@ -2927,12 +2927,12 @@ async function handleActionSave() {
                     >
                       <nldd-menu slot="popup">
                         <nldd-menu-item icon="document" text="Artikel-notities als YAML" @select="exportArticleNotes"></nldd-menu-item>
-                        <nldd-menu-item icon="document" text="Notities bij dit regelwerk als YAML" @select="exportNotes"></nldd-menu-item>
+                        <nldd-menu-item icon="document" text="Regelwerk-notities als YAML" @select="exportNotes"></nldd-menu-item>
                       </nldd-menu>
                     </nldd-icon-button>
                     <nldd-menu-group slot="overflow" text="Notities downloaden">
                       <nldd-menu-item icon="document" text="Artikel-notities als YAML" @select="exportArticleNotes"></nldd-menu-item>
-                      <nldd-menu-item icon="document" text="Notities bij dit regelwerk als YAML" @select="exportNotes"></nldd-menu-item>
+                      <nldd-menu-item icon="document" text="Regelwerk-notities als YAML" @select="exportNotes"></nldd-menu-item>
                     </nldd-menu-group>
                   </nldd-toolbar-item>
                   <!-- YAML parse-status (Machine-readable pane). -->

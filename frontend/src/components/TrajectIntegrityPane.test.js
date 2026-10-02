@@ -177,7 +177,7 @@ describe('TrajectIntegrityPane', () => {
     expect(empty.attributes('variant')).toBe('success');
     // De omvang van de controle staat erbij, anders leest "geen problemen"
     // als "er is niets gecontroleerd".
-    expect(empty.attributes('supporting-text')).toContain('12 regelwerken');
+    expect(empty.attributes('supporting-text')).toContain('12 versies');
     expect(empty.attributes('supporting-text')).toContain("3 scenario's");
   });
 

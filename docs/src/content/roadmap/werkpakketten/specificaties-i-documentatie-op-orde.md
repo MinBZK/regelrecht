@@ -32,9 +32,9 @@ toelichting: |-
 
   Twee dingen heetten specificatie. Het ene is de specificatie van de taal, waar
   dit werkpakket over gaat. Het andere is de machine-uitvoerbare interpretatie
-  van één regeling op één moment, het ding dat een jurist vaststelt. Dat tweede
-  heet nu een regelwerk: één YAML-bestand met de wettekst en de uitvoerbare
-  interpretatie naast elkaar. De taal heet
+  van één regeling, het ding dat een jurist vaststelt. Dat tweede heet nu een
+  regelwerk: de wettekst met de uitvoerbare interpretatie ernaast, met een
+  versie voor elke datum waarop de tekst is gaan gelden. De taal heet
   Regelrechts, zoals de taal van Nederland Nederlands heet. Een regelwerk is
   geschreven in het Regelrechts en voldoet aan het schema; de taal en het
   schema zijn zelf geen regelwerk. De

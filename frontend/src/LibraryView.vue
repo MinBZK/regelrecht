@@ -2228,7 +2228,7 @@ watch(activeTrajectRef, () => {
                       ></nldd-button>
                     </template>
                   </template>
-                  <!-- "Wet toevoegen" is verhuisd naar de universele "+" in de
+                  <!-- "Regelwerk toevoegen" is verhuisd naar de universele "+" in de
                        header (AppShell); die opent de AddLawSheet via
                        useAddActions. De file-picker voor de upload-route blijft
                        hier, want de upload zelf (onLawFileChange) leeft in deze

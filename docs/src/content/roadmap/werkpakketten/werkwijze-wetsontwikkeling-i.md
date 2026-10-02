@@ -12,7 +12,7 @@ toelichting: |-
   Dit werkpakket richt zich op de werkwijze van de wetgevingsjurist werkzaam
   op een ministerie, bij het wijzigen van wetsvoorstellen: hoe kan deze direct
   bij het (her)schrijven van een wet worden ondersteund om ook een
-  machine-uitvoerbaar regelwerk op te leveren? Het gaat om
+  regelwerk op te leveren? Het gaat om
   gebruiksvriendelijke tooling die interpretatie al tijdens het opstellen van
   de wettekst zichtbaar en toetsbaar maakt, zodat juridische en ethische
   verantwoording niet achteraf, maar als onderdeel van het schrijfproces
@@ -68,8 +68,7 @@ onderzoeksvragen:
   - Hoe werken wetgevingsjuristen die werkzaam zijn op een ministerie aan
     wetswijzigingen en hoe ervaren ze dat proces?
   - Hoe kan een wetgevingsjurist tijdens het proces van een wetswijziging
-    ondersteund worden bij het direct opstellen van een machine-uitvoerbaar
-    regelwerk?
+    ondersteund worden bij het direct opstellen van een regelwerk?
   - Welke requirements zijn belangrijk in de tooling om dit voor
     wetgevingsjuristen laagdrempelig en bruikbaar te maken, zonder dat zij
     programmeurs hoeven te worden?

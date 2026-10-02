@@ -49,7 +49,7 @@ toelichting: >-
 
   **Het regelwerk**\
 
-  Het regelwerk lijkt op onderdelen op een beleidsregel maar wijkt daar ook op
+  Het regelwerk (in het paper: _the specification_) lijkt op onderdelen op een beleidsregel maar wijkt daar ook op
   wezenlijke punten vanaf. Met name omdat het uitvoerbaar, samenstelbaar en via
   attestatie aan uitvoering gebonden is. (section 4.2, _Rules as Executed_, 12
   July 2026)
@@ -97,8 +97,8 @@ onderzoeksvragen:
       een verdedigbare juridische interpretatie is?
     paper: sec:whochooses
   - vraag: >-
-      Wat betekent het juridisch om een regelwerk officieel te
-      publiceren?
+      Wat betekent het juridisch om een regelwerk (in het paper: een
+      'uitvoerbare specificatie') officieel te publiceren?
     paper: sec:agenda-legal
   - vraag: >-
       Welke juridische status en certificering moeten digitale bewijzen

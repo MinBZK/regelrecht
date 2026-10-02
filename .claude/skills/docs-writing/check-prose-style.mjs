@@ -135,27 +135,26 @@ const RULES = [
     id: 'rulework-compound',
     level: 'error',
     // A rulework conforms to the schema; the schema is not a rulework. A
-    // compound is how the word slides onto the schema, so it has no exemption:
-    // no frozen-file skip and no opt-out. Whitespace counts as a joint too, so
-    // a term broken over a hard wrap ("rulework\nschema") is still caught.
-    re: /\b(?:regelwerk[\s-]*(?:schema(?:'s)?|formaat|formaten|taal|talen)|rulework[\s-]+(?:schema|format|language)s?)\b/gi,
+    // compound is how the word slides onto the schema, so this rule has no
+    // exemption. Dutch compounds are written closed or hyphenated, so a space
+    // there is two words ("of het regelwerk schema-valide is"). English writes
+    // them open, also across a hard wrap, but not into a hyphenated adjective
+    // ("is the rulework schema-valid") or a list bullet.
+    re: /\bregelwerk(?:en|s)?-?(?:schema(?:'s)?|formaat|formaten|taal|talen)\b|\bruleworks?(?:-|[ \t]+|[ \t]*\n[ \t]*)(?:schema|format|language)s?\b(?!-)/gi,
     msg: '"regelwerk"/"rulework" used as a name for the schema or the format',
-    hint: 'A rulework is one regulation in YAML. The schema and the format keep their own names: "the schema", "the law format".',
+    hint: 'A rulework is one regulation recorded in Regelrechts. The schema and the format keep their own names: "the schema", "the law format".',
   },
   {
     id: 'instance-term',
     level: 'error',
-    // The older words for one regulation in YAML. Frozen documents keep the
-    // wording they were written in (AGENTS.md, "An accepted RFC is not
-    // rewritten"), so an RFC that is past Proposed is skipped. The lookbehind
-    // keeps "case-law files" out, and `\s+` catches a term split over a wrap.
-    re: /(?<![\p{L}\p{N}-])(?:wets?bestand(?:en)?|law(?:\s+YAML)?\s+files?)\b/giu,
-    skipFile: (raw) => /^status:\s*(?:Accepted|Superseded|Rejected)\s*$/m.test(raw.split(/^---\s*$/m)[1] ?? ''),
-    // The RFC that retires these words has to mention them. Such a document
-    // opts out, visibly, with <!-- prose-style: allow instance-term -->.
-    optOut: true,
-    msg: 'older word for one regulation in YAML',
-    hint: 'Write "regelwerk" (Dutch) or "rulework" (English). See the Vocabulary section of AGENTS.md.',
+    // Two of the older words for a rulework, the ones a regex can recognize.
+    // "Specification" and "law YAML" also name the language, so those stay a
+    // matter for review. RFCs are dated documents: the accepted ones are
+    // frozen and the proposed ones belong to their authors, so none is checked.
+    re: /(?<![\p{L}\p{N}-])(?<!case[ -])(?:wets?-?bestand(?:en|je|jes)?|law\s+(?:YAML\s+)?files?)\b/giu,
+    skipPath: (rel) => rel.split(/[\\/]/).includes('rfcs'),
+    msg: 'older word for a rulework',
+    hint: 'Write "regelwerk" (Dutch) or "rulework" (English); one dated file is a version of it. See the Vocabulary section of AGENTS.md.',
   },
   {
     id: 'not-x-but-y',
@@ -318,12 +317,8 @@ for (const file of files) {
     return lo + 1;
   };
   for (const rule of RULES) {
-    if (rule.skipFile && rule.skipFile(raw)) continue;
     if (only && !only.has(rule.id)) continue;
-    // Only a rule that declares `optOut` can be switched off from inside a
-    // document, and the marker is read from the code-stripped text: a page that
-    // merely quotes the syntax in a code block does not opt itself out.
-    if (rule.optOut && prose.includes(`prose-style: allow ${rule.id} `)) continue;
+    if (rule.skipPath && rule.skipPath(rel)) continue;
     rule.re.lastIndex = 0;
     let m;
     while ((m = rule.re.exec(prose)) !== null) {

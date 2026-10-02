@@ -125,7 +125,7 @@ flowchart TD
     D --> E[Reverse validation\nTraceability check]
     E --> F[Letter-fidelity audit\nConcept hygiene]
     F --> G{Judgement question?}
-    G -->|No| H[Executable rulework]
+    G -->|No| H[Rulework]
     G -->|Yes| W[Expert workshop]
     W --> C
 ```
@@ -148,7 +148,7 @@ What remains for the expert is judgement: where the law allows more than one rea
 ```mermaid
 flowchart TD
     subgraph A ["Phase A: Generate (automated)"]
-        A1[MvT research] --> A2[AI generates rulework]
+        A1[MvT research] --> A2[AI drafts a rulework]
         A2 --> A3[Schema + BDD iteration loop]
         A3 --> A4[Reverse validation]
     end
@@ -174,7 +174,7 @@ flowchart TD
     end
 
     C3 --> PASS{Approved?}
-    PASS -->|No| ITERATE[Iterate:\nadjust rulework\nback to A or B]
+    PASS -->|No| ITERATE[Iterate:\nadjust the rulework\nback to A or B]
     ITERATE --> A2
     PASS -->|Yes| D
 

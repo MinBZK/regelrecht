@@ -51,7 +51,7 @@ export default {
   'app.demo.reset': 'Demo resetten…',
 
   // ---- laden, fouten, resetten --------------------------------------------
-  'app.loading': 'Regelwerken en engine laden…',
+  'app.loading': 'Wetten en engine laden…',
   'app.error.title': 'De demo kon niet starten',
   'app.reset.title': 'Demo resetten?',
   // Zegt alles wat `resetState()` terugzet, en wat het laat staan. Stond er
@@ -183,7 +183,7 @@ export default {
 
   'home.parts.title': 'De onderdelen',
   'home.parts.subtitle': 'Dezelfde wetten, zes keer anders bekeken. De presentatie loopt er zelf langs.',
-  'home.parts.wetten.text': 'De wet als regelwerk: machine-uitvoerbare YAML naast de artikelen waar die vandaan komt.',
+  'home.parts.wetten.text': 'De wet als regelwerk: de artikelen, met hun machine-uitvoerbare YAML ernaast.',
   'home.parts.graaf.text': 'Welke wet welke andere wet nodig heeft, en welke waarde daartussen loopt.',
   'home.parts.scenarios.text': 'Voorbeelden uit de memorie van toelichting, live doorgerekend door de engine.',
   'home.parts.simulatie.text': 'Wat een regel doet bij een hele bevolking in plaats van bij één persoon.',
@@ -294,8 +294,8 @@ export default {
   'zaak.portaal.change_wizard': 'Wijziging doorgeven',
   'zaak.portaal.read_only.title': 'Je mag deze gegevens alleen inzien',
   'zaak.portaal.read_only.body': 'Met deze machtiging kun je geen gegevens corrigeren en geen aanvraag indienen.',
-  'zaak.portaal.load_failure.one': 'Eén regelwerk is niet geladen',
-  'zaak.portaal.load_failure.other': '{n} regelwerken zijn niet geladen',
+  'zaak.portaal.load_failure.one': 'Eén wet is niet geladen',
+  'zaak.portaal.load_failure.other': '{n} wetten zijn niet geladen',
   'zaak.portaal.load_failure.body':
     'De engine weigerde: {details}. Regelingen die hiervan afhangen kunnen geen uitkomst geven.',
   'zaak.portaal.pending_claims.one': '{n} correctie wacht op beoordeling',
@@ -355,7 +355,7 @@ export default {
   'wet.graph.fit_all': 'Alles in beeld',
   'wet.graph.close': 'Sluiten',
   'wet.graph.open_in_laws': 'Open in Regelwerken',
-  'wet.graph.only_this': 'Alleen deze',
+  'wet.graph.only_this': 'Alleen dit',
   'wet.graph.reads_from': 'Leest uit',
   'wet.graph.read_by': 'Wordt gelezen door',
   'wet.graph.no_law_in_view': 'Geen ander regelwerk in beeld',
@@ -810,7 +810,7 @@ export default {
   'sim.inspector.params': 'Parameters voor deze simulatie',
   'sim.inspector.close': 'Sluiten',
   'sim.inspector.definitions.lead': 'De constanten uit de wettekst',
-  'sim.inspector.definitions.scope': 'Een gewijzigde waarde geldt alleen voor de volgende simulatie; het regelwerk in het corpus blijft zoals het is.',
+  'sim.inspector.definitions.scope': 'Een gewijzigde waarde geldt alleen voor de volgende simulatie; de wet in het corpus blijft zoals hij is.',
   'sim.inspector.definition_help': 'Artikel {article} · standaard {value} · {hint}',
   'sim.inspector.hint.eurocent': '{amount} · in eurocent',
   'sim.inspector.hint.fraction': '{pct}% · als fractie',
@@ -829,7 +829,7 @@ export default {
   'sim.inspector.law_text': 'Wettekst',
 
   // ---- engine --------------------------------------------------------------
-  'engine.no_outputs': 'Dit regelwerk heeft geen uitvoer.',
+  'engine.no_outputs': 'Deze wet heeft geen uitvoer.',
 
   // ---- harmonisatie: kenmerken om op te staffelen --------------------------
   'harm.feature.income': 'Inkomen',
@@ -861,6 +861,7 @@ export default {
   'scenario.laws_not_loaded.one': 'Eén regelwerk is niet geladen',
   'scenario.laws_not_loaded.other': '{n} regelwerken zijn niet geladen',
   'scenario.law_refused': 'Regelwerk {id} ({path}) is niet geladen; de engine weigerde: {message}',
+  'scenario.engine_refused': 'De engine weigerde: {details}',
   'scenario.load_failed': 'Kon het scenario niet laden',
   'scenario.pick': 'Kies een scenario',
   'scenario.pick.hint': 'Open de lijst met testbestanden.',

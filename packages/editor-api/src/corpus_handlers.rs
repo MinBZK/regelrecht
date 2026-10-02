@@ -3970,7 +3970,7 @@ pub async fn create_traject_law(
     if traject.corpus.source_map.get_law(&law_id).is_some() {
         return Err((
             StatusCode::CONFLICT,
-            "Er bestaat al een regeling met dit $id in dit traject; pas het $id in de YAML aan."
+            "Er bestaat al een regelwerk met dit $id in dit traject; pas het $id in de YAML aan."
                 .to_string(),
         ));
     }
@@ -4000,7 +4000,7 @@ pub async fn create_traject_law(
     {
         return Err((
             StatusCode::CONFLICT,
-            "Er staat al een regelwerk op dit pad in het traject; pas het $id in de YAML aan."
+            "Er staat al een versie van een regelwerk op dit pad in het traject; pas het $id in de YAML aan."
                 .to_string(),
         ));
     }
@@ -4097,7 +4097,7 @@ pub async fn promote_corpus_law(
         if law.source_id == traject.writable_own_source_id {
             return Err((
                 StatusCode::CONFLICT,
-                "Deze regeling staat al in dit traject.".to_string(),
+                "Dit regelwerk staat al in dit traject.".to_string(),
             ));
         }
     }
@@ -4149,7 +4149,7 @@ pub async fn promote_corpus_law(
         {
             return Err((
                 StatusCode::CONFLICT,
-                "Deze regeling staat al (deels) in dit traject.".to_string(),
+                "Dit regelwerk staat al (deels) in dit traject.".to_string(),
             ));
         }
         tracing::info!(
@@ -4169,10 +4169,7 @@ pub async fn promote_corpus_law(
     let outcome = writer
         .backend
         .persist(&auth.into_write_context(
-            format!(
-                "Voeg de regelwerken van {} toe uit het centrale corpus",
-                law_id
-            ),
+            format!("Voeg regelwerk {} toe uit het centrale corpus", law_id),
             author,
         ))
         .await
@@ -4218,7 +4215,7 @@ async fn collect_promote_files(
     let not_found = || {
         (
             StatusCode::NOT_FOUND,
-            "Deze regeling is niet gevonden in het centrale corpus van dit traject.".to_string(),
+            "Dit regelwerk is niet gevonden in het centrale corpus van dit traject.".to_string(),
         )
     };
     let versions: Vec<LoadedLaw> = traject
@@ -4238,7 +4235,7 @@ async fn collect_promote_files(
         tracing::warn!(law_id = %law_id, path = %path.display(), error = %e, "promote: {what} lezen uit seed-bron mislukt");
         (
             StatusCode::BAD_GATEWAY,
-            "Kon de regeling niet volledig uit het centrale corpus lezen.".to_string(),
+            "Kon het regelwerk niet volledig uit het centrale corpus lezen.".to_string(),
         )
     };
 
@@ -4273,13 +4270,9 @@ async fn collect_promote_files(
             backend
                 .read_file(&relative_path)
                 .await
-                .map_err(|e| fetch_error("regelwerk", &relative_path, &e))?
+                .map_err(|e| fetch_error("versie", &relative_path, &e))?
                 .ok_or_else(|| {
-                    fetch_error(
-                        "regelwerk",
-                        &relative_path,
-                        &"bestand ontbreekt bij de bron",
-                    )
+                    fetch_error("versie", &relative_path, &"bestand ontbreekt bij de bron")
                 })?
         };
         files.push(PromoteFile {

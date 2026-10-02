@@ -212,6 +212,9 @@ describe('splitConfigPath', () => {
     // open: the tab right, the law wrong, and nothing to show for it.
     ['/wetten', 'wetten', ''],
     ['/wetten/zorgtoeslagwet', 'wetten', '/zorgtoeslagwet'],
+    // A hash is part of what follows, not of the page's own path.
+    ['/regelwerken/zorgtoeslagwet#tekst', 'wetten', '/zorgtoeslagwet#tekst'],
+    ['/regelwerken#tekst', 'wetten', '#tekst'],
     ['/scenarios/nl/wet/x.feature', 'scenarios', '/nl/wet/x.feature'],
     ['/', 'home', ''],
   ])('%s is the %s page with %j after it', (path, page, rest) => {

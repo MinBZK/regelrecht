@@ -7,7 +7,7 @@ RegelRecht turns Dutch legislation into structured files that a computer can exe
 
 ## The approach
 
-RegelRecht encodes each law once, in a structured YAML format that both people and computers can read. Each regulation, at each date it took effect, becomes one such file: a [rulework](/reference/glossary#regelrecht-specific-terms). A single execution engine runs these ruleworks and produces answers: does this person qualify? How much do they receive? Which rules applied?
+RegelRecht encodes each regulation once, in a structured YAML format that both people and computers can read. The result is a [rulework](/reference/glossary#regelrecht-specific-terms), with one version for each date the regulation's text took effect. A single execution engine runs these ruleworks and produces answers: does this person qualify? How much do they receive? Which rules applied?
 
 A rulework is an interpretation of the law in executable form, not the law itself. If the two conflict, the statute prevails and the rulework is corrected; legal validity stays with the published legislation ([Rules as Executed, section 4.2](/research/rules-as-executed#sec:legalstatus)). Every article in the file corresponds to an article in the official legal text, with a link back to the original, so a reader can hold the interpretation against the text it claims to follow.
 

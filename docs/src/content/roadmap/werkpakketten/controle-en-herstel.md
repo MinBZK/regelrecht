@@ -13,13 +13,13 @@ toelichting: |-
   de praktijk, om de rechtstoestand van een burger te herstellen wanneer die
   niet overeenkomt met wat een correcte toepassing van de wet had opgeleverd
   — of dat nu komt door een menselijke fout of door een foutief gecodeerd
-  machine-uitvoerbaar regelwerk. Waar andere werkpakketten zich richten op
+  regelwerk. Waar andere werkpakketten zich richten op
   het voorkomen en signaleren van fouten, gaat dit werkpakket over wat er ná
   signalering moet gebeuren.
 volgorde: 2000
 onderzoeksvragen:
   - Kan herstel van de rechtstoestand gemakkelijker worden gedaan voor de
-    burger met behulp van machine-uitvoerbare regelwerken, en zo ja, hoe
+    burger met behulp van regelwerken, en zo ja, hoe
     ziet dat er in de praktijk uit?
   - Hoe ziet herstel eruit wanneer de oorzaak een foutief regelwerk is —
     wat moet er dan achteraf worden hersteld, en voor wie?

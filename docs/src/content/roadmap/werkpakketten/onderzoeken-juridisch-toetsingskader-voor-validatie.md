@@ -11,7 +11,7 @@ capaciteit: ''
 toelichting: |-
   Dit is nog grotendeels onontgonnen terrein: er bestaat nog geen samenhangend
   toetsingskader voor de vertaling van wet- en regelgeving naar een
-  machine-uitvoerbaar regelwerk en de validatie daarvan. Om tot een kader
+  regelwerk en de validatie daarvan. Om tot een kader
   van eisen te komen moeten diverse rechtsbronnen worden geanalyseerd —
   wetgeving, algemene beginselen van behoorlijk bestuur, onderliggende
   rechtsbeginselen en relevante grondwetsartikelen. Aanpalend onderzoek naar
@@ -21,7 +21,7 @@ toelichting: |-
 volgorde: 2000
 onderzoeksvragen:
   - Welke eisen gelden er voor de vertaling van een wet (of lagere
-    regelgeving) naar een machine-uitvoerbaar regelwerk en de validatie
+    regelgeving) naar een regelwerk en de validatie
     daarvan?
 samenhangIds:
   - vaststelling-van-specificaties

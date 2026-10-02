@@ -9,7 +9,7 @@ categorie: bet
 capability: publiceren
 capaciteit: ''
 toelichting: |-
-  Deze onderzoeksopgave richt zich op het beheer van versies en de temporele consistentie (Temporal Consistency) van wetgeving wanneer deze wordt omgezet in uitvoerbare regelwerken. Het centrale uitgangspunt is dat een juridisch besluit altijd moet worden genomen op basis van de regels die op dat specifieke moment van kracht waren.
+  Deze onderzoeksopgave richt zich op het beheer van versies en de temporele consistentie (Temporal Consistency) van wetgeving wanneer deze wordt omgezet in regelwerken. Het centrale uitgangspunt is dat een juridisch besluit altijd moet worden genomen op basis van de regels die op dat specifieke moment van kracht waren.
 
   De belangrijkste punten zijn:
 

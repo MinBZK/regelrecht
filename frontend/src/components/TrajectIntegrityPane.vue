@@ -34,7 +34,7 @@ watch(() => props.trajectRef, reload);
  */
 function scopeSummary(r) {
   if (!r) return null;
-  const laws = `${r.checked_laws} ${r.checked_laws === 1 ? 'regelwerk' : 'regelwerken'}`;
+  const laws = `${r.checked_laws} ${r.checked_laws === 1 ? 'versie' : 'versies'}`;
   const scenarios = `${r.checked_scenarios} ${r.checked_scenarios === 1 ? 'scenario' : "scenario's"}`;
   return `${laws} en ${scenarios} nagekeken in de eigen repo van dit traject.`;
 }

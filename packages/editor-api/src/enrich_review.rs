@@ -557,7 +557,7 @@ async fn prepare_write(
     // beoordelaar naar een koppelscherm sturen voor iets wat een herlading is.
     let if_match = corpus_handlers::extract_if_match(headers).ok_or((
         StatusCode::BAD_REQUEST,
-        "Verwerken vraagt om de versie van het regelwerk zoals je die zag. Herlaad de pagina en \
+        "Verwerken vraagt om het regelwerk zoals je het zag. Herlaad de pagina en \
          beoordeel de verrijking opnieuw."
             .to_string(),
     ))?;
@@ -633,7 +633,7 @@ async fn write_accepted(
 /// van zeven regels `Update law <id>`.
 fn commit_message(law_id: &str, accepted: usize, total: usize, whole_law: bool) -> String {
     if whole_law {
-        return format!("Verrijking verwerkt: het hele regelwerk overgenomen in {law_id}");
+        return format!("Verrijking verwerkt: het hele voorstel overgenomen in {law_id}");
     }
     // Het zelfstandig naamwoord hoort bij het getal dat er direct voor staat -
     // het totaal, niet het aantal overgenomen. "1 van de 4 artikel" leest als
@@ -809,7 +809,7 @@ mod tests {
         );
         assert_eq!(
             commit_message("test_wet", 1, 1, true),
-            "Verrijking verwerkt: het hele regelwerk overgenomen in test_wet"
+            "Verrijking verwerkt: het hele voorstel overgenomen in test_wet"
         );
     }
 

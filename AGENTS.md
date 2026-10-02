@@ -54,59 +54,42 @@ from `packages/engine/build.rs`): change `grammar.yaml` and run
 `just bdd-codegen`. A failing law-validation scenario (bucket A, next to a law)
 means a law changed or the scenario is stale, and a human decides which.
 
-## Vocabulary: the language is Regelrechts, one regulation in it is a regelwerk
+## Vocabulary: Regelrechts and regelwerk
 
-The language is **Regelrechts**, the way the language of Nederland is
-Nederlands. It is a proper name and stays untranslated: "written in
-Regelrechts". The schema is its formal grammar and the engine one
-implementation of its semantics. "The law format" and *wetformaat* remain as
-descriptions; do not replace them wholesale. RFC-044 records both names and the
-alternatives that lost.
+The definitions are in the glossary (`docs/src/content/docs/reference/glossary.md`,
+under "RegelRecht-Specific Terms") and the reasoning in RFC-044. What follows is
+how to apply them when you write.
 
-One YAML file in the corpus is a **regelwerk**: one regulation at one point in
-time, with the legal text and its machine-executable interpretation side by
-side. A regulation with two versions has two. Several together are a *stelsel
-van regelwerken*.
-
-| | Singular | Plural |
-|---|---|---|
-| Dutch | het regelwerk | regelwerken |
-| English | rulework | ruleworks |
-| Frisian | regelwurk | regelwurken |
+- **Regelrechts** is the name of the language. It is a proper name and stays
+  untranslated. "The law format" and *wetformaat* remain as descriptions of the
+  notation; do not replace them wholesale.
+- **A regelwerk** (English: rulework, Frisian: regelwurk) is one regulation as
+  recorded in Regelrechts, identified by its `$id`. Each dated YAML file is a
+  **version** of it. Count versions when you mean files, and regelwerken when
+  you mean `$id`s.
 
 Which word a sentence needs:
 
-- **Does "het YAML-bestand van" fit in front of it?** Then it is a regelwerk:
-  the thing someone adds, opens, enriches, validates, saves or formally
-  establishes. Do not write *wetsbestand*, *law file*, *law YAML file* or, for
-  this meaning, *specificatie*.
-- **Is it what the legislature laid down?** Then it stays *wet*, *regeling* or
-  *wettekst*: "dit komt letterlijk uit de wet", wetten.overheid.nl, "Soort
-  regeling". Not every regelwerk is a wet; a ministerial regulation, an
-  ordinance and a policy rule get one too.
-- **The schema, the format and the language are not a regelwerk.** A regelwerk
-  is written in Regelrechts and conforms to the schema. Never coin
-  *regelwerkschema*, *regelwerkformaat*, *regelwerktaal*, *rulework schema* or
-  *rulework format*: that is how the word slides onto the schema. They stay
-  "the schema", "the law format" and *wetformaat*. The prose linter in
-  `.claude/skills/docs-writing/` rejects those compounds.
+- **The thing someone adds, opens, enriches, validates, saves or establishes**
+  is a regelwerk. Do not write *wetsbestand*, *law file* or, for this meaning,
+  *specificatie*.
+- **What the legislature laid down** stays *wet*, *regeling* or *wettekst*:
+  "dit komt letterlijk uit de wet", wetten.overheid.nl, "Soort regeling". A
+  screen a citizen reads keeps those words too; regelwerk is a word for the
+  people who make and review them.
+- **The schema and the language are not a regelwerk**, and the word never
+  becomes a prefix for them. A regelwerk is written in Regelrechts and conforms
+  to the schema. The prose linter in `.claude/skills/docs-writing/` rejects such
+  compounds.
 
 Replacing an older word is a judgement per occurrence, never a search and
-replace: "law YAML" and "specification" mean the instance in one sentence and
-the language in the next. When in doubt, leave the old word.
+replace: "law YAML" and "specification" mean a regelwerk in one sentence and the
+language in the next. When in doubt, leave the old word. Change a document as a
+whole or not at all, and leave other authors' RFCs and anything that cites the
+paper in the words they were written in.
 
-What does not change:
-
-- **Code identifiers.** `law_id`, `ArticleBasedLaw`, the API routes, the
-  `law_entries` table, the WASM API and the Gherkin steps in `bdd/grammar.yaml`
-  keep `law`. The term is vocabulary for prose and user interfaces.
-- **The released schema**, including its descriptions.
-- **Frozen documents.** The published papers and the body of accepted or
-  superseded RFCs keep the wording they were written in.
-- **Werkpakket slugs** such as `vaststelling-van-specificaties`. The title
-  changed; the slug is a reference and stays.
-- **The heading "The law file" on `/reference/schema`** and its anchor. That
-  page describes the schema, so the word stays out of its headings.
+Code identifiers keep `law` (`law_id`, `ArticleBasedLaw`, the API routes, the
+WASM API, the Gherkin steps); werkpakket slugs keep their old words.
 
 ## Development Setup
 

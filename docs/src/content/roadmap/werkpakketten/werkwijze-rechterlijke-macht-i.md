@@ -9,8 +9,7 @@ categorie: bet
 capability: verifieren
 capaciteit: ''
 toelichting: |-
-  Dit werkpakket richt zich op het gebruik van machine-uitvoerbare
-  regelwerken in individuele zaken voor de rechter: hoe worden het
+  Dit werkpakket richt zich op het gebruik van regelwerken in individuele zaken voor de rechter: hoe worden het
   regelwerk en het uitvoeringsspoor (execution trace) van een concreet
   besluit ingebracht en getoetst in een lopende procedure?
 volgorde: 3000

@@ -1704,7 +1704,10 @@ async fn process_next_law_convert_job(
                             assignee_account_id: Some(account_id),
                             traject_id: Some(payload.traject_id),
                             job_id: Some(job.id),
-                            title: format!("Conversie naar wet mislukt: {}", payload.filename),
+                            title: format!(
+                                "Conversie naar regelwerk mislukt: {}",
+                                payload.filename
+                            ),
                             payload: Some(serde_json::json!({
                                 "traject_ref": payload.traject_ref,
                                 "filename": payload.filename,
@@ -1906,7 +1909,7 @@ pub async fn materialize_task_workdir(
 /// gewoon worden aangemaakt en zou de gebruiker een taak openen die per
 /// definitie niet af te maken is.
 pub(crate) const NO_REVIEWABLE_LAW: &str =
-    "de verrijking leverde geen wet-YAML op om te beoordelen";
+    "de verrijking leverde geen regelwerk op om te beoordelen";
 
 /// Whether an enrich run wrote something the review UI can actually open.
 ///
@@ -2213,7 +2216,7 @@ async fn finalize_failed_task_job_tx(
         // De geketende enrich van een geüploade wet: de gebruiker kent geen
         // "verrijking", alleen de wet die er niet kwam. De input-blob (de
         // basis-YAML) gaat hier mee weg; opnieuw uploaden is het herstel.
-        format!("Wet aanmaken mislukt: {}", payload.law_id)
+        format!("Regelwerk aanmaken mislukt: {}", payload.law_id)
     } else {
         format!("Verrijking mislukt: {}", payload.law_id)
     };

@@ -176,7 +176,7 @@ export function useDependencies() {
           (r) => r.status === 'queued' || r.status === 'already_queued',
         ) ?? [];
         progress.value = requested.length > 0
-          ? `${defaultProgress} \u2014 ${requested.length === 1 ? '1 ontbrekend regelwerk' : `${requested.length} ontbrekende regelwerken`} aangevraagd`
+          ? `${defaultProgress} \u2014 ${requested.length === 1 ? '1 ontbrekende wet' : `${requested.length} ontbrekende wetten`} aangevraagd`
           : defaultProgress;
       } else {
         progress.value = defaultProgress;

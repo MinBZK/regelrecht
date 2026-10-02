@@ -89,7 +89,8 @@ is: in tekst dêr't men rjochten oan ûntliene kin`.
 - **`regelingen`** als meervoud: de `-ing`-meervouden lopen tussen Fries en
   Nederlands soms uiteen.
 - **`regelwurk`, meervoud `regelwurken`**, voor het Nederlandse "regelwerk":
-  één regeling op één moment, vastgelegd in YAML. Het Nederlandse woord is zelf
+  één regeling zoals die in YAML is vastgelegd, met een versie per datum. Het
+  Nederlandse woord is zelf
   een nieuwe vakterm (RFC-044), en het Friese is er letter voor letter van
   afgeleid; geen vertaler heeft het gezien. Wat vaststaat: `wurk` is het Friese
   woord voor "werk", en `regel` is in beide talen hetzelfde. Wat niet vaststaat:
@@ -97,8 +98,9 @@ is: in tekst dêr't men rjochten oan ûntliene kin`.
   `regelwurken` goed valt (het telbare gebruik is ook in het Nederlands nieuw),
   en of het een it-woord is. De vertaling behandelt het als it-woord (`dit
   regelwurk`, `it foarige regelwurk`, `gjin oar regelwurk`), naar het
-  Nederlandse "het regelwerk". Het staat in het tabblad en in zo'n 25 sleutels
-  onder `wet.*`, `scenario.*` en `engine.*`, dus beslis het in één keer.
+  Nederlandse "het regelwerk". Het staat in het tabblad, in de dia over dat
+  tabblad en in 17 sleutels in `fy.js` (zoek op `regelwurk`), dus beslis het in
+  één keer.
 
 - **`begjinstân` en `presintaasjemodus`** in `app.reset.body`. Beide
   samengesteld uit woorden die elders in de vertaling staan (`begjin`, `stân`,

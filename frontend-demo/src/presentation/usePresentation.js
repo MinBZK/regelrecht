@@ -25,10 +25,10 @@ function slideTarget(path) {
   if (!path || !router) return null;
   const parts = splitConfigPath(path);
   if (!parts) return path;
-  // Wat na het tabblad komt (`/regelwerken/zorgtoeslagwet`: de wet) gaat mee.
-  // Anders opent de dia het tabblad op de wet die er toevallig nog open stond,
-  // en landt de presentator na een oefenronde op de verkeerde. De rest komt uit
-  // `splitConfigPath`, zodat ook een dia met een oud pad zijn wet houdt.
+  // What follows the tab (`/regelwerken/zorgtoeslagwet`: the law) comes along.
+  // Without it the slide opens the tab on whatever law was left open, and after
+  // a rehearsal the presenter lands on the wrong one. The rest comes from
+  // `splitConfigPath`, so a slide that still carries a former path keeps its law.
   const { page, rest } = parts;
   const base = router.resolve({ name: localeRouteName(page, currentLocale()) }).path;
   return rest ? `${base.replace(/\/$/, '')}${rest}` : base;
@@ -89,7 +89,7 @@ function isOnStage() {
   // waar we zijn, en houdt het dek de toetsen niet vast. Dat is de veilige
   // kant: onzichtbaar bladeren is precies wat hier misging.
   if (!slideRoute || !router) return false;
-  // Op het tabblad vergelijken en niet op het pad. `/wetten/:lawId?`,
+  // Op het tabblad vergelijken en niet op het pad. `/regelwerken/:lawId?`,
   // `/scenarios/:featurePath(.*)?` en `/zaaksysteem/:caseId?` verdiepen hun
   // eigen pad: WettenView en ScenariosView doen bij binnenkomst meteen een
   // `router.replace` naar de standaardwet of -feature van het profiel, nog

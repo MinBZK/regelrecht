@@ -64,7 +64,7 @@ onderzoeksvragen:
       komen, en wie is eigenaar van zo'n regelwerk?
     paper: sec:crosscutting
   - vraag: >-
-      Hoe verhoudt een nationaal uitvoerbaar regelwerk zich tot rechtstreeks
+      Hoe verhoudt een nationaal regelwerk zich tot rechtstreeks
       werkend Europees recht en tot richtlijnen die nog omgezet moeten worden?
     paper: sec:european
   - vraag: >-

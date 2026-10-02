@@ -111,7 +111,7 @@ export function localeRouteName(page, locale) {
 /**
  * The page a Dutch path from `demo-config.yaml` refers to.
  *
- * The presentation deck's slides carry literal paths (`route: /wetten`), and
+ * The presentation deck's slides carry literal paths (`route: /regelwerken`), and
  * those are authored content, not code — translating them in the config would
  * put routing knowledge in a file about slides. Instead the path is read back
  * to its page name here, and the caller resolves that name in whatever locale
@@ -132,7 +132,7 @@ export function pageForConfigPath(path) {
  */
 export function splitConfigPath(path) {
   const raw = String(path || '');
-  const clean = raw.split('?')[0];
+  const clean = raw.split(/[?#]/)[0];
   for (const p of PAGES) {
     for (const pattern of [p.paths[DEFAULT_LOCALE], p.formerPaths?.[DEFAULT_LOCALE]]) {
       if (!pattern) continue;

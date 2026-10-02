@@ -10,7 +10,7 @@ capability: analyseren
 capaciteit: ''
 toelichting: >-
   Verschillende manieren van analyseren die mogelijk worden gemaakt door het
-  omzetten van wetgeving naar een uitvoerbaar regelwerk (executable
+  omzetten van wetgeving naar een regelwerk (in het paper: executable
   specification). Deze analyses vallen uiteen in vier hoofdcategorieën:
 
 

@@ -6,7 +6,7 @@
  * a civil servant operates.
  *
  * Tab names are the exception to "translate everything": `Graaf` becomes
- * `Graph` and `Wetten` becomes `Laws`, but `Mijn overheid` becomes
+ * `Graph` and `Regelwerken` becomes `Ruleworks`, but `Mijn overheid` becomes
  * `My government` rather than a literal "My authority", because it names the
  * citizen-facing portal the Dutch government actually runs.
  *
@@ -54,7 +54,7 @@ export default {
   'app.demo.reset': 'Reset the demo…',
 
   // ---- loading, errors, resetting -----------------------------------------
-  'app.loading': 'Loading ruleworks and engine…',
+  'app.loading': 'Loading laws and engine…',
   'app.error.title': 'The demo could not start',
   'app.reset.title': 'Reset the demo?',
   'app.reset.body':
@@ -181,7 +181,7 @@ export default {
 
   'home.parts.title': 'The sections',
   'home.parts.subtitle': 'The same laws, seen six different ways. The presentation walks through them itself.',
-  'home.parts.wetten.text': 'The act as a rulework: machine-executable YAML beside the articles it comes from.',
+  'home.parts.wetten.text': 'The act as a rulework: its articles, with their machine-executable YAML beside them.',
   'home.parts.graaf.text': 'Which act needs which other act, and which value passes between them.',
   'home.parts.scenarios.text': 'Examples from the explanatory memorandum, computed live by the engine.',
   'home.parts.simulatie.text': 'What a rule does to a whole population rather than to one person.',
@@ -291,8 +291,8 @@ export default {
   'zaak.portaal.change_wizard': 'Report a change',
   'zaak.portaal.read_only.title': 'You may only view this data',
   'zaak.portaal.read_only.body': 'This authorisation does not let you correct data or submit an application.',
-  'zaak.portaal.load_failure.one': 'One rulework has not loaded',
-  'zaak.portaal.load_failure.other': '{n} ruleworks have not loaded',
+  'zaak.portaal.load_failure.one': 'One law has not loaded',
+  'zaak.portaal.load_failure.other': '{n} laws have not loaded',
   'zaak.portaal.load_failure.body':
     'The engine refused: {details}. Schemes that depend on them cannot reach an outcome.',
   'zaak.portaal.pending_claims.one': '{n} correction is awaiting review',
@@ -807,7 +807,7 @@ export default {
   'sim.inspector.params': 'Parameters for this simulation',
   'sim.inspector.close': 'Close',
   'sim.inspector.definitions.lead': 'The constants from the statutory text',
-  'sim.inspector.definitions.scope': 'A changed value applies to the next simulation only; the rulework in the corpus stays as it is.',
+  'sim.inspector.definitions.scope': 'A changed value applies to the next simulation only; the law in the corpus stays as it is.',
   'sim.inspector.definition_help': 'Article {article} · default {value} · {hint}',
   'sim.inspector.hint.eurocent': '{amount} · in eurocents',
   'sim.inspector.hint.fraction': '{pct}% · as a fraction',
@@ -826,7 +826,7 @@ export default {
   'sim.inspector.law_text': 'Statutory text',
 
   // ---- engine --------------------------------------------------------------
-  'engine.no_outputs': 'This rulework produces no outputs.',
+  'engine.no_outputs': 'This law produces no outputs.',
 
   // ---- harmonisation: the features a bracket model can key on --------------
   'harm.feature.income': 'Income',
@@ -858,6 +858,7 @@ export default {
   'scenario.laws_not_loaded.one': 'One rulework was not loaded',
   'scenario.laws_not_loaded.other': '{n} ruleworks were not loaded',
   'scenario.law_refused': 'Rulework {id} ({path}) was not loaded; the engine refused it: {message}',
+  'scenario.engine_refused': 'The engine refused: {details}',
   'scenario.load_failed': 'Could not load the scenario',
   'scenario.pick': 'Pick a scenario',
   'scenario.pick.hint': 'Open the list of test files.',
