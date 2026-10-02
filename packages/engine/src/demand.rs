@@ -234,6 +234,31 @@ mod tests {
         serde_yaml_ng::from_str(yaml).unwrap()
     }
 
+    /// The known limit of the scan: a field of an object element, which a
+    /// FOREACH exposes as a bare name, still counts as a reference to the
+    /// output of that name. Where that output reads the FOREACH's own output,
+    /// the order reports a cycle the file order did not have. Pinned here so
+    /// a change to this behaviour is a deliberate one.
+    #[test]
+    fn a_field_of_a_foreach_element_named_like_an_output_counts_as_a_reference() {
+        let acts = actions(
+            r#"
+- output: totaal
+  value:
+    operation: FOREACH
+    collection: $posten
+    body: $bedrag
+    combine: ADD
+- output: bedrag
+  value:
+    operation: MULTIPLY
+    values: [$totaal, 2]
+"#,
+        );
+        assert!(referenced_names(&acts[0]).contains("bedrag"));
+        assert_eq!(execution_order(&acts, None), Err("totaal".to_string()));
+    }
+
     #[test]
     fn a_foreach_binding_is_not_a_reference_inside_its_body() {
         let acts = actions(
