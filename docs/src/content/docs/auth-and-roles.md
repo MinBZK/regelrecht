@@ -38,7 +38,7 @@ There are two applications today:
 | Role | Grants |
 |---|---|
 | `editor-reader` | Editor: read user-scoped data (favorites, settings) and harvest search. |
-| `editor-writer` | Editor: edit laws & scenarios, manage favorites/settings, enqueue harvests. Inherits `editor-reader`. |
+| `editor-writer` | Editor: edit laws & scenarios inside a traject (see [Traject membership](#traject-membership)), manage favorites/settings, enqueue harvests. Inherits `editor-reader`. |
 | `editor-admin` | Editor: corpus reload, feature-flag changes. Inherits `editor-writer`. |
 | `harvester-reader` | Harvester admin: read jobs, sources, law entries, platform info. |
 | `harvester-writer` | Harvester admin: enqueue harvest and enrich jobs. Inherits `harvester-reader`. |
@@ -70,6 +70,28 @@ To add a new specific right:
    protected route.
 
 No changes are needed to existing routes; the pattern is composable.
+
+## Traject membership
+
+Realm roles decide which tier of routes a user reaches. Within the editor, a
+second layer decides which trajects (shared editing sessions) they can see and
+change. Corpus edits have no route of their own outside a traject: they go
+through `/api/trajects/{id}/corpus/...`, so every write names its traject in
+the URL.
+
+Each member of a traject has one of two roles, stored per traject in the
+editor database rather than in Keycloak:
+
+| Traject role | Grants |
+|---|---|
+| `owner` | Everything a contributor can do, plus renaming or deleting the traject, adding, changing and removing members, and withdrawing invites. |
+| `contributor` | Read the traject and edit the laws, scenarios and notes on its branch. |
+
+The realm role is still the outer gate: reading a traject needs
+`editor-reader`, changing anything in it needs `editor-writer`. The handlers
+then look up the caller's membership on every request and answer `403` to a
+non-member. An `editor-reader` who has been invited can therefore read a
+traject's in-progress edits but not change them.
 
 ## JWT shape
 
@@ -310,7 +332,12 @@ role still works too. The editor service has no API key path.
 
 - Shared crate: `packages/auth/`, `require_role(role)` middleware factory.
 - Editor routes: `packages/editor-api/src/main.rs`, router split into
-  public / reader / writer / admin groups.
+  public / reader / writer / admin groups, plus separate reader and writer
+  groups for trajects, personal notes (`/api/user/notes/...`) and review
+  tasks (`/api/tasks/...`). Those three also run `account_middleware`,
+  because their handlers need the account record.
+- Traject membership: `require_membership` and `require_owner` in
+  `packages/editor-api/src/trajects.rs`.
 - Harvester-admin routes: `packages/admin/src/main.rs`, router split into
   reader / writer / admin groups; `require_auth(role)` in
   `packages/admin/src/middleware.rs` keeps the API-key bypass.
