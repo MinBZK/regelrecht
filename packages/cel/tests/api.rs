@@ -5466,11 +5466,11 @@ async fn the_form_says_why() {
     let naam = form_field(&form, "naam_aanvrager").unwrap();
     assert!(kinds(&naam["why"]["value"]).contains(&"prefill"), "{naam}");
     // The channel supplies the signature: the policy overrides the origin,
-    // the channel names what it supplies.
+    // says what it executes (RFC-047), the channel names what it supplies.
     let o = form_field(&form, "ondertekening").unwrap();
     assert_eq!(
         kinds(&o["why"]["value"]),
-        ["origin", "origin", "supply"],
+        ["origin", "origin", "executes", "supply"],
         "{o}"
     );
     // ... what the channel supplies may not.
@@ -5965,4 +5965,14 @@ async fn the_processes_follow_from_the_policy() {
         .find(|n| n["id"] == "channel:eherkenning")
         .unwrap();
     assert_eq!(channel["source"], json!({"law": "testbeleid_afnemer#1"}));
+    // The policy article on the map points to the article it executes.
+    let (_, map, _) = call(&app, "GET", "/processes/test_toeslag/api/map", None, None).await;
+    assert!(
+        map["edges"].as_array().unwrap().contains(&json!({
+            "from": "article:testbeleid_toeslag#4",
+            "to": "article:testregeling_toeslag#1",
+            "kind": "executes"
+        })),
+        "{map}"
+    );
 }

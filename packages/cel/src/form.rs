@@ -28,12 +28,13 @@
 
 use std::path::Path;
 
+use regelrecht_engine::LawExecutionService;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::channel::Routes;
 use crate::config::{Portal, ProcessDefinition};
-use crate::law::{SourceRef, Step, StepKind};
+use crate::law::{with_executes, SourceRef, Step, StepKind};
 use crate::load;
 use crate::stream::{Event, Shape};
 
@@ -145,8 +146,9 @@ pub fn with_supplied(fields: &mut [Field], event: &Event, intake: &Value) {
 /// event, the channel that supplies a field and the form file that gives
 /// order, groups and labels. `channel` is the channel of the logged-in
 /// applicant; without one, every channel of the portal says what it would
-/// supply. Sets `why` per field and returns `{event, excluded}` for the form
-/// as a whole.
+/// supply. After every policy article a step says what it executes
+/// (RFC-047, [`with_executes`]). Sets `why` per field and returns
+/// `{event, excluded}` for the form as a whole.
 pub fn explain(
     fields: &mut [Field],
     event: &Event,
@@ -154,6 +156,7 @@ pub fn explain(
     portal: &Portal,
     process: &ProcessDefinition,
     channel: Option<&str>,
+    service: &LawExecutionService,
 ) -> Value {
     let stream = SourceRef::stream(&portal.stream, &portal.event);
     let mut chain = vec![Step::new(
@@ -244,8 +247,13 @@ pub fn explain(
                 ));
             }
         }
+        // What the policy articles of the supply and the presentation
+        // execute (RFC-047).
+        with_executes(&mut why.here, service);
+        with_executes(&mut why.value, service);
         f.why = Some(why);
     }
+    with_executes(&mut chain, service);
     serde_json::json!({"event": chain, "excluded": event.explanation.excluded})
 }
 

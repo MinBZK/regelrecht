@@ -51,6 +51,8 @@ pub enum EdgeKind {
     Prefill,
     Source,
     Reads,
+    /// Two meanings: a lexostatus to the article that reads it, and a
+    /// policy article to the article of law it executes (RFC-047).
     Executes,
     Synthesis,
     Rows,
@@ -220,6 +222,8 @@ pub fn build(input: &MapInput) -> Map {
     }
     handling_part(&mut b, input, &proc);
     synthesis_part(&mut b, input, &proc);
+    // Before the sources, so that an executed article gets its own.
+    executes_part(&mut b, input);
     source_part(&mut b, input);
     register_part(&mut b, input);
     b.finish(id)
@@ -456,6 +460,27 @@ fn synthesis_part(b: &mut Builder, input: &MapInput, proc: &str) {
         b.edge(proc, &target, EdgeKind::Synthesis);
     }
     rows_part(b, input, proc, p.assessment_rows());
+}
+
+/// What the articles on the map execute (RFC-047): an edge from the policy
+/// article to the executed article, one level.
+fn executes_part(b: &mut Builder, input: &MapInput) {
+    let present: Vec<(String, String, String)> = b
+        .nodes
+        .values()
+        .filter_map(|n| Some((n.id.clone(), n.regulation.clone()?, n.article.clone()?)))
+        .collect();
+    for (node, regulation, number) in present {
+        for e in input
+            .process
+            .service
+            .resolver()
+            .executes_of(&regulation, &number)
+        {
+            let target = b.article(&e.target);
+            b.edge(&node, &target, EdgeKind::Executes);
+        }
+    }
 }
 
 /// One level of `source` between articles: an article on the map that takes

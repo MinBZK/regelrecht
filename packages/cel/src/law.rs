@@ -415,6 +415,40 @@ pub enum StepKind {
     Prefill,
     Supply,
     Presentation,
+    /// The article of the step before executes another (RFC-047).
+    Executes,
+}
+
+/// After the first step of an article that executes another (RFC-047): a
+/// step "voert <artikel> uit (<soort>)" with the policy article as source.
+/// Once per policy article in the chain; calling it twice changes nothing.
+pub fn with_executes(steps: &mut Vec<Step>, service: &LawExecutionService) {
+    // An article whose `Executes` step is already there gets no second.
+    let mut done: BTreeSet<String> = steps
+        .iter()
+        .filter(|s| s.kind == StepKind::Executes)
+        .filter_map(|s| s.source.law.clone())
+        .collect();
+    let mut out = Vec::with_capacity(steps.len());
+    for step in steps.drain(..) {
+        let law = step.source.law.clone();
+        out.push(step);
+        let Some(article) = law else { continue };
+        if !done.insert(article.clone()) {
+            continue;
+        }
+        let Some((r, n)) = article.split_once('#') else {
+            continue;
+        };
+        for e in service.resolver().executes_of(r, n) {
+            out.push(Step::new(
+                StepKind::Executes,
+                SourceRef::law(&article),
+                format!("voert {} uit ({})", e.target, e.kind.as_str()),
+            ));
+        }
+    }
+    *steps = out;
 }
 
 /// Where a step is written: an article (`<regulation>#<article>`, without a
@@ -1735,6 +1769,13 @@ fn establish_event(
             (d.name.clone(), x)
         })
         .collect();
+
+    // What the policy articles in the chain execute (RFC-047).
+    with_executes(&mut explanation.event, service);
+    for x in explanation.fields.values_mut() {
+        with_executes(&mut x.here, service);
+        with_executes(&mut x.value, service);
+    }
 
     let event = &mut stream.events[i];
     if !event.refers_to.is_empty() {
@@ -3116,5 +3157,32 @@ articles:
         // The policy declares what the general law passes over.
         assert!(x.fields.contains_key("interne_notitie"));
         assert!(!excluded.contains(&"interne_notitie"), "{excluded:?}");
+    }
+
+    /// A step whose article executes another gets a step "voert ... uit"
+    /// after it, once per executed article (RFC-047).
+    #[test]
+    fn a_step_of_an_executing_article_says_what_it_executes() {
+        let mut s = LawExecutionService::new();
+        s.load_law("$id: wet_e\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - {number: '1', text: Een aanvraag.}\n").unwrap();
+        s.load_law("$id: beleid_e\nregulatory_layer: UITVOERINGSBELEID\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Het portaal.\n    machine_readable:\n      executes: [{article: 'wet_e#1', as: procedure}]\n").unwrap();
+        let mut steps = vec![
+            Step::new(
+                StepKind::Origin,
+                SourceRef::law("beleid_e#1 lid 2"),
+                "origin",
+            ),
+            Step::new(StepKind::Supply, SourceRef::law("beleid_e#1"), "supply"),
+        ];
+        with_executes(&mut steps, &s);
+        let kinds: Vec<StepKind> = steps.iter().map(|x| x.kind).collect();
+        assert_eq!(
+            kinds,
+            [StepKind::Origin, StepKind::Executes, StepKind::Supply]
+        );
+        assert_eq!(steps[1].source, SourceRef::law("beleid_e#1"));
+        assert_eq!(steps[1].reason, "voert wet_e#1 uit (procedure)");
+        with_executes(&mut steps, &s);
+        assert_eq!(steps.len(), 3, "idempotent");
     }
 }
