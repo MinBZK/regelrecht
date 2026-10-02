@@ -239,6 +239,8 @@ export async function startRecording({ meta = {} } = {}) {
         screenSettings: screenTrack.getSettings?.() ?? null,
         camSettings: cam?.getVideoTracks()[0]?.getSettings?.() ?? null,
         micSettings: mic.getAudioTracks()[0]?.getSettings?.() ?? null,
+        // Which microphone, by name: the settings only carry an opaque id.
+        micLabel: mic.getAudioTracks()[0]?.label ?? null,
         ...meta,
       },
       tick: null,

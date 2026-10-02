@@ -46,6 +46,8 @@ export const replay = reactive({
   cues: [],
   cursor: { x: 0, y: 0, visible: false },
   ripples: [],
+  /** Actions whose element was not found: what a recording needs redone. */
+  misses: [],
 });
 
 let timeline = null;
@@ -164,6 +166,17 @@ async function find(target, { timeout = 4000, fast = false, token = seekToken } 
   return null;
 }
 
+/**
+ * Remember an action whose element was not found. The replay goes on (the
+ * route still gets the viewer to the right tab), but this is the list of
+ * what to record again after a demo change; the verify run reports it.
+ */
+function noteMiss(e) {
+  const last = e.target?.at?.(-1) ?? {};
+  replay.misses.push({ t: e.t, type: e.type, what: last.text ?? last['@aria-label'] ?? last.textContent ?? last.tag ?? '?' });
+  if (import.meta.env.DEV) console.warn('[walkthrough] niet gevonden:', e.type, last);
+}
+
 function pointIn(el, fx = 0.5, fy = 0.5) {
   const r = el.getBoundingClientRect();
   return { x: r.left + r.width * fx, y: r.top + r.height * fy };
@@ -211,6 +224,7 @@ async function apply(e, { fast = false, token = seekToken } = {}) {
     }
     case 'click': {
       const el = await find(e.target, opts);
+      if (!el && current(token)) noteMiss(e);
       if (!el || !current(token)) return;
       el.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
       if (!fast) {
@@ -223,6 +237,7 @@ async function apply(e, { fast = false, token = seekToken } = {}) {
     }
     case 'input': {
       const el = await find(e.target, opts);
+      if (!el && current(token)) noteMiss(e);
       if (!el || !current(token)) return;
       if (!fast) showCursorAt(pointIn(el, 0.15, 0.5));
       setValue(el, e.value ?? '');
@@ -230,6 +245,7 @@ async function apply(e, { fast = false, token = seekToken } = {}) {
     }
     case 'change': {
       const el = await find(e.target, opts);
+      if (!el && current(token)) noteMiss(e);
       if (!el || !current(token)) return;
       if (typeof e.checked === 'boolean') setChecked(el, e.checked);
       else setValue(el, e.value ?? '', { change: true });
