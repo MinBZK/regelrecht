@@ -19,7 +19,7 @@
  * to storage; leaving restores it.
  */
 import { nextTick, reactive } from 'vue';
-import { adoptLocale, currentLocale } from '../i18n/index.js';
+import { adoptLocale, currentLocale, t } from '../i18n/index.js';
 import { setPersistence } from '../store/demoStore.js';
 import { localeRouteName, pageForConfigPath } from '../router.js';
 import { click, setChecked, setValue, key as pressKey, scrollTo } from './actions.js';
@@ -85,6 +85,27 @@ function applyState(state) {
 /** The deck's slides as recorded, with corrections applied by the pipeline. */
 function slidesOf(track) {
   return track?.slides?.length ? track.slides : ctx?.demo?.corpus?.value?.config?.slides ?? [];
+}
+
+/**
+ * The slides a track shows. In an answer every slide carries the question
+ * as its title, whatever slide the answer was recorded on: the viewer chose
+ * that question and should keep seeing it. Route and persona stay, so the
+ * deck still opens the tab the answer talks about.
+ */
+function slidesFor(track) {
+  const slides = slidesOf(track);
+  if (!replay.faq || track?.id !== replay.faq.id) return slides;
+  return slides.map((s) => ({
+    ...s,
+    kind: s.route ? s.kind : 'section',
+    overline: t('walkthrough.faq.overline'),
+    title: replay.faq.question,
+    lead: undefined,
+    lines: undefined,
+    bullets: undefined,
+    note: undefined,
+  }));
 }
 
 function samePage(path) {
@@ -305,7 +326,7 @@ async function loadTrack(track) {
   a.playbackRate = replay.speed;
   const base = recordedAt(track);
   if (base != null) installClock(() => base + replay.now * 1000);
-  ctx.presentation.init({ slides: slidesOf(track) });
+  ctx.presentation.init({ slides: slidesFor(track) });
   loadCaptions(track);
 }
 

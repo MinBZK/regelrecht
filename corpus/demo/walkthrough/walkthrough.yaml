@@ -56,12 +56,27 @@ takes: {}
 #     lead: Elk artikel staat er twee keer in, als tekst en als regels.
 slides: {}
 
-# Veelgestelde vragen: een eigen opname per antwoord, en het moment in de
-# hoofdlijn waarop de vraag verschijnt (in take-tijd, of als hoofdstuk plus
-# seconden: `offer: {chapter: 5, after: 20}`).
+# Veelgestelde vragen, en het moment in de hoofdlijn waarop de vraag
+# verschijnt (in take-tijd, of als hoofdstuk plus seconden:
+# `offer: {chapter: 5, after: 20}`). Twee soorten antwoord:
+#
+# - een oordeel: de presentator in beeld, opgenomen op een dia zonder
+#   tabblad; het gezicht staat dan groot naast de vraag;
 #
 #   - id: open-normen
 #     question: Hoe gaan jullie om met open normen?
-#     take: 2026-10-02T11-00-00
-#     offer: {take: 2026-10-02T10-00-00, at: 812.0}
+#     segments:
+#       - take: 2026-10-02T11-00-00
+#     offer: {chapter: 5, after: 20}
+#
+# - laat-maar-zien: een script met de gegenereerde stem en de demo die
+#   meeklikt, eventueel met een opgenomen eerste zin.
+#
+#   - id: eigen-wet
+#     question: Kan ik zelf een wet toevoegen?
+#     segments:
+#       - take: 2026-10-02T11-10-00
+#         to: 4.5
+#       - script: faq-eigen-wet
+#     offer: {chapter: 7, after: 10}
 faq: []

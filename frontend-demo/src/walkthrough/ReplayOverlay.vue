@@ -17,6 +17,16 @@ const p = usePresentation();
 const track = computed(() => currentTrack());
 const cue = computed(() => (replay.captionsOn ? cueAt(replay.cues, replay.now) : null));
 const full = computed(() => p.isFull.value);
+/**
+ * An answer to a question with no demo in it (a full slide, the presenter on
+ * camera): then the face is what there is to see, so the bubble is large,
+ * next to the question, instead of a corner of the screen.
+ */
+const face = computed(() => full.value && !!replay.faq && camVisible(track.value, replay.now));
+// The deck lives outside this component; a class on <html> lets its slide
+// make room for the face (presentation.css).
+watch(face, (on) => document.documentElement.classList.toggle('rr-face', on), { immediate: true });
+onUnmounted(() => document.documentElement.classList.remove('rr-face'));
 
 // ---- the bubble -------------------------------------------------------------------
 
@@ -144,7 +154,7 @@ onUnmounted(() => {
   <!-- In <body>, like the deck: inside the workspace this layer would take
        part in its layout and push the demo down. -->
   <Teleport to="body">
-  <div class="wt-chrome overlay" :class="{ full }">
+  <div class="wt-chrome overlay" :class="{ full, face }">
     <video
       v-if="track?.cam"
       v-show="replay.camOn && camVisible(track, replay.now)"
@@ -211,6 +221,14 @@ onUnmounted(() => {
   border: 3px solid var(--primitives-color-coolgray-0);
   transition: left 0.5s cubic-bezier(0.22, 1, 0.36, 1), top 0.5s cubic-bezier(0.22, 1, 0.36, 1), width 0.5s, height 0.5s;
   pointer-events: none;
+}
+/* The presenter talking, in an answer without demo: large, right of the
+   question. Left/top/size only, so the change animates like the rest. */
+.face .cam {
+  width: min(46vh, 30vw);
+  height: min(46vh, 30vw);
+  left: calc(100vw - min(46vh, 30vw) - 8vw);
+  top: calc(50vh - min(46vh, 30vw) / 2 - 4vh);
 }
 /* The popover's own box is reset to nothing; its children are fixed to the
    viewport like the rest of the overlay. */

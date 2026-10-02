@@ -55,6 +55,12 @@ html.rr-presenting:not(.rr-presenting-full):not(.rr-deck-hidden) {
   --rr-sheet-fade: 0;
 }
 
+/* An answer in which the presenter only talks (walkthrough/ReplayOverlay.vue
+ * shows the face large on the right): the question keeps clear of it. */
+html.rr-face .deck.full .stage {
+  padding-right: calc(min(46vh, 30vw) + 12vw);
+}
+
 /* While the deck names the persona, the profile tag in the bar is noise. In de
  * zaal verdwijnt het dek op een demo-dia, en dan benoemt het de persona dus
  * niet meer: daar horen de knoppen terug te zijn. Vandaar de uitzondering op
