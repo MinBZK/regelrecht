@@ -54,7 +54,8 @@ let registry = CorpusRegistry::load(Path::new("corpus-registry.yaml"), None)?;
 // each law's versions are collapsed against.
 let local = registry.load_local_sources("2026-01-01")?;
 
-// index_all_sources_async includes GitHub sources. Pass the auth file when
+// index_all_sources_async includes GitHub sources. For those it builds a
+// metadata-only index; law bodies are fetched lazily on first read. Pass the auth file when
 // private repositories need a token, or None when all sources are public.
 // Sources that fail to enumerate are returned next to the map, not as an error.
 let (source_map, failures) = registry

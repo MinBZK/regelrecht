@@ -47,7 +47,7 @@ Each source declares:
 
 ## How it works
 
-The corpus library (`packages/corpus/src/registry.rs`) merges laws from all registered sources into a single corpus at load time. Scope information is used to filter: when executing for a person in Amsterdam, only Amsterdam's municipal ordinances apply.
+The corpus library merges laws from all registered sources into a single corpus at load time. When the same law appears in more than one source, the source with the lowest priority value wins (`SourceMap` in `packages/corpus/src/source_map.rs`); two sources with equal priority and the same `$id` are an error. Scopes do not filter which laws load or apply.
 
 Scopes are claims, and the loader checks them against what a source delivers. It warns when a scoped source provides a regulation for a different municipality or water board, when it provides a national regulation (a decentral source can fill in national law but not replace it), and when it provides a regulation whose `regulatory_layer` it does not recognize. The check covers every version a source supplies, including one from a source that loses on priority. It reads the regulation body, so a GitHub source that is only enumerated by path, without fetching the files, is not checked. The check warns and does not refuse.
 

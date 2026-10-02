@@ -126,7 +126,7 @@ Configure `ZAD_API_KEY` and `ZAD_PROJECT_ID` in `.env`.
 
 - `RIG_API_KEY` - API key for ZAD Operations Manager (configured in GitHub repository secrets)
 - `GITHUB_TOKEN` - used for GHCR image pushes (provided automatically by GitHub Actions)
-- `ADMIN_TOKEN` - token with admin rights on the repository, passed to the ZAD cleanup action in `cleanup-preview` so it can delete the preview's GitHub environment
+- `ADMIN_TOKEN` - token with admin rights on the repository, passed to the ZAD cleanup action in `cleanup-preview` and in `scheduled-cleanup.yml`, so it can delete preview GitHub environments
 
 ## Further reading
 

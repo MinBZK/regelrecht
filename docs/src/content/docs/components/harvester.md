@@ -129,7 +129,7 @@ The regulatory layer is determined from the WTI metadata (`soort-regeling` field
 - **Text-only extraction** - tables and complex formatting simplified to text
 - **No machine_readable** - output contains text only; executable logic added separately
 - **Reference extraction incomplete** - cross-references detected but not fully resolved
-- **Large laws** - the largest known, the Wet op het financieel toezicht at 52.6 MB, fits in the default 100 MB limit; anything larger needs `--max-size`
+- **Large laws** - a large law such as the Wet op het financieel toezicht (52.6 MB) fits in the default 100 MB limit; anything larger needs `--max-size`
 
 ## Testing
 
