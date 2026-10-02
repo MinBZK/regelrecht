@@ -278,6 +278,12 @@ test-db:
 bdd:
     cd packages/engine && {{ci_flags}} cargo test --test bdd -- --nocapture
 
+# BDD met de acties van elk artikel omgekeerd: de volgorde in het bestand mag
+# geen uitkomst veranderen. CI draait de conformance- en demobucket zo ook.
+bdd-reversed:
+    cd packages/engine && {{ci_flags}} BDD_REVERSE_ACTIONS=1 cargo test --test bdd -- --nocapture
+    cd packages/engine && {{ci_flags}} BDD_REVERSE_ACTIONS=1 BDD_BUCKET=corpus REGULATION_PATH="$(pwd)/../../corpus/demo/regulation" cargo test --test bdd -- --nocapture
+
 # Bucket A over de democorpus: REGULATION_PATH wijst wetten en scenario's naar corpus/demo.
 #
 # De Awb-levensloop draait er achteraan, over hetzelfde corpus. Een scenario

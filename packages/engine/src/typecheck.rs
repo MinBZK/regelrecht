@@ -439,7 +439,14 @@ impl<'l, 'f> ArticleChecker<'l, 'f> {
         else {
             return;
         };
-        for (index, action) in actions.iter().enumerate() {
+        // The order the engine runs the actions in, so a fact an output
+        // establishes (an absence test) reaches every action that reads it,
+        // wherever the file declares it. Outputs that read each other are a
+        // cycle the engine reports when it runs; here they keep file order.
+        let order = crate::demand::execution_order(actions)
+            .unwrap_or_else(|_| (0..actions.len()).collect());
+        for index in order {
+            let action = &actions[index];
             self.location = match &action.output {
                 Some(output) => format!("output '{output}'"),
                 None => format!("action {}", index + 1),
@@ -1902,6 +1909,38 @@ actions:
         assert_clean(&n4_law(
             "  - output: uitkomst\n    value:\n      operation: IF\n      cases:\n        - when:\n            operation: NOT\n            value:\n              operation: EQUALS\n              subject: $partner\n              value: null\n          then: $partner.inkomen\n      default: 0\n",
         ));
+    }
+
+    #[test]
+    fn n4_flow_e_the_fact_reaches_a_decision_declared_before_the_absence_test() {
+        // The engine runs an action after the outputs it reads, so the fact
+        // of `heeft_huur` reaches `uitkomst` also where the file declares the
+        // decision first.
+        let law = n4_law(
+            r#"  - output: uitkomst
+    value:
+      operation: IF
+      cases:
+        - when: $heeft_huur
+          then:
+            operation: ADD
+            values:
+              - $huur
+              - 100
+      default: 0
+  - output: heeft_huur
+    operation: NOT
+    value:
+      operation: EQUALS
+      subject: $huur
+      value: null
+"#,
+        )
+        .replace(
+            "output:\n  - name: uitkomst",
+            "output:\n  - name: heeft_huur\n    type: boolean\n  - name: uitkomst",
+        );
+        assert_clean(&law);
     }
 
     #[test]
