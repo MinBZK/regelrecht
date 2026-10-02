@@ -335,7 +335,7 @@ pub fn label_from(description: &str) -> String {
 }
 
 /// The group of a verdict: the regulation and the article of its legal basis.
-fn group(service: &LawExecutionService, legal_basis: &str) -> Option<String> {
+pub fn group(service: &LawExecutionService, legal_basis: &str) -> Option<String> {
     let g = regulations::parse(legal_basis).ok()?;
     let name = service
         .resolver()

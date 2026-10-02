@@ -9,12 +9,16 @@ cells:
     aanvraag_inhoud: afnemer_aanvraag_inhoud.yaml
     zaakverloop: afnemer_zaakverloop.yaml
     besluit: afnemer_besluit.yaml
+    worklist:
+      dsl: een lijst met een regel per zaak (groepeer); de engine kent geen groeperen
     werkvoorraad:
       dsl: een lijst met een regel per zaak (groepeer); de engine kent geen groeperen
   test_gebieden:
     tarief: gebieden_tarief.yaml
   test_instantie:
     aanvraag_inhoud: instantie_aanvraag_inhoud.yaml
+    worklist:
+      dsl: een lijst met een regel per zaak (groepeer); de engine kent geen groeperen
   test_register:
     register: register_register.yaml
     registerstatus: ../lexostatus_registerstatus.yaml
@@ -26,3 +30,5 @@ cells:
       dsl: een lijst met een regel per zaak (groepeer); de engine kent geen groeperen
     besluiten:
       dsl: niet nagebouwd; dezelfde patronen als besluit van test_afnemer
+    worklist:
+      dsl: een lijst met een regel per zaak (groepeer); de engine kent geen groeperen

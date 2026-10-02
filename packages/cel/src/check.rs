@@ -24,7 +24,9 @@
 //!    with those of other lexostatuses. Its `without` selects an event in its
 //!    chronicle, otherwise it would never leave anything out.
 //! 7. No lexostatus is named [`crate::reduction::CASE_STATE`]: the runtime
-//!    offers that one.
+//!    offers that one. The same holds for [`crate::reduction::WORKLIST`],
+//!    which the runtime adds before these checks (see [`crate::cell`]), so
+//!    that it passes them like any other list.
 //!
 //! A process with a portal points at an existing event of its cell, an
 //! existing lexostatus and an existing output, of an article from the legal

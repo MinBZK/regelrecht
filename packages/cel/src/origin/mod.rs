@@ -56,7 +56,7 @@ mod shape;
 #[cfg(test)]
 mod tests;
 
-pub use check::{check, label_from, verdicts};
+pub use check::{check, group, label_from, verdicts};
 pub use delivery::Execution;
 
 // What the delivery check uses.

@@ -291,10 +291,15 @@ pub fn prepare_for(
                 }
             }
         }
-        // The article: that of the first output, or the beschikking.
-        let article = match h.outputs.first() {
-            Some(u) => article_with(service, &h.regulation, u),
-            None => decision_order.clone(),
+        // The article: set by a process from policy (RFC-047), otherwise
+        // that of the first output, or the beschikking.
+        let article = if !h.article.is_empty() {
+            Some(h.article.clone())
+        } else {
+            match h.outputs.first() {
+                Some(u) => article_with(service, &h.regulation, u),
+                None => decision_order.clone(),
+            }
         };
         let Some(article) = article else {
             errors.push(match h.outputs.first() {

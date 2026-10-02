@@ -14,7 +14,7 @@ recording_actor: test_toeslagdienst
 chronicle: test_toeslag
 events:
   - name: voorschot_verleend
-    intake: behandelaar
+    intake: medewerker
     legal_basis:
       - testregeling_toeslag#2 lid 1
     type: decretogram
@@ -27,7 +27,7 @@ events:
     fields:
       voorschot: $external.voorschot
   - name: toeslag_vastgesteld
-    intake: behandelaar
+    intake: medewerker
     legal_basis:
       - testregeling_toeslag#3 lid 1
     type: decretogram
@@ -40,21 +40,21 @@ events:
     fields:
       vastgestelde_toeslag: $external.vastgestelde_toeslag
   - name: vaststelling_gewijzigd
-    intake: behandelaar
+    intake: medewerker
     legal_basis:
       - testregeling_toeslag#4 lid 1
       - testregeling_awb#7 lid 1
     type: decretogram
     subtype: vaststelling
     stage: BESLUIT
-    refers_to: {amends: {to: {stage: BESLUIT}, required: true}}
+    refers_to: {amends: {to: testregeling_toeslag#3, required: true}}
     effective_at:
       source: $external.wijzigingsdatum
       legal_basis: [testregeling_toeslag#4 lid 1]
     fields:
       vastgestelde_toeslag: $external.gewijzigde_toeslag   # de toeslag zoals zij nu is vastgesteld
   - name: terugvordering_vastgesteld
-    intake: behandelaar
+    intake: medewerker
     legal_basis:
       - testregeling_toeslag#5 lid 1
       - testregeling_awb#6 lid 1
@@ -68,7 +68,7 @@ events:
     fields:
       terug_te_vorderen: $external.terug_te_vorderen
   - name: besluit_bekendgemaakt
-    intake: behandelaar
+    intake: medewerker
     legal_basis:
       - testregeling_awb#2
     type: act
@@ -90,24 +90,24 @@ events:
          reason: uitkomst van de haak op de bekendmaking; het zaakscherm leest haar per besluit}
       - {field: einde_bezwaartermijn, reason: uitkomst van de haak op de bekendmaking; het zaakscherm leest haar per besluit}
   - name: voorschot_betaald
-    intake: behandelaar
+    intake: medewerker
     legal_basis:
       - testregeling_toeslag#8 lid 1
     type: executogram
     subtype: betaling
-    refers_to: {decision: {to: {stage: BESLUIT}, required: true}}
+    refers_to: {decision: {to: testregeling_toeslag#2, required: true}}
     effective_at:
       source: $external.datum_betaling
       legal_basis: [testregeling_toeslag#8 lid 2]
     fields:
       bedrag: $external.bedrag
   - name: terugbetaling_ontvangen
-    intake: behandelaar
+    intake: medewerker
     legal_basis:
       - testregeling_awb#6 lid 2
     type: executogram
     subtype: terugbetaling
-    refers_to: {decision: {to: {stage: BESLUIT}, required: true}}
+    refers_to: {decision: {to: testregeling_toeslag#5, required: true}}
     effective_at:
       source: $external.datum_terugbetaling
       legal_basis: [testregeling_awb#6 lid 3]

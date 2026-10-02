@@ -324,6 +324,18 @@ fn lexostatus_part(b: &mut Builder, input: &MapInput) {
     for d in &cell.lexostatuses.lexostatus_definitions {
         let source = match &d.law {
             Some(law) => SourceRef::law(&law.article),
+            // The runtime offers the worklist (RFC-047); no file defines
+            // it, so it opens to the submission it lists.
+            None if d.name == crate::reduction::WORKLIST => cell
+                .streams
+                .iter()
+                .find_map(|s| {
+                    s.events
+                        .iter()
+                        .find(|e| e.type_ == "submission")
+                        .map(|e| SourceRef::stream(&s.id, &e.name))
+                })
+                .unwrap_or_else(|| SourceRef::config("lexostatuses", &d.name)),
             None => SourceRef::config("lexostatuses", &d.name),
         };
         let l = b.node(

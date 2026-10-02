@@ -12,7 +12,7 @@ recording_actor: test_afnemer
 chronicle: test_afnemer
 events:
   - name: aanvulling_gevraagd
-    intake: behandelaar
+    intake: medewerker
     legal_basis:
       - testregeling_afnemer#3
     type: executogram
@@ -20,7 +20,7 @@ events:
     fields:
       datum_uitnodiging: $external.datum_uitnodiging
   - name: termijn_opgeschort
-    intake: behandelaar
+    intake: medewerker
     legal_basis:
       - testregeling_afnemer#3
     type: executogram
@@ -28,7 +28,7 @@ events:
     fields:
       dagen: $external.dagen
   - name: besluit_genomen
-    intake: behandelaar
+    intake: medewerker
     legal_basis:
       - testregeling_afnemer#3 lid 1   # het besluit, niet de tijdigheid (lid 2)
     type: decretogram
@@ -49,7 +49,7 @@ events:
       - {field: besluitdeadline, reason: uitkomst van het besluit}
       - {field: zorgvuldig, reason: uitkomst van het besluit}
   - name: besluit_bekendgemaakt
-    intake: behandelaar
+    intake: medewerker
     legal_basis:
       - testregeling_awb#2
     type: act
@@ -69,7 +69,7 @@ events:
       - {field: bekendgemaakt, reason: feit van de bekendmaking; het vervolg leest het uit het formulier}
       - {field: besluit_tijdig, reason: uitkomst van het besluit in de stage BEKENDMAKING}
   - name: betaling_verricht
-    intake: behandelaar
+    intake: medewerker
     legal_basis:
       - testregeling_awb#3 lid 1
     type: executogram

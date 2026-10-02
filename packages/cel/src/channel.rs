@@ -161,6 +161,16 @@ impl RoleDefinition {
     }
 }
 
+/// The path under `$intake` of the owner field of a channel whose fields
+/// arrive under `prefix`; if the channel supplies it to a field of the gram
+/// (`supplies`: field of the gram to field of the channel), that field.
+pub fn owner_path(prefix: &str, owner: &str, supplies: &BTreeMap<String, String>) -> String {
+    match supplies.iter().find(|(_, from)| *from == owner) {
+        Some((field, _)) => field.clone(),
+        None => format!("{prefix}.{owner}"),
+    }
+}
+
 /// A logged-in user: in which role, through which channel, with which
 /// values of the identification fields.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -189,12 +199,7 @@ impl ChannelDefinition {
     /// one; if the channel supplies it to a field of the gram, that field.
     pub fn owner_path(&self, id: &str) -> Option<String> {
         let owner = self.owner.as_ref()?;
-        Some(
-            match self.supplies.iter().find(|(_, from)| *from == owner) {
-                Some((field, _)) => field.clone(),
-                None => format!("{}.{owner}", self.intake_prefix(id)),
-            },
-        )
+        Some(owner_path(self.intake_prefix(id), owner, &self.supplies))
     }
 
     /// Validate the input of a login: every field is present, as text, and

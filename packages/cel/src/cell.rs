@@ -103,6 +103,23 @@ impl Cell {
             }
             Err(f) => errors.extend(f),
         }
+        // The worklist the runtime offers for every cell with submissions
+        // (RFC-047); the name is the runtime's.
+        if lexostatuses.lexostatus(reduction::WORKLIST).is_some() {
+            errors.push(format!(
+                "lexostatus '{}': that name belongs to the runtime, which offers it for every cell with submissions",
+                reduction::WORKLIST
+            ));
+        } else {
+            match reduction::worklist_columns(&streams, &service, date) {
+                Ok(columns) => {
+                    if let Some(d) = reduction::worklist_definition(&streams, &columns) {
+                        lexostatuses.lexostatus_definitions.push(d);
+                    }
+                }
+                Err(e) => errors.push(e),
+            }
+        }
         errors.extend(check::periods(&streams, &mut lexostatuses, &service));
         if lexostatuses.cell != definition.id {
             errors.push(format!(
@@ -272,6 +289,27 @@ mod tests {
         assert!(errors
             .iter()
             .any(|f| f.contains("'ander_register' is not the id")));
+    }
+
+    /// The worklist is the runtime's (RFC-047): a cell that defines one
+    /// itself does not start, also without submissions.
+    #[test]
+    fn the_worklist_name_belongs_to_the_runtime() {
+        let dir = copy("afnemer");
+        let map = dir.path().join("cells/afnemer");
+        let lexo = std::fs::read_to_string(map.join("lexostatuses.yaml")).unwrap();
+        std::fs::write(
+            map.join("lexostatuses.yaml"),
+            lexo.replace("  - name: werkvoorraad", "  - name: worklist"),
+        )
+        .unwrap();
+        let errors = Cell::load(&map, service()).err().unwrap();
+        assert!(
+            errors
+                .iter()
+                .any(|f| f.contains("'worklist'") && f.contains("belongs to the runtime")),
+            "{errors:?}"
+        );
     }
 
     #[test]
