@@ -69,6 +69,7 @@ pub const SUPPLY_SUBMITTED_ON: &str = "$submitted_on";
 
 /// An identification field of a channel.
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct IdentificationField {
     pub name: String,
     pub label: String,

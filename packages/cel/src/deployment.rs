@@ -11,6 +11,7 @@ use serde::Deserialize;
 
 use crate::channel::IdentificationField;
 use crate::config::{Config, ExamplesDefinition, RowsDefinition, SynthesisSource};
+use crate::load;
 
 /// The technique of a channel. Only a simulated login in this PoC.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -40,28 +41,48 @@ pub struct ChannelDeployment {
 
 impl ChannelDeployment {
     /// The identification fields, in file order, each with the legal basis
-    /// the policy gives it in `identifies`.
+    /// the policy gives it in `identifies`. A field carries no `name` (the
+    /// key is the name) and no `legal_basis` (that is policy). Every message
+    /// names the cell and the channel.
     pub fn identification_fields(
         &self,
+        cell: &str,
+        channel: &str,
         basis: &BTreeMap<String, Vec<String>>,
     ) -> Result<Vec<IdentificationField>, String> {
+        let at = format!("{cell}: channel '{channel}'");
         let mut out = Vec::new();
         for (name, value) in &self.fields {
-            let name = name.as_str().ok_or("a field name is not text")?.to_string();
+            let name = name
+                .as_str()
+                .ok_or_else(|| format!("{at}: a field name is not text"))?
+                .to_string();
             let mut m = match value {
                 serde_yaml_ng::Value::Mapping(m) => m.clone(),
-                _ => return Err(format!("field '{name}': not a mapping")),
+                _ => return Err(format!("{at}: field '{name}': not a mapping")),
             };
+            for key in ["name", "legal_basis"] {
+                if m.contains_key(key) {
+                    return Err(format!(
+                        "{at}: field '{name}': '{key}' does not belong in the deployment (the {})",
+                        if key == "name" {
+                            "key is the name"
+                        } else {
+                            "policy gives it in identifies"
+                        }
+                    ));
+                }
+            }
             m.insert("name".into(), name.clone().into());
             if let Some(b) = basis.get(&name).filter(|b| !b.is_empty()) {
                 m.insert(
                     "legal_basis".into(),
-                    serde_yaml_ng::to_value(b).map_err(|e| e.to_string())?,
+                    serde_yaml_ng::to_value(b).map_err(|e| format!("{at}: {e}"))?,
                 );
             }
             out.push(
                 serde_yaml_ng::from_value(serde_yaml_ng::Value::Mapping(m))
-                    .map_err(|e| format!("field '{name}': {e}"))?,
+                    .map_err(|e| format!("{at}: field '{name}': {e}"))?,
             );
         }
         Ok(out)
@@ -103,13 +124,12 @@ pub struct Deployment {
     pub examples_file: Option<PathBuf>,
 }
 
-fn read<T: serde::de::DeserializeOwned>(file: &Path) -> Result<T, String> {
-    let text = std::fs::read_to_string(file).map_err(|e| format!("{}: {e}", file.display()))?;
-    serde_yaml_ng::from_str(&text).map_err(|e| format!("{}: {e}", file.display()))
+fn read<T: serde::de::DeserializeOwned>(file: &Path) -> Result<T, Vec<String>> {
+    load::load(file, load::yaml)
 }
 
 /// `examples.yaml`, with every path made absolute against its directory.
-pub fn load_examples(file: &Path) -> Result<BTreeMap<String, ExamplesDefinition>, String> {
+pub fn load_examples(file: &Path) -> Result<BTreeMap<String, ExamplesDefinition>, Vec<String>> {
     let dir = file.parent().unwrap_or(Path::new("."));
     let abs = |p: &String| dir.join(p).display().to_string();
     let mut out: BTreeMap<String, ExamplesDefinition> = read(file)?;
@@ -130,15 +150,15 @@ pub fn load(config: &Config) -> Result<Option<Deployment>, Vec<String>> {
     };
     let mut errors = Vec::new();
     let channels = read(&channels_file)
-        .map_err(|e| errors.push(e))
+        .map_err(|e| errors.extend(e))
         .unwrap_or_default();
     let synthesis = match &config.synthesis {
-        Some(f) => read(f).map_err(|e| errors.push(e)).unwrap_or_default(),
+        Some(f) => read(f).map_err(|e| errors.extend(e)).unwrap_or_default(),
         None => BTreeMap::new(),
     };
     let examples = match &config.examples {
         Some(f) => load_examples(f)
-            .map_err(|e| errors.push(e))
+            .map_err(|e| errors.extend(e))
             .unwrap_or_default(),
         None => BTreeMap::new(),
     };
@@ -170,7 +190,9 @@ mod tests {
             "kvk".to_string(),
             vec!["testregeling_register#1".to_string()],
         )]);
-        let f = d.identification_fields(&basis).unwrap();
+        let f = d
+            .identification_fields("test_afnemer", "eherkenning", &basis)
+            .unwrap();
         let names: Vec<&str> = f.iter().map(|v| v.name.as_str()).collect();
         assert_eq!(names, ["kvk", "persoon"]);
         assert!(f[0].numeric);
@@ -182,6 +204,45 @@ mod tests {
         let e = serde_yaml_ng::from_str::<Channels>(&CHANNELS.replace("simulated", "echt"))
             .unwrap_err();
         assert!(e.to_string().contains("echt"), "{e}");
+    }
+
+    #[test]
+    fn an_unknown_key_is_an_error() {
+        let typo = CHANNELS.replace("    label: Inloggen", "    lable: Inloggen");
+        let e = serde_yaml_ng::from_str::<Channels>(&typo).unwrap_err();
+        assert!(e.to_string().contains("lable"), "{e}");
+        let c: Channels =
+            serde_yaml_ng::from_str(&CHANNELS.replace("numeric: true", "numerik: true")).unwrap();
+        let e = c["test_afnemer"]["eherkenning"]
+            .identification_fields("test_afnemer", "eherkenning", &BTreeMap::new())
+            .unwrap_err();
+        assert!(
+            e.contains("numerik") && e.contains("test_afnemer") && e.contains("'eherkenning'"),
+            "{e}"
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("synthesis.yaml");
+        std::fs::write(&file, "test_afnemer:\n  synthese: []\n").unwrap();
+        let e = read::<BTreeMap<String, SynthesisDeployment>>(&file).unwrap_err();
+        assert!(e.iter().any(|f| f.contains("synthese")), "{e:?}");
+    }
+
+    #[test]
+    fn the_policy_gives_name_and_legal_basis_of_a_field() {
+        for key in ["name: kvk", "legal_basis: ['testregeling_register#1']"] {
+            let c: Channels = serde_yaml_ng::from_str(
+                &CHANNELS.replace("numeric: true}", &format!("numeric: true, {key}}}")),
+            )
+            .unwrap();
+            let e = c["test_afnemer"]["eherkenning"]
+                .identification_fields("test_afnemer", "eherkenning", &BTreeMap::new())
+                .unwrap_err();
+            let k = key.split(':').next().unwrap();
+            assert!(
+                e.contains(&format!("'{k}'")) && e.contains("test_afnemer"),
+                "{e}"
+            );
+        }
     }
 
     #[test]

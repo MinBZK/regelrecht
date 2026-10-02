@@ -55,23 +55,6 @@ impl Identifies {
     }
 }
 
-/// One legal basis or more.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(untagged)]
-pub enum OneOrMore {
-    One(String),
-    More(Vec<String>),
-}
-
-impl OneOrMore {
-    pub fn list(&self) -> Vec<String> {
-        match self {
-            OneOrMore::One(s) => vec![s.clone()],
-            OneOrMore::More(v) => v.clone(),
-        }
-    }
-}
-
 /// The output of the submitted article that the portal assesses.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -109,8 +92,9 @@ pub struct PolicyChannel {
     pub offers: Option<Offer>,
     #[serde(default)]
     pub form: Option<PolicyForm>,
-    #[serde(default)]
-    pub legal_basis: Option<OneOrMore>,
+    /// One legal basis or more; the first is the basis of the role.
+    #[serde(default, deserialize_with = "crate::stream::one_or_many")]
+    pub legal_basis: Vec<String>,
 }
 
 /// A channel with the article that declares it.
@@ -154,7 +138,7 @@ pub fn read(
         }
         let Some(authority) = authority::authority_of_regulation(service, &a.regulation.id) else {
             errors.push(format!(
-                "{reference}: the policy names no competent_authority; a channel belongs to an authority"
+                "{reference}: the policy names no competent_authority; channels, supplies and mandates belong to an authority"
             ));
             continue;
         };
@@ -206,38 +190,43 @@ pub fn read(
     }
 }
 
-/// Every `executes` of every loaded regulation: each entry is valid (the
-/// engine skips an invalid one, the runtime reports it), the target article
-/// exists, and the policy only works out a competence of its own authority
-/// (Awb 4:81). The target, or else its regulation, names the authority of
-/// the policy, or names none and its regulation names no other authority
-/// (general law, such as the Awb). Each message names both articles.
+/// Every `executes` of every loaded version of every regulation: each entry
+/// is valid (the engine skips an invalid one, the runtime reports it), the
+/// target article exists, and the policy only works out a competence of its
+/// own authority (Awb 4:81). The target, or else its regulation, names the
+/// authority of the policy, or names none and its regulation names no other
+/// authority (general law, such as the Awb). A reference authority
+/// (`'#bevoegd_gezag'`) is not a name and counts as naming none. Each
+/// message names both articles; a message that holds for more versions is
+/// given once.
 pub fn check_executes(service: &LawExecutionService) -> Vec<String> {
-    let resolver = service.resolver();
-    let mut errors = Vec::new();
-    for id in service.list_laws() {
-        let Some(law) = resolver.get_law(id) else {
-            continue;
-        };
+    let mut errors: Vec<String> = Vec::new();
+    for law in service.resolver().all_law_versions() {
         for a in &law.articles {
-            let from = format!("{id}#{}", a.number);
-            for reason in a.get_invalid_executes() {
-                errors.push(format!(
-                    "{from}: an entry of executes is not valid: {reason}"
-                ));
-            }
+            let from = format!("{}#{}", law.id, a.number);
+            let mut found: Vec<String> = a
+                .get_invalid_executes()
+                .into_iter()
+                .map(|reason| format!("{from}: an entry of executes is not valid: {reason}"))
+                .collect();
+            let own = authority::authority_of_law(law);
             for e in a.get_executes() {
-                errors.extend(check_one(service, id, &from, &e.article).err());
+                found.extend(check_one(service, own.as_deref(), &from, &e.article).err());
+            }
+            for f in found {
+                if !errors.contains(&f) {
+                    errors.push(f);
+                }
             }
         }
     }
     errors
 }
 
-/// One `executes` target of the article `from` in `regulation`.
+/// One `executes` target of the article `from`, of a policy of `own`.
 fn check_one(
     service: &LawExecutionService,
-    regulation: &str,
+    own: Option<&str>,
     from: &str,
     article: &str,
 ) -> Result<(), String> {
@@ -254,14 +243,14 @@ fn check_one(
             "{from}: executes {article}, which is not a loaded article"
         ));
     }
-    let own = authority::authority_of_regulation(service, regulation).ok_or_else(|| {
+    let own = own.ok_or_else(|| {
         format!("{from}: executes {article}, but the policy names no competent_authority")
     })?;
     let of_target = authority::authority_of(service, target.regulation, target.article);
-    let named = authorities_in(service, target.regulation);
+    let named = authority::authorities_of_regulation(service, target.regulation);
     let fits = match &of_target {
-        Some(t) => t == &own,
-        None => named.is_empty() || named.contains(&own),
+        Some(t) => t == own,
+        None => named.is_empty() || named.contains(own),
     };
     if fits {
         return Ok(());
@@ -270,26 +259,6 @@ fn check_one(
     Err(format!(
         "{from}: executes {article}, a competence of '{theirs}', and the policy is of '{own}' (Awb 4:81)"
     ))
-}
-
-/// Every authority a regulation names, on itself or on an article.
-fn authorities_in(service: &LawExecutionService, regulation: &str) -> BTreeSet<String> {
-    let Some(law) = service.resolver().get_law(regulation) else {
-        return BTreeSet::new();
-    };
-    let mut out: BTreeSet<String> = authority::authority_of_regulation(service, regulation)
-        .into_iter()
-        .collect();
-    for a in &law.articles {
-        if a.machine_readable
-            .as_ref()
-            .and_then(|m| m.competent_authority.as_ref())
-            .is_some()
-        {
-            out.extend(authority::authority_of(service, regulation, &a.number));
-        }
-    }
-    out
 }
 
 #[cfg(test)]
@@ -434,6 +403,153 @@ articles:
         let general = LAW.replace("competent_authority: {name: Instantie T}\n", "");
         let s = service(&[&general, POLICY]);
         assert_eq!(check_executes(&s), Vec::<String>::new());
+    }
+
+    /// `wet_t` with `regulation` as its own authority line (or nothing),
+    /// article 1 (the target) with `target` as its authority line, and an
+    /// article 2 with `sibling`.
+    fn law_with(regulation: &str, target: &str, sibling: &str) -> String {
+        format!(
+            r#"
+$id: wet_t
+regulatory_layer: WET
+publication_date: '2025-01-01'
+{regulation}
+articles:
+  - number: '1'
+    text: Een partij kan een bijdrage aanvragen.
+    machine_readable:
+      {target}
+      execution:
+        parameters: [{{name: jaar, type: number, required: true}}]
+        output: [{{name: aangevraagd, type: boolean}}]
+        actions: [{{output: aangevraagd, value: true}}]
+  - number: '2'
+    text: Het gezag besluit op de aanvraag.
+    machine_readable:
+      {sibling}
+      execution:
+        output: [{{name: besloten, type: boolean}}]
+        actions: [{{output: besloten, value: true}}]
+"#
+        )
+    }
+
+    #[test]
+    fn executes_of_a_regulation_whose_sibling_names_the_own_authority() {
+        // The Wpp shape: DVB 1a executes Wpp 102; the Wpp names no authority
+        // itself, only article 107 names the Autoriteit.
+        let law = law_with("", "", "competent_authority: {name: Instantie T}");
+        let s = service(&[&law, POLICY]);
+        assert_eq!(check_executes(&s), Vec::<String>::new());
+    }
+
+    #[test]
+    fn executes_of_an_article_of_another_authority_in_an_own_regulation() {
+        let law = law_with(
+            "competent_authority: {name: Instantie T}",
+            "competent_authority: {name: Instantie U}",
+            "",
+        );
+        let s = service(&[&law, POLICY]);
+        let e = check_executes(&s);
+        assert!(
+            e.iter().any(|f| f.contains("beleid_t#1")
+                && f.contains("wet_t#1")
+                && f.contains("'Instantie U'")),
+            "{e:?}"
+        );
+    }
+
+    #[test]
+    fn executes_of_a_regulation_that_names_only_other_authorities() {
+        let law = law_with("", "", "competent_authority: {name: Instantie U}");
+        let s = service(&[&law, POLICY]);
+        let e = check_executes(&s);
+        assert!(
+            e.iter().any(|f| f.contains("beleid_t#1")
+                && f.contains("wet_t#1")
+                && f.contains("'Instantie U'")),
+            "{e:?}"
+        );
+    }
+
+    #[test]
+    fn a_channel_or_supplies_declared_twice_is_an_error() {
+        let twice = POLICY.replace(
+            "              supplies:\n                eherkenning: {ondertekening: persoon, kanaal: $channel}\n",
+            "              channels:\n                eherkenning: {kind: portal}\n              supplies:\n                eherkenning: {ondertekening: persoon, kanaal: $channel}\n",
+        );
+        assert_ne!(twice, POLICY);
+        let s = service(&[LAW, &twice]);
+        let e = read(&s, None).unwrap_err();
+        assert!(
+            e.iter().any(|f| f.contains("beleid_t#2")
+                && f.contains("'eherkenning'")
+                && f.contains("beleid_t#1")),
+            "{e:?}"
+        );
+        let supplies_twice = POLICY.replace(
+            "              mandates:",
+            "              supplies:\n                eherkenning: {kanaal: $channel}\n              mandates:",
+        );
+        assert_ne!(supplies_twice, POLICY);
+        let s = service(&[LAW, &supplies_twice]);
+        let e = read(&s, None).unwrap_err();
+        assert!(
+            e.iter().any(|f| f.contains("beleid_t#2")
+                && f.contains("'eherkenning'")
+                && f.contains("already said in beleid_t#1")),
+            "{e:?}"
+        );
+    }
+
+    #[test]
+    fn identifies_can_give_the_legal_basis_of_a_field() {
+        let with_basis = POLICY.replace(
+            "identifies: [kvk, persoon]",
+            "identifies: {kvk: ['wet_t#1'], persoon: []}",
+        );
+        assert_ne!(with_basis, POLICY);
+        let s = service(&[LAW, &with_basis]);
+        let p = read(&s, None).unwrap();
+        let c = &p["Instantie T"].channels[0];
+        let fields = c.def.identifies.as_ref().unwrap().fields();
+        assert_eq!(fields["kvk"], ["wet_t#1"]);
+        assert!(fields["persoon"].is_empty());
+        // One legal basis or a list.
+        assert_eq!(p["Instantie T"].channels[1].def.legal_basis, ["beleid_t#1"]);
+        let names = read(&service(&[LAW, POLICY]), None).unwrap();
+        let fields = names["Instantie T"].channels[0]
+            .def
+            .identifies
+            .as_ref()
+            .unwrap()
+            .fields();
+        assert_eq!(fields.keys().collect::<Vec<_>>(), ["kvk", "persoon"]);
+        assert!(fields.values().all(Vec::is_empty));
+    }
+
+    #[test]
+    fn executes_of_an_older_version_is_checked_too() {
+        let old = POLICY
+            .replace(
+                "publication_date: '2025-01-01'",
+                "publication_date: '2024-01-01'\nvalid_from: '2024-01-01'",
+            )
+            .replace("article: 'wet_t#1'", "article: 'wet_t#9'");
+        let new = POLICY.replace(
+            "publication_date: '2025-01-01'",
+            "publication_date: '2025-01-01'\nvalid_from: '2025-01-01'",
+        );
+        let s = service(&[LAW, &old, &new]);
+        assert_eq!(s.resolver().version_count_for_law("beleid_t"), 2);
+        let e = check_executes(&s);
+        assert!(
+            e.iter()
+                .any(|f| f.contains("beleid_t#1") && f.contains("wet_t#9")),
+            "{e:?}"
+        );
     }
 
     #[test]

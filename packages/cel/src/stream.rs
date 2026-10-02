@@ -130,8 +130,8 @@ pub struct Event {
     pub prefill: BTreeMap<String, crate::law::Prefill>,
 }
 
-/// `establishes` as one article or a list.
-fn one_or_many<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Error> {
+/// One text or a list of texts, such as `establishes` or a legal basis.
+pub(crate) fn one_or_many<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<String>, D::Error> {
     #[derive(Deserialize)]
     #[serde(untagged)]
     enum Raw {

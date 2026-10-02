@@ -122,20 +122,17 @@ impl Config {
             Err(_) => DEFAULT_PORT,
         };
         let channels = path("CELL_CHANNELS").ok();
-        if channels.is_none() && (path("CELL_SYNTHESIS").is_ok() || path("CELL_EXAMPLES").is_ok()) {
-            return Err(
-                "CELL_SYNTHESIS and CELL_EXAMPLES belong to CELL_CHANNELS, which is not set".into(),
-            );
-        }
-        if channels.is_some() && path("PROCESSES_PATH").is_ok() {
-            return Err(
-                "set CELL_CHANNELS (processes from policy) or PROCESSES_PATH (process.yaml), not both"
-                    .into(),
-            );
-        }
+        let synthesis = path("CELL_SYNTHESIS").ok();
+        let examples = path("CELL_EXAMPLES").ok();
+        let processes_path = path("PROCESSES_PATH").ok();
+        check_deployment(
+            channels.is_some(),
+            synthesis.is_some() || examples.is_some(),
+            processes_path.is_some(),
+        )?;
         Ok(Self {
             cells_path: path("CELLS_PATH")?,
-            processes_path: path("PROCESSES_PATH").ok(),
+            processes_path,
             regulation_path: path("REGULATION_PATH")?,
             data_dir: path("DATA_DIR")?,
             port,
@@ -158,10 +155,28 @@ impl Config {
             )?,
             registers: path("CELL_REGISTERS").ok(),
             channels,
-            synthesis: path("CELL_SYNTHESIS").ok(),
-            examples: path("CELL_EXAMPLES").ok(),
+            synthesis,
+            examples,
         })
     }
+}
+
+/// The deployment files go together (RFC-047): `CELL_SYNTHESIS` and
+/// `CELL_EXAMPLES` only with `CELL_CHANNELS`, and the processes follow from
+/// the policy or from `PROCESSES_PATH`, not from both.
+fn check_deployment(channels: bool, with_channels: bool, processes: bool) -> Result<(), String> {
+    if !channels && with_channels {
+        return Err(
+            "CELL_SYNTHESIS and CELL_EXAMPLES belong to CELL_CHANNELS, which is not set".into(),
+        );
+    }
+    if channels && processes {
+        return Err(
+            "set CELL_CHANNELS (processes from policy) or PROCESSES_PATH (process.yaml), not both"
+                .into(),
+        );
+    }
+    Ok(())
 }
 
 /// A cell definition (`schema/chronolex/v0.3.0/cell.json`): only what the
@@ -232,6 +247,7 @@ pub enum OriginCheck {
 /// The `examples` block: a JSON file per action, relative to the
 /// directory of the process (see [`crate::examples`]).
 #[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ExamplesDefinition {
     /// Logins, each an object with the fields of a channel and optionally
     /// `channel` and `role`.
@@ -258,6 +274,7 @@ pub enum OnBehalfOf {
 /// A mandate (Awb 10:1): the process also acts on behalf of this authority,
 /// on the basis of `legal_basis` (`<regulation>#<article>`).
 #[derive(Debug, Clone, Deserialize, serde::Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct Mandate {
     pub authority: String,
     pub legal_basis: String,
@@ -432,6 +449,7 @@ pub struct Record {
 /// lexostatus the cell queries sources with values from that row, and merges
 /// the columns into an array parameter.
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RowsDefinition {
     /// The array parameter the rows form together.
     pub parameter: String,
@@ -615,6 +633,7 @@ pub struct Portal {
 /// a run, and optionally a second output of the same regulation that gives the
 /// deadline.
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Offer {
     pub regulation: String,
     pub output: String,
@@ -662,6 +681,7 @@ pub struct FormReference {
 /// and it supplies all its parameters and extra fields. Every other source names
 /// its input and its parameters.
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SynthesisSource {
     /// The cell that supplies the lexostatus. Empty for a source with `regulation`.
     #[serde(default)]
@@ -801,6 +821,16 @@ mod tests {
 
     pub(crate) fn fixtures() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
+    }
+
+    #[test]
+    fn the_deployment_files_go_together() {
+        assert_eq!(check_deployment(true, true, false), Ok(()));
+        assert_eq!(check_deployment(false, false, true), Ok(()));
+        let e = check_deployment(false, true, false).unwrap_err();
+        assert!(e.contains("CELL_CHANNELS, which is not set"), "{e}");
+        let e = check_deployment(true, false, true).unwrap_err();
+        assert!(e.contains("not both"), "{e}");
     }
 
     #[test]

@@ -20,7 +20,7 @@
 
 use std::collections::BTreeSet;
 
-use regelrecht_engine::LawExecutionService;
+use regelrecht_engine::{ArticleBasedLaw, LawExecutionService};
 use serde_json::Value;
 
 use crate::config::{Mandate, OnBehalfOf, ProcessDefinition};
@@ -42,7 +42,11 @@ fn name_of<T: serde::Serialize>(authority: &T) -> Option<String> {
 
 /// The competent authority of a regulation itself, without that of an article.
 pub fn authority_of_regulation(service: &LawExecutionService, regulation: &str) -> Option<String> {
-    let law = service.resolver().get_law(regulation)?;
+    authority_of_law(service.resolver().get_law(regulation)?)
+}
+
+/// The competent authority of one version of a regulation itself.
+pub fn authority_of_law(law: &ArticleBasedLaw) -> Option<String> {
     name_of(law.competent_authority.as_ref()?)
 }
 
@@ -65,20 +69,30 @@ pub fn authority_of(
 /// Every authority a loaded regulation names, on the regulation or on an
 /// article.
 pub fn authorities(service: &LawExecutionService) -> BTreeSet<String> {
-    let mut out = BTreeSet::new();
-    for id in service.list_laws() {
-        let Some(law) = service.resolver().get_law(id) else {
-            continue;
-        };
-        out.extend(law.competent_authority.as_ref().and_then(name_of));
-        for a in &law.articles {
-            out.extend(
-                a.machine_readable
-                    .as_ref()
-                    .and_then(|m| m.competent_authority.as_ref())
-                    .and_then(name_of),
-            );
-        }
+    service
+        .list_laws()
+        .into_iter()
+        .flat_map(|id| authorities_of_regulation(service, id))
+        .collect()
+}
+
+/// Every authority one regulation names, on itself or on an article. A
+/// reference (`#bevoegd_gezag`) is not a name and does not count.
+pub fn authorities_of_regulation(
+    service: &LawExecutionService,
+    regulation: &str,
+) -> BTreeSet<String> {
+    let Some(law) = service.resolver().get_law(regulation) else {
+        return BTreeSet::new();
+    };
+    let mut out: BTreeSet<String> = authority_of_law(law).into_iter().collect();
+    for a in &law.articles {
+        out.extend(
+            a.machine_readable
+                .as_ref()
+                .and_then(|m| m.competent_authority.as_ref())
+                .and_then(name_of),
+        );
     }
     out
 }
