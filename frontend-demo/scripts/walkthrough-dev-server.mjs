@@ -54,7 +54,7 @@ export function isLoopback(address) {
 }
 
 /**
- * The plugin, or nothing. It is on only when `just walkthrough-record` sets
+ * The plugin, or nothing. It is on only when `just walkthrough record` sets
  * WALKTHROUGH_RECORD: the dev server that runs the demo during a talk, on
  * conference wifi, has no endpoint that writes to disk.
  */

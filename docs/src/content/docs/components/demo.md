@@ -92,7 +92,7 @@ A sheet that opens on the left (the law list on the Laws tab, an `nldd-sheet` wi
 ### Recording
 
 ```bash
-just walkthrough-record   # the demo on :7400 in Chrome, with the recorder panel
+just walkthrough record   # the demo on :7400 in Chrome, with the recorder panel
 ```
 
 The recorder is a panel in the top left corner, present only in the dev server and only with `?record` in the address; the production bundle does not contain it, and the deployed site's `Permissions-Policy` blocks the microphone and camera anyway. A take is recorded the way it is played back: in Dutch, with the deck as a rail next to the demo. It records on one clock:
@@ -104,7 +104,7 @@ The recorder is a panel in the top left corner, present only in the dev server a
 
 What is typed is recorded, because the replay has to type it again. It is demo input with fictitious personas, said aloud in the same take. The state of the demo is stored with every slide change, which is what a jump restores and what lets one chapter be recorded again from its own starting point.
 
-During a take the panel leaves the screen and the tab title starts with "● REC". Shift+X marks a slip (say the sentence again from its start), Shift+R stops. Chunks stream to the Vite dev server, which writes them to `.walkthrough/takes/<take>/`; a crash loses seconds, not the take. The endpoint that writes them exists only under `just walkthrough-record`, accepts only requests from the machine itself, and limits their size. Record in Chrome or Edge, which can capture their own tab without asking for a window.
+During a take the panel leaves the screen and the tab title starts with "● REC". Shift+X marks a slip (say the sentence again from its start), Shift+R stops. Chunks stream to the Vite dev server, which writes them to `.walkthrough/takes/<take>/`; a crash loses seconds, not the take. The endpoint that writes them exists only under `just walkthrough record`, accepts only requests from the machine itself, and limits their size. Record in Chrome or Edge, which can capture their own tab without asking for a window.
 
 ### Post-processing
 
@@ -116,10 +116,11 @@ just walkthrough transcript  # the spoken text per slide
 just walkthrough build       # walkthrough.yaml to voice, video, captions and timeline.json
 just walkthrough export      # a shareable MP4 per track
 just walkthrough status      # which takes exist and how far each one is processed
+just walkthrough check       # how a take sounds, in numbers, with a verdict per line
 just walkthrough script      # a draft script per slide of a take, for the generated voice
 just walkthrough voices      # the voices on the ElevenLabs account
 just walkthrough publish     # the media into a GitHub release (asks first)
-just walkthrough-test        # the tests of the cut and caption arithmetic
+just walkthrough test        # the tests of the cut and caption arithmetic
 ```
 
 The voice is denoised with DeepFilterNet, filtered below 80 Hz, de-essed and compressed; loudness is normalized to -16 LUFS over the finished track, so every chapter is equally loud. WhisperX (Whisper large-v3 with a Dutch wav2vec2 aligner) gives every word a timestamp; the `glossary` from `walkthrough.yaml` goes into its prompt as a sentence, because Whisper copies the prompt's style and a bare list gave a transcript without full stops. `prepare` then proposes cuts: long silences shortened, unless the presenter acted in them, and the sentence before each Shift+X. The proposal is a draft. The cuts that count are the ones in `corpus/demo/walkthrough/walkthrough.yaml`, which also lists the takes that make up the walkthrough, slide texts that replace the recorded ones, and the questions with the take of their answer and the moment they appear. DeepFilterNet, WhisperX and OpenCV (for finding the face in the webcam picture) each run in their own `uv` environment and are downloaded on first use; ffmpeg has to be installed.
@@ -160,8 +161,8 @@ A track with generated chapters has no recording of the window, so a phone gets 
 The route for a new walkthrough, or for a chapter recorded again:
 
 1. **Voice clone, once.** Record yourself giving the talk two or three times, freely and microphone only (QuickTime, high quality); that is the training audio. Create a Professional Voice Clone from it at ElevenLabs, put the API key in `.walkthrough/.env` with `read -s KEY && echo "ELEVENLABS_API_KEY=$KEY" >> .walkthrough/.env`, and find the clone's id with `just walkthrough voices`. It goes in `walkthrough.yaml` under `voice.voice_id`, with `provider: elevenlabs`.
-2. **Record.** `just walkthrough-record`. The opening as a take with the camera on. Then every chapter as a take: talk and click as in a presentation. The answers to questions that are a judgement as takes on a slide without a tab, camera on; the ones that show something as takes with talking and clicking.
-3. **Process.** `just walkthrough prepare <take>` for every take: clean voice, transcript, draft cuts.
+2. **Record.** `just walkthrough record`. The opening as a take with the camera on. Then every chapter as a take: talk and click as in a presentation. The answers to questions that are a judgement as takes on a slide without a tab, camera on; the ones that show something as takes with talking and clicking.
+3. **Process.** `just walkthrough prepare <take>` for every take: clean voice, transcript, draft cuts. `just walkthrough check <take>` then says whether the take is usable: loudness, clipping, background noise, speaking pace and the actions in the log, each with a verdict. Run it right after a take, so a bad one is done again while everything is still set up.
 4. **Scripts.** `just walkthrough script <take>` for every take whose chapters the generated voice will speak. It writes a script per slide in `corpus/demo/walkthrough/script/`: the sentences that were said, with a marker where each action began. Correct the sentences where needed; the markers stay.
 5. **Compose.** In `walkthrough.yaml`: the opening as a `take:` segment (with its cuts), the chapters as `script:` segments, the questions with their segments and the moment they are offered, and slide texts that should read differently. Then `just walkthrough build` and watch it with `just dev-demo` at `/rondleiding`.
 6. **Publish.** `just walkthrough publish walkthrough-<date>` uploads the media to a GitHub release (it asks first; a release is public) and writes the tag into `timeline.json`. Commit `corpus/demo/walkthrough/`; the Docker build fetches the media from the release.

@@ -185,7 +185,7 @@ export default {
   "recorder.help": "52fa",
   "recorder.label": "6626",
   "recorder.no_capture": "1608",
-  "recorder.no_endpoint": "2b1d",
+  "recorder.no_endpoint": "c4a1",
   "recorder.restore": "a055",
   "recorder.saved": "dbcc",
   "recorder.saving": "abcb",

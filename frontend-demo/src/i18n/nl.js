@@ -960,7 +960,7 @@ export default {
   'walkthrough.transcript.open': 'Uitgeschreven tekst',
   'walkthrough.transcript.close': 'Sluiten',
   'walkthrough.transcript.play_from': 'Afspelen vanaf {time}',
-  'recorder.no_endpoint': 'De demo draait niet in opnamemodus. Start hem met `just walkthrough-record`.',
+  'recorder.no_endpoint': 'De demo draait niet in opnamemodus. Start hem met `just walkthrough record`.',
   'walkthrough.dutch_only': "De rondleiding is in het Nederlands opgenomen. De knoppen zijn vertaald; de dia's, de ondertitels en de uitgeschreven tekst zijn Nederlands.",
   'walkthrough.more': 'Meer',
   'walkthrough.view': 'Weergave',

@@ -25,6 +25,7 @@ import { localeRouteName, pageForConfigPath } from '../router.js';
 import { click, setChecked, setValue, key as pressKey, scrollTo } from './actions.js';
 import { installClock, uninstallClock } from './clock.js';
 import { resolve } from './locator.js';
+import { graphView, showView } from './graphBridge.js';
 import { CAPTIONS_BASE, MEDIA_BASE, chapterAt, parseVtt } from './timeline.js';
 import { resetViews } from './viewEpoch.js';
 
@@ -239,6 +240,18 @@ async function apply(e, { fast = false, token = seekToken } = {}) {
       if (!current(token)) return;
       if (el) pressKey(el, e.key);
       else document.dispatchEvent(new KeyboardEvent('keydown', { key: e.key, bubbles: true }));
+      return;
+    }
+    case 'viewport': {
+      // The graph may still be mounting after the tab opened; wait briefly.
+      const deadline = performance.now() + (fast ? 800 : 1500);
+      while (!graphView.api && performance.now() < deadline) {
+        await sleep(60);
+        if (!current(token)) return;
+      }
+      // A short glide between the samples (ten a second) looks like the
+      // presenter's own drag; a jump just lands.
+      if (current(token)) showView(e, fast ? 0 : 140);
       return;
     }
     case 'scroll': {

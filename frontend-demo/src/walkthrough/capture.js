@@ -12,12 +12,15 @@
  *   the replay at the pace it was typed;
  * - change: a select, checkbox or radio;
  * - key: Enter and Escape, which submit and close things;
- * - scroll: a scrolled element and its position, at most a few times a second.
+ * - scroll: a scrolled element and its position, at most a few times a second;
+ * - viewport: where the graph looks (graphBridge.js), while it is dragged or
+ *   zoomed, ten times a second and once more when it comes to rest.
  *
  * What is typed is recorded: the replay has to type it again. It is demo
  * input in a demo with fictitious personas, said aloud in the same take.
  */
 import { actionTarget, describe, offsetIn } from './locator.js';
+import { graphView } from './graphBridge.js';
 
 const IGNORE = '.recorder, .deck';
 const KEYS = new Set(['Enter', 'Escape']);
@@ -76,12 +79,32 @@ export function captureActions(log) {
     log({ type: 'scroll', target: el === document.scrollingElement ? null : describe(el), top: Math.round(el.scrollTop), left: Math.round(el.scrollLeft) });
   }
 
+  // The graph's camera: throttled, with the resting position always logged,
+  // so a replay ends exactly where the presenter stopped.
+  let lastView = 0;
+  let pending = null;
+  graphView.onView = (view) => {
+    clearTimeout(pending);
+    const now = performance.now();
+    if (now - lastView >= 100) {
+      lastView = now;
+      log({ type: 'viewport', ...view });
+    } else {
+      pending = setTimeout(() => {
+        lastView = performance.now();
+        log({ type: 'viewport', ...view });
+      }, 150);
+    }
+  };
+
   document.addEventListener('click', onClick, true);
   document.addEventListener('input', onInput, true);
   document.addEventListener('change', onChange, true);
   document.addEventListener('keydown', onKey, true);
   document.addEventListener('scroll', onScroll, true);
   return () => {
+    clearTimeout(pending);
+    graphView.onView = null;
     document.removeEventListener('click', onClick, true);
     document.removeEventListener('input', onInput, true);
     document.removeEventListener('change', onChange, true);

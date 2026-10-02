@@ -11,6 +11,7 @@
     walkthrough status           what is recorded and processed so far
     walkthrough script <take>    a draft script per slide, from what was said and done
     walkthrough voices           the voices on the ElevenLabs account (the clone's id)
+    walkthrough check <take>     how a take sounds, in numbers, with a verdict per line
     walkthrough publish <tag>    the media into a GitHub release (asks first)
 
 Raw takes live in `.walkthrough/takes/<take>/` (not in git). What decides the
@@ -702,9 +703,98 @@ def publish(tag: str, yes: bool) -> None:
     say(f"klaar: timeline.json wijst naar {tag}. Commit corpus/demo/walkthrough/ en de Docker-build haalt de media op.")
 
 
+def takes_in_use(cfg: dict) -> set[str]:
+    """Every take the walkthrough draws on: directly, or through a script."""
+    segments = list((cfg.get("main") or {}).get("segments") or [])
+    for f in cfg.get("faq") or []:
+        segments += f.get("segments") or [{"take": f.get("take"), "script": f.get("script")}]
+    used = set()
+    for seg in segments:
+        if seg.get("take"):
+            used.add(seg["take"])
+        if seg.get("script"):
+            path = CORPUS / "script" / f"{seg['script']}.yaml"
+            if path.exists():
+                take = (yaml.safe_load(path.read_text()) or {}).get("take")
+                if take:
+                    used.add(take)
+    return used
+
+
+def check(take: str) -> None:
+    """What a take sounds and looks like, in numbers: so whoever runs the
+    session can say right away whether a take is usable or needs doing again.
+
+    Loudness and peaks of the raw voice, the noise floor in the pauses, how
+    much the transcription caught, and what the action log holds. Each line
+    ends in a verdict: ok, or what to do about it.
+    """
+    d = take_dir(take)
+    if not (d / "mic.wav").exists():
+        ingest(take)
+    info = read_json(d / "take.json", {})
+    events = read_json(d / "events.json", [])
+    meta = read_json(d / "meta.json", {})
+    words = read_json(d / "words.json", {}).get("words", [])
+    report = []
+
+    def line(label, value, verdict):
+        report.append(f"  {label:<16} {value:<28} {verdict}")
+
+    dur = info.get("duration") or 0
+    line("duur", f"{dur:.0f} s", "ok" if dur >= 5 else "erg kort: per ongeluk gestopt?")
+
+    stats = media.run([media.require("ffmpeg"), "-hide_banner", "-i", d / "mic.wav", "-af", "astats=metadata=0:reset=0,ebur128=framelog=quiet", "-f", "null", "-"]).stderr
+
+    def grab(key):
+        import re as _re
+
+        m = _re.findall(rf"{key}:\s*(-?[\d.]+|-inf)", stats)
+        return float(m[-1]) if m and m[-1] != "-inf" else None
+
+    peak = grab("Peak level dB")
+    loud = grab(r"I")
+    if peak is not None:
+        line("piek", f"{peak:.1f} dBFS", "te hard: oversturing, microfoon zachter" if peak > -1.0 else "ok" if peak > -20 else "te zacht: dichter bij de microfoon of gain omhoog")
+    if loud is not None:
+        line("luidheid", f"{loud:.1f} LUFS", "ok (de nabewerking trekt het gelijk)" if loud > -38 else "erg zacht: ruis wordt bij het versterken hoorbaar")
+    gaps = media.silences(d / "mic.wav", noise_db=-50, min_len=0.5)
+    floor = None
+    if gaps:
+        s0, s1 = max(gaps, key=lambda g: g[1] - g[0])
+        probe = media.run([media.require("ffmpeg"), "-hide_banner", "-ss", s0, "-to", s1, "-i", d / "mic.wav", "-af", "astats=metadata=0", "-f", "null", "-"]).stderr
+        import re as _re
+
+        m = _re.findall(r"RMS level dB:\s*(-?[\d.]+)", probe)
+        floor = float(m[-1]) if m else None
+    if floor is not None:
+        line("ruisvloer", f"{floor:.1f} dBFS", "ok" if floor < -55 else "hoorbaar geruis: ventilator, raam of kamer; DeepFilterNet haalt veel weg" if floor < -42 else "veel achtergrondgeluid: neem op een stillere plek op")
+    if words:
+        wpm = len(words) / max(dur / 60, 0.01)
+        line("woorden", f"{len(words)} ({wpm:.0f}/min)", "ok" if 90 <= wpm <= 175 else "erg snel: rustiger" if wpm > 175 else "weinig gesproken")
+        low = [w for w in words if (w.get("score") or 1) < 0.4]
+        if words and len(low) / len(words) > 0.15:
+            line("verstaanbaar", f"{len(low)} twijfelwoorden", "veel onzeker herkend: duidelijker articuleren of dichter bij de microfoon")
+    else:
+        line("woorden", "geen transcript", f"draai `just walkthrough prepare {take}`")
+    kinds = {}
+    for e in events:
+        kinds[e.get("type")] = kinds.get(e.get("type"), 0) + 1
+    acts = sum(kinds.get(k, 0) for k in ("click", "input", "change", "key", "scroll"))
+    slides = sorted({e.get("index") for e in events if e.get("type") == "slide"})
+    line("handelingen", f"{acts} ({kinds.get('click', 0)} klikken, {kinds.get('input', 0)} toetsen)", "ok" if acts or not slides else "geen klikken gelogd")
+    line("dia's", str(slides), "ok" if slides else "het dek liep niet: start de presentatie in de opname")
+    line("verspreking", str(kinds.get("flub", 0)), "ok" if not kinds.get("flub") else "gemarkeerd, de knipvoorstellen nemen ze mee")
+    line("webcam", "ja" if (d / "cam.webm").exists() else "nee", "ok")
+    if meta.get("locale") not in (None, "nl"):
+        line("taal", meta["locale"], "neem op in het Nederlands: de demo zoekt knoppen op hun Nederlandse tekst")
+    print(f"opname {take}")
+    print("\n".join(report))
+
+
 def status() -> None:
     cfg = load_config(required=False)
-    used = {s["take"] for s in (cfg.get("main") or {}).get("segments") or []} | {f.get("take") for f in cfg.get("faq") or []}
+    used = takes_in_use(cfg)
     for d in sorted(TAKES.glob("*")):
         if not d.is_dir():
             continue
@@ -750,6 +840,8 @@ def main(argv: list[str] | None = None) -> None:
     p = sub.add_parser("script", help="een concept-script per dia uit een opname")
     p.add_argument("take", nargs="?", help="map in .walkthrough/takes (standaard: de laatste)")
     sub.add_parser("voices", help="de stemmen op je ElevenLabs-account")
+    p = sub.add_parser("check", help="hoe een opname klinkt, in getallen")
+    p.add_argument("take", nargs="?", help="map in .walkthrough/takes (standaard: de laatste)")
     p = sub.add_parser("publish", help="media in een GitHub-release zetten")
     p.add_argument("tag", help="bijvoorbeeld walkthrough-2026-10")
     p.add_argument("--yes", action="store_true", help="niet vragen")
@@ -774,6 +866,8 @@ def main(argv: list[str] | None = None) -> None:
         export()
     elif args.cmd == "script":
         draft_scripts(args.take or latest_take())
+    elif args.cmd == "check":
+        check(args.take or latest_take())
     elif args.cmd == "voices":
         voices()
     elif args.cmd == "publish":

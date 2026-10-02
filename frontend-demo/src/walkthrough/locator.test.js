@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { describe as describeEl, loosen, resolve, signature } from './locator.js';
 import { installClock, uninstallClock } from './clock.js';
+import { centerOf, graphView, showView } from './graphBridge.js';
 
 afterEach(() => {
   document.body.innerHTML = '';
@@ -81,5 +82,22 @@ describe('replay clock', () => {
     uninstallClock();
     expect(Date.now()).toBeGreaterThan(Date.UTC(2026, 0, 1) - 10 * 365 * 864e5);
     expect(Math.abs(Date.now() - new Date().getTime())).toBeLessThan(1000);
+  });
+});
+
+describe('graph camera', () => {
+  it('stores where the graph looks as a point in the graph, not in pixels', () => {
+    // A pane of 1000x600 at zoom 2, shifted so that graph point (300, 100) is in the middle.
+    expect(centerOf({ x: 500 - 600, y: 300 - 200, zoom: 2 }, { width: 1000, height: 600 })).toEqual({ cx: 300, cy: 100, zoom: 2 });
+  });
+
+  it('steers the graph when one is mounted, and says so when not', () => {
+    const calls = [];
+    graphView.api = null;
+    expect(showView({ cx: 1, cy: 2, zoom: 1.5 })).toBe(false);
+    graphView.api = { setCenter: (...a) => calls.push(a) };
+    expect(showView({ cx: 1, cy: 2, zoom: 1.5 }, 140)).toBe(true);
+    expect(calls).toEqual([[1, 2, { zoom: 1.5, duration: 140 }]]);
+    graphView.api = null;
   });
 });

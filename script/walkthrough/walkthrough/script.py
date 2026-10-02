@@ -26,7 +26,7 @@ import re
 from dataclasses import dataclass, field
 
 BEAT_GAP = 1.2  # seconds
-ACTIONS = ("click", "input", "change", "key", "scroll", "route")
+ACTIONS = ("click", "input", "change", "key", "scroll", "route", "viewport")
 MARK = re.compile(r"\s*\[(\d+)\]\s*")
 
 

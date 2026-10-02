@@ -333,8 +333,8 @@ def suggest_cuts(
 
 # Actions the player does again in the live demo. Everything else in the log
 # (flubs, the end mark, the deck closing) is for post-processing only.
-REPLAYED = ("slide", "route", "click", "input", "change", "key", "scroll")
-KEEP_FIELDS = ("index", "path", "target", "fx", "fy", "value", "checked", "key", "top", "left")
+REPLAYED = ("slide", "route", "click", "input", "change", "key", "scroll", "viewport")
+KEEP_FIELDS = ("index", "path", "target", "fx", "fy", "value", "checked", "key", "top", "left", "cx", "cy", "zoom")
 
 
 def remap_actions(track: Track, events_by_take: dict[str, list[dict]]) -> list[dict]:
