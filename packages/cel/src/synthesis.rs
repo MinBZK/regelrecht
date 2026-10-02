@@ -4,7 +4,7 @@
 //! Synthesis happens at the consumer, not at the source. The source reduces
 //! its own chronicle; the process requests that lexostatus through a
 //! [`Transport`], with a time limit of three seconds, and takes over only the
-//! parameters it explicitly expects from that source in `process.yaml`. For
+//! parameters it explicitly expects from that source in `synthesis.yaml`. For
 //! each parameter it keeps track of where it came from. None of this is
 //! recorded: it is informing, not a fact. If a source is unreachable, nothing
 //! is filled in.
@@ -96,7 +96,7 @@ impl<D: SourceReference> Source<D> {
 /// it responds with an engine run of the article instead of a reduction.
 /// That way the chain "KvK number, then the name, then the designation" lives
 /// in the consumer's policy (with an ordinary `source` to the policy of the
-/// keeper of each register) and not in `process.yaml`. The outputs are in the
+/// keeper of each register) and not in the deployment. The outputs are in the
 /// lexostatus as extra fields: input for a later source.
 pub struct PolicySource {
     service: Arc<LawExecutionService>,
