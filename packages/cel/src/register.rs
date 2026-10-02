@@ -165,6 +165,118 @@ pub fn source_less_inputs(article: &Article) -> impl Iterator<Item = &Input> {
         })
 }
 
+/// What a register policy reads of the grams of its register: per FOREACH
+/// over its source-less input, the fields it reads (`$<as>.fields.<path>`)
+/// and the events its filter names (`$<as>.name` EQUALS a literal; none:
+/// any event of the chronicle).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RegisterRead {
+    pub events: std::collections::BTreeSet<String>,
+    pub paths: std::collections::BTreeSet<String>,
+}
+
+/// What the articles of `policy` read of their register (see
+/// [`RegisterRead`]).
+pub fn reads(service: &LawExecutionService, policy: &str) -> Vec<RegisterRead> {
+    let Some(law) = service.resolver().get_law(policy) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for article in &law.articles {
+        let inputs: Vec<String> = source_less_inputs(article)
+            .map(|i| format!("${}", i.name))
+            .collect();
+        if inputs.is_empty() {
+            continue;
+        }
+        let actions = article
+            .get_execution_spec()
+            .and_then(|e| e.actions.as_ref())
+            .and_then(|a| serde_json::to_value(a).ok());
+        if let Some(v) = actions {
+            foreach_reads(&v, &inputs, &mut out);
+        }
+    }
+    out
+}
+
+/// Every FOREACH in `v` over one of `inputs`, with what it reads.
+fn foreach_reads(v: &serde_json::Value, inputs: &[String], out: &mut Vec<RegisterRead>) {
+    use serde_json::Value;
+    match v {
+        Value::Object(m) => {
+            let over = m.get("collection").and_then(Value::as_str);
+            if let (Some("FOREACH"), Some(c), Some(var)) = (
+                m.get("operation").and_then(Value::as_str),
+                over,
+                m.get("as").and_then(Value::as_str),
+            ) {
+                if inputs.iter().any(|i| i == c) {
+                    let mut r = RegisterRead::default();
+                    gram_reads(v, &format!("${var}"), &mut r);
+                    out.push(r);
+                }
+            }
+            for x in m.values() {
+                foreach_reads(x, inputs, out);
+            }
+        }
+        Value::Array(a) => a.iter().for_each(|x| foreach_reads(x, inputs, out)),
+        _ => {}
+    }
+}
+
+/// The fields of the gram `var` read in `v`, and the event names an EQUALS
+/// on `<var>.name` compares with.
+fn gram_reads(v: &serde_json::Value, var: &str, r: &mut RegisterRead) {
+    use serde_json::Value;
+    match v {
+        Value::String(s) => {
+            if let Some(path) = s.strip_prefix(&format!("{var}.fields.")) {
+                r.paths.insert(path.to_string());
+            }
+        }
+        Value::Object(m) => {
+            if m.get("operation").and_then(Value::as_str) == Some("EQUALS") {
+                let name = format!("{var}.name");
+                let (a, b) = (m.get("subject"), m.get("value"));
+                for (x, y) in [(a, b), (b, a)] {
+                    if let (Some(Value::String(x)), Some(Value::String(y))) = (x, y) {
+                        if *x == name && !y.starts_with('$') {
+                            r.events.insert(y.clone());
+                        }
+                    }
+                }
+            }
+            m.values().for_each(|x| gram_reads(x, var, r));
+        }
+        Value::Array(a) => a.iter().for_each(|x| gram_reads(x, var, r)),
+        _ => {}
+    }
+}
+
+/// The register (`<policy>#<name>`) that reads `field` of an event in
+/// `chronicle` of `cell`, if one does.
+pub fn read_by(
+    links: &[RegisterLink],
+    service: &LawExecutionService,
+    cell: &str,
+    chronicle: &str,
+    event: &str,
+    field: &str,
+) -> Option<String> {
+    links
+        .iter()
+        .filter(|l| l.cell == cell && l.chronicle == chronicle)
+        .find(|l| {
+            reads(service, &l.policy).iter().any(|r| {
+                (r.events.is_empty() || r.events.contains(event))
+                    && r.paths.iter().any(|p| crate::check::covered(field, p))
+            })
+        })
+        .map(|l| format!("{}#{}", l.policy, l.name))
+}
+
 /// The source-less input (`source: {}`) of a regulation: the names.
 fn register_input(service: &LawExecutionService, regulation: &str) -> Vec<String> {
     let Some(law) = service.resolver().get_law(regulation) else {
@@ -352,6 +464,10 @@ mod tests {
     /// The registers of a deployment that binds the fictitious register
     /// policy to the chronicle of the register cell.
     fn loaded_test_registers() -> Registers {
+        loaded_with_service().0
+    }
+
+    fn loaded_with_service() -> (Registers, LawExecutionService) {
         let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
         let mut service = LawExecutionService::new();
         service
@@ -367,7 +483,97 @@ mod tests {
             "registers:\n  testbeleid_registerhouder#register: {cell: test_register, chronicle: test_register}\n",
         )
         .unwrap();
-        load(Some(&file), &mut service, "2025-03-12").unwrap()
+        let r = load(Some(&file), &mut service, "2025-03-12").unwrap();
+        (r, service)
+    }
+
+    /// The fictitious register policy reads `orgaan` and `aanduiding` of two
+    /// events of its register, each in a FOREACH whose filter names the event.
+    #[test]
+    fn a_register_policy_reads_fields_of_named_events() {
+        let (_, service) = loaded_with_service();
+        let set = |v: &[&str]| v.iter().map(|s| s.to_string()).collect();
+        let fields = set(&["aanduiding", "orgaan"]);
+        assert_eq!(
+            reads(&service, "testbeleid_registerhouder"),
+            [
+                RegisterRead {
+                    events: set(&["aanduiding_ingeschreven"]),
+                    paths: fields.clone(),
+                },
+                RegisterRead {
+                    events: set(&["aanduiding_geschrapt"]),
+                    paths: fields,
+                },
+            ]
+        );
+    }
+
+    /// A field a register reads is read, in the cell and chronicle the
+    /// deployment binds it to, and for the events its filter names.
+    #[test]
+    fn a_field_is_read_by_the_register_bound_to_its_chronicle() {
+        let (r, service) = loaded_with_service();
+        let links = r.links();
+        let by = |cell: &str, chronicle: &str, event: &str, field: &str| {
+            read_by(&links, &service, cell, chronicle, event, field)
+        };
+        let key = Some("testbeleid_registerhouder#register".to_string());
+        assert_eq!(
+            by(
+                "test_register",
+                "test_register",
+                "aanduiding_geschrapt",
+                "aanduiding"
+            ),
+            key
+        );
+        assert_eq!(
+            by(
+                "test_register",
+                "test_register",
+                "aanduiding_ingeschreven",
+                "orgaan"
+            ),
+            key
+        );
+        // Not this field, not this event, not this chronicle or cell.
+        assert_eq!(
+            by(
+                "test_register",
+                "test_register",
+                "aanduiding_ingeschreven",
+                "gebied"
+            ),
+            None
+        );
+        assert_eq!(
+            by(
+                "test_register",
+                "test_register",
+                "mededeling_gedaan",
+                "aanduiding"
+            ),
+            None
+        );
+        assert_eq!(
+            by(
+                "test_register",
+                "elders",
+                "aanduiding_geschrapt",
+                "aanduiding"
+            ),
+            None
+        );
+        assert_eq!(
+            by(
+                "test_afnemer",
+                "test_register",
+                "aanduiding_geschrapt",
+                "aanduiding"
+            ),
+            None
+        );
     }
 
     #[test]

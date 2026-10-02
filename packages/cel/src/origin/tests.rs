@@ -564,8 +564,9 @@ fn the_window_is_a_role_not_a_legal_basis() {
 
 /// The shape of an origin, when loading each regulation: a REGISTER
 /// names its register, only a REGISTER does so, a window comes
-/// from the interested party, a legal basis can be parsed, and a value
-/// that cannot be read is an error with article and parameter.
+/// from the interested party, the decision an action acts on from the
+/// dossier, a legal basis can be parsed, and a value that cannot be read
+/// is an error with article and parameter.
 #[test]
 fn the_shape_of_an_origin_at_load_time() {
     let law = |origin: &str| -> ArticleBasedLaw {

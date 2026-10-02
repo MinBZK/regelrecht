@@ -5,7 +5,10 @@ use super::*;
 
 /// The shape of an `origin` by itself, apart from the process: the legal basis
 /// can be parsed, `REGISTER` names its register and only `REGISTER` does so,
-/// and a window comes from the interested party.
+/// a window and the decision requested (`TIJDVAK`, `GEVRAAGD_BESLUIT`) come
+/// from the interested party (Awb 4:2 lid 1), and the decision an action acts
+/// on (`BESLUIT`, RFC-047) comes from the dossier: the runtime gives the id
+/// of that decision gram.
 fn shape(o: &Origin) -> Vec<String> {
     let mut errors = Vec::new();
     if let Err(f) = regulations::parse(&o.grondslag) {

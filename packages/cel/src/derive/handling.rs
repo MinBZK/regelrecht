@@ -431,7 +431,7 @@ mod tests {
     use super::*;
     use crate::config::ProcessDefinition;
     use crate::derive::tests::{
-        cell, derive, derived, errors_after, from_yaml, has, setup, RENAMED,
+        cell, derive, derived, errors_after, from_yaml, has, setup, setup_with, RENAMED,
     };
     use serde_json::{json, Value};
 
@@ -796,5 +796,77 @@ mod tests {
             has(&e, &["synthesis.yaml", "'besluit'", "no action"]),
             "{e:?}"
         );
+    }
+
+    /// Policy of the toeslag actor that carries out the payment of an
+    /// advance: an article with a parameter of origin role BESLUIT that
+    /// executes the article in the legal basis of `voorschot_betaald`
+    /// (testregeling_toeslag art. 8), like NAPP UB 15. Loaded only here, so
+    /// that the other tests keep their action.
+    const PAYING_POLICY: &str = r#"
+$id: testbeleid_toeslag_betaling
+name: Testbeleid betaling maandtoeslag
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+competent_authority: {name: De Toeslagdienst van Voorbeeld}
+articles:
+  - number: '1'
+    text: De dienst betaalt een voorschot overeenkomstig het besluit tot verlening ervan.
+    machine_readable:
+      executes:
+        - {article: 'testregeling_toeslag#8', as: procedure}
+      execution:
+        produces: {legal_character: TOETS, decision_type: GEEN_BESLUIT}
+        parameters:
+          - name: besluit
+            type: string
+            required: true
+            origin: {waarde: DOSSIER, grondslag: 'testbeleid_toeslag_betaling#1', rol: BESLUIT}
+        output:
+          - {name: betaling_bij_besluit, type: boolean}
+        actions:
+          - {output: betaling_bij_besluit, value: true}
+"#;
+
+    /// Rule (a) of the facts: a fact that follows a decision executes the
+    /// policy article of the actor whose parameter of origin role BESLUIT
+    /// executes an article of the legal basis of the event; the decision id
+    /// goes to that parameter, and the decision is the one the event refers
+    /// to.
+    #[test]
+    fn a_fact_after_a_decision_executes_the_policy_with_rol_besluit() {
+        let before = derived("test_toeslag");
+        let h = before
+            .handling
+            .as_ref()
+            .unwrap()
+            .actions
+            .iter()
+            .find(|a| a.name == "voorschot_betaald")
+            .unwrap();
+        assert_eq!(h.article, "testregeling_toeslag#8");
+        assert_eq!(h.decision_parameter, None);
+
+        let (s, cells, d) = setup_with(&[PAYING_POLICY]);
+        let p = derive(&s, &cells, &d)
+            .unwrap()
+            .into_iter()
+            .find(|p| p.definition.id == "test_toeslag")
+            .unwrap()
+            .definition;
+        let h = p
+            .handling
+            .as_ref()
+            .unwrap()
+            .actions
+            .iter()
+            .find(|a| a.name == "voorschot_betaald")
+            .unwrap();
+        assert_eq!(h.article, "testbeleid_toeslag_betaling#1");
+        assert_eq!(h.regulation, "testbeleid_toeslag_betaling");
+        assert_eq!(h.decision.as_deref(), Some("voorschot_verleend"));
+        assert_eq!(h.decision_parameter.as_deref(), Some("besluit"));
+        assert_eq!(h.outputs, ["betaling_bij_besluit"]);
     }
 }

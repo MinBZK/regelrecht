@@ -402,32 +402,91 @@ fn references(
     }
 }
 
-fn covered(path: &str, by: &str) -> bool {
+/// Whether `path` is `by` or lies under it.
+pub(crate) fn covered(path: &str, by: &str) -> bool {
     path == by || path.starts_with(&format!("{by}."))
+}
+
+/// The field paths of `event` that a lexostatus of the cell reads: its
+/// filter, its `without` and its derivations.
+fn read_by_cell<'a>(
+    stream: &Stream,
+    event: &Event,
+    streams: &[Stream],
+    lexostatuses: &'a Lexostatuses,
+) -> Vec<&'a str> {
+    let this_event = |(s, e): &StreamEvent<'_>| s.id == stream.id && e.name == event.name;
+    let mut read: Vec<&str> = Vec::new();
+    for def in &lexostatuses.lexostatus_definitions {
+        if events_for(def, None, streams).iter().any(this_event) {
+            read.extend(reduction::filter_paths(&def.reduction.filter));
+        }
+        if events_in(&def.reduction.chronicle, &def.reduction.without, streams)
+            .iter()
+            .any(this_event)
+            && !def.reduction.without.is_empty()
+        {
+            read.extend(reduction::filter_paths(&def.reduction.without));
+        }
+        for (_, a) in def.all_derivations() {
+            if events_for(def, a.filter(), streams).iter().any(this_event) {
+                read.extend(a.read_paths());
+            }
+        }
+    }
+    read
+}
+
+/// Whether a field of an event is read by the cell or deliberately not.
+fn read_or_excepted(path: &str, event: &Event, read: &[&str]) -> bool {
+    read.iter().any(|p| covered(path, p))
+        || event.not_reduced.iter().any(|n| covered(path, &n.field))
+}
+
+/// A field the law declares that no lexostatus of its cell reads.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnreadField {
+    pub stream: String,
+    pub chronicle: String,
+    pub event: String,
+    pub path: String,
+}
+
+/// The fields the law declares (note "het gram uit de wet") that no
+/// lexostatus of the cell reads. The law records them because it says so,
+/// read or not: no reason not to start. A register can still read them (a
+/// policy that queries the chronicle, see [`crate::register::reads`]); the
+/// runtime, which knows the registers, warns for the rest.
+pub fn unread_law_fields(streams: &[Stream], lexostatuses: &Lexostatuses) -> Vec<UnreadField> {
+    let mut out = Vec::new();
+    for stream in streams {
+        for event in &stream.events {
+            let read = read_by_cell(stream, event, streams, lexostatuses);
+            for leaf in event.leaves() {
+                if read_or_excepted(&leaf.path, event, &read)
+                    || !event
+                        .field_defs
+                        .iter()
+                        .any(|d| covered(&leaf.path, &d.name))
+                {
+                    continue;
+                }
+                out.push(UnreadField {
+                    stream: stream.id.clone(),
+                    chronicle: stream.chronicle.clone(),
+                    event: event.name.clone(),
+                    path: leaf.path.clone(),
+                });
+            }
+        }
+    }
+    out
 }
 
 fn orphan_fields(streams: &[Stream], lexostatuses: &Lexostatuses, errors: &mut Vec<String>) {
     for stream in streams {
         for event in &stream.events {
-            let this_event = |(s, e): &StreamEvent<'_>| s.id == stream.id && e.name == event.name;
-            let mut read: Vec<&str> = Vec::new();
-            for def in &lexostatuses.lexostatus_definitions {
-                if events_for(def, None, streams).iter().any(this_event) {
-                    read.extend(reduction::filter_paths(&def.reduction.filter));
-                }
-                if events_in(&def.reduction.chronicle, &def.reduction.without, streams)
-                    .iter()
-                    .any(this_event)
-                    && !def.reduction.without.is_empty()
-                {
-                    read.extend(reduction::filter_paths(&def.reduction.without));
-                }
-                for (_, a) in def.all_derivations() {
-                    if events_for(def, a.filter(), streams).iter().any(this_event) {
-                        read.extend(a.read_paths());
-                    }
-                }
-            }
+            let read = read_by_cell(stream, event, streams, lexostatuses);
             for ng in &event.not_reduced {
                 if !event.has_path(&ng.field) {
                     errors.push(format!(
@@ -437,26 +496,14 @@ fn orphan_fields(streams: &[Stream], lexostatuses: &Lexostatuses, errors: &mut V
                 }
             }
             for leaf in event.leaves() {
-                let by_derivation = read.iter().any(|p| covered(&leaf.path, p));
-                let excepted = event
-                    .not_reduced
-                    .iter()
-                    .any(|n| covered(&leaf.path, &n.field));
-                if by_derivation || excepted {
-                    continue;
-                }
-                // A field the law declares is recorded because the law says
-                // so, read or not (note "het gram uit de wet"): a warning,
-                // not a reason not to start.
-                if event
-                    .field_defs
-                    .iter()
-                    .any(|d| covered(&leaf.path, &d.name))
+                // A field the law declares is no orphan, read or not: see
+                // `unread_law_fields`.
+                if read_or_excepted(&leaf.path, event, &read)
+                    || event
+                        .field_defs
+                        .iter()
+                        .any(|d| covered(&leaf.path, &d.name))
                 {
-                    tracing::warn!(
-                        field = %leaf.path, event = %event.name, stream = %stream.id,
-                        "field with a legal basis that no derivation reads"
-                    );
                     continue;
                 }
                 errors.push(format!(

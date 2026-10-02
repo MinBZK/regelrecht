@@ -106,6 +106,27 @@ impl Runtime {
             .collect();
         errors.extend(registers.check(&per_chronicle));
         let cells: Vec<Arc<Cell>> = loaded_cells.into_iter().map(Arc::new).collect();
+        // A field the law declares and nothing reads: not the cell, nor a
+        // register that queries its chronicle. A warning, not a reason not
+        // to start (note "het gram uit de wet").
+        for c in &cells {
+            for u in crate::check::unread_law_fields(&c.streams, &c.lexostatuses) {
+                let by_register = crate::register::read_by(
+                    &register_links,
+                    &service,
+                    c.id(),
+                    &u.chronicle,
+                    &u.event,
+                    &u.path,
+                );
+                if by_register.is_none() {
+                    tracing::warn!(
+                        cell = %c.id(), field = %u.path, event = %u.event, stream = %u.stream,
+                        "field with a legal basis that no derivation or register reads"
+                    );
+                }
+            }
+        }
         let mut per_id: BTreeMap<String, Arc<Cell>> = BTreeMap::new();
         for c in &cells {
             if per_id.insert(c.id().to_string(), c.clone()).is_some() {

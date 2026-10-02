@@ -463,11 +463,25 @@ pub(crate) mod tests {
         BTreeMap<String, Arc<Cell>>,
         Deployment,
     ) {
-        let service = Arc::new(
-            crate::regulations::load(&fixtures().join("regulation"))
-                .unwrap()
-                .service,
-        );
+        setup_with(&[])
+    }
+
+    /// The fixtures with `extra` regulations loaded next to them, before the
+    /// cells are.
+    pub(crate) fn setup_with(
+        extra: &[&str],
+    ) -> (
+        Arc<LawExecutionService>,
+        BTreeMap<String, Arc<Cell>>,
+        Deployment,
+    ) {
+        let mut service = crate::regulations::load(&fixtures().join("regulation"))
+            .unwrap()
+            .service;
+        for law in extra {
+            service.load_law(law).unwrap();
+        }
+        let service = Arc::new(service);
         let cells = crate::config::cell_dirs(&fixtures().join("cells"))
             .unwrap()
             .iter()
