@@ -1,0 +1,21 @@
+---
+/*
+ * Kop boven een hoofdstuk van het basiswerk: bij welk deel het hoort en welke
+ * kompasvraag (deel 0) het aanscherpt, met de schakelaar voor de
+ * RegelRecht-laag eronder.
+ */
+import '~/styles/basiswerk.css';
+import RegelRechtToggle from './RegelRechtToggle.astro';
+
+interface Props {
+  deel: string;
+  kompas?: string;
+}
+const { deel, kompas } = Astro.props;
+---
+
+<RegelRechtToggle />
+<p class="rr-page__meta">
+  <span class="rr-deel">{deel}</span>
+  {kompas && <span>scherpt aan: {kompas}</span>}
+</p>
