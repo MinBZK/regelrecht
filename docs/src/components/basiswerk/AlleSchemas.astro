@@ -1,0 +1,16 @@
+---
+/* Bijlage D: alle schema's uit het basiswerk, zonder de tekst eromheen. */
+import { schemas } from '~/lib/basiswerk/schemas.js';
+import Schema from './Schema.astro';
+---
+
+{
+  Object.values(schemas).map((s) => (
+    <div>
+      <p class="rr-schema__bron">
+        <a href={s.hoofdstuk}>{s.deel ? `${s.deel}: ` : ''}{s.hoofdstukTitel}</a>
+      </p>
+      <Schema code={s.code} />
+    </div>
+  ))
+}

@@ -20,8 +20,8 @@ Feature: Berekening Kindgebonden Budget
       | bsn       | inkomensgegevens             |
       | 999200001 | {"toetsingsinkomen":2500000} |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999200001 | 1988-04-12    | GEEN              | null        | []                |                | []             |               |               | null  | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999200001 | 1988-04-12    | GEEN              | null        | []                | []             |               |               | null  | []           |                       |
     # Art. 2 lid 12/13: geen bekend woonland per kind, dus geen korting (woonlandfactor 100)
     And the following "TOESLAGEN" data with key "bsn" for law "wet_op_het_kindgebonden_budget":
       | bsn       | kinderen_woonlanden |
@@ -47,9 +47,9 @@ Feature: Berekening Kindgebonden Budget
       | 999200002 | {"toetsingsinkomen":3500000} |
       | 999200003 | {"toetsingsinkomen":3000000} |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999200002 | 1985-09-22    | HUWELIJK          | 999200003   | []                |                | []             |               |               | null  | []           |                       |
-      | 999200003 |               | null              | null        | []                |                | []             |               |               | null  | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999200002 | 1985-09-22    | HUWELIJK          | 999200003   | []                | []             |               |               | null  | []           |                       |
+      | 999200003 |               | null              | null        | []                | []             |               |               | null  | []           |                       |
     And the following "TOESLAGEN" data with key "bsn" for law "wet_op_het_kindgebonden_budget":
       | bsn       | kinderen_woonlanden |
       | 999200002 | null                 |
@@ -71,8 +71,8 @@ Feature: Berekening Kindgebonden Budget
       | bsn       | inkomensgegevens              |
       | 999200004 | {"toetsingsinkomen":12000000} |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999200004 | 1982-11-30    | GEEN              | null        | []                |                | []             |               |               | null  | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999200004 | 1982-11-30    | GEEN              | null        | []                | []             |               |               | null  | []           |                       |
     And the following "TOESLAGEN" data with key "bsn" for law "wet_op_het_kindgebonden_budget":
       | bsn       | kinderen_woonlanden |
       | 999200004 | null                 |
@@ -92,8 +92,8 @@ Feature: Berekening Kindgebonden Budget
       | bsn       | inkomensgegevens             |
       | 999200005 | {"toetsingsinkomen":2200000} |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999200005 | 1990-01-15    | GEEN              | null        | []                |                | []             |               |               | null  | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999200005 | 1990-01-15    | GEEN              | null        | []                | []             |               |               | null  | []           |                       |
     And the following "TOESLAGEN" data with key "bsn" for law "wet_op_het_kindgebonden_budget":
       | bsn       | kinderen_woonlanden |
       | 999200005 | null                 |
@@ -113,8 +113,8 @@ Feature: Berekening Kindgebonden Budget
       | bsn       | inkomensgegevens             |
       | 999200006 | {"toetsingsinkomen":2400000} |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999200006 | 1987-06-20    | GEEN              | null        | []                |                | []             |               |               | null  | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999200006 | 1987-06-20    | GEEN              | null        | []                | []             |               |               | null  | []           |                       |
     And the following "TOESLAGEN" data with key "bsn" for law "wet_op_het_kindgebonden_budget":
       | bsn       | kinderen_woonlanden |
       | 999200006 | null                 |
@@ -134,8 +134,8 @@ Feature: Berekening Kindgebonden Budget
       | bsn       | inkomensgegevens             |
       | 999200007 | {"toetsingsinkomen":2000000} |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999200007 | 1995-03-08    | GEEN              | null        | []                |                | []             |               |               | null  | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999200007 | 1995-03-08    | GEEN              | null        | []                | []             |               |               | null  | []           |                       |
     When I evaluate outputs "voldoet_aan_voorwaarden" of "wet_op_het_kindgebonden_budget"
     Then output "voldoet_aan_voorwaarden" is false
 
@@ -151,8 +151,8 @@ Feature: Berekening Kindgebonden Budget
       | bsn       | inkomensgegevens             |
       | 200000008 | {"toetsingsinkomen":2500000} |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 200000008 | 1983-12-05    | GEEN              | null        | []                |                | []             |               |               | null  | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 200000008 | 1983-12-05    | GEEN              | null        | []                | []             |               |               | null  | []           |                       |
     When I evaluate outputs "voldoet_aan_voorwaarden" of "wet_op_het_kindgebonden_budget"
     Then output "voldoet_aan_voorwaarden" is false
 
@@ -168,8 +168,8 @@ Feature: Berekening Kindgebonden Budget
       | bsn       | inkomensgegevens             |
       | 200000009 | {"toetsingsinkomen":1500000} |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 200000009 | 1991-08-18    | GEEN              | null        | []                |                | []             |               |               | null  | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 200000009 | 1991-08-18    | GEEN              | null        | []                | []             |               |               | null  | []           |                       |
     And the following "TOESLAGEN" data with key "bsn" for law "wet_op_het_kindgebonden_budget":
       | bsn       | kinderen_woonlanden |
       | 200000009 | null                 |
@@ -194,8 +194,8 @@ Feature: Berekening Kindgebonden Budget
       | bsn       | inkomensgegevens             |
       | 200000010 | {"toetsingsinkomen":2500000} |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 200000010 | 1991-08-18    | GEEN              | null        | []                |                | []             |               |               | null  | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 200000010 | 1991-08-18    | GEEN              | null        | []                | []             |               |               | null  | []           |                       |
     And the following "TOESLAGEN" data with key "bsn" for law "wet_op_het_kindgebonden_budget":
       | bsn       | kinderen_woonlanden |
       | 200000010 | [null]               |
@@ -216,8 +216,8 @@ Feature: Berekening Kindgebonden Budget
       | bsn       | inkomensgegevens             |
       | 200000011 | {"toetsingsinkomen":2500000} |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 200000011 | 1991-08-18    | GEEN              | null        | []                |                | []             |               |               | null  | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 200000011 | 1991-08-18    | GEEN              | null        | []                | []             |               |               | null  | []           |                       |
     And the following "TOESLAGEN" data with key "bsn" for law "wet_op_het_kindgebonden_budget":
       | bsn       | kinderen_woonlanden |
       | 200000011 | ["NEDERLAND"]        |
@@ -240,8 +240,8 @@ Feature: Berekening Kindgebonden Budget
       | bsn       | inkomensgegevens             |
       | 200000012 | {"toetsingsinkomen":2500000} |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 200000012 | 1991-08-18    | GEEN              | null        | []                |                | []             |               |               | null  | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 200000012 | 1991-08-18    | GEEN              | null        | []                | []             |               |               | null  | []           |                       |
     And the following "TOESLAGEN" data with key "bsn" for law "wet_op_het_kindgebonden_budget":
       | bsn       | kinderen_woonlanden |
       | 200000012 | ["MAROKKO"]          |

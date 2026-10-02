@@ -1,0 +1,71 @@
+---
+title: "Wat RegelRecht verandert, en wat niet"
+description: "Het basiswerk naast de positiepaper Rules as Executed: wat publicatie van de uitvoering betekent voor bevoegdheid, rechtsvorm en rechtsbescherming, wat ervan al bestaat, en wat blijft zoals het is."
+lang: nl
+---
+
+import Bronnen from '~/components/basiswerk/Bronnen.astro';
+import Conceptnoot from '~/components/basiswerk/Conceptnoot.astro';
+import Deelkop from '~/components/basiswerk/Deelkop.astro';
+import Openingsvraag from '~/components/basiswerk/Openingsvraag.astro';
+import Schema from '~/components/basiswerk/Schema.astro';
+
+<Deelkop deel="Deel 4" kompas="alle drie, vanuit RegelRecht" />
+
+<Openingsvraag>
+
+Stel dat de uitvoering van de zorgtoeslag wordt gepubliceerd als regel die een computer kan draaien. Wie kan dan iets wat hij nu niet kan, en wat blijft precies zoals het was?
+
+</Openingsvraag>
+
+De vorige hoofdstukken beschreven het stelsel zoals het is. Dit hoofdstuk legt het naast het voorstel waar RegelRecht van uitgaat: de positiepaper [*Rules as Executed*](/research/rules-as-executed) van Eelco Hotting en Anne Schuth. Het volgt daarbij het kompas uit deel 0, omdat de paper op alle drie de vragen iets anders zegt.
+
+Eerst het uitgangspunt. De uitvoering van wetgeving is vastgelegd in software die niet wordt gepubliceerd. Volgens de paper geeft dat de uitvoerende macht een voorsprong binnen de machtenscheiding uit hoofdstuk 1.2: alleen zij kan zien hoe de wet wordt toegepast, terwijl parlement, rechter en burger dat niet kunnen nagaan, toetsen of voorspellen ([paragraaf 3.1](/research/rules-as-executed#sec:executivedominance)). Het voorstel is die uitvoering te publiceren als machine-uitvoerbare specificatie, in een beperkt formaat dat is ontworpen om voor juristen leesbaar te zijn, en die gepubliceerde specificatie ook de zaken te laten beslissen.
+
+## Bevoegdheid: wie kiest de lezing
+
+De eerste kompasvraag is waar de bevoegdheid vandaan komt. De paper is daar duidelijk over: de wet uitleggen voor de uitvoering hoort bij de uitvoerende macht. Het parlement stelt de wet vast; de organisatie die haar uitvoert maakt de keuzes over grensgevallen en legt die vast in de specificatie ([paragraaf 4.3](/research/rules-as-executed#sec:whochooses)). Aan wie bevoegd is, verandert dus niets. Wat verandert, is dat de gekozen lezing gepubliceerd moet worden, en dat de uitvoerder precies die gepubliceerde lezing moet gebruiken.
+
+De paper bespreekt zelf het scherpste bezwaar daartegen, dat zij ontleent aan Hildebrandt (2020). Als de uitvoerder de wet uitlegt en die uitleg ook vastlegt, verdwijnt de interpretatiemacht niet maar verhuist ze: wie de specificatie schrijft, wordt in feite de uitlegger van de wet, nu met de schijn van legitimiteit die publicatie geeft. Het antwoord van de paper is dat die uitleg al gemaakt werd, in code en werkinstructies die geen andere macht kon zien. Publicatie maakt haar zichtbaar, toe te rekenen en te betwisten. De paper erkent dat het bezwaar op een juiste premisse rust: vastleggen neemt de interpretatie niet weg, en de uitvoerder zet de eerste stap. De tweede helft van het bezwaar, dat een vastgelegde lezing alle latere lezingen afsluit, beantwoordt de paper met de afwijking: elke berekende uitkomst is een uitgangswaarde waarvan het bevoegd gezag kan afwijken.
+
+Ook de verschillen tussen uitvoerders komen zo aan het licht. Voeren honderden gemeenten dezelfde wet uit, dan kunnen er honderden lezingen bestaan. Liet de wetgever bewust ruimte, dan is dat rechtmatige variatie; gaat het om een norm die overal gelijk hoort te zijn, dan is een afwijkende vastlegging eerder een gebrek. Publicatie maakt het verschil vergelijkbaar. Of een verschil gerechtvaardigd is, blijft volgens de paper een juridische vraag.
+
+## Rechtsvorm: wat de specificatie is
+
+De tweede kompasvraag is welke rechtsvorm iets heeft. Een specificatie is volgens de paper een interpretatie van de wet en niet de wet zelf: is ze met de wet in strijd, dan gaat de wet voor en wordt de specificatie gecorrigeerd ([paragraaf 4.2](/research/rules-as-executed#sec:legalstatus)). In de ladder uit hoofdstuk 2.1 staat ze dus niet boven of naast de wet. Het dichtst bij komt de wetsinterpreterende beleidsregel ([artikel 1:3, vierde lid, Awb](https://wetten.overheid.nl/jci1.3:c:BWBR0005537&artikel=1:3)), maar de paper noemt de pasvorm niet exact: de specificatie draait, bouwt voort op andere specificaties en wordt aan de uitvoering gebonden. Of de bestaande categorie volstaat of er een nieuw instrument nodig is, laat de paper aan de rechtswetenschap.
+
+Daar hoort een vraag bij die de paper zelf opwerpt en voorlopig beantwoordt. Wie vertrouwde op een gepubliceerde specificatie die later wordt gecorrigeerd, kan zich mogelijk op het vertrouwensbeginsel beroepen. De paper neemt het standpunt in dat een correctie alleen voor nieuwe gevallen werkt, zodat wie op de geldende specificatie vertrouwde beschermd blijft, en zegt erbij dat de rechtswetenschap dat nog moet uitwerken.
+
+## Rechtsbescherming: wie kan wat nagaan
+
+De derde kompasvraag is wie er wat tegen kan doen. Hier zit de grootste verschuiving. Wie een besluit krijgt, kan met de gepubliceerde specificatie de eigen zaak opnieuw doorrekenen: vooraf, om te zien wat de uitkomst wordt, en achteraf, om na te gaan of het besluit de uitkomst is die de regel geeft ([paragraaf 6.4](/research/rules-as-executed#sec:runningcase)). De rechter kan de specificatie op de feiten van de zaak draaien ([paragraaf 6.3](/research/rules-as-executed#sec:court)).
+
+Ook hier is de paper eerlijk over een voorwaarde. Die controle veronderstelt dat de ontvanger het uitvoeringsspoor van het eigen besluit krijgt: welke versie draaide, op welke gegevens, bij het besluit en zonder daar een eigen procedure voor te hoeven voeren. Gaat dat spoor ook over gegevens van een ander, zoals het inkomen van een partner, dan krijgt hij mogelijk maar een deel te zien. Of het Nederlandse recht dat nu al regelt, noemt de paper onzeker ([paragraaf 4.5](/research/rules-as-executed#sec:traceaccess)). De motiveringsplicht, het dossier in bezwaar en beroep en het inzagerecht uit de AVG zijn elk voor iets anders ontworpen.
+
+Het schema zet de vier actoren uit de paper naast elkaar.
+
+<Schema code="S15" />
+
+## Wat niet verandert
+
+Een paar dingen blijven zoals deel 1 tot en met 3 ze beschreven. Het toetsingsverbod van artikel 120 blijft gelden: dwingt de wet een harde uitkomst af, dan kan de rechter daar nog steeds niets aan doen, ook als hij de specificatie kan draaien. De afweging bij open normen en de belangenafweging van artikel 3:4 Awb blijven bij het bevoegd gezag; in het voorstel is een berekende uitkomst een uitgangswaarde, waarvan het bevoegd gezag gemotiveerd mag afwijken waar de wet het die ruimte geeft, en in sommige gevallen moet afwijken ([artikel 4:84 Awb](https://wetten.overheid.nl/jci1.3:c:BWBR0005537&artikel=4:84)) ([paragraaf 4.6](/research/rules-as-executed#sec:overrides)). En de wet blijft boven de specificatie staan.
+
+## Wat er al is, en wat nog niet
+
+De paper is een voorstel. Een deel ervan bestaat al in RegelRecht, een deel nog niet. De RFC's leggen dat per onderdeel vast, met een aparte implementatiestatus.
+
+| Onderdeel uit de paper | In RegelRecht | Stand |
+| --- | --- | --- |
+| Een beperkt, deterministisch formaat en een engine | [RFC-001](/rfcs/rfc-001), [RFC-006](/rfcs/rfc-006) | geïmplementeerd |
+| Bevoegdheid vastgelegd in de specificatie | [RFC-002](/rfcs/rfc-002) | geïmplementeerd |
+| Delegatie via open termen | [RFC-003](/rfcs/rfc-003) | geïmplementeerd |
+| Vastleggen wat het formaat niet kan zeggen | [RFC-031](/rfcs/rfc-031), opvolger van [RFC-012](/rfcs/rfc-012) | geïmplementeerd; het ontwerpbesluit is nog een voorstel |
+| Een uitvoeringsbewijs bij elk besluit | [RFC-013](/rfcs/rfc-013) | deels: het bewijs bestaat, maar wordt nog niet ondertekend en kan nog niet tegen een gepubliceerde engine worden nagespeeld |
+| Awb-procedures, zoals bezwaartermijnen | [RFC-008](/rfcs/rfc-008) | deels |
+| Uitvoering over organisaties heen | [RFC-009](/rfcs/rfc-009) | voorstel, nog niet gebouwd |
+
+Wat in geen enkele RFC staat, is het deel dat niet in software te bouwen is: dat een gepubliceerde specificatie de zaken ook werkelijk beslist. Dat vraagt besluiten van wetgever en uitvoering, en daar gaat de paper over.
+
+<Bronnen items={[{"text":"Hotting en Schuth, Rules as Executed (2026)","href":"/research/rules-as-executed","toelichting":"het voorstel, met de constitutionele onderbouwing en de open vragen"},{"text":"RFC-013: Execution Provenance","href":"/rfcs/rfc-013","toelichting":"wat het uitvoeringsbewijs vastlegt, en wat ervan nog niet gebouwd is"},{"text":"Het RFC-overzicht","href":"/rfcs/","toelichting":"per ontwerpbesluit de status en de implementatiestatus"}]} />
+
+<Conceptnoot />

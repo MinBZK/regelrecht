@@ -37,13 +37,13 @@ Feature: Termijnverlenging volgens de Algemene termijnenwet
     When the bezwaartermijn is calculated including the termijnenwet
     Then the verlengde einddatum is "2026-07-21"
 
-  Scenario: AWB-beslistermijn is acht weken na ontvangst van de aanvraag
+  Scenario: Zonder wettelijke termijn en zonder mededeling is de redelijke termijn uiterlijk acht weken na ontvangst verstreken
     Given an application with the following data:
       | aanvraag_datum | 2026-06-09 |
     When the beslistermijn is calculated including the termijnenwet
     Then the verlengde einddatum is "2026-08-04"
 
-  Scenario: AWB-beslistermijn die in het weekend eindigt schuift naar maandag
+  Scenario: De buitengrens van de redelijke termijn die in het weekend eindigt schuift naar maandag
     Given an application with the following data:
       | aanvraag_datum | 2026-06-13 |
     When the beslistermijn is calculated including the termijnenwet

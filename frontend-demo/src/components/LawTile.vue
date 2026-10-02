@@ -3,6 +3,8 @@ import { computed, nextTick, ref, watch } from 'vue';
 import OrgLogo from './OrgLogo.vue';
 import DataLineage from './DataLineage.vue';
 import TraceView from './TraceView.vue';
+import WhySheet from './WhySheet.vue';
+import { whyUnlocked } from '../why/why.js';
 import { fieldSpec, formatMissing, formatValue, humanize, isUnknown, verdictOf } from '../data/format.js';
 import { lineageFromTrace, leafValues } from '../data/lineage.js';
 import { askedInputsFor, claimKeyFor, evaluationParamsFor, nextQuestions } from '../data/askedInputs.js';
@@ -11,7 +13,7 @@ import { driftSentence } from '../data/caseDrift.js';
 import { useDemo } from '../store/demoStore.js';
 import { objectionOpen, statusOf } from '../data/lifecycle.js';
 import { useLocalePath } from '../i18n/useLocalePath.js';
-import { useI18n } from '../i18n/index.js';
+import { activeLocale, useI18n } from '../i18n/index.js';
 
 // Naar een ander tabblad op naam, niet op pad: onder `/en/` leidt een
 // letterlijk Nederlands pad de bezoeker ongemerkt het Nederlandse tabblad in.
@@ -33,6 +35,7 @@ const evaluation = ref(null);
 const showData = ref(false);
 const traceSheet = ref(null);
 const showTrace = ref(false);
+const showWhy = ref(false);
 
 function run() {
   evaluation.value = demo.evaluate(props.law, evaluationParams());
@@ -208,6 +211,24 @@ function apply() {
   emit('apply', { law: props.law, evaluation: evaluation.value });
 }
 
+/**
+ * What the "why" explanation is written from: the outcome as this tile shows
+ * it, already formatted (so the model copies "€ 1.234,56" instead of dividing
+ * cents itself), and the engine's full trace for the reasoning behind it.
+ */
+const whyPayload = computed(() => {
+  if (!showWhy.value || !evaluation.value?.ok) return null;
+  const all = evaluation.value.outputs ?? {};
+  return {
+    locale: activeLocale.value,
+    law: { id: props.law.id, name: props.law.name, service: corpus.value?.services[props.law.service]?.name ?? props.law.service },
+    reference_date: demo.state.referenceDate,
+    headline: phrased.value ? [phrased.value.lead, phrased.value.headline, phrased.value.unit].filter(Boolean).join(' ') : null,
+    outcome: Object.entries(all).map(([name, value]) => ({ label: humanize(name), value: formatValue(value, fieldSpec(doc.value, name)) })),
+    trace_text: evaluation.value.traceText ?? '',
+  };
+});
+
 watch(showTrace, async (open) => {
   if (!open) return traceSheet.value?.hide?.();
   await nextTick();
@@ -319,6 +340,13 @@ const statusTag = computed(() => {
              fill to a link into the reasoning made the two read as equals, and
              the eye had nowhere to land. This one is a door, not a statement. -->
         <nldd-list type="tree" variant="box-base" :accessible-label="t('wet.tile.data.label')">
+          <!-- Only once the presenter unlocked it from the menu: the
+               explanation runs on a language model behind a password. -->
+          <nldd-list-item v-if="whyUnlocked && evaluation.traceText" size="sm" button @click="showWhy = true">
+            <nldd-icon-cell icon="question" size="16" color="secondary"></nldd-icon-cell>
+            <nldd-spacer-cell size="8"></nldd-spacer-cell>
+            <nldd-text-cell size="sm" :text="t('wet.tile.why.open')"></nldd-text-cell>
+          </nldd-list-item>
           <nldd-list-item size="sm" button :expanded="showData" @click="showData = !showData">
             <nldd-icon-cell icon="rectangle-stack" size="16" color="secondary"></nldd-icon-cell>
             <nldd-spacer-cell size="8"></nldd-spacer-cell>
@@ -369,6 +397,7 @@ const statusTag = computed(() => {
       <nldd-button variant="neutral-transparent" size="sm" start-icon="book" :text="t('wet.tile.action.law_text')" @click="goTo('wetten', { lawId: law.id })"></nldd-button>
     </nldd-container>
 
+    <WhySheet :open="showWhy" :law="law" :payload="whyPayload" @close="showWhy = false" />
     <Teleport to="body">
       <nldd-sheet ref="traceSheet" placement="right" width="1400px" :accessible-label="t('wet.tile.trace.title')" @close="showTrace = false">
         <nldd-page>

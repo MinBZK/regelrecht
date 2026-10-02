@@ -44,7 +44,7 @@ just validate corpus/regulation/nl/wet/your_law/2025-01-01.yaml
 just validate
 ```
 
-The validator rejects files with an unknown or missing `$schema` version. Make sure the `$schema` URL uses a tag-based ref (`refs/tags/schema-vX.Y.Z`) and points to a released schema version.
+The validator rejects files with an unknown or missing `$schema` version. Make sure the `$schema` URL uses a tag-based ref (`refs/tags/schema-vX.Y.Z`) and points to a released schema version. CI checks only the version in the URL, not that the ref is a tag, so a branch-based URL slips through.
 
 The tag is what makes that URL a promise rather than a hope: it pins the schema your law validated against, and it cannot move afterwards. A schema version is tagged automatically when it lands on `main`, and CI blocks a version that has no tag, so the address a law file cites always resolves.
 

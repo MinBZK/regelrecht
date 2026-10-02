@@ -17,8 +17,8 @@ Feature: Bepalen kiesrecht Tweede Kamer
       | bsn       | status | inrichting_type |
       | 999993653 | null   | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 2006-01-01    | null              | null        | []                | Amsterdam      | []             | NLD           | NEDERLANDS    | null  | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999993653 | 2006-01-01    | null              | null        | []                | []             | NLD           | NEDERLANDS    | null  | []           |                       |
     And the following "JUSTID" data with key "bsn" for law "wetboek_van_strafrecht":
       | bsn       | stemrecht_uitsluitingen |
       | 999993653 | []                      |
@@ -33,8 +33,8 @@ Feature: Bepalen kiesrecht Tweede Kamer
       | bsn       | status | inrichting_type |
       | 999993653 | null   | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 1990-01-01    | null              | null        | []                | Amsterdam      | []             | NLD           | DUITS         | null  | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999993653 | 1990-01-01    | null              | null        | []                | []             | NLD           | DUITS         | null  | []           |                       |
     And the following "JUSTID" data with key "bsn" for law "wetboek_van_strafrecht":
       | bsn       | stemrecht_uitsluitingen |
       | 999993653 | []                      |
@@ -49,8 +49,8 @@ Feature: Bepalen kiesrecht Tweede Kamer
       | bsn       | status | inrichting_type |
       | 999993653 | null   | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 2008-01-01    | null              | null        | []                | Amsterdam      | []             | NLD           | NEDERLANDS    | null  | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999993653 | 2008-01-01    | null              | null        | []                | []             | NLD           | NEDERLANDS    | null  | []           |                       |
     And the following "JUSTID" data with key "bsn" for law "wetboek_van_strafrecht":
       | bsn       | stemrecht_uitsluitingen |
       | 999993653 | []                      |
@@ -65,8 +65,8 @@ Feature: Bepalen kiesrecht Tweede Kamer
       | bsn       | status | inrichting_type |
       | 999993653 | null   | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 1990-01-01    | null              | null        | []                | Amsterdam      | []             | NLD           | NEDERLANDS    | null  | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999993653 | 1990-01-01    | null              | null        | []                | []             | NLD           | NEDERLANDS    | null  | []           |                       |
     And the following "JUSTID" data with key "bsn" for law "wetboek_van_strafrecht":
       | bsn       | stemrecht_uitsluitingen                                                                                     |
       | 999993653 | [{"startdatum":"2023-01-01","einddatum":"2024-01-01"},{"startdatum":"2024-06-01","einddatum":"2025-12-01"}] |
@@ -81,8 +81,8 @@ Feature: Bepalen kiesrecht Tweede Kamer
       | bsn       | status     | inrichting_type |
       | 999993653 | INGESLOTEN | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 1990-01-01    | null              | null        | []                | Amsterdam      | []             | NLD           | NEDERLANDS    | null  | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999993653 | 1990-01-01    | null              | null        | []                | []             | NLD           | NEDERLANDS    | null  | []           |                       |
     And the following "JUSTID" data with key "bsn" for law "wetboek_van_strafrecht":
       | bsn       | stemrecht_uitsluitingen                                |
       | 999993653 | [{"startdatum":"2023-01-01","einddatum":"2024-01-01"}] |
@@ -100,8 +100,8 @@ Feature: Bepalen kiesrecht Tweede Kamer
       | bsn       | status | inrichting_type |
       | 999993653 | null   | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 1990-01-01    | null              | null        | []                | Oranjestad     | []             | ARUBA         | NEDERLANDS    | null  | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999993653 | 1990-01-01    | null              | null        | []                | []             | ARUBA         | NEDERLANDS    | null  | []           |                       |
     And the following "JUSTID" data with key "bsn" for law "wetboek_van_strafrecht":
       | bsn       | stemrecht_uitsluitingen |
       | 999993653 | []                      |
@@ -121,8 +121,8 @@ Feature: Bepalen kiesrecht Tweede Kamer
       | bsn       | status | inrichting_type |
       | 999993653 | null   | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 1980-01-01    | null              | null        | []                | Willemstad     | []             | CURACAO       | NEDERLANDS    | null  | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999993653 | 1980-01-01    | null              | null        | []                | []             | CURACAO       | NEDERLANDS    | null  | []           |                       |
     And the following "JUSTID" data with key "bsn" for law "wetboek_van_strafrecht":
       | bsn       | stemrecht_uitsluitingen |
       | 999993653 | []                      |
@@ -142,8 +142,8 @@ Feature: Bepalen kiesrecht Tweede Kamer
       | bsn       | status | inrichting_type |
       | 999993653 | null   | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 1990-01-01    | null              | null        | []                | Philipsburg    | []             | SINT_MAARTEN  | NEDERLANDS    | null  | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999993653 | 1990-01-01    | null              | null        | []                | []             | SINT_MAARTEN  | NEDERLANDS    | null  | []           |                       |
     And the following "JUSTID" data with key "bsn" for law "wetboek_van_strafrecht":
       | bsn       | stemrecht_uitsluitingen |
       | 999993653 | []                      |
@@ -163,8 +163,8 @@ Feature: Bepalen kiesrecht Tweede Kamer
       | bsn       | status | inrichting_type |
       | 999993653 | null   | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 1990-01-01    | null              | null        | []                | Amsterdam      | []             | NLD           | NEDERLANDS    | null  | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999993653 | 1990-01-01    | null              | null        | []                | []             | NLD           | NEDERLANDS    | null  | []           |                       |
     And the following "JUSTID" data with key "bsn" for law "wetboek_van_strafrecht":
       | bsn       | stemrecht_uitsluitingen |
       | 999993653 | []                      |

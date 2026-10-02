@@ -28,9 +28,10 @@ Fork PRs never build, labels or not. They have no secrets and a read-only `GITHU
 
 When a PR merges to main, production deployment runs:
 
-1. All changed components are rebuilt with the merge commit SHA
-2. Components are deployed to the `regelrecht` deployment on ZAD
-3. Production URLs update within minutes
+1. The `ci-green` job (`script/require-ci-green.sh`) waits for the CI run of the merge commit and lets the builds start only when it is green. No run for that commit blocks as well; a missing CI run is not taken as a pass
+2. All changed components are rebuilt with the merge commit SHA
+3. Components are deployed to the `regelrecht` deployment on ZAD
+4. Production URLs update within minutes
 
 `deploy-preview` and `deploy-production` each deploy all components in a single ZAD task. ZAD lets a task give way to a newer task that covers the same deployment, so two tasks for one deployment side by side would push each other aside.
 
@@ -82,7 +83,7 @@ One failure is harmless: `Could not extract URL from result` with `"status": "su
 | Docs | `regelrecht-docs` | `docs.regelrecht.rijks.app` + `regelrecht.rijks.app` (landing) |
 | PoC portal | `regelrecht-poc` | `poc.regelrecht.rijks.app` |
 | PoC napp | `regelrecht-poc-napp` | (internal; reached through the portal at `/napp/`) |
-| Grafana | `regelrecht-grafana` | `grafana.regelrecht.rijks.app` |
+| Grafana | `regelrecht-grafana` | `grafana.regelrecht.rijks.app` (built on `main` only; not part of a preview) |
 
 The docs image also serves `/roadmap`, a read-only rendering of the werkpakketten in `docs/src/content/roadmap/` and the JSON file in `docs/src/data/`. It is not a component of its own and has no write path: changing the roadmap means editing those files through a pull request, and every werkpakket page links to its own source on GitHub. The landing page links to it from the footer, next to the documentation and research links; it stays out of the main navigation, which covers the landing page's own sections.
 
@@ -94,7 +95,7 @@ The build is the `build-demo` job in `deploy.yml` (`image-name: minbzk/regelrech
 
 What to check after a change is easiest on a preview (label the PR `deploy:preview`): that the WASM engine loads (network tab: `wasm/pkg/*.wasm` served as `application/wasm`), the slides, the portals of Merijn and Claudia, and one application followed all the way into the case system. The two things in `frontend-demo/nginx.conf` that can break are the SPA fallback to `index.html` and the MIME type for `.wasm`.
 
-The demo needs no backend and no secrets. Its build takes longer than the other frontends because of the Rust-to-WASM step. The `wasm-builder` stage pins the Rust image to the version in `rust-toolchain.toml` (a pre-commit test, `script/dockerfile-consistency.test.mjs`, fails when the two drift) and pins `wasm-bindgen-cli` to the version in `packages/Cargo.lock`; the build itself fails loudly when that second pair diverges.
+The demo needs no secrets to run. With `DEMO_WHY_PASSWORD` and `CLAUDE_CODE_OAUTH_TOKEN` set on the `demo` component, the container also starts the backend of the "why" explanation next to nginx; see [Demo](/components/demo). Without them the button does not appear. Its build takes longer than the other frontends because of the Rust-to-WASM step. The `wasm-builder` stage pins the Rust image to the version in `rust-toolchain.toml` (a pre-commit test, `script/dockerfile-consistency.test.mjs`, fails when the two drift) and pins `wasm-bindgen-cli` to the version in `packages/Cargo.lock`; the build itself fails loudly when that second pair diverges.
 
 ## ZAD CLI
 
@@ -125,6 +126,7 @@ Configure `ZAD_API_KEY` and `ZAD_PROJECT_ID` in `.env`.
 
 - `RIG_API_KEY` - API key for ZAD Operations Manager (configured in GitHub repository secrets)
 - `GITHUB_TOKEN` - used for GHCR image pushes (provided automatically by GitHub Actions)
+- `ADMIN_TOKEN` - token with admin rights on the repository, passed to the ZAD cleanup action in `cleanup-preview` and in `scheduled-cleanup.yml`, so it can delete preview GitHub environments
 
 ## Further reading
 
