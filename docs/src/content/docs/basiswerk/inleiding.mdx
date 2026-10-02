@@ -1,0 +1,56 @@
+---
+title: "Staats- en bestuursrecht voor RegelRecht"
+description: "Een oriëntatiewerk in vijf delen, bedoeld om bij een willekeurige regeling de juiste vragen te kunnen stellen, de bronnen te vinden en te zien waar de speelruimte zit."
+lang: nl
+---
+
+import Callout from '~/components/basiswerk/Callout.astro';
+import Conceptnoot from '~/components/basiswerk/Conceptnoot.astro';
+import RegelRechtToggle from '~/components/basiswerk/RegelRechtToggle.astro';
+import Schema from '~/components/basiswerk/Schema.astro';
+
+<Callout variant="warning" title="Concept, nog niet juridisch getoetst">
+
+Elke claim in dit werk verwijst naar een open bron, maar de tekst is nog niet door een jurist nagelopen. Lees het als oriëntatie en niet als juridisch advies. Correcties lopen via *Edit page on GitHub* op elke pagina.
+
+</Callout>
+
+<RegelRechtToggle />
+
+## Wat RegelRecht hiermee wil
+
+De uitvoering van wetgeving is grotendeels vastgelegd in software die niet wordt gepubliceerd. In de positiepaper [*Rules as Executed*](/research/rules-as-executed) stellen Eelco Hotting en Anne Schuth dat dit de uitvoerende macht een structureel voordeel geeft binnen de machtenscheiding: alleen zij kan zien hoe de wet wordt toegepast, terwijl parlement, rechter en burger dat niet kunnen controleren. Hun voorstel is de uitvoering te publiceren als machine-uitvoerbare specificatie, in een beperkt formaat dat is ontworpen om voor juristen leesbaar te zijn. Wie een besluit krijgt en de rechter kunnen die zaak dan opnieuw doorrekenen, en parlement en publiek kunnen de regel zelf lezen en analyseren.
+
+Zo'n specificatie is een interpretatie van de wet, en bij strijd gaat de wet voor ([paragraaf 4.2](/research/rules-as-executed#sec:legalstatus)). Wie haar opstelt, moet dus kunnen beantwoorden wie bevoegd is, welke vorm een regel heeft en wie er wat tegen kan doen: de drie vragen van het kompas. Waar een hoofdstuk raakt aan wat de paper beoogt, staat een kader *In RegelRecht* met een verwijzing naar de paragraaf die erover gaat, en in vijf schema's zijn de stappen gemarkeerd waar RegelRecht ingrijpt. Die laag staat standaard uit; de schakelaar *Toon RegelRecht* rechtsboven op elke pagina zet hem aan.
+
+## De vijf delen
+
+<Schema code="S-index" />
+
+**Deel 1: Constitutionele architectuur.** Rechtsstaat en democratie als spanning, machtenscheiding als overlap in plaats van scheiding, en grondrechten met hun beperkingssystematiek. Die beperkingssystematiek komt terug in deel 2: het onderscheid tussen *bij wet* en *bij of krachtens de wet* bepaalt of een bevoegdheid mag worden gedelegeerd.
+
+**Deel 2: Hoe een norm ontstaat en welke vorm hij krijgt.** De gelaagdheid van regelgeving, waar bevoegdheid vandaan komt, het wetgevingsproces, en wat voor soort regel je voor je hebt. Norm en regel zijn hier niet hetzelfde: de norm is wat iemand moet of mag, de regel is de vorm waarin die norm is vastgelegd. Hoofdstuk 2.1 legt dat onderscheid uit.
+
+**Deel 3: Van norm naar burger.** Het besluit als scharnier, waar het beleid in de wet zit, de evenredigheidstoets, en handhaving en sancties.
+
+**Deel 4: Van wet naar uitvoering.** Uitvoerbaarheid en doenvermogen, en waarom de wet niet het algoritme is. Hoofdstuk 4.3 legt het basiswerk naast *Rules as Executed*: wat RegelRecht verandert, en wat niet. Wat in de uitvoering knelt, begint vaak bij hoe regels zijn geschreven, en wordt pas zichtbaar als ze worden toegepast. Dit deel heeft geen schema.
+
+**Deel 5: Waar het nu beweegt.** Constitutionele toetsing, en daarmee de cirkel rond: het toetsingsverbod dat in deel 1 als doorgestreepte pijl op de kaart stond, komt hier terug als levende discussie.
+
+## Het werkblad
+
+Het werkblad is één echte regeling die je door alle lagen heen volgt: de grondslag in de formele wet, de delegatie naar een algemene maatregel van bestuur of ministeriële regeling, de invulling in beleidsregels, de individuele beschikking, bezwaar, beroep.
+
+Eén zo'n traject maakt van een leeslijst een vaardigheid, en laat onmiddellijk zien waar de discretionaire ruimte zit. Het werkt het best **na deel 2** in plaats van aan het eind: de rest van de leesstof leest dan als antwoord op vragen die er al liggen.
+
+<Callout variant="accent" title="De doorlopende casus is de zorgtoeslag">
+
+De voorbeelden door het hele werk komen uit één regeling: de Wet op de zorgtoeslag, met de Awir als wet die ernaast ligt. Dat is ook de casus die de documentatie gebruikt, onder meer in [Law Format](/concepts/law-format), dus wat hier over grondslag, delegatie en beschikking staat, komt daar opnieuw langs.
+
+Eén doorlopend voorbeeld werkt beter dan wisselende illustraties: je bouwt kennis op over één stelsel in plaats van losse feiten over tien.
+
+</Callout>
+
+Verder: [Deel 0: Het kompas](/basiswerk/kompas), de drie vragen die de rest van het werk organiseren.
+
+<Conceptnoot />
