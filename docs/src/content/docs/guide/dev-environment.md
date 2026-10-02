@@ -5,15 +5,19 @@ description: "How the local stack runs: infrastructure in Docker and application
 
 ## Architecture
 
-The development stack runs infrastructure in Docker and application services natively with hot reload:
+There are two native dev stacks. `just dev` is the backend stack: it runs the
+infrastructure in Docker and the admin API natively with hot reload. It starts
+no frontend. The editor needs editor-api as its backend, and editor-api needs
+SSO configuration, so editor work goes through `just dev-frontend` (see
+[Frontend-Focused Dev Stack](#frontend-focused-dev-stack)).
 
 ```
 ┌─────────────────────────────────────────────────┐
 │  Native (hot reload)                            │
-│  ┌──────────────┐ ┌──────────────┐              │
-│  │ Editor :3000 │ │Admin API:8000│              │
-│  │   (Vite)     │ │(cargo watch) │              │
-│  └──────────────┘ └──────────────┘              │
+│  ┌──────────────┐                               │
+│  │Admin API:8000│                               │
+│  │(cargo watch) │                               │
+│  └──────────────┘                               │
 ├─────────────────────────────────────────────────┤
 │  Docker                                         │
 │  ┌──────────┐ ┌────────────┐ ┌───────┐         │
@@ -73,22 +77,24 @@ just dev
 
 | Service | URL | Description |
 |---------|-----|-------------|
-| Editor | http://localhost:3000 | Law editor + **Corpusinwinning** section (hot reload) |
 | Admin API | http://localhost:8000 | Harvester REST API (auto-recompile; UI is the editor's Corpusinwinning section) |
 | Grafana | http://localhost:3002 | Metrics dashboard |
 | Prometheus | http://localhost:9090 | Metrics collection |
 | PostgreSQL | localhost:5433 | Database |
 
 This command:
-1. Checks prerequisites (cargo, node, docker, cargo-watch, and mold on x86_64 Linux)
+1. Checks prerequisites (cargo, docker, cargo-watch, and mold on x86_64 Linux)
 2. Starts infrastructure containers (PostgreSQL, Prometheus, Grafana)
 3. Waits for PostgreSQL to be ready
-4. Installs frontend dependencies if needed
-5. Starts all application services with hot reload
+4. Starts the admin API under `cargo watch`, which recompiles on save
+
+The admin API has no UI of its own. Its dashboard is the editor's
+Corpusinwinning section, which reaches it through editor-api. To see that
+section working end to end, run `just dev-frontend all` instead.
 
 ## Frontend-Focused Dev Stack
 
-When you only need to work on a frontend, `just dev-frontend` starts just the
+For frontend work, including anything in the editor, `just dev-frontend` starts just the
 components that frontend needs (its backend, PostgreSQL, the engine WASM, and
 the Vite dev server with HMR) and skips Grafana, Prometheus, and the workers.
 
@@ -134,7 +140,8 @@ just dev-down
 
 ```bash
 tail -f .dev-admin.log           # Admin (harvester) API log
-tail -f .dev-editor.log          # Editor log (hosts the Corpusinwinning section)
+tail -f .dev-editor-api.log      # editor-api log (`just dev-frontend` only)
+tail -f .dev-editor.log          # Editor Vite log (`just dev-frontend` only)
 just dev-logs                    # Infrastructure logs
 ```
 
@@ -169,8 +176,8 @@ RUST_LOG=info
 
 ### Logging
 
-Five binaries read these variables: editor-api, admin, and the three pipeline
-binaries (harvest worker, enrich worker, pipeline API). The harvester CLI builds
+Six binaries read these variables: editor-api, admin, poc-portal, and the three
+pipeline binaries (harvest worker, enrich worker, pipeline API). The harvester CLI builds
 its own subscriber and reads only `RUST_LOG`.
 
 | Variable | Values | Default | Effect |

@@ -676,19 +676,18 @@ dev-setup:
     printf "${dim}Optional: enable sccache locally (disables incremental, best for cold/flag-varying builds):${reset}\n"
     printf "  export RUSTC_WRAPPER=sccache CARGO_INCREMENTAL=0\n"
 
-# Start development: infra in Docker, services native with hot reload
+# Start the backend dev stack: infra in Docker, admin API native with hot reload.
+# No editor: it needs editor-api, which `just dev-frontend editor|all` starts.
 dev:
     #!/usr/bin/env bash
     set -euo pipefail
     export COMPOSE="{{ compose-native }}"  PIDFILE="{{ pidfile }}"
     source script/dev-lib.sh
 
-    dev_preflight --rust --node --watch
+    dev_preflight --rust --watch
 
     dev_compose_up postgres prometheus grafana
     dev_wait_postgres
-
-    if dev_ensure_deps frontend "editor frontend"; then editor_fe=true; else editor_fe=false; fi
 
     rm -f "$PIDFILE"
 
@@ -696,29 +695,18 @@ dev:
     dev_start "admin API (cargo watch on :8000)" .dev-admin.log \
       "DATABASE_URL='$db_url' RUST_LOG='${RUST_LOG:-info}' cargo watch -C packages -x 'run --package regelrecht-admin'"
 
-    if [ "$editor_fe" = true ]; then
-        dev_start "editor frontend (vite on :3000)" .dev-editor.log \
-          "cd frontend && npx vite"
-    fi
-
     printf "${bold}=> Waiting for services…${reset} "
     sleep 4
     printf "${green}done${reset}\n"
 
     printf "\n"
-    printf "${bold}${green}  Dev stack is running with hot reload${reset}\n\n"
-    if [ "$editor_fe" = true ]; then
-        echo "  Editor:     http://localhost:3000     (hot reload)"
-    fi
+    printf "${bold}${green}  Backend dev stack is running with hot reload${reset}\n\n"
     echo   "  Admin API:  http://localhost:8000     (auto-recompile on save)"
     echo   "  Grafana:    http://localhost:${GRAFANA_PORT:-3002}"
     echo   "  Prometheus: http://localhost:${PROMETHEUS_PORT:-9090}"
     echo   "  PostgreSQL: localhost:${POSTGRES_PORT:-5433}"
     printf "\n"
     printf "  ${dim}Admin API log:${reset}      tail -f .dev-admin.log\n"
-    if [ "$editor_fe" = true ]; then
-        printf "  ${dim}Editor log:${reset}         tail -f .dev-editor.log\n"
-    fi
     printf "  ${dim}Infra logs:${reset}         just dev-logs\n"
     printf "  ${dim}Database:${reset}           just dev-psql\n"
     printf "  ${dim}Stop everything:${reset}    just dev-down\n"

@@ -90,7 +90,9 @@ A PR gets a preview environment once it carries the `deploy:preview` label; taki
 
 ## Getting started
 
-Prerequisites: [Rust](https://rustup.rs/) (stable) and [just](https://github.com/casey/just).
+Prerequisites: [Rust](https://rustup.rs/) (`rustup` installs the version pinned in
+`rust-toolchain.toml`) and [just](https://github.com/casey/just). The dev stacks
+below also need Docker, Node.js and [mold](https://github.com/rui314/mold).
 
 ```bash
 just check           # everything CI runs (format, lint, build, validate, tests)
@@ -133,10 +135,10 @@ CI uses both mold and sccache (see `.github/workflows/ci.yml`).
 ### Running a dev stack
 
 ```bash
-just dev               # full native dev stack (admin + both frontends + grafana/prometheus)
-just dev-frontend            # all frontends (editor 7300, admin 7400, lawmaking 7500), no observability
+just dev                     # backend stack: admin API + DB + grafana/prometheus, no frontend
+just dev-frontend            # editor (7300) + lawmaking (7500) with editor-api, admin API on 8001
 just dev-frontend editor     # just the editor (editor-api + editor UI + DB)
-just dev-frontend admin      # just the admin API + admin UI + DB
+just dev-frontend admin      # just the admin API + DB
 just dev-frontend lawmaking  # just the lawmaking UI (no backend)
 just dev-down          # stop whichever of the above is running
 ```
