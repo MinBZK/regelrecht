@@ -35,8 +35,8 @@ pub fn load_all_regulations(service: &mut LawExecutionService) -> Result<usize, 
                 EngineError::LoadError(format!("Failed to read {}: {}", path.display(), e))
             })?;
 
-            let content = if reverse_actions() {
-                reversed_actions(&content).map_err(|e| {
+            let content = if crate::reverse_actions::enabled() {
+                crate::reverse_actions::reversed_actions(&content).map_err(|e| {
                     EngineError::LoadError(format!("Failed to reverse {}: {}", path.display(), e))
                 })?
             } else {
@@ -62,39 +62,6 @@ pub fn load_all_regulations(service: &mut LawExecutionService) -> Result<usize, 
 
     tracing::info!(count = count, "Loaded regulations");
     Ok(count)
-}
-
-/// `BDD_REVERSE_ACTIONS=1` loads every law with the actions of each article
-/// (and of each open-term default) in reverse order. The order of the actions
-/// in the file must never change a value, so every scenario passes either way;
-/// CI runs the buckets both ways.
-fn reverse_actions() -> bool {
-    std::env::var("BDD_REVERSE_ACTIONS").is_ok_and(|v| v.trim() == "1")
-}
-
-/// `content` with every `actions` list under `machine_readable` reversed.
-fn reversed_actions(content: &str) -> Result<String, serde_yaml_ng::Error> {
-    fn reverse(node: &mut serde_yaml_ng::Value) {
-        match node {
-            serde_yaml_ng::Value::Mapping(map) => {
-                for (key, value) in map.iter_mut() {
-                    if key.as_str() == Some("actions") {
-                        if let serde_yaml_ng::Value::Sequence(actions) = value {
-                            actions.reverse();
-                        }
-                    }
-                    reverse(value);
-                }
-            }
-            serde_yaml_ng::Value::Sequence(items) => items.iter_mut().for_each(reverse),
-            _ => {}
-        }
-    }
-    let mut law: serde_yaml_ng::Value = serde_yaml_ng::from_str(content)?;
-    if let Some(articles) = law.get_mut("articles") {
-        reverse(articles);
-    }
-    serde_yaml_ng::to_string(&law)
 }
 
 #[cfg(test)]
