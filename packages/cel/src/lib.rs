@@ -42,6 +42,7 @@ pub mod lexostatus_engine;
 pub mod load;
 pub mod map;
 pub mod origin;
+pub mod policy;
 pub mod possibility;
 pub mod process;
 pub mod reduction;

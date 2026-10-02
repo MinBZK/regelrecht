@@ -56,6 +56,9 @@ impl Runtime {
         let register_links = Arc::new(registers.links());
         let registers_file = config.registers.clone().map(Arc::new);
         let service = Arc::new(corpus.service);
+        // RFC-047: what a policy executes is a startup check, also without
+        // a policy-based process.
+        let mut errors: Vec<String> = crate::policy::check_executes(&service);
         let loaded = Arc::new(corpus.regulations);
         let regulation_files = Arc::new(corpus.files);
         // A relative `REGULATION_PATH` of one component has an empty parent.
@@ -71,7 +74,6 @@ impl Runtime {
         // The shape of an event follows from the law as it applies today.
         let today = clock().date_naive();
         let mut loaded_cells: Vec<Cell> = Vec::new();
-        let mut errors = Vec::new();
         for map in &dirs {
             match Cell::load_on(map, service.clone(), Some(today)) {
                 Ok(c) => loaded_cells.push(c),

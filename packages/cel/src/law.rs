@@ -66,6 +66,15 @@ pub struct Chronolex {
     pub establishes: Vec<Establishment>,
     #[serde(default)]
     pub reads: Option<Reads>,
+    /// The channels of the actor (RFC-047); only in implementing policy.
+    #[serde(default)]
+    pub channels: BTreeMap<String, crate::policy::PolicyChannel>,
+    /// Per channel what it puts into a submission (RFC-047).
+    #[serde(default)]
+    pub supplies: BTreeMap<String, BTreeMap<String, String>>,
+    /// Authorities the actor acts for under mandate (Awb 10:1).
+    #[serde(default)]
+    pub mandates: Vec<crate::config::Mandate>,
 }
 
 /// One reading, or more: an article can read differently per paragraph
