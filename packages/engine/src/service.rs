@@ -281,6 +281,20 @@ impl<'a> ResolutionContext<'a> {
         }
     }
 
+    /// The message of the current trace node, if tracing is enabled and set.
+    fn trace_message(&self) -> Option<String> {
+        self.trace
+            .as_ref()
+            .and_then(|tb| tb.borrow().get_message().map(str::to_string))
+    }
+
+    /// Put back a message read with `trace_message`. No-op if tracing is disabled.
+    fn trace_restore_message(&self, msg: Option<String>) {
+        if let Some(ref tb) = self.trace {
+            tb.borrow_mut().restore_message(msg);
+        }
+    }
+
     /// Add to the message of the current trace node. No-op if tracing is disabled.
     fn trace_append_message(&self, text: &str) {
         if let Some(ref tb) = self.trace {
@@ -415,6 +429,25 @@ fn required_parameter_not_passed(
                 .find(|p| p.required != Some(false) && !parameters.contains_key(&p.name))
                 .map(|p| p.name.clone())
         })
+}
+
+/// What a policy article executes (RFC-047), for the trace: "art. <n> voert
+/// uit: <article> (<kind>)", one per valid entry. The article number is in
+/// it because one trace node can carry several articles (a root with outputs
+/// from more than one article, or an open term with several candidates).
+fn executes_note(article: &Article) -> Option<String> {
+    let notes: Vec<String> = article
+        .get_executes()
+        .map(|e| {
+            format!(
+                "art. {} voert uit: {} ({})",
+                article.number,
+                e.article,
+                e.kind.as_str()
+            )
+        })
+        .collect();
+    (!notes.is_empty()).then(|| notes.join(" · "))
 }
 
 /// The first parameter of `article` that `parameters` carries as a `null`
@@ -2218,13 +2251,10 @@ impl LawExecutionService {
         };
 
         // RFC-047: name what this policy article executes on the trace node
-        // of its own evaluation, not as a child node of its own.
-        for e in article.get_executes() {
-            res_ctx.trace_append_message(&format!(
-                "voert uit: {} ({})",
-                e.article,
-                e.kind.as_str()
-            ));
+        // of its own evaluation, not as a child node of its own. An open term
+        // shares its node between candidates and writes the note itself.
+        if let Some(note) = executes_note(article) {
+            res_ctx.trace_append_message(&note);
         }
 
         // A required parameter the caller passed as null or unknown names
@@ -2557,14 +2587,23 @@ impl LawExecutionService {
                 // in its execution.parameters — principle of least privilege.
                 let impl_params =
                     Self::filter_parameters_for_article(impl_article, context.parameters());
-                let result = match self.evaluate_article_with_service(
+                // The open-term node is shared by all candidates: keep what a
+                // candidate appends to it (RFC-047 "voert uit") off the node,
+                // and name it below with the candidate it belongs to.
+                let before = res_ctx.trace_message();
+                let evaluated = self.evaluate_article_with_service(
                     impl_article,
                     impl_law,
                     impl_params,
                     Some(&term.id),
                     "BESLUIT",
                     res_ctx,
-                ) {
+                );
+                res_ctx.trace_restore_message(before);
+                let note = executes_note(impl_article)
+                    .map(|n| format!(" ({n})"))
+                    .unwrap_or_default();
+                let result = match evaluated {
                     Ok(r) => r,
                     Err(e) => {
                         res_ctx.trace_set_message(format!(
@@ -2585,11 +2624,14 @@ impl LawExecutionService {
                         // for a term that has a default; RFC-036 accepts
                         // that, and the trace and the log say what happened,
                         // since a typo in the implementation looks the same.
-                        silent.push(format!("{} article {}", impl_law.id, impl_article.number));
+                        silent.push(format!(
+                            "{} article {}{note}",
+                            impl_law.id, impl_article.number
+                        ));
                     } else {
                         res_ctx.trace_set_result(value.clone());
                         res_ctx.trace_set_message(format!(
-                            "Open term '{}' implemented by {} article {}",
+                            "Open term '{}' implemented by {} article {}{note}",
                             term.id, impl_law.id, impl_article.number
                         ));
                         resolved.insert(term.id.clone(), value.clone());
@@ -8850,12 +8892,12 @@ articles:
             .unwrap();
         let trace = r.trace.expect("trace");
         assert!(
-            trace_mentions(&trace, "voert uit: wet_x#1 (procedure)"),
+            trace_mentions(&trace, "art. 1 voert uit: wet_x#1 (procedure)"),
             "{trace:?}"
         );
         let rendered = trace.render_box_drawing();
         assert!(
-            rendered.contains("voert uit: wet_x#1 (procedure)"),
+            rendered.contains("art. 1 voert uit: wet_x#1 (procedure)"),
             "{rendered}"
         );
         assert!(
@@ -8871,6 +8913,43 @@ articles:
             .evaluate_law_output_with_trace("wet_x", "uitkomst", BTreeMap::new(), "2025-06-01")
             .unwrap();
         assert!(!trace_mentions(&r.trace.expect("trace"), "voert uit"));
+    }
+
+    /// An open term filled by a policy article that executes an article
+    /// (RFC-047): the note survives on the open-term node, with the
+    /// candidate it belongs to.
+    #[test]
+    fn test_the_trace_names_what_an_open_term_implementation_executes() {
+        let implementation = make_implementing_regulation().replace(
+            "          gelet_op: \"Gelet op artikel 4 van de Wet op de zorgtoeslag\"\n",
+            "          gelet_op: \"Gelet op artikel 4 van de Wet op de zorgtoeslag\"\n      executes: [{article: 'zorgtoeslag_ioc#4', as: interpretation}]\n",
+        );
+        assert!(implementation.contains("executes"));
+        let mut service = LawExecutionService::new();
+        service.load_law(make_law_with_open_term()).unwrap();
+        service.load_law(&implementation).unwrap();
+        let r = service
+            .evaluate_law_output_with_trace(
+                "zorgtoeslag_ioc",
+                "standaardpremie",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+        assert_eq!(r.outputs.get("standaardpremie"), Some(&Value::Int(1928)));
+        let rendered = r.trace.expect("trace").render_box_drawing();
+        assert!(
+            rendered.contains(
+                "Open term 'standaardpremie' implemented by regeling_sp_ioc article 1 \
+                 (art. 1 voert uit: zorgtoeslag_ioc#4 (interpretation))"
+            ),
+            "{rendered}"
+        );
+        assert_eq!(rendered.matches("voert uit").count(), 1, "{rendered}");
+        assert!(
+            !rendered.contains("Evaluating rules for executes"),
+            "{rendered}"
+        );
     }
 
     #[test]

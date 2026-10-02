@@ -2304,8 +2304,8 @@
     },
     "articleReference": {
       "type": "string",
-      "pattern": "^[a-z][a-z0-9_]*#[A-Za-z0-9]([A-Za-z0-9:._ -]*[A-Za-z0-9])?$",
-      "description": "An article of a regulation, `<regulation>#<article>`, without a paragraph."
+      "pattern": "^[a-z][a-z0-9_]*#[A-Za-z0-9]([A-Za-z0-9:._-]*[A-Za-z0-9])?$",
+      "description": "An article of a regulation, `<regulation>#<article>`, without a paragraph: no space, so no ` lid <n>`."
     }
   }
 }

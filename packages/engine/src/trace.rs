@@ -1124,12 +1124,21 @@ impl TraceBuilder {
             let node = &mut current.node;
             node.message = Some(match (node.message.take(), &node.node_type) {
                 (Some(m), _) => format!("{m} · {text}"),
-                (None, PathNodeType::Resolve) => text.to_string(),
                 (None, PathNodeType::CrossLawReference) => {
                     format!("Reference: {} · {text}", node.name)
                 }
                 (None, _) => format!("{} · {text}", node.name),
             });
+        }
+    }
+
+    /// Put back a message read with [`Self::get_message`], or none.
+    pub fn restore_message(&mut self, msg: Option<String>) {
+        if !self.enabled {
+            return;
+        }
+        if let Some(current) = self.stack.last_mut() {
+            current.node.message = msg;
         }
     }
 

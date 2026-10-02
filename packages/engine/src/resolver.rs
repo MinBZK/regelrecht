@@ -365,13 +365,16 @@ fn declaration_fingerprint(law: &ArticleBasedLaw) -> Vec<String> {
         {
             parts.push(format!("decides_on\0{}\0{target}", article.number));
         }
-        for e in article.get_executes() {
-            parts.push(format!(
-                "executes\0{}\0{}\0{}",
-                article.number,
-                e.article,
-                e.kind.as_str()
-            ));
+        // Over every entry as written, valid or not: an invalid entry is
+        // a declaration of this version too (RFC-043 rule).
+        for d in article.get_declared_executes() {
+            let entry = match d {
+                regelrecht_law_model::Declared::Valid(e) => {
+                    format!("{}\0{}", e.article, e.kind.as_str())
+                }
+                regelrecht_law_model::Declared::Invalid(raw) => format!("invalid\0{raw}"),
+            };
+            parts.push(format!("executes\0{}\0{entry}", article.number));
         }
         if let Some(overrides) = article.get_overrides() {
             for decl in overrides {
