@@ -53,6 +53,8 @@ A reader meets these constructs in a law file or a running service whatever the 
 | RFC-041 | A void is not scoped like a replacement | [Voiding an output](../concepts/hooks-and-reactive-execution#voiding-an-output) |
 | RFC-043 | Who supplies a parameter (partially built, still Draft) | [Cel: who supplies a parameter](../components/cel#who-supplies-a-parameter) |
 | RFC-044 | Cells and processes in a chronolex runtime (partially built, still Draft) | [Cel](../components/cel) |
+| RFC-046 | The application as something the Awb hooks onto (partially built, still Draft) | [Cel](../components/cel) |
+| RFC-047 | The process from law and policy (partially built: the synthesis waits for RFC-045; still Draft) | [Cel: the process from policy](../components/cel#the-process-from-policy) |
 
 ## Backlog
 
