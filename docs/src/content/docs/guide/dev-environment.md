@@ -210,7 +210,9 @@ On commit the hooks run, each only when a matching file changed:
 - Rust formatting (`just format`) and clippy (`just lint`)
 - Schema validation of corpus files (`just validate`)
 - Licence information (`reuse lint`): every file needs a licence, set in
-  `REUSE.toml` with the licence texts in `LICENSES/`
+  `REUSE.toml` with the licence texts in `LICENSES/`. Code and text get the
+  default by file type. An image, a font or a file type the list does not name
+  fails the hook until it has its own entry with its rightsholder
 - The test suites of the CI scripts and merge gates under `script/`, when that
   script or its workflow changed
 
