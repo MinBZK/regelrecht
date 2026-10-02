@@ -31,6 +31,7 @@ pub mod check;
 pub mod chronicle;
 pub mod config;
 pub mod date;
+pub mod deployment;
 pub mod engine_regulation;
 pub mod examples;
 pub mod form;

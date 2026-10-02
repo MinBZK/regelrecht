@@ -42,6 +42,9 @@ fn runtime_at(setup: &Path, data: &Path) -> Result<Runtime, Vec<String>> {
         read_token_sources: Vec::new(),
         reduction: Default::default(),
         registers: None,
+        channels: None,
+        synthesis: None,
+        examples: None,
     };
     Runtime::load(&config, clock())
 }
@@ -58,6 +61,9 @@ fn runtime_with_read_token(setup: &Path, data: &Path, token: &str, sources: &[&s
         read_token_sources: sources.iter().map(|b| b.to_string()).collect(),
         reduction: Default::default(),
         registers: None,
+        channels: None,
+        synthesis: None,
+        examples: None,
     };
     Runtime::load(&config, clock()).unwrap()
 }
@@ -1742,6 +1748,9 @@ fn without_processes_only_the_cells_run() {
         read_token_sources: Vec::new(),
         reduction: Default::default(),
         registers: None,
+        channels: None,
+        synthesis: None,
+        examples: None,
     };
     let r = Runtime::load(&config, clock()).unwrap();
     assert_eq!(r.cells.len(), 5);
@@ -2112,6 +2121,9 @@ fn with_other_authority(
         read_token_sources: Vec::new(),
         reduction: Default::default(),
         registers: None,
+        channels: None,
+        synthesis: None,
+        examples: None,
     };
     let app = Runtime::load(&config, clock()).unwrap().router;
     (cells, data, app)
@@ -4504,6 +4516,9 @@ fn runtime_with_reduction(data: &Path, reduction: ReductionMode) -> Result<Runti
         read_token_sources: Vec::new(),
         reduction,
         registers: None,
+        channels: None,
+        synthesis: None,
+        examples: None,
     };
     Runtime::load(&config, clock())
 }
@@ -5238,6 +5253,9 @@ fn runtime_with(regulation: &Path, data: &Path, now: &'static str) -> Runtime {
         read_token_sources: Vec::new(),
         reduction: Default::default(),
         registers: None,
+        channels: None,
+        synthesis: None,
+        examples: None,
     };
     Runtime::load(
         &config,
@@ -5540,6 +5558,9 @@ async fn the_configuration_of_the_map_opens_to_its_yaml() {
         read_token_sources: Vec::new(),
         reduction: Default::default(),
         registers: Some(registers),
+        channels: None,
+        synthesis: None,
+        examples: None,
     };
     let app = as_reader(&Runtime::load(&config, clock()).unwrap());
     let (status, f, _) = call(

@@ -51,6 +51,13 @@ pub struct Config {
     /// [`crate::register`]). Without it: no registers, and a policy that
     /// queries one stops the runtime.
     pub registers: Option<PathBuf>,
+    /// The channels of the deployment (`CELL_CHANNELS`, RFC-047): with it,
+    /// the processes follow from the policy instead of `PROCESSES_PATH`.
+    pub channels: Option<PathBuf>,
+    /// The synthesis and its rows per actor (`CELL_SYNTHESIS`), until RFC-045.
+    pub synthesis: Option<PathBuf>,
+    /// The examples of the demo (`CELL_EXAMPLES`).
+    pub examples: Option<PathBuf>,
 }
 
 /// How the cells of the runtime reduce a lexostatus (`CELL_REDUCTION`).
@@ -114,6 +121,18 @@ impl Config {
                 .map_err(|_| format!("CELL_PORT '{v}' is not a port number"))?,
             Err(_) => DEFAULT_PORT,
         };
+        let channels = path("CELL_CHANNELS").ok();
+        if channels.is_none() && (path("CELL_SYNTHESIS").is_ok() || path("CELL_EXAMPLES").is_ok()) {
+            return Err(
+                "CELL_SYNTHESIS and CELL_EXAMPLES belong to CELL_CHANNELS, which is not set".into(),
+            );
+        }
+        if channels.is_some() && path("PROCESSES_PATH").is_ok() {
+            return Err(
+                "set CELL_CHANNELS (processes from policy) or PROCESSES_PATH (process.yaml), not both"
+                    .into(),
+            );
+        }
         Ok(Self {
             cells_path: path("CELLS_PATH")?,
             processes_path: path("PROCESSES_PATH").ok(),
@@ -138,6 +157,9 @@ impl Config {
                 std::env::var("CELL_ENGINE_BINDING").ok().as_deref(),
             )?,
             registers: path("CELL_REGISTERS").ok(),
+            channels,
+            synthesis: path("CELL_SYNTHESIS").ok(),
+            examples: path("CELL_EXAMPLES").ok(),
         })
     }
 }
