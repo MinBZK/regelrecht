@@ -1,0 +1,636 @@
+/*
+ * The presenter's slides. Custom CSS on purpose: the design system has no
+ * presentation component (same exception as frontend-demo, see
+ * frontend-demo/src/presentation/PresentationDeck.vue). The colours are design
+ * system tokens, never hex; the typography ladder is the demo deck's, so a
+ * slide here reads the same as one in /presentatie.
+ *
+ * What is new compared to the demo deck:
+ * - `.md`: running markdown (paragraphs, lists, tables, quotes, code) on the
+ *   same ladder;
+ * - `.card`: a light panel for wet and mermaid blocks, because a table of
+ *   inputs or a diagram is hard to read on dark blue;
+ * - the edit-mode outline and textarea.
+ */
+
+/* Rijkshuisstijl serif for the titles; RijksSans comes with the design system. */
+@font-face {
+  font-family: 'RijksoverheidSerif';
+  src: url('/fonts/ROserifwebregular.woff') format('woff');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'RijksoverheidSerif';
+  src: url('/fonts/ROserifwebbold.woff') format('woff');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'RijksoverheidSerif';
+  src: url('/fonts/ROserifwebitalic.woff') format('woff');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+/* ── The deck: always dark blue with white ink, also in dark mode ─────────── */
+.deck {
+  --scale: 1;
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 2vh 0 1.5rem;
+  box-sizing: border-box;
+  color-scheme: light;
+  --ink: var(--primitives-color-coolgray-0);
+  --ink-96: color-mix(in srgb, var(--ink) 96%, transparent);
+  --ink-85: color-mix(in srgb, var(--ink) 85%, transparent);
+  --ink-72: color-mix(in srgb, var(--ink) 72%, transparent);
+  --ink-55: color-mix(in srgb, var(--ink) 55%, transparent);
+  --ink-35: color-mix(in srgb, var(--ink) 35%, transparent);
+  --ink-18: color-mix(in srgb, var(--ink) 18%, transparent);
+  color: var(--ink);
+  background: linear-gradient(160deg, var(--primitives-color-lintblauw-750) 0%, var(--primitives-color-lintblauw-700) 100%);
+  font-family: 'RijksSans', system-ui, sans-serif;
+}
+
+/* The stage is a centred column of at most 1600px; the typography measures
+   itself against its width (`1cqw`), not against the window height. */
+.stage {
+  --slide-unit: calc(1cqw * var(--scale));
+  container-type: inline-size;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: min(100%, 1600px);
+  margin: 0 auto;
+  padding: 3vh clamp(2rem, 5vw, 6rem);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+.content {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* The demo deck hides overflow ("a slide never scrolls"). Here a slide can
+     hold a whole article, and while editing a hidden bottom is a lost edit, so
+     it scrolls instead; a well-sized slide never shows the scrollbar. */
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ink-35) transparent;
+}
+.content-main {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: safe center;
+  gap: max(0.5rem, calc(1.6 * var(--slide-unit)));
+}
+.content-foot {
+  flex: 0 0 auto;
+  padding-top: 1.25rem;
+  margin-top: 1.5rem;
+  border-top: 1px solid var(--ink-18);
+}
+
+/* ── The typographic ladder (from PresentationDeck.vue) ───────────────────── */
+.overline {
+  font-size: max(0.72rem, calc(1.6 * var(--slide-unit)));
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink-72);
+}
+.title {
+  font-family: 'RijksoverheidSerif', Georgia, serif;
+  font-weight: 700;
+  font-size: max(1.2rem, calc(5.2 * var(--slide-unit)));
+  line-height: 1.06;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+  margin: 0;
+  color: var(--ink);
+}
+.title-hero {
+  font-size: max(1.6rem, calc(8.5 * var(--slide-unit)));
+}
+.statement {
+  font-size: max(1.1rem, calc(5.2 * var(--slide-unit)));
+  line-height: 1.18;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  display: flex;
+  flex-direction: column;
+}
+.statement-line {
+  display: block;
+  text-wrap: balance;
+}
+.statement strong {
+  font-weight: 700;
+}
+.lead {
+  font-size: max(0.85rem, calc(2.6 * var(--slide-unit)));
+  line-height: 1.4;
+  margin: 0;
+  font-weight: 500;
+  text-wrap: pretty;
+}
+.lead-hero {
+  font-family: 'RijksoverheidSerif', Georgia, serif;
+  font-style: italic;
+  font-weight: 400;
+  font-size: max(1rem, calc(3.6 * var(--slide-unit)));
+  color: color-mix(in srgb, var(--ink) 90%, transparent);
+}
+.title-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: calc(1.5 * var(--slide-unit));
+  font-size: max(0.9rem, calc(1.9 * var(--slide-unit)));
+  color: var(--ink-85);
+}
+.presenter {
+  font: inherit;
+  font-weight: 600;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--ink-35);
+  padding: 0.1rem 0;
+  width: min(24ch, 100%);
+  outline: none;
+}
+.presenter::placeholder {
+  color: color-mix(in srgb, var(--ink) 50%, transparent);
+}
+.presenter:focus {
+  border-bottom-color: var(--ink);
+}
+.note {
+  margin: 0;
+  font-size: max(0.85rem, calc(1.6 * var(--slide-unit)));
+  color: color-mix(in srgb, var(--ink) 80%, transparent);
+  line-height: 1.45;
+}
+
+/* ── Markdown body: the demo's `.bullets` / `.lead` sizes for running text ── */
+.md {
+  display: flex;
+  flex-direction: column;
+  gap: calc(1.2 * var(--slide-unit));
+  font-size: max(0.8rem, calc(2.2 * var(--slide-unit)));
+  line-height: 1.45;
+  color: var(--ink-96);
+  text-wrap: pretty;
+}
+.md-plain {
+  font-size: max(0.9rem, calc(3 * var(--slide-unit)));
+}
+.md-plain ul {
+  list-style: none;
+  padding-left: 0;
+}
+.md p,
+.md ul,
+.md ol,
+.md blockquote,
+.md table,
+.md pre,
+.md h2,
+.md h3 {
+  margin: 0;
+}
+.md ul,
+.md ol {
+  padding-left: 1.3em;
+  display: flex;
+  flex-direction: column;
+  gap: calc(0.9 * var(--slide-unit));
+}
+.md li > ul,
+.md li > ol {
+  margin-top: calc(0.6 * var(--slide-unit));
+  font-size: 0.88em;
+}
+.md li::marker {
+  color: var(--ink-72);
+}
+.md strong {
+  font-weight: 700;
+  color: var(--ink);
+}
+.md a {
+  color: var(--ink);
+  text-underline-offset: 4px;
+}
+.md h2,
+.md h3 {
+  font-family: 'RijksoverheidSerif', Georgia, serif;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--ink);
+}
+.md h2 {
+  font-size: 1.45em;
+}
+.md h3 {
+  font-size: 1.15em;
+}
+.md blockquote {
+  padding-left: 1em;
+  border-left: 3px solid var(--primitives-color-donkergeel-200);
+  font-family: 'RijksoverheidSerif', Georgia, serif;
+  font-style: italic;
+  color: var(--ink-85);
+}
+.md code {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.85em;
+  padding: 0.05em 0.3em;
+  border-radius: 4px;
+  background: var(--ink-18);
+}
+.md pre {
+  padding: 0.8em 1em;
+  border-radius: 8px;
+  background: color-mix(in srgb, black 25%, transparent);
+  overflow-x: auto;
+  font-size: 0.75em;
+  line-height: 1.5;
+}
+.md pre code {
+  background: none;
+  padding: 0;
+}
+.md table {
+  border-collapse: collapse;
+  font-size: 0.85em;
+}
+.md th,
+.md td {
+  text-align: left;
+  padding: 0.35em 1em 0.35em 0;
+  border-bottom: 1px solid var(--ink-18);
+  vertical-align: top;
+}
+.md th {
+  font-weight: 600;
+  color: var(--ink-72);
+}
+.md hr {
+  border: 0;
+  border-top: 1px solid var(--ink-18);
+  width: 100%;
+}
+
+/* ── Card: the light panel for wet and mermaid blocks ─────────────────────── */
+.card {
+  margin: 0;
+  padding: calc(1.6 * var(--slide-unit)) calc(2 * var(--slide-unit));
+  border-radius: 12px;
+  background: var(--primitives-color-coolgray-0);
+  color: var(--primitives-color-coolgray-900);
+  font-size: max(0.75rem, calc(1.55 * var(--slide-unit)));
+  line-height: 1.45;
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.22);
+}
+.wet {
+  display: flex;
+  flex-direction: column;
+  gap: calc(1.1 * var(--slide-unit));
+}
+.wet-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.3em 0.8em;
+  padding-bottom: calc(0.8 * var(--slide-unit));
+  border-bottom: 2px solid var(--primitives-color-lintblauw-750);
+}
+.wet-law {
+  font-family: 'RijksoverheidSerif', Georgia, serif;
+  font-weight: 700;
+  font-size: 1.3em;
+  color: var(--primitives-color-lintblauw-750);
+}
+.wet-art {
+  font-weight: 600;
+  color: var(--primitives-color-lintblauw-750);
+}
+.wet-date {
+  margin-left: auto;
+  font-size: 0.8em;
+  color: var(--primitives-color-coolgray-600);
+}
+.wet-text p {
+  margin: 0 0 0.6em;
+}
+.wet-text p:last-child {
+  margin-bottom: 0;
+}
+.wet-text a {
+  color: var(--primitives-color-lintblauw-750);
+}
+.wet h4 {
+  margin: 0 0 0.3em;
+  font-size: 0.75em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--primitives-color-coolgray-600);
+}
+.wet table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.wet th,
+.wet td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.3em 1em 0.3em 0;
+  border-bottom: 1px solid var(--primitives-color-coolgray-150);
+}
+.wet th {
+  font-weight: 600;
+}
+.wet .type {
+  color: var(--primitives-color-coolgray-600);
+  white-space: nowrap;
+}
+.wet .src {
+  color: var(--primitives-color-coolgray-700);
+}
+.wet .num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+.rule + .rule {
+  margin-top: 0.8em;
+}
+.rule-out {
+  font-weight: 400;
+}
+.rule-tree {
+  list-style: none;
+  margin: 0.3em 0 0;
+  padding: 0;
+}
+.rule-tree li {
+  display: flex;
+  gap: 0.6em;
+  padding: 0.15em 0 0.15em calc(var(--depth) * 1.4em);
+}
+.rule-tree .op {
+  flex: 0 0 auto;
+  min-width: 7.5em;
+  font-size: 0.85em;
+  font-weight: 600;
+  color: var(--primitives-color-lintblauw-750);
+}
+.wet-error,
+.wet-loading,
+.block-error {
+  margin: 0;
+  color: var(--primitives-color-coolgray-700);
+}
+.block-error {
+  color: var(--ink-85);
+  font-style: italic;
+}
+/* `markeer:` in a wet block: the row or rule a name appears in, in the
+   deck's accent yellow, so the speaker can point at it without a laser. */
+.wet tr.lit > *,
+.wet .rule-tree li.lit,
+.wet .rule-out.lit,
+.wet .num.lit {
+  background: color-mix(in srgb, var(--primitives-color-donkergeel-200) 38%, transparent);
+}
+.wet .rule-tree li.lit {
+  box-shadow: inset 3px 0 0 var(--primitives-color-donkergeel-200);
+  border-radius: 4px;
+}
+/* An anchor that names something the article does not have. */
+.wet-warnings {
+  margin: 0;
+  padding: 0.5em 0.8em 0.5em 1.8em;
+  border-radius: 6px;
+  background: var(--primitives-color-donkergeel-50);
+  color: var(--primitives-color-coolgray-900);
+  font-size: 0.85em;
+}
+/* ── Reken block: an engine run on the slide ───────────────────────────── */
+.reken {
+  display: flex;
+  flex-direction: column;
+  gap: calc(1.1 * var(--slide-unit));
+}
+/* The outcome is the point of the slide, so it reads larger than the rest. */
+.reken-outputs {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 1.35em;
+}
+.reken-outputs th,
+.reken-outputs td {
+  text-align: left;
+  padding: 0.3em 1em 0.3em 0;
+  border-bottom: 1px solid var(--primitives-color-coolgray-150);
+}
+.reken-outputs th {
+  font-weight: 600;
+}
+.reken-outputs .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--primitives-color-lintblauw-750);
+}
+.reken h4 {
+  margin: 0 0 0.3em;
+  font-size: 0.75em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--primitives-color-coolgray-600);
+}
+.reken-checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.9em;
+}
+.reken-checks li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2em 0.5em;
+  padding: 0.15em 0;
+}
+.reken-mark {
+  font-weight: 700;
+  width: 1em;
+}
+.reken-checks .passed .reken-mark {
+  color: var(--primitives-color-lintblauw-750);
+}
+.reken-checks .failed {
+  color: var(--primitives-color-coolgray-900);
+  font-weight: 600;
+}
+.reken-msg {
+  flex-basis: 100%;
+  padding-left: 1.5em;
+  font-weight: 400;
+  color: var(--primitives-color-coolgray-700);
+}
+/* The trace can run to hundreds of nodes; it scrolls inside the card. */
+.reken-trace {
+  max-height: 40vh;
+  overflow-y: auto;
+  font-size: 0.85em;
+}
+.trace-node {
+  padding-left: 1.1em;
+}
+.reken-trace > .trace-node {
+  padding-left: 0;
+}
+.trace-node summary,
+.trace-leaf {
+  display: flex;
+  gap: 0.5em;
+  align-items: baseline;
+  padding: 0.1em 0;
+}
+.trace-node summary {
+  cursor: pointer;
+}
+.trace-type {
+  min-width: 6.5em;
+  font-size: 0.85em;
+  font-weight: 600;
+  color: var(--primitives-color-lintblauw-750);
+}
+.trace-result {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--primitives-color-coolgray-700);
+}
+.mermaid-svg {
+  display: flex;
+  justify-content: center;
+}
+.mermaid-svg svg {
+  max-width: 100%;
+  height: auto;
+  max-height: 60vh;
+}
+.mermaid-error {
+  margin: 0;
+  white-space: pre-wrap;
+  font-size: 0.8em;
+}
+
+/* ── Edit mode ────────────────────────────────────────────────────────────── */
+.block-inline {
+  display: inline;
+}
+.block-editable {
+  cursor: text;
+  border-radius: 6px;
+  outline: 1px dashed var(--ink-35);
+  outline-offset: 6px;
+}
+.block-editable:hover,
+.block-editable:focus-visible {
+  outline: 2px solid var(--primitives-color-donkergeel-200);
+}
+.block-editor {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 3em;
+  padding: 0.6em 0.8em;
+  resize: vertical;
+  border: 2px solid var(--primitives-color-donkergeel-200);
+  border-radius: 8px;
+  background: color-mix(in srgb, black 30%, transparent);
+  color: var(--ink);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: max(0.85rem, calc(1.5 * var(--slide-unit)));
+  font-weight: 400;
+  font-style: normal;
+  letter-spacing: 0;
+  line-height: 1.5;
+  outline: none;
+}
+.add-block {
+  align-self: flex-start;
+}
+
+/* ── Footer and progress (from PresentationDeck.vue) ──────────────────────── */
+.footer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem clamp(1.5rem, 4vw, 4rem) 0;
+}
+.footer-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+}
+.counter {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--ink-72);
+  font-variant-numeric: tabular-nums;
+}
+.status {
+  font-weight: 400;
+}
+.hints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  font-size: 0.8rem;
+  color: color-mix(in srgb, var(--ink) 70%, transparent);
+}
+.hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: var(--ink-18);
+}
+.progress-fill {
+  height: 100%;
+  background: var(--primitives-color-donkergeel-200);
+  transition: width 0.3s ease;
+}
+/* A statement line stays a line of its own, also as an inline edit target. */
+.statement .statement-line {
+  display: block;
+}

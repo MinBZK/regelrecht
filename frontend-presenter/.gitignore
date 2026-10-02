@@ -1,0 +1,6 @@
+node_modules/
+dist/
+# Eigen decks horen niet in deze public repo: zet ze in een eigen map
+# (PRESENTER_DECKS=...) of houd ze lokaal. Alleen het voorbeeld is gedeeld.
+decks/*
+!decks/voorbeeld/

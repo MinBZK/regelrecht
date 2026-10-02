@@ -59,6 +59,7 @@ jobs:
               - frontend/**
               - frontend-lawmaking/**
               - frontend-demo/**
+              - frontend-presenter/**
               - frontend-poc-portal/**
               - frontend-poc-terugbetaalregimes/**
               - frontend-poc-nieuwkomersbekostiging/**
@@ -742,6 +743,9 @@ jobs:
 
       - name: Run demo tests
         run: npm test -w frontend-demo
+
+      - name: Run presenter tests
+        run: npm test -w frontend-presenter
 
       # packages/arch-extract/ui is geen workspace-member (eigen package.json en
       # lockfile), dus `npm test -w` bereikt het niet en de test die er ligt
