@@ -1384,6 +1384,67 @@ async fn roles_decide_who_may_do_what() {
     }
 }
 
+/// The worklist the runtime offers (RFC-047), reduced over real grams: a row
+/// per application with the owner and the window, until every requested
+/// decision is taken. The afnemer asks for one decision; the toeslag for two
+/// (the voorschot and the vaststelling), which the DSL cannot require both
+/// of, so its case stays.
+#[tokio::test]
+async fn the_built_in_worklist_lists_the_undecided_applications() {
+    let data = tempfile::tempdir().unwrap();
+    let rt = runtime_at(&fixtures(), data.path()).unwrap();
+    let app = as_reader(&rt);
+    let worklist = |cell: &'static str| {
+        let app = app.clone();
+        async move {
+            let (status, w, _) = call(
+                &app,
+                "GET",
+                &format!("{cell}/api/lexostatus/worklist"),
+                None,
+                None,
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "{w}");
+            w["list"].as_array().unwrap().clone()
+        }
+    };
+    let a = consumer_submit(&app, "12345678").await;
+    let list = worklist(CONSUMER_CELL).await;
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0]["root"], a.as_str());
+    assert_eq!(list[0]["fields"]["kvk_nummer"], "12345678");
+    assert_eq!(list[0]["fields"]["ontvangen_op"], "2025-03-12");
+    add_gram_to(
+        &rt,
+        "besluit_genomen",
+        &a,
+        json!({"vastgesteld_bedrag": 6000, "gebiedsbedrag": 5000, "besluit_tijdig": false,
+               "besluitdeadline": "2025-04-11", "zorgvuldig": true}),
+    );
+    assert!(worklist(CONSUMER_CELL).await.is_empty());
+
+    let case = toeslag_submit(&app, "2025-03-17", 90000).await;
+    let list = worklist(TOESLAG_CELL).await;
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0]["root"], case.as_str());
+    assert_eq!(list[0]["fields"]["persoonsnummer"], "123456789");
+    assert_eq!(list[0]["fields"]["maand"], "2025-03-01");
+    let b = handler_in(&app, TOESLAG).await;
+    let (status, body) = toeslag(
+        &app,
+        &b,
+        &case,
+        "voorschot",
+        json!({"voorschotdatum": "2025-03-12"}),
+        false,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let list = worklist(TOESLAG_CELL).await;
+    assert_eq!(list.len(), 1, "the vaststelling is still to come");
+}
+
 #[tokio::test]
 async fn worklist_is_a_list_of_cases_without_a_decision() {
     let data = tempfile::tempdir().unwrap();

@@ -33,7 +33,7 @@ articles:
                   kind: portal
                   role: aanvrager
                   identifies: {kvk: [testregeling_register#1], persoon: []}
-                  owner: kvk
+                  owner: kvk_nummer
                   submits: testregeling_afnemer#1
                   assesses: {output: aanvraag_toelaatbaar}
                   legal_basis: [testregeling_afnemer#1]

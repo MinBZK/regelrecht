@@ -528,7 +528,19 @@ impl Stream {
     }
 }
 
+/// The type of a gram an interested party submits (RFC-022 par. 1).
+pub const SUBMISSION: &str = "submission";
+
+/// The stage that opens a case (RFC-008, RFC-046).
+pub const SUBMISSION_STAGE: &str = "AANVRAAG";
+
 impl Event {
+    /// Whether a gram of this event is a submission: `type: submission`, or
+    /// the stage that opens a case.
+    pub fn is_submission(&self) -> bool {
+        self.type_ == SUBMISSION || self.stage.as_deref() == Some(SUBMISSION_STAGE)
+    }
+
     /// Why a source may supply a field (`$intake.supplied.<name>`): for the
     /// channel the origin the field has in force (the rule that makes the
     /// channel supply it), otherwise what the receiving channel says (the
@@ -991,7 +1003,7 @@ fn supplied_value(
         None => Ok((
             submitted,
             crate::gram::FieldProvenance {
-                source: if event.type_ == "submission" {
+                source: if event.is_submission() {
                     "applicant"
                 } else {
                     "handler"

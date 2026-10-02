@@ -77,6 +77,67 @@ pub fn outputs_of_article(service: &LawExecutionService, article: &str) -> Vec<S
     outputs_of(service, article)
 }
 
+/// The names an expression refers to (`$name`, `$name.field`).
+fn names_in(v: &serde_json::Value, out: &mut BTreeSet<String>) {
+    match v {
+        serde_json::Value::String(s) => {
+            if let Some(r) = s.strip_prefix('$') {
+                out.insert(r.split('.').next().unwrap_or(r).to_string());
+            }
+        }
+        serde_json::Value::Array(a) => a.iter().for_each(|x| names_in(x, out)),
+        serde_json::Value::Object(o) => o.values().for_each(|x| names_in(x, out)),
+        _ => {}
+    }
+}
+
+/// The outputs of an article that depend on one of `parameters`: through the
+/// value of their action, directly or through an input whose `source` passes
+/// the parameter on, or through another output, to a fixed point. In
+/// declaration order.
+pub fn outputs_depending_on(
+    article: &regelrecht_engine::Article,
+    parameters: &BTreeSet<String>,
+) -> Vec<String> {
+    let Some(exec) = article.get_execution_spec() else {
+        return Vec::new();
+    };
+    let mut uses: Vec<(String, BTreeSet<String>)> = Vec::new();
+    for i in exec.input.iter().flatten() {
+        let mut n = BTreeSet::new();
+        if let Ok(v) = serde_json::to_value(&i.source) {
+            names_in(&v, &mut n);
+        }
+        uses.push((i.name.clone(), n));
+    }
+    for a in exec.actions.iter().flatten() {
+        let (Some(output), Ok(v)) = (&a.output, serde_json::to_value(a)) else {
+            continue;
+        };
+        let mut n = BTreeSet::new();
+        names_in(&v, &mut n);
+        uses.push((output.clone(), n));
+    }
+    let mut dependent = parameters.clone();
+    loop {
+        let before = dependent.len();
+        for (name, n) in &uses {
+            if !n.is_disjoint(&dependent) {
+                dependent.insert(name.clone());
+            }
+        }
+        if dependent.len() == before {
+            break;
+        }
+    }
+    exec.output
+        .iter()
+        .flatten()
+        .map(|o| o.name.clone())
+        .filter(|o| dependent.contains(o))
+        .collect()
+}
+
 /// The parameter of an article with origin role `BESLUIT` (RFC-047): it
 /// receives the id of the decision the action acts on. `None` without one
 /// (or without the article); more than one is an error, because the runtime
@@ -622,6 +683,36 @@ fn field_legal_basis(event: &Event, paths: &[String], effective_at: bool) -> Vec
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
+    #[test]
+    fn an_output_depends_on_a_parameter_through_inputs_and_outputs() {
+        let (s, _, _) = crate::derive::tests::setup();
+        let a = crate::regulations::article(&s, "testregeling_awb#3").unwrap();
+        let out = outputs_depending_on(
+            a,
+            &std::collections::BTreeSet::from(["betaald_bedrag".to_string()]),
+        );
+        assert_eq!(
+            out,
+            [
+                "nog_te_betalen",
+                "betaling_conform",
+                "onverschuldigd_betaald"
+            ]
+        );
+        // Through an input whose source passes the parameter on.
+        let out = outputs_depending_on(
+            a,
+            &std::collections::BTreeSet::from(["datum_bekendmaking".to_string()]),
+        );
+        assert_eq!(out, ["betaling_conform"]);
+        let a = crate::regulations::article(&s, "testregeling_awb#5").unwrap();
+        assert!(outputs_depending_on(
+            a,
+            &std::collections::BTreeSet::from(["iets_anders".to_string()])
+        )
+        .is_empty());
+    }
+
     use super::*;
     use regelrecht_engine::LawExecutionService;
 

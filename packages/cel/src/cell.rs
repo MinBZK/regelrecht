@@ -111,12 +111,9 @@ impl Cell {
                 reduction::WORKLIST
             ));
         } else {
-            match reduction::worklist_columns(&streams, &service, date) {
-                Ok(columns) => {
-                    if let Some(d) = reduction::worklist_definition(&streams, &columns) {
-                        lexostatuses.lexostatus_definitions.push(d);
-                    }
-                }
+            match reduction::worklist(&streams, &service, date) {
+                Ok(Some(d)) => lexostatuses.lexostatus_definitions.push(d),
+                Ok(None) => {}
                 Err(e) => errors.push(e),
             }
         }

@@ -312,7 +312,7 @@ pub struct LexostatusReference {
 /// needs and from whom is not in `process.yaml`: it follows at load time
 /// from the stage of the event (RFC-008) and from the origin of the
 /// parameters (RFC-043); see the fields without serde below.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct ActionDefinition {
     /// Unique in the process; the route is `cases/<c>/actions/<name>`.
     pub name: String,
@@ -442,7 +442,7 @@ pub struct NotYet {
 /// The cell and the event in which the process has an action recorded. The
 /// event has `case: follows`; its `$external` keys are outputs of the
 /// action or fields of its form.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct Record {
     pub cell: String,
     pub stream: String,

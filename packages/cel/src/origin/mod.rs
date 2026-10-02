@@ -63,10 +63,6 @@ pub use delivery::Execution;
 use delivery::{beforehand_known, supplier, SupplierOutcome, Suppliers};
 pub use shape::{overwrites, parameter, validate, Overwrites};
 
-/// The type of a gram an interested party submits (RFC-022 par. 1,
-/// `schema/chronolex/v0.3.0/stream.json`): what the applicant provides.
-const SUBMISSION: &str = "submission";
-
 /// The origin in force for a parameter, and where it is stated.
 #[derive(Debug, Clone, PartialEq)]
 pub struct InForce {

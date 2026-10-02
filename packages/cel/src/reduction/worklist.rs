@@ -1,16 +1,33 @@
-//! The worklist (RFC-047): the roots of the submissions in a cell on which
-//! nothing has been decided yet (stage BESLUIT, RFC-008), the applications
-//! "waarop nog niet is besloten" (DVB art. 3 lid 1). The runtime offers it
-//! for every cell with submissions, as a list lexostatus with the reduction
-//! DSL, so it goes through the same checks and the same reduction as one
-//! from `lexostatuses.yaml`; no cell defines the name itself.
+//! The worklist (RFC-047): the cases of the submissions in a cell on which
+//! not every requested decision has been taken yet, the applications "waarop
+//! nog niet is besloten" (DVB art. 3 lid 1). The runtime offers it for every
+//! cell with a submission, as a list lexostatus with the reduction DSL, so it
+//! goes through the same checks and the same reduction as one from
+//! `lexostatuses.yaml`; no cell defines the name itself.
 //!
-//! Its columns are derived, never configured per cell: the moment of receipt
-//! and of recording, the owner field of the portal channel of the policy (who
-//! applied), and the field of the submission whose parameter has origin role
-//! `TIJDVAK` (the window of the requested decision, Awb 4:2 lid 1).
+//! **Which cases (per requested decision).** A case stays until every
+//! decision on the submission has been taken: the articles that name its
+//! establishing article in `decides_on` (`Event::decided_by`), or without
+//! those the articles that establish a decision (stage BESLUIT) in its
+//! chronicle. With exactly one such article (NAPP Wpp 107, the afnemer), a
+//! decision gram takes the case off: `without: {stage: BESLUIT}`. With more
+//! than one (the toeslag: the voorschot and the vaststelling) the case
+//! should leave only when each has a BESLUIT gram. The reduction DSL cannot
+//! say that (`without` is one filter, and any gram through it takes the case
+//! off), so such a worklist leaves out `without` and keeps every case: a
+//! known limitation, until the DSL can require a gram per article.
+//!
+//! **Which submission.** The one whose establishing article a portal channel
+//! of the policy `submits`; without a portal, the only submission of the
+//! cell. The filter names that event.
+//!
+//! **Columns**, derived and never configured per cell: the moment of receipt
+//! and of recording, the field of the submission the portal channel names as
+//! `owner` (who follows the case, see [`crate::channel::owner_binding`]), and
+//! the field whose parameter has origin role `TIJDVAK` (the window of the
+//! requested decision, Awb 4:2 lid 1).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::NaiveDate;
 use regelrecht_engine::LawExecutionService;
@@ -18,6 +35,7 @@ use regelrecht_law_model::OriginRole;
 use serde_json::{json, Map, Value};
 
 use super::{LexostatusDefinition, Period};
+use crate::policy::{ActorPolicy, DeclaredChannel};
 use crate::stream::{Binding, Event, Stream, DECISION};
 
 /// The name of the worklist. Reserved.
@@ -26,26 +44,110 @@ pub const WORKLIST: &str = "worklist";
 /// A column of the worklist beyond the moments: its name and derivation.
 pub type Column = (String, Value);
 
-/// The worklist of the chronicle with submissions, if the cell has them in
-/// exactly one chronicle, with `columns` after the moments. Without a
-/// decision event in that chronicle nothing is left out: nothing has been
-/// decided.
-pub fn worklist_definition(streams: &[Stream], columns: &[Column]) -> Option<LexostatusDefinition> {
-    let mut chronicles: Vec<&str> = streams
-        .iter()
-        .filter(|s| s.events.iter().any(is_submission))
-        .map(|s| s.chronicle.as_str())
-        .collect();
-    chronicles.sort_unstable();
-    chronicles.dedup();
-    let [chronicle] = chronicles[..] else {
-        return None;
+/// The worklist of a cell, if it has a submission (see the module).
+pub fn worklist(
+    streams: &[Stream],
+    service: &LawExecutionService,
+    date: Option<NaiveDate>,
+) -> Result<Option<LexostatusDefinition>, String> {
+    let policies = crate::policy::read(service, date)
+        .map_err(|e| format!("worklist: the policy cannot be read ({})", e.join("; ")))?;
+    let Some((portal, stream, event)) = submission(streams, &policies)? else {
+        return Ok(None);
     };
-    let decides = streams
+    let mut columns = Vec::new();
+    if let Some((p, c)) = portal {
+        if let Some(owner) = &c.def.owner {
+            let none = BTreeMap::new();
+            let supplies = p.supplies.get(&c.id).map_or(&none, |(_, s)| s);
+            let o = crate::channel::owner_binding(owner, &c.id, supplies, event)
+                .map_err(|e| format!("worklist: {}: channel '{}': {e}", c.article, c.id))?;
+            columns.push((owner.clone(), json!({"field": o.field})));
+        }
+    }
+    if let Some(column) = window(event, service)? {
+        columns.push(column);
+    }
+    Ok(worklist_definition(
+        &stream.chronicle,
+        event,
+        streams,
+        &columns,
+    ))
+}
+
+/// The portal channel (with its policy) and the submission of the worklist:
+/// the submission whose establishing article a channel `submits`, otherwise
+/// the only submission of the cell.
+#[allow(clippy::type_complexity)]
+fn submission<'a>(
+    streams: &'a [Stream],
+    policies: &'a BTreeMap<String, ActorPolicy>,
+) -> Result<
+    Option<(
+        Option<(&'a ActorPolicy, &'a DeclaredChannel)>,
+        &'a Stream,
+        &'a Event,
+    )>,
+    String,
+> {
+    let submissions: Vec<(&Stream, &Event)> = streams
+        .iter()
+        .flat_map(|s| s.events.iter().map(move |e| (s, e)))
+        .filter(|(_, e)| e.is_submission())
+        .collect();
+    let mut found = Vec::new();
+    for p in policies.values() {
+        for c in &p.channels {
+            let Some(submits) = c.def.submits.as_deref() else {
+                continue;
+            };
+            for (s, e) in &submissions {
+                if crate::derive::establishing(e).as_deref() == Some(submits) {
+                    found.push((Some((p, c)), *s, *e));
+                }
+            }
+        }
+    }
+    match (&found[..], &submissions[..]) {
+        ([one], _) => Ok(Some(*one)),
+        ([], [(s, e)]) => Ok(Some((None, s, e))),
+        ([], _) => Ok(None),
+        (more, _) => Err(format!(
+            "worklist: {} portal channels submit a submission of this cell ({}); one portal per cell",
+            more.len(),
+            more.iter()
+                .filter_map(|(c, _, e)| c.map(|(_, c)| format!("'{}' ({})", c.id, e.name)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )),
+    }
+}
+
+/// The articles whose decision the submission asks for: `decided_by`, or
+/// without it those that establish a decision in its chronicle.
+fn requested_decisions(chronicle: &str, event: &Event, streams: &[Stream]) -> BTreeSet<String> {
+    if !event.decided_by.is_empty() {
+        return event.decided_by.iter().cloned().collect();
+    }
+    streams
         .iter()
         .filter(|s| s.chronicle == chronicle)
         .flat_map(|s| &s.events)
-        .any(|e| e.stage.as_deref() == Some(DECISION));
+        .filter(|e| e.stage.as_deref() == Some(DECISION))
+        .filter_map(crate::derive::establishing)
+        .collect()
+}
+
+/// The worklist of the submission `event` in `chronicle`, with `columns`
+/// after the moments. A case leaves at a decision only when the submission
+/// asks for exactly one (see the module).
+pub fn worklist_definition(
+    chronicle: &str,
+    event: &Event,
+    streams: &[Stream],
+    columns: &[Column],
+) -> Option<LexostatusDefinition> {
     let mut derivations = Map::new();
     derivations.insert("ontvangen_op".into(), json!({"moment": "effective_at"}));
     derivations.insert("vastgelegd_op".into(), json!({"moment": "recorded_at"}));
@@ -54,79 +156,15 @@ pub fn worklist_definition(streams: &[Stream], columns: &[Column]) -> Option<Lex
     }
     let mut reduction = json!({
         "chronicle": chronicle,
-        "filter": {"type": "submission"},
+        "filter": {"name": event.name},
         "group_by": "root",
         "pick": "latest",
         "derivations": derivations,
     });
-    if decides {
+    if requested_decisions(chronicle, event, streams).len() == 1 {
         reduction["without"] = json!({"stage": DECISION});
     }
     serde_json::from_value(json!({"name": WORKLIST, "inputs": [], "reduction": reduction})).ok()
-}
-
-fn is_submission(e: &Event) -> bool {
-    e.type_ == "submission"
-}
-
-/// The columns of the worklist of a cell beyond the moments, from the law:
-/// the owner field of the portal channel whose `submits` the submission
-/// establishes, and the field with origin role `TIJDVAK`. A policy that
-/// cannot be read gives no owner column; the derivation of the process
-/// reports it.
-pub fn worklist_columns(
-    streams: &[Stream],
-    service: &LawExecutionService,
-    date: Option<NaiveDate>,
-) -> Result<Vec<Column>, String> {
-    let submissions: Vec<&Event> = streams
-        .iter()
-        .flat_map(|s| &s.events)
-        .filter(|e| is_submission(e))
-        .collect();
-    let policies = crate::policy::read(service, date).unwrap_or_default();
-    let portal = policies
-        .values()
-        .flat_map(|p| p.channels.iter().map(move |c| (p, c)))
-        .filter_map(|(p, c)| {
-            let submits = c.def.submits.as_deref()?;
-            let e = submissions
-                .iter()
-                .find(|e| crate::derive::establishing(e).as_deref() == Some(submits))?;
-            Some((p, c, *e))
-        })
-        .next();
-    // The submission the columns come from: the one of the portal, otherwise
-    // the only one.
-    let event = match (portal, &submissions[..]) {
-        (Some((_, _, e)), _) => e,
-        (None, [one]) => *one,
-        _ => return Ok(Vec::new()),
-    };
-    let mut out = Vec::new();
-    if let Some((p, c, _)) = portal {
-        if let Some(owner) = &c.def.owner {
-            let none = BTreeMap::new();
-            let supplies = p.supplies.get(&c.id).map_or(&none, |(_, s)| s);
-            let path = crate::channel::owner_path(&c.id, owner, supplies);
-            let bound: Vec<String> = event
-                .leaves()
-                .into_iter()
-                .filter(|l| {
-                    l.binding == Binding::Intake(path.clone())
-                        || l.binding == Binding::Supplied(path.clone())
-                })
-                .map(|l| l.path)
-                .collect();
-            if let Some(field) = bound.first() {
-                out.push((owner.clone(), json!({"field": field})));
-            }
-        }
-    }
-    if let Some(column) = window(event, service)? {
-        out.push(column);
-    }
-    Ok(out)
 }
 
 /// The field of the submission whose parameter, in a regulation that takes
@@ -203,85 +241,112 @@ fn window(event: &Event, service: &LawExecutionService) -> Result<Option<Column>
 mod tests {
     use super::*;
 
-    #[test]
-    fn a_cell_with_submissions_gets_the_worklist() {
-        let s = crate::stream::parse(
-            "$id: s\nrecording_actor: a\nchronicle: k\nevents:\n  - {name: aanvraag_ontvangen, intake: portaal, legal_basis: ['r#1'], type: submission, subtype: aanvraag, fields: {x: $external.x}}\n  - {name: besluit, intake: medewerker, legal_basis: ['r#2'], type: decretogram, stage: BESLUIT, fields: {y: $external.y}}\n",
+    const APPLICATION: &str = "  - {name: aanvraag_ontvangen, intake: portaal, legal_basis: ['r#1'], type: submission, subtype: aanvraag, fields: {x: $external.x}}\n";
+
+    fn stream(events: &str) -> Stream {
+        crate::stream::parse(
+            &format!("$id: s\nrecording_actor: a\nchronicle: k\nevents:\n{events}"),
             "t",
         )
-        .unwrap();
+        .unwrap()
+    }
+
+    fn definition(s: &Stream) -> Value {
         let d = worklist_definition(
-            std::slice::from_ref(&s),
+            "k",
+            &s.events[0],
+            std::slice::from_ref(s),
             &[("x".into(), json!({"field": "x"}))],
         )
         .unwrap();
         assert_eq!(d.name, WORKLIST);
         assert!(d.is_list());
-        assert_eq!(d.reduction.chronicle, "k");
-        let v = serde_json::to_value(&d).unwrap();
+        serde_json::to_value(&d).unwrap()
+    }
+
+    #[test]
+    fn one_requested_decision_takes_the_case_off() {
+        let s = stream(&format!(
+            "{APPLICATION}  - {{name: besluit, intake: medewerker, legal_basis: ['r#2'], type: decretogram, stage: BESLUIT, fields: {{y: $external.y}}}}\n"
+        ));
+        let v = definition(&s);
+        assert_eq!(v["reduction"]["chronicle"], "k");
+        assert_eq!(
+            v["reduction"]["filter"],
+            json!({"name": "aanvraag_ontvangen"})
+        );
         assert_eq!(v["reduction"]["without"], json!({"stage": "BESLUIT"}));
-        let columns: Vec<&String> = d.reduction.derivations.keys().collect();
+        let columns: Vec<&String> = v["reduction"]["derivations"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .collect();
         assert_eq!(columns, ["ontvangen_op", "vastgelegd_op", "x"]);
-        let none = crate::stream::parse("$id: s\nrecording_actor: a\nchronicle: k\nevents:\n  - {name: x, intake: i, legal_basis: ['r#1'], type: executogram, fields: {y: $external.y}}\n", "t").unwrap();
-        assert!(worklist_definition(&[none], &[]).is_none());
+    }
+
+    /// Without a decision in the chronicle every application is undecided;
+    /// with two requested decisions the DSL cannot say "each of them", so
+    /// the case stays (the known limitation of the module).
+    #[test]
+    fn no_or_several_requested_decisions_take_nothing_off() {
+        for events in [
+            APPLICATION.to_string(),
+            format!(
+                "{APPLICATION}  - {{name: b1, intake: medewerker, legal_basis: ['r#2'], type: decretogram, stage: BESLUIT, fields: {{y: $external.y}}}}\n  - {{name: b2, intake: medewerker, legal_basis: ['r#3'], type: decretogram, stage: BESLUIT, fields: {{z: $external.z}}}}\n"
+            ),
+        ] {
+            let v = definition(&stream(&events));
+            assert!(v["reduction"].get("without").is_none_or(Value::is_null), "{v}");
+        }
     }
 
     /// The columns of the fixtures follow from the policy and the law: the
-    /// owner of the portal channel and the window of the submission.
+    /// field of the submission the portal channel names as owner, and the
+    /// window.
     #[test]
     fn the_columns_follow_from_policy_and_law() {
         let (_, cells, _) = crate::derive::tests::setup();
-        let columns = |cell: &str| -> Vec<(String, Value)> {
-            let d = cells[cell].lexostatuses.lexostatus(WORKLIST).unwrap();
-            d.reduction
-                .derivations
-                .iter()
-                .map(|(n, a)| (n.clone(), serde_json::to_value(&a.derivation).unwrap()))
-                .collect()
-        };
-        let without = |cell: &str| {
+        let def = |cell: &str| {
             serde_json::to_value(cells[cell].lexostatuses.lexostatus(WORKLIST).unwrap()).unwrap()
-                ["reduction"]["without"]
-                .clone()
         };
-        let a = columns("test_afnemer");
-        let names: Vec<&str> = a.iter().map(|(n, _)| n.as_str()).collect();
-        assert_eq!(names, ["kvk", "ontvangen_op", "vastgelegd_op"]);
-        assert_eq!(a[0].1["field"], "core.signed_via.kvk_nummer");
-        assert_eq!(without("test_afnemer"), json!({"stage": "BESLUIT"}));
-        let t = columns("test_toeslag");
-        let names: Vec<&str> = t.iter().map(|(n, _)| n.as_str()).collect();
-        assert_eq!(names, ["maand", "nummer", "ontvangen_op", "vastgelegd_op"]);
-        assert_eq!(t[0].1, json!({"period_of": "maand", "period": "month"}));
-        // The supplied field the portal checks the owner on (`owner_path`).
-        assert_eq!(t[1].1["field"], "ondertekening");
-        assert_eq!(without("test_toeslag"), json!({"stage": "BESLUIT"}));
-        let i = columns("test_instantie");
-        let names: Vec<&str> = i.iter().map(|(n, _)| n.as_str()).collect();
+        let a = def("test_afnemer");
+        let d = &a["reduction"]["derivations"];
+        let names: Vec<&String> = d.as_object().unwrap().keys().collect();
+        assert_eq!(names, ["kvk_nummer", "ontvangen_op", "vastgelegd_op"]);
+        assert_eq!(d["kvk_nummer"]["field"], "core.signed_via.kvk_nummer");
+        assert_eq!(
+            a["reduction"]["filter"],
+            json!({"name": "aanvraag_ontvangen"})
+        );
+        assert_eq!(a["reduction"]["without"], json!({"stage": "BESLUIT"}));
+        let t = def("test_toeslag");
+        let d = &t["reduction"]["derivations"];
+        let names: Vec<&String> = d.as_object().unwrap().keys().collect();
         assert_eq!(
             names,
-            ["aanvraagjaar", "kvk", "ontvangen_op", "vastgelegd_op"]
+            ["maand", "ontvangen_op", "persoonsnummer", "vastgelegd_op"]
         );
-        assert_eq!(i[0].1["field"], "content.aanvraagjaar");
-        assert!(without("test_instantie").is_null());
+        assert_eq!(d["maand"], json!({"period_of": "maand", "period": "month"}));
+        assert_eq!(d["persoonsnummer"]["field"], "persoonsnummer");
+        // The voorschot and the vaststelling are both asked for (decides_on).
+        assert!(t["reduction"]["without"].is_null(), "{t}");
+        let i = def("test_instantie");
+        let d = &i["reduction"]["derivations"];
+        let names: Vec<&String> = d.as_object().unwrap().keys().collect();
+        assert_eq!(
+            names,
+            [
+                "aanvraagjaar",
+                "kvk_nummer",
+                "ontvangen_op",
+                "vastgelegd_op"
+            ]
+        );
+        assert_eq!(d["aanvraagjaar"]["field"], "content.aanvraagjaar");
+        assert!(i["reduction"]["without"].is_null());
         assert!(cells["test_register"]
             .lexostatuses
             .lexostatus(WORKLIST)
             .is_none());
-    }
-
-    /// Without a decision in the chronicle every application is undecided.
-    #[test]
-    fn without_a_decision_nothing_is_left_out() {
-        let s = crate::stream::parse(
-            "$id: s\nrecording_actor: a\nchronicle: k\nevents:\n  - {name: aanvraag_ontvangen, intake: portaal, legal_basis: ['r#1'], type: submission, subtype: aanvraag, fields: {x: $external.x}}\n",
-            "t",
-        )
-        .unwrap();
-        let v = serde_json::to_value(worklist_definition(&[s], &[]).unwrap()).unwrap();
-        assert!(
-            v["reduction"].get("without").is_none_or(Value::is_null),
-            "{v}"
-        );
     }
 }

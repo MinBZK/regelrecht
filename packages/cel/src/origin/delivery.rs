@@ -290,7 +290,7 @@ pub(super) fn read(cell: &Cell, actor: &str, def: &LexostatusDefinition, a: &Der
     if events.is_empty() {
         return Read::Undetermined;
     }
-    if events.iter().all(|(_, e)| e.type_ == SUBMISSION) {
+    if events.iter().all(|(_, e)| e.is_submission()) {
         let paths = a.read_paths();
         let only_intake = !paths.is_empty()
             && events.iter().all(|(_, e)| {
@@ -310,7 +310,7 @@ pub(super) fn read(cell: &Cell, actor: &str, def: &LexostatusDefinition, a: &Der
     }
     if events
         .iter()
-        .all(|(s, e)| e.type_ != SUBMISSION && s.recording_actor == actor)
+        .all(|(s, e)| !e.is_submission() && s.recording_actor == actor)
     {
         return Read::Course;
     }

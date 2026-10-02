@@ -65,6 +65,11 @@ pub struct ChannelDefinition {
     /// The policy article that says what it supplies (RFC-047).
     #[serde(skip)]
     pub supplied_by: Option<String>,
+    /// For a channel from policy (RFC-047): the path under `$intake` (or the
+    /// supplied field) of its owner, resolved against the submission (see
+    /// [`owner_binding`]).
+    #[serde(skip)]
+    pub owner_path: Option<String>,
 }
 
 /// In `supplies`: the route the application came in by (`$intake.channel`).
@@ -161,13 +166,71 @@ impl RoleDefinition {
     }
 }
 
-/// The path under `$intake` of the owner field of a channel whose fields
-/// arrive under `prefix`; if the channel supplies it to a field of the gram
-/// (`supplies`: field of the gram to field of the channel), that field.
-pub fn owner_path(prefix: &str, owner: &str, supplies: &BTreeMap<String, String>) -> String {
-    match supplies.iter().find(|(_, from)| *from == owner) {
-        Some((field, _)) => field.clone(),
-        None => format!("{prefix}.{owner}"),
+/// The owner of a case as the policy names it (RFC-047), resolved against
+/// the submission.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Owner {
+    /// The field of the channel (the login) that carries the value.
+    pub login: String,
+    /// What the gram binds to: a path under `$intake`, or the supplied field.
+    pub path: String,
+    /// The field of the submission, a path under `fields` of the gram.
+    pub field: String,
+}
+
+/// Resolve the `owner` of a policy channel, the field of the submission that
+/// designates who follows a case, for a channel whose fields arrive under
+/// `$intake.<prefix>`: (a) the channel supplies it (`supplies[owner]` is a
+/// field of the channel), or (b) exactly one field of the submission named
+/// `owner` binds to `$intake.<prefix>.<field>`. Anything else is an error.
+pub fn owner_binding(
+    owner: &str,
+    prefix: &str,
+    supplies: &BTreeMap<String, String>,
+    submission: &Event,
+) -> Result<Owner, String> {
+    let leaves = submission.leaves();
+    if let Some(login) = supplies.get(owner).filter(|f| !f.starts_with('$')) {
+        let fields: Vec<&str> = leaves
+            .iter()
+            .filter(|l| l.binding == Binding::Supplied(owner.to_string()))
+            .map(|l| l.path.as_str())
+            .collect();
+        return match fields[..] {
+            [field] => Ok(Owner {
+                login: login.clone(),
+                path: owner.to_string(),
+                field: field.to_string(),
+            }),
+            _ => Err(format!(
+                "owner '{owner}': the channel supplies it, but {} fields of submission '{}' take it",
+                fields.len(),
+                submission.name
+            )),
+        };
+    }
+    let found: Vec<(String, String)> = leaves
+        .iter()
+        .filter(|l| l.path.rsplit('.').next() == Some(owner))
+        .filter_map(|l| match &l.binding {
+            Binding::Intake(p) => {
+                let login = p.strip_prefix(prefix)?.strip_prefix('.')?;
+                Some((login.to_string(), l.path.clone()))
+            }
+            _ => None,
+        })
+        .collect();
+    match &found[..] {
+        [(login, field)] => Ok(Owner {
+            login: login.clone(),
+            path: format!("{prefix}.{login}"),
+            field: field.clone(),
+        }),
+        _ => Err(format!(
+            "owner '{owner}': {} fields of submission '{}' are named so and bind to $intake.{prefix}; exactly one designates the owner",
+            found.len(),
+            submission.name
+        )),
     }
 }
 
@@ -198,8 +261,18 @@ impl ChannelDefinition {
     /// The path under `$intake` of the owner field, if the channel names
     /// one; if the channel supplies it to a field of the gram, that field.
     pub fn owner_path(&self, id: &str) -> Option<String> {
+        if let Some(path) = &self.owner_path {
+            return Some(path.clone());
+        }
+        // A channel from `process.yaml` (until Task 11): the owner is a
+        // field of the channel.
         let owner = self.owner.as_ref()?;
-        Some(owner_path(self.intake_prefix(id), owner, &self.supplies))
+        Some(
+            match self.supplies.iter().find(|(_, from)| *from == owner) {
+                Some((field, _)) => field.clone(),
+                None => format!("{}.{owner}", self.intake_prefix(id)),
+            },
+        )
     }
 
     /// Validate the input of a login: every field is present, as text, and
@@ -584,6 +657,58 @@ mod tests {
 
     fn channel(yaml: &str) -> ChannelDefinition {
         serde_yaml_ng::from_str(yaml).unwrap()
+    }
+
+    /// The owner names a field of the submission (RFC-047): through the
+    /// login under `$intake`, or supplied by the channel; anything else is
+    /// an error.
+    #[test]
+    fn the_owner_is_a_field_of_the_submission() {
+        let (_, cells, _) = crate::derive::tests::setup();
+        let event = |cell: &str| {
+            cells[cell]
+                .event(
+                    match cell {
+                        "test_afnemer" => "test_afnemer_aanvragen",
+                        _ => "test_toeslag_aanvragen",
+                    },
+                    "aanvraag_ontvangen",
+                )
+                .unwrap()
+                .1
+                .clone()
+        };
+        let none = BTreeMap::new();
+        let a = event("test_afnemer");
+        assert_eq!(
+            owner_binding("kvk_nummer", "eherkenning", &none, &a).unwrap(),
+            Owner {
+                login: "kvk".into(),
+                path: "eherkenning.kvk".into(),
+                field: "core.signed_via.kvk_nummer".into()
+            }
+        );
+        // Another prefix binds nothing; a name no field has neither.
+        assert!(owner_binding("kvk_nummer", "burger", &none, &a)
+            .unwrap_err()
+            .contains("0 fields"));
+        assert!(owner_binding("kvk", "eherkenning", &none, &a).is_err());
+        let t = event("test_toeslag");
+        let supplies = BTreeMap::from([
+            ("ondertekening".to_string(), "nummer".to_string()),
+            ("persoonsnummer".to_string(), "nummer".to_string()),
+            ("kanaal".to_string(), "$channel".to_string()),
+        ]);
+        assert_eq!(
+            owner_binding("persoonsnummer", "persoon", &supplies, &t).unwrap(),
+            Owner {
+                login: "nummer".into(),
+                path: "persoonsnummer".into(),
+                field: "persoonsnummer".into()
+            }
+        );
+        // What the channel supplies as a route is no field of its login.
+        assert!(owner_binding("kanaal", "persoon", &supplies, &t).is_err());
     }
 
     fn organisation() -> ChannelDefinition {

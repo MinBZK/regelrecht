@@ -50,7 +50,7 @@ mod worklist;
 pub use as_of::*;
 pub use case_state::*;
 pub use definition::*;
-pub use worklist::{worklist_columns, worklist_definition, WORKLIST};
+pub use worklist::{worklist, worklist_definition, WORKLIST};
 
 impl Derivation {
     /// Apply a derivation to the chosen gram. `None`: the gram says nothing

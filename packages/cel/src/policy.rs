@@ -81,6 +81,8 @@ pub struct PolicyChannel {
     pub role: Option<String>,
     #[serde(default)]
     pub identifies: Option<Identifies>,
+    /// The field of the submission that designates who follows a case
+    /// (`kvk_nummer`); see [`crate::channel::owner_binding`].
     #[serde(default)]
     pub owner: Option<String>,
     /// The article whose submission this portal records.

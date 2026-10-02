@@ -36,9 +36,9 @@ articles:
                   kind: portal
                   role: aanvrager
                   identifies: [kvk, persoon]
-                  owner: kvk
+                  owner: kvk_nummer
                   submits: testregeling_aanvraag#1
                   assesses: {output: aanvraag_volledig}
                   form: {document: documents/formulier-instantie.yaml, screen: aanvraag}
-                burger: {kind: portal, role: burger, identifies: [nummer], owner: nummer}
+                burger: {kind: portal, role: burger, identifies: [nummer], owner: burgernummer}
                 medewerker: {kind: counter, role: loket}

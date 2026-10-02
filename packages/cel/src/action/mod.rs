@@ -88,8 +88,8 @@ use trial::{event_fields, own};
 
 pub use check::{check, sources_for};
 pub use load::{
-    assessments, decision_parameter_of, field_kind, hooks_at, not_yet, outputs_of_article,
-    prepare_for, procedure_of, required, set_form,
+    assessments, decision_parameter_of, field_kind, hooks_at, not_yet, outputs_depending_on,
+    outputs_of_article, prepare_for, procedure_of, required, set_form,
 };
 pub use state::{
     decisions_in_case, procedure_of_the_case, state, ActionStatus, DecisionInCase, LegalProtection,
@@ -212,17 +212,11 @@ pub fn references(
     root: &str,
     decision: Option<&str>,
 ) -> BTreeMap<String, String> {
-    let events: Vec<&Event> = cell.streams.iter().flat_map(|s| s.events.iter()).collect();
     event
         .refers_to
         .iter()
         .filter_map(|(name, v)| {
-            let targets: Vec<&&Event> = events.iter().filter(|d| v.to.fits_event(d)).collect();
-            let to_decision = !targets.is_empty()
-                && targets
-                    .iter()
-                    .all(|d| d.stage.as_deref() == Some(crate::stream::DECISION));
-            let id = if to_decision {
+            let id = if points_to_decision(cell, &v.to) {
                 decision?.to_string()
             } else {
                 root.to_string()
@@ -230,6 +224,21 @@ pub fn references(
             Some((name.clone(), id))
         })
         .collect()
+}
+
+/// Whether a reference can only point to a decision: every event of the
+/// cell it can point to has stage BESLUIT.
+pub fn points_to_decision(cell: &Cell, to: &crate::stream::To) -> bool {
+    let targets: Vec<&Event> = cell
+        .streams
+        .iter()
+        .flat_map(|s| s.events.iter())
+        .filter(|e| to.fits_event(e))
+        .collect();
+    !targets.is_empty()
+        && targets
+            .iter()
+            .all(|e| e.stage.as_deref() == Some(crate::stream::DECISION))
 }
 
 /// What an action needs from the runtime: the cell, the sources and the
