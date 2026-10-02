@@ -1013,7 +1013,7 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
         // overnight. Counted from the durable `jobs` table (not an in-memory
         // counter) so the cap holds across restarts/redeploys.
         //
-        // Task-flow enrich jobs (deliver=task, e.g. "Verrijk dit regelwerk") fall
+        // Task-flow enrich jobs (deliver=task, e.g. "Verrijk deze wet") fall
         // under this cap on purpose: they are LLM runs on the same shared token
         // budget as bulk enrichment, so the spend guard must cover them too.
         // Their higher priority (80) means they are claimed first within the
