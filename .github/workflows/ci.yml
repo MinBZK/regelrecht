@@ -600,6 +600,16 @@ jobs:
           RUSTFLAGS: -Dwarnings -C link-arg=-fuse-ld=mold
         run: cargo test --test bdd -- --nocapture
 
+      # Dezelfde scenario's met de acties van elk artikel in omgekeerde
+      # volgorde: de volgorde in het bestand mag geen uitkomst veranderen.
+      - name: Run conformance bucket with reversed actions
+        working-directory: packages/engine
+        env:
+          BDD_BUCKET: conformance
+          BDD_REVERSE_ACTIONS: "1"
+          RUSTFLAGS: -Dwarnings -C link-arg=-fuse-ld=mold
+        run: cargo test --test bdd -- --nocapture
+
   # Bucket A over het demo-corpus: de 80 gemigreerde POC-wetten onder
   # corpus/demo met hun scenario's en persona-data (REGULATION_PATH wijst wetten
   # én scenario's daarheen). Anders dan bucket A over corpus/regulation hangt
@@ -655,6 +665,15 @@ jobs:
         working-directory: packages/engine
         env:
           BDD_BUCKET: corpus
+          REGULATION_PATH: ${{ github.workspace }}/corpus/demo/regulation
+          RUSTFLAGS: -Dwarnings -C link-arg=-fuse-ld=mold
+        run: cargo test --test bdd -- --nocapture
+
+      - name: Run demo bucket with reversed actions
+        working-directory: packages/engine
+        env:
+          BDD_BUCKET: corpus
+          BDD_REVERSE_ACTIONS: "1"
           REGULATION_PATH: ${{ github.workspace }}/corpus/demo/regulation
           RUSTFLAGS: -Dwarnings -C link-arg=-fuse-ld=mold
         run: cargo test --test bdd -- --nocapture

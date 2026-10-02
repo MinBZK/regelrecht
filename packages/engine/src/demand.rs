@@ -71,6 +71,78 @@ pub(crate) fn required_outputs_with(
     required
 }
 
+/// The order to run `actions` in: every action after the actions producing
+/// what it reads. Where nothing orders two actions, declaration order does,
+/// so the order of the actions in the file never changes a value.
+///
+/// The assignments of an output assigned more than once run together, in
+/// declaration order, and a reader of that output runs after all of them. An
+/// action without `output` keeps its place at the front, where the loop
+/// rejects it. `Err` names an output that depends on itself through other
+/// outputs of the article.
+pub(crate) fn execution_order(actions: &[Action]) -> Result<Vec<usize>, String> {
+    let mut order: Vec<usize> = Vec::with_capacity(actions.len());
+    let mut names: Vec<&str> = Vec::new();
+    let mut writes: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
+    for (index, action) in actions.iter().enumerate() {
+        match action.output.as_deref() {
+            None => order.push(index),
+            Some(name) => {
+                let entry = writes.entry(name).or_default();
+                if entry.is_empty() {
+                    names.push(name);
+                }
+                entry.push(index);
+            }
+        }
+    }
+    let depends_on = |name: &str| -> Vec<&str> {
+        let reads: BTreeSet<String> = writes[name]
+            .iter()
+            .flat_map(|&index| referenced_names(&actions[index]))
+            .collect();
+        // In declaration order, so the order among independent outputs is
+        // the file's.
+        names
+            .iter()
+            .copied()
+            .filter(|other| *other != name && reads.contains(*other))
+            .collect()
+    };
+
+    #[derive(Clone, Copy, PartialEq)]
+    enum Mark {
+        Visiting,
+        Done,
+    }
+    fn visit<'a>(
+        name: &'a str,
+        depends_on: &dyn Fn(&str) -> Vec<&'a str>,
+        marks: &mut BTreeMap<&'a str, Mark>,
+        sorted: &mut Vec<&'a str>,
+    ) -> Result<(), String> {
+        match marks.get(name) {
+            Some(Mark::Done) => return Ok(()),
+            Some(Mark::Visiting) => return Err(name.to_string()),
+            None => {}
+        }
+        marks.insert(name, Mark::Visiting);
+        for dependency in depends_on(name) {
+            visit(dependency, depends_on, marks, sorted)?;
+        }
+        marks.insert(name, Mark::Done);
+        sorted.push(name);
+        Ok(())
+    }
+    let mut marks = BTreeMap::new();
+    let mut sorted = Vec::with_capacity(names.len());
+    for &name in &names {
+        visit(name, &depends_on, &mut marks, &mut sorted)?;
+    }
+    order.extend(sorted.iter().flat_map(|name| writes[name].iter().copied()));
+    Ok(order)
+}
+
 /// The name a `$reference` reads, by its base (`$a.b` gives `a`); `None` for
 /// a string that is not a reference.
 pub(crate) fn reference_base(reference: &str) -> Option<&str> {
