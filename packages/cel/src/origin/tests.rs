@@ -590,6 +590,13 @@ fn the_shape_of_an_origin_at_load_time() {
             error("{waarde: DOSSIER, grondslag: 'een_wet#1', rol: TIJDVAK}"),
             ["article 1, parameter 'een_feit': rol TIJDVAK with origin DOSSIER: the applicant chooses the window and the decision requested as part of the application (Awb 4:2 lid 1), so BELANGHEBBENDE"]
         );
+    // The decision a parameter is about is a fact of the course of the case
+    // (RFC-047, UB 15), not something the applicant chooses.
+    assert!(error("{waarde: DOSSIER, grondslag: 'een_wet#1', rol: BESLUIT}").is_empty());
+    assert_eq!(
+            error("{waarde: BELANGHEBBENDE, grondslag: 'een_wet#1', rol: BESLUIT}"),
+            ["article 1, parameter 'een_feit': rol BESLUIT with origin BELANGHEBBENDE: the runtime gives the decision an action acts on, a fact of the course of the case, so DOSSIER"]
+        );
     assert_eq!(
             error("{waarde: BELANGHEBBENDE, grondslag: een_wet}"),
             ["article 1, parameter 'een_feit': legal basis 'een_wet' does not have the form <regulation>#<article>"]

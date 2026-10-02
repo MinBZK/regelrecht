@@ -22,12 +22,20 @@ fn shape(o: &Origin) -> Vec<String> {
             w.as_str()
         )),
     }
-    if let Some(rol) = o.rol.filter(|_| o.waarde != OriginValue::Belanghebbende) {
-        errors.push(format!(
+    match o.rol {
+        // The decision an action acts on is a fact of the course of the
+        // case, which the runtime gives (RFC-047).
+        Some(OriginRole::Besluit) if o.waarde != OriginValue::Dossier => errors.push(format!(
+            "rol BESLUIT with origin {}: the runtime gives the decision an action acts on, a fact of the course of the case, so DOSSIER",
+            o.waarde.as_str()
+        )),
+        Some(OriginRole::Besluit) | None => {}
+        Some(rol) if o.waarde != OriginValue::Belanghebbende => errors.push(format!(
             "rol {} with origin {}: the applicant chooses the window and the decision requested as part of the application (Awb 4:2 lid 1), so BELANGHEBBENDE",
             rol.as_str(),
             o.waarde.as_str()
-        ));
+        )),
+        Some(_) => {}
     }
     errors
 }
