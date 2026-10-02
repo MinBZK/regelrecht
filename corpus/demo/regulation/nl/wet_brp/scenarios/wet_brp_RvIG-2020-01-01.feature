@@ -27,3 +27,10 @@ Feature: Woonsituatie uit de BRP
       | 999993653 | null  | ["Kalverstraat 1, 1012NX Amsterdam"] |
     When I evaluate "woonsituatie" of "wet_brp"
     Then output "woonsituatie" equals "UIT"
+
+  Scenario: Wie geen ouders met een adres in de BRP heeft, woont uit
+    Given the following "RvIG" data with key "bsn" for law "wet_brp":
+      | bsn       | adres                                                                                                      | ouder_adressen |
+      | 999993653 | {"straat":"Kalverstraat","huisnummer":"1","postcode":"1012NX","woonplaats":"Amsterdam","type":"WOONADRES"} | []             |
+    When I evaluate "woonsituatie" of "wet_brp"
+    Then output "woonsituatie" equals "UIT"
