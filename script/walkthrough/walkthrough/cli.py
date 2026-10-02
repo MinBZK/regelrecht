@@ -188,6 +188,13 @@ rondleiding door de demo van RegelRecht: wetten als machine-uitvoerbare
 regels. Verbeter wat de spraakherkenning verkeerd verstond: verkeerd
 gespelde of verkeerd gehoorde woorden, vakbegrippen, namen en interpunctie.
 
+Wat er tijdens het praten op het scherm stond, staat in de map frames:
+één beeld per moment, de bestandsnaam is de tijd in seconden. Bekijk ze met
+Read voordat je verbetert. Een woord dat de spreker voorleest of noemt staat
+vaak letterlijk in beeld (een veldnaam, een wet, "bsn"), en dat beeld wint van
+wat Whisper meende te horen. Het transcript met tijden staat erbij, zodat je
+weet welk beeld bij welke zin hoort.
+
 Regels:
 - Verbeter wat er verkeerd verstaan is, niet hoe het gezegd is. Spreektaal,
   herhalingen, "eh" en "jada jada" blijven staan; herschrijf geen zinnen.
@@ -196,7 +203,10 @@ Regels:
 - Antwoord met alleen de verbeterde tekst, zonder toelichting.
 
 {context}
-Transcript:
+Transcript met tijden (alleen om de beelden bij te zoeken):
+{timed}
+
+Transcript om te verbeteren:
 {text}
 """
 
@@ -205,7 +215,8 @@ def correct(take: str) -> Path | None:
     """Let a language model correct the transcript, as a person would.
 
     Whisper gets Dutch policy vocabulary wrong ("machine uit voorwaarde
-    formaat"). The model gets the glossary and the slide texts as context and
+    formaat"). The model gets the glossary, the slide texts, what was clicked
+    and stills of the screen as context and
     returns the same speech with the mishearings fixed; `words_for` puts that
     text back onto Whisper's timing. Runs headless Claude Code (`claude -p`);
     without it the raw transcript stays, and the file can be edited by hand.
@@ -223,19 +234,30 @@ def correct(take: str) -> Path | None:
         text = " / ".join(x for x in [sl.get("title"), *(sl.get("lines") or []), sl.get("body")] if isinstance(x, str) and x)
         if e.get("type") == "slide" and text and text not in slides:
             slides.append(text)
+    clicked: list[str] = []
     terms = (load_config(required=False).get("glossary") or [])
     context = ""
     if terms:
         context += "Begrippen die erin voorkomen: " + ", ".join(terms) + ".\n"
     if slides:
         context += "Teksten op de dia's die erbij te zien waren:\n" + "\n".join(f"- {x}" for x in slides) + "\n"
+    for e in read_json(d / "events.json", []):
+        if e.get("type") == "click":
+            label = " ".join(str(x.get("textContent") or x.get("accessibleLabel") or "") for x in e.get("target") or []).strip()
+            if label:
+                clicked.append(f"{e['t'] / 1000:.0f}s: {label}")
+    if clicked:
+        context += "Waar de spreker op klikte:\n" + "\n".join(f"- {x}" for x in clicked) + "\n"
     raw = " ".join(w["word"] for w in words)
-    say(f"{take}: transcript nakijken met een taalmodel")
+    timed = _timed_text(words)
+    frames = screen_frames(take)
+    say(f"{take}: transcript nakijken met een taalmodel ({len(frames)} schermbeelden erbij)")
     r = subprocess.run(
-        ["claude", "-p", "--model", "sonnet", "--tools", ""],
-        input=CORRECT_PROMPT.format(context=context, text=raw),
+        ["claude", "-p", "--model", "sonnet", "--tools", "Read", "--allowedTools", "Read"],
+        input=CORRECT_PROMPT.format(context=context, timed=timed, text=raw),
         capture_output=True,
         text=True,
+        cwd=d,
     )
     fixed = r.stdout.strip()
     if r.returncode != 0 or not fixed:
@@ -256,6 +278,44 @@ def correct(take: str) -> Path | None:
     for a, b in changed:
         print(f"    {a}  ->  {b}")
     return out
+
+
+def _timed_text(words: list[dict], every: float = 10.0) -> str:
+    lines, line, mark = [], [], None
+    for w in words:
+        if mark is None or w["start"] - mark >= every:
+            if line:
+                lines.append(f"[{mark:.0f}s] " + " ".join(line))
+            line, mark = [], w["start"]
+        line.append(w["word"])
+    if line:
+        lines.append(f"[{mark:.0f}s] " + " ".join(line))
+    return "\n".join(lines)
+
+
+def screen_frames(take: str, every: float = 6.0, limit: int = 60) -> list[Path]:
+    """Stills of the app at each route change, each click and every few
+    seconds in between: what was on screen while the presenter spoke."""
+    d = take_dir(take)
+    video = d / "app.cfr.mp4"
+    if not video.exists():
+        return []
+    out = d / "frames"
+    if out.exists():
+        return sorted(out.glob("*.jpg"))
+    end = media.duration(video)
+    times = [e["t"] / 1000 + 0.8 for e in read_json(d / "events.json", []) if e.get("type") in ("route", "click", "slide")]
+    times += [k * every for k in range(int(end // every) + 1)]
+    picked: list[float] = []
+    for t in sorted(t for t in times if t < end):
+        if not picked or t - picked[-1] >= 2.0:
+            picked.append(t)
+    if len(picked) > limit:
+        picked = [picked[round(k * (len(picked) - 1) / (limit - 1))] for k in range(limit)]
+    out.mkdir()
+    for t in picked:
+        ffmpeg("-ss", f"{t:.2f}", "-i", video, "-frames:v", "1", "-vf", "scale=1280:-2", "-q:v", "4", out / f"{t:06.1f}.jpg")
+    return sorted(out.glob("*.jpg"))
 
 
 def _changes(raw: str, fixed: str) -> list[tuple[str, str]]:
