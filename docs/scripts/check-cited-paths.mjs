@@ -58,6 +58,7 @@ const ALLOW = new Map([
   ['owner/repo', 'placeholder for a GitHub repository the reader supplies'],
   ['MinBZK/regelrecht-corpus', 'a separate repository, not a path in this one'],
   ['application/wasm', 'a media type, not a path'],
+  ['.walkthrough/.env', 'local and gitignored: the API key file the walkthrough pipeline reads'],
   ['refs/heads/main', 'a git ref'],
   ['refs/tags/schema-vX.Y.Z', 'a git ref, with a version placeholder'],
   ['refs/pull/N/merge', 'a git ref, with a PR-number placeholder'],

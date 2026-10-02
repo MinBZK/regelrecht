@@ -447,7 +447,10 @@ def render_recorded(name: str, segments: list[dict], cfg: dict, overrides: dict,
             clean(t)
 
     track = build_track(segments, cuts, durations, fps=FPS)
-    first = infos[takes[0]]
+    # The deck and the size are the opening take's, not the alphabetically
+    # first: a retake spliced in later may be older or newer.
+    lead = segments[0]["take"]
+    first = infos[lead]
     width, height = first["width"], first["height"]
     has_cam = all((take_dir(t) / "cam.cfr.mp4").exists() for t in takes)
     say(f"{name}: {len(track.pieces)} opgenomen stukken, {track.duration:.1f}s{', met webcam' if has_cam else ''}")
@@ -501,7 +504,7 @@ def render_recorded(name: str, segments: list[dict], cfg: dict, overrides: dict,
         "chapters": chapters(track, events, overrides),
         "events": remap_actions(track, events),
         "words": remap_words(track, words),
-        "slides": deck_of(takes[0], overrides),
+        "slides": deck_of(lead, overrides),
         "recordedAt": meta.get("startedAt"),
         "viewport": meta.get("viewport"),
         "pieces": [{"take": p.take, "from": p.start, "to": p.end, "at": p.out} for p in track.pieces],
