@@ -557,7 +557,7 @@ async fn prepare_write(
     // beoordelaar naar een koppelscherm sturen voor iets wat een herlading is.
     let if_match = corpus_handlers::extract_if_match(headers).ok_or((
         StatusCode::BAD_REQUEST,
-        "Verwerken vraagt om het regelwerk zoals je het zag. Herlaad de pagina en \
+        "Verwerken vraagt om de versie van het regelwerk zoals je die zag. Herlaad de pagina en \
          beoordeel de verrijking opnieuw."
             .to_string(),
     ))?;
