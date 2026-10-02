@@ -170,6 +170,13 @@ pub struct LegalBasis<'g> {
     pub paragraph: Option<&'g str>,
 }
 
+impl LegalBasis<'_> {
+    /// `<regulation>#<article>`: the article, without a paragraph.
+    pub fn article_ref(&self) -> String {
+        format!("{}#{}", self.regulation, self.article)
+    }
+}
+
 /// Whether a text is a paragraph number: digits, optionally with a letter.
 fn is_paragraph_number(text: &str) -> bool {
     let digits = text.trim_end_matches(|c: char| c.is_ascii_lowercase());

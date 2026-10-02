@@ -15,7 +15,7 @@ use crate::channel::{ChannelDefinition, RoleDefinition};
 use crate::config::{
     Assessment, FormReference, OnBehalfOf, OriginCheck, Portal, ProcessDefinition,
 };
-use crate::deployment::Deployment;
+use crate::deployment::{ChannelDeployment, Deployment};
 use crate::policy::{ActorPolicy, DeclaredChannel};
 use crate::stream::{Event, Stream};
 
@@ -30,8 +30,7 @@ pub struct Derived {
 /// first of `establishes`, otherwise the article of the first legal basis.
 pub fn establishing(event: &Event) -> Option<String> {
     let first = event.establishes.first().or(event.legal_basis.first())?;
-    let g = crate::regulations::parse(first).ok()?;
-    Some(format!("{}#{}", g.regulation, g.article))
+    Some(crate::regulations::parse(first).ok()?.article_ref())
 }
 
 /// Whether an event is a submission: `type: submission` or the stage that
@@ -53,12 +52,37 @@ pub fn processes(
     let mut errors = Vec::new();
     // Per cell the authority whose process records in it.
     let mut claimed: BTreeMap<String, &str> = BTreeMap::new();
-    for p in policies.values().filter(|p| !p.channels.is_empty()) {
+    for p in policies.values() {
         let at = |m: String| format!("authority '{}': {m}", p.authority);
-        let portal = match portal_of(p, cells) {
+        if p.channels.is_empty() {
+            // Mandates and supplies belong to the process of an actor; without
+            // a channel there is none.
+            if !p.mandates.is_empty() || !p.supplies.is_empty() {
+                errors.push(at(format!(
+                    "the policy names mandates or supplies ({}), but no channel; they belong to the process of an actor with channels",
+                    p.mandates
+                        .iter()
+                        .map(|m| m.legal_basis.as_str())
+                        .chain(p.supplies.values().map(|(by, _)| by.as_str()))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )));
+            }
+            continue;
+        }
+        let portal = match portal_of(p, cells, service) {
             Ok(found) => found,
             Err(e) => {
                 errors.push(at(e));
+                // The deployment with exactly the channels of this policy is
+                // its own, so that it does not also count as unclaimed.
+                for (cell, deployed) in &deployment.channels {
+                    let fits = deployed.len() == p.channels.len()
+                        && p.channels.iter().all(|c| deployed.contains_key(&c.id));
+                    if fits {
+                        claimed.entry(cell.clone()).or_insert(&p.authority);
+                    }
+                }
                 continue;
             }
         };
@@ -107,40 +131,65 @@ pub fn processes(
 /// The portal of an actor: its channel, and the submission it records.
 struct PortalOf<'a> {
     channel: &'a DeclaredChannel,
-    submits: String,
+    /// `<regulation>#<article>` of the submitted article.
+    submits: &'a str,
+    /// Its regulation.
+    regulation: &'a str,
     cell: &'a Arc<Cell>,
     stream: &'a Stream,
     event: &'a Event,
 }
 
-/// The one channel that names `submits`, and the one submission event, in
-/// any cell, that the submitted article establishes.
+/// The one channel that names `submits`, a loaded article, and the one
+/// submission event, in any cell, that the submitted article establishes.
 fn portal_of<'a>(
     p: &'a ActorPolicy,
     cells: &'a BTreeMap<String, Arc<Cell>>,
+    service: &LawExecutionService,
 ) -> Result<PortalOf<'a>, String> {
-    let portal: Vec<&DeclaredChannel> = p
+    let portal: Vec<(&DeclaredChannel, &str)> = p
         .channels
         .iter()
-        .filter(|c| c.def.submits.is_some())
+        .filter_map(|c| c.def.submits.as_deref().map(|s| (c, s)))
         .collect();
-    let [channel] = portal[..] else {
+    let [(channel, submits)] = portal[..] else {
+        let named: Vec<String> = if portal.is_empty() {
+            let mut articles: Vec<&str> = p.channels.iter().map(|c| c.article.as_str()).collect();
+            articles.dedup();
+            vec![format!(
+                "the channels are declared in {}",
+                articles.join(", ")
+            )]
+        } else {
+            portal
+                .iter()
+                .map(|(c, _)| format!("'{}' in {}", c.id, c.article))
+                .collect()
+        };
         return Err(format!(
             "{} channels name `submits` ({}); exactly one channel is the portal",
             portal.len(),
-            portal
-                .iter()
-                .map(|c| format!("'{}' in {}", c.id, c.article))
-                .collect::<Vec<_>>()
-                .join(", ")
+            named.join(", ")
         ));
     };
-    let submits = channel.def.submits.clone().unwrap_or_default();
+    let at = |m: &str| {
+        format!(
+            "{}: channel '{}' submits '{submits}', {m}",
+            channel.article, channel.id
+        )
+    };
+    let target = crate::regulations::parse(submits)
+        .map_err(|_| at("which does not have the form <regulation>#<article>"))?;
+    if target.paragraph.is_some() {
+        return Err(at("a paragraph; submits names the article itself"));
+    }
+    crate::regulations::article(service, submits)
+        .map_err(|e| at(&format!("which is not a loaded article ({e})")))?;
     let found: Vec<(&Arc<Cell>, &Stream, &Event)> = cells
         .values()
         .flat_map(|c| c.streams.iter().map(move |s| (c, s)))
         .flat_map(|(c, s)| s.events.iter().map(move |e| (c, s, e)))
-        .filter(|(_, _, e)| is_submission(e) && establishing(e).as_deref() == Some(&submits))
+        .filter(|(_, _, e)| is_submission(e) && establishing(e).as_deref() == Some(submits))
         .collect();
     let [(cell, stream, event)] = found[..] else {
         return Err(format!(
@@ -157,10 +206,70 @@ fn portal_of<'a>(
     Ok(PortalOf {
         channel,
         submits,
+        regulation: target.regulation,
         cell,
         stream,
         event,
     })
+}
+
+/// A channel of the policy with its adapter, and its role: the role name,
+/// what the runtime needs of both, and what is wrong.
+fn channel_and_role(
+    p: &ActorPolicy,
+    c: &DeclaredChannel,
+    k: &ChannelDeployment,
+    cell: &str,
+    file: &str,
+) -> (ChannelDefinition, String, RoleDefinition, Vec<String>) {
+    let mut errors = Vec::new();
+    let basis = c
+        .def
+        .identifies
+        .as_ref()
+        .map(|i| i.fields())
+        .unwrap_or_default();
+    let known = k.field_names();
+    for name in basis.keys().filter(|n| !known.contains(n)) {
+        errors.push(format!(
+            "{}: channel '{}' identifies '{name}', which is not a field of the channel under '{cell}' in {file}",
+            c.article, c.id
+        ));
+    }
+    let fields = k
+        .identification_fields(cell, &c.id, &basis)
+        .map_err(|e| errors.push(format!("{}: {e} (in {file})", c.article)))
+        .unwrap_or_default();
+    let supplied = p.supplies.get(&c.id);
+    let mut legal_basis = c.def.legal_basis.clone();
+    if let Some((by, _)) = supplied {
+        // The supplying article, unless a basis already names it.
+        let named = legal_basis
+            .iter()
+            .any(|b| crate::regulations::parse(b).is_ok_and(|g| g.article_ref() == *by));
+        if !named {
+            legal_basis.push(by.clone());
+        }
+    }
+    let channel = ChannelDefinition {
+        label: k.label.clone(),
+        explanation: k.explanation.clone(),
+        fields,
+        owner: c.def.owner.clone(),
+        intake: k.intake.clone(),
+        legal_basis,
+        supplies: supplied.map(|(_, s)| s.clone()).unwrap_or_default(),
+        declared_by: Some(c.article.clone()),
+        supplied_by: supplied.map(|(by, _)| by.clone()),
+    };
+    let role = RoleDefinition {
+        channel: c.id.clone(),
+        routes: vec![c.def.kind.routes()],
+        label: k.role_label.clone(),
+        legal_basis: c.def.legal_basis.first().cloned(),
+    };
+    let name = c.def.role.clone().unwrap_or_else(|| c.id.clone());
+    (channel, name, role, errors)
 }
 
 fn process(
@@ -172,10 +281,11 @@ fn process(
 ) -> Result<Derived, Vec<String>> {
     let mut errors = Vec::new();
     let id = portal.cell.id().to_string();
-    let file = deployment.channels_file.display();
-    let deployed = deployment.channels.get(&id).cloned().unwrap_or_default();
+    let file = deployment.channels_file.display().to_string();
+    let none = BTreeMap::new();
+    let deployed = deployment.channels.get(&id).unwrap_or(&none);
     let mut channels = BTreeMap::new();
-    let mut roles = BTreeMap::new();
+    let mut roles: BTreeMap<String, RoleDefinition> = BTreeMap::new();
     for c in &p.channels {
         let Some(k) = deployed.get(&c.id) else {
             errors.push(format!(
@@ -184,65 +294,16 @@ fn process(
             ));
             continue;
         };
-        let basis = c
-            .def
-            .identifies
-            .as_ref()
-            .map(|i| i.fields())
-            .unwrap_or_default();
-        let known = k.field_names();
-        for name in basis.keys().filter(|n| !known.contains(n)) {
+        let (channel, name, role, wrong) = channel_and_role(p, c, k, &id, &file);
+        errors.extend(wrong);
+        if let Some(other) = roles.get(&name) {
             errors.push(format!(
-                "{}: channel '{}' identifies '{name}', which is not a field of the channel under '{id}' in {file}",
-                c.article, c.id
+                "{}: role '{name}' of channel '{}' is the role of channel '{}' too",
+                c.article, c.id, other.channel
             ));
         }
-        let fields = k
-            .identification_fields(&id, &c.id, &basis)
-            .map_err(|e| errors.push(format!("{}: {e}", c.article)))
-            .unwrap_or_default();
-        let supplied = p.supplies.get(&c.id);
-        let mut legal_basis = c.def.legal_basis.clone();
-        if let Some((by, _)) = supplied {
-            // The supplying article, unless a basis already names it.
-            let named = legal_basis.iter().any(|b| {
-                crate::regulations::parse(b)
-                    .is_ok_and(|g| format!("{}#{}", g.regulation, g.article) == *by)
-            });
-            if !named {
-                legal_basis.push(by.clone());
-            }
-        }
-        channels.insert(
-            c.id.clone(),
-            ChannelDefinition {
-                label: k.label.clone(),
-                explanation: k.explanation.clone(),
-                fields,
-                owner: c.def.owner.clone(),
-                intake: k.intake.clone(),
-                legal_basis,
-                supplies: supplied.map(|(_, s)| s.clone()).unwrap_or_default(),
-                declared_by: Some(c.article.clone()),
-                supplied_by: supplied.map(|(by, _)| by.clone()),
-            },
-        );
-        let role = c.def.role.clone().unwrap_or_else(|| c.id.clone());
-        if let Some(other) = roles.get(&role).map(|r: &RoleDefinition| &r.channel) {
-            errors.push(format!(
-                "{}: role '{role}' of channel '{}' is the role of channel '{other}' too",
-                c.article, c.id
-            ));
-        }
-        roles.insert(
-            role,
-            RoleDefinition {
-                channel: c.id.clone(),
-                routes: vec![c.def.kind.routes()],
-                label: k.role_label.clone(),
-                legal_basis: c.def.legal_basis.first().cloned(),
-            },
-        );
+        channels.insert(c.id.clone(), channel);
+        roles.insert(name, role);
     }
     for extra in deployed
         .keys()
@@ -254,17 +315,14 @@ fn process(
         ));
     }
     let synthesis = deployment.synthesis.get(&id).cloned().unwrap_or_default();
-    let (channel, submits) = (portal.channel, &portal.submits);
+    let (channel, submits) = (portal.channel, portal.submits);
     let assessment = match &channel.def.assesses {
         Some(a) => match assessment_lexostatus(portal, service) {
             Ok(lexostatus) => Some(Assessment {
                 lexostatus,
-                regulation: submits
-                    .split_once('#')
-                    .map(|(r, _)| r.to_string())
-                    .unwrap_or_default(),
+                regulation: portal.regulation.to_string(),
                 output: a.output.clone(),
-                rows: synthesis.assessment_rows.clone(),
+                rows: synthesis.assessment_rows,
             }),
             Err(e) => {
                 errors.push(format!("{}: {e}", channel.article));
@@ -287,13 +345,19 @@ fn process(
             ));
         }
     }
-    if !errors.is_empty() {
-        return Err(errors);
-    }
     let form = channel.def.form.as_ref().map(|f| FormReference {
         path: root.join(&f.document).display().to_string(),
         screen: f.screen.clone(),
     });
+    if let Some(f) = form.as_ref().filter(|f| !Path::new(&f.path).is_file()) {
+        errors.push(format!(
+            "{}: the form of channel '{}' is {}, which is not a file",
+            channel.article, channel.id, f.path
+        ));
+    }
+    if !errors.is_empty() {
+        return Err(errors);
+    }
     let definition = ProcessDefinition {
         id: id.clone(),
         actor: portal.stream.recording_actor.clone(),
@@ -330,7 +394,7 @@ fn assessment_lexostatus(
     portal: &PortalOf<'_>,
     service: &LawExecutionService,
 ) -> Result<String, String> {
-    let submits = &portal.submits;
+    let submits = portal.submits;
     let parameters: Vec<String> = crate::regulations::article(service, submits)?
         .get_parameters()
         .iter()
@@ -492,16 +556,39 @@ mod tests {
     /// deployment holds the same technique, synthesis and examples.
     #[test]
     fn the_policy_gives_the_same_process_as_the_configuration() {
+        let (service, cells, deployment) = setup();
+        let all = derive(&service, &cells, &deployment).unwrap();
+        // The basis of a role is the first of its channel in the policy;
+        // `process.yaml` gave a role none (an intended deviation).
+        let role_basis: &[(&str, &str, &str)] = &[
+            ("test_afnemer", "aanvrager", "testregeling_afnemer#1"),
+            ("test_toeslag", "aanvrager", "testbeleid_toeslag#4 lid 1"),
+        ];
         for (cell, process) in [
             ("test_afnemer", "afnemer"),
             ("test_instantie", "instantie"),
             ("test_toeslag", "toeslag"),
         ] {
-            let d = derived(cell);
+            let d = &all
+                .iter()
+                .find(|p| p.definition.id == cell)
+                .unwrap()
+                .definition;
             let y = from_yaml(process);
             // The process id is the cell id (renamed).
             assert_eq!(d.id, cell);
             assert_eq!(d.actor, y.actor, "{cell}");
+            // The authority: as `on_behalf_of` gave it; the instantie had
+            // none and now has the one of its policy (renamed).
+            let own = crate::authority::own(d, &service);
+            if cell == "test_instantie" {
+                assert_eq!(own.as_deref(), Some("Test instantie"));
+                assert_eq!(crate::authority::own(&y, &service), None);
+            } else {
+                assert!(own.is_some(), "{cell}");
+                assert_eq!(own, crate::authority::own(&y, &service), "{cell}");
+            }
+            assert_eq!(d.mandates, y.mandates, "{cell}");
             assert_eq!(
                 d.channels.keys().collect::<Vec<_>>(),
                 y.channels.keys().collect::<Vec<_>>(),
@@ -514,6 +601,7 @@ mod tests {
                 assert_eq!(dk.owner, k.owner, "{cell}/{id}");
                 assert_eq!(dk.intake, k.intake, "{cell}/{id}");
                 assert_eq!(dk.supplies, k.supplies, "{cell}/{id}");
+                assert_eq!(dk.legal_basis, k.legal_basis, "{cell}/{id}");
                 // Name, label, pattern, check, message, numeric and legal basis.
                 let fields =
                     |f: &[crate::channel::IdentificationField]| serde_json::to_value(f).unwrap();
@@ -529,6 +617,12 @@ mod tests {
                 assert_eq!(d.roles[id].channel, r.channel, "{cell}/{id}");
                 assert_eq!(d.roles[id].routes, r.routes, "{cell}/{id}");
                 assert_eq!(d.roles[id].label, r.label, "{cell}/{id}");
+                assert_eq!(r.legal_basis, None, "{cell}/{id}");
+                let expected = role_basis
+                    .iter()
+                    .find(|(c, role, _)| *c == cell && role == id)
+                    .map(|(_, _, b)| b.to_string());
+                assert_eq!(d.roles[id].legal_basis, expected, "{cell}/{id}");
             }
             let (dp, yp) = (d.portal.as_ref().unwrap(), y.portal.as_ref().unwrap());
             assert_eq!(
@@ -549,7 +643,11 @@ mod tests {
                 ),
                 "{cell}"
             );
-            assert_eq!(dp.assessment.rows.len(), yp.assessment.rows.len(), "{cell}");
+            assert_eq!(
+                format!("{:?}", dp.assessment.rows),
+                format!("{:?}", yp.assessment.rows),
+                "{cell}"
+            );
             let offer = |o: Option<&crate::config::Offer>| {
                 o.map(|o| {
                     (
@@ -576,14 +674,35 @@ mod tests {
                 )),
                 "{cell}"
             );
-            assert_eq!(d.synthesis.len(), y.synthesis.len(), "{cell}");
-            for (ds, ys) in d.synthesis.iter().zip(&y.synthesis) {
-                assert_eq!(
-                    (&ds.cell, &ds.lexostatus, ds.case, &ds.legal_basis),
-                    (&ys.cell, &ys.lexostatus, ys.case, &ys.legal_basis),
-                    "{cell}"
-                );
-                assert_eq!(ds.translates(), ys.translates(), "{cell}");
+            assert_eq!(
+                format!("{:?}", d.synthesis),
+                format!("{:?}", y.synthesis),
+                "{cell}"
+            );
+            // The rows per action, under the event name of the action.
+            let rows: BTreeMap<String, String> = y
+                .handling
+                .iter()
+                .flat_map(|h| &h.actions)
+                .filter(|a| !a.rows.is_empty())
+                .map(|a| {
+                    let name = RENAMED
+                        .iter()
+                        .find(|(was, _)| *was == a.name)
+                        .map_or(a.name.as_str(), |(_, is)| is);
+                    (name.to_string(), format!("{:?}", a.rows))
+                })
+                .collect();
+            let derived_rows: BTreeMap<String, String> = deployment
+                .synthesis
+                .get(cell)
+                .iter()
+                .flat_map(|s| &s.action_rows)
+                .map(|(a, r)| (a.clone(), format!("{r:?}")))
+                .collect();
+            assert_eq!(derived_rows, rows, "{cell}");
+            if cell == "test_afnemer" {
+                assert!(derived_rows.contains_key("besluit_genomen"));
             }
             // The examples: the same files, the actions under their event name.
             let examples = |e: Option<&crate::config::ExamplesDefinition>, rename: bool| {
@@ -701,6 +820,319 @@ mod tests {
         assert!(
             e.iter()
                 .any(|f| f.contains("identifies") && f.contains("persoon")),
+            "{e:?}"
+        );
+    }
+
+    /// The errors of the derivation after a mutation of the policies, the
+    /// cells or the deployment of the fixtures.
+    fn errors_after(
+        mutate: impl FnOnce(
+            &mut BTreeMap<String, ActorPolicy>,
+            &mut BTreeMap<String, Arc<Cell>>,
+            &mut Deployment,
+        ),
+    ) -> Vec<String> {
+        let (s, mut cells, mut d) = setup();
+        let mut policies = crate::policy::read(&s, None).unwrap();
+        mutate(&mut policies, &mut cells, &mut d);
+        processes(&policies, &d, &cells, &s, &fixtures()).unwrap_err()
+    }
+
+    fn channel<'a>(
+        policies: &'a mut BTreeMap<String, ActorPolicy>,
+        authority: &str,
+        id: &str,
+    ) -> &'a mut crate::policy::PolicyChannel {
+        &mut policies
+            .get_mut(authority)
+            .unwrap()
+            .channels
+            .iter_mut()
+            .find(|c| c.id == id)
+            .unwrap()
+            .def
+    }
+
+    fn cell<'a>(cells: &'a mut BTreeMap<String, Arc<Cell>>, id: &str) -> &'a mut Cell {
+        Arc::get_mut(cells.get_mut(id).unwrap()).unwrap()
+    }
+
+    fn has(e: &[String], parts: &[&str]) -> bool {
+        e.iter().any(|f| parts.iter().all(|p| f.contains(p)))
+    }
+
+    /// The submission stream of the afnemer.
+    fn submissions(cells: &mut BTreeMap<String, Arc<Cell>>) -> &mut Vec<Event> {
+        &mut cell(cells, "test_afnemer")
+            .streams
+            .iter_mut()
+            .find(|s| s.id == "test_afnemer_aanvragen")
+            .unwrap()
+            .events
+    }
+
+    #[test]
+    fn exactly_one_portal_event() {
+        let e = errors_after(|_, cells, _| {
+            submissions(cells).retain(|e| e.name != "aanvraag_ontvangen");
+        });
+        assert!(
+            has(
+                &e,
+                &[
+                    "testbeleid_afnemer#1",
+                    "0 submission events",
+                    "testregeling_afnemer#1"
+                ]
+            ),
+            "{e:?}"
+        );
+        // The portal could not be found, but its deployment is its own.
+        assert!(!has(&e, &["cell of no process"]), "{e:?}");
+        let e = errors_after(|_, cells, _| {
+            let events = submissions(cells);
+            let mut twice = events
+                .iter()
+                .find(|e| e.name == "aanvraag_ontvangen")
+                .unwrap()
+                .clone();
+            twice.name = "aanvraag_nogmaals".into();
+            events.push(twice);
+        });
+        assert!(
+            has(
+                &e,
+                &[
+                    "testbeleid_afnemer#1",
+                    "2 submission events",
+                    "aanvraag_ontvangen",
+                    "aanvraag_nogmaals"
+                ]
+            ),
+            "{e:?}"
+        );
+    }
+
+    #[test]
+    fn exactly_one_assessment_lexostatus() {
+        let e = errors_after(|_, cells, _| {
+            cell(cells, "test_afnemer")
+                .lexostatuses
+                .lexostatus_definitions
+                .retain(|d| d.name != "aanvraag_inhoud");
+        });
+        assert!(
+            has(
+                &e,
+                &["testbeleid_afnemer#1", "0 lexostatuses", "test_afnemer"]
+            ),
+            "{e:?}"
+        );
+        let e = errors_after(|_, cells, _| {
+            let defs = &mut cell(cells, "test_afnemer")
+                .lexostatuses
+                .lexostatus_definitions;
+            let mut copy = defs
+                .iter()
+                .find(|d| d.name == "aanvraag_inhoud")
+                .unwrap()
+                .clone();
+            copy.name = "aanvraag_kopie".into();
+            defs.push(copy);
+        });
+        assert!(
+            has(
+                &e,
+                &[
+                    "testbeleid_afnemer#1",
+                    "2 lexostatuses",
+                    "aanvraag_inhoud, aanvraag_kopie"
+                ]
+            ),
+            "{e:?}"
+        );
+    }
+
+    #[test]
+    fn exactly_one_channel_submits() {
+        let e = errors_after(|p, _, _| {
+            channel(p, "Test afnemer", "eherkenning").submits = None;
+        });
+        assert!(
+            has(
+                &e,
+                &[
+                    "Test afnemer",
+                    "0 channels name `submits`",
+                    "testbeleid_afnemer#1"
+                ]
+            ),
+            "{e:?}"
+        );
+        assert!(!has(&e, &["cell of no process"]), "{e:?}");
+        let e = errors_after(|p, _, _| {
+            channel(p, "Test afnemer", "medewerker").submits =
+                Some("testregeling_afnemer#1".into());
+        });
+        assert!(
+            has(
+                &e,
+                &[
+                    "2 channels name `submits`",
+                    "'eherkenning' in testbeleid_afnemer#1",
+                    "'medewerker' in testbeleid_afnemer#1"
+                ]
+            ),
+            "{e:?}"
+        );
+    }
+
+    #[test]
+    fn submits_names_a_loaded_article() {
+        for (submits, says) in [
+            ("testregeling_afnemer#1 lid 1", "a paragraph"),
+            ("testregeling_afnemer#99", "not a loaded article"),
+            ("testregeling_afnemer", "<regulation>#<article>"),
+        ] {
+            let e = errors_after(|p, _, _| {
+                channel(p, "Test afnemer", "eherkenning").submits = Some(submits.into());
+            });
+            assert!(
+                has(
+                    &e,
+                    &["testbeleid_afnemer#1", "'eherkenning'", submits, says]
+                ),
+                "{e:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn assesses_is_an_output_of_the_submitted_article() {
+        let e = errors_after(|p, _, _| {
+            channel(p, "Test afnemer", "eherkenning").assesses = Some(crate::policy::Assesses {
+                output: "bestaat_niet".into(),
+            });
+        });
+        assert!(
+            has(
+                &e,
+                &[
+                    "testbeleid_afnemer#1",
+                    "'bestaat_niet'",
+                    "not an output of testregeling_afnemer#1"
+                ]
+            ),
+            "{e:?}"
+        );
+    }
+
+    #[test]
+    fn two_authorities_cannot_record_in_one_cell() {
+        let e = errors_after(|p, _, _| {
+            let mut other = p["Test afnemer"].clone();
+            other.authority = "Test ander".into();
+            p.insert(other.authority.clone(), other);
+        });
+        assert!(
+            has(
+                &e,
+                &[
+                    "Test ander",
+                    "testbeleid_afnemer#1",
+                    "cell 'test_afnemer'",
+                    "'Test afnemer'"
+                ]
+            ),
+            "{e:?}"
+        );
+    }
+
+    #[test]
+    fn a_role_belongs_to_one_channel() {
+        let e = errors_after(|p, _, _| {
+            channel(p, "Test afnemer", "medewerker").role = Some("aanvrager".into());
+        });
+        assert!(
+            has(
+                &e,
+                &[
+                    "testbeleid_afnemer#1",
+                    "role 'aanvrager'",
+                    "'medewerker'",
+                    "'eherkenning'"
+                ]
+            ),
+            "{e:?}"
+        );
+    }
+
+    #[test]
+    fn the_form_document_exists() {
+        let e = errors_after(|p, _, _| {
+            channel(p, "Test instantie", "eherkenning").form = Some(crate::policy::PolicyForm {
+                document: "documents/bestaat-niet.yaml".into(),
+                screen: "aanvraag".into(),
+            });
+        });
+        assert!(
+            has(
+                &e,
+                &["testbeleid_instantie#1", "bestaat-niet.yaml", "not a file"]
+            ),
+            "{e:?}"
+        );
+    }
+
+    #[test]
+    fn mandates_without_channels_are_an_error() {
+        let e = errors_after(|p, _, _| {
+            p.insert(
+                "Test los".into(),
+                ActorPolicy {
+                    authority: "Test los".into(),
+                    mandates: vec![crate::config::Mandate {
+                        authority: "Test afnemer".into(),
+                        legal_basis: "testbeleid_los#1".into(),
+                    }],
+                    ..ActorPolicy::default()
+                },
+            );
+        });
+        assert!(
+            has(&e, &["Test los", "testbeleid_los#1", "no channel"]),
+            "{e:?}"
+        );
+    }
+
+    #[test]
+    fn a_wrong_field_of_an_adapter_names_the_file() {
+        let e = errors_after(|_, _, d| {
+            let field = d
+                .channels
+                .get_mut("test_afnemer")
+                .unwrap()
+                .get_mut("medewerker")
+                .unwrap()
+                .fields
+                .get_mut("naam")
+                .unwrap();
+            field
+                .as_mapping_mut()
+                .unwrap()
+                .insert("name".into(), "naam".into());
+        });
+        assert!(
+            has(
+                &e,
+                &[
+                    "testbeleid_afnemer#1",
+                    "'medewerker'",
+                    "'name'",
+                    "channels.yaml"
+                ]
+            ),
             "{e:?}"
         );
     }

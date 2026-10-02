@@ -435,7 +435,7 @@ impl SourceRef {
     /// An article; a legal basis with a paragraph points to its article.
     pub fn law(reference: &str) -> Self {
         let article = match crate::regulations::parse(reference) {
-            Ok(g) => format!("{}#{}", g.regulation, g.article),
+            Ok(g) => g.article_ref(),
             Err(_) => reference.to_string(),
         };
         Self {

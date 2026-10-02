@@ -169,7 +169,7 @@ pub fn assessments(service: &LawExecutionService, article: &str, event: &Event) 
                         return false;
                     };
                     grounds.iter().any(|g| {
-                        let own = format!("{}#{}", g.regulation, g.article) == article
+                        let own = g.article_ref() == article
                             && lb.article.as_deref().is_none_or(|x| x == a.number);
                         let executed =
                             lb.article.as_deref() == Some(g.article) && names(lb, g.regulation);
