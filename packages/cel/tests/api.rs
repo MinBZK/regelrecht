@@ -5975,4 +5975,48 @@ async fn the_processes_follow_from_the_policy() {
         })),
         "{map}"
     );
+    // Only what the article itself executes, not the general law that hooks
+    // onto the executed article.
+    let edges = map["edges"].as_array().unwrap();
+    assert!(
+        !edges.iter().any(|e| e["kind"] == "executes"
+            && e["from"] == "article:testbeleid_toeslag#4"
+            && e["to"]
+                .as_str()
+                .unwrap()
+                .starts_with("article:testregeling_awb#")),
+        "{map}"
+    );
+}
+
+/// "Waarom?" on the route from policy (RFC-047): the process step is the
+/// policy article of the portal channel, a supply step the article that
+/// says what the channel supplies, and the policy says what it executes.
+#[tokio::test]
+async fn the_form_says_why_from_the_policy() {
+    let data = tempfile::tempdir().unwrap();
+    let rt = policy_runtime(&fixtures(), data.path()).unwrap();
+    let app = as_reader(&rt);
+    let (status, form, _) = call(&app, "GET", "/processes/test_toeslag/api/form", None, None).await;
+    assert_eq!(status, StatusCode::OK, "{form}");
+    let process = &form["why"]["event"][0];
+    assert_eq!(process["kind"], "process", "{form}");
+    assert_eq!(
+        process["source"],
+        json!({"law": "testbeleid_toeslag#6"}),
+        "{form}"
+    );
+    let o = form_field(&form, "ondertekening").unwrap();
+    let value = o["why"]["value"].as_array().unwrap();
+    let supply = value.iter().find(|s| s["kind"] == "supply").unwrap();
+    assert_eq!(
+        supply["source"],
+        json!({"law": "testbeleid_toeslag#4"}),
+        "{o}"
+    );
+    assert!(
+        value.iter().any(|s| s["kind"] == "executes"
+            && s["reason"] == "voert testregeling_toeslag#1 uit (procedure)"),
+        "{o}"
+    );
 }

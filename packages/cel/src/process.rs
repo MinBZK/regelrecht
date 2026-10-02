@@ -502,8 +502,8 @@ mod tests {
 
     /// A translation in the synthesis rests on a legal basis: every legal basis
     /// points to a loaded article, and with `origin_check: strict` every
-    /// source that translates has one. The fixture translates with a legal basis for the
-    /// register, and without one for the register status.
+    /// source that translates has one. The fixture gives both the register
+    /// and the register status one; the test takes away the second.
     #[test]
     fn the_legal_basis_of_a_translation() {
         let strict = |t: String| {

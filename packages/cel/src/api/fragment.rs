@@ -61,8 +61,8 @@ pub(super) async fn law_file_route(
 fn config_file(state: &ProcessState, config: &str) -> Option<PathBuf> {
     let p = &state.process;
     match config.split_once('/') {
-        None if config == "process" => {
-            Some(p.dir.join(crate::config::PROCESS_FILE)).filter(|f| f.exists())
+        None if config == "process" && p.definition.from_policy().is_none() => {
+            Some(p.dir.join(crate::config::PROCESS_FILE))
         }
         None if config == "cell" => Some(p.cell.dir.join(crate::config::CELL_FILE)),
         None if config == "lexostatuses" => Some(p.cell.dir.join(&p.cell.definition.lexostatuses)),

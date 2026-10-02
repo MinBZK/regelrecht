@@ -760,6 +760,12 @@ impl CellDefinition {
 }
 
 impl ProcessDefinition {
+    /// The policy article (of the portal channel) this process follows
+    /// from (RFC-047); `None` for a process from `process.yaml`.
+    pub fn from_policy(&self) -> Option<&str> {
+        self.declared_by.as_deref()
+    }
+
     /// Read a process definition from text and validate it against the schema.
     pub fn parse(text: &str, source: &str) -> Result<Self, Vec<String>> {
         load::definition(text, source, Kind::Process)

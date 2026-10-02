@@ -164,7 +164,7 @@ fn in_process(anchor: &str) -> SourceRef {
 
 /// Where a part of the process is written: the policy article for a process
 /// from policy (RFC-047), otherwise the key in `process.yaml`.
-fn written(policy: Option<&String>, anchor: &str) -> SourceRef {
+fn written(policy: Option<&str>, anchor: &str) -> SourceRef {
     match policy {
         Some(article) => SourceRef::law(article),
         None => in_process(anchor),
@@ -181,14 +181,14 @@ pub fn build(input: &MapInput) -> Map {
         format!("process:{id}"),
         NodeKind::Process,
         id,
-        written(d.declared_by.as_ref(), "id"),
+        written(d.from_policy(), "id"),
     );
     for name in d.channels.keys() {
         let c = b.node(
             format!("channel:{name}"),
             NodeKind::Channel,
             name,
-            written(d.channels[name].declared_by.as_ref(), name),
+            written(d.channels[name].declared_by.as_deref(), name),
         );
         b.edge(&proc, &c, EdgeKind::Channel);
     }
@@ -200,7 +200,7 @@ pub fn build(input: &MapInput) -> Map {
             written(
                 d.channels
                     .get(&role.channel)
-                    .and_then(|k| k.declared_by.as_ref()),
+                    .and_then(|k| k.declared_by.as_deref()),
                 name,
             ),
         );
@@ -374,7 +374,7 @@ fn lexostatus_part(b: &mut Builder, input: &MapInput) {
 /// deployment, under the id of the process's cell.
 fn source_cell(b: &mut Builder, input: &MapInput, cell: &str, anchor: &str) -> String {
     let p = input.process;
-    let source = match p.definition.declared_by {
+    let source = match p.definition.from_policy() {
         Some(_) => SourceRef::config("synthesis", p.cell.id()),
         None => in_process(anchor),
     };
@@ -414,7 +414,7 @@ fn handling_part(b: &mut Builder, input: &MapInput, proc: &str) {
             action.label(),
             // A process from policy (RFC-047) derives the action from the
             // event it records.
-            match input.process.definition.declared_by {
+            match input.process.definition.from_policy() {
                 Some(_) => SourceRef::stream(&action.record.stream, &action.record.event),
                 None => in_process(&action.name),
             },
@@ -462,20 +462,25 @@ fn synthesis_part(b: &mut Builder, input: &MapInput, proc: &str) {
     rows_part(b, input, proc, p.assessment_rows());
 }
 
-/// What the articles on the map execute (RFC-047): an edge from the policy
-/// article to the executed article, one level.
-fn executes_part(b: &mut Builder, input: &MapInput) {
-    let present: Vec<(String, String, String)> = b
-        .nodes
+/// The article nodes on the map so far: id, regulation and number.
+fn article_nodes(b: &Builder) -> Vec<(String, String, String)> {
+    b.nodes
         .values()
         .filter_map(|n| Some((n.id.clone(), n.regulation.clone()?, n.article.clone()?)))
-        .collect();
-    for (node, regulation, number) in present {
-        for e in input
-            .process
-            .service
-            .resolver()
-            .executes_of(&regulation, &number)
+        .collect()
+}
+
+/// What the articles on the map execute (RFC-047), in the version of the
+/// map's date: an edge from the policy article to the executed article, one
+/// level.
+fn executes_part(b: &mut Builder, input: &MapInput) {
+    for (node, regulation, number) in article_nodes(b) {
+        for e in
+            input
+                .process
+                .service
+                .resolver()
+                .executes_of_on(&regulation, &number, Some(input.date))
         {
             let target = b.article(&e.target);
             b.edge(&node, &target, EdgeKind::Executes);
@@ -489,12 +494,7 @@ fn executes_part(b: &mut Builder, input: &MapInput) {
 /// map would pull in the whole chain.
 fn source_part(b: &mut Builder, input: &MapInput) {
     let p = input.process;
-    let present: Vec<(String, String, String)> = b
-        .nodes
-        .values()
-        .filter_map(|n| Some((n.id.clone(), n.regulation.clone()?, n.article.clone()?)))
-        .collect();
-    for (node, regulation, number) in present {
+    for (node, regulation, number) in article_nodes(b) {
         let Some(spec) = p
             .service
             .resolver()

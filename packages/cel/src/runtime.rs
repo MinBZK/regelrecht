@@ -118,10 +118,13 @@ impl Runtime {
         }
 
         let mut processes: Vec<Process> = Vec::new();
-        let deployment = crate::deployment::load(config)
-            .map_err(|f| errors.extend(f))
-            .ok()
-            .flatten();
+        let deployment = match crate::deployment::load(config) {
+            Ok(d) => d,
+            Err(f) => {
+                errors.extend(f);
+                None
+            }
+        };
         if let Some(d) = &deployment {
             // RFC-047: the processes follow from the policy.
             match crate::policy::read(&service, Some(today))

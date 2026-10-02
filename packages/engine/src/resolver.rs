@@ -1786,7 +1786,18 @@ impl RuleResolver {
     /// What `<law_id>#<article_number>` executes, in the newest version of
     /// its law (RFC-047).
     pub fn executes_of(&self, law_id: &str, article_number: &str) -> Vec<ExecutesEntry> {
-        self.get_law(law_id)
+        self.executes_of_on(law_id, article_number, None)
+    }
+
+    /// What `<law_id>#<article_number>` executes in the version of its law
+    /// in force on `date` (the newest without one; RFC-047).
+    pub fn executes_of_on(
+        &self,
+        law_id: &str,
+        article_number: &str,
+        date: Option<NaiveDate>,
+    ) -> Vec<ExecutesEntry> {
+        self.get_law_for_date(law_id, date)
             .and_then(|l| l.find_article_by_number(article_number))
             .map(|a| {
                 a.get_executes()

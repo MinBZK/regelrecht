@@ -28,14 +28,14 @@
 
 use std::path::Path;
 
-use regelrecht_engine::LawExecutionService;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::channel::Routes;
-use crate::config::{Portal, ProcessDefinition};
+use crate::config::Portal;
 use crate::law::{with_executes, SourceRef, Step, StepKind};
 use crate::load;
+use crate::process::Process;
 use crate::stream::{Event, Shape};
 
 /// A screen from a form file.
@@ -147,23 +147,24 @@ pub fn with_supplied(fields: &mut [Field], event: &Event, intake: &Value) {
 /// order, groups and labels. `channel` is the channel of the logged-in
 /// applicant; without one, every channel of the portal says what it would
 /// supply. After every policy article a step says what it executes
-/// (RFC-047, [`with_executes`]). Sets `why` per field and returns
+/// (RFC-047, [`with_executes`]), in the version of the day the cell of the
+/// process was loaded with. Sets `why` per field and returns
 /// `{event, excluded}` for the form as a whole.
 pub fn explain(
     fields: &mut [Field],
     event: &Event,
     form: Option<&Form>,
     portal: &Portal,
-    process: &ProcessDefinition,
+    process: &Process,
     channel: Option<&str>,
-    service: &LawExecutionService,
 ) -> Value {
+    let (service, date) = (process.service.as_ref(), process.cell.date);
+    let process = &process.definition;
     let stream = SourceRef::stream(&portal.stream, &portal.event);
     let mut chain = vec![Step::new(
         StepKind::Process,
         process
-            .declared_by
-            .as_deref()
+            .from_policy()
             .map(SourceRef::law)
             .unwrap_or_else(|| SourceRef::config("process", "portal")),
         format!(
@@ -247,13 +248,17 @@ pub fn explain(
                 ));
             }
         }
-        // What the policy articles of the supply and the presentation
-        // execute (RFC-047).
-        with_executes(&mut why.here, service);
-        with_executes(&mut why.value, service);
+        // `why` comes from the cell, whose steps already say what they
+        // execute; these calls only add it for the presentation and supply
+        // steps added here (RFC-047). Idempotent per policy article.
+        with_executes(&mut why.here, service, date);
+        with_executes(&mut why.value, service, date);
         f.why = Some(why);
     }
-    with_executes(&mut chain, service);
+    // The cell already did this for the chain of the event; again here for
+    // the process step in front of it (a policy article on the route from
+    // policy). Idempotent: the steps of the cell stay as they are.
+    with_executes(&mut chain, service, date);
     serde_json::json!({"event": chain, "excluded": event.explanation.excluded})
 }
 

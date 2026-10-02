@@ -422,7 +422,13 @@ pub enum StepKind {
 /// After the first step of an article that executes another (RFC-047): a
 /// step "voert <artikel> uit (<soort>)" with the policy article as source.
 /// Once per policy article in the chain; calling it twice changes nothing.
-pub fn with_executes(steps: &mut Vec<Step>, service: &LawExecutionService) {
+/// What an article executes is read in the version in force on `date` (the
+/// newest without one).
+pub fn with_executes(
+    steps: &mut Vec<Step>,
+    service: &LawExecutionService,
+    date: Option<NaiveDate>,
+) {
     // An article whose `Executes` step is already there gets no second.
     let mut done: BTreeSet<String> = steps
         .iter()
@@ -440,7 +446,7 @@ pub fn with_executes(steps: &mut Vec<Step>, service: &LawExecutionService) {
         let Some((r, n)) = article.split_once('#') else {
             continue;
         };
-        for e in service.resolver().executes_of(r, n) {
+        for e in service.resolver().executes_of_on(r, n, date) {
             out.push(Step::new(
                 StepKind::Executes,
                 SourceRef::law(&article),
@@ -1771,10 +1777,10 @@ fn establish_event(
         .collect();
 
     // What the policy articles in the chain execute (RFC-047).
-    with_executes(&mut explanation.event, service);
+    with_executes(&mut explanation.event, service, date);
     for x in explanation.fields.values_mut() {
-        with_executes(&mut x.here, service);
-        with_executes(&mut x.value, service);
+        with_executes(&mut x.here, service, date);
+        with_executes(&mut x.value, service, date);
     }
 
     let event = &mut stream.events[i];
@@ -3174,7 +3180,7 @@ articles:
             ),
             Step::new(StepKind::Supply, SourceRef::law("beleid_e#1"), "supply"),
         ];
-        with_executes(&mut steps, &s);
+        with_executes(&mut steps, &s, None);
         let kinds: Vec<StepKind> = steps.iter().map(|x| x.kind).collect();
         assert_eq!(
             kinds,
@@ -3182,7 +3188,44 @@ articles:
         );
         assert_eq!(steps[1].source, SourceRef::law("beleid_e#1"));
         assert_eq!(steps[1].reason, "voert wet_e#1 uit (procedure)");
-        with_executes(&mut steps, &s);
+        with_executes(&mut steps, &s, None);
         assert_eq!(steps.len(), 3, "idempotent");
+    }
+
+    /// What an article executes is read in the version in force on the
+    /// date: a later version that executes another article does not count
+    /// before it applies (RFC-047).
+    #[test]
+    fn what_an_article_executes_is_dated() {
+        let mut s = LawExecutionService::new();
+        s.load_law("$id: wet_d\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - {number: '1', text: Een aanvraag.}\n  - {number: '2', text: Een besluit.}\n").unwrap();
+        let policy = |valid_from: &str, target: &str| {
+            format!("$id: beleid_d\nregulatory_layer: UITVOERINGSBELEID\npublication_date: '{valid_from}'\nvalid_from: '{valid_from}'\narticles:\n  - number: '1'\n    text: Het portaal.\n    machine_readable:\n      executes: [{{article: '{target}', as: procedure}}]\n")
+        };
+        s.load_law(&policy("2025-01-01", "wet_d#1")).unwrap();
+        s.load_law(&policy("2026-01-01", "wet_d#2")).unwrap();
+        let reasons = |date: Option<NaiveDate>| {
+            let mut steps = vec![Step::new(
+                StepKind::Origin,
+                SourceRef::law("beleid_d#1"),
+                "origin",
+            )];
+            with_executes(&mut steps, &s, date);
+            steps
+                .into_iter()
+                .skip(1)
+                .map(|x| x.reason)
+                .collect::<Vec<_>>()
+        };
+        let day = |d: &str| Some(NaiveDate::parse_from_str(d, "%Y-%m-%d").unwrap());
+        assert_eq!(
+            reasons(day("2025-06-01")),
+            ["voert wet_d#1 uit (procedure)"]
+        );
+        assert_eq!(
+            reasons(day("2026-06-01")),
+            ["voert wet_d#2 uit (procedure)"]
+        );
+        assert_eq!(reasons(None), ["voert wet_d#2 uit (procedure)"]);
     }
 }

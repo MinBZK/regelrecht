@@ -32,6 +32,9 @@ pub struct Cell {
     /// The engine route of the cell (experiment A, `CELL_REDUCTION`); without
     /// it the cell reduces along the reduction DSL.
     pub route: Option<Arc<CellRoute>>,
+    /// The day whose version of each regulation the cell was loaded with
+    /// (the newest without one).
+    pub date: Option<NaiveDate>,
 }
 
 impl Cell {
@@ -152,6 +155,7 @@ impl Cell {
             service,
             initial_state,
             route: None,
+            date,
         })
     }
 
