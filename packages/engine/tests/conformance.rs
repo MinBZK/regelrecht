@@ -88,12 +88,15 @@ const KNOWN_GAPS: &[&str] = &[
     "comparison_alias_not_equals.yaml", // NOT_EQUALS (with IS_NULL/NOT_NULL/NOT_IN/SWITCH) is a compat alias outside the schema enum; kept for pre-canonicalization files (`value.rs`, operation deserializer)
     "inline_round_without_precision.yaml", // schema's allOf requires `precision` on inline ROUND/CEIL/FLOOR; model Option — the engine refuses the action at execution ("ROUND requires 'precision' at action level"), so nothing is ever rounded at a guessed precision
     "untranslatables_on_v0_7_0.yaml", // v0.7.0 dropped the old channel for `markings`; the model still parses it (it must read v0.5.x) and the engine honours the flag — flag-keeping, the safe side of wrong (see `Marking` rustdoc)
-                                      // `foreach_draft_field_names.yaml` (measured 2026-09-04 alongside RFC-016)
-                                      // is no longer a gap: a FOREACH written with the field names of an earlier
-                                      // RFC draft used to fall through `ActionValue`'s untagged enum into
-                                      // `Literal`; the loader now refuses an operation-shaped mapping that parsed
-                                      // as a literal (`article.rs`, `reject_literal_operations`), so the
-                                      // model rejects it like the schema does.
+    // `foreach_draft_field_names.yaml` (measured 2026-09-04 alongside RFC-016)
+    // is no longer a gap: a FOREACH written with the field names of an earlier
+    // RFC draft used to fall through `ActionValue`'s untagged enum into
+    // `Literal`; the loader now refuses an operation-shaped mapping that parsed
+    // as a literal (`article.rs`, `reject_literal_operations`), so the
+    // model rejects it like the schema does.
+    //
+    // -- Metadata the model keeps as written (RFC-043 rule, `Declared<T>`).
+    "executes_unknown_kind.yaml", // model accepts invalid executes as Declared::Invalid (RFC-043 rule); schema rejects
 ];
 
 /// Corpus laws whose re-serialized model is not value-stable, with the measured

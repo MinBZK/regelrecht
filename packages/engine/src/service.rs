@@ -281,6 +281,13 @@ impl<'a> ResolutionContext<'a> {
         }
     }
 
+    /// Add to the message of the current trace node. No-op if tracing is disabled.
+    fn trace_append_message(&self, text: &str) {
+        if let Some(ref tb) = self.trace {
+            tb.borrow_mut().append_message(text);
+        }
+    }
+
     /// Set the resolve type on the current trace node. No-op if tracing is disabled.
     fn trace_set_resolve_type(&self, rt: ResolveType) {
         if let Some(ref tb) = self.trace {
@@ -2210,11 +2217,14 @@ impl LawExecutionService {
             None => Vec::new(),
         };
 
-        // RFC-047: name what this policy article executes, as a step of its own.
+        // RFC-047: name what this policy article executes on the trace node
+        // of its own evaluation, not as a child node of its own.
         for e in article.get_executes() {
-            let _guard =
-                res_ctx.trace_guard(format!("executes:{}", e.article), PathNodeType::Article);
-            res_ctx.trace_set_message(format!("voert uit: {} ({})", e.article, e.kind.as_str()));
+            res_ctx.trace_append_message(&format!(
+                "voert uit: {} ({})",
+                e.article,
+                e.kind.as_str()
+            ));
         }
 
         // A required parameter the caller passed as null or unknown names
@@ -8842,6 +8852,20 @@ articles:
         assert!(
             trace_mentions(&trace, "voert uit: wet_x#1 (procedure)"),
             "{trace:?}"
+        );
+        let rendered = trace.render_box_drawing();
+        assert!(
+            rendered.contains("voert uit: wet_x#1 (procedure)"),
+            "{rendered}"
+        );
+        assert!(
+            !rendered.contains("Evaluating rules for executes"),
+            "{rendered}"
+        );
+        assert_eq!(
+            rendered.matches("Evaluating rules for").count(),
+            1,
+            "no extra article node: {rendered}"
         );
         let r = service
             .evaluate_law_output_with_trace("wet_x", "uitkomst", BTreeMap::new(), "2025-06-01")

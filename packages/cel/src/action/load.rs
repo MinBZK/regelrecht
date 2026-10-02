@@ -73,20 +73,35 @@ pub(super) fn outputs_of(service: &LawExecutionService, article: &str) -> Vec<St
 }
 
 /// The parameter of an article with origin role `BESLUIT` (RFC-047): it
-/// receives the id of the decision the action acts on. More than one is
-/// not meaningful; the first counts.
-pub fn decision_parameter_of(service: &LawExecutionService, article: &str) -> Option<String> {
-    regulations::article(service, article)
-        .ok()?
+/// receives the id of the decision the action acts on. `None` without one
+/// (or without the article); more than one is an error, because the runtime
+/// cannot tell which one gets the decision.
+pub fn decision_parameter_of(
+    service: &LawExecutionService,
+    article: &str,
+) -> Result<Option<String>, String> {
+    let Ok(a) = regulations::article(service, article) else {
+        return Ok(None);
+    };
+    let found: Vec<&str> = a
         .get_parameters()
         .iter()
-        .find(|p| {
+        .filter(|p| {
             p.origin
                 .as_ref()
                 .and_then(|o| o.as_valid())
                 .is_some_and(|o| o.rol == Some(regelrecht_law_model::OriginRole::Besluit))
         })
-        .map(|p| p.name.clone())
+        .map(|p| p.name.as_str())
+        .collect();
+    match found.as_slice() {
+        [] => Ok(None),
+        [one] => Ok(Some(one.to_string())),
+        more => Err(format!(
+            "{article} has more than one parameter with origin role BESLUIT ({})",
+            more.join(", ")
+        )),
+    }
 }
 
 /// The assessments of an action that executes a decision: the boolean
@@ -293,8 +308,19 @@ pub fn prepare_for(
             }
         }
         h.article = article;
-        if h.decision_parameter.is_none() {
-            h.decision_parameter = decision_parameter_of(service, &h.article);
+        // The parameter that gets the decision id follows from the law
+        // (origin role BESLUIT, RFC-047); a configuration that names another
+        // one contradicts the law.
+        match decision_parameter_of(service, &h.article) {
+            Err(e) => errors.push(format!("{who}: {e}")),
+            Ok(Some(by_law)) => match &h.decision_parameter {
+                Some(configured) if configured != &by_law => errors.push(format!(
+                    "{who}: decision_parameter '{configured}' contradicts {}, whose parameter with origin role BESLUIT is '{by_law}'",
+                    h.article
+                )),
+                _ => h.decision_parameter = Some(by_law),
+            },
+            Ok(None) => {}
         }
         h.assessments = assessments(service, &h.article, event)
             .into_iter()
@@ -767,12 +793,21 @@ articles:
         let mut s = LawExecutionService::new();
         s.load_law(PAYMENT_POLICY).unwrap();
         assert_eq!(
-            decision_parameter_of(&s, "testbeleid_betaling#1").as_deref(),
-            Some("besluit")
+            decision_parameter_of(&s, "testbeleid_betaling#1"),
+            Ok(Some("besluit".to_string()))
         );
         let without = PAYMENT_POLICY.replace(", rol: BESLUIT", "");
         let mut s = LawExecutionService::new();
         s.load_law(&without).unwrap();
-        assert_eq!(decision_parameter_of(&s, "testbeleid_betaling#1"), None);
+        assert_eq!(decision_parameter_of(&s, "testbeleid_betaling#1"), Ok(None));
+        // Two parameters with the role: the runtime cannot tell which one.
+        let two = PAYMENT_POLICY.replace(
+            "- {name: bedrag, type: amount, required: true}",
+            "- {name: bedrag, type: amount, required: true, origin: {waarde: DOSSIER, grondslag: 'testbeleid_betaling#1', rol: BESLUIT}}",
+        );
+        let mut s = LawExecutionService::new();
+        s.load_law(&two).unwrap();
+        let e = decision_parameter_of(&s, "testbeleid_betaling#1").unwrap_err();
+        assert!(e.contains("besluit, bedrag"), "{e}");
     }
 }

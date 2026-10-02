@@ -227,12 +227,15 @@ pub struct Origin {
     pub register: Option<String>,
     pub grondslag: String,
     /// What the parameter is within the decision requested, when that matters
-    /// to a process beyond who supplies it.
+    /// to a process beyond who supplies it, or (`BESLUIT`) the decision
+    /// already taken that the parameter is about (RFC-047).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rol: Option<OriginRole>,
 }
 
-/// The role of a parameter within the decision requested (RFC-043).
+/// The role of a parameter (RFC-043): within the decision requested
+/// (`TIJDVAK`, `GEVRAAGD_BESLUIT`), or the decision already taken that the
+/// parameter is about (`BESLUIT`, RFC-047).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum OriginRole {
@@ -1350,8 +1353,12 @@ pub struct MachineReadable {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origins: Option<Vec<Declared<OriginOverride>>>,
     /// The articles of law this (policy) article executes, and how (RFC-047).
+    /// Metadata, like `origin` (RFC-043): an entry that is not valid does not
+    /// stop the law from loading; it is kept as written, and the runtime that
+    /// reads it reports it. See [`Article::get_executes`] and
+    /// [`Article::get_invalid_executes`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub executes: Option<Vec<Executes>>,
+    pub executes: Option<Vec<Declared<Executes>>>,
 }
 
 /// Represents a single article in a law
@@ -1486,12 +1493,29 @@ impl Article {
             .and_then(|mr| mr.overrides.as_ref())
     }
 
-    /// What this article executes (RFC-047); empty without `executes`.
-    pub fn get_executes(&self) -> &[Executes] {
+    /// What this article executes (RFC-047), as written, valid or not;
+    /// empty without `executes`.
+    pub fn get_declared_executes(&self) -> &[Declared<Executes>] {
         self.machine_readable
             .as_ref()
             .and_then(|mr| mr.executes.as_deref())
             .unwrap_or(&[])
+    }
+
+    /// The valid entries of what this article executes (RFC-047).
+    pub fn get_executes(&self) -> impl Iterator<Item = &Executes> {
+        self.get_declared_executes()
+            .iter()
+            .filter_map(Declared::as_valid)
+    }
+
+    /// The entries of `executes` that are not valid, each with the reason
+    /// (RFC-047). The engine skips them; a runtime reports them.
+    pub fn get_invalid_executes(&self) -> Vec<String> {
+        self.get_declared_executes()
+            .iter()
+            .filter_map(|d| d.valid().err())
+            .collect()
     }
 
     /// Get the markings declared by this article (schema v0.7.0).

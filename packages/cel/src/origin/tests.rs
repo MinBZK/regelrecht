@@ -758,3 +758,86 @@ fn two_clashing_overrides_are_an_error() {
             ["origins in testbeleid_afnemer#1: regulation 'testregeling_afnemer' has no parameter 'bestaat_niet'"]
         );
 }
+
+/// Give `bekendgemaakt` of the decision article origin role BESLUIT (RFC-047)
+/// and prepare the consumer's actions: the parameter that gets the decision
+/// id follows from the law, or the errors that `prepare_for` reports.
+fn prepared_with_besluit(
+    regulation: impl Fn(String) -> String,
+    adjust: impl Fn(String) -> String,
+) -> (ProcessDefinition, Vec<String>) {
+    let s = service(
+        |t| {
+            regulation(t.replace(
+                "origin: {waarde: DOSSIER, grondslag: testregeling_afnemer#3 lid 2}\n          - name: datum_uitnodiging_aanvulling",
+                "origin: {waarde: DOSSIER, grondslag: testregeling_afnemer#3 lid 2, rol: BESLUIT}\n          - name: datum_uitnodiging_aanvulling",
+            ))
+        },
+        &[],
+    );
+    let c = cells(&s);
+    let mut d = process("afnemer", adjust);
+    let authority = crate::authority::own(&d, &s);
+    let errors = crate::action::prepare_for(&mut d, authority.as_deref(), &s, &c["test_afnemer"]);
+    (d, errors)
+}
+
+fn decision_parameter(d: &ProcessDefinition, action: &str) -> Option<String> {
+    d.handling
+        .as_ref()
+        .and_then(|h| h.actions.iter().find(|a| a.name == action))
+        .and_then(|a| a.decision_parameter.clone())
+}
+
+#[test]
+fn prepare_for_fills_in_the_decision_parameter_from_the_law() {
+    let (d, errors) = prepared_with_besluit(same, same);
+    assert!(errors.is_empty(), "{errors:?}");
+    assert_eq!(
+        decision_parameter(&d, "besluit").as_deref(),
+        Some("bekendgemaakt")
+    );
+    // Without the role nothing is filled in.
+    let s = service(same, &[]);
+    let c = cells(&s);
+    let mut d = process("afnemer", same);
+    let authority = crate::authority::own(&d, &s);
+    let errors = crate::action::prepare_for(&mut d, authority.as_deref(), &s, &c["test_afnemer"]);
+    assert!(errors.is_empty(), "{errors:?}");
+    assert_eq!(decision_parameter(&d, "besluit"), None);
+}
+
+#[test]
+fn a_configured_decision_parameter_that_contradicts_the_law_is_an_error() {
+    let (_, errors) = prepared_with_besluit(same, |t| {
+        t.replace(
+            "    - name: besluit\n",
+            "    - name: besluit\n      decision_parameter: jaar\n",
+        )
+    });
+    assert!(
+        errors.iter().any(|e| e.contains("action 'besluit'")
+            && e.contains("'jaar'")
+            && e.contains("'bekendgemaakt'")),
+        "{errors:?}"
+    );
+}
+
+#[test]
+fn more_than_one_besluit_parameter_is_an_error() {
+    let (_, errors) = prepared_with_besluit(
+        |t| {
+            t.replace(
+                "origin: {waarde: DOSSIER, grondslag: testregeling_afnemer#3 lid 1}\n          - name: jaar",
+                "origin: {waarde: DOSSIER, grondslag: testregeling_afnemer#3 lid 1, rol: BESLUIT}\n          - name: jaar",
+            )
+        },
+        same,
+    );
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.contains("more than one parameter with origin role BESLUIT")),
+        "{errors:?}"
+    );
+}

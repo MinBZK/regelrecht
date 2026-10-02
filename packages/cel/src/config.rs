@@ -290,8 +290,9 @@ pub struct ActionDefinition {
     /// The parameter of the article that receives the id of the decision
     /// the action acts on (note on source and gram id): this is how the
     /// process calls its own policy that reads per decision, such as the
-    /// payment administration. Wiring, not law: which parameter it is,
-    /// the process says.
+    /// payment administration. The law says which parameter it is (origin
+    /// role `BESLUIT`, RFC-047) and `prepare_for` fills it in from there; a
+    /// value here that contradicts the law is an error.
     #[serde(default)]
     pub decision_parameter: Option<String>,
     /// Empty in `process.yaml`: the runtime fills it at load time with the

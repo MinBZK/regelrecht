@@ -1112,6 +1112,27 @@ impl TraceBuilder {
         }
     }
 
+    /// Add `text` to the message of the current node, after what the node
+    /// already shows, so a fact about the step itself stays on the step's own
+    /// line instead of opening a child node. Without a message the node's
+    /// own label comes first, as the box drawing would show it.
+    pub fn append_message(&mut self, text: &str) {
+        if !self.enabled {
+            return;
+        }
+        if let Some(current) = self.stack.last_mut() {
+            let node = &mut current.node;
+            node.message = Some(match (node.message.take(), &node.node_type) {
+                (Some(m), _) => format!("{m} · {text}"),
+                (None, PathNodeType::Resolve) => text.to_string(),
+                (None, PathNodeType::CrossLawReference) => {
+                    format!("Reference: {} · {text}", node.name)
+                }
+                (None, _) => format!("{} · {text}", node.name),
+            });
+        }
+    }
+
     /// Get the message on the current node, if set.
     pub fn get_message(&self) -> Option<&str> {
         if !self.enabled {

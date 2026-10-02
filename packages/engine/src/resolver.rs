@@ -417,15 +417,32 @@ pub struct DecisionOn {
     pub legal_character: String,
 }
 
-/// A policy article that executes an article of law (RFC-047).
+/// A policy article that executes an article of law (RFC-047). Only valid
+/// `executes` entries become one; an invalid entry stays on the article
+/// (`Article::get_invalid_executes`) for the runtime to report.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecutesEntry {
-    /// The policy.
+    /// The `$id` of the policy that executes.
     pub law_id: String,
+    /// The number of the policy article that executes.
     pub article_number: String,
-    /// The executed article, `<regulation>#<article>`.
+    /// The executed article, `<regulation>#<article>`, without a paragraph.
     pub target: String,
+    /// How the policy works the article out (fact finding, interpretation,
+    /// weighing or procedure).
     pub kind: regelrecht_law_model::ExecutesKind,
+}
+
+impl ExecutesEntry {
+    /// The entry for article `article_number` of `law_id` that executes `e`.
+    pub fn new(law_id: &str, article_number: &str, e: &regelrecht_law_model::Executes) -> Self {
+        ExecutesEntry {
+            law_id: law_id.to_string(),
+            article_number: article_number.to_string(),
+            target: e.article.clone(),
+            kind: e.kind,
+        }
+    }
 }
 
 /// Resolves cross-law references and provides law registry functionality.
@@ -1575,12 +1592,7 @@ impl RuleResolver {
 
                     // What a policy article executes (RFC-047).
                     for e in article.get_executes() {
-                        let entry = ExecutesEntry {
-                            law_id: law_id.to_string(),
-                            article_number: article.number.clone(),
-                            target: e.article.clone(),
-                            kind: e.kind,
-                        };
+                        let entry = ExecutesEntry::new(law_id, &article.number, e);
                         let list = self.executes_index.entry(e.article.clone()).or_default();
                         if !list.contains(&entry) {
                             list.push(entry);
@@ -1775,13 +1787,7 @@ impl RuleResolver {
             .and_then(|l| l.find_article_by_number(article_number))
             .map(|a| {
                 a.get_executes()
-                    .iter()
-                    .map(|e| ExecutesEntry {
-                        law_id: law_id.to_string(),
-                        article_number: article_number.to_string(),
-                        target: e.article.clone(),
-                        kind: e.kind,
-                    })
+                    .map(|e| ExecutesEntry::new(law_id, article_number, e))
                     .collect()
             })
             .unwrap_or_default()
@@ -4885,5 +4891,61 @@ articles:
         assert!(r.executed_by("test_law", "1").is_empty());
         assert_eq!(r.executed_by("test_law", "2").len(), 1);
         assert_eq!(r.executes_of("test_beleid", "1")[0].target, "test_law#2");
+    }
+
+    /// Unloading the policy removes what it executes from the index.
+    #[test]
+    fn executes_index_unload() {
+        let mut r = RuleResolver::new();
+        r.load_from_yaml(make_test_law()).unwrap();
+        r.load_from_yaml(EXECUTING_POLICY).unwrap();
+        assert_eq!(r.executed_by("test_law", "1").len(), 1);
+        assert!(r.unload_law("test_beleid"));
+        assert!(r.executed_by("test_law", "1").is_empty());
+        assert!(r.executes_of("test_beleid", "1").is_empty());
+    }
+
+    /// Unloading the newest version of the policy brings back what the
+    /// older version executes.
+    #[test]
+    fn executes_index_unload_newest_version() {
+        let mut r = RuleResolver::new();
+        r.load_from_yaml(make_test_law()).unwrap();
+        r.load_from_yaml(EXECUTING_POLICY).unwrap();
+        r.load_from_yaml(
+            &EXECUTING_POLICY
+                .replace("valid_from: '2025-01-01'", "valid_from: '2026-01-01'")
+                .replace("test_law#1", "test_law#2"),
+        )
+        .unwrap();
+        assert!(r.unload_law_version("test_beleid", Some("2026-01-01")));
+        assert!(r.executed_by("test_law", "2").is_empty());
+        let by = r.executed_by("test_law", "1");
+        assert_eq!(by.len(), 1, "{by:?}");
+        assert_eq!(by[0].law_id, "test_beleid");
+        assert_eq!(r.executes_of("test_beleid", "1")[0].target, "test_law#1");
+    }
+
+    /// `executes` is metadata (RFC-043 rule): an invalid entry does not stop
+    /// the policy from loading, is not indexed, and stays retrievable.
+    #[test]
+    fn an_invalid_executes_entry_does_not_stop_the_load() {
+        let mut r = RuleResolver::new();
+        r.load_from_yaml(make_test_law()).unwrap();
+        r.load_from_yaml(&EXECUTING_POLICY.replace(
+            "- {article: 'test_law#1', as: procedure}",
+            "- {article: 'test_law#1', as: procedure}\n        - {article: 'test_law#2', as: guidance}",
+        ))
+        .unwrap();
+        assert_eq!(r.executed_by("test_law", "1").len(), 1);
+        assert!(r.executed_by("test_law", "2").is_empty());
+        assert_eq!(r.executes_of("test_beleid", "1").len(), 1);
+        let article = r
+            .get_law("test_beleid")
+            .and_then(|l| l.find_article_by_number("1"))
+            .unwrap();
+        let invalid = article.get_invalid_executes();
+        assert_eq!(invalid.len(), 1, "{invalid:?}");
+        assert_eq!(article.get_declared_executes().len(), 2);
     }
 }

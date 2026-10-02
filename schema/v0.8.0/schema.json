@@ -1907,8 +1907,7 @@
                   "minItems": 1,
                   "uniqueItems": true,
                   "items": {
-                    "type": "string",
-                    "pattern": "^[a-z][a-z0-9_]*#[A-Za-z0-9]([A-Za-z0-9:._ -]*[A-Za-z0-9])?$"
+                    "$ref": "#/definitions/articleReference"
                   },
                   "description": "The articles (`<regulation>#<article>`) that establish the submission this decision is taken on (RFC-046), as the text says (\"besluit op de aanvraag\"). A hook with applies_to.decided_by reads the legal character of this article."
                 }
@@ -2211,7 +2210,7 @@
         },
         "executes": {
           "type": "array",
-          "description": "The articles of law this policy article executes, and how (RFC-047). fact_finding, interpretation and weighing are the three subjects of a beleidsregel in Awb 1:3 lid 4 (vaststelling van feiten, uitleg van wettelijke voorschriften, afweging van belangen); procedure is a choice of this format, not an Awb term: the way of working without a weighing of its own, such as a portal or a channel. Name only the article the policy works out, not the general law that hooks onto it. The engine indexes it in both directions and names it in the trace; it does not change the outcome.",
+          "description": "The articles of law this policy article executes, and how (RFC-047). fact_finding, interpretation and weighing are the three subjects of a beleidsregel in Awb 1:3 lid 4 (vaststelling van feiten, uitleg van wettelijke voorschriften, afweging van belangen); procedure is a choice of this format, not an Awb term: the way of working without a weighing of its own, such as a portal or a channel. Name only the article the policy works out, not the general law that hooks onto it. The engine answers in both directions (which policy articles execute an article, and what a policy article executes) and names it in the trace; it does not change the outcome. Metadata: a model may keep an entry that is not valid instead of refusing the law (RFC-043), and the runtime reports it.",
           "items": {
             "type": "object",
             "additionalProperties": false,
@@ -2221,9 +2220,8 @@
             ],
             "properties": {
               "article": {
-                "type": "string",
-                "pattern": "^[a-z0-9_]+#[^#]+$",
-                "description": "The executed article, `<regulation>#<article>`, without a paragraph."
+                "$ref": "#/definitions/articleReference",
+                "description": "The executed article, without a paragraph."
               },
               "as": {
                 "type": "string",
@@ -2303,6 +2301,11 @@
         }
       },
       "additionalProperties": false
+    },
+    "articleReference": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*#[A-Za-z0-9]([A-Za-z0-9:._ -]*[A-Za-z0-9])?$",
+      "description": "An article of a regulation, `<regulation>#<article>`, without a paragraph."
     }
   }
 }
