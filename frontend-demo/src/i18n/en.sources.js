@@ -642,7 +642,7 @@ export default {
   "walkthrough.captions": "e0f2",
   "walkthrough.chapter": "0033",
   "walkthrough.chapters": "f432",
-  "walkthrough.dutch_only": "f979",
+  "walkthrough.dutch_only": "ef93",
   "walkthrough.faq.back": "9686",
   "walkthrough.faq.label": "003c",
   "walkthrough.faq.overline": "c372",

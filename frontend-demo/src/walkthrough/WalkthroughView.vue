@@ -47,7 +47,9 @@ async function maybeStart() {
   await demo.boot().catch(() => {});
   loaded.value = true;
   narrow.value = window.innerWidth < WIDE;
-  if (!timeline.value || narrow.value || replay.active) return;
+  // A failed load stays failed until a reload: leaving the replay remounts
+  // this page, and starting again would fetch the missing file in a loop.
+  if (!timeline.value || narrow.value || replay.active || replay.failed) return;
   if (!here || route.meta?.page !== 'rondleiding') return;
   await startReplay(timeline.value, { router, demo, presentation }, { at: savedPosition(), faqId: route.params.faqId ?? null });
 }
@@ -59,7 +61,9 @@ onUnmounted(() => (here = false));
 </script>
 
 <template>
-  <nldd-page v-if="loaded && !timeline">
+  <!-- No walkthrough, or its media did not load (a release asset missing,
+       or a dev checkout with a timeline but without `walkthrough build`). -->
+  <nldd-page v-if="loaded && (!timeline || replay.failed)">
     <nldd-simple-section width="720px">
       <nldd-title slot="header" size="2">
         <h1>{{ t('walkthrough.missing.title') }}</h1>

@@ -940,7 +940,7 @@ export default {
   'walkthrough.transcript.close': 'Close',
   'walkthrough.transcript.play_from': 'Play from {time}',
   'recorder.no_endpoint': 'The demo is not running in recording mode. Start it with `just walkthrough record`.',
-  'walkthrough.dutch_only': 'The walkthrough was recorded in Dutch. The controls are translated; the slides, the captions and the transcript are in Dutch.',
+  'walkthrough.dutch_only': 'The walkthrough was recorded in Dutch. The controls are translated. The demo, the slides, the captions and the transcript are in Dutch, so they match what is said.',
   'walkthrough.more': 'More',
   'walkthrough.view': 'Display',
   'walkthrough.captions': 'Captions',

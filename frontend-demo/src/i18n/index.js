@@ -114,7 +114,11 @@ export const activeLocale = computed(() => locale.value);
  * without that test this would quietly permit a half-translated app.
  */
 export function t(key, vars) {
-  const s = DICTS[locale.value]?.[key] ?? nl[key] ?? key;
+  return translate(locale.value, key, vars);
+}
+
+function translate(code, key, vars) {
+  const s = DICTS[code]?.[key] ?? nl[key] ?? key;
   if (!vars) return s;
   return s.replace(/\{(\w+)\}/g, (whole, name) => (name in vars ? String(vars[name]) : whole));
 }
@@ -163,4 +167,24 @@ export function adoptLocale(next) {
 
 export function useI18n() {
   return { t, locale: computed(() => locale.value), setLocale };
+}
+
+/**
+ * The viewer's own language while the demo itself runs in another.
+ *
+ * The recorded walkthrough plays in Dutch: the voice names the Dutch labels,
+ * and the replay finds what to click by them. So the app switches to Dutch
+ * for the length of the replay, but the player's controls around it stay in
+ * the language the viewer came in with.
+ */
+const viewer = ref(null);
+
+export function setViewerLocale(code) {
+  viewer.value = isLocale(code) ? code : null;
+}
+
+/** Like `useI18n()`, in the viewer's language (see `setViewerLocale`). */
+export function useViewerI18n() {
+  const code = computed(() => viewer.value ?? locale.value);
+  return { t: (key, vars) => translate(code.value, key, vars), locale: code };
 }

@@ -4,13 +4,13 @@
  * presenter's bubble and the questions offered so far.
  */
 import { computed, onUnmounted, ref, watch } from 'vue';
-import { useI18n } from '../i18n/index.js';
+import { useViewerI18n } from '../i18n/index.js';
 import { useWalkthrough } from './useWalkthrough.js';
 import { currentTrack, openFaq, replay } from './replay.js';
 import { camVisible, offeredFaq } from './timeline.js';
 import { camSlot } from './chrome.js';
 
-const { t, locale } = useI18n();
+const { t, locale } = useViewerI18n();
 const { timeline } = useWalkthrough();
 
 const slot = ref(null);
@@ -22,7 +22,7 @@ const offered = computed(() => (replay.faq ? [] : offeredFaq(timeline.value, rep
 </script>
 
 <template>
-  <div v-if="showCam || offered.length" class="aside wt-chrome">
+  <div v-if="showCam || offered.length" class="aside wt-chrome" :lang="locale">
     <div v-if="showCam" ref="slot" class="cam-slot" aria-hidden="true"></div>
     <div v-if="offered.length" class="faq" lang="nl" role="region" :aria-label="t('walkthrough.faq.label')">
       <span class="faq-title" :lang="locale">{{ t('walkthrough.faq.title') }}</span>

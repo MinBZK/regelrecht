@@ -5,13 +5,13 @@
  * the transcript panel. Also the player's keys.
  */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-import { useI18n } from '../i18n/index.js';
+import { useViewerI18n } from '../i18n/index.js';
 import { usePresentation } from '../presentation/usePresentation.js';
 import { PLAYER_KEYS, audioTime, backToMain, currentTrack, replay, seek, togglePlay } from './replay.js';
 import { MEDIA_BASE, camVisible, cueAt, followerCorrection, formatTime, nextChapterStart, previousChapterStart } from './timeline.js';
 import { camSlot, transcript } from './chrome.js';
 
-const { t, locale } = useI18n();
+const { t, locale } = useViewerI18n();
 const p = usePresentation();
 
 const track = computed(() => currentTrack());

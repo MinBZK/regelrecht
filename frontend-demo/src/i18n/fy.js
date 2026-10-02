@@ -835,7 +835,7 @@ export default {
   "walkthrough.transcript.close": "Slute",
   "walkthrough.transcript.play_from": "Ôfspylje fan {time} ôf",
   "recorder.no_endpoint": "De demo draait net yn opnamemodus. Start him mei `just walkthrough record`.",
-  "walkthrough.dutch_only": "De rûnlieding is yn it Nederlânsk opnommen. De knoppen binne oerset; de dia's, de ûndertitels en de útskreaune tekst binne Nederlânsk.",
+  "walkthrough.dutch_only": "De rûnlieding is yn it Nederlânsk opnommen. De knoppen binne oerset. De demo, de dia's, de ûndertitels en de útskreaune tekst binne Nederlânsk, sadat se kloppe mei wat der sein wurdt.",
   "walkthrough.more": "Mear",
   "walkthrough.view": "Werjefte",
   "walkthrough.captions": "Ûndertitels",

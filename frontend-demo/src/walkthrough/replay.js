@@ -19,7 +19,7 @@
  * to storage; leaving restores it.
  */
 import { nextTick, reactive } from 'vue';
-import { adoptLocale, currentLocale, t } from '../i18n/index.js';
+import { adoptLocale, currentLocale, setViewerLocale, t } from '../i18n/index.js';
 import { setPersistence } from '../store/demoStore.js';
 import { localeRouteName, pageForConfigPath } from '../router.js';
 import { click, setChecked, setValue, key as pressKey, scrollTo } from './actions.js';
@@ -48,6 +48,8 @@ export const replay = reactive({
   ripples: [],
   /** Actions whose element was not found: what a recording needs redone. */
   misses: [],
+  /** The media did not load: the page says so instead of spinning. */
+  failed: false,
 });
 
 let timeline = null;
@@ -56,6 +58,8 @@ let audio = null;
 let next = 0; // index of the next event to apply
 /** The seek token of whoever is applying events now (pump or seek), or null. */
 let busyOwner = null;
+/** The seek token of a seek in progress, or null. */
+let seeking = null;
 let raf = 0;
 let mainPosition = 0;
 let backup = null;
@@ -313,7 +317,7 @@ async function pump() {
 }
 
 function tick() {
-  if (audio) replay.now = audio.currentTime;
+  if (audio && seeking === null) replay.now = audio.currentTime;
   pump();
   raf = replay.playing ? requestAnimationFrame(tick) : 0;
 }
@@ -347,16 +351,53 @@ async function loadTrack(track) {
   const src = `${MEDIA_BASE}${track.audio.src}`;
   if (!a.src.endsWith(track.audio.src)) {
     a.src = src;
-    await new Promise((r) => {
-      if (a.readyState >= 1) r();
-      else a.addEventListener('loadedmetadata', r, { once: true });
+    // A missing or broken file must end the wait: without an error path the
+    // page shows its spinner forever.
+    await new Promise((resolve, reject) => {
+      if (a.readyState >= 1) return resolve();
+      const timer = setTimeout(() => done(new Error(`timeout: ${src}`)), MEDIA_TIMEOUT);
+      const done = (err) => {
+        clearTimeout(timer);
+        a.removeEventListener('loadedmetadata', ok);
+        a.removeEventListener('error', fail);
+        if (err) reject(err);
+        else resolve();
+      };
+      const ok = () => done();
+      const fail = () => done(new Error(`media: ${src}`));
+      a.addEventListener('loadedmetadata', ok);
+      a.addEventListener('error', fail);
     });
   }
   a.playbackRate = replay.speed;
   const base = recordedAt(track);
-  if (base != null) installClock(() => base + replay.now * 1000);
+  if (base != null) installClock(replayClock(base));
   ctx.presentation.init({ slides: slidesFor(track) });
   loadCaptions(track);
+}
+
+const MEDIA_TIMEOUT = 20000;
+
+/**
+ * The time the demo sees during the replay: the recording's own date, moving
+ * with the voice. While the voice stands still (paused, waiting, the viewer
+ * clicking along) the clock keeps running on wall time, so code that stamps
+ * ids or measures durations with `Date.now()` does not see time stop.
+ */
+function replayClock(base) {
+  let extra = 0;
+  let lastReal = performance.now();
+  return () => {
+    const real = performance.now();
+    if (!replay.playing || replay.waiting || replay.diverged) extra += real - lastReal;
+    lastReal = real;
+    return base + replay.now * 1000 + extra;
+  };
+}
+
+/** A token check for the steps after an await: a jump, a stop, the viewer leaving. */
+function still(token) {
+  return token === seekToken && replay.active;
 }
 
 // ---- the controls ------------------------------------------------------------------
@@ -370,49 +411,64 @@ export async function seek(t, { play: playAfter = replay.playing } = {}) {
   if (!track || !ctx) return;
   seekToken += 1;
   const token = seekToken;
+  // From here the events are this seek's: a pump or a play in the meantime
+  // would apply the old position's events onto the restored chapter.
+  busyOwner = token;
+  seeking = token;
+  cancelAnimationFrame(raf);
+  raf = 0;
   audio?.pause();
-  replay.playing = false;
+  // Play or pause pressed during the seek only changes what happens after it.
+  replay.playing = playAfter;
   replay.waiting = false;
   replay.diverged = false;
   replay.cursor.visible = false;
+  let i = 0;
   const target = Math.max(0, Math.min(track.duration, t));
-  const ci = Math.max(0, chapterAt(track, target));
-  const chapter = track.chapters[ci];
-  replay.now = chapter.start;
-  applyState(chapter.state);
-  resetViews();
-  await nextTick();
-  if (!ctx.presentation.active.value) ctx.presentation.start(chapter.slideIndex, { keys: false });
-  await ctx.presentation.goTo(chapter.slideIndex);
-  await sleep(250);
-  const events = track.events ?? [];
-  // The chapter's snapshot was taken when its slide came up, so whatever comes
-  // before that slide event in the list (actions moved out of a cut to the
-  // same moment) is already in it. Replay from just after the slide event.
-  const slideAt = events.findIndex((e) => e.type === 'slide' && e.index === chapter.slideIndex && e.t >= chapter.start - 0.001);
-  let i = slideAt >= 0 ? slideAt + 1 : events.findIndex((e) => e.t >= chapter.start);
-  if (i < 0) i = events.length;
-  busyOwner = token;
   try {
+    const ci = Math.max(0, chapterAt(track, target));
+    const chapter = track.chapters[ci];
+    replay.now = chapter.start;
+    applyState(chapter.state);
+    resetViews();
+    await nextTick();
+    if (!still(token)) return;
+    if (!ctx.presentation.active.value) ctx.presentation.start(chapter.slideIndex, { keys: false });
+    await ctx.presentation.goTo(chapter.slideIndex);
+    await sleep(250);
+    if (!still(token)) return;
+    const events = track.events ?? [];
+    // The chapter's snapshot was taken when its slide came up, so whatever comes
+    // before that slide event in the list (actions moved out of a cut to the
+    // same moment) is already in it. Replay from just after the slide event.
+    const slideAt = events.findIndex((e) => e.type === 'slide' && e.index === chapter.slideIndex && e.t >= chapter.start - 0.001);
+    i = slideAt >= 0 ? slideAt + 1 : events.findIndex((e) => e.t >= chapter.start);
+    if (i < 0) i = events.length;
     for (; i < events.length && events[i].t <= target; i += 1) {
-      if (token !== seekToken || !replay.active) return;
+      if (!still(token)) return;
       const e = events[i];
       replay.now = e.t;
       await apply(e, { fast: true, token });
     }
   } finally {
     if (busyOwner === token) busyOwner = null;
+    if (seeking === token) seeking = null;
   }
-  if (token !== seekToken) return;
+  if (!still(token)) return;
   next = i;
   leadFor = -1;
   replay.now = target;
   if (audio) audio.currentTime = target;
-  if (playAfter) play();
+  if (replay.playing) play();
 }
 
 export async function play() {
   if (!audio) return;
+  // A seek in progress plays when it is done.
+  if (seeking !== null) {
+    replay.playing = true;
+    return;
+  }
   if (replay.diverged) {
     await seek(replay.now, { play: true });
     return;
@@ -446,13 +502,33 @@ export function openFaq(entry) {
   if (!entry || !timeline) return;
   if (!replay.faq) mainPosition = replay.now;
   replay.faq = entry;
-  loadTrack(entry).then(() => seek(0, { play: true }));
+  switchTo(entry, 0);
 }
 
 export function backToMain() {
   if (!replay.faq) return;
   replay.faq = null;
-  loadTrack(timeline.main).then(() => seek(mainPosition, { play: true }));
+  switchTo(timeline.main, mainPosition);
+}
+
+/** Load another track and play it from `at`, unless something else happened first. */
+function switchTo(track, at) {
+  // Whatever was jumping or playing stops here.
+  seekToken += 1;
+  const token = seekToken;
+  // Not pause(): that would store the question's position as the main line's.
+  replay.playing = false;
+  audio?.pause();
+  loadTrack(track).then(
+    () => still(token) && seek(at, { play: true }),
+    () => still(token) && fail(),
+  );
+}
+
+/** The media did not load: leave the replay and let the page say so. */
+function fail() {
+  stopReplay();
+  replay.failed = true;
 }
 
 function savePosition() {
@@ -505,6 +581,21 @@ function onViewerAct(e) {
  * store (`useDemo()`) and the deck (`usePresentation()`).
  */
 export async function startReplay(data, context, { at = 0, faqId = null } = {}) {
+  // A kept-alive page is mounted and activated in the same tick, and both
+  // start the walkthrough; the second would take the first one's Dutch for
+  // the viewer's language and run a second replay over it.
+  if (replay.active || starting) return;
+  starting = true;
+  try {
+    await begin(data, context, { at, faqId });
+  } finally {
+    starting = false;
+  }
+}
+
+let starting = false;
+
+async function begin(data, context, { at, faqId }) {
   timeline = data;
   ctx = context;
   // A live presentation that was still running would keep its arrow keys and
@@ -513,8 +604,11 @@ export async function startReplay(data, context, { at = 0, faqId = null } = {}) 
   backup = clone(ctx.demo.state);
   setPersistence(false);
   // The recording is Dutch; its slides and the controls it clicks are found
-  // by their Dutch text. The URL moves along with the replay anyway.
+  // by their Dutch text, and the voice names them. The demo runs in Dutch for
+  // the length of the replay; the player's own controls stay in the viewer's
+  // language.
   previousLocale = currentLocale();
+  setViewerLocale(previousLocale);
   adoptLocale(SOURCE_LOCALE);
   await nextTick();
   replay.active = true;
@@ -524,7 +618,12 @@ export async function startReplay(data, context, { at = 0, faqId = null } = {}) 
   const faq = faqId ? timeline.faq?.find((f) => f.id === faqId) : null;
   if (faq) mainPosition = at;
   replay.faq = faq ?? null;
-  await loadTrack(currentTrack());
+  try {
+    await loadTrack(currentTrack());
+  } catch {
+    fail();
+    return;
+  }
   ctx.presentation.start(currentTrack().chapters[0].slideIndex, { keys: false });
   await seek(faq ? 0 : at, { play: false });
 }
@@ -561,6 +660,7 @@ export function stopReplay() {
     if (page) ctx.router.replace({ name: localeRouteName(page, previousLocale), params: here.params }).catch(() => {});
   }
   resetViews();
+  setViewerLocale(null);
   backup = null;
 }
 

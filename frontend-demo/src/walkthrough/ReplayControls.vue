@@ -9,14 +9,14 @@
  */
 import { computed, nextTick, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { DEFAULT_LOCALE, useI18n } from '../i18n/index.js';
+import { DEFAULT_LOCALE, useViewerI18n } from '../i18n/index.js';
 import { intlLocale } from '../data/format.js';
 import { localeRouteName } from '../router.js';
 import { backToMain, currentTrack, pause, replay, seek, setSpeed, stopReplay, togglePlay } from './replay.js';
 import { chapterAt, formatTime, nextChapterStart, previousChapterStart } from './timeline.js';
 import { openTranscript } from './chrome.js';
 
-const { t, locale } = useI18n();
+const { t, locale } = useViewerI18n();
 const router = useRouter();
 
 const SPEEDS = [1, 1.25, 1.5];
@@ -62,8 +62,9 @@ watch(
 </script>
 
 <template>
-  <div class="controls wt-chrome">
-    <!-- The recording and its slides are Dutch in every interface language. -->
+  <div class="controls wt-chrome" :lang="locale">
+    <!-- The recording, its slides and the demo under it are Dutch in every
+         interface language; the controls are the viewer's. -->
     <nldd-text v-if="locale !== DEFAULT_LOCALE" size="sm" color="inherit">{{ t('walkthrough.dutch_only') }}</nldd-text>
     <!-- Generated speech that passes for a person is labelled as such (AI
          Act, art. 50). Always in view, not only on the first slide: a viewer
