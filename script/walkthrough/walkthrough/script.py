@@ -75,6 +75,54 @@ def beats(events: list[dict], gap: float = BEAT_GAP) -> list[list[dict]]:
     return out
 
 
+def beat_starts(events: list[dict], gap: float = BEAT_GAP) -> list[float]:
+    """When each beat of `beats(events)` starts, in seconds of the take."""
+    acts = [e for e in events if e.get("type") in ACTIONS]
+    runs: list[list[dict]] = []
+    last = None
+    for e in acts:
+        t = e["t"] / 1000
+        if last is None or t - last > gap:
+            runs.append([])
+        runs[-1].append(e)
+        last = t
+    return [run[0]["t"] / 1000 for run in runs if not all(e["type"] == "route" for e in run)]
+
+
+def draft_lines(words: list[dict], starts: list[float], lead: float = 0.3) -> list[str]:
+    """A script from what was said while recording: one line per sentence,
+    with each beat's marker before the word the presenter was saying when the
+    action began (or the next word, when it began in a pause).
+
+    This is the draft `walkthrough script` writes: the presenter's own words,
+    to be read again by the generated voice, with the clicks where they were.
+    """
+    if not words:
+        return []
+    # Where each marker goes: before word index i.
+    before: dict[int, list[int]] = {}
+    for n, s in enumerate(starts, 1):
+        i = next((k for k, w in enumerate(words) if w["start"] >= s - lead), None)
+        if i is None:
+            before.setdefault(len(words), []).append(n)
+        else:
+            before.setdefault(i, []).append(n)
+    lines, current = [], []
+    for k, w in enumerate(words):
+        current += [f"[{n}]" for n in before.get(k, [])]
+        current.append(w["word"])
+        if w["word"].rstrip().endswith((".", "?", "!")):
+            lines.append(" ".join(current))
+            current = []
+    current += [f"[{n}]" for n in before.get(len(words), [])]
+    if current:
+        if lines and all(c.startswith("[") for c in current):
+            lines[-1] += " " + " ".join(current)
+        else:
+            lines.append(" ".join(current))
+    return lines
+
+
 def char_time(alignment: dict, offset: int) -> float:
     """Seconds at character `offset` in an ElevenLabs-style alignment
     (`characters`, `character_start_times_seconds`)."""

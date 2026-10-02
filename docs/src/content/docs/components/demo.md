@@ -116,6 +116,9 @@ just walkthrough transcript  # the spoken text per slide
 just walkthrough build       # walkthrough.yaml to voice, video, captions and timeline.json
 just walkthrough export      # a shareable MP4 per track
 just walkthrough status      # which takes exist and how far each one is processed
+just walkthrough script      # a draft script per slide of a take, for the generated voice
+just walkthrough voices      # the voices on the ElevenLabs account
+just walkthrough publish     # the media into a GitHub release (asks first)
 just walkthrough-test        # the tests of the cut and caption arithmetic
 ```
 
@@ -151,6 +154,19 @@ voice:
 `elevenlabs` reads the API key from `ELEVENLABS_API_KEY` or from `.walkthrough/.env`, which is not in git. Generated lines are cached by a hash of their text and voice settings, so a rebuild only pays for lines that changed. Where a track contains generated speech, the player says so next to its controls ("De stem in de hoofdstukken is gegenereerd met AI"), as the AI Act asks of generated speech that can pass for a person. The webcam bubble shows only during the recorded parts at the start (`cam.until`).
 
 A track with generated chapters has no recording of the window, so a phone gets a message instead of the video, and `walkthrough export` skips it; an MP4 of such a track has to be recorded from the replay itself, which is not built yet.
+
+### From recording to release
+
+The route for a new walkthrough, or for a chapter recorded again:
+
+1. **Voice clone, once.** Record yourself giving the talk two or three times, freely and microphone only (QuickTime, high quality); that is the training audio. Create a Professional Voice Clone from it at ElevenLabs, put the API key in `.walkthrough/.env` with `read -s KEY && echo "ELEVENLABS_API_KEY=$KEY" >> .walkthrough/.env`, and find the clone's id with `just walkthrough voices`. It goes in `walkthrough.yaml` under `voice.voice_id`, with `provider: elevenlabs`.
+2. **Record.** `just walkthrough-record`. The opening as a take with the camera on. Then every chapter as a take: talk and click as in a presentation. The answers to questions that are a judgement as takes on a slide without a tab, camera on; the ones that show something as takes with talking and clicking.
+3. **Process.** `just walkthrough prepare <take>` for every take: clean voice, transcript, draft cuts.
+4. **Scripts.** `just walkthrough script <take>` for every take whose chapters the generated voice will speak. It writes a script per slide in `corpus/demo/walkthrough/script/`: the sentences that were said, with a marker where each action began. Correct the sentences where needed; the markers stay.
+5. **Compose.** In `walkthrough.yaml`: the opening as a `take:` segment (with its cuts), the chapters as `script:` segments, the questions with their segments and the moment they are offered, and slide texts that should read differently. Then `just walkthrough build` and watch it with `just dev-demo` at `/rondleiding`.
+6. **Publish.** `just walkthrough publish walkthrough-<date>` uploads the media to a GitHub release (it asks first; a release is public) and writes the tag into `timeline.json`. Commit `corpus/demo/walkthrough/`; the Docker build fetches the media from the release.
+
+When the demo changes and a chapter no longer replays, record that chapter again (step 2 to 4 for one take) and point its `script:` segment at the new script. A text correction is a change to the script and a new build; only the changed lines are generated again.
 
 ## Running locally
 

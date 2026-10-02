@@ -9,6 +9,9 @@
     walkthrough build            walkthrough.yaml -> media, timeline.json, captions
     walkthrough export           a shareable MP4 per track
     walkthrough status           what is recorded and processed so far
+    walkthrough script <take>    a draft script per slide, from what was said and done
+    walkthrough voices           the voices on the ElevenLabs account (the clone's id)
+    walkthrough publish <tag>    the media into a GitHub release (asks first)
 
 Raw takes live in `.walkthrough/takes/<take>/` (not in git). What decides the
 result is `corpus/demo/walkthrough/walkthrough.yaml`, in git: which takes,
@@ -362,6 +365,14 @@ def render_scripted(name: str, seg: dict, cfg: dict, overrides: dict, workdir: P
     audio = [speak(text, voice_cfg, WORK, texts[i - 1] if i else "", texts[i + 1] if i + 1 < len(texts) else "") for i, text in enumerate(texts)]
     take = doc.get("take")
     events = read_json(take_dir(take) / "events.json", []) if take else []
+    # A script may cover one stretch of a longer take (`walkthrough script`
+    # writes one per slide). The state is the one the stretch begins with.
+    lo, hi = doc.get("from"), doc.get("to")
+    if lo is not None or hi is not None:
+        lo_ms = float(lo or 0) * 1000
+        hi_ms = float(hi) * 1000 if hi is not None else float("inf")
+        start_slide = next((e for e in reversed(events) if e.get("type") == "slide" and e["t"] <= lo_ms + 1), None)
+        events = ([start_slide] if start_slide else []) + [e for e in events if lo_ms < e["t"] < hi_ms and e is not start_slide]
     runs = beats(events)
     try:
         plan = layout(lines, audio, runs)
@@ -597,6 +608,100 @@ def transcript(which: str) -> None:
         print(text or "(stil)")
 
 
+def draft_scripts(take: str) -> list[Path]:
+    """A script per slide of `take`, from what was said and done in it.
+
+    The presenter's own words, one line per sentence, with a marker where each
+    action began. Corrections go in the files; a rerun does not overwrite a
+    script that already exists.
+    """
+    from .script import beat_starts, draft_lines
+
+    d = take_dir(take)
+    words = read_json(d / "words.json", {}).get("words", [])
+    if not words:
+        raise SystemExit(f"{take}: nog geen transcript; draai eerst `just walkthrough prepare {take}`")
+    events = read_json(d / "events.json", [])
+    end = next((e["t"] / 1000 for e in reversed(events) if e.get("type") == "end"), words[-1]["end"] + 1)
+    slides = [e for e in events if e.get("type") == "slide"]
+    # One stretch per slide; a slide shown only for a moment (the deck passing
+    # through) is not a chapter.
+    stretches = []
+    for i, e in enumerate(slides):
+        lo = e["t"] / 1000
+        hi = slides[i + 1]["t"] / 1000 if i + 1 < len(slides) else end
+        if hi - lo >= 1.0:
+            stretches.append((e.get("index", 0), lo, hi))
+    out_dir = CORPUS / "script"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    written = []
+    for index, lo, hi in stretches:
+        part_words = [w for w in words if lo <= w["start"] < hi]
+        if not part_words:
+            continue
+        part_events = [e for e in events if lo * 1000 < e["t"] < hi * 1000]
+        lines = draft_lines(part_words, beat_starts(part_events))
+        path = out_dir / f"{take}-dia{index}.yaml"
+        if path.exists():
+            say(f"bestaat al, niet overschreven: {path.relative_to(ROOT)}")
+            continue
+        doc = {"slide": index, "take": take, "from": round(lo, 3), "to": round(hi, 3), "lines": lines}
+        header = (
+            f"# Concept uit opname {take}, dia {index}: wat er gezegd is, met [n] waar een\n"
+            "# handeling begon. Pas de zinnen gerust aan; elke [n] moet blijven staan.\n"
+            "---\n"
+        )
+        path.write_text(header + yaml.safe_dump(doc, allow_unicode=True, sort_keys=False, width=1000))
+        written.append(path)
+        say(f"{path.relative_to(ROOT)}: {len(lines)} regels")
+    return written
+
+
+def voices() -> None:
+    """The voices on the ElevenLabs account, to find the clone's voice id."""
+    import urllib.request
+
+    from .voice import api_key
+
+    req = urllib.request.Request("https://api.elevenlabs.io/v1/voices", headers={"xi-api-key": api_key(WORK)})
+    with urllib.request.urlopen(req, timeout=30) as res:
+        data = json.loads(res.read())
+    for v in data.get("voices", []):
+        print(f"{v['voice_id']}  {v.get('category', ''):12} {v.get('name', '')}")
+    print("\nZet de id van je kloon in walkthrough.yaml onder voice.voice_id.", file=sys.stderr)
+
+
+def publish(tag: str, yes: bool) -> None:
+    """Put the built media in a GitHub release and point the timeline at it.
+
+    Creates the release (or adds to it), uploads every file timeline.json
+    names, and writes the tag into timeline.json, so the Docker build fetches
+    exactly these files. Asks first: a release is public.
+    """
+    timeline = read_json(CORPUS / "timeline.json")
+    if not timeline:
+        raise SystemExit("nog geen timeline.json; draai eerst `just walkthrough build`")
+    tracks = [timeline["main"], *(timeline.get("faq") or [])]
+    files = [PUBLIC / m["src"] for t in tracks for m in (t.get("audio"), t.get("video"), t.get("cam")) if m]
+    missing = [f.name for f in files if not f.exists()]
+    if missing:
+        raise SystemExit(f"ontbreken in {PUBLIC.relative_to(ROOT)}: {missing}; draai `just walkthrough build` opnieuw")
+    size = sum(f.stat().st_size for f in files) / 1e6
+    repo = "MinBZK/regelrecht"
+    say(f"Release {tag} op {repo}: {len(files)} bestanden, {size:.0f} MB. Een release is openbaar.")
+    if not yes:
+        if input("Doorgaan? [j/N] ").strip().lower() not in ("j", "ja", "y", "yes"):
+            raise SystemExit("niets gepubliceerd")
+    gh = shutil.which("gh") or "gh"
+    exists = subprocess.run([gh, "release", "view", tag, "-R", repo], capture_output=True).returncode == 0
+    if not exists:
+        subprocess.run([gh, "release", "create", tag, "-R", repo, "--title", f"Rondleiding demo ({tag})", "--notes", "Media van de opgenomen rondleiding door de demo (corpus/demo/walkthrough/timeline.json). Geen softwarerelease.", "--latest=false"], check=True)
+    subprocess.run([gh, "release", "upload", tag, "-R", repo, "--clobber", *map(str, files)], check=True)
+    timeline["release"] = tag
+    (CORPUS / "timeline.json").write_text(json.dumps(timeline, ensure_ascii=False, indent=1) + "\n")
+    say(f"klaar: timeline.json wijst naar {tag}. Commit corpus/demo/walkthrough/ en de Docker-build haalt de media op.")
+
+
 def status() -> None:
     cfg = load_config(required=False)
     used = {s["take"] for s in (cfg.get("main") or {}).get("segments") or []} | {f.get("take") for f in cfg.get("faq") or []}
@@ -642,6 +747,12 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--release", help="tag van de GitHub-release met de media")
     sub.add_parser("export")
     sub.add_parser("status")
+    p = sub.add_parser("script", help="een concept-script per dia uit een opname")
+    p.add_argument("take", nargs="?", help="map in .walkthrough/takes (standaard: de laatste)")
+    sub.add_parser("voices", help="de stemmen op je ElevenLabs-account")
+    p = sub.add_parser("publish", help="media in een GitHub-release zetten")
+    p.add_argument("tag", help="bijvoorbeeld walkthrough-2026-10")
+    p.add_argument("--yes", action="store_true", help="niet vragen")
     args = ap.parse_args(argv)
 
     take = getattr(args, "take", None) or (latest_take() if args.cmd in ("prepare", "ingest", "clean", "transcribe", "suggest") else None)
@@ -661,6 +772,12 @@ def main(argv: list[str] | None = None) -> None:
         build(args.release)
     elif args.cmd == "export":
         export()
+    elif args.cmd == "script":
+        draft_scripts(args.take or latest_take())
+    elif args.cmd == "voices":
+        voices()
+    elif args.cmd == "publish":
+        publish(args.tag, args.yes)
     elif args.cmd == "status":
         status()
 

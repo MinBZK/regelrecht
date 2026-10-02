@@ -41,6 +41,22 @@ def test_every_beat_must_be_in_the_script_once():
         layout([parse_line("Een [3].")], audio, [[{"t": 0, "type": "click"}]])
 
 
+def test_a_draft_script_puts_each_marker_where_the_presenter_clicked():
+    from walkthrough.script import beat_starts, draft_lines
+
+    w = lambda text, s, e: {"word": text, "start": s, "end": e}
+    words = [w("Ik", 1.0, 1.2), w("open", 1.3, 1.6), w("de", 1.7, 1.8), w("lijst.", 1.9, 2.4), w("Nu", 4.0, 4.2), w("typ", 4.3, 4.5), w("ik.", 4.6, 4.9)]
+    events = [ev(0.1, "route", path="/wetten"), ev(1.5, "click"), ev(3.2, "click"), ev(3.3, "input", value="h"), ev(9.0, "click")]
+    starts = beat_starts(events)
+    assert starts == [1.5, 3.2, 9.0]
+    lines = draft_lines(words, starts)
+    # Mid-word click: before the word being said. In a pause: before the next
+    # word. After the last word: at the end.
+    assert lines == ["Ik [1] open de lijst.", "[2] Nu typ ik. [3]"]
+    parsed = [parse_line(x) for x in lines]
+    assert parsed[1].text == "Nu typ ik."
+
+
 def test_say_as_changes_what_is_spoken_but_not_the_text():
     from walkthrough.voice import remap, speakable
 
