@@ -971,4 +971,6 @@ export default {
   'recorder.saving': 'Opname opslaan…',
   'walkthrough.own_turn': 'Je klikt nu zelf in de demo. Afspelen zet de rondleiding terug waar hij was.',
   'walkthrough.phone': 'Op een groter scherm loopt de rondleiding door de echte demo. Op een telefoon zie je hem als video.',
+  'walkthrough.ai_voice': 'De stem in de hoofdstukken is gegenereerd met AI, op basis van de stem van de presentator.',
+  'walkthrough.phone_none': 'Deze rondleiding is alleen op een groter scherm te bekijken.',
 };

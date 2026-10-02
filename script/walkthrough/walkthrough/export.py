@@ -73,4 +73,10 @@ def export_track(name: str, track: dict, media_dir: Path, captions_dir: Path, ou
 def export_all(timeline: dict, media_dir: Path, captions_dir: Path, out_dir: Path) -> None:
     tracks = [("main", timeline["main"])] + [(f"faq-{f['id']}", f) for f in timeline.get("faq") or []]
     for name, track in tracks:
+        if not track.get("video"):
+            # A track with generated chapters has no recording of the window
+            # to build on. An MP4 of it has to be recorded from the replay
+            # itself, which this command does not do yet.
+            print(f"{name}: overgeslagen, bevat gegenereerde hoofdstukken (nog geen video)", file=sys.stderr)
+            continue
         print(f"{name}: {export_track(name, track, media_dir, captions_dir, out_dir)}", file=sys.stderr)

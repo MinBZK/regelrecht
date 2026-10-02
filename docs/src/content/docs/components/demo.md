@@ -121,6 +121,35 @@ The voice is denoised with DeepFilterNet, filtered below 80 Hz, de-essed and com
 
 `build` cuts every piece on whole frames, so the voice cannot drift from the picture over many cuts, and refuses a cut through typing. An action inside a cut is not dropped but moved to the cut, so the demo still ends up in the presenter's state. The timeline, the captions and `walkthrough.yaml` are in git under `corpus/demo/walkthrough/`; the media are not, because a re-recorded chapter would leave megabytes in the history for good. They are assets of the GitHub release named in `timeline.json`. The Docker build fetches them with `scripts/fetch-walkthrough-media.mjs` and refuses a file whose checksum differs. nginx serves them from `/walkthrough/` with a one-year cache, which is safe because a new recording means new file names.
 
+### Generated chapters
+
+A chapter can also be spoken from a script instead of a recording. The script is text with markers, in `corpus/demo/walkthrough/script/<name>.yaml`, next to a silent take that holds the clicks and typing for it:
+
+```yaml
+slide: 5
+take: 2026-10-03T10-00-00
+lines:
+  - Hier ziet u de wet op de zorgtoeslag, zoals een computer hem leest.
+  - Ik open [1] de lijst met wetten en zoek [2] de huurtoeslag.
+```
+
+`[n]` is where the n-th beat of the take starts: a run of actions without a pause longer than 1.2 seconds, such as a click and the typing after it. Navigation the deck does on its own is not a beat. Every beat has to appear in the script once. The voice is generated per line, with the time of every character; the actions land on the word after their marker, keep their recorded pace, and when a beat takes longer than the words around it the next line waits. The captions come from the script text, so they are exact. A walkthrough can mix both: in `walkthrough.yaml` a segment is either `take:` (recorded) or `script:` (generated), and the usual case is a recorded opening with the presenter's face, followed by generated chapters.
+
+The voice is set in `walkthrough.yaml`:
+
+```yaml
+voice:
+  provider: elevenlabs          # or `say`: the Mac's own voice, to try a script out
+  voice_id: <the cloned voice>
+  model: eleven_multilingual_v2
+  say_as:                       # how a word is pronounced, not how it is written
+    Awb: A-W-B
+```
+
+`elevenlabs` reads the API key from `ELEVENLABS_API_KEY` or from `.walkthrough/.env`, which is not in git. Generated lines are cached by a hash of their text and voice settings, so a rebuild only pays for lines that changed. Where a track contains generated speech, the player says so next to its controls ("De stem in de hoofdstukken is gegenereerd met AI"), as the AI Act asks of generated speech that can pass for a person. The webcam bubble shows only during the recorded parts at the start (`cam.until`).
+
+A track with generated chapters has no recording of the window, so a phone gets a message instead of the video, and `walkthrough export` skips it; an MP4 of such a track has to be recorded from the replay itself, which is not built yet.
+
 ## Running locally
 
 ```bash

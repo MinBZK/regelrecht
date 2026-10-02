@@ -7,7 +7,7 @@ import { computed, onUnmounted, ref, watch } from 'vue';
 import { useI18n } from '../i18n/index.js';
 import { useWalkthrough } from './useWalkthrough.js';
 import { currentTrack, openFaq, replay } from './replay.js';
-import { offeredFaq } from './timeline.js';
+import { camVisible, offeredFaq } from './timeline.js';
 import { camSlot } from './chrome.js';
 
 const { t, locale } = useI18n();
@@ -17,7 +17,7 @@ const slot = ref(null);
 watch(slot, (el) => (camSlot.value = el), { immediate: true });
 onUnmounted(() => (camSlot.value = null));
 
-const showCam = computed(() => !!currentTrack()?.cam && replay.camOn);
+const showCam = computed(() => camVisible(currentTrack(), replay.now) && replay.camOn);
 const offered = computed(() => (replay.faq ? [] : offeredFaq(timeline.value, replay.now)));
 </script>
 

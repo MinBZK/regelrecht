@@ -77,6 +77,7 @@ onUnmounted(() => (here = false));
       </nldd-title>
       <!-- A phone gets the recording as a video: the live demo next to a
            rail does not fit on it. Native controls, captions as a track. -->
+      <nldd-text v-if="!video">{{ t('walkthrough.phone_none') }}</nldd-text>
       <video v-if="video" class="phone-video" :src="`${MEDIA_BASE}${video.src}`" controls playsinline preload="metadata" lang="nl">
         <track v-if="captions" kind="captions" srclang="nl" :label="t('walkthrough.captions')" :src="`${CAPTIONS_BASE}${captions}`" default />
       </video>

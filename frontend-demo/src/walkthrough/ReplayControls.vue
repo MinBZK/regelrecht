@@ -65,6 +65,10 @@ watch(
   <div class="controls wt-chrome">
     <!-- The recording and its slides are Dutch in every interface language. -->
     <nldd-text v-if="locale !== DEFAULT_LOCALE" size="sm" color="inherit">{{ t('walkthrough.dutch_only') }}</nldd-text>
+    <!-- Generated speech that passes for a person is labelled as such (AI
+         Act, art. 50). Always in view, not only on the first slide: a viewer
+         can start at any chapter. -->
+    <nldd-text v-if="track?.generatedVoice" size="sm" color="inherit">{{ t('walkthrough.ai_voice') }}</nldd-text>
     <nldd-progress-bar size="sm" color="donkergeel" :value="progress" max="100" value-display="none" :accessible-label="t('walkthrough.progress_at', { time: timeText })"></nldd-progress-bar>
     <div class="control-row">
       <nldd-button-bar>

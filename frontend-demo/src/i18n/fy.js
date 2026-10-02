@@ -845,4 +845,6 @@ export default {
   "recorder.saving": "Opname bewarje…",
   "walkthrough.own_turn": "Do klikst no sels yn de demo. Ôfspylje set de rûnlieding werom dêr't er wie.",
   "walkthrough.phone": "Op in grutter skerm rint de rûnlieding troch de echte demo. Op in telefoan sjochst him as fideo.",
+  "walkthrough.ai_voice": "De stim yn de haadstikken is makke mei AI, op basis fan de stim fan de presintator.",
+  "walkthrough.phone_none": "Dizze rûnlieding is allinnich op in grutter skerm te besjen.",
 };

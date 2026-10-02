@@ -8,7 +8,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useI18n } from '../i18n/index.js';
 import { usePresentation } from '../presentation/usePresentation.js';
 import { PLAYER_KEYS, audioTime, backToMain, currentTrack, replay, seek, togglePlay } from './replay.js';
-import { MEDIA_BASE, cueAt, followerCorrection, formatTime, nextChapterStart, previousChapterStart } from './timeline.js';
+import { MEDIA_BASE, camVisible, cueAt, followerCorrection, formatTime, nextChapterStart, previousChapterStart } from './timeline.js';
 import { camSlot, transcript } from './chrome.js';
 
 const { t, locale } = useI18n();
@@ -33,7 +33,7 @@ let raf = 0;
 let lastSync = 0;
 function loop() {
   const c = cam.value;
-  if (c && replay.camOn && track.value?.cam && performance.now() - lastSync > 250) {
+  if (c && replay.camOn && camVisible(track.value, replay.now) && performance.now() - lastSync > 250) {
     lastSync = performance.now();
     const fix = followerCorrection(audioTime(), c.currentTime, replay.speed);
     if (fix.seek != null) c.currentTime = fix.seek;
@@ -147,7 +147,7 @@ onUnmounted(() => {
   <div class="wt-chrome overlay" :class="{ full }">
     <video
       v-if="track?.cam"
-      v-show="replay.camOn"
+      v-show="replay.camOn && camVisible(track, replay.now)"
       ref="cam"
       class="cam"
       :style="camStyle"

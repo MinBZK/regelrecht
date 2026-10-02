@@ -950,4 +950,6 @@ export default {
   'recorder.saving': 'Saving the take…',
   'walkthrough.own_turn': 'You are clicking in the demo yourself now. Play puts the walkthrough back where it was.',
   'walkthrough.phone': 'On a larger screen the walkthrough runs through the real demo. On a phone you see it as a video.',
+  'walkthrough.ai_voice': "The voice in the chapters is generated with AI, from the presenter's own voice.",
+  'walkthrough.phone_none': 'This walkthrough can only be watched on a larger screen.',
 };

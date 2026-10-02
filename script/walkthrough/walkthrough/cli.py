@@ -252,7 +252,25 @@ def hashed(path: Path, stem: str, dest: Path) -> dict:
     return {"src": name, "sha256": digest, "bytes": (dest / name).stat().st_size}
 
 
-def render_track(name: str, segments: list[dict], cfg: dict, overrides: dict, dest: Path, vtt_dest: Path, workdir: Path) -> dict:
+def concat_files(parts: list[Path], out: Path, workdir: Path) -> None:
+    listing = workdir / f"{out.stem}.txt"
+    listing.write_text("".join(f"file '{p}'\n" for p in parts))
+    ffmpeg("-f", "concat", "-safe", "0", "-i", listing, "-c", "copy", out)
+
+
+def deck_of(take: str, overrides: dict) -> list[dict]:
+    """The deck as it stood when `take` was recorded, with the slide
+    corrections from walkthrough.yaml: the replay shows these slides."""
+    meta = read_json(take_dir(take) / "meta.json", {})
+    deck = [dict(s) for s in meta.get("slides") or []]
+    for i, fix in overrides.items():
+        if 0 <= i < len(deck):
+            deck[i].update(fix or {})
+    return deck
+
+
+def render_recorded(name: str, segments: list[dict], cfg: dict, overrides: dict, workdir: Path) -> dict:
+    """A stretch of recorded takes: voice, video and webcam, cut as written."""
     takes = sorted({s["take"] for s in segments})
     infos = {t: take_info(t) for t in takes}
     durations = {t: infos[t]["duration"] for t in takes}
@@ -268,7 +286,7 @@ def render_track(name: str, segments: list[dict], cfg: dict, overrides: dict, de
     first = infos[takes[0]]
     width, height = first["width"], first["height"]
     has_cam = all((take_dir(t) / "cam.cfr.mp4").exists() for t in takes)
-    say(f"{name}: {len(track.pieces)} stukken, {track.duration:.1f}s, {width}x{height}{', met webcam' if has_cam else ''}")
+    say(f"{name}: {len(track.pieces)} opgenomen stukken, {track.duration:.1f}s{', met webcam' if has_cam else ''}")
 
     # Video and webcam piece by piece, each a whole number of frames, then
     # joined without re-encoding. One filter graph over all pieces would have
@@ -289,20 +307,12 @@ def render_track(name: str, segments: list[dict], cfg: dict, overrides: dict, de
             ffmpeg("-ss", max(0.0, p.start - offset), "-i", take_dir(p.take) / "cam.cfr.mp4", "-an", "-vf", cvf, "-frames:v", n, "-c:v", "libx264", "-preset", "medium", "-crf", "26", "-g", FPS * 4, cout)
             clist.append(cout)
 
-    def concat(parts: list[Path], out: Path) -> None:
-        listing = workdir / f"{out.stem}.txt"
-        listing.write_text("".join(f"file '{p}'\n" for p in parts))
-        ffmpeg("-f", "concat", "-safe", "0", "-i", listing, "-c", "copy", out)
-
-    video_only = workdir / f"{name}-video.mp4"
-    concat(vlist, video_only)
-
     # The voice: the same pieces, with a 15 ms fade on each side of every cut
-    # so a cut does not click, then loudness over the whole track at once.
+    # so a cut does not click. Loudness comes later, over the whole track.
     inputs, graph, labels = [], [], []
     take_index = {}
     for t in takes:
-        take_index[t] = len(inputs)
+        take_index[t] = len(inputs) // 2
         inputs += ["-i", take_dir(t) / "voice.wav"]
     for i, p in enumerate(track.pieces):
         fade = min(0.015, p.length / 4)
@@ -315,51 +325,187 @@ def render_track(name: str, segments: list[dict], cfg: dict, overrides: dict, de
     raw = workdir / f"{name}-voice-raw.wav"
     script = workdir / f"{name}-audio.filter"
     script.write_text(";\n".join(graph))
-    ffmpeg(*inputs, "-filter_complex_script", script, "-map", "[out]", "-ac", "1", "-ar", "48000", raw)
+    ffmpeg(*inputs, "-filter_complex_script", script, "-map", "[out]", "-ac", "1", "-ar", "48000", "-t", f"{track.duration:.4f}", raw)
+
+    meta = read_json(take_dir(track.pieces[0].take) / "meta.json", {}) if track.pieces else {}
+    return {
+        "duration": round(track.duration, 3),
+        "voice": raw,
+        "video": vlist,
+        "cam": clist if has_cam else None,
+        "size": (width, height),
+        "chapters": chapters(track, events, overrides),
+        "events": remap_actions(track, events),
+        "words": remap_words(track, words),
+        "slides": deck_of(takes[0], overrides),
+        "recordedAt": meta.get("startedAt"),
+        "viewport": meta.get("viewport"),
+        "pieces": [{"take": p.take, "from": p.start, "to": p.end, "at": p.out} for p in track.pieces],
+    }
+
+
+def render_scripted(name: str, seg: dict, cfg: dict, overrides: dict, workdir: Path) -> dict:
+    """A chapter spoken from its script, in the generated voice, with the
+    actions of its silent take laid on the words (script.py)."""
+    from .script import beats, layout, parse_line
+    from .voice import speak
+
+    path = CORPUS / "script" / f"{seg['script']}.yaml"
+    if not path.exists():
+        raise SystemExit(f"script ontbreekt: {path.relative_to(ROOT)}")
+    doc = yaml.safe_load(path.read_text()) or {}
+    lines = [parse_line(str(raw)) for raw in doc.get("lines") or []]
+    if not lines:
+        raise SystemExit(f"{path.name}: geen regels")
+    voice_cfg = cfg.get("voice") or {"provider": "say"}
+    texts = [line.text for line in lines]
+    audio = [speak(text, voice_cfg, WORK, texts[i - 1] if i else "", texts[i + 1] if i + 1 < len(texts) else "") for i, text in enumerate(texts)]
+    take = doc.get("take")
+    events = read_json(take_dir(take) / "events.json", []) if take else []
+    runs = beats(events)
+    try:
+        plan = layout(lines, audio, runs)
+    except ValueError as e:
+        raise SystemExit(f"{path.name}: {e}")
+    say(f"{name}: script {seg['script']}, {len(lines)} regels, {len(runs)} handelingen, {plan['duration']:.1f}s ({voice_cfg.get('provider', 'say')})")
+
+    # The lines at their places, with silence between them where a line waits.
+    pieces, at = [], 0.0
+    for clip in plan["clips"]:
+        gap = clip["at"] - at
+        if gap > 0.001:
+            silence = workdir / f"{name}-gap{len(pieces):04d}.wav"
+            ffmpeg("-f", "lavfi", "-i", "anullsrc=r=48000:cl=mono", "-t", f"{gap:.4f}", silence)
+            pieces.append(silence)
+        pieces.append(audio[clip["line"]]["wav"])
+        at = clip["at"] + audio[clip["line"]]["duration"]
+    tail = plan["duration"] - at
+    if tail > 0.001:
+        silence = workdir / f"{name}-tail.wav"
+        ffmpeg("-f", "lavfi", "-i", "anullsrc=r=48000:cl=mono", "-t", f"{tail:.4f}", silence)
+        pieces.append(silence)
+    raw = workdir / f"{name}-voice-raw.wav"
+    listing = workdir / f"{name}-voice.txt"
+    listing.write_text("".join(f"file '{p}'\n" for p in pieces))
+    ffmpeg("-f", "concat", "-safe", "0", "-i", listing, "-ac", "1", "-ar", "48000", raw)
+
+    slide_index = int(doc.get("slide", 0))
+    first = next((e for e in events if e.get("type") == "slide"), None)
+    state = first.get("state") if first else None
+    deck = deck_of(take, overrides) if take else []
+    slide = deck[slide_index] if 0 <= slide_index < len(deck) else {}
+    meta = read_json(take_dir(take) / "meta.json", {}) if take else {}
+    acts = [{"t": 0.0, "type": "restore", "state": state, "slideIndex": slide_index}] if state else [{"t": 0.0, "type": "slide", "index": slide_index}]
+    return {
+        "duration": plan["duration"],
+        "voice": raw,
+        "video": None,
+        "cam": None,
+        "size": None,
+        "chapters": [{"start": 0.0, "end": plan["duration"], "slideIndex": slide_index, "slide": slide, "profile": first.get("profile") if first else None, "state": state}],
+        "events": acts + plan["events"],
+        "words": plan["words"],
+        "slides": deck,
+        "recordedAt": meta.get("startedAt"),
+        "viewport": meta.get("viewport"),
+        "pieces": [{"script": seg["script"], "at": 0.0}],
+        "generated": True,
+    }
+
+
+def render_track(name: str, segments: list[dict], cfg: dict, overrides: dict, dest: Path, vtt_dest: Path, workdir: Path) -> dict:
+    """A playable track from its segments: runs of recorded takes and
+    scripted chapters, laid end to end on one clock."""
+    parts, run = [], []
+    for seg in segments:
+        if "script" in seg:
+            if run:
+                parts.append(render_recorded(f"{name}-p{len(parts)}", run, cfg, overrides, workdir))
+                run = []
+            parts.append(render_scripted(f"{name}-p{len(parts)}", seg, cfg, overrides, workdir))
+        else:
+            run.append(seg)
+    if run:
+        parts.append(render_recorded(f"{name}-p{len(parts)}", run, cfg, overrides, workdir))
+
+    offset = 0.0
+    seams = []  # where one part hands over to the next
+    chs, acts, words, pieces = [], [], [], []
+    for part in parts:
+        for c in part["chapters"]:
+            chs.append({**c, "start": round(c["start"] + offset, 3), "end": round(c["end"] + offset, 3)})
+        acts += [{**e, "t": round(e["t"] + offset, 3)} for e in part["events"]]
+        words += [{**w, "start": round(w["start"] + offset, 3), "end": round(w["end"] + offset, 3)} for w in part["words"]]
+        pieces += [{**p, "at": round(p["at"] + offset, 3)} for p in part["pieces"]]
+        offset += part["duration"]
+        seams.append(round(offset, 3))
+    duration = round(offset, 3)
+    # Neighbouring chapters on the same slide (a recorded opening that ends on
+    # the slide a script continues on) are one chapter.
+    merged = []
+    for c in chs:
+        if merged and merged[-1]["slideIndex"] == c["slideIndex"]:
+            merged[-1]["end"] = c["end"]
+        else:
+            merged.append(c)
+
+    # One voice: the parts end to end, then loudness over all of it, so the
+    # recorded opening and the generated chapters sound equally loud.
+    raw = workdir / f"{name}-voice-raw.wav"
+    listing = workdir / f"{name}-voices.txt"
+    listing.write_text("".join(f"file '{p['voice']}'\n" for p in parts))
+    ffmpeg("-f", "concat", "-safe", "0", "-i", listing, "-ac", "1", "-ar", "48000", raw)
     voice = workdir / f"{name}-voice.wav"
     media.loudnorm(raw, voice)
-
-    # The voice on its own is what the player plays: it drives the live demo,
-    # and a viewer should not download the picture of it as well. The video
-    # with the voice is for a phone, where the live demo does not fit, and for
-    # the shareable MP4.
     audio_out = workdir / f"{name}-voice.m4a"
     ffmpeg("-i", voice, "-c:a", "aac", "-b:a", "96k", "-ac", "1", "-movflags", "+faststart", audio_out)
-    main = workdir / f"{name}.mp4"
-    ffmpeg("-i", video_only, "-i", voice, "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-shortest", "-movflags", "+faststart", main)
-    entry: dict = {"duration": round(track.duration, 3)}
-    entry["audio"] = hashed(audio_out, f"{name}-voice", dest)
-    entry["video"] = {**hashed(main, name, dest), "width": width, "height": height}
-    if has_cam:
+
+    entry: dict = {"duration": duration, "audio": hashed(audio_out, f"{name}-voice", dest)}
+
+    # The window's video only when every part was recorded: a generated
+    # chapter has no picture of its own. A phone then gets the MP4 made from
+    # the replay itself (`walkthrough export`).
+    if all(p["video"] for p in parts):
+        video_only = workdir / f"{name}-video.mp4"
+        concat_files([v for p in parts for v in p["video"]], video_only, workdir)
+        main = workdir / f"{name}.mp4"
+        ffmpeg("-i", video_only, "-i", voice, "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-shortest", "-movflags", "+faststart", main)
+        w, h = parts[0]["size"]
+        entry["video"] = {**hashed(main, name, dest), "width": w, "height": h}
+    else:
+        entry["video"] = None
+
+    # The presenter's bubble: the webcam of the recorded parts at the start
+    # (the opening). Where the generated voice takes over, the bubble goes.
+    lead = []
+    for p in parts:
+        if not p["cam"]:
+            break
+        lead.append(p)
+    if lead:
         cam_only = workdir / f"{name}-cam.mp4"
-        concat(clist, cam_only)
+        concat_files([c for p in lead for c in p["cam"]], cam_only, workdir)
         cam_final = workdir / f"{name}-cam-final.mp4"
         ffmpeg("-i", cam_only, "-c", "copy", "-movflags", "+faststart", cam_final)
-        entry["cam"] = hashed(cam_final, f"{name}-cam", dest)
+        entry["cam"] = {**hashed(cam_final, f"{name}-cam", dest), "until": round(sum(p["duration"] for p in lead), 3)}
     else:
         entry["cam"] = None
 
-    chs = chapters(track, events, overrides)
-    entry["chapters"] = chs
-    entry["events"] = remap_actions(track, events)
-    # The deck as it stood when the first take was recorded, with the slide
-    # corrections from walkthrough.yaml: the replay shows these slides.
-    meta = read_json(take_dir(takes[0]) / "meta.json", {})
-    deck = [dict(s) for s in meta.get("slides") or []]
-    for i, fix in overrides.items():
-        if 0 <= i < len(deck):
-            deck[i].update(fix or {})
-    entry["slides"] = deck
-    first_take = track.pieces[0].take if track.pieces else takes[0]
-    entry["recordedAt"] = read_json(take_dir(first_take) / "meta.json", {}).get("startedAt")
-    entry["viewport"] = meta.get("viewport")
-    out_words = remap_words(track, words)
-    cues = captions(out_words, breaks=[c["start"] for c in chs[1:]])
+    first = next((p for p in parts if p["slides"]), parts[0])
+    entry["slides"] = first["slides"]
+    entry["recordedAt"] = next((p["recordedAt"] for p in parts if p["recordedAt"]), None)
+    entry["viewport"] = first["viewport"]
+    entry["generatedVoice"] = any(p.get("generated") for p in parts)
+    entry["chapters"] = merged
+    entry["events"] = sorted(acts, key=lambda e: e["t"])
+    # A caption ends at a chapter and at a seam between parts: a sentence cut
+    # off at the end of the recorded opening is not continued by the voice.
+    cues = captions(sorted(words, key=lambda w: w["start"]), breaks=[c["start"] for c in merged[1:]] + seams[:-1])
     vtt = to_vtt(cues)
     vtt_name = f"{name}-{hashlib.sha256(vtt.encode()).hexdigest()[:12]}.nl.vtt"
     (vtt_dest / vtt_name).write_text(vtt)
     entry["captions"] = {"nl": vtt_name}
-    entry["pieces"] = [{"take": p.take, "from": p.start, "to": p.end, "at": p.out} for p in track.pieces]
+    entry["pieces"] = pieces
     return entry
 
 
@@ -382,12 +528,12 @@ def build(release: str | None = None) -> None:
             main = render_track("main", main_cfg["segments"], cfg, overrides, media_out, vtt_out, work)
             faqs = []
             for f in cfg.get("faq") or []:
-                segs = f.get("segments") or [{"take": f["take"], "from": f.get("from"), "to": f.get("to")}]
+                segs = f.get("segments") or ([{"script": f["script"]}] if f.get("script") else [{"take": f["take"], "from": f.get("from"), "to": f.get("to")}])
                 entry = render_track(f"faq-{f['id']}", segs, cfg, {}, media_out, vtt_out, work)
                 offer = f.get("offer") or {}
                 at = None
                 if "take" in offer:
-                    at = next((round(p["at"] + offer["at"] - p["from"], 3) for p in main["pieces"] if p["take"] == offer["take"] and p["from"] <= offer["at"] < p["to"]), None)
+                    at = next((round(p["at"] + offer["at"] - p["from"], 3) for p in main["pieces"] if p.get("take") == offer["take"] and p["from"] <= offer["at"] < p["to"]), None)
                     if at is None:
                         say(f"let op: het aanbiedmoment van '{f['id']}' valt in een knip of buiten de rondleiding")
                 elif "chapter" in offer:
@@ -432,7 +578,7 @@ def transcript(which: str) -> None:
         track = timeline["main"] if which == "main" else next(f for f in timeline["faq"] if f"faq-{f['id']}" == which)
         from .timeline import Piece, Track
 
-        tr = Track([Piece(p["take"], p["from"], p["to"], p["at"]) for p in track["pieces"]])
+        tr = Track([Piece(p["take"], p["from"], p["to"], p["at"]) for p in track["pieces"] if "take" in p])
         words = remap_words(tr, {t: read_json(take_dir(t) / "words.json", {}).get("words", []) for t in {p.take for p in tr.pieces}})
         chs = track["chapters"]
     else:

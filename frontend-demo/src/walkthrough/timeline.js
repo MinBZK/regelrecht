@@ -163,6 +163,15 @@ export function formatTime(seconds) {
   return h ? `${h}:${String(m).padStart(2, '0')}:${r}` : `${m}:${r}`;
 }
 
+/**
+ * Whether the presenter's bubble shows at `t`. The webcam covers the recorded
+ * opening (`cam.until`); where the generated voice takes over there is no
+ * picture of the presenter, so the bubble goes.
+ */
+export function camVisible(track, t) {
+  return !!track?.cam && (track.cam.until == null || t < track.cam.until);
+}
+
 /** The most recent `profile` at or before chapter `i`, as the deck does it. */
 export function profileAt(track, i) {
   for (let j = i; j >= 0; j -= 1) {
