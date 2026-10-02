@@ -824,7 +824,7 @@ async fn synthesis_over_http_to_another_runtime() {
     let address = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, b).await });
 
-    // Runtime A: only the consumer, with a url to B.
+    // Runtime A: the fixtures with a url to B in the consumer's synthesis.
     let adjustment = with_url(format!("http://{address}"));
     let setup = own_setup(&[(SYNTHESIS, &adjustment)]);
     let data_a = tempfile::tempdir().unwrap();
@@ -840,18 +840,20 @@ async fn synthesis_over_http_to_another_runtime() {
         &[&format!("http://{address}")],
     );
     // What the runtime cannot see of a source outside it, it reports (the
-    // provenance, RFC-043); nothing else.
-    // Only the consumer's; the derivation's own warning (an event no article
-    // reads) is not about the source.
+    // provenance, RFC-043); besides that only the derivation's own warning
+    // about an event no article reads (RFC-047). The other processes of A
+    // have their own warnings.
     let w: Vec<String> = a
         .warnings()
         .await
         .into_iter()
-        .filter(|w| {
-            w.starts_with("process 'test_afnemer': ")
-                && !w.contains("it is not offered as an action")
-        })
+        .filter(|w| w.starts_with("process 'test_afnemer': "))
         .collect();
+    assert_eq!(w.len(), 3, "{w:?}");
+    let (derivation, w): (Vec<String>, Vec<String>) = w.into_iter().partition(|w| {
+        w.contains("event 'termijn_opgeschort'") && w.contains("not offered as an action")
+    });
+    assert_eq!(derivation.len(), 1, "{derivation:?} {w:?}");
     assert_eq!(w.len(), 2, "{w:?}");
     for w in &w {
         assert!(
@@ -1033,8 +1035,10 @@ fn decision_check_at_startup() {
         },
         "portal without a role that may use it",
     );
-    // On behalf of an authority the law does not know: the policy then
-    // works out a competence of another authority (Awb 4:81).
+    // On behalf of an authority the law does not know. On the route from
+    // policy the policy itself names the authority, so it is the check on
+    // `executes` that catches it: the policy works out a competence of
+    // another authority (Awb 4:81).
     let setup = own_setup(&[(CONSUMER_POLICY, &|t: String| {
         t.replace("  name: Test afnemer\n", "  name: test_afnemer\n")
     })]);
@@ -1128,6 +1132,22 @@ fn decision_check_at_startup() {
             )
         },
         "column 'zetels' comes from more than one place: the table, source test_gebieden/tarief",
+    );
+    // Where the decision is recorded: every field of the event is an output
+    // or a verdict.
+    case(
+        "chronicles/test_afnemer_zaakverloop.yaml",
+        &|t: String| {
+            t.replace(
+                "      zorgvuldig: $external.zorgvuldig\n    not_reduced:",
+                "      zorgvuldig: $external.zorgvuldig\n      bestaat_niet: $external.bestaat_niet\n    not_reduced:",
+            )
+            .replace(
+                "      - {field: zorgvuldig, reason: uitkomst van het besluit}\n",
+                "      - {field: zorgvuldig, reason: uitkomst van het besluit}\n      - {field: bestaat_niet, reason: proef}\n",
+            )
+        },
+        "the event records [bestaat_niet], and that is neither an output nor a verdict of the decision",
     );
 }
 
@@ -5774,8 +5794,14 @@ async fn every_node_of_the_map_has_a_fragment() {
             assert_eq!(status, StatusCode::OK, "{n}: {uri}: {body}");
             let name = n["id"].as_str().unwrap().split_once(':').unwrap().1;
             let first = match kind {
+                // The policy article that declares the channel; a role is
+                // named by `role:`, or is the channel name by default.
                 "channel" | "role" => {
                     assert!(n["source"]["law"].is_string(), "{n}");
+                    let yaml = body["yaml"].as_str().unwrap();
+                    let declared = yaml.contains(&format!("{name}:"))
+                        || (kind == "role" && yaml.contains(&format!("role: {name}")));
+                    assert!(declared, "{n}: {yaml}");
                     continue;
                 }
                 // A shared follow-up opens to its event (`<event>_<decision>`).
