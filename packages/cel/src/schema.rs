@@ -90,6 +90,18 @@ mod tests {
         }
     }
 
+    /// A cell whose lexostatuses all come from the law (RFC-043) and the
+    /// runtime (the worklist, RFC-047) defines none of its own.
+    #[test]
+    fn a_cell_may_define_no_lexostatus_of_its_own() {
+        let doc = serde_json::json!({
+            "cell": "c",
+            "law": [{"article": "r#1", "extra_fields": {"k": {"field": "k"}}}],
+            "lexostatus_definitions": []
+        });
+        validate(Kind::Lexostatus, &doc).unwrap();
+    }
+
     #[test]
     fn a_violation_names_the_path() {
         let doc = serde_json::json!({"$id": "x", "recording_actor": "y", "chronicle": "z", "events": [{"name": "Fout"}]});
