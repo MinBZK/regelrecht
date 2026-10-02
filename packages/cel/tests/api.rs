@@ -18,9 +18,10 @@ use regelrecht_cel::transport::{READ_TOKEN_HEADER, RUNTIME_TOKEN_HEADER};
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
-/// The process with a portal, and the cell it records in.
-const AGENCY: &str = "/processes/test_instantie_proces";
+/// The process with a portal, the cell it records in, and its policy.
+const AGENCY: &str = "/processes/test_instantie";
 const AGENCY_CELL: &str = "/cells/test_instantie";
+const AGENCY_POLICY: &str = "regulation/testbeleid_instantie/2025-01-01.yaml";
 
 fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
@@ -30,40 +31,38 @@ fn clock() -> Clock {
     Arc::new(|| DateTime::parse_from_rfc3339("2025-03-12T10:14:03+01:00").unwrap())
 }
 
-/// A runtime over `<setup>/cells` and `<setup>/processes`.
-fn runtime_at(setup: &Path, data: &Path) -> Result<Runtime, Vec<String>> {
-    let config = Config {
+/// The configuration of a runtime over a setup like the fixtures: the cells,
+/// the regulation (with the policy) and the deployment files (RFC-047).
+fn config_at(setup: &Path, data: &Path) -> Config {
+    let d = setup.join("deployment");
+    Config {
         cells_path: setup.join("cells"),
-        processes_path: Some(setup.join("processes")),
-        regulation_path: fixtures().join("regulation"),
+        processes_path: None,
+        regulation_path: setup.join("regulation"),
         data_dir: data.to_path_buf(),
         port: DEFAULT_PORT,
         read_token: None,
         read_token_sources: Vec::new(),
         reduction: Default::default(),
         registers: None,
-        channels: None,
-        synthesis: None,
-        examples: None,
-    };
-    Runtime::load(&config, clock())
+        channels: Some(d.join("channels.yaml")),
+        synthesis: Some(d.join("synthesis.yaml")),
+        examples: Some(d.join("examples.yaml")),
+    }
+}
+
+/// A runtime over a setup like the fixtures; its processes follow from the
+/// policy.
+fn runtime_at(setup: &Path, data: &Path) -> Result<Runtime, Vec<String>> {
+    Runtime::load(&config_at(setup, data), clock())
 }
 
 /// A runtime like [`runtime_at`], with a read token.
 fn runtime_with_read_token(setup: &Path, data: &Path, token: &str, sources: &[&str]) -> Runtime {
     let config = Config {
-        cells_path: setup.join("cells"),
-        processes_path: Some(setup.join("processes")),
-        regulation_path: fixtures().join("regulation"),
-        data_dir: data.to_path_buf(),
-        port: DEFAULT_PORT,
         read_token: Some(token.to_string()),
         read_token_sources: sources.iter().map(|b| b.to_string()).collect(),
-        reduction: Default::default(),
-        registers: None,
-        channels: None,
-        synthesis: None,
-        examples: None,
+        ..config_at(setup, data)
     };
     Runtime::load(&config, clock()).unwrap()
 }
@@ -536,7 +535,7 @@ async fn processes_are_listed_with_their_cell() {
     let (status, body, _) = call(&app, "GET", "/api/processes", None, None).await;
     assert_eq!(status, StatusCode::OK);
     let consumer = &body[0];
-    assert_eq!(consumer["id"], "test_afnemer_proces");
+    assert_eq!(consumer["id"], "test_afnemer");
     assert_eq!(consumer["actor"], "test_afnemer");
     assert_eq!(consumer["cell"], "test_afnemer");
     assert_eq!(consumer["portal"], json!(true));
@@ -548,7 +547,7 @@ async fn processes_are_listed_with_their_cell() {
     assert_eq!(consumer["synthesis"][3]["cell"], "test_register");
     assert_eq!(consumer["synthesis"][3]["transport"], "internal");
     let agency = &body[1];
-    assert_eq!(agency["id"], "test_instantie_proces");
+    assert_eq!(agency["id"], "test_instantie");
     assert_eq!(agency["handling"], Value::Null);
     assert_eq!(
         agency["roles"],
@@ -559,7 +558,7 @@ async fn processes_are_listed_with_their_cell() {
         })
     );
     assert_eq!(agency["counter"], json!(true));
-    assert_eq!(agency["authority"], Value::Null);
+    assert_eq!(agency["authority"], "Test instantie");
     // The channels with their fields: the frontend builds the login screen from them.
     assert_eq!(
         agency["channels"]["burger"]["fields"][0]["check"],
@@ -778,61 +777,38 @@ async fn synthesis_without_registration_and_without_input() {
         .starts_with("cannot be judged: source test_register not queried"));
 }
 
-/// An adjustment to a `cell.yaml` or `process.yaml`.
+/// An adjustment to a fixture file, by its path under `tests/fixtures`.
 type Adjustment<'a> = (&'a str, &'a dyn Fn(String) -> String);
 
-/// Copy fixture cells, fixture processes and all streams to a setup of its
-/// own (`cells/`, `processes/`, `chronicles/`), with an adjustment to each
-/// `cell.yaml` and `process.yaml`.
-fn own_setup(cells: &[Adjustment], processes: &[Adjustment]) -> tempfile::TempDir {
+/// A copy of the fixtures with adjustments; panics if an adjustment changes nothing.
+fn own_setup(adjustments: &[Adjustment]) -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
-    let f = fixtures();
-    std::fs::create_dir_all(dir.path().join("chronicles")).unwrap();
-    std::fs::create_dir_all(dir.path().join("processes")).unwrap();
-    for e in std::fs::read_dir(f.join("chronicles")).unwrap() {
-        let p = e.unwrap().path();
-        std::fs::copy(
-            &p,
-            dir.path().join("chronicles").join(p.file_name().unwrap()),
-        )
-        .unwrap();
-    }
-    for (kind, list, file) in [
-        ("cells", cells, "cell.yaml"),
-        ("processes", processes, "process.yaml"),
-    ] {
-        for (name, adjust) in list {
-            let target = dir.path().join(kind).join(name);
-            std::fs::create_dir_all(&target).unwrap();
-            for e in std::fs::read_dir(f.join(kind).join(name)).unwrap() {
-                let p = e.unwrap().path();
-                let text = std::fs::read_to_string(&p).unwrap();
-                let text = if p.file_name().unwrap() == file {
-                    adjust(text)
-                } else {
-                    text
-                };
-                std::fs::write(target.join(p.file_name().unwrap()), text).unwrap();
-            }
-        }
+    copy_tree(&fixtures(), dir.path());
+    for (file, adjust) in adjustments {
+        let p = dir.path().join(file);
+        let before = std::fs::read_to_string(&p).unwrap();
+        let after = adjust(before.clone());
+        assert_ne!(before, after, "adjustment of {file} changes nothing");
+        std::fs::write(&p, after).unwrap();
     }
     dir
 }
 
-fn as_is(t: String) -> String {
-    t
-}
+/// The synthesis of the deployment (RFC-047).
+const SYNTHESIS: &str = "deployment/synthesis.yaml";
 
 fn with_url(url: String) -> impl Fn(String) -> String {
     move |t: String| {
         // Only the synthesis sources, not the source under rows.
         t.replace(
-            "  - cell: test_register\n    lexostatus: registerstatus\n",
-            &format!("  - cell: test_register\n    url: {url}\n    lexostatus: registerstatus\n"),
+            "    - cell: test_register\n      lexostatus: registerstatus\n",
+            &format!(
+                "    - cell: test_register\n      url: {url}\n      lexostatus: registerstatus\n"
+            ),
         )
         .replace(
-            "  - cell: test_register\n    lexostatus: register\n",
-            &format!("  - cell: test_register\n    url: {url}\n    lexostatus: register\n"),
+            "    - cell: test_register\n      lexostatus: register\n",
+            &format!("    - cell: test_register\n      url: {url}\n      lexostatus: register\n"),
         )
     }
 }
@@ -850,7 +826,7 @@ async fn synthesis_over_http_to_another_runtime() {
 
     // Runtime A: only the consumer, with a url to B.
     let adjustment = with_url(format!("http://{address}"));
-    let setup = own_setup(&[("afnemer", &as_is)], &[("afnemer", &adjustment)]);
+    let setup = own_setup(&[(SYNTHESIS, &adjustment)]);
     let data_a = tempfile::tempdir().unwrap();
     // Without B among the read-token sources, B does not get it.
     let data_z = tempfile::tempdir().unwrap();
@@ -865,11 +841,21 @@ async fn synthesis_over_http_to_another_runtime() {
     );
     // What the runtime cannot see of a source outside it, it reports (the
     // provenance, RFC-043); nothing else.
-    let w = a.warnings().await;
+    // Only the consumer's; the derivation's own warning (an event no article
+    // reads) is not about the source.
+    let w: Vec<String> = a
+        .warnings()
+        .await
+        .into_iter()
+        .filter(|w| {
+            w.starts_with("process 'test_afnemer': ")
+                && !w.contains("it is not offered as an action")
+        })
+        .collect();
     assert_eq!(w.len(), 2, "{w:?}");
     for w in &w {
         assert!(
-            w.starts_with("process 'test_afnemer_proces': origin of ")
+            w.starts_with("process 'test_afnemer': origin of ")
                 && w.contains(&format!("runs outside this runtime (http://{address})")),
             "{w:?}"
         );
@@ -889,7 +875,7 @@ async fn unreachable_source_makes_the_assessment_not_judgeable() {
     let address = listener.local_addr().unwrap();
     drop(listener);
     let adjustment = with_url(format!("http://{address}"));
-    let setup = own_setup(&[("afnemer", &as_is)], &[("afnemer", &adjustment)]);
+    let setup = own_setup(&[(SYNTHESIS, &adjustment)]);
     let data = tempfile::tempdir().unwrap();
     // The source may come later: the runtime does start, with a warning.
     let a = runtime_at(setup.path(), data.path()).unwrap();
@@ -911,7 +897,8 @@ async fn unreachable_source_makes_the_assessment_not_judgeable() {
 
 #[tokio::test]
 async fn internal_source_that_does_not_run_is_a_warning() {
-    let setup = own_setup(&[("afnemer", &as_is)], &[("afnemer", &as_is)]);
+    let setup = own_setup(&[]);
+    std::fs::remove_dir_all(setup.path().join("cells/register")).unwrap();
     let data = tempfile::tempdir().unwrap();
     let a = runtime_at(setup.path(), data.path()).unwrap();
     let w = a.warnings().await;
@@ -930,10 +917,7 @@ async fn internal_source_that_does_not_run_is_a_warning() {
 async fn source_without_the_expected_parameter_is_a_warning() {
     // A parameter the consumer expects but the source does not deliver:
     // remove it from the source's lexostatus.
-    let cells = own_setup(
-        &[("afnemer", &as_is), ("register", &as_is)],
-        &[("afnemer", &as_is)],
-    );
+    let cells = own_setup(&[]);
     let lexo = cells.path().join("cells/register/lexostatuses.yaml");
     let text = std::fs::read_to_string(&lexo).unwrap();
     std::fs::write(
@@ -968,14 +952,7 @@ async fn source_without_the_expected_parameter_is_a_warning() {
 #[test]
 fn synthesis_check_at_startup() {
     let case = |adjustment: &dyn Fn(String) -> String, expected: &str| {
-        let setup = own_setup(
-            &[
-                ("afnemer", &as_is),
-                ("register", &as_is),
-                ("gebieden", &as_is),
-            ],
-            &[("afnemer", adjustment)],
-        );
+        let setup = own_setup(&[(SYNTHESIS, adjustment)]);
         let data = tempfile::tempdir().unwrap();
         let errors = runtime_at(setup.path(), data.path())
             .map(|_| ())
@@ -983,7 +960,7 @@ fn synthesis_check_at_startup() {
         assert!(
             errors
                 .iter()
-                .any(|f| f.starts_with("process 'test_afnemer_proces': ") && f.contains(expected)),
+                .any(|f| f.starts_with("process 'test_afnemer': ") && f.contains(expected)),
             "expected '{expected}' in {errors:?}"
         );
     };
@@ -1012,29 +989,15 @@ fn synthesis_check_at_startup() {
         &|t: String| t.replace("field: aanduiding}", "field: aanduiding_x}"),
         "does not deliver 'aanduiding_x'",
     );
-    // Synthesis without a portal and without a decision.
-    case(
-        &|t: String| {
-            let (before, after) = t.split_once("roles:").unwrap();
-            let (_, synthesis) = after.split_once("synthesis:").unwrap();
-            let (synthesis, _) = synthesis.split_once("handling:").unwrap();
-            format!("{before}synthesis:{synthesis}")
-        },
-        "synthesis without portal and without actions",
-    );
 }
+
+/// The policy of the consumer (RFC-047).
+const CONSUMER_POLICY: &str = "regulation/testbeleid_afnemer/2025-01-01.yaml";
 
 #[test]
 fn decision_check_at_startup() {
-    let case = |adjustment: &dyn Fn(String) -> String, expected: &str| {
-        let setup = own_setup(
-            &[
-                ("afnemer", &as_is),
-                ("register", &as_is),
-                ("gebieden", &as_is),
-            ],
-            &[("afnemer", adjustment)],
-        );
+    let case = |file: &str, adjustment: &dyn Fn(String) -> String, expected: &str| {
+        let setup = own_setup(&[(file, adjustment)]);
         let data = tempfile::tempdir().unwrap();
         let errors = runtime_at(setup.path(), data.path())
             .map(|_| ())
@@ -1042,79 +1005,68 @@ fn decision_check_at_startup() {
         assert!(
             errors
                 .iter()
-                .any(|f| f.starts_with("process 'test_afnemer_proces': ") && f.contains(expected)),
+                .any(|f| f.starts_with("process 'test_afnemer': ") && f.contains(expected)),
             "expected '{expected}' in {errors:?}"
         );
     };
+    // The handling channel becomes a counter: the portal event does not bind
+    // effective_at to $intake.
+    let counter = |t: String| {
+        t.replace(
+            "medewerker: {kind: handling, role: behandelaar}",
+            "medewerker: {kind: counter, role: behandelaar}",
+        )
+    };
     case(
-        &|t: String| t.replace("routes: [handling]", "routes: [counter]"),
-        "handling without a role that may use it",
+        CONSUMER_POLICY,
+        &counter,
+        "counter: event 'aanvraag_ontvangen' does not bind effective_at to $intake",
     );
+    // The portal channel is no portal: nobody may submit.
     case(
+        CONSUMER_POLICY,
         &|t: String| {
             t.replace(
-                "  aanvrager: {channel: eherkenning, routes: [portal]}\n",
-                "",
+                "kind: portal\n                  role: aanvrager",
+                "kind: handling\n                  role: aanvrager",
             )
         },
         "portal without a role that may use it",
     );
+    // On behalf of an authority the law does not know: the policy then
+    // works out a competence of another authority (Awb 4:81).
+    let setup = own_setup(&[(CONSUMER_POLICY, &|t: String| {
+        t.replace("  name: Test afnemer\n", "  name: test_afnemer\n")
+    })]);
+    let data = tempfile::tempdir().unwrap();
+    let errors = runtime_at(setup.path(), data.path()).err().unwrap();
+    assert!(
+        errors.contains(&"testbeleid_afnemer#1: executes testregeling_afnemer#1, a competence of 'Test afnemer', and the policy is of 'test_afnemer' (Awb 4:81)".to_string()),
+        "{errors:?}"
+    );
     case(
+        CONSUMER_POLICY,
         &|t: String| {
             t.replace(
-                "{channel: medewerker, routes: [handling]",
-                "{channel: balie, routes: [handling]",
-            )
-        },
-        "role 'behandelaar': channel 'balie' is not listed under channels",
-    );
-    // The portal event does not bind effective_at to $intake: no counter.
-    case(
-        &|t: String| t.replace("routes: [handling]", "routes: [handling, counter]"),
-        "counter: event 'aanvraag_ontvangen' does not bind effective_at to $intake",
-    );
-    // On behalf of an authority the law does not know, or no authority for a decision.
-    case(
-        &|t: String| {
-            t.replace(
-                "on_behalf_of: {regulation: testregeling_afnemer}",
-                "on_behalf_of: {authority: test_afnemer}",
-            )
-        },
-        "on_behalf_of: no loaded regulation names 'test_afnemer' as competent authority",
-    );
-    case(
-        &|t: String| t.replace("on_behalf_of: {regulation: testregeling_afnemer}\n", ""),
-        "handling without on_behalf_of",
-    );
-    case(
-        &|t: String| {
-            t.replace(
-                "on_behalf_of: {regulation: testregeling_afnemer}\n",
-                "on_behalf_of: {regulation: testregeling_afnemer}\nmandates:\n  - {authority: Test afnemer, legal_basis: 'testregeling_afnemer#9'}\n",
+                "                medewerker: {kind: handling, role: behandelaar}\n",
+                "                medewerker: {kind: handling, role: behandelaar}\n              mandates:\n                - {authority: Test afnemer, legal_basis: 'testregeling_afnemer#9'}\n",
             )
         },
         "mandate: 'Test afnemer' is the authority the process itself acts for",
     );
     case(
-        &|t: String| t.replace("lexostatus: werkvoorraad}", "lexostatus: aanvraag_inhoud}"),
-        "worklist 'aanvraag_inhoud' is not a list",
-    );
-    case(
-        &|t: String| t.replace("outputs: [vastgesteld_bedrag,", "outputs: [bestaat_niet,"),
-        "has no output 'bestaat_niet'",
-    );
-    case(
+        SYNTHESIS,
         &|t: String| {
             t.replace(
                 "lexostatus: zaakverloop, case: true}",
-                "lexostatus: werkvoorraad, case: true}",
+                "lexostatus: worklist, case: true}",
             )
         },
-        "lexostatus 'werkvoorraad' is a list",
+        "lexostatus 'worklist' is a list",
     );
     // A source of the case in a cell other than the process's.
     case(
+        SYNTHESIS,
         &|t: String| {
             t.replace(
                 "{cell: test_afnemer, lexostatus: zaakverloop, case: true}",
@@ -1125,86 +1077,72 @@ fn decision_check_at_startup() {
     );
     // An ordinary source from the own cell: that is a source of the case.
     case(
+        SYNTHESIS,
         &|t: String| {
             t.replace(
-                "  - cell: test_register\n    lexostatus: registerstatus\n",
-                "  - cell: test_afnemer\n    lexostatus: registerstatus\n",
+                "    - cell: test_register\n      lexostatus: registerstatus\n",
+                "    - cell: test_afnemer\n      lexostatus: registerstatus\n",
             )
         },
         "is a source of the case (case: true)",
     );
-    // The state at decision is no longer in the configuration: it follows from
-    // the procedure of the beschikking. The schema rejects it.
-    let with_state = |t: String| {
-        t.replacen(
-            "      record: {cell: test_afnemer, stream: test_afnemer_zaakverloop, event: besluit_genomen}",
-            "      stand_bij_besluit: {bekendgemaakt: false}\n      record: {cell: test_afnemer, stream: test_afnemer_zaakverloop, event: besluit_genomen}",
-            1,
-        )
-    };
-    let setup = own_setup(
-        &[
-            ("afnemer", &as_is),
-            ("register", &as_is),
-            ("gebieden", &as_is),
-        ],
-        &[("afnemer", &with_state)],
-    );
-    let data = tempfile::tempdir().unwrap();
-    let errors = runtime_at(setup.path(), data.path()).err().unwrap();
-    assert!(
-        errors
-            .iter()
-            .any(|f| f.contains("'stand_bij_besluit' was unexpected")),
-        "{errors:?}"
-    );
     // Synthesis per row.
     case(
+        SYNTHESIS,
         &|t: String| {
             t.replace(
-                "          table: {lexostatus: aanvraag_inhoud, field: gebieden}",
-                "          table: {lexostatus: aanvraag_inhoud, field: dorpen}",
+                "table: {lexostatus: aanvraag_inhoud, field: gebieden}",
+                "table: {lexostatus: aanvraag_inhoud, field: dorpen}",
             )
         },
         "lexostatus 'aanvraag_inhoud' does not deliver 'dorpen'",
     );
     case(
-        &|t: String| t.replace("          table: {lexostatus: aanvraag_inhoud, field: gebieden}", "          table: {lexostatus: werkvoorraad, field: gebieden}"),
-        "the table comes from lexostatus 'werkvoorraad', and that is not a lexostatus of the case (case: true)",
+        SYNTHESIS,
+        &|t: String| t.replace("table: {lexostatus: aanvraag_inhoud, field: gebieden}", "table: {lexostatus: worklist, field: gebieden}"),
+        "the table comes from lexostatus 'worklist', and that is not a lexostatus of the case (case: true)",
     );
     case(
+        SYNTHESIS,
         &|t: String| {
             t.replace(
-                "                gebied: {column: gebied}\n                peildatum:",
-                "                gebied: {column: gebiedje}\n                peildatum:",
+                "              gebied: {column: gebied}\n              peildatum:",
+                "              gebied: {column: gebiedje}\n              peildatum:",
             )
         },
         "column 'gebiedje' is not filled by anything before it",
     );
     case(
+        SYNTHESIS,
         &|t: String| t.replace("- parameter: gebiedstabel", "- parameter: dorpstabel"),
-        "'besluit', rows: 'dorpstabel' is not a parameter of testregeling_afnemer#3",
+        "'besluit_genomen', rows: 'dorpstabel' is not a parameter of testregeling_afnemer#3",
     );
     case(
+        SYNTHESIS,
+        // With the legal basis of the translation, which the route from
+        // policy always asks for (origin_check strict).
         &|t: String| {
             t.replace(
-                "              columns: {tarief: tarief}",
-                "              columns: {tarief: zetels}",
+                "            columns: {tarief: tarief}\n",
+                "            columns: {tarief: zetels}\n            legal_basis: [testregeling_afnemer#3]\n",
             )
         },
         "column 'zetels' comes from more than one place: the table, source test_gebieden/tarief",
-    );
-    // Where the decision is recorded: every field of the event is an output
-    // or a verdict.
-    case(
-        &|t: String| t.replace("      outputs: [vastgesteld_bedrag, gebiedsbedrag,", "      outputs: [vastgesteld_bedrag,"),
-        "the event records [gebiedsbedrag], and that is neither an output nor a verdict of the decision",
     );
 }
 
 // --- The handler: worklist, case and trial decision ---
 
-const CONSUMER: &str = "/processes/test_afnemer_proces";
+const CONSUMER: &str = "/processes/test_afnemer";
+
+/// The entry with this name in a list (the actions of a case).
+fn named<'v>(list: &'v Value, name: &str) -> &'v Value {
+    list.as_array()
+        .unwrap()
+        .iter()
+        .find(|h| h["name"] == name)
+        .expect("an entry with this name")
+}
 const CONSUMER_CELL: &str = "/cells/test_afnemer";
 
 async fn consumer_submit(app: &Router, kvk: &str) -> String {
@@ -1316,7 +1254,7 @@ async fn roles_decide_who_may_do_what() {
         ("GET", format!("{CONSUMER}/api/cases/{a}")),
         (
             "POST",
-            format!("{CONSUMER}/api/cases/{a}/actions/besluit/trial"),
+            format!("{CONSUMER}/api/cases/{a}/actions/besluit_genomen/trial"),
         ),
         ("GET", format!("{CONSUMER}/api/channels/medewerker/session")),
     ] {
@@ -1435,7 +1373,7 @@ async fn the_built_in_worklist_lists_the_undecided_applications() {
         &app,
         &b,
         &case,
-        "voorschot",
+        "voorschot_verleend",
         json!({"voorschotdatum": "2025-03-12"}),
         false,
     )
@@ -1463,14 +1401,14 @@ async fn worklist_is_a_list_of_cases_without_a_decision() {
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{w}");
-    assert_eq!(w["name"], "werkvoorraad");
+    assert_eq!(w["name"], "worklist");
     assert_eq!(w["parameters"], json!({}), "a list has no parameters");
     let list = w["list"].as_array().unwrap();
     assert_eq!(list.len(), 2);
     let row = list.iter().find(|r| r["root"] == a.as_str()).unwrap();
     assert_eq!(
         row["fields"],
-        json!({"ontvangen_op": "2025-03-12", "aanvrager": "Vereniging Voorbeeld", "kvk": "12345678"})
+        json!({"ontvangen_op": "2025-03-12", "vastgelegd_op": "2025-03-12", "kvk_nummer": "12345678"})
     );
 
     // A case-progress gram leaves the case in place; a decision takes it off.
@@ -1510,7 +1448,7 @@ async fn worklist_is_a_list_of_cases_without_a_decision() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|l| l["name"] == "werkvoorraad")
+        .find(|l| l["name"] == "worklist")
         .unwrap();
     assert_eq!(worklist["list"], json!(true));
     assert_eq!(worklist["parameters"], json!([]));
@@ -1519,7 +1457,7 @@ async fn worklist_is_a_list_of_cases_without_a_decision() {
         processes[0]["roles"]["behandelaar"],
         json!({"channel": "medewerker", "routes": ["handling"], "label": "Behandelaar"})
     );
-    assert_eq!(processes[0]["handling"]["worklist"], "werkvoorraad");
+    assert_eq!(processes[0]["handling"]["worklist"], "worklist");
 }
 
 #[tokio::test]
@@ -1543,8 +1481,7 @@ async fn case_with_trial_decision_without_recording() {
     .await;
     assert_eq!(status, StatusCode::OK, "{z}");
     assert_eq!(z["grams"].as_array().unwrap().len(), 1);
-    // The actions of the process, in the order of process.yaml; the decision
-    // first.
+    // The actions of the process, in the order of its stream (RFC-047).
     let names: Vec<&str> = z["actions"]
         .as_array()
         .unwrap()
@@ -1553,9 +1490,14 @@ async fn case_with_trial_decision_without_recording() {
         .collect();
     assert_eq!(
         names,
-        ["besluit", "bekendmaken", "betalen", "aanvulling_vragen"]
+        [
+            "aanvulling_gevraagd",
+            "besluit_genomen",
+            "besluit_bekendgemaakt",
+            "betaling_verricht"
+        ]
     );
-    let decision = &z["actions"][0];
+    let decision = named(&z["actions"], "besluit_genomen");
     assert_eq!(decision["article"], "testregeling_afnemer#3");
     assert_eq!(decision["kind"], json!({"kind": "decision"}));
     assert_eq!(decision["stage"], "BESLUIT");
@@ -1589,7 +1531,7 @@ async fn case_with_trial_decision_without_recording() {
     let (status, p, _) = call(
         &app,
         "POST",
-        &format!("{CONSUMER}/api/cases/{case}/actions/besluit/trial"),
+        &format!("{CONSUMER}/api/cases/{case}/actions/besluit_genomen/trial"),
         Some(&b),
         Some(json!({"form": {"besluitdatum": "2025-03-12", "feiten_vergaard": true}})),
     )
@@ -1646,7 +1588,7 @@ async fn case_with_trial_decision_without_recording() {
     let (_, p, _) = call(
         &app,
         "POST",
-        &format!("{CONSUMER}/api/cases/{case}/actions/besluit/trial"),
+        &format!("{CONSUMER}/api/cases/{case}/actions/besluit_genomen/trial"),
         Some(&b),
         Some(json!({"form": {"besluitdatum": "2025-03-12", "feiten_vergaard": true}})),
     )
@@ -1665,7 +1607,7 @@ async fn case_with_trial_decision_without_recording() {
     let (_, p, _) = call(
         &app,
         "POST",
-        &format!("{CONSUMER}/api/cases/{case}/actions/besluit/trial"),
+        &format!("{CONSUMER}/api/cases/{case}/actions/besluit_genomen/trial"),
         Some(&b),
         Some(json!({"form": {"besluitdatum": "2025-03-12", "feiten_vergaard": true}})),
     )
@@ -1681,7 +1623,7 @@ async fn case_with_trial_decision_without_recording() {
     let (status, f, _) = call(
         &app,
         "POST",
-        &format!("{CONSUMER}/api/cases/{case}/actions/besluit/trial"),
+        &format!("{CONSUMER}/api/cases/{case}/actions/besluit_genomen/trial"),
         Some(&b),
         Some(json!({"form": {"bekendgemaakt": true}})),
     )
@@ -1722,17 +1664,12 @@ async fn a_root_and_a_reference() {
 
     // The same chronicle, now with a stream in which the application may
     // refer to an earlier application.
-    let setup = own_setup(&[("instantie", &as_is)], &[("instantie", &as_is)]);
-    let stream = setup.path().join("chronicles/test_aanvragen.yaml");
-    let text = std::fs::read_to_string(&stream).unwrap();
-    std::fs::write(
-        &stream,
-        text.replace(
+    let setup = own_setup(&[("chronicles/test_aanvragen.yaml", &|t: String| {
+        t.replace(
             "  - name: aanvraag_ontvangen\n",
             "  - name: aanvraag_ontvangen\n    refers_to: {vorige: {to: aanvraag_ontvangen}}\n",
-        ),
-    )
-    .unwrap();
+        )
+    })]);
     let app = runtime_at(setup.path(), data.path()).unwrap().router;
     let c = logins(&app, "12345678").await;
     let mut unknown = complete();
@@ -1770,10 +1707,7 @@ async fn a_root_and_a_reference() {
 #[test]
 fn a_failing_cell_stops_the_runtime() {
     let broken = |t: String| t.replace("lexostatuses: lexostatuses.yaml", "lexostatuses: weg.yaml");
-    let setup = own_setup(
-        &[("instantie", &as_is), ("register", &broken)],
-        &[("instantie", &as_is)],
-    );
+    let setup = own_setup(&[("cells/register/cell.yaml", &broken)]);
     let data = tempfile::tempdir().unwrap();
     let errors = runtime_at(setup.path(), data.path()).err().unwrap();
     assert_eq!(errors.len(), 1, "{errors:?}");
@@ -1785,13 +1719,18 @@ fn a_failing_cell_stops_the_runtime() {
 
 #[test]
 fn a_failing_process_stops_the_runtime() {
-    let broken = |t: String| t.replace("actor: test_instantie", "actor: iemand_anders");
-    let setup = own_setup(&[("instantie", &as_is)], &[("instantie", &broken)]);
+    let broken = |t: String| {
+        t.replace(
+            "submits: testregeling_aanvraag#1",
+            "submits: 'testregeling_aanvraag#9'",
+        )
+    };
+    let setup = own_setup(&[(AGENCY_POLICY, &broken)]);
     let data = tempfile::tempdir().unwrap();
     let errors = runtime_at(setup.path(), data.path()).err().unwrap();
     assert_eq!(errors.len(), 1, "{errors:?}");
     assert!(
-        errors[0].starts_with("process 'test_instantie_proces': portal: stream 'test_aanvragen' has recording_actor 'test_instantie'"),
+        errors[0].starts_with("authority 'Test instantie': testbeleid_instantie#1: channel 'eherkenning' submits 'testregeling_aanvraag#9', which is not a loaded article"),
         "{errors:?}"
     );
 }
@@ -1800,18 +1739,10 @@ fn a_failing_process_stops_the_runtime() {
 fn without_processes_only_the_cells_run() {
     let data = tempfile::tempdir().unwrap();
     let config = Config {
-        cells_path: fixtures().join("cells"),
-        processes_path: None,
-        regulation_path: fixtures().join("regulation"),
-        data_dir: data.path().to_path_buf(),
-        port: DEFAULT_PORT,
-        read_token: None,
-        read_token_sources: Vec::new(),
-        reduction: Default::default(),
-        registers: None,
         channels: None,
         synthesis: None,
         examples: None,
+        ..config_at(&fixtures(), data.path())
     };
     let r = Runtime::load(&config, clock()).unwrap();
     assert_eq!(r.cells.len(), 5);
@@ -1834,7 +1765,7 @@ async fn synthesis_per_row_fills_in_the_table() {
     let (status, p, _) = call(
         &app,
         "POST",
-        &format!("{CONSUMER}/api/cases/{case}/actions/besluit/trial"),
+        &format!("{CONSUMER}/api/cases/{case}/actions/besluit_genomen/trial"),
         Some(&b),
         Some(verdicts()),
     )
@@ -1900,7 +1831,7 @@ async fn an_area_without_a_rate_stays_empty() {
     let (_, p, _) = call(
         &app,
         "POST",
-        &format!("{CONSUMER}/api/cases/{case}/actions/besluit/trial"),
+        &format!("{CONSUMER}/api/cases/{case}/actions/besluit_genomen/trial"),
         Some(&b),
         Some(verdicts()),
     )
@@ -1916,7 +1847,7 @@ async fn an_area_without_a_rate_stays_empty() {
     let (status, f, _) = call(
         &app,
         "POST",
-        &format!("{CONSUMER}/api/cases/{case}/actions/besluit"),
+        &format!("{CONSUMER}/api/cases/{case}/actions/besluit_genomen"),
         Some(&b),
         Some(verdicts()),
     )
@@ -1939,7 +1870,7 @@ async fn taking_a_decision_records_a_decretogram() {
     let (status, body, _) = call(
         &app,
         "POST",
-        &format!("{CONSUMER}/api/cases/{case}/actions/besluit"),
+        &format!("{CONSUMER}/api/cases/{case}/actions/besluit_genomen"),
         Some(&b),
         Some(verdicts()),
     )
@@ -2044,7 +1975,7 @@ async fn taking_a_decision_records_a_decretogram() {
     let (status, f, _) = call(
         &app,
         "POST",
-        &format!("{CONSUMER}/api/cases/{case}/actions/besluit"),
+        &format!("{CONSUMER}/api/cases/{case}/actions/besluit_genomen"),
         Some(&b),
         Some(verdicts()),
     )
@@ -2076,7 +2007,7 @@ async fn taking_a_decision_records_a_decretogram() {
     let (status, _, _) = call(
         &app,
         "POST",
-        &format!("{CONSUMER}/api/cases/{two}/actions/besluit"),
+        &format!("{CONSUMER}/api/cases/{two}/actions/besluit_genomen"),
         aanvrager.as_deref(),
         Some(verdicts()),
     )
@@ -2110,7 +2041,7 @@ async fn taking_a_decision_records_a_decretogram() {
 
     // Two concurrent decisions on the other case: the cell records one,
     // because the stage check and the write share one lock.
-    let path = format!("{CONSUMER}/api/cases/{two}/actions/besluit");
+    let path = format!("{CONSUMER}/api/cases/{two}/actions/besluit_genomen");
     let (a, other) = tokio::join!(
         call(&app, "POST", &path, Some(&b), Some(verdicts())),
         call(&app, "POST", &path, Some(&b), Some(verdicts())),
@@ -2134,60 +2065,24 @@ async fn taking_a_decision_records_a_decretogram() {
 }
 
 /// A setup in which article 3 (the beschikking) names an authority other
-/// than the one the process acts for ('Test afnemer'), with an adjustment to
-/// the process.
-fn with_other_authority(
-    process: &dyn Fn(String) -> String,
-) -> (tempfile::TempDir, tempfile::TempDir, Router) {
-    let cells = own_setup(
-        &[
-            ("afnemer", &as_is),
-            ("register", &as_is),
-            ("gebieden", &as_is),
-        ],
-        &[("afnemer", process)],
-    );
-    for e in std::fs::read_dir(fixtures().join("regulation")).unwrap() {
-        let of = e.unwrap().path();
-        let to = cells
-            .path()
-            .join("regulation")
-            .join(of.file_name().unwrap());
-        std::fs::create_dir_all(&to).unwrap();
-        let text = std::fs::read_to_string(of.join("2025-01-01.yaml")).unwrap();
-        let text = if of.ends_with("testregeling_afnemer") {
-            // Only article 3 is a BESCHIKKING; the authority is added there.
-            let with_authority = text.replace(
-                "    machine_readable:\n      execution:\n        produces:\n          legal_character: BESCHIKKING",
-                "    machine_readable:\n      competent_authority:\n        name: Een andere instantie\n      execution:\n        produces:\n          legal_character: BESCHIKKING",
-            );
-            assert_ne!(
-                with_authority, text,
-                "the authority was not put into the regulation"
-            );
-            with_authority
-        } else {
-            text
-        };
-        std::fs::write(to.join("2025-01-01.yaml"), text).unwrap();
-    }
-    let data = tempfile::tempdir().unwrap();
-    let config = Config {
-        cells_path: cells.path().join("cells"),
-        processes_path: Some(cells.path().join("processes")),
-        regulation_path: cells.path().join("regulation"),
-        data_dir: data.path().to_path_buf(),
-        port: 0,
-        read_token: None,
-        read_token_sources: Vec::new(),
-        reduction: Default::default(),
-        registers: None,
-        channels: None,
-        synthesis: None,
-        examples: None,
+/// than the one the process acts for ('Test afnemer'), with more adjustments.
+fn with_other_authority(more: &[Adjustment]) -> (tempfile::TempDir, tempfile::TempDir, Router) {
+    // Only article 3 is a BESCHIKKING; the authority is added there.
+    let with_authority = |t: String| {
+        t.replace(
+            "    machine_readable:\n      execution:\n        produces:\n          legal_character: BESCHIKKING",
+            "    machine_readable:\n      competent_authority:\n        name: Een andere instantie\n      execution:\n        produces:\n          legal_character: BESCHIKKING",
+        )
     };
-    let app = Runtime::load(&config, clock()).unwrap().router;
-    (cells, data, app)
+    let mut adjustments: Vec<Adjustment> = vec![(
+        "regulation/testregeling_afnemer/2025-01-01.yaml",
+        &with_authority,
+    )];
+    adjustments.extend_from_slice(more);
+    let setup = own_setup(&adjustments);
+    let data = tempfile::tempdir().unwrap();
+    let app = runtime_at(setup.path(), data.path()).unwrap().router;
+    (setup, data, app)
 }
 
 #[tokio::test]
@@ -2195,13 +2090,13 @@ async fn another_competent_authority_refuses_the_decision() {
     // The law designates an authority other than the one the process acts
     // for, and the process has no mandate: no gram. Names are compared
     // literally, not normalized.
-    let (_cells, data, app) = with_other_authority(&as_is);
+    let (_cells, data, app) = with_other_authority(&[]);
     let case = consumer_submit(&app, "12345678").await;
     let b = handler(&app).await;
     let (status, f, _) = call(
         &app,
         "POST",
-        &format!("{CONSUMER}/api/cases/{case}/actions/besluit"),
+        &format!("{CONSUMER}/api/cases/{case}/actions/besluit_genomen"),
         Some(&b),
         Some(verdicts()),
     )
@@ -2227,17 +2122,17 @@ async fn another_competent_authority_refuses_the_decision() {
 async fn a_mandate_allows_deciding_on_behalf_of_another_authority() {
     let with_mandate = |t: String| {
         t.replace(
-            "on_behalf_of: {regulation: testregeling_afnemer}\n",
-            "on_behalf_of: {regulation: testregeling_afnemer}\nmandates:\n  - {authority: Een andere instantie, legal_basis: 'testregeling_afnemer#7'}\n",
+            "                medewerker: {kind: handling, role: behandelaar}\n",
+            "                medewerker: {kind: handling, role: behandelaar}\n              mandates:\n                - {authority: Een andere instantie, legal_basis: 'testregeling_afnemer#7'}\n",
         )
     };
-    let (_cells, _data, app) = with_other_authority(&with_mandate);
+    let (_cells, _data, app) = with_other_authority(&[(CONSUMER_POLICY, &with_mandate)]);
     let case = consumer_submit(&app, "12345678").await;
     let b = handler(&app).await;
     let (status, body, _) = call(
         &app,
         "POST",
-        &format!("{CONSUMER}/api/cases/{case}/actions/besluit"),
+        &format!("{CONSUMER}/api/cases/{case}/actions/besluit_genomen"),
         Some(&b),
         Some(verdicts()),
     )
@@ -2278,10 +2173,10 @@ async fn examples_without_login() {
         body["application"],
         consumer_concept(Some("VOORBEELD"))["external"]
     );
-    assert_eq!(body["actions"]["besluit"], verdicts()["form"]);
+    assert_eq!(body["actions"]["besluit_genomen"], verdicts()["form"]);
     // "$vandaag" is the date of the clock when requested.
     assert_eq!(
-        body["actions"]["bekendmaken"]["datum_bekendmaking"],
+        body["actions"]["besluit_bekendgemaakt"]["datum_bekendmaking"],
         "2025-03-12"
     );
 
@@ -2319,25 +2214,24 @@ async fn the_application_example_can_be_submitted() {
     assert_eq!(status, StatusCode::CREATED, "{body}");
 }
 
+/// The examples of the deployment (RFC-047).
+const EXAMPLES: &str = "deployment/examples.yaml";
+
 #[test]
 fn examples_check_at_startup() {
     let gone = |t: String| t.replace("voorbeeld-besluit.json", "weg.json");
-    let all = [
-        ("afnemer", &as_is as &dyn Fn(String) -> String),
-        ("register", &as_is),
-        ("gebieden", &as_is),
-    ];
-    let setup = own_setup(&all, &[("afnemer", &gone)]);
+    let setup = own_setup(&[(EXAMPLES, &gone)]);
     let data = tempfile::tempdir().unwrap();
     let errors = runtime_at(setup.path(), data.path()).err().unwrap();
     assert_eq!(errors.len(), 1, "{errors:?}");
     assert!(
-        errors[0].starts_with("process 'test_afnemer_proces': example weg.json"),
+        errors[0].starts_with("process 'test_afnemer': example ")
+            && errors[0].contains("deployment/examples/test_afnemer/weg.json"),
         "{errors:?}"
     );
 
     let wrong = |t: String| t.replace("voorbeeld-besluit.json", "voorbeeld-login.json");
-    let setup = own_setup(&all, &[("afnemer", &wrong)]);
+    let setup = own_setup(&[(EXAMPLES, &wrong)]);
     let errors = runtime_at(setup.path(), data.path()).err().unwrap();
     assert!(
         errors[0].contains("voorbeeld-login.json: expected an object with 'form'"),
@@ -2462,7 +2356,7 @@ async fn a_trial_reduction_reduces_the_chronicle_with_the_draft() {
     let (status, body) = as_runtime(
         &rt,
         "POST",
-        &format!("{CONSUMER_CELL}/api/lexostatus/werkvoorraad/trial"),
+        &format!("{CONSUMER_CELL}/api/lexostatus/worklist/trial"),
         json!({"draft": concept}),
     )
     .await;
@@ -2471,7 +2365,7 @@ async fn a_trial_reduction_reduces_the_chronicle_with_the_draft() {
     let (_, w, _) = call(
         &app,
         "GET",
-        &format!("{CONSUMER_CELL}/api/lexostatus/werkvoorraad"),
+        &format!("{CONSUMER_CELL}/api/lexostatus/worklist"),
         None,
         None,
     )
@@ -2559,15 +2453,15 @@ async fn only_the_runtime_records_and_reads() {
 fn an_offer_on_an_application_fact_stops_the_runtime() {
     let with_offer = |t: String| {
         t.replace(
-            "  form:",
-            "  offer: {regulation: testregeling_aanvraag, output: aanvraag_volledig}\n  form:",
+            "                  form:",
+            "                  offers: {regulation: testregeling_aanvraag, output: aanvraag_volledig}\n                  form:",
         )
     };
-    let setup = own_setup(&[("instantie", &as_is)], &[("instantie", &with_offer)]);
+    let setup = own_setup(&[(AGENCY_POLICY, &with_offer)]);
     let data = tempfile::tempdir().unwrap();
     let errors = runtime_at(setup.path(), data.path()).err().unwrap();
     assert!(
-        errors.contains(&"process 'test_instantie_proces': offer: condition relies on 'aanvraagdatum' (BELANGHEBBENDE, grondslag testregeling_aanvraag#1 lid 1), which is not known beforehand".to_string()),
+        errors.contains(&"process 'test_instantie': offer: condition relies on 'aanvraagdatum' (BELANGHEBBENDE, grondslag testregeling_aanvraag#1 lid 1), which is not known beforehand".to_string()),
         "{errors:?}"
     );
 }
@@ -2581,18 +2475,11 @@ fn an_offer_on_an_application_fact_stops_the_runtime() {
 async fn the_offer_runs_per_chosen_window() {
     let with_offer = |t: String| {
         t.replace(
-            "    output: aanvraag_toelaatbaar\n",
-            "    output: aanvraag_toelaatbaar\n  offer:\n    regulation: testregeling_afnemer\n    output: aanvraag_aangeboden\n    deadline: aanvraagtermijn\n    windows: aangeboden_jaren\n    start: begin_aanvraagjaar\n",
+            "                  assesses: {output: aanvraag_toelaatbaar}\n",
+            "                  assesses: {output: aanvraag_toelaatbaar}\n                  offers:\n                    regulation: testregeling_afnemer\n                    output: aanvraag_aangeboden\n                    deadline: aanvraagtermijn\n                    windows: aangeboden_jaren\n                    start: begin_aanvraagjaar\n",
         )
     };
-    let setup = own_setup(
-        &[
-            ("afnemer", &as_is),
-            ("register", &as_is),
-            ("gebieden", &as_is),
-        ],
-        &[("afnemer", &with_offer)],
-    );
+    let setup = own_setup(&[(CONSUMER_POLICY, &with_offer)]);
     let data = tempfile::tempdir().unwrap();
     let app = runtime_at(setup.path(), data.path()).unwrap().router;
     let (_, _, cookie) = call(
@@ -2641,23 +2528,16 @@ async fn the_offer_runs_per_chosen_window() {
 fn a_window_without_windows_stops_the_runtime() {
     let with_offer = |t: String| {
         t.replace(
-            "    output: aanvraag_toelaatbaar\n",
-            "    output: aanvraag_toelaatbaar\n  offer: {regulation: testregeling_afnemer, output: aanvraag_aangeboden}\n",
+            "                  assesses: {output: aanvraag_toelaatbaar}\n",
+            "                  assesses: {output: aanvraag_toelaatbaar}\n                  offers: {regulation: testregeling_afnemer, output: aanvraag_aangeboden}\n",
         )
     };
-    let setup = own_setup(
-        &[
-            ("afnemer", &as_is),
-            ("register", &as_is),
-            ("gebieden", &as_is),
-        ],
-        &[("afnemer", &with_offer)],
-    );
+    let setup = own_setup(&[(CONSUMER_POLICY, &with_offer)]);
     let data = tempfile::tempdir().unwrap();
     let errors = runtime_at(setup.path(), data.path()).err().unwrap();
     assert_eq!(
         errors,
-        ["process 'test_afnemer_proces': offer: the window 'aanvraagjaar' (rol TIJDVAK) asks for offer.windows: the output of the policy with the windows the portal offers"]
+        ["process 'test_afnemer': offer: the window 'aanvraagjaar' (rol TIJDVAK) asks for offer.windows: the output of the policy with the windows the portal offers"]
     );
 }
 
@@ -2678,14 +2558,11 @@ fn the_windows_come_from_the_policy() {
     ] {
         let with_offer = move |t: String| {
             t.replace(
-                "    output: aanvraag_toelaatbaar\n",
-                &format!("    output: aanvraag_toelaatbaar\n  offer: {{regulation: testregeling_afnemer, output: aanvraag_aangeboden, windows: {windows}}}\n"),
+                "                  assesses: {output: aanvraag_toelaatbaar}\n",
+                &format!("                  assesses: {{output: aanvraag_toelaatbaar}}\n                  offers: {{regulation: testregeling_afnemer, output: aanvraag_aangeboden, windows: {windows}}}\n"),
             )
         };
-        let setup = own_setup(
-            &[("afnemer", &as_is), ("register", &as_is), ("gebieden", &as_is)],
-            &[("afnemer", &with_offer)],
-        );
+        let setup = own_setup(&[(CONSUMER_POLICY, &with_offer)]);
         let data = tempfile::tempdir().unwrap();
         let errors = runtime_at(setup.path(), data.path()).err().unwrap();
         assert!(
@@ -2695,33 +2572,21 @@ fn the_windows_come_from_the_policy() {
     }
 }
 
-/// A record event with a stage the procedure of the beschikking does not
-/// know: the state at decision cannot be derived then, and the runtime does
-/// not start.
+/// An event with a stage the procedure of the beschikking does not know: it
+/// follows no decision of the actor, and the runtime does not start.
 #[test]
 fn a_stage_outside_the_procedure_stops_the_runtime() {
-    let setup = own_setup(
-        &[
-            ("afnemer", &as_is),
-            ("register", &as_is),
-            ("gebieden", &as_is),
-        ],
-        &[("afnemer", &as_is)],
-    );
-    let stream = setup
-        .path()
-        .join("chronicles/test_afnemer_zaakverloop.yaml");
-    let text = std::fs::read_to_string(&stream).unwrap();
-    std::fs::write(&stream, text.replace("stage: BESLUIT", "stage: BESLISSING")).unwrap();
-    let lexo = setup.path().join("cells/afnemer/lexostatuses.yaml");
-    let text = std::fs::read_to_string(&lexo).unwrap();
-    std::fs::write(&lexo, text.replace("stage: BESLUIT", "stage: BESLISSING")).unwrap();
+    let beslissing = |t: String| t.replace("stage: BESLUIT", "stage: BESLISSING");
+    let setup = own_setup(&[
+        ("chronicles/test_afnemer_zaakverloop.yaml", &beslissing),
+        ("cells/afnemer/lexostatuses.yaml", &beslissing),
+    ]);
     let data = tempfile::tempdir().unwrap();
     let errors = runtime_at(setup.path(), data.path()).err().unwrap();
     assert!(
-        errors.iter().any(|f| f.contains(
-            "action 'besluit', record test_afnemer_zaakverloop/besluit_genomen: stage 'BESLISSING' is not in procedure 'beschikking' of testregeling_afnemer#3 (AANVRAAG, BESLUIT, BEKENDMAKING, BEZWAAR)"
-        )),
+        errors.contains(
+            &"authority 'Test afnemer': event 'besluit_genomen': stage BESLISSING follows no decision of the actor".to_string()
+        ),
         "{errors:?}"
     );
 }
@@ -2732,33 +2597,25 @@ fn a_stage_outside_the_procedure_stops_the_runtime() {
 /// the draft, with a column that comes per row from the register cell.
 fn with_assessment_rows(t: String) -> String {
     t.replace(
-        "    output: aanvraag_toelaatbaar\n",
-        "    output: aanvraag_toelaatbaar
-    rows:
-      - parameter: gebiedstabel
-        table: {lexostatus: aanvraag_inhoud, field: gebieden}
-        columns: {gebied: gebied}
-        sources:
-          - cell: test_register
-            lexostatus: registratie_per_gebied
-            input:
-              aanduiding: {lexostatus: aanvraag_inhoud, field: aanduiding}
-              gebied: {column: gebied}
-            columns: {ingeschreven: ingeschreven}
-",
+        "  action_rows:\n",
+        "  assessment_rows:
+    - parameter: gebiedstabel
+      table: {lexostatus: aanvraag_inhoud, field: gebieden}
+      columns: {gebied: gebied}
+      sources:
+        - cell: test_register
+          lexostatus: registratie_per_gebied
+          input:
+            aanduiding: {lexostatus: aanvraag_inhoud, field: aanduiding}
+            gebied: {column: gebied}
+          columns: {ingeschreven: ingeschreven}
+  action_rows:\n",
     )
 }
 
 #[tokio::test]
 async fn the_assessment_builds_a_table_per_row() {
-    let setup = own_setup(
-        &[
-            ("afnemer", &as_is),
-            ("register", &as_is),
-            ("gebieden", &as_is),
-        ],
-        &[("afnemer", &with_assessment_rows)],
-    );
+    let setup = own_setup(&[(SYNTHESIS, &with_assessment_rows)]);
     let data = tempfile::tempdir().unwrap();
     let a = runtime_at(setup.path(), data.path()).unwrap();
     let body = consumer_assessment(&a.router, Some("VOORBEELD")).await;
@@ -2815,18 +2672,11 @@ fn assessment_rows_check_at_startup() {
             1,
         )
     };
-    let setup = own_setup(
-        &[
-            ("afnemer", &as_is),
-            ("register", &as_is),
-            ("gebieden", &as_is),
-        ],
-        &[("afnemer", &from_other)],
-    );
+    let setup = own_setup(&[(SYNTHESIS, &from_other)]);
     let data = tempfile::tempdir().unwrap();
     let errors = runtime_at(setup.path(), data.path()).err().unwrap();
     assert!(
-        errors.contains(&"process 'test_afnemer_proces': assessment, rows 'gebiedstabel': the table comes from lexostatus 'zaakverloop', and that is not the assessment lexostatus".to_string()),
+        errors.contains(&"process 'test_afnemer': assessment, rows 'gebiedstabel': the table comes from lexostatus 'zaakverloop', and that is not the assessment lexostatus".to_string()),
         "{errors:?}"
     );
 }
@@ -2846,14 +2696,13 @@ fn a_legal_basis_in_the_form_is_checked() {
             "form, field 'aanvraagjaar': legal basis 'testregeling_aanvraag#1 lid 8': article 1 has no paragraph 8",
         ),
     ] {
-        let setup = own_setup(&[("instantie", &as_is)], &[("instantie", &as_is)]);
-        let path = setup.path().join("processes/instantie/formulier.yaml");
-        let text = std::fs::read_to_string(&path).unwrap();
-        std::fs::write(
-            &path,
-            text.replace("grondslag: testregeling_aanvraag#1 lid 1}", &format!("grondslag: '{legal_basis}'}}")),
-        )
-        .unwrap();
+        let adjust = move |t: String| {
+            t.replace(
+                "grondslag: testregeling_aanvraag#1 lid 1}",
+                &format!("grondslag: '{legal_basis}'}}"),
+            )
+        };
+        let setup = own_setup(&[("documents/formulier-instantie.yaml", &adjust)]);
         let data = tempfile::tempdir().unwrap();
         let errors = runtime_at(setup.path(), data.path()).err().unwrap();
         assert!(
@@ -3275,11 +3124,11 @@ async fn the_counter_enters_an_earlier_receipt() {
 async fn the_counter_refuses_a_receipt_before_the_opening() {
     let with_offer = |t: String| {
         t.replace(
-            "  form:",
-            "  offer:\n    regulation: testregeling_aanvraag\n    output: aanvraag_aangeboden\n    windows: aangeboden_jaren\n    opening: openstelling_aanvraagjaar\n  form:",
+            "                  form:",
+            "                  offers:\n                    regulation: testregeling_aanvraag\n                    output: aanvraag_aangeboden\n                    windows: aangeboden_jaren\n                    opening: openstelling_aanvraagjaar\n                  form:",
         )
     };
-    let setup = own_setup(&[("instantie", &as_is)], &[("instantie", &with_offer)]);
+    let setup = own_setup(&[(AGENCY_POLICY, &with_offer)]);
     let data = tempfile::tempdir().unwrap();
     let app = runtime_at(setup.path(), data.path()).unwrap().router;
     let l = counter(&app).await;
@@ -3376,7 +3225,7 @@ async fn decision_announce_and_pay() {
         &app,
         &b,
         &case,
-        "bekendmaken",
+        "besluit_bekendgemaakt",
         false,
         json!({"datum_bekendmaking": "2025-03-12", "bekendgemaakt": true}),
     )
@@ -3389,7 +3238,7 @@ async fn decision_announce_and_pay() {
             .contains("waiting for the decision"),
         "{f}"
     );
-    let (status, f) = action(&app, &b, &case, "betalen", false, payment(6000)).await;
+    let (status, f) = action(&app, &b, &case, "betaling_verricht", false, payment(6000)).await;
     assert_eq!(status, StatusCode::CONFLICT, "{f}");
     assert!(
         f["error"]
@@ -3403,7 +3252,7 @@ async fn decision_announce_and_pay() {
         &app,
         &b,
         &case,
-        "besluit",
+        "besluit_genomen",
         false,
         verdicts()["form"].clone(),
     )
@@ -3411,7 +3260,7 @@ async fn decision_announce_and_pay() {
     assert_eq!(status, StatusCode::CREATED, "{body}");
 
     // After the decision, before the announcement: the decision is not in force.
-    let (status, f) = action(&app, &b, &case, "betalen", false, payment(6000)).await;
+    let (status, f) = action(&app, &b, &case, "betaling_verricht", false, payment(6000)).await;
     assert_eq!(status, StatusCode::CONFLICT, "{f}");
     assert!(
         f["error"].as_str().unwrap().contains("betaling_conform"),
@@ -3427,7 +3276,7 @@ async fn decision_announce_and_pay() {
         None,
     )
     .await;
-    let known = &z["actions"][1];
+    let known = named(&z["actions"], "besluit_bekendgemaakt");
     assert_eq!(known["available"], json!(true), "{known}");
     let fields: Vec<&str> = known["form"]
         .as_array()
@@ -3436,7 +3285,10 @@ async fn decision_announce_and_pay() {
         .map(|v| v["name"].as_str().unwrap())
         .collect();
     assert_eq!(fields, ["datum_bekendmaking", "bekendgemaakt"]);
-    assert_eq!(z["actions"][0]["available"], json!(false));
+    assert_eq!(
+        named(&z["actions"], "besluit_genomen")["available"],
+        json!(false)
+    );
 
     // An announcement not made in the prescribed manner gives no objection
     // period: not takeable.
@@ -3444,7 +3296,7 @@ async fn decision_announce_and_pay() {
         &app,
         &b,
         &case,
-        "bekendmaken",
+        "besluit_bekendgemaakt",
         true,
         json!({"datum_bekendmaking": "2025-03-12", "bekendgemaakt": false}),
     )
@@ -3458,7 +3310,7 @@ async fn decision_announce_and_pay() {
         &app,
         &b,
         &case,
-        "bekendmaken",
+        "besluit_bekendgemaakt",
         false,
         json!({"datum_bekendmaking": "2025-03-12", "bekendgemaakt": true}),
     )
@@ -3474,11 +3326,11 @@ async fn decision_announce_and_pay() {
     assert_eq!(gram["effective_at"], "2025-03-12T00:00:00+01:00");
 
     // Paying, in two parts; the reduction adds up the payments.
-    let (status, body) = action(&app, &b, &case, "betalen", false, payment(4000)).await;
+    let (status, body) = action(&app, &b, &case, "betaling_verricht", false, payment(4000)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
     assert_eq!(body["gram"]["type"], "executogram");
     assert_eq!(body["trial"]["outputs"]["nog_te_betalen"], json!(2000));
-    let (status, f) = action(&app, &b, &case, "betalen", false, payment(2001)).await;
+    let (status, f) = action(&app, &b, &case, "betaling_verricht", false, payment(2001)).await;
     assert_eq!(status, StatusCode::CONFLICT, "above the amount: {f}");
     assert!(
         f["error"]
@@ -3487,10 +3339,10 @@ async fn decision_announce_and_pay() {
             .contains("report it as happened"),
         "{f}"
     );
-    let (status, body) = action(&app, &b, &case, "betalen", false, payment(2000)).await;
+    let (status, body) = action(&app, &b, &case, "betaling_verricht", false, payment(2000)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
     assert_eq!(body["trial"]["outputs"]["nog_te_betalen"], json!(0));
-    let (status, _) = action(&app, &b, &case, "betalen", false, payment(1)).await;
+    let (status, _) = action(&app, &b, &case, "betaling_verricht", false, payment(1)).await;
     assert_eq!(status, StatusCode::CONFLICT);
 
     // The case: 0 still to pay, and the objection period from the procedure.
@@ -3506,16 +3358,16 @@ async fn decision_announce_and_pay() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|h| h["name"] == "betalen")
+        .find(|h| h["name"] == "betaling_verricht")
         .unwrap();
     assert_eq!(pay["trial"]["outputs"]["nog_te_betalen"], json!(0), "{pay}");
     assert_eq!(pay["recorded"], json!(2));
     assert_eq!(pay["decision"], z["decisions"][0]["id"]);
     let decision = &z["decisions"][0];
-    assert_eq!(decision["action"], "besluit");
+    assert_eq!(decision["action"], "besluit_genomen");
     assert_eq!(
         decision["actions"],
-        json!(["bekendmaken", "betalen"]),
+        json!(["besluit_bekendgemaakt", "betaling_verricht"]),
         "{decision}"
     );
     let r = &decision["legal_protection"];
@@ -3553,7 +3405,7 @@ async fn two_concurrent_payments() {
         &app,
         &b,
         &case,
-        "besluit",
+        "besluit_genomen",
         false,
         verdicts()["form"].clone(),
     )
@@ -3563,7 +3415,7 @@ async fn two_concurrent_payments() {
         &app,
         &b,
         &case,
-        "bekendmaken",
+        "besluit_bekendgemaakt",
         false,
         json!({"datum_bekendmaking": "2025-03-12", "bekendgemaakt": true}),
     )
@@ -3571,8 +3423,8 @@ async fn two_concurrent_payments() {
     assert_eq!(status, StatusCode::CREATED, "{body}");
     let payment = json!({"bedrag": 4000, "datum_betaling": "2025-03-12"});
     let (a, other) = tokio::join!(
-        action(&app, &b, &case, "betalen", false, payment.clone()),
-        action(&app, &b, &case, "betalen", false, payment.clone()),
+        action(&app, &b, &case, "betaling_verricht", false, payment.clone()),
+        action(&app, &b, &case, "betaling_verricht", false, payment.clone()),
     );
     let mut statuses = [a.0, other.0];
     statuses.sort();
@@ -3617,7 +3469,7 @@ async fn requesting_a_supplement_carries_into_the_decision() {
     let app = app(data.path());
     let case = consumer_submit(&app, "12345678").await;
     let b = handler(&app).await;
-    let (_, p) = action(&app, &b, &case, "aanvulling_vragen", true, json!({})).await;
+    let (_, p) = action(&app, &b, &case, "aanvulling_gevraagd", true, json!({})).await;
     // Without the date the fact does not count: not takeable.
     assert_eq!(p["takeable"], json!(false), "{p}");
     assert!(
@@ -3628,7 +3480,7 @@ async fn requesting_a_supplement_carries_into_the_decision() {
         &app,
         &b,
         &case,
-        "aanvulling_vragen",
+        "aanvulling_gevraagd",
         true,
         json!({"datum_uitnodiging": "2025-03-12"}),
     )
@@ -3638,13 +3490,21 @@ async fn requesting_a_supplement_carries_into_the_decision() {
         &app,
         &b,
         &case,
-        "aanvulling_vragen",
+        "aanvulling_gevraagd",
         false,
         json!({"datum_uitnodiging": "2025-03-12"}),
     )
     .await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
-    let (_, p) = action(&app, &b, &case, "besluit", true, verdicts()["form"].clone()).await;
+    let (_, p) = action(
+        &app,
+        &b,
+        &case,
+        "besluit_genomen",
+        true,
+        verdicts()["form"].clone(),
+    )
+    .await;
     assert_eq!(
         p["parameters"]["datum_uitnodiging_aanvulling"], "2025-03-12",
         "{p}"
@@ -3680,13 +3540,20 @@ async fn a_reported_fact_is_recorded_by_the_cell() {
 
     // A decision is not reported.
     let case = consumer_submit(&app, "12345678").await;
-    let (status, f) = report(&app, &b, &case, "besluit", verdicts()["form"].clone()).await;
+    let (status, f) = report(
+        &app,
+        &b,
+        &case,
+        "besluit_genomen",
+        verdicts()["form"].clone(),
+    )
+    .await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{f}");
     let (status, _) = action(
         &app,
         &b,
         &case,
-        "besluit",
+        "besluit_genomen",
         false,
         verdicts()["form"].clone(),
     )
@@ -3699,7 +3566,7 @@ async fn a_reported_fact_is_recorded_by_the_cell() {
         &app,
         &b,
         &case,
-        "bekendmaken",
+        "besluit_bekendgemaakt",
         json!({"datum_bekendmaking": "2025-03-12", "bekendgemaakt": false}),
     )
     .await;
@@ -3730,25 +3597,25 @@ async fn a_reported_fact_is_recorded_by_the_cell() {
     assert_eq!(r["outputs"]["einde_bezwaartermijn"], Value::Null, "{l}");
 
     // Paying: the amount, and then one cent too much.
-    let (status, body) = action(&app, &b, &case, "betalen", false, payment(6000)).await;
+    let (status, body) = action(&app, &b, &case, "betaling_verricht", false, payment(6000)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
-    let (status, p) = action(&app, &b, &case, "betalen", true, payment(1)).await;
+    let (status, p) = action(&app, &b, &case, "betaling_verricht", true, payment(1)).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(p["takeable"], json!(false), "{p}");
     assert_eq!(p["reportable"], json!(true), "{p}");
     assert_eq!(p["assessments"]["betaling_conform"], json!(false), "{p}");
-    let (status, body) = report(&app, &b, &case, "betalen", payment(1)).await;
+    let (status, body) = report(&app, &b, &case, "betaling_verricht", payment(1)).await;
     assert_eq!(status, StatusCode::CREATED, "{body}");
     assert_eq!(body["gram"]["type"], "executogram");
     assert_eq!(body["gram"]["fields"]["bedrag"], json!(1));
     // The consequences: the cell adds up the payments, the law says what was
     // paid unduly.
-    let (_, p) = action(&app, &b, &case, "betalen", true, payment(0)).await;
+    let (_, p) = action(&app, &b, &case, "betaling_verricht", true, payment(0)).await;
     assert_eq!(p["parameters"]["betaald_bedrag"], json!(6001), "{p}");
     assert_eq!(p["outputs"]["onverschuldigd_betaald"], json!(1), "{p}");
 
     // Nobody records a fact without a filled-in form, not even when reported.
-    let (status, f) = report(&app, &b, &case, "aanvulling_vragen", json!({})).await;
+    let (status, f) = report(&app, &b, &case, "aanvulling_gevraagd", json!({})).await;
     assert_eq!(status, StatusCode::CONFLICT, "{f}");
     assert!(f["error"].as_str().unwrap().contains("fill in"), "{f}");
 }
@@ -3764,7 +3631,15 @@ async fn a_moment_does_not_lie_before_the_case_or_in_the_future() {
     let case = consumer_submit(&app, "12345678").await;
     let decision = |date: &str| json!({"besluitdatum": date, "feiten_vergaard": true});
 
-    let (_, p) = action(&app, &b, &case, "besluit", true, decision("2025-03-11")).await;
+    let (_, p) = action(
+        &app,
+        &b,
+        &case,
+        "besluit_genomen",
+        true,
+        decision("2025-03-11"),
+    )
+    .await;
     assert_eq!(p["takeable"], json!(false), "{p}");
     assert_eq!(p["reportable"], json!(false), "{p}");
     assert!(
@@ -3774,15 +3649,39 @@ async fn a_moment_does_not_lie_before_the_case_or_in_the_future() {
             .contains("lies before the case"),
         "{p}"
     );
-    let (status, f) = action(&app, &b, &case, "besluit", false, decision("2025-03-11")).await;
+    let (status, f) = action(
+        &app,
+        &b,
+        &case,
+        "besluit_genomen",
+        false,
+        decision("2025-03-11"),
+    )
+    .await;
     assert_eq!(status, StatusCode::CONFLICT, "{f}");
-    let (_, p) = action(&app, &b, &case, "besluit", true, decision("2025-03-13")).await;
+    let (_, p) = action(
+        &app,
+        &b,
+        &case,
+        "besluit_genomen",
+        true,
+        decision("2025-03-13"),
+    )
+    .await;
     assert!(
         p["reason"].as_str().unwrap().contains("lies after today"),
         "{p}"
     );
     // The same day as the application is allowed: it is about the day.
-    let (_, p) = action(&app, &b, &case, "besluit", true, decision("2025-03-12")).await;
+    let (_, p) = action(
+        &app,
+        &b,
+        &case,
+        "besluit_genomen",
+        true,
+        decision("2025-03-12"),
+    )
+    .await;
     assert_eq!(p["takeable"], json!(true), "{p}");
 
     // The cell itself: a decision that refers to the application, with an
@@ -3824,7 +3723,7 @@ async fn the_cell_gives_the_state_of_a_case() {
         &app,
         &b,
         &case,
-        "besluit",
+        "besluit_genomen",
         false,
         verdicts()["form"].clone(),
     )
@@ -3997,7 +3896,7 @@ async fn inspection_of_the_cells_via_the_process() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|p| p["id"] == "test_afnemer_proces")
+        .find(|p| p["id"] == "test_afnemer")
         .unwrap();
     assert_eq!(
         p["inspection"],
@@ -4008,10 +3907,10 @@ async fn inspection_of_the_cells_via_the_process() {
 // --- A second case study: a monthly allowance, with several decisions in a case ---
 //
 // The same binary, the same routes: only the configuration and the
-// regulations differ (processes/toeslag, cells/toeslag,
+// regulations differ (cells/toeslag, deployment/,
 // regulation/testregeling_toeslag and testbeleid_toeslag).
 
-const TOESLAG: &str = "/processes/test_toeslag_proces";
+const TOESLAG: &str = "/processes/test_toeslag";
 const TOESLAG_CELL: &str = "/cells/test_toeslag";
 
 async fn toeslag_logins(app: &Router) -> String {
@@ -4118,7 +4017,7 @@ async fn a_month_as_window() {
         TOESLAG,
         &b,
         &case,
-        "voorschot",
+        "voorschot_verleend",
         true,
         json!({"form": {"voorschotdatum": "2025-03-12"}}),
     )
@@ -4146,17 +4045,16 @@ async fn several_decisions_in_one_case() {
         &app,
         &b,
         &case,
-        "voorschot_bekendmaken",
+        "besluit_bekendgemaakt_voorschot_verleend",
         notification(),
         false,
     )
     .await;
     assert_eq!(status, StatusCode::CONFLICT, "{f}");
     assert!(
-        f["error"]
-            .as_str()
-            .unwrap()
-            .contains("waiting for the decision (Voorschot verlenen)"),
+        f["error"].as_str().unwrap().contains(
+            "waiting for the decision (Voorschot verleend (Testregeling maandtoeslag, artikel 2))"
+        ),
         "{f}"
     );
 
@@ -4165,7 +4063,7 @@ async fn several_decisions_in_one_case() {
         &app,
         &b,
         &case,
-        "voorschot",
+        "voorschot_verleend",
         json!({"voorschotdatum": "2025-03-12"}),
         false,
     )
@@ -4179,7 +4077,7 @@ async fn several_decisions_in_one_case() {
         &app,
         &b,
         &case,
-        "voorschot",
+        "voorschot_verleend",
         json!({"voorschotdatum": "2025-03-12"}),
         false,
     )
@@ -4189,7 +4087,7 @@ async fn several_decisions_in_one_case() {
         &app,
         &b,
         &case,
-        "voorschot_bekendmaken",
+        "besluit_bekendgemaakt_voorschot_verleend",
         notification(),
         false,
     )
@@ -4202,7 +4100,7 @@ async fn several_decisions_in_one_case() {
         &app,
         &b,
         &case,
-        "voorschot_bekendmaken",
+        "besluit_bekendgemaakt_voorschot_verleend",
         notification(),
         false,
     )
@@ -4216,21 +4114,29 @@ async fn several_decisions_in_one_case() {
         "{f}"
     );
     let payment = json!({"bedrag": 12000, "datum_betaling": "2025-03-12"});
-    let (status, bt) = toeslag(&app, &b, &case, "voorschot_betalen", payment, false).await;
+    let (status, bt) = toeslag(&app, &b, &case, "voorschot_betaald", payment, false).await;
     assert_eq!(status, StatusCode::CREATED, "{bt}");
     assert_eq!(bt["gram"]["refers_to"]["decision"], k1.as_str());
     assert_eq!(bt["trial"]["outputs"]["nog_te_betalen_voorschot"], json!(0));
 
     // 2. The determination: a second decision, from an article of its own.
     let determination = json!({"vastgesteld_inkomen": 150000, "vaststellingsdatum": "2025-03-12"});
-    let (status, vs) = toeslag(&app, &b, &case, "vaststellen", determination.clone(), false).await;
+    let (status, vs) = toeslag(
+        &app,
+        &b,
+        &case,
+        "toeslag_vastgesteld",
+        determination.clone(),
+        false,
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED, "{vs}");
     let k2 = vs["gram"]["id"].as_str().unwrap().to_string();
     assert_eq!(vs["gram"]["refers_to"]["on_application"], case.as_str());
     assert_eq!(vs["gram"]["fields"]["vastgestelde_toeslag"], json!(6000));
     // A second determination without grounds for amendment: the trial says
     // so, and the cell also refuses such a gram itself.
-    let (status, f) = toeslag(&app, &b, &case, "vaststellen", determination, false).await;
+    let (status, f) = toeslag(&app, &b, &case, "toeslag_vastgesteld", determination, false).await;
     assert_eq!(status, StatusCode::CONFLICT, "{f}");
     assert!(
         f["error"].as_str().unwrap().contains("its own legal basis"),
@@ -4288,7 +4194,7 @@ async fn several_decisions_in_one_case() {
         &app,
         &b,
         &case,
-        "vaststelling_bekendmaken",
+        "besluit_bekendgemaakt_toeslag_vastgesteld",
         notification(),
         false,
     )
@@ -4303,7 +4209,7 @@ async fn several_decisions_in_one_case() {
         &app,
         &b,
         &case,
-        "vaststelling_wijzigen",
+        "vaststelling_gewijzigd",
         amendment(false),
         false,
     )
@@ -4320,7 +4226,7 @@ async fn several_decisions_in_one_case() {
         &app,
         &b,
         &case,
-        "vaststelling_wijzigen",
+        "vaststelling_gewijzigd",
         amendment(true),
         false,
     )
@@ -4334,7 +4240,7 @@ async fn several_decisions_in_one_case() {
         &app,
         &b,
         &case,
-        "wijziging_bekendmaken",
+        "besluit_bekendgemaakt_vaststelling_gewijzigd",
         notification(),
         false,
     )
@@ -4351,7 +4257,7 @@ async fn several_decisions_in_one_case() {
         TOESLAG,
         &b,
         &case,
-        "vaststelling_wijzigen",
+        "vaststelling_gewijzigd",
         true,
         json!({"form": amendment(true)}),
     )
@@ -4363,7 +4269,7 @@ async fn several_decisions_in_one_case() {
         TOESLAG,
         &b,
         &case,
-        "vaststelling_wijzigen",
+        "vaststelling_gewijzigd",
         true,
         amend(&k2),
     )
@@ -4375,7 +4281,7 @@ async fn several_decisions_in_one_case() {
         TOESLAG,
         &b,
         &case,
-        "vaststelling_wijzigen",
+        "vaststelling_gewijzigd",
         true,
         amend(&k1),
     )
@@ -4386,7 +4292,7 @@ async fn several_decisions_in_one_case() {
         p["reason"]
             .as_str()
             .unwrap()
-            .contains("is not a decision that action 'vaststelling_wijzigen' acts on"),
+            .contains("is not a decision that action 'vaststelling_gewijzigd' acts on"),
         "{p}"
     );
 
@@ -4396,7 +4302,7 @@ async fn several_decisions_in_one_case() {
         &app,
         &b,
         &case,
-        "terugvorderen",
+        "terugvordering_vastgesteld",
         json!({"terugvorderingsdatum": "2025-03-12"}),
         false,
     )
@@ -4410,7 +4316,7 @@ async fn several_decisions_in_one_case() {
         &app,
         &b,
         &case,
-        "terugvordering_bekendmaken",
+        "besluit_bekendgemaakt_terugvordering_vastgesteld",
         notification(),
         false,
     )
@@ -4419,7 +4325,15 @@ async fn several_decisions_in_one_case() {
 
     // The repayment executes the recovery (after Awb 4:57).
     let back = |amount: i64| json!({"bedrag": amount, "datum_terugbetaling": "2025-03-12"});
-    let (status, tb) = toeslag(&app, &b, &case, "terugbetalen", back(5000), false).await;
+    let (status, tb) = toeslag(
+        &app,
+        &b,
+        &case,
+        "terugbetaling_ontvangen",
+        back(5000),
+        false,
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED, "{tb}");
     assert_eq!(tb["gram"]["refers_to"]["decision"], k4.as_str());
     assert_eq!(tb["trial"]["outputs"]["nog_terug_te_betalen"], json!(7000));
@@ -4432,13 +4346,21 @@ async fn several_decisions_in_one_case() {
         tb["trial"]["types"]["terugbetaling_conform"],
         json!({"type": "boolean"})
     );
-    let (status, f) = toeslag(&app, &b, &case, "terugbetalen", back(7001), false).await;
+    let (status, f) = toeslag(
+        &app,
+        &b,
+        &case,
+        "terugbetaling_ontvangen",
+        back(7001),
+        false,
+    )
+    .await;
     assert_eq!(
         status,
         StatusCode::CONFLICT,
         "above the recovered amount: {f}"
     );
-    let (status, tb) = toeslag(&app, &b, &case, "terugbetalen", back(7001), true).await;
+    let (status, tb) = toeslag(&app, &b, &case, "terugbetaling_ontvangen", back(7001), true).await;
     assert_eq!(status, StatusCode::CREATED, "reported as happened: {tb}");
 
     // The case screen: four decisions, each with its stages, its route and
@@ -4460,10 +4382,10 @@ async fn several_decisions_in_one_case() {
     assert_eq!(
         actions,
         [
-            "voorschot",
-            "vaststellen",
-            "vaststelling_wijzigen",
-            "terugvorderen"
+            "voorschot_verleend",
+            "toeslag_vastgesteld",
+            "vaststelling_gewijzigd",
+            "terugvordering_vastgesteld"
         ]
     );
     for (i, decision) in decisions.iter().enumerate() {
@@ -4498,17 +4420,23 @@ async fn several_decisions_in_one_case() {
     assert_eq!(decisions[2]["amends"], k2.as_str());
     assert_eq!(
         decisions[0]["actions"],
-        json!(["voorschot_bekendmaken", "voorschot_betalen"])
+        json!([
+            "besluit_bekendgemaakt_voorschot_verleend",
+            "voorschot_betaald"
+        ])
     );
     assert_eq!(
         decisions[3]["actions"],
-        json!(["terugvordering_bekendmaken", "terugbetalen"])
+        json!([
+            "besluit_bekendgemaakt_terugvordering_vastgesteld",
+            "terugbetaling_ontvangen"
+        ])
     );
     let repay = z["actions"]
         .as_array()
         .unwrap()
         .iter()
-        .find(|h| h["name"] == "terugbetalen")
+        .find(|h| h["name"] == "terugbetaling_ontvangen")
         .unwrap();
     assert_eq!(repay["decision"], k4.as_str());
     assert_eq!(repay["recorded"], json!(2));
@@ -4529,7 +4457,7 @@ async fn several_decisions_in_one_case() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|h| h["name"] == "vaststellen")
+        .find(|h| h["name"] == "toeslag_vastgesteld")
         .unwrap();
     assert_eq!(determine["available"], json!(false));
 
@@ -4568,18 +4496,8 @@ async fn several_decisions_in_one_case() {
 /// A runtime over the fixtures with this reduction mode.
 fn runtime_with_reduction(data: &Path, reduction: ReductionMode) -> Result<Runtime, Vec<String>> {
     let config = Config {
-        cells_path: fixtures().join("cells"),
-        processes_path: Some(fixtures().join("processes")),
-        regulation_path: fixtures().join("regulation"),
-        data_dir: data.to_path_buf(),
-        port: DEFAULT_PORT,
-        read_token: None,
-        read_token_sources: Vec::new(),
         reduction,
-        registers: None,
-        channels: None,
-        synthesis: None,
-        examples: None,
+        ..config_at(&fixtures(), data)
     };
     Runtime::load(&config, clock())
 }
@@ -4670,15 +4588,23 @@ async fn fixtureflow(rt: &Runtime) -> Vec<(String, StatusCode, Value)> {
     }
     let case = consumer_submit(&app, "12345678").await;
     let b = handler(&app).await;
-    let (s, w) = action(&app, &b, &case, "aanvulling_vragen", true, json!({})).await;
+    let (s, w) = action(&app, &b, &case, "aanvulling_gevraagd", true, json!({})).await;
     note("supplement on trial", s, &w);
-    let (s, w) = action(&app, &b, &case, "besluit", true, verdicts()["form"].clone()).await;
+    let (s, w) = action(
+        &app,
+        &b,
+        &case,
+        "besluit_genomen",
+        true,
+        verdicts()["form"].clone(),
+    )
+    .await;
     note("decision on trial", s, &w);
     let (s, w) = action(
         &app,
         &b,
         &case,
-        "besluit",
+        "besluit_genomen",
         false,
         verdicts()["form"].clone(),
     )
@@ -4688,7 +4614,7 @@ async fn fixtureflow(rt: &Runtime) -> Vec<(String, StatusCode, Value)> {
         &app,
         &b,
         &case,
-        "bekendmaken",
+        "besluit_bekendgemaakt",
         false,
         json!({"datum_bekendmaking": "2025-03-12", "bekendgemaakt": true}),
     )
@@ -4698,7 +4624,7 @@ async fn fixtureflow(rt: &Runtime) -> Vec<(String, StatusCode, Value)> {
         &app,
         &b,
         &case,
-        "betalen",
+        "betaling_verricht",
         false,
         json!({"bedrag": 6000, "datum_betaling": "2025-03-12"}),
     )
@@ -5242,13 +5168,13 @@ async fn a_step_opens_to_its_yaml() {
     let (status, f, _) = call(
         &app,
         "GET",
-        &format!("{TOESLAG}/api/config/process?anchor=portal"),
+        &format!("{TOESLAG}/api/config/channels?anchor=test_toeslag"),
         None,
         None,
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{f}");
-    assert_eq!(f["file"], "processes/toeslag/process.yaml");
+    assert_eq!(f["file"], "deployment/channels.yaml");
     // The form file of a process with a form: a field, and without an anchor
     // the whole file.
     let (status, f, _) = call(
@@ -5260,7 +5186,7 @@ async fn a_step_opens_to_its_yaml() {
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{f}");
-    assert_eq!(f["file"], "processes/instantie/formulier.yaml");
+    assert_eq!(f["file"], "documents/formulier-instantie.yaml");
     assert!(f["yaml"].as_str().unwrap().contains("{id: naam,"), "{f}");
     let (status, f, _) = call(
         &app,
@@ -5281,7 +5207,8 @@ async fn a_step_opens_to_its_yaml() {
         "/api/law/bestaat_niet/1",
         "/api/config/stream/bestaat_niet",
         "/api/config/../../etc/passwd",
-        "/api/config/process?anchor=bestaat_niet",
+        "/api/config/process",
+        "/api/config/channels?anchor=bestaat_niet",
     ] {
         let (status, _, _) = call(&app, "GET", &format!("{TOESLAG}{uri}"), None, None).await;
         assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
@@ -5302,24 +5229,10 @@ fn copy_tree(from: &Path, to: &Path) {
     }
 }
 
-/// A runtime over the fixtures with its own regulation directory and clock.
-fn runtime_with(regulation: &Path, data: &Path, now: &'static str) -> Runtime {
-    let config = Config {
-        cells_path: fixtures().join("cells"),
-        processes_path: Some(fixtures().join("processes")),
-        regulation_path: regulation.to_path_buf(),
-        data_dir: data.to_path_buf(),
-        port: DEFAULT_PORT,
-        read_token: None,
-        read_token_sources: Vec::new(),
-        reduction: Default::default(),
-        registers: None,
-        channels: None,
-        synthesis: None,
-        examples: None,
-    };
+/// A runtime over a setup like the fixtures, with its own clock.
+fn runtime_with(setup: &Path, data: &Path, now: &'static str) -> Runtime {
     Runtime::load(
-        &config,
+        &config_at(setup, data),
         Arc::new(move || DateTime::parse_from_rfc3339(now).unwrap()),
     )
     .unwrap()
@@ -5333,13 +5246,8 @@ fn runtime_with(regulation: &Path, data: &Path, now: &'static str) -> Runtime {
 /// (the same hash in the gram).
 #[tokio::test]
 async fn a_change_of_the_general_law_reaches_the_application() {
-    // Not a hidden directory: the corpus loader skips those.
-    let regulation = tempfile::Builder::new()
-        .prefix("regulation")
-        .tempdir()
-        .unwrap();
-    copy_tree(&fixtures().join("regulation"), regulation.path());
-    let dir = regulation.path().join("testregeling_awb");
+    let setup = own_setup(&[]);
+    let dir = setup.path().join("regulation/testregeling_awb");
     let old = std::fs::read_to_string(dir.join("2025-01-01.yaml")).unwrap();
     let phone = "          - name: telefoon_aanvrager\n            type: string\n            nullable: true\n            required: false\n            description: 'Naam: Telefoonnummer van de aanvrager.'\n            origin: {waarde: BELANGHEBBENDE, grondslag: testregeling_awb#9 lid 1}\n        output:\n          - name: aanvraag_bevat_kern\n";
     let new = old
@@ -5357,7 +5265,7 @@ async fn a_change_of_the_general_law_reaches_the_application() {
         ("2026-01-05T10:00:00+01:00", "2026-01-01", true),
     ] {
         let data = tempfile::tempdir().unwrap();
-        let app = as_reader(&runtime_with(regulation.path(), data.path(), now));
+        let app = as_reader(&runtime_with(setup.path(), data.path(), now));
         let a = toeslag_login_as(&app, "123456789").await;
         let (_, form, _) = call(&app, "GET", &format!("{TOESLAG}/api/form"), Some(&a), None).await;
         assert_eq!(
@@ -5438,9 +5346,15 @@ async fn the_form_says_why() {
     let (_, form, _) = call(&app, "GET", &format!("{TOESLAG}/api/form"), Some(&a), None).await;
     let chain = kinds(&form["why"]["event"]);
     assert_eq!(chain.first(), Some(&"process"), "{chain:?}");
+    // The process is the policy article of the portal channel, which says
+    // what it executes (RFC-047).
     assert_eq!(
-        chain[1..4],
-        ["stream", "submission", "decides_on"],
+        form["why"]["event"][0]["source"],
+        json!({"law": "testbeleid_toeslag#6"})
+    );
+    assert_eq!(
+        chain[1..5],
+        ["executes", "stream", "submission", "decides_on"],
         "{chain:?}"
     );
     assert!(
@@ -5478,7 +5392,7 @@ async fn the_form_says_why() {
     let supply = o["why"]["value"].as_array().unwrap().last().unwrap();
     assert_eq!(
         supply["source"],
-        json!({"config": "process", "anchor": "persoon"}),
+        json!({"law": "testbeleid_toeslag#4"}),
         "{o}"
     );
     every_source_resolves(&app, TOESLAG, &form).await;
@@ -5511,22 +5425,15 @@ async fn the_form_says_why() {
     // The toeslag process with a form file: an entry with a label of its own
     // is the form's, an entry without one has the label of the law and the
     // group of the form.
-    let setup = tempfile::tempdir().unwrap();
-    copy_tree(&fixtures(), setup.path());
-    let dir = setup.path().join("processes/toeslag");
-    let process = std::fs::read_to_string(dir.join("process.yaml")).unwrap();
-    let portal = "  event: aanvraag_ontvangen\n";
-    assert_eq!(process.matches(portal).count(), 1);
+    let with_form = |t: String| {
+        t.replace(
+            "                  assesses: {output: aanvraag_toelaatbaar}\n                  offers:",
+            "                  assesses: {output: aanvraag_toelaatbaar}\n                  form: {document: documents/formulier-toeslag.yaml, screen: aanvraag}\n                  offers:",
+        )
+    };
+    let setup = own_setup(&[("regulation/testbeleid_toeslag/2025-01-01.yaml", &with_form)]);
     std::fs::write(
-        dir.join("process.yaml"),
-        process.replace(
-            portal,
-            &format!("{portal}  form: {{path: formulier.yaml, screen: aanvraag}}\n"),
-        ),
-    )
-    .unwrap();
-    std::fs::write(
-        dir.join("formulier.yaml"),
+        setup.path().join("documents/formulier-toeslag.yaml"),
         "schermen:\n  - id: aanvraag\n    groepen:\n      - titel: De aanvrager\n        velden:\n          - {id: naam_aanvrager, label: Uw naam}\n          - {id: adres_aanvrager}\n",
     )
     .unwrap();
@@ -5594,9 +5501,8 @@ async fn the_configuration_of_the_map_opens_to_its_yaml() {
 
     // With one: the register policy in the corpus, bound to the chronicle of
     // the register cell.
-    let setup = tempfile::Builder::new().prefix("setup").tempdir().unwrap();
+    let setup = own_setup(&[]);
     let regulation = setup.path().join("regulation");
-    copy_tree(&fixtures().join("regulation"), &regulation);
     std::fs::create_dir_all(regulation.join("testbeleid_registerhouder")).unwrap();
     std::fs::copy(
         fixtures().join("beleid/testbeleid_registerhouder.yaml"),
@@ -5610,18 +5516,8 @@ async fn the_configuration_of_the_map_opens_to_its_yaml() {
     )
     .unwrap();
     let config = Config {
-        cells_path: fixtures().join("cells"),
-        processes_path: Some(fixtures().join("processes")),
-        regulation_path: regulation,
-        data_dir: data.path().join("met-registers"),
-        port: DEFAULT_PORT,
-        read_token: None,
-        read_token_sources: Vec::new(),
-        reduction: Default::default(),
         registers: Some(registers),
-        channels: None,
-        synthesis: None,
-        examples: None,
+        ..config_at(setup.path(), &data.path().join("met-registers"))
     };
     let app = as_reader(&Runtime::load(&config, clock()).unwrap());
     let (status, f, _) = call(
@@ -5676,8 +5572,8 @@ async fn the_map_shows_the_process_its_channels_and_roles() {
     let data = tempfile::tempdir().unwrap();
     let app = app(data.path());
     let map = toeslag_map(&app).await;
-    assert_eq!(map["process"], "test_toeslag_proces");
-    let process = "process:test_toeslag_proces";
+    assert_eq!(map["process"], "test_toeslag");
+    let process = "process:test_toeslag";
     assert!(has_node(&map, "process", process), "{map}");
     for channel in ["channel:persoon", "channel:medewerker"] {
         assert!(has_edge(&map, process, channel, "channel"), "{channel}");
@@ -5736,12 +5632,7 @@ async fn the_map_links_an_event_to_the_articles_of_its_explanation() {
     let map = toeslag_map(&app).await;
     let event = "event:test_toeslag_aanvragen/aanvraag_ontvangen";
     assert!(has_node(&map, "event", event), "{map}");
-    assert!(has_edge(
-        &map,
-        "process:test_toeslag_proces",
-        event,
-        "portal"
-    ));
+    assert!(has_edge(&map, "process:test_toeslag", event, "portal"));
     assert!(has_edge(
         &map,
         "stream:test_toeslag_aanvragen",
@@ -5810,7 +5701,7 @@ async fn the_map_links_an_event_to_the_articles_of_its_explanation() {
 async fn the_map_shows_the_lexostatuses_and_the_actions() {
     let data = tempfile::tempdir().unwrap();
     let map = toeslag_map(&app(data.path())).await;
-    let process = "process:test_toeslag_proces";
+    let process = "process:test_toeslag";
     let aanvraag = "lexostatus:test_toeslag/aanvraag";
     assert!(has_node(&map, "lexostatus", aanvraag), "{map}");
     assert!(has_edge(
@@ -5834,10 +5725,10 @@ async fn the_map_shows_the_lexostatuses_and_the_actions() {
         "event:test_toeslag_aanvragen/aanvraag_ontvangen",
         "reads"
     ));
-    for l in [aanvraag, besluiten, "lexostatus:test_toeslag/werkvoorraad"] {
+    for l in [aanvraag, besluiten, "lexostatus:test_toeslag/worklist"] {
         assert!(has_edge(&map, process, l, "synthesis"), "{l}");
     }
-    let action = "action:voorschot";
+    let action = "action:voorschot_verleend";
     assert!(has_edge(&map, process, action, "action"));
     assert!(has_edge(
         &map,
@@ -5867,8 +5758,8 @@ async fn fixture_maps(app: &Router) -> Vec<(String, Value)> {
 }
 
 /// Every node of the map of every fixture process opens to its fragment,
-/// through the routes the frontend uses; a channel, a role and an action
-/// open to their own block.
+/// through the routes the frontend uses; an action opens to its own block,
+/// a channel and a role to the policy article that declares them.
 #[tokio::test]
 async fn every_node_of_the_map_has_a_fragment() {
     let data = tempfile::tempdir().unwrap();
@@ -5883,8 +5774,16 @@ async fn every_node_of_the_map_has_a_fragment() {
             assert_eq!(status, StatusCode::OK, "{n}: {uri}: {body}");
             let name = n["id"].as_str().unwrap().split_once(':').unwrap().1;
             let first = match kind {
-                "channel" | "role" => format!("{name}:"),
-                "action" => format!("- name: {name}"),
+                "channel" | "role" => {
+                    assert!(n["source"]["law"].is_string(), "{n}");
+                    continue;
+                }
+                // A shared follow-up opens to its event (`<event>_<decision>`).
+                "action" => {
+                    let event = n["source"]["anchor"].as_str().unwrap();
+                    assert!(name.starts_with(event), "{n}");
+                    format!("- name: {event}")
+                }
                 _ => continue,
             };
             let yaml = body["yaml"].as_str().unwrap().trim_start();
@@ -5915,31 +5814,10 @@ async fn every_edge_of_the_map_joins_two_nodes() {
     }
 }
 
-/// A runtime whose processes follow from the policy (RFC-047): the fixtures
-/// with `deployment/` instead of `processes/`.
-fn policy_runtime(setup: &Path, data: &Path) -> Result<Runtime, Vec<String>> {
-    let d = setup.join("deployment");
-    let config = Config {
-        cells_path: setup.join("cells"),
-        processes_path: None,
-        regulation_path: setup.join("regulation"),
-        data_dir: data.to_path_buf(),
-        port: DEFAULT_PORT,
-        read_token: None,
-        read_token_sources: Vec::new(),
-        reduction: Default::default(),
-        registers: None,
-        channels: Some(d.join("channels.yaml")),
-        synthesis: Some(d.join("synthesis.yaml")),
-        examples: Some(d.join("examples.yaml")),
-    };
-    Runtime::load(&config, clock())
-}
-
 #[tokio::test]
 async fn the_processes_follow_from_the_policy() {
     let data = tempfile::tempdir().unwrap();
-    let rt = policy_runtime(&fixtures(), data.path()).unwrap();
+    let rt = runtime_at(&fixtures(), data.path()).unwrap();
     let ids: Vec<&str> = rt.processes.iter().map(|p| p.process.id()).collect();
     assert_eq!(ids, ["test_afnemer", "test_instantie", "test_toeslag"]);
     let app = as_reader(&rt);
@@ -5965,21 +5843,27 @@ async fn the_processes_follow_from_the_policy() {
         .find(|n| n["id"] == "channel:eherkenning")
         .unwrap();
     assert_eq!(channel["source"], json!({"law": "testbeleid_afnemer#1"}));
-    // The policy article on the map points to the article it executes.
-    let (_, map, _) = call(&app, "GET", "/processes/test_toeslag/api/map", None, None).await;
+}
+
+/// The map joins the policy article to the article it executes (spec 2 +
+/// RFC-047), and only to that: not to the general law that hooks onto the
+/// executed article.
+#[tokio::test]
+async fn the_map_shows_what_the_policy_executes() {
+    let data = tempfile::tempdir().unwrap();
+    let app = app(data.path());
+    let map = toeslag_map(&app).await;
     assert!(
-        map["edges"].as_array().unwrap().contains(&json!({
-            "from": "article:testbeleid_toeslag#4",
-            "to": "article:testregeling_toeslag#1",
-            "kind": "executes"
-        })),
+        has_edge(
+            &map,
+            "article:testbeleid_toeslag#4",
+            "article:testregeling_toeslag#1",
+            "executes"
+        ),
         "{map}"
     );
-    // Only what the article itself executes, not the general law that hooks
-    // onto the executed article.
-    let edges = map["edges"].as_array().unwrap();
     assert!(
-        !edges.iter().any(|e| e["kind"] == "executes"
+        !edges(&map).iter().any(|e| e["kind"] == "executes"
             && e["from"] == "article:testbeleid_toeslag#4"
             && e["to"]
                 .as_str()
@@ -5989,34 +5873,24 @@ async fn the_processes_follow_from_the_policy() {
     );
 }
 
-/// "Waarom?" on the route from policy (RFC-047): the process step is the
-/// policy article of the portal channel, a supply step the article that
-/// says what the channel supplies, and the policy says what it executes.
+/// "Waarom?" names what the policy executes (spec 1 + RFC-047).
 #[tokio::test]
-async fn the_form_says_why_from_the_policy() {
+async fn the_form_names_what_the_policy_executes() {
     let data = tempfile::tempdir().unwrap();
-    let rt = policy_runtime(&fixtures(), data.path()).unwrap();
-    let app = as_reader(&rt);
-    let (status, form, _) = call(&app, "GET", "/processes/test_toeslag/api/form", None, None).await;
-    assert_eq!(status, StatusCode::OK, "{form}");
-    let process = &form["why"]["event"][0];
-    assert_eq!(process["kind"], "process", "{form}");
-    assert_eq!(
-        process["source"],
-        json!({"law": "testbeleid_toeslag#6"}),
-        "{form}"
-    );
+    let app = app(data.path());
+    let a = toeslag_login_as(&app, "123456789").await;
+    let (_, form, _) = call(&app, "GET", &format!("{TOESLAG}/api/form"), Some(&a), None).await;
     let o = form_field(&form, "ondertekening").unwrap();
-    let value = o["why"]["value"].as_array().unwrap();
-    let supply = value.iter().find(|s| s["kind"] == "supply").unwrap();
+    let step = o["why"]["value"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["kind"] == "executes")
+        .unwrap();
+    assert_eq!(step["source"], json!({"law": "testbeleid_toeslag#4"}));
     assert_eq!(
-        supply["source"],
-        json!({"law": "testbeleid_toeslag#4"}),
-        "{o}"
+        step["reason"],
+        "voert testregeling_toeslag#1 uit (procedure)"
     );
-    assert!(
-        value.iter().any(|s| s["kind"] == "executes"
-            && s["reason"] == "voert testregeling_toeslag#1 uit (procedure)"),
-        "{o}"
-    );
+    every_source_resolves(&app, TOESLAG, &form).await;
 }

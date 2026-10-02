@@ -923,12 +923,15 @@ docs-a11y:
 #
 # Zonder variabelen draait de runtime de generieke fixtures uit
 # packages/cel/tests/fixtures: de cellen (een instantie, een registercel met
-# een startstand, een afnemer en een gebiedencel) en de processen (een portaal
-# bij de instantie, en een portaal met synthese en behandeling bij de
-# afnemer). Andere cellen en processen: zet CELLS_PATH (een map met per cel een
-# submap met cell.yaml), PROCESSES_PATH (een map met per proces een submap met
-# process.yaml) en REGULATION_PATH voor de recipe-naam. Met CELLS_PATH en zonder
-# PROCESSES_PATH draaien alleen de cellen. De kronieken komen in .cel/<cel-id>/
+# een startstand, een afnemer, een gebiedencel en een toeslagcel) en de
+# processen, die volgen uit het testbeleid in regulation/ en de deployment in
+# deployment/ (RFC-047): een portaal bij de instantie, en een portaal met
+# synthese en behandeling bij de afnemer en de toeslag. Andere cellen en
+# processen: zet CELLS_PATH (een map met per cel een submap met cell.yaml),
+# REGULATION_PATH (de wet en het uitvoeringsbeleid), CELL_CHANNELS (de techniek
+# van de kanalen), CELL_SYNTHESIS (de synthese) en CELL_EXAMPLES (de
+# voorbeelden) voor de recipe-naam. Met CELLS_PATH en zonder CELL_CHANNELS
+# draaien alleen de cellen. De kronieken komen in .cel/<cel-id>/
 # (DATA_DIR), en blijven staan tussen twee runs. De controles bij het
 # opstarten falen luid; lees dan de regels boven "de runtime start niet".
 # Experiment A: met CELL_REDUCTION=engine (of compare) en CELL_ENGINE_BINDING
@@ -942,7 +945,9 @@ cel:
     fx="$(pwd)/packages/cel/tests/fixtures"
     if [ -z "${CELLS_PATH:-}" ]; then
         export CELLS_PATH="$fx/cells"
-        export PROCESSES_PATH="${PROCESSES_PATH:-$fx/processes}"
+        export CELL_CHANNELS="${CELL_CHANNELS:-$fx/deployment/channels.yaml}"
+        export CELL_SYNTHESIS="${CELL_SYNTHESIS:-$fx/deployment/synthesis.yaml}"
+        export CELL_EXAMPLES="${CELL_EXAMPLES:-$fx/deployment/examples.yaml}"
     fi
     export REGULATION_PATH="${REGULATION_PATH:-$fx/regulation}"
     export DATA_DIR="${DATA_DIR:-$(pwd)/.cel}"
