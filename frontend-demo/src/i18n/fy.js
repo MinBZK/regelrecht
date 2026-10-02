@@ -759,7 +759,7 @@ export default {
   "scenario.law_not_loaded": "Regelwurk {id} is net laden",
   "scenario.laws_not_loaded.one": "Ien regelwurk is net laden",
   "scenario.laws_not_loaded.other": "{n} regelwurken binne net laden",
-  "scenario.law_refused": "Regelwurk {id} ({path}) is net laden; de engine wegere: {message}",
+  "scenario.law_refused": "Ferzje {path} fan regelwurk {id} is net laden; de engine wegere: {message}",
   "scenario.engine_refused": "De engine wegere: {details}",
   "scenario.load_failed": "Koe it senario net lade",
   "scenario.pick": "Kies in senario",

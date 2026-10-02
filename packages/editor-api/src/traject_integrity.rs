@@ -542,7 +542,7 @@ fn check_file_names(scan: &CorpusScan, out: &mut Vec<Finding>) {
             message: format!(
                 "Het bestand '{path}' heeft 'valid_from: {valid_from}', maar heet '{}.yaml'. De \
                  bestandsnaam bepaalt welke versie de index als geldig kiest, dus die keuze \
-                 klopt hier niet met het regelwerk zelf.",
+                 klopt hier niet met de versie zelf.",
                 parts.stem
             ),
             remedy: format!(

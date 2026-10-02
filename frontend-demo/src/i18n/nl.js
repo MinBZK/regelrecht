@@ -860,7 +860,7 @@ export default {
   'scenario.law_not_loaded': 'Regelwerk {id} is niet geladen',
   'scenario.laws_not_loaded.one': 'Eén regelwerk is niet geladen',
   'scenario.laws_not_loaded.other': '{n} regelwerken zijn niet geladen',
-  'scenario.law_refused': 'Regelwerk {id} ({path}) is niet geladen; de engine weigerde: {message}',
+  'scenario.law_refused': 'Versie {path} van regelwerk {id} is niet geladen; de engine weigerde: {message}',
   'scenario.engine_refused': 'De engine weigerde: {details}',
   'scenario.load_failed': 'Kon het scenario niet laden',
   'scenario.pick': 'Kies een scenario',

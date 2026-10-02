@@ -140,7 +140,7 @@ const RULES = [
     // there is two words ("of het regelwerk schema-valide is"). English writes
     // them open, also across a hard wrap, but not into a hyphenated adjective
     // ("is the rulework schema-valid") or a list bullet.
-    re: /\bregelwerk(?:en|s)?-?(?:schema(?:'s)?|formaat|formaten|taal|talen)\b|\bruleworks?(?:-|[ \t]+|[ \t]*\n[ \t]*)(?:schema|format|language)s?\b(?!-)/gi,
+    re: /\bregelwerk(?:en|s)?-?(?:schema(?:'s)?|formaat|formaten|taal|talen)\b|\bruleworks?(?:-|[ \t]+|[ \t]*\r?\n[ \t]*)(?:schema|format|language)s?\b(?!-)/gi,
     msg: '"regelwerk"/"rulework" used as a name for the schema or the format',
     hint: 'A rulework is one regulation recorded in Regelrechts. The schema and the format keep their own names: "the schema", "the law format".',
   },

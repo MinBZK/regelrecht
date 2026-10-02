@@ -286,7 +286,7 @@ See [RFC-013](/rfcs/rfc-013) for the design rationale.
 | `output_names` | The outputs to compute, a non-empty list; the older single `output_name` is still accepted |
 | `params` | Parameters as a JSON object |
 | `date` | Calculation date, `YYYY-MM-DD` |
-| `extra_laws` | Optional list of further ruleworks, loaded for cross-law references and open terms |
+| `extra_laws` | Optional list of further rulework versions, loaded for cross-law references and open terms |
 
 Two flags change the run. `--untranslatable=<mode>` sets how the engine treats markings (`error`, `propagate`, `warn` or `ignore`; see [Markings](/concepts/markings)), and `--receipt` prints an Execution Receipt instead of the plain result. The binary loads only the laws in the request, so every law the execution reaches has to be in `law_yaml` or `extra_laws`. `jq` builds the request conveniently:
 

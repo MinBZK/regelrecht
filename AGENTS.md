@@ -85,8 +85,9 @@ Which word a sentence needs:
 Replacing an older word is a judgement per occurrence, never a search and
 replace: "law YAML" and "specification" mean a regelwerk in one sentence and the
 language in the next. When in doubt, leave the old word. Change a document as a
-whole or not at all, and leave other authors' RFCs and anything that cites the
-paper in the words they were written in.
+whole or not at all, and leave other authors' RFCs in the words they were
+written in. Where a text quotes or paraphrases the paper, keep the paper's term
+in parentheses beside the new word.
 
 Code identifiers keep `law` (`law_id`, `ArticleBasedLaw`, the API routes, the
 WASM API, the Gherkin steps); werkpakket slugs keep their old words.
@@ -487,7 +488,7 @@ What does need one: replacing the title, the central concept, or the field
 definitions. The case that produced this rule: schema v0.7.0 renames the channel
 RFC-012 describes from `untranslatables` to `markings`, and the first attempt
 rewrote RFC-012 to match. That would have made every existing citation to it
-point at a document about a different field, while a rulework on schema v0.5.x
+point at a document about a different field, while a version on schema v0.5.x
 still carries `untranslatables` and the engine still reads it. The RFC keeps its
 text and goes to `Superseded` instead, and the RFC introducing the new channel
 carries the new design.

@@ -333,7 +333,7 @@ pub async fn apply(
     if whole_law && open.len() > 1 {
         return Err((
             StatusCode::BAD_REQUEST,
-            "Een voorstel voor het hele regelwerk kan niet samen met losse artikelen worden verwerkt"
+            "Een voorstel voor alle artikelen tegelijk kan niet samen met losse artikelen worden verwerkt"
                 .to_string(),
         ));
     }

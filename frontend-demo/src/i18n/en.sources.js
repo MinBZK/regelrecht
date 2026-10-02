@@ -190,7 +190,7 @@ export default {
   "scenario.files.one": "dcb3",
   "scenario.files.other": "43c2",
   "scenario.law_not_loaded": "b32c",
-  "scenario.law_refused": "bcf2",
+  "scenario.law_refused": "eab0",
   "scenario.laws_not_loaded.one": "112b",
   "scenario.laws_not_loaded.other": "a109",
   "scenario.load_failed": "2282",

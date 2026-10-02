@@ -46,7 +46,7 @@ just validate
 
 The validator rejects files with an unknown or missing `$schema` version. Make sure the `$schema` URL uses a tag-based ref (`refs/tags/schema-vX.Y.Z`) and points to a released schema version.
 
-The tag is what makes that URL a promise rather than a hope: it pins the schema your law validated against, and it cannot move afterwards. A schema version is tagged automatically when it lands on `main`, and CI blocks a version that has no tag, so the address a rulework cites always resolves.
+The tag is what makes that URL a promise rather than a hope: it pins the schema your law validated against, and it cannot move afterwards. A schema version is tagged automatically when it lands on `main`, and CI blocks a version that has no tag, so the address a version cites always resolves.
 
 Fix any schema errors before proceeding.
 

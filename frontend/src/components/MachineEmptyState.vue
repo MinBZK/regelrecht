@@ -67,7 +67,7 @@ const IN_EEN_TRAJECT = 'Een voorstel komt in een traject te staan, want daar leg
 const emptyText = computed(() => {
   if (props.needs === 'login') return `${IN_EEN_TRAJECT} Log in en kies een traject om dit artikel daar te openen.`;
   if (props.needs === 'traject') return `${IN_EEN_TRAJECT} Kies een traject om dit artikel daar te openen.`;
-  return 'Genereren verrijkt het hele regelwerk en levert een voorstel per artikel op in dit traject.';
+  return 'Genereren verrijkt alle artikelen van deze versie en levert een voorstel per artikel op in dit traject.';
 });
 </script>
 

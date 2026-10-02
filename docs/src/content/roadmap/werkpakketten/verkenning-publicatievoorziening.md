@@ -23,7 +23,7 @@ toelichting: |-
 
   - **Het Staatsblad als bron van versies**: Het Staatsblad dient als de bron voor 'release tags'. Een publicatiedatum wordt direct de versienummering (bijv. versie 2020-03-15). Verwijzingen tussen wetten zijn niet vastgepind op één versie, maar worden dynamisch opgelost op basis van de relevante datum van de zaak.
 
-  - **Verifieerbaarheid en het Register**: Om te voorkomen dat twee besluiten met dezelfde regelwerk-hash verschillende uitkomsten geven (omdat afhankelijke wetten zijn gewijzigd), moet per uitvoering worden vastgelegd welke specifieke versies zijn gebruikt. Er is een register nodig dat:
+  - **Verifieerbaarheid en het Register**: Om te voorkomen dat twee besluiten met dezelfde versie-hash verschillende uitkomsten geven (omdat afhankelijke wetten zijn gewijzigd), moet per uitvoering worden vastgelegd welke specifieke versies zijn gebruikt. Er is een register nodig dat:
 
   - De inhoud teruggeeft die bij een specifieke digest (hash) hoort.
 

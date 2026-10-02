@@ -857,7 +857,7 @@ export default {
   'scenario.law_not_loaded': 'Rulework {id} was not loaded',
   'scenario.laws_not_loaded.one': 'One rulework was not loaded',
   'scenario.laws_not_loaded.other': '{n} ruleworks were not loaded',
-  'scenario.law_refused': 'Rulework {id} ({path}) was not loaded; the engine refused it: {message}',
+  'scenario.law_refused': 'Version {path} of rulework {id} was not loaded; the engine refused it: {message}',
   'scenario.engine_refused': 'The engine refused: {details}',
   'scenario.load_failed': 'Could not load the scenario',
   'scenario.pick': 'Pick a scenario',

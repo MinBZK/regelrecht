@@ -72,7 +72,7 @@ toelichting: >-
   juridische basis onjuist?
 
   - Drift check: Is de vertaalde tekst exact de versie die van kracht was op de
-  geldigheidsdatum van het regelwerk?
+  geldigheidsdatum van die versie van het regelwerk?
 
 
   **4. Analyse van 'Gaten' (Gap Analysis/Annotation)**\

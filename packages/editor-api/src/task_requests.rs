@@ -66,7 +66,7 @@ pub async fn request_enrich(
     if yaml.len() > MAX_INPUT_BYTES {
         return Err((
             StatusCode::PAYLOAD_TOO_LARGE,
-            "Dit regelwerk is te groot om via een taak te verrijken.".to_string(),
+            "Deze versie is te groot om via een taak te verrijken.".to_string(),
         ));
     }
     let source_etag = document_etag(&yaml);

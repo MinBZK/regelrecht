@@ -2047,7 +2047,7 @@ async function enrichLaw() {
     } else {
       enrichFeedback.value = {
         variant: 'success',
-        text: 'Verrijking van het hele regelwerk gestart - je krijgt een taak per gewijzigd artikel zodra het resultaat klaarstaat.',
+        text: 'Verrijking van alle artikelen gestart - je krijgt een taak per gewijzigd artikel zodra het resultaat klaarstaat.',
       };
     }
   } catch (e) {

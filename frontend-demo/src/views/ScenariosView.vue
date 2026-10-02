@@ -355,7 +355,7 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
         <nldd-simple-section v-if="loadFailures.length" width="full">
           <nldd-banner
             variant="critical"
-            :text="selectedLoadFailure ? t('scenario.law_not_loaded', { id: selectedLoadFailure.id }) : t.plural(loadFailures.length, 'scenario.laws_not_loaded')"
+            :text="selectedLoadFailure ? t('scenario.law_not_loaded', { id: selectedLoadFailure.id }) : t.plural(new Set(loadFailures.map((f) => f.id)).size, 'scenario.laws_not_loaded')"
             :supporting-text="t('scenario.engine_refused', { details: loadFailures.map((f) => `${f.id} (${f.path}): ${f.message}`).join('; ') })"
           ></nldd-banner>
         </nldd-simple-section>

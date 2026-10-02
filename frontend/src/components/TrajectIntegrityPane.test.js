@@ -105,7 +105,7 @@ describe('groupByLaw', () => {
 });
 
 describe('impactSummary', () => {
-  it('telt het totaal en over hoeveel wetten het verdeeld is', () => {
+  it('telt het totaal en over hoeveel regelwerken het verdeeld is', () => {
     expect(impactSummary({ findings: [ERROR_FINDING, WARNING_FINDING] })).toBe(
       'In totaal 1 fout, 1 waarschuwing, verdeeld over 2 regelwerken.',
     );

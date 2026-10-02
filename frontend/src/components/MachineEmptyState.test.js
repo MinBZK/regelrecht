@@ -24,7 +24,7 @@ function enrichLabel(wrapper) {
 }
 
 describe('MachineEmptyState', () => {
-  it('noemt de wet en niet het artikel waar de knop de actie hier uitvoert', () => {
+  it('noemt het regelwerk en niet het artikel waar de knop de actie hier uitvoert', () => {
     const label = enrichLabel(mountEmpty(''));
     expect(label).toBe('Verrijk dit regelwerk');
     expect(label).not.toMatch(/artikel/i);
@@ -40,6 +40,6 @@ describe('MachineEmptyState', () => {
     const supporting = mountEmpty('')
       .find('[data-testid="no-machine-readable"]')
       .attributes('supporting-text');
-    expect(supporting).toContain('het hele regelwerk');
+    expect(supporting).toContain('alle artikelen van deze versie');
   });
 });

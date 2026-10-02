@@ -215,6 +215,7 @@ describe('splitConfigPath', () => {
     // A hash is part of what follows, not of the page's own path.
     ['/regelwerken/zorgtoeslagwet#tekst', 'wetten', '/zorgtoeslagwet#tekst'],
     ['/regelwerken#tekst', 'wetten', '#tekst'],
+    ['/regelwerken/zorgtoeslagwet?artikel=2', 'wetten', '/zorgtoeslagwet?artikel=2'],
     ['/scenarios/nl/wet/x.feature', 'scenarios', '/nl/wet/x.feature'],
     ['/', 'home', ''],
   ])('%s is the %s page with %j after it', (path, page, rest) => {

@@ -374,7 +374,7 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
       if (res.status === 412) {
         throw new Error(
           'Het regelwerk is intussen door iemand anders gewijzigd. ' +
-          'Herlaad de pagina om de nieuwste versie te zien en voer je ' +
+          'Herlaad de pagina om de laatste wijzigingen te zien en voer je ' +
           'wijziging daarna opnieuw door.',
         );
       }

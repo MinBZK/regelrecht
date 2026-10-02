@@ -72,7 +72,7 @@ jobs:
             git tag -a "$tag" "$SHA" -m "schema $version
 
           Automatisch getagd bij het landen op main. De \$schema-URL in een
-          regelwerk wijst naar deze tag, dus vanaf hier ligt de inhoud van
+          versie van een regelwerk wijst naar deze tag, dus vanaf hier ligt de inhoud van
           $version vast."
             echo "tag $tag gezet op $SHA"
             created=$((created + 1))
