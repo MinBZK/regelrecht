@@ -256,11 +256,11 @@ URI per app port:
 **Run it**
 
 Copy `.env.sso-local.example` to `.env.sso-local`, fill in the Keycloak
-values, then:
+values, then run `just dev editor`. It does the three steps below in one go;
+run them by hand when you need to see each process in its own shell:
 
 ```bash
-# 1. Postgres only. (Don't use `just dev` here — it also starts the admin API
-#    on :8000, which collides with editor-api below.)
+# 1. Postgres only:
 docker compose -f docker-compose.dev.yml -f dev/compose.native.yaml up -d postgres
 # 2. editor-api on :8000 with .env.sso-local loaded:
 just editor-sso

@@ -70,7 +70,13 @@ Dashboards come only from the files under `provisioning/dashboards/json/`. A cha
 
 ## Running locally
 
-`just dev` starts Prometheus and Grafana from `docker-compose.dev.yml` and serves Grafana at `http://localhost:3002`, logging in as `admin`/`admin`. That service uses the stock Grafana image with the dashboard and alerting provisioning mounted in, and a datasource from `dev/grafana-datasource-local.yaml` that points at the local Prometheus. It does not use this package's Dockerfile or entrypoint, so OIDC is off.
+`just dev` does not start them. To run Prometheus and Grafana next to it:
+
+```bash
+docker compose -f docker-compose.dev.yml -f dev/compose.native.yaml up -d prometheus grafana
+```
+
+Grafana is then at `http://localhost:3002`, logging in as `admin`/`admin`, and Prometheus scrapes the admin API on `host.docker.internal:8000` (`dev/prometheus.native.yml`). That is where `just dev admin` runs it; `just dev all` moves it to 8001, out of reach of that scrape. `just local` starts both as part of the full Docker stack, with Grafana on port 3001. That service uses the stock Grafana image with the dashboard and alerting provisioning mounted in, and a datasource from `dev/grafana-datasource-local.yaml` that points at the local Prometheus. It does not use this package's Dockerfile or entrypoint, so OIDC is off.
 
 To test the production image itself:
 

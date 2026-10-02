@@ -1,31 +1,26 @@
 ---
 title: "Development Environment"
-description: "How the local stack runs: infrastructure in Docker and application services natively with hot reload."
+description: "How the local stack runs: PostgreSQL in Docker, the backends natively, and the frontends on Vite with hot reload."
 ---
 
 ## Architecture
 
-There are two native dev stacks. `just dev` is the backend stack: it runs the
-infrastructure in Docker and the admin API natively with hot reload. It starts
-no frontend. The editor needs editor-api as its backend, and editor-api needs
-SSO configuration, so editor work goes through `just dev-frontend` (see
-[Frontend-Focused Dev Stack](#frontend-focused-dev-stack)).
+`just dev` runs PostgreSQL in Docker and the application services natively.
+It starts only what the chosen app needs:
 
-```
-┌─────────────────────────────────────────────────┐
-│  Native (hot reload)                            │
-│  ┌──────────────┐                               │
-│  │Admin API:8000│                               │
-│  │(cargo watch) │                               │
-│  └──────────────┘                               │
-├─────────────────────────────────────────────────┤
-│  Docker                                         │
-│  ┌──────────┐ ┌────────────┐ ┌───────┐         │
-│  │PostgreSQL│ │ Prometheus │ │Grafana│         │
-│  │  :5433   │ │   :9090    │ │ :3002 │         │
-│  └──────────┘ └────────────┘ └───────┘         │
-└─────────────────────────────────────────────────┘
-```
+| `just dev …` | Browser | Backend | PostgreSQL |
+|---|---|---|---|
+| `all` (default) | editor `:7300`, lawmaking `:7500` | editor-api `:8000`, admin API `:8001` | yes |
+| `editor` | editor `:7300` | editor-api `:8000` | yes |
+| `admin` | none (API only) | admin API `:8000` | yes |
+| `lawmaking` | lawmaking `:7500` | none | no |
+
+The browser only talks to Vite. Vite serves the frontend with hot module
+replacement and proxies `/api`, `/auth` and `/health` to editor-api. The admin
+API has no UI of its own: its dashboard is the editor's Corpusinwinning
+section, which reaches it through editor-api's `/api/harvest-admin/*` proxy.
+That section only works in `all`, where editor-api's `HARVEST_ADMIN_URL` points
+at the local admin API; with `editor` alone those screens answer 503.
 
 ## One-Time Setup (build speed)
 
@@ -64,71 +59,43 @@ worktrees on different paths share no Rust compilation at all: a cold
 `just build-check` with a warm cache gave 480 misses and 0 hits.
 
 mold is the configured linker on x86_64 Linux (`packages/.cargo/config.toml`),
-so builds there fail to link without it. On that platform `just dev`, and
-`just dev-frontend` whenever it starts a Rust service, refuse to start when mold
-is missing. On macOS and aarch64 Linux cargo uses the default linker, and
+so builds there fail to link without it. On that platform `just dev` refuses to
+start a Rust service when mold is missing. On macOS and aarch64 Linux cargo uses the default linker, and
 neither `just dev-setup` nor the dev recipes ask for mold.
 
 ## Starting the Dev Stack
 
 ```bash
-just dev
+just dev             # everything (default)
+just dev editor      # just the editor
+just dev admin       # just the harvester-admin API, e.g. for pipeline work
+just dev lawmaking   # just the lawmaking UI (no backend)
+just dev-down        # stop it
 ```
 
-| Service | URL | Description |
-|---------|-----|-------------|
-| Admin API | http://localhost:8000 | Harvester REST API (auto-recompile; UI is the editor's Corpusinwinning section) |
-| Grafana | http://localhost:3002 | Metrics dashboard |
-| Prometheus | http://localhost:9090 | Metrics collection |
-| PostgreSQL | localhost:5433 | Database |
-
-This command:
-1. Checks prerequisites (cargo, docker, cargo-watch, and mold on x86_64 Linux)
-2. Starts infrastructure containers (PostgreSQL, Prometheus, Grafana)
-3. Waits for PostgreSQL to be ready
-4. Starts the admin API under `cargo watch`, which recompiles on save
-
-The admin API has no UI of its own. Its dashboard is the editor's
-Corpusinwinning section, which reaches it through editor-api. To see that
-section working end to end, run `just dev-frontend all` instead.
-
-## Frontend-Focused Dev Stack
-
-For frontend work, including anything in the editor, `just dev-frontend` starts just the
-components that frontend needs (its backend, PostgreSQL, the engine WASM, and
-the Vite dev server with HMR) and skips Grafana, Prometheus, and the workers.
-
-```bash
-just dev-frontend            # all frontends at once (default)
-just dev-frontend editor     # just the editor
-just dev-frontend admin      # just the harvester-admin API
-just dev-frontend lawmaking  # just the lawmaking UI (no backend)
-just dev-down                # stop it (shared with `just dev`)
-```
-
-| App | URL | Backend | DB | Notes |
-|-----|-----|---------|----|----|
-| editor | `http://localhost:7300` | editor-api `:8000` | yes | real SSO, needs `.env.sso-local`; hosts the **Corpusinwinning** section |
-| harvester-admin | API only (UI is the editor's Corpusinwinning section) | admin API `:8000` (`:8001` when all run together) | yes | in `all`, editor-api proxies `/api/harvest-admin/*` here |
-| lawmaking | `http://localhost:7500` | none | no | static, no backend |
+The recipe checks prerequisites (docker, plus cargo and node where the app
+needs them, and mold on x86_64 Linux), starts PostgreSQL and waits for it,
+builds the engine WASM for the editor, installs frontend dependencies when they
+are missing, and starts the services in the background. `just dev-frontend` is
+an alias, from when the recipe had that name.
 
 Notes:
 
-- **Backends run once** via `cargo run` (not `cargo watch`); Vite keeps HMR for
-  the frontend. Restarts after the first build are near-instant because the
-  Rust artifacts are reused (see [One-Time Setup](#one-time-setup-build-speed)).
-- **The editor uses real SSO** against the central Keycloak, so it needs
-  `.env.sso-local` (copy `.env.sso-local.example` and fill in the values, see
-  [Auth and roles](/auth-and-roles/)). Use Chrome or Firefox: the session cookie
-  is `Secure` and only those send it over `http://localhost`. The default port
-  `7300` (and `7500`) are the redirect URIs already registered on the
-  `regelrecht-local` Keycloak client. Override ports with `EDITOR_PORT` /
+- **Backends run once** via `cargo run`, not `cargo watch`; Vite keeps HMR for
+  the frontend. After a backend change, stop and start the stack. Restarts after
+  the first build are near-instant because the Rust artifacts are reused (see
+  [One-Time Setup](#one-time-setup-build-speed)). `cargo watch` is not used
+  because its recursive watch hangs on a 9p-mounted worktree.
+- **The editor uses real SSO** against the central Keycloak, so `all` and
+  `editor` need `.env.sso-local` (copy `.env.sso-local.example` and fill in the
+  values, see [Auth and roles](/auth-and-roles/)). The default ports `7300` and `7500` are the redirect URIs already registered
+  on the `regelrecht-local` Keycloak client. Override them with `EDITOR_PORT` /
   `LAWMAKING_PORT`.
-- `just dev-frontend` and `just dev` are **mutually exclusive**: they share
-  `.dev-pids` and ports, so run one at a time. `just dev-down` stops either.
 - In a dev container where the native backend can't reach Postgres on
-  `localhost`, set `DB_HOST=host.docker.internal` in `.env` (admin / `just dev`
-  paths); the editor takes that host from `DATABASE_URL` in `.env.sso-local`.
+  `localhost`, set `DB_HOST=host.docker.internal` in `.env` for the admin API;
+  editor-api takes that host from `DATABASE_URL` in `.env.sso-local`.
+- Prometheus and Grafana are not part of `just dev`. See
+  [Grafana](/components/grafana/#running-locally) to run them.
 
 ## Stopping
 
@@ -140,9 +107,10 @@ just dev-down
 
 ```bash
 tail -f .dev-admin.log           # Admin (harvester) API log
-tail -f .dev-editor-api.log      # editor-api log (`just dev-frontend` only)
-tail -f .dev-editor.log          # Editor Vite log (`just dev-frontend` only)
-just dev-logs                    # Infrastructure logs
+tail -f .dev-editor-api.log      # editor-api log
+tail -f .dev-editor.log          # Editor Vite log
+tail -f .dev-lawmaking.log       # Lawmaking Vite log
+just dev-logs                    # PostgreSQL log
 ```
 
 ## Database Access
@@ -169,8 +137,9 @@ Create a `.env` file in the project root:
 ```bash
 # Optional overrides
 POSTGRES_PORT=5433
-GRAFANA_PORT=3002
-PROMETHEUS_PORT=9090
+DB_HOST=localhost
+EDITOR_PORT=7300
+LAWMAKING_PORT=7500
 RUST_LOG=info
 ```
 

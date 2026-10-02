@@ -167,11 +167,11 @@ Write actions on this dashboard are enforced by the admin API, not by the fronte
 ## Development
 
 ```bash
-just dev-frontend editor    # editor-api + vite on :7300, against Keycloak
-just dev-frontend all       # the same plus the admin API, so the Corpusinwinning section works
+just dev editor    # editor-api + vite on :7300, against Keycloak
+just dev           # the same plus the admin API, so the Corpusinwinning section works
 ```
 
-`just dev-frontend` needs `.env.sso-local` (see [Auth and roles](/auth-and-roles/)). Running `npm run dev` in `frontend/` starts only Vite on port 3000 and proxies `/api`, `/auth` and `/health` to an editor-api on port 8000 (`API_PORT` overrides it).
+`just dev` needs `.env.sso-local` (see [Auth and roles](/auth-and-roles/)). Running `npm run dev` in `frontend/` starts only Vite on port 3000 and proxies `/api`, `/auth` and `/health` to an editor-api on port 8000 (`API_PORT` overrides it).
 
 ## Deployment
 
