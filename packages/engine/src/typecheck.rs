@@ -443,7 +443,7 @@ impl<'l, 'f> ArticleChecker<'l, 'f> {
         // establishes (an absence test) reaches every action that reads it,
         // wherever the file declares it. Outputs that read each other are a
         // cycle the engine reports when it runs; here they keep file order.
-        let order = crate::demand::execution_order(actions)
+        let order = crate::demand::execution_order(actions, None)
             .unwrap_or_else(|_| (0..actions.len()).collect());
         for index in order {
             let action = &actions[index];

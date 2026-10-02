@@ -5438,6 +5438,47 @@ articles:
         }
     }
 
+    /// A cycle among outputs nobody asked for does not fail the request: only
+    /// the actions the requested output depends on are ordered and run
+    /// (RFC-043).
+    #[test]
+    fn a_cycle_outside_the_requested_outputs_does_not_fail_the_request() {
+        let law = r#"
+$id: wet_cyclus_ernaast
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: A is B, B is A, en C is drie.
+    machine_readable:
+      execution:
+        output:
+          - name: a
+            type: number
+          - name: b
+            type: number
+          - name: c
+            type: number
+        actions:
+          - output: a
+            value: $b
+          - output: b
+            value: $a
+          - output: c
+            value: 3
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+        let result = service
+            .evaluate_law_output("wet_cyclus_ernaast", "c", BTreeMap::new(), "2025-01-01")
+            .unwrap();
+        assert_eq!(result.outputs.get("c"), Some(&Value::Int(3)));
+        assert!(matches!(
+            service.evaluate_law_output("wet_cyclus_ernaast", "a", BTreeMap::new(), "2025-01-01"),
+            Err(EngineError::CircularReference(_))
+        ));
+    }
+
     /// An article that both fills in an open term of a law and overrides an
     /// output of it reads that law without either: both are held back.
     #[test]

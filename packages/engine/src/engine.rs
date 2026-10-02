@@ -373,8 +373,9 @@ impl<'a> ArticleEngine<'a> {
         Ok(())
     }
 
-    /// Execute the actions the requested outputs depend on, in declaration
-    /// order, with optional trace instrumentation (RFC-043). An action outside
+    /// Execute the actions the requested outputs depend on, in dependency
+    /// order (see [`crate::demand::execution_order`]), with optional trace
+    /// instrumentation (RFC-043). An action outside
     /// that closure does not run: it fetches nothing, computes nothing, and
     /// cannot fail the article.
     fn execute_actions_traced(
@@ -387,8 +388,8 @@ impl<'a> ArticleEngine<'a> {
 
         // Dependency order, not file order: an action runs after what it
         // reads, so the order of the actions in the file never changes a
-        // value.
-        let order = crate::demand::execution_order(actions).map_err(|output| {
+        // value (apart from the assignments of one output among themselves).
+        let order = crate::demand::execution_order(actions, outputs).map_err(|output| {
             EngineError::CircularReference(format!(
                 "output '{output}' of {} article {} depends on itself",
                 self.law.id, self.article.number

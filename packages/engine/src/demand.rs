@@ -73,14 +73,27 @@ pub(crate) fn required_outputs_with(
 
 /// The order to run `actions` in: every action after the actions producing
 /// what it reads. Where nothing orders two actions, declaration order does,
-/// so the order of the actions in the file never changes a value.
+/// so the order of the actions in the file never changes a value, except
+/// among the assignments of an output assigned more than once: those run
+/// together, in declaration order, and a reader of that output runs after
+/// all of them.
 ///
-/// The assignments of an output assigned more than once run together, in
-/// declaration order, and a reader of that output runs after all of them. An
-/// action without `output` keeps its place at the front, where the loop
-/// rejects it. `Err` names an output that depends on itself through other
-/// outputs of the article.
-pub(crate) fn execution_order(actions: &[Action]) -> Result<Vec<usize>, String> {
+/// A name that is both an input and an output of the article is the output
+/// to every action but its first assignment: a reader runs after the output
+/// is set, and an output wins over an input when a name is resolved. The
+/// first assignment reads the input (the pass-through idiom `x: $x`); later
+/// assignments and every other action read the output. So the input of that
+/// name only ever reaches the first assignment, whatever the file's order.
+///
+/// With `outputs` (the closure of [`required_outputs`]), only the actions
+/// producing those outputs are ordered, so a cycle among outputs nobody asked
+/// for cannot fail the request (RFC-043). An action without `output` keeps
+/// its place at the front, where the loop rejects it. `Err` names an output
+/// that depends on itself through other outputs of the article.
+pub(crate) fn execution_order(
+    actions: &[Action],
+    outputs: Option<&BTreeSet<String>>,
+) -> Result<Vec<usize>, String> {
     let mut order: Vec<usize> = Vec::with_capacity(actions.len());
     let mut names: Vec<&str> = Vec::new();
     let mut writes: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
@@ -136,7 +149,12 @@ pub(crate) fn execution_order(actions: &[Action]) -> Result<Vec<usize>, String> 
     }
     let mut marks = BTreeMap::new();
     let mut sorted = Vec::with_capacity(names.len());
-    for &name in &names {
+    // The closure is transitive, so the walk from a requested output stays
+    // inside it.
+    for &name in names
+        .iter()
+        .filter(|name| outputs.is_none_or(|outputs| outputs.contains(**name)))
+    {
         visit(name, &depends_on, &mut marks, &mut sorted)?;
     }
     order.extend(sorted.iter().flat_map(|name| writes[name].iter().copied()));
@@ -152,7 +170,10 @@ pub(crate) fn reference_base(reference: &str) -> Option<&str> {
 
 /// Every `$name` an action refers to, by its base name. A name a FOREACH
 /// binds (`as`) is its element inside `body` and `filter`, not a reference to
-/// an output or input of that name.
+/// an output or input of that name. The fields of an object element, which a
+/// FOREACH also exposes as bare names, are not known here and still count:
+/// that over-includes, which is safe for the closure, but a field named like
+/// an output that reads the FOREACH's own output is reported as a cycle.
 pub(crate) fn referenced_names(action: &Action) -> BTreeSet<String> {
     let mut names = BTreeSet::new();
     action
