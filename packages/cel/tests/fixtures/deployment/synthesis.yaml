@@ -27,6 +27,7 @@ test_afnemer:
         datum_mededeling: datum_mededeling
         geblokkeerd: geblokkeerd_raad
         jaar_van_mededeling: jaar
+      legal_basis: [testregeling_afnemer#1, testregeling_register#3]
   action_rows:
     # Synthese per regel bij het besluit: de gebiedstabel. De aanvraag levert
     # de regels, de kolommen die de instantie zelf vaststelt komen per regel

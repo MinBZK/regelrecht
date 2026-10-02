@@ -67,6 +67,7 @@ synthesis:
       datum_mededeling: datum_mededeling
       geblokkeerd: geblokkeerd_raad
       jaar_van_mededeling: jaar
+    legal_basis: [testregeling_afnemer#1, testregeling_register#3]
 handling:
   worklist: {cell: test_afnemer, lexostatus: werkvoorraad}
   actions:

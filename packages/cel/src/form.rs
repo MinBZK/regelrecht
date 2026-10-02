@@ -158,7 +158,11 @@ pub fn explain(
     let stream = SourceRef::stream(&portal.stream, &portal.event);
     let mut chain = vec![Step::new(
         StepKind::Process,
-        SourceRef::config("process", "portal"),
+        process
+            .declared_by
+            .as_deref()
+            .map(SourceRef::law)
+            .unwrap_or_else(|| SourceRef::config("process", "portal")),
         format!(
             "het portaal legt '{}' vast in stroom '{}' (cel {})",
             portal.event, portal.stream, portal.cell
@@ -228,7 +232,10 @@ pub fn explain(
             if let Some(from) = k.supplies.get(&f.name) {
                 why.value.push(Step::new(
                     StepKind::Supply,
-                    SourceRef::config("process", id),
+                    k.supplied_by
+                        .as_deref()
+                        .map(SourceRef::law)
+                        .unwrap_or_else(|| SourceRef::config("process", id)),
                     format!(
                         "het kanaal '{id}' levert {}: {from} (supplies, grondslag {})",
                         f.name,

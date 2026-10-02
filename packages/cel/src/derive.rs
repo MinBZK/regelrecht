@@ -36,8 +36,8 @@ pub fn establishing(event: &Event) -> Option<String> {
     Some(crate::regulations::parse(first).ok()?.article_ref())
 }
 
-/// Every process the policies give. Every error is returned, not only the
-/// first; each names the policy article or the deployment file.
+/// Every process the policies give, ordered by id. Every error is returned,
+/// not only the first; each names the policy article or the deployment file.
 pub fn processes(
     policies: &BTreeMap<String, ActorPolicy>,
     deployment: &Deployment,
@@ -119,6 +119,8 @@ pub fn processes(
         }
     }
     if errors.is_empty() {
+        // In the order of the process id (the cell), not of the authority.
+        out.sort_by(|a, b| a.definition.id.cmp(&b.definition.id));
         Ok(out)
     } else {
         Err(errors)

@@ -1,5 +1,7 @@
-//! The runtime: all cells under `CELLS_PATH` and all processes under
-//! `PROCESSES_PATH`, in one program.
+//! The runtime: all cells under `CELLS_PATH` and all processes, in one
+//! program. With `CELL_CHANNELS` the processes follow from the policy and the
+//! deployment (RFC-047); otherwise they are the directories under
+//! `PROCESSES_PATH`.
 //!
 //! Every cell gets its own chronicle (`DATA_DIR/<id>/`) and its own
 //! routes (`/cells/<id>/api/...`); every process its own routes
@@ -115,15 +117,36 @@ impl Runtime {
             }
         }
 
-        let process_dirs = match &config.processes_path {
-            Some(p) => process_dirs(p).map_err(|e| vec![e])?,
-            None => Vec::new(),
-        };
         let mut processes: Vec<Process> = Vec::new();
-        for map in &process_dirs {
-            match Process::load(map, &per_id, service.clone()) {
-                Ok(p) => processes.push(p),
+        let deployment = crate::deployment::load(config)
+            .map_err(|f| errors.extend(f))
+            .ok()
+            .flatten();
+        if let Some(d) = &deployment {
+            // RFC-047: the processes follow from the policy.
+            match crate::policy::read(&service, Some(today))
+                .and_then(|p| crate::derive::processes(&p, d, &per_id, &service, &root))
+            {
+                Ok(derived) => {
+                    for x in derived {
+                        match Process::from_derived(x, &root, &per_id, service.clone()) {
+                            Ok(p) => processes.push(p),
+                            Err(f) => errors.extend(f),
+                        }
+                    }
+                }
                 Err(f) => errors.extend(f),
+            }
+        } else {
+            let process_dirs = match &config.processes_path {
+                Some(p) => process_dirs(p).map_err(|e| vec![e])?,
+                None => Vec::new(),
+            };
+            for map in &process_dirs {
+                match Process::load(map, &per_id, service.clone()) {
+                    Ok(p) => processes.push(p),
+                    Err(f) => errors.extend(f),
+                }
             }
         }
         let mut ids = BTreeSet::new();
@@ -245,6 +268,17 @@ impl Runtime {
                 regulation_files: regulation_files.clone(),
                 register_links: register_links.clone(),
                 registers_file: registers_file.clone(),
+                channels_file: deployment
+                    .as_ref()
+                    .map(|d| Arc::new(d.channels_file.clone())),
+                synthesis_file: deployment
+                    .as_ref()
+                    .and_then(|d| d.synthesis_file.clone())
+                    .map(Arc::new),
+                examples_file: deployment
+                    .as_ref()
+                    .and_then(|d| d.examples_file.clone())
+                    .map(Arc::new),
             });
         }
         let router = build_router(&cell_states, &process_states);

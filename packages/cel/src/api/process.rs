@@ -54,6 +54,10 @@ pub struct ProcessState {
     pub register_links: Arc<Vec<crate::register::RegisterLink>>,
     /// The binding file of the registers (`CELL_REGISTERS`), if there is one.
     pub registers_file: Option<Arc<PathBuf>>,
+    /// The deployment files of a process from policy (RFC-047), if there are.
+    pub channels_file: Option<Arc<PathBuf>>,
+    pub synthesis_file: Option<Arc<PathBuf>>,
+    pub examples_file: Option<Arc<PathBuf>>,
 }
 
 /// What the runtime prepares per action: the synthesis sources its

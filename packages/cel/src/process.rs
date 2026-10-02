@@ -81,6 +81,21 @@ impl Process {
         Self::load_definition(definition, map, cells, service).map_err(|f| with_process(&id, f))
     }
 
+    /// A process from policy (RFC-047). Its paths (form, examples) are
+    /// absolute; `root` is the corpus root.
+    pub fn from_derived(
+        derived: crate::derive::Derived,
+        root: &Path,
+        cells: &BTreeMap<String, Arc<Cell>>,
+        service: Arc<LawExecutionService>,
+    ) -> Result<Self, Vec<String>> {
+        let id = derived.definition.id.clone();
+        let mut p = Self::load_definition(derived.definition, root, cells, service)
+            .map_err(|f| with_process(&id, f))?;
+        p.warnings.extend(derived.warnings);
+        Ok(p)
+    }
+
     fn load_definition(
         mut definition: ProcessDefinition,
         map: &Path,
@@ -180,7 +195,7 @@ impl Process {
             }
         }
         crate::action::set_form(&mut self.definition, &self.service, &self.cell);
-        self.warnings = c.warnings;
+        self.warnings.extend(c.warnings);
         self.window = c.window.map(|parameter| Window {
             field: self.concept_field(&parameter),
             parameter,
@@ -497,7 +512,14 @@ mod tests {
                 "actor: test_afnemer\norigin_check: strict\n",
             )
         };
-        let f = errors("afnemer", strict);
+        // The fixture gives the translation of the registerstatus its legal
+        // basis (strict on the route from policy); without it, strict fails.
+        let f = errors("afnemer", |t| {
+            strict(t).replace(
+                "    legal_basis: [testregeling_afnemer#1, testregeling_register#3]\n",
+                "",
+            )
+        });
         assert_eq!(f.len(), 1, "{f:?}");
         assert!(
             f[0].contains("synthesis source test_register/registerstatus: translates (")

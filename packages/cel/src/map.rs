@@ -160,6 +160,15 @@ fn in_process(anchor: &str) -> SourceRef {
     SourceRef::config("process", anchor)
 }
 
+/// Where a part of the process is written: the policy article for a process
+/// from policy (RFC-047), otherwise the key in `process.yaml`.
+fn written(policy: Option<&String>, anchor: &str) -> SourceRef {
+    match policy {
+        Some(article) => SourceRef::law(article),
+        None => in_process(anchor),
+    }
+}
+
 /// The map of a process.
 pub fn build(input: &MapInput) -> Map {
     let p = input.process;
@@ -170,14 +179,14 @@ pub fn build(input: &MapInput) -> Map {
         format!("process:{id}"),
         NodeKind::Process,
         id,
-        in_process("id"),
+        written(d.declared_by.as_ref(), "id"),
     );
     for name in d.channels.keys() {
         let c = b.node(
             format!("channel:{name}"),
             NodeKind::Channel,
             name,
-            in_process(name),
+            written(d.channels[name].declared_by.as_ref(), name),
         );
         b.edge(&proc, &c, EdgeKind::Channel);
     }
@@ -186,7 +195,12 @@ pub fn build(input: &MapInput) -> Map {
             format!("role:{name}"),
             NodeKind::Role,
             name,
-            in_process(name),
+            written(
+                d.channels
+                    .get(&role.channel)
+                    .and_then(|k| k.declared_by.as_ref()),
+                name,
+            ),
         );
         b.edge(&proc, &r, EdgeKind::Role);
         b.edge(&r, &format!("channel:{}", role.channel), EdgeKind::Channel);
@@ -351,21 +365,28 @@ fn lexostatus_part(b: &mut Builder, input: &MapInput) {
     }
 }
 
-/// A cell the process queries that is not its own (synthesis, rows).
-fn source_cell(b: &mut Builder, cell: &str, anchor: &str) -> String {
+/// A cell the process queries that is not its own (synthesis, rows). For a
+/// process from policy (RFC-047) that is written in the synthesis of the
+/// deployment, under the id of the process's cell.
+fn source_cell(b: &mut Builder, input: &MapInput, cell: &str, anchor: &str) -> String {
+    let p = input.process;
+    let source = match p.definition.declared_by {
+        Some(_) => SourceRef::config("synthesis", p.cell.id()),
+        None => in_process(anchor),
+    };
     b.node(
         format!("source_cell:{cell}"),
         NodeKind::SourceCell,
         cell,
-        in_process(anchor),
+        source,
     )
 }
 
 /// The cells a synthesis per row queries, from `from`.
-fn rows_part(b: &mut Builder, from: &str, rows: &[RowsDefinition]) {
+fn rows_part(b: &mut Builder, input: &MapInput, from: &str, rows: &[RowsDefinition]) {
     for r in rows {
         for src in &r.sources {
-            let c = source_cell(b, &src.cell, "rows");
+            let c = source_cell(b, input, &src.cell, "rows");
             b.edge(from, &c, EdgeKind::Rows);
         }
     }
@@ -387,7 +408,12 @@ fn handling_part(b: &mut Builder, input: &MapInput, proc: &str) {
             format!("action:{}", action.name),
             NodeKind::Action,
             action.label(),
-            in_process(&action.name),
+            // A process from policy (RFC-047) derives the action from the
+            // event it records.
+            match input.process.definition.declared_by {
+                Some(_) => SourceRef::stream(&action.record.stream, &action.record.event),
+                None => in_process(&action.name),
+            },
         );
         b.edge(proc, &a, EdgeKind::Action);
         let article = b.article(&action.article);
@@ -401,7 +427,7 @@ fn handling_part(b: &mut Builder, input: &MapInput, proc: &str) {
             &event_id(&action.record.stream, &action.record.event),
             EdgeKind::Records,
         );
-        rows_part(b, &a, &action.rows);
+        rows_part(b, input, &a, &action.rows);
     }
 }
 
@@ -425,11 +451,11 @@ fn synthesis_part(b: &mut Builder, input: &MapInput, proc: &str) {
         let target = if s.cell == p.cell.id() {
             lexostatus_id(&s.cell, &s.lexostatus)
         } else {
-            source_cell(b, &s.cell, "synthesis")
+            source_cell(b, input, &s.cell, "synthesis")
         };
         b.edge(proc, &target, EdgeKind::Synthesis);
     }
-    rows_part(b, proc, p.assessment_rows());
+    rows_part(b, input, proc, p.assessment_rows());
 }
 
 /// One level of `source` between articles: an article on the map that takes

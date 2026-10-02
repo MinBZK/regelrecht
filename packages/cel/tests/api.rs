@@ -5914,3 +5914,55 @@ async fn every_edge_of_the_map_joins_two_nodes() {
         }
     }
 }
+
+/// A runtime whose processes follow from the policy (RFC-047): the fixtures
+/// with `deployment/` instead of `processes/`.
+fn policy_runtime(setup: &Path, data: &Path) -> Result<Runtime, Vec<String>> {
+    let d = setup.join("deployment");
+    let config = Config {
+        cells_path: setup.join("cells"),
+        processes_path: None,
+        regulation_path: setup.join("regulation"),
+        data_dir: data.to_path_buf(),
+        port: DEFAULT_PORT,
+        read_token: None,
+        read_token_sources: Vec::new(),
+        reduction: Default::default(),
+        registers: None,
+        channels: Some(d.join("channels.yaml")),
+        synthesis: Some(d.join("synthesis.yaml")),
+        examples: Some(d.join("examples.yaml")),
+    };
+    Runtime::load(&config, clock())
+}
+
+#[tokio::test]
+async fn the_processes_follow_from_the_policy() {
+    let data = tempfile::tempdir().unwrap();
+    let rt = policy_runtime(&fixtures(), data.path()).unwrap();
+    let ids: Vec<&str> = rt.processes.iter().map(|p| p.process.id()).collect();
+    assert_eq!(ids, ["test_afnemer", "test_instantie", "test_toeslag"]);
+    let app = as_reader(&rt);
+    let (status, body, _) = call(
+        &app,
+        "GET",
+        "/processes/test_afnemer/api/config/channels?anchor=test_afnemer",
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body["yaml"].as_str().unwrap().contains("eherkenning"),
+        "{body}"
+    );
+    let (status, map, _) = call(&app, "GET", "/processes/test_afnemer/api/map", None, None).await;
+    assert_eq!(status, StatusCode::OK);
+    let channel = map["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["id"] == "channel:eherkenning")
+        .unwrap();
+    assert_eq!(channel["source"], json!({"law": "testbeleid_afnemer#1"}));
+}
