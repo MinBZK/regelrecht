@@ -92,7 +92,7 @@ A PR gets a preview environment once it carries the `deploy:preview` label; taki
 
 Prerequisites: [Rust](https://rustup.rs/) (`rustup` installs the version pinned in
 `rust-toolchain.toml`) and [just](https://github.com/casey/just). The dev stacks
-below also need Docker, Node.js and [mold](https://github.com/rui314/mold).
+below also need Docker and Node.js, and on x86_64 Linux [mold](https://github.com/rui314/mold).
 
 ```bash
 just check           # everything CI runs (format, lint, build, validate, tests)
