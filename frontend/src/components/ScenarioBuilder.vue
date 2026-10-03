@@ -99,7 +99,7 @@ const selectedScenarioMismatchTargets = computed(() =>
 );
 const mismatchSupportingText = computed(() =>
   selectedScenarioMismatchTargets.value
-    ? `Dit scenario evalueert '${selectedScenarioMismatchTargets.value.join("', '")}', niet deze wet ('${props.lawId}'). Uitvoeren gebruikt die andere wet.`
+    ? `Dit scenario evalueert '${selectedScenarioMismatchTargets.value.join("', '")}', niet dit regelwerk ('${props.lawId}'). Uitvoeren gebruikt dat andere regelwerk.`
     : '',
 );
 
@@ -569,7 +569,7 @@ defineExpose({ save: onSave });
       <template v-if="selectedScenarioMismatchTargets">
         <nldd-banner
           variant="warning"
-          text="Scenario hoort bij een andere wet"
+          text="Scenario hoort bij een ander regelwerk"
           :supporting-text="mismatchSupportingText"
         ></nldd-banner>
         <nldd-spacer size="16"></nldd-spacer>
@@ -642,7 +642,7 @@ defineExpose({ save: onSave });
     </nldd-simple-section>
     <!-- Full-pane loading overlay, shown across the WHOLE scenario story: the
          article/law load, then the scenario files, then their dependency laws
-         ("X/Y wetten geladen"). Deliberately one condition over all three so
+         ("X/Y regelwerken geladen"). Deliberately one condition over all three so
          this element stays mounted throughout - the DS resets its anti-flash
          timer on every connectedCallback, so handing off between two separate
          indicators produced spinner -> 1s blank -> spinner. Staying mounted

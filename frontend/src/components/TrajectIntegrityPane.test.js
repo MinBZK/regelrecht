@@ -17,7 +17,7 @@ const ERROR_FINDING = {
   kind: 'directory_name_mismatch',
   path: 'waterschaps_verordening/hoogland/keur_alpha',
   law_id: 'keur_alpha_hoogland',
-  message: "De wet in de map 'keur_alpha' heeft '$id: keur_alpha_hoogland'.",
+  message: "Het regelwerk in de map 'keur_alpha' heeft '$id: keur_alpha_hoogland'.",
   remedy: "Hernoem de map naar 'keur_alpha_hoogland'.",
 };
 const WARNING_FINDING = {
@@ -105,9 +105,9 @@ describe('groupByLaw', () => {
 });
 
 describe('impactSummary', () => {
-  it('telt het totaal en over hoeveel wetten het verdeeld is', () => {
+  it('telt het totaal en over hoeveel regelwerken het verdeeld is', () => {
     expect(impactSummary({ findings: [ERROR_FINDING, WARNING_FINDING] })).toBe(
-      'In totaal 1 fout, 1 waarschuwing, verdeeld over 2 wetten.',
+      'In totaal 1 fout, 1 waarschuwing, verdeeld over 2 regelwerken.',
     );
   });
 
@@ -145,7 +145,7 @@ describe('TrajectIntegrityPane', () => {
     );
 
     // De impactregel geeft het rapport zijn maat.
-    expect(html).toContain('In totaal 1 fout, 1 waarschuwing, verdeeld over 2 wetten.');
+    expect(html).toContain('In totaal 1 fout, 1 waarschuwing, verdeeld over 2 regelwerken.');
 
     // Elke bevinding draagt omschrijving + remedie + het pad waar hij zit,
     // en een eigen severity-icoon (fouten en waarschuwingen mengen per wet).
@@ -177,7 +177,7 @@ describe('TrajectIntegrityPane', () => {
     expect(empty.attributes('variant')).toBe('success');
     // De omvang van de controle staat erbij, anders leest "geen problemen"
     // als "er is niets gecontroleerd".
-    expect(empty.attributes('supporting-text')).toContain('12 wetbestanden');
+    expect(empty.attributes('supporting-text')).toContain('12 versies');
     expect(empty.attributes('supporting-text')).toContain("3 scenario's");
   });
 

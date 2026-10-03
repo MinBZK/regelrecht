@@ -25,7 +25,7 @@ const { ready, loadError, profile, profileKey, corpus, state, delegations, deleg
  * The path of a tab in the language that is on.
  *
  * Without params: a tab points at the root of its section, and carrying the
- * current route's params along would put `/wetten/:lawId` on the Graph tab.
+ * current route's params along would put `/regelwerken/:lawId` on the Graph tab.
  * The views restore their own last position when they mount.
  */
 function pathFor(page) {

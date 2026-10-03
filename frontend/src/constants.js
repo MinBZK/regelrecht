@@ -2,11 +2,11 @@ export const SUPPORT_EMAIL = 'regelrecht@minbzk.nl';
 
 // Shared so the main search-field (AppShell) and the search popover's list
 // stay in sync — they are two entry points to the same law/regulation search.
-export const SEARCH_PLACEHOLDER = 'Wet- en regelgeving zoeken';
+export const SEARCH_PLACEHOLDER = 'Regelwerken zoeken';
 
 // Accessible name (aria-label) for the same search entry points; kept as a
 // concise descriptor alongside the fuller visible placeholder.
-export const SEARCH_ACCESSIBLE_LABEL = 'Zoeken in wet- en regelgeving';
+export const SEARCH_ACCESSIBLE_LABEL = 'Zoeken in regelwerken';
 
 // Single strategy for how every pane renders while its content loads.
 // false = show only the loading indicator; the pane's title and toolbars appear

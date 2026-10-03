@@ -47,7 +47,7 @@ Machine-readable Dutch law execution. regelrecht takes legal texts, encodes them
 
 | Directory | Description |
 |-----------|-------------|
-| [corpus/regulation/](corpus/regulation/) | A working set of regulations in machine-readable YAML, plus synthetic `test_*` laws |
+| [corpus/regulation/](corpus/regulation/) | A working set of ruleworks, some of them synthetic (`test_*`) |
 | [schema/](schema/) | Versioned JSON schema for the law format (`schema/latest` points at the current version) |
 | [bdd/](bdd/) | The Gherkin vocabulary (`grammar.yaml`) and the engine-conformance suite |
 | `corpus/regulation/**/scenarios/` | Law-validation scenarios, next to the law they test |

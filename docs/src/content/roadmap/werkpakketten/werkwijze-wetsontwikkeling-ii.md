@@ -14,26 +14,26 @@ toelichting: |-
   wetgevingsproces: internetconsultatie, het advies van de Raad van State, en
   de behandeling in Tweede en Eerste Kamer. Onderzocht wordt hoe
   machine-uitvoerbare wet- en regelgeving in de bestaande processen en
-  werkwijzen van deze organisaties past. Publicatie van een specificatie
+  werkwijzen van deze organisaties past. Publicatie van een regelwerk
   verandert de machtsbalans pas als deze instituties er ook daadwerkelijk mee
   kunnen werken: lezerschap moet georganiseerd worden, niet verondersteld.
 volgorde: 1000
 onderzoeksvragen:
-  - Hoe kan een machine-uitvoerbare specificatie een rol krijgen in de
+  - Hoe kan een regelwerk een rol krijgen in de
     internetconsultatie, zodat belanghebbenden ook de uitvoerbare gevolgen
     kunnen beoordelen, niet alleen de wettekst?
-  - Wat heeft de Raad van State nodig om een machine-uitvoerbare specificatie
+  - Wat heeft de Raad van State nodig om een regelwerk
     te kunnen beoordelen als onderdeel van zijn adviesrol?
   - Hoe kan de behandeling van wetsvoorstellen in Tweede en Eerste Kamer
     gebruikmaken van gesimuleerde of geverifieerde effecten uit een
-    machine-uitvoerbare specificatie?
+    regelwerk?
   - Welke aanpassingen aan de werkprocessen van deze organisaties zijn nodig
     om machine-uitvoerbare wet- en regelgeving structureel te integreren?
   - vraag: >-
-      Hoe wordt lezerschap van gepubliceerde specificaties georganiseerd bij
+      Hoe wordt lezerschap van gepubliceerde regelwerken georganiseerd bij
       Tweede en Eerste Kamer — bijvoorbeeld door bestaande ondersteunende
       diensten zoals Bureau Wetgeving en de Dienst Analyse en Onderzoek uit te
-      breiden met de capaciteit om specificaties te lezen en door te rekenen,
+      breiden met de capaciteit om regelwerken te lezen en door te rekenen,
       naar het voorbeeld van het Franse LexImpact?
     paper: sec:readers
 onderzoek: open

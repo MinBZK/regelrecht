@@ -230,7 +230,7 @@ const currentStep = computed(() =>
     </div>
 
     <div v-else-if="!lawId" class="law-graph-empty">
-      <nldd-inline-dialog text="Open een wet om de graaf te zien."></nldd-inline-dialog>
+      <nldd-inline-dialog text="Open een regelwerk om de graaf te zien."></nldd-inline-dialog>
     </div>
 
     <template v-else>

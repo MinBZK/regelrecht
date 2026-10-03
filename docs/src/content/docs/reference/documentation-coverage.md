@@ -35,7 +35,7 @@ RFC-000 (the RFC process) is documented by [rfc-000](/rfcs/rfc-000) itself; the 
 
 ## Built while still Proposed
 
-A reader meets these constructs in a law file or a running service whatever the status tag says, so they owe coverage on the same terms as an accepted RFC.
+A reader meets these constructs in a rulework or a running service whatever the status tag says, so they owe coverage on the same terms as an accepted RFC.
 
 | RFC | Topic | Prose coverage |
 |-----|-------|----------------|
@@ -51,6 +51,7 @@ A reader meets these constructs in a law file or a running service whatever the 
 | RFC-038 | Callable is not presentable | Backlog: [Schema](./schema) lists the `RECHTSPOSITIE` value it added; the entry-point rule itself has no page |
 | RFC-040 | The schema documents itself | [Schema](./schema) |
 | RFC-041 | A void is not scoped like a replacement | [Voiding an output](../concepts/hooks-and-reactive-execution#voiding-an-output) |
+| RFC-044 | Regelrechts and regelwerk as names (partially applied) | [Glossary](./glossary#regelrecht-specific-terms) |
 
 ## Backlog
 

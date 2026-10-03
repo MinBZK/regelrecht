@@ -54,6 +54,44 @@ from `packages/engine/build.rs`): change `grammar.yaml` and run
 `just bdd-codegen`. A failing law-validation scenario (bucket A, next to a law)
 means a law changed or the scenario is stale, and a human decides which.
 
+## Vocabulary: Regelrechts and regelwerk
+
+The definitions are in the glossary (`docs/src/content/docs/reference/glossary.md`,
+under "RegelRecht-Specific Terms") and the reasoning in RFC-044. What follows is
+how to apply them when you write.
+
+- **Regelrechts** is the name of the language. It is a proper name and stays
+  untranslated. "The law format" and *wetformaat* remain as descriptions of the
+  notation; do not replace them wholesale.
+- **A regelwerk** (English: rulework, Frisian: regelwurk) is one regulation as
+  recorded in Regelrechts, identified by its `$id`. Each dated YAML file is a
+  **version** of it. Count versions when you mean files, and regelwerken when
+  you mean `$id`s.
+
+Which word a sentence needs:
+
+- **The thing someone adds, opens, enriches, validates, saves or establishes**
+  is a regelwerk. Do not write *wetsbestand*, *law file* or, for this meaning,
+  *specificatie*.
+- **What the legislature laid down** stays *wet*, *regeling* or *wettekst*:
+  "dit komt letterlijk uit de wet", wetten.overheid.nl, "Soort regeling". A
+  screen a citizen reads keeps those words too; regelwerk is a word for the
+  people who make and review them.
+- **The schema and the language are not a regelwerk**, and the word never
+  becomes a prefix for them. A regelwerk is written in Regelrechts and conforms
+  to the schema. The prose linter in `.claude/skills/docs-writing/` rejects such
+  compounds.
+
+Replacing an older word is a judgement per occurrence, never a search and
+replace: "law YAML" and "specification" mean a regelwerk in one sentence and the
+language in the next. When in doubt, leave the old word. Change a document as a
+whole or not at all, and leave other authors' RFCs in the words they were
+written in. Where a text quotes or paraphrases the paper, keep the paper's term
+in parentheses beside the new word.
+
+Code identifiers keep `law` (`law_id`, `ArticleBasedLaw`, the API routes, the
+WASM API, the Gherkin steps); werkpakket slugs keep their old words.
+
 ## Development Setup
 
 Prerequisites are in `docs/src/content/docs/guide/getting-started.md`; the local
@@ -163,7 +201,7 @@ This line is optional, because most PRs touch no law and requiring it would
 produce the same empty box as a reasonless `geen`. Present, it has to resolve:
 the gate rejects an id that is not in the corpus, and renders each one as a link
 to the law on wetten.overheid.nl in the check's summary. The URL comes from the
-law file's own `url` (falling back to `bwb_id`), so it cannot drift from the
+rulework's own `url` (falling back to `bwb_id`), so it cannot drift from the
 corpus. Do not write the link yourself, and never invent a BWB number: name the
 `$id` and let the gate resolve it.
 
@@ -246,7 +284,7 @@ een sleutel die maar in één bestand landt is een bug, geen halve klus.
   maakten hem. `frisian.test.js` vangt hem nu; breid de stammenlijst daar uit
   als er een woord bijkomt.
 - **Paden bevatten geen teken dat gecodeerd moet worden.** Slugs worden vertaald
-  (`/en/laws`, `/fy/senarios`), maar een apostrof wordt `%27` en dat is het
+  (`/en/ruleworks`, `/fy/senarios`), maar een apostrof wordt `%27` en dat is het
   adres dat tijdens een presentatie op het scherm komt. Het Nederlands doet het
   al zo: het tabblad heet "Scenario's" en het pad is `/scenarios`.
   `router.test.js` weigert een pad met zo'n teken.
@@ -268,7 +306,7 @@ een sleutel die maar in één bestand landt is een bug, geen halve klus.
   die is blijven staan terwijl het origineel veranderde, opvalt. Zonder die
   stap faalt `i18n.test.js`, mét de sleutelnamen en het commando erbij.
 - **Adressen**: Nederlandse paden blijven zoals ze zijn, Engels staat onder
-  `/en/` met vertaalde slugs (`/wetten` ↔ `/en/laws`). De tabel staat in
+  `/en/` met vertaalde slugs (`/regelwerken` ↔ `/en/ruleworks`). De tabel staat in
   `src/router.js`; een pagina spreek je aan op naam (`localeRouteName`), nooit
   op een letterlijk pad, anders belandt een Engelse bezoeker op een Nederlands
   tabblad.
@@ -450,7 +488,7 @@ What does need one: replacing the title, the central concept, or the field
 definitions. The case that produced this rule: schema v0.7.0 renames the channel
 RFC-012 describes from `untranslatables` to `markings`, and the first attempt
 rewrote RFC-012 to match. That would have made every existing citation to it
-point at a document about a different field, while a law file on schema v0.5.x
+point at a document about a different field, while a version on schema v0.5.x
 still carries `untranslatables` and the engine still reads it. The RFC keeps its
 text and goes to `Superseded` instead, and the RFC introducing the new channel
 carries the new design.

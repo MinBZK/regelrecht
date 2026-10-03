@@ -300,7 +300,7 @@ function viewLaw(job) {
               @select="emit('cancel-job', job)"
             ></nldd-menu-item>
           </template>
-          <nldd-menu-item v-else text="Bekijk wet" @select="viewLaw(job)"></nldd-menu-item>
+          <nldd-menu-item v-else text="Bekijk regelwerk" @select="viewLaw(job)"></nldd-menu-item>
           </nldd-menu>
         </nldd-icon-button>
       </nldd-cell>

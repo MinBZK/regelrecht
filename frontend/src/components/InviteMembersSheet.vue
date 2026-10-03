@@ -174,7 +174,7 @@ defineExpose({ show });
                   <nldd-toggle-button value="owner" text="Beheerder" :selected="inviteRole === 'owner' || undefined"></nldd-toggle-button>
                 </nldd-toggle-button-group>
                 <nldd-form-field-help-text>
-                  Een bijdrager kan wetten en scenario's in dit traject bekijken en bewerken. Een beheerder kan daarnaast ook leden en instellingen van dit traject aanpassen.
+                  Een bijdrager kan regelwerken en scenario's in dit traject bekijken en bewerken. Een beheerder kan daarnaast ook leden en instellingen van dit traject aanpassen.
                 </nldd-form-field-help-text>
               </nldd-form-field>
 

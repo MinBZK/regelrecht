@@ -1022,7 +1022,7 @@ export function referenceHeadings(): { depth: number; slug: string; text: string
   const out: { depth: number; slug: string; text: string }[] = [];
   const h = (depth: number, slug: string, text: string) => out.push({ depth, slug, text });
 
-  h(2, 'law-file', 'The law file');
+  h(2, 'law-file', 'The rulework');
   h(3, 'identifiers-per-layer', 'Identifiers per regulatory layer');
   h(4, 'top-legal-basis', 'legal_basis');
   h(3, 'articles', 'Articles');

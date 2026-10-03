@@ -585,12 +585,12 @@ describe('TasksListPane', () => {
 
   // Annuleren bestaat alleen voor conversies, dus zonder dit zou een lopende
   // verrijking een leeg menu openen.
-  it('biedt bij een lopende verrijking Bekijk wet, en geen annuleren', async () => {
+  it('biedt bij een lopende verrijking Bekijk regelwerk, en geen annuleren', async () => {
     const wrapper = await mountPane([], [{ job_id: 'j1', job_type: 'enrich', law_id: 'test_wet' }], {
       categorie: 'wachten',
     });
-    expect(itemLabels(wrapper)).toEqual(['Bekijk wet']);
-    await selectItem(wrapper, 'Bekijk wet');
+    expect(itemLabels(wrapper)).toEqual(['Bekijk regelwerk']);
+    await selectItem(wrapper, 'Bekijk regelwerk');
     expect(pushMock).toHaveBeenCalled();
   });
 

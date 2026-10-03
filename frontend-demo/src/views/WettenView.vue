@@ -107,7 +107,7 @@ function resetExpansion() {
 watch(
   // Op `meta.page` en niet op `route.name`: dezelfde pagina heeft per taal een
   // eigen routenaam (`wetten` en `wetten:en`), en op de naam vergelijken laat
-  // deze watcher onder /en/laws meteen terugkeren. Het tabblad opent dan geen
+  // deze watcher onder /en/ruleworks meteen terugkeren. Het tabblad opent dan geen
   // enkele wet, ook niet de standaardwet van het profiel, en toont een leeg
   // paneel zonder dat er iets faalt.
   () => [route.meta?.page, route.params.lawId, corpus.value, profile.value],

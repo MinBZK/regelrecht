@@ -255,7 +255,7 @@ pub async fn apply(
 
     let law_id = open.iter().find_map(|t| payload_str(t, "law_id")).ok_or((
         StatusCode::BAD_REQUEST,
-        "Deze taak wijst geen wet aan".to_string(),
+        "Deze taak wijst geen regelwerk aan".to_string(),
     ))?;
     let traject_ref = open
         .iter()
@@ -274,7 +274,8 @@ pub async fn apply(
     {
         return Err((
             StatusCode::BAD_REQUEST,
-            "Een nieuwe wet wordt via het aanmaakpad opgeslagen, niet als verrijking".to_string(),
+            "Een nieuw regelwerk wordt via het aanmaakpad opgeslagen, niet als verrijking"
+                .to_string(),
         ));
     }
 
@@ -332,7 +333,7 @@ pub async fn apply(
     if whole_law && open.len() > 1 {
         return Err((
             StatusCode::BAD_REQUEST,
-            "Een voorstel voor de hele wet kan niet samen met losse artikelen worden verwerkt"
+            "Een voorstel voor alle artikelen tegelijk kan niet samen met losse artikelen worden verwerkt"
                 .to_string(),
         ));
     }
@@ -556,7 +557,7 @@ async fn prepare_write(
     // beoordelaar naar een koppelscherm sturen voor iets wat een herlading is.
     let if_match = corpus_handlers::extract_if_match(headers).ok_or((
         StatusCode::BAD_REQUEST,
-        "Verwerken vraagt om de versie van de wet zoals je hem zag. Herlaad de pagina en \
+        "Verwerken vraagt om de versie van het regelwerk zoals je die zag. Herlaad de pagina en \
          beoordeel de verrijking opnieuw."
             .to_string(),
     ))?;
@@ -612,7 +613,7 @@ async fn write_accepted(
             }
             let base = current.ok_or((
                 StatusCode::NOT_FOUND,
-                "De wet bestaat niet (meer) in dit traject".to_string(),
+                "Het regelwerk bestaat niet (meer) in dit traject".to_string(),
             ))?;
             let parts: Vec<(&str, &str)> = accepted
                 .iter()
@@ -632,7 +633,7 @@ async fn write_accepted(
 /// van zeven regels `Update law <id>`.
 fn commit_message(law_id: &str, accepted: usize, total: usize, whole_law: bool) -> String {
     if whole_law {
-        return format!("Verrijking verwerkt: hele wet overgenomen in {law_id}");
+        return format!("Verrijking verwerkt: het hele voorstel overgenomen in {law_id}");
     }
     // Het zelfstandig naamwoord hoort bij het getal dat er direct voor staat -
     // het totaal, niet het aantal overgenomen. "1 van de 4 artikel" leest als
@@ -666,11 +667,11 @@ fn article_number(article: &serde_yaml_ng::Value) -> Option<String> {
 /// harvester-gegenereerd en commentaarloos.
 fn compose_enriched_law(current: &str, accepted: &[(&str, &str)]) -> Result<String, String> {
     let mut doc: serde_yaml_ng::Value = serde_yaml_ng::from_str(current)
-        .map_err(|e| format!("De opgeslagen wet is geen geldige YAML: {e}"))?;
+        .map_err(|e| format!("Het opgeslagen regelwerk is geen geldige YAML: {e}"))?;
     let articles = doc
         .get_mut("articles")
         .and_then(|a| a.as_sequence_mut())
-        .ok_or_else(|| "De opgeslagen wet heeft geen artikelen".to_string())?;
+        .ok_or_else(|| "Het opgeslagen regelwerk heeft geen artikelen".to_string())?;
 
     for (number, content) in accepted {
         let article: serde_yaml_ng::Value = serde_yaml_ng::from_str(content)
@@ -808,7 +809,7 @@ mod tests {
         );
         assert_eq!(
             commit_message("test_wet", 1, 1, true),
-            "Verrijking verwerkt: hele wet overgenomen in test_wet"
+            "Verrijking verwerkt: het hele voorstel overgenomen in test_wet"
         );
     }
 

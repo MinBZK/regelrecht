@@ -49,13 +49,13 @@ flowchart TD
 | `demand.rs` | Dependency closure of a requested output, so an article runs only the actions that output needs (RFC-043) |
 | `types.rs` | Runtime and trace enums, plus re-exports of the document-model types from the Law Model crate |
 
-The types a law file deserializes into are not defined in the engine. They live in the [Law Model](./law-model) crate, which `article.rs` re-exports and loads under the security limits.
+The types a rulework deserializes into are not defined in the engine. They live in the [Law Model](./law-model) crate, which `article.rs` re-exports and loads under the security limits.
 
 ## How It Works
 
 ```mermaid
 flowchart TD
-    A[Load Law YAML] --> B[Parse Articles]
+    A[Load rulework] --> B[Parse Articles]
     B --> C[Build Output Index]
     C --> D[Select the actions the requested outputs need]
     D --> E[Execute Operations]
@@ -255,7 +255,7 @@ The exported methods are the `#[wasm_bindgen(js_name = ...)]` functions on `Wasm
 
 ## Security Limits
 
-The engine enforces fixed limits, set in `packages/engine/src/config.rs`, so that a hostile or broken law file cannot exhaust memory or the stack:
+The engine enforces fixed limits, set in `packages/engine/src/config.rs`, so that a hostile or broken rulework cannot exhaust memory or the stack:
 
 | Limit | Value | Purpose |
 |-------|-------|---------|
@@ -288,7 +288,7 @@ See [RFC-013](/rfcs/rfc-013) for the design rationale.
 | `output_names` | The outputs to compute, a non-empty list; the older single `output_name` is still accepted |
 | `params` | Parameters as a JSON object |
 | `date` | Calculation date, `YYYY-MM-DD` |
-| `extra_laws` | Optional list of further law YAMLs, loaded for cross-law references and open terms |
+| `extra_laws` | Optional list of further rulework versions, loaded for cross-law references and open terms |
 
 Two flags change the run. `--untranslatable=<mode>` sets how the engine treats markings (`error`, `propagate`, `warn` or `ignore`; see [Markings](/concepts/markings)), and `--receipt` prints an Execution Receipt instead of the plain result. The binary loads only the laws in the request, so every law the execution reaches has to be in `law_yaml` or `extra_laws`. `jq` builds the request conveniently:
 
@@ -331,7 +331,7 @@ Key benchmarks: URI parsing, variable resolution, operations, article evaluation
 
 ## Further reading
 
-- [Law Format](/concepts/law-format) - structure of law YAML files
+- [Law Format](/concepts/law-format) - structure of a rulework
 - [RFC-003: Inversion of Control](/rfcs/rfc-003) - open terms and delegation
 - [RFC-004: Uniform Operations](/rfcs/rfc-004) - operation syntax
 - [RFC-007: Cross-Law Execution](/rfcs/rfc-007) - hooks, overrides, and temporal computation

@@ -463,15 +463,15 @@ fn check_directory_names(
                 path: Some(dir.clone()),
                 law_id: Some((*id).to_string()),
                 message: format!(
-                    "De wet in de map '{dir}' heeft '$id: {id}', maar de map heet '{law_dir}'. \
-                     De wettenindex gebruikt de mapnaam als wet-id, dus deze wet is onvindbaar \
-                     onder haar eigen id: verrijken, versies en scenario's mislukken met \
+                    "Het regelwerk in de map '{dir}' heeft '$id: {id}', maar de map heet '{law_dir}'. \
+                     De index gebruikt de mapnaam als id, dus dit regelwerk is onvindbaar \
+                     onder zijn eigen id: verrijken, versies en scenario's mislukken met \
                      'niet gevonden'."
                 ),
                 remedy: format!(
                     "Hernoem de map '{dir}' naar '{parent}{id}', zodat de mapnaam gelijk is aan \
                      het $id. Wil je juist de mapnaam aanhouden, verander dan het $id in de \
-                     YAML naar '{law_dir}' — en pas overal mee waar die wet wordt aangeroepen."
+                     YAML naar '{law_dir}' — en pas overal mee waar dat regelwerk wordt aangeroepen."
                 ),
             });
         }
@@ -504,13 +504,13 @@ fn check_duplicate_ids(
             path: Some(dirs[0].clone()),
             law_id: Some(id.to_string()),
             message: format!(
-                "Het wet-id '{id}' wordt door meerdere mappen gedeclareerd: '{list}'. Bij een \
-                 dubbel id houdt de wettenindex er één over; de andere wet verdwijnt uit de \
+                "Het id '{id}' wordt door meerdere mappen gedeclareerd: '{list}'. Bij een \
+                 dubbel id houdt de index er één over; het andere regelwerk verdwijnt uit de \
                  bibliotheek."
             ),
             remedy: format!(
-                "Geef elke wet een eigen $id, of verwijder de map die er niet meer hoort te \
-                 staan. Zijn het twee versies van dezelfde wet, zet ze dan als losse \
+                "Geef elk regelwerk een eigen $id, of verwijder de map die er niet meer hoort te \
+                 staan. Zijn het twee versies van hetzelfde regelwerk, zet ze dan als losse \
                  datumbestanden in één map '{id}'."
             ),
         });
@@ -542,7 +542,7 @@ fn check_file_names(scan: &CorpusScan, out: &mut Vec<Finding>) {
             message: format!(
                 "Het bestand '{path}' heeft 'valid_from: {valid_from}', maar heet '{}.yaml'. De \
                  bestandsnaam bepaalt welke versie de index als geldig kiest, dus die keuze \
-                 klopt hier niet met de wet zelf.",
+                 klopt hier niet met de versie zelf.",
                 parts.stem
             ),
             remedy: format!(
@@ -587,8 +587,8 @@ fn check_layer_directories(scan: &CorpusScan, out: &mut Vec<Finding>) {
             path: Some(dir.clone()),
             law_id: facts.declared_id.clone(),
             message: format!(
-                "De wet in '{dir}' heeft 'regulatory_layer: {layer}', maar staat in de laag-map \
-                 '{}'. De mapindeling en de wet spreken elkaar dus tegen.",
+                "Het regelwerk in '{dir}' heeft 'regulatory_layer: {layer}', maar staat in de laag-map \
+                 '{}'. De mapindeling en het regelwerk spreken elkaar dus tegen.",
                 parts.layer_dir
             ),
             remedy: format!(
@@ -625,11 +625,11 @@ fn check_law_references(scan: &CorpusScan, known_ids: &HashSet<&str>, out: &mut 
                 path: Some(scan.at(&law.relative_path)),
                 law_id: Some(law_label.clone()),
                 message: format!(
-                    "'{law_label}' {via} '{target}', maar geen enkele wet in dit traject-corpus \
+                    "'{law_label}' {via} '{target}', maar geen enkel regelwerk in dit traject-corpus \
                      heeft dat $id. Een berekening die deze verwijzing volgt, loopt vast."
                 ),
                 remedy: format!(
-                    "Corrigeer '{target}' naar het $id van de bedoelde wet, of voeg die wet toe \
+                    "Corrigeer '{target}' naar het $id van het bedoelde regelwerk, of voeg dat regelwerk toe \
                      aan dit traject."
                 ),
             });
@@ -654,12 +654,12 @@ fn check_scenario_references(scan: &CorpusScan, known_ids: &HashSet<&str>, out: 
                 path: Some(path.clone()),
                 law_id: Some(target.clone()),
                 message: format!(
-                    "Het scenario '{path}' noemt wet '{target}', maar geen enkele wet in dit \
+                    "Het scenario '{path}' noemt '{target}', maar geen enkel regelwerk in dit \
                      traject-corpus heeft dat $id. Dit scenario kan niet draaien."
                 ),
                 remedy: format!(
-                    "Corrigeer '{target}' in de stap naar het $id van de bedoelde wet, of voeg \
-                     die wet toe aan dit traject."
+                    "Corrigeer '{target}' in de stap naar het $id van het bedoelde regelwerk, of voeg \
+                     dat regelwerk toe aan dit traject."
                 ),
             });
         }
@@ -708,7 +708,7 @@ fn check_scenario_targets(
         }
         let target = expected.iter().copied().collect::<Vec<_>>().join("' of '");
         let evaluated_list = if evaluated.is_empty() {
-            "geen enkele wet".to_string()
+            "geen enkel regelwerk".to_string()
         } else {
             format!(
                 "alleen '{}'",
@@ -722,12 +722,12 @@ fn check_scenario_targets(
             law_id: expected.iter().next().map(|id| (*id).to_string()),
             message: format!(
                 "De scenario's in '{scenarios_dir}' evalueren {evaluated_list} — niet '{target}', \
-                 de wet waar deze map bij hoort. De wet zelf wordt hier dus niet getoetst."
+                 het regelwerk waar deze map bij hoort. Dat regelwerk wordt hier dus niet getoetst."
             ),
             remedy: format!(
                 "Voeg een stap toe die '{target}' evalueert (bijvoorbeeld: Then I evaluate \
                  \"<uitkomst>\" of \"{target}\"), of verplaats deze scenario's naar de map van \
-                 de wet die ze wél evalueren."
+                 het regelwerk dat ze wél evalueren."
             ),
         });
     }

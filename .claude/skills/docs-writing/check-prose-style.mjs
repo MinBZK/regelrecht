@@ -132,6 +132,31 @@ const RULES = [
     hint: 'Trust the reader; cut the recap or fold it into the last real point.',
   },
   {
+    id: 'rulework-compound',
+    level: 'error',
+    // A rulework conforms to the schema; the schema is not a rulework. A
+    // compound is how the word slides onto the schema, so this rule has no
+    // exemption. Dutch compounds are written closed or hyphenated, so a space
+    // there is two words ("of het regelwerk schema-valide is"). English writes
+    // them open, also across a hard wrap, but not into a hyphenated adjective
+    // ("is the rulework schema-valid") or a list bullet.
+    re: /\bregelwerk(?:en|s)?-?(?:schema(?:'s)?|formaat|formaten|taal|talen)\b|\bruleworks?(?:-|[ \t]+|[ \t]*\r?\n[ \t]*)(?:schema|format|language)s?\b(?!-)/gi,
+    msg: '"regelwerk"/"rulework" used as a name for the schema or the format',
+    hint: 'A rulework is one regulation recorded in Regelrechts. The schema and the format keep their own names: "the schema", "the law format".',
+  },
+  {
+    id: 'instance-term',
+    level: 'error',
+    // Two of the older words for a rulework, the ones a regex can recognize.
+    // "Specification" and "law YAML" also name the language, so those stay a
+    // matter for review. RFCs are dated documents: the accepted ones are
+    // frozen and the proposed ones belong to their authors, so none is checked.
+    re: /(?<![\p{L}\p{N}-])(?<!case[ -])(?:wets?-?bestand(?:en|je|jes)?|law\s+(?:YAML\s+)?files?)\b/giu,
+    skipPath: (rel) => rel.split(/[\\/]/).includes('rfcs'),
+    msg: 'older word for a rulework',
+    hint: 'Write "regelwerk" (Dutch) or "rulework" (English); one dated file is a version of it. See the Vocabulary section of AGENTS.md.',
+  },
+  {
     id: 'not-x-but-y',
     level: 'warn',
     // "not X, but Y" / "niet X, maar Y". High recall, low precision: a regex
@@ -254,7 +279,8 @@ if (argv.includes('--help') || argv.includes('-h')) {
     'Usage: node check-prose-style.mjs [--strict] [path ...]\n\n' +
       'Scans docs prose for anti-AI-tell violations.\n' +
       '  errors (em-dashes, banned phrases, summary openers) always fail (exit 1).\n' +
-      '  warnings ("not X but Y" contrasts) are reported; --strict makes them fail too.\n\n' +
+      '  warnings ("not X but Y" contrasts) are reported; --strict makes them fail too.\n' +
+      '  --only=id,id runs just those rules.\n\n' +
       'No paths => the default docs prose set:\n' +
       DEFAULT_TARGETS.map((t) => '  ' + t).join('\n') +
       '\n\nPass a single file to check just that file.',
@@ -263,6 +289,17 @@ if (argv.includes('--help') || argv.includes('-h')) {
 }
 
 const strict = argv.includes('--strict');
+// `--only=id,id` runs just those rules. CI uses it to hold the vocabulary rules
+// over the whole default set, where the style rules still have older findings.
+const onlyArg = argv.find((a) => a.startsWith('--only='));
+const only = onlyArg ? new Set(onlyArg.slice('--only='.length).split(',').filter(Boolean)) : null;
+if (only) {
+  const unknown = [...only].filter((id) => !RULES.some((r) => r.id === id));
+  if (unknown.length) {
+    console.error(`unknown rule id(s): ${unknown.join(', ')}`);
+    process.exit(2);
+  }
+}
 const targets = argv.filter((a) => !a.startsWith('--'));
 const files = (targets.length ? targets : DEFAULT_TARGETS).flatMap(collect);
 
@@ -280,6 +317,8 @@ for (const file of files) {
     return lo + 1;
   };
   for (const rule of RULES) {
+    if (only && !only.has(rule.id)) continue;
+    if (rule.skipPath && rule.skipPath(rel)) continue;
     rule.re.lastIndex = 0;
     let m;
     while ((m = rule.re.exec(prose)) !== null) {

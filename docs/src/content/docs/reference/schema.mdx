@@ -1,15 +1,15 @@
 ---
 title: "Schema Reference"
-description: "The JSON schema every law YAML file must conform to: its fields, operations and vocabulary, and how versioned schema URLs work."
+description: "The JSON schema every rulework must conform to: its fields, operations and vocabulary, and how versioned schema URLs work."
 ---
 
 import SchemaReference from '~/components/SchemaReference.astro';
 
-The law format is defined by a JSON Schema. All law YAML files in the corpus must conform to this schema.
+The law format is defined by a JSON Schema. Every rulework in the corpus must conform to this schema.
 
 Everything below the version history is generated from the released schema itself, so this page and the contract cannot disagree. Where a field has a concept page, the table links to it.
 
-This page owns the field-level detail, down to which operands each operation takes. How a law file is put together, and why, is walked through on one real article in [Law Format](/concepts/law-format).
+This page owns the field-level detail, down to which operands each operation takes. How a rulework is put together, and why, is walked through on one real article in [Law Format](/concepts/law-format).
 
 ## Current Version
 
@@ -21,7 +21,7 @@ Schema URLs use immutable git tags to guarantee reproducibility. The format is:
 https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.1/schema/v0.7.1/schema.json
 ```
 
-The tag `schema-vX.Y.Z` is created when a schema version is released. Using tags instead of `refs/heads/main` ensures that the schema a law file references can never change underneath it. See [RFC-013](/rfcs/rfc-013) for the rationale.
+The tag `schema-vX.Y.Z` is created when a schema version is released. Using tags instead of `refs/heads/main` ensures that the schema a version of a rulework references can never change underneath it. See [RFC-013](/rfcs/rfc-013) for the rationale.
 
 ## Version History
 
@@ -58,7 +58,7 @@ The annotation schema (`annotation-schema.json`) versions independently of the l
 
 ## Validation
 
-Validate law files against the schema:
+Validate ruleworks against the schema:
 
 ```bash
 just validate                    # All files

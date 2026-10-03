@@ -28,13 +28,19 @@ toelichting: |-
   taal is; een tweede partij die een eigen engine bouwt heeft er niets aan. Het
   uit elkaar halen van die twee soorten is onderdeel van dit werkpakket.
 
-  **Twee dingen heten nu specificatie**
+  **Specificatie en regelwerk**
 
-  Het ene is de specificatie van de taal, waar dit werkpakket over gaat. Het
-  andere is de machine-leesbare interpretatie van een wet, het ding dat een
-  jurist vaststelt. Die dubbele betekenis zit ook in de werkpakketten
-  "Vaststelling van specificaties" en "Juridische status van een specificatie",
-  die over het tweede gaan. Welk woord waar hoort is een open punt.
+  Twee dingen heetten specificatie. Het ene is de specificatie van de taal, waar
+  dit werkpakket over gaat. Het andere is de machine-uitvoerbare interpretatie
+  van één regeling, het ding dat een jurist vaststelt. Dat tweede heet nu een
+  regelwerk: de wettekst met de uitvoerbare interpretatie ernaast, met een
+  versie voor elke datum waarop de tekst is gaan gelden. De taal heet
+  Regelrechts, zoals de taal van Nederland Nederlands heet. Een regelwerk is
+  geschreven in het Regelrechts en voldoet aan het schema; de taal en het
+  schema zijn zelf geen regelwerk. De
+  werkpakketten "Vaststelling van regelwerken" en "Juridische status van een
+  regelwerk" gaan over het tweede. Hun adres draagt nog het oude woord, omdat
+  een adres een verwijzing is die niet meebeweegt met de titel.
 
   **Stand**: het schema documenteert zichzelf en staat per versie op
   /reference/schema (RFC-040); de taal als één geversioneerde specificatie, los

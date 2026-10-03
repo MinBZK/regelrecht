@@ -67,14 +67,14 @@ function placeholders(s) {
  * een zichtbare gebeurtenis. Het getal gaat met de hand omlaag naarmate er
  * vertaald is, met de reden in de commit.
  *
- * Voor `fy` staat het op 0,07. Gemeten is 6,45%: dat zijn woorden die in het
+ * Voor `fy` staat het op 0,06. Gemeten is 5,32%: dat zijn woorden die in het
  * Fries werkelijk hetzelfde zijn ("Ja", "Nee", "Titel", "Adres", "Totaal",
  * "Seed", "Mediaan"), en de vertalers is per sleutel gevraagd of dat klopte.
  * De drempel ligt er net boven, zodat een enkele nieuwe sleutel die nog
  * onvertaald binnenkomt niet meteen de build breekt, maar een terugval van
  * tientallen sleutels wel.
  */
-const MAX_IDENTICAL_SHARE = { en: 0, fy: 0.07 };
+const MAX_IDENTICAL_SHARE = { en: 0, fy: 0.06 };
 
 /** De vertaalde talen: alles behalve de bron. */
 const TRANSLATED = LOCALES.filter((l) => l.code !== 'nl');
@@ -157,12 +157,12 @@ describe('the feature flags', () => {
 describe('t', () => {
   it('returns the Dutch string by default', () => {
     expect(currentLocale()).toBe(DEFAULT_LOCALE);
-    expect(t('app.tabs.wetten')).toBe('Wetten');
+    expect(t('app.tabs.wetten')).toBe('Regelwerken');
   });
 
   it('returns the English string once switched', () => {
     setLocale('en');
-    expect(t('app.tabs.wetten')).toBe('Laws');
+    expect(t('app.tabs.wetten')).toBe('Ruleworks');
     setLocale('nl');
   });
 

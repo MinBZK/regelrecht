@@ -1,9 +1,9 @@
 ---
 title: "Law Format"
-description: "How a machine-readable law file is put together, walked through on one real article of the Wet op de zorgtoeslag."
+description: "How a rulework is put together, walked through on one real article of the Wet op de zorgtoeslag."
 ---
 
-Laws in RegelRecht are stored as YAML files that conform to the [law schema](/reference/schema). Each file holds one regulation as it reads at one point in time: the published text, article by article, and next to an article's text the logic that executes it.
+Laws in RegelRecht are stored as YAML files that conform to the [law schema](/reference/schema). Each file holds one regulation as it reads at one point in time: the published text, article by article, and next to an article's text the logic that executes it. The files of one regulation together are its rulework (Dutch: *regelwerk*), and each file is a version of it. The language they are written in is called Regelrechts.
 
 This page explains how such a file is put together and why it looks the way it does, using one real article as the thread. It does not list fields. The [Schema Reference](/reference/schema) does that, generated from the released schema, so what you read there cannot fall behind the contract. Where this page mentions a field, it links to the entry that defines it.
 
@@ -61,7 +61,7 @@ competent_authority: '#bevoegd_gezag'
 
 `regulatory_layer` decides more than it seems to. It fixes which official identifier the file must carry (a `bwb_id` for a national law, a `gemeente_code` for a municipal ordinance), and it ranks regulations when several of them fill the same delegated term. The rules per layer are in [Identifiers per regulatory layer](/reference/schema#identifiers-per-layer).
 
-`name` and `competent_authority` start with `#`. That is an internal reference: the value is computed by an output of this same law. Article 8 of the Wet op de zorgtoeslag reads "Deze wet wordt aangehaald als: Wet op de zorgtoeslag", so the law's name is itself law text, and the file says where that text is instead of copying it. The schema accepts the same form for `valid_from`, for a law whose commencement is fixed elsewhere, but the engine does not resolve it yet. The loader accepts such a file; version selection then reports that whether the law was in force on the date cannot be determined, and when two regulations on the same layer fill one open term, lex posterior refuses to compare a `#` start date (`packages/engine/src/priority.rs`). A law that has to run needs a concrete date in `valid_from`. The full list of top-level keys, and which are required, is in [The law file](/reference/schema#law-file). `competent_authority` is not among them: the schema declares it per `machine_readable` section, where it also accepts the `#` form, and at the top of a file it is tolerated but not checked. The article is the right place for it: a law grants authority article by article, not in its preamble or its title.
+`name` and `competent_authority` start with `#`. That is an internal reference: the value is computed by an output of this same law. Article 8 of the Wet op de zorgtoeslag reads "Deze wet wordt aangehaald als: Wet op de zorgtoeslag", so the law's name is itself law text, and the file says where that text is instead of copying it. The schema accepts the same form for `valid_from`, for a law whose commencement is fixed elsewhere, but the engine does not resolve it yet. The loader accepts such a file; version selection then reports that whether the law was in force on the date cannot be determined, and when two regulations on the same layer fill one open term, lex posterior refuses to compare a `#` start date (`packages/engine/src/priority.rs`). A law that has to run needs a concrete date in `valid_from`. The full list of top-level keys, and which are required, is in [The rulework](/reference/schema#law-file). `competent_authority` is not among them: the schema declares it per `machine_readable` section, where it also accepts the `#` form, and at the top of a file it is tolerated but not checked. The article is the right place for it: a law grants authority article by article, not in its preamble or its title.
 
 ### Articles
 
@@ -176,7 +176,7 @@ Article 3 does have one:
                 default: true
 ```
 
-The corpus file also puts a `legal_basis` on the action, quoting the lid it carries out ([RFC-039](/rfcs/rfc-039)); it is left out here. The sections below take this apart in reading order. Everything the section can hold is listed under [The machine_readable section](/reference/schema#machine-readable).
+The rulework in the corpus also puts a `legal_basis` on the action, quoting the lid it carries out ([RFC-039](/rfcs/rfc-039)); it is left out here. The sections below take this apart in reading order. Everything the section can hold is listed under [The machine_readable section](/reference/schema#machine-readable).
 
 ### Definitions
 

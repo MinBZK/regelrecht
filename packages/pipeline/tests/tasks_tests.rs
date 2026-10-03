@@ -1247,7 +1247,10 @@ async fn test_notify_reaped_task_jobs_creates_failed_tasks() {
         "alleen de terminale taak-flow-job krijgt een taak"
     );
     assert_eq!(open[0].task_type, "job_failed");
-    assert_eq!(open[0].title, "Conversie naar wet mislukt: beleid.pdf");
+    assert_eq!(
+        open[0].title,
+        "Conversie naar regelwerk mislukt: beleid.pdf"
+    );
     assert_eq!(open[0].traject_id, Some(traject_id));
     let payload = open[0].payload.as_ref().unwrap();
     assert_eq!(payload["traject_ref"], "testtraject-abcd1234");
@@ -1296,6 +1299,6 @@ async fn test_notify_reaped_new_law_enrich_gets_law_create_title() {
     assert_eq!(open.len(), 1);
     assert_eq!(
         open[0].title,
-        "Wet aanmaken mislukt: werkinstructie_toetsing"
+        "Regelwerk aanmaken mislukt: werkinstructie_toetsing"
     );
 }
