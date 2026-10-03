@@ -410,7 +410,7 @@ def suggest_cuts(
 # Actions the player does again in the live demo. Everything else in the log
 # (flubs, the end mark, the deck closing) is for post-processing only.
 REPLAYED = ("slide", "route", "click", "input", "change", "key", "scroll", "viewport")
-KEEP_FIELDS = ("index", "path", "target", "fx", "fy", "value", "checked", "key", "top", "left", "cx", "cy", "zoom")
+KEEP_FIELDS = ("index", "path", "target", "fx", "fy", "value", "checked", "key", "top", "left", "max", "anchor", "cx", "cy", "zoom")
 
 
 def remap_actions(track: Track, events_by_take: dict[str, list[dict]]) -> list[dict]:
@@ -448,7 +448,10 @@ def remap_actions(track: Track, events_by_take: dict[str, list[dict]]) -> list[d
             if not lower < t <= p.end:
                 continue
             at = p.out + max(0.0, t - p.start)
-            out.append({"t": round(at, 3), "type": e["type"], **{k: e[k] for k in KEEP_FIELDS if k in e}})
+            # A scroll carries where it came from, so `walkthrough anchors`
+            # can write what it measures back into the take.
+            src = {"src": [p.take, e["t"]]} if e["type"] == "scroll" else {}
+            out.append({"t": round(at, 3), "type": e["type"], **{k: e[k] for k in KEEP_FIELDS if k in e}, **src})
     # Stable: actions moved to the same moment keep their recorded order.
     out.sort(key=lambda e: e["t"])
     return out

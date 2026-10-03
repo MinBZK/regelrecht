@@ -4511,7 +4511,18 @@
      }
     ],
     "top": 2,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ │ ╟──Resolving from PARAMETERS: $BSN = 999993653",
+     "index": 0,
+     "at": 0.482
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     433188
+    ]
    },
    {
     "t": 428.712,
@@ -4524,7 +4535,18 @@
      }
     ],
     "top": 32,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ │ ╙──Computing geboortedatum",
+     "index": 0,
+     "at": 0.496
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     433345
+    ]
    },
    {
     "t": 428.863,
@@ -4537,7 +4559,18 @@
      }
     ],
     "top": 49,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ │ ╙──Computing geboortedatum",
+     "index": 0,
+     "at": 0.482
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     433496
+    ]
    },
    {
     "t": 429.837,
@@ -4550,7 +4583,18 @@
      }
     ],
     "top": 52,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ │ ├──Resolving $GEBOORTEDATUM",
+     "index": 0,
+     "at": 0.499
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     434470
+    ]
    },
    {
     "t": 429.996,
@@ -4563,7 +4607,18 @@
      }
     ],
     "top": 78,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ │ │ ├──Resolving from RESOLVED_INPUT: '2005-01-01'",
+     "index": 0,
+     "at": 0.496
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     434629
+    ]
    },
    {
     "t": 430.154,
@@ -4576,7 +4631,18 @@
      }
     ],
     "top": 109,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ │ │ └──Resolving from DATA_SOURCE: $GEBOORTEDATUM = '2005-01-01'",
+     "index": 0,
+     "at": 0.49
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     434787
+    ]
    },
    {
     "t": 430.304,
@@ -4589,7 +4655,18 @@
      }
     ],
     "top": 139,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ │ └──Result: geboortedatum = '2005-01-01'",
+     "index": 0,
+     "at": 0.484
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     434937
+    ]
    },
    {
     "t": 432.685,
@@ -4700,7 +4777,18 @@
      }
     ],
     "top": 151,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ └──Compute DATE_ADD(...) = '2025-01-31'",
+     "index": 0,
+     "at": 0.493
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     445645
+    ]
    },
    {
     "t": 441.162,
@@ -4713,7 +4801,18 @@
      }
     ],
     "top": 445,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ ║ │ ├──Compute NOT(...) = True",
+     "index": 0,
+     "at": 0.481
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     445795
+    ]
    },
    {
     "t": 441.32,
@@ -4726,7 +4825,18 @@
      }
     ],
     "top": 767,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ ║ │ ├──Resolving from RESOLVED_INPUT: None",
+     "index": 0,
+     "at": 0.483
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     445953
+    ]
    },
    {
     "t": 441.47,
@@ -4739,7 +4849,18 @@
      }
     ],
     "top": 844,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ ├──Compute AND(...) = True",
+     "index": 0,
+     "at": 0.496
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     446103
+    ]
    },
    {
     "t": 447.851,
@@ -4772,7 +4893,18 @@
      }
     ],
     "top": 864,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ├──Compute OR(...) = True",
+     "index": 0,
+     "at": 0.499
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     452495
+    ]
    },
    {
     "t": 448.012,
@@ -4785,7 +4917,18 @@
      }
     ],
     "top": 1160,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ │ └──Resolving $INRICHTING_TYPE",
+     "index": 0,
+     "at": 0.485
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     452645
+    ]
    },
    {
     "t": 448.162,
@@ -4798,7 +4941,18 @@
      }
     ],
     "top": 1461,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ╟──Resolving from CONTEXT: $REFERENCEDATE = '2025-02-01'",
+     "index": 0,
+     "at": 0.486
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     452795
+    ]
    },
    {
     "t": 448.32,
@@ -4811,7 +4965,18 @@
      }
     ],
     "top": 1542,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ │ │ ├──Resolving from RESOLVED_INPUT: 'GEEN'",
+     "index": 0,
+     "at": 0.496
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     452953
+    ]
    },
    {
     "t": 453.734,
@@ -4824,7 +4989,18 @@
      }
     ],
     "top": 1560,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ │ │ ├──Resolving from RESOLVED_INPUT: 'GEEN'",
+     "index": 0,
+     "at": 0.481
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     458367
+    ]
    },
    {
     "t": 453.891,
@@ -4837,7 +5013,18 @@
      }
     ],
     "top": 1635,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ └──DEFAULT: 0",
+     "index": 0,
+     "at": 0.496
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     458524
+    ]
    },
    {
     "t": 454.041,
@@ -4850,7 +5037,18 @@
      }
     ],
     "top": 1716,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "span",
+     "text": "Inkomstenbelasting",
+     "index": 6,
+     "at": 0.489
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     458674
+    ]
    },
    {
     "t": 454.241,
@@ -4863,7 +5061,18 @@
      }
     ],
     "top": 1761,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ ╟──HOOK: Hook PreActions on BESCHIKKING stage BESLUIT → algemene_wet_bes",
+     "index": 0,
+     "at": 0.488
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     458874
+    ]
    },
    {
     "t": 454.4,
@@ -4876,7 +5085,18 @@
      }
     ],
     "top": 1896,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ ║ │ │ ├──Resolving $SPAARGELD",
+     "index": 0,
+     "at": 0.492
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     459033
+    ]
    },
    {
     "t": 454.55,
@@ -4889,7 +5109,18 @@
      }
     ],
     "top": 2064,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ ║ │ │ ├──Resolving from RESOLVED_INPUT: 0",
+     "index": 0,
+     "at": 0.487
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     459183
+    ]
    },
    {
     "t": 454.708,
@@ -4902,7 +5133,18 @@
      }
     ],
     "top": 2147,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ ║ │ └──Resolving from DATA_SOURCE: $SCHULDEN = 0",
+     "index": 0,
+     "at": 0.495
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     459341
+    ]
    },
    {
     "t": 454.866,
@@ -4915,7 +5157,18 @@
      }
     ],
     "top": 2221,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ ╙──Computing bezwaartermijn_weken",
+     "index": 0,
+     "at": 0.491
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     459499
+    ]
    },
    {
     "t": 455.016,
@@ -4928,7 +5181,18 @@
      }
     ],
     "top": 2714,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ └──IF(took default) = 209691.78888",
+     "index": 1,
+     "at": 0.486
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     459649
+    ]
    },
    {
     "t": 455.175,
@@ -4941,7 +5205,18 @@
      }
     ],
     "top": 3047,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ │ ├──Resolving $WINST_UIT_ONDERNEMING",
+     "index": 0,
+     "at": 0.5
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     459808
+    ]
    },
    {
     "t": 455.325,
@@ -4954,7 +5229,18 @@
      }
     ],
     "top": 3193,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ │ ├──Resolving $RESULTAAT_OVERIGE_WERKZAAMHEDEN",
+     "index": 0,
+     "at": 0.494
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     459958
+    ]
    },
    {
     "t": 455.483,
@@ -4967,7 +5253,18 @@
      }
     ],
     "top": 3310,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ │ └──Resolving from DATA_SOURCE: $EIGEN_WONING = 0",
+     "index": 0,
+     "at": 0.493
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     460116
+    ]
    },
    {
     "t": 455.633,
@@ -4980,7 +5277,18 @@
      }
     ],
     "top": 3797,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ │ │ └──Resolving $ONROEREND_GOED",
+     "index": 0,
+     "at": 0.493
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     460266
+    ]
    },
    {
     "t": 455.791,
@@ -4993,7 +5301,18 @@
      }
     ],
     "top": 4130,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ │ │ ╙──Cached: wet_brp#heeft_partner: False",
+     "index": 0,
+     "at": 0.487
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     460424
+    ]
    },
    {
     "t": 455.942,
@@ -5006,7 +5325,18 @@
      }
     ],
     "top": 4276,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ │ ├──Resolving from OUTPUT: $BOX3_BEZITTINGEN = 0",
+     "index": 0,
+     "at": 0.481
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     460575
+    ]
    },
    {
     "t": 456.1,
@@ -5019,7 +5349,18 @@
      }
     ],
     "top": 4345,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ╟──Computing buitenlands_inkomen",
+     "index": 0,
+     "at": 0.482
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     460733
+    ]
    },
    {
     "t": 456.258,
@@ -5032,7 +5373,18 @@
      }
     ],
     "top": 4446,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ╟──Computing inkomen",
+     "index": 0,
+     "at": 0.494
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     460891
+    ]
    },
    {
     "t": 460.098,
@@ -5071,7 +5423,18 @@
      }
     ],
     "top": 4746,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ └──DEFAULT: 209691.78888",
+     "index": 1,
+     "at": 0.497
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     489824
+    ]
    },
    {
     "t": 485.342,
@@ -5084,7 +5447,18 @@
      }
     ],
     "top": 4720,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ └──DEFAULT: 209691.78888",
+     "index": 1,
+     "at": 0.497
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     489975
+    ]
    },
    {
     "t": 485.508,
@@ -5097,7 +5471,18 @@
      }
     ],
     "top": 4717,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ └──DEFAULT: 209691.78888",
+     "index": 1,
+     "at": 0.497
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     490141
+    ]
    },
    {
     "t": 485.665,
@@ -5110,7 +5495,18 @@
      }
     ],
     "top": 4649,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ └──Result: bezwaartermijn_weken = 6",
+     "index": 0,
+     "at": 0.499
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     490298
+    ]
    },
    {
     "t": 485.817,
@@ -5123,7 +5519,18 @@
      }
     ],
     "top": 4536,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ │ ├──Resolving from OUTPUT: $BOX3_INKOMEN = 0.0",
+     "index": 0,
+     "at": 0.496
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     490450
+    ]
    },
    {
     "t": 485.975,
@@ -5136,7 +5543,18 @@
      }
     ],
     "top": 4416,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ └──Result: buitenlands_inkomen = 0",
+     "index": 0,
+     "at": 0.5
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     490608
+    ]
    },
    {
     "t": 486.134,
@@ -5149,7 +5567,18 @@
      }
     ],
     "top": 4359,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ ├──Resolving $BUITENLANDS_INKOMEN",
+     "index": 0,
+     "at": 0.489
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     490767
+    ]
    },
    {
     "t": 486.35,
@@ -5162,7 +5591,18 @@
      }
     ],
     "top": 4338,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ╟──Computing buitenlands_inkomen",
+     "index": 0,
+     "at": 0.487
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     490983
+    ]
    },
    {
     "t": 486.5,
@@ -5175,7 +5615,18 @@
      }
     ],
     "top": 4200,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ └──Result: box3_bezittingen = 0",
+     "index": 0,
+     "at": 0.486
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     491133
+    ]
    },
    {
     "t": 486.658,
@@ -5188,7 +5639,18 @@
      }
     ],
     "top": 3980,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ │ │ └──Compute EQUALS(...) = False",
+     "index": 0,
+     "at": 0.495
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     491291
+    ]
    },
    {
     "t": 486.808,
@@ -5201,7 +5663,18 @@
      }
     ],
     "top": 3880,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ │ ├──Resolving $SCHULDEN",
+     "index": 0,
+     "at": 0.482
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     491441
+    ]
    },
    {
     "t": 487.033,
@@ -5214,7 +5687,18 @@
      }
     ],
     "top": 3849,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ │ │ └──Resolving from DATA_SOURCE: $ONROEREND_GOED = 0",
+     "index": 0,
+     "at": 0.488
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     491666
+    ]
    },
    {
     "t": 487.2,
@@ -5227,7 +5711,18 @@
      }
     ],
     "top": 3700,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ │ │ │ └──Resolving from DATA_SOURCE: $SPAARGELD = 0",
+     "index": 0,
+     "at": 0.496
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     491833
+    ]
    },
    {
     "t": 487.35,
@@ -5240,7 +5735,18 @@
      }
     ],
     "top": 3409,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ │ ├──Resolving $REGULIERE_VOORDELEN",
+     "index": 0,
+     "at": 0.488
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     491983
+    ]
    },
    {
     "t": 487.508,
@@ -5253,7 +5759,18 @@
      }
     ],
     "top": 3257,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ │ └──Resolving $EIGEN_WONING",
+     "index": 0,
+     "at": 0.498
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     492141
+    ]
    },
    {
     "t": 487.658,
@@ -5266,7 +5783,18 @@
      }
     ],
     "top": 3191,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ │ ├──Resolving $RESULTAAT_OVERIGE_WERKZAAMHEDEN",
+     "index": 0,
+     "at": 0.496
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     492291
+    ]
    },
    {
     "t": 487.825,
@@ -5279,7 +5807,18 @@
      }
     ],
     "top": 3190,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ │ ├──Resolving $RESULTAAT_OVERIGE_WERKZAAMHEDEN",
+     "index": 0,
+     "at": 0.496
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     492458
+    ]
    },
    {
     "t": 487.983,
@@ -5292,7 +5831,18 @@
      }
     ],
     "top": 3091,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ │ │ ├──Resolving from RESOLVED_INPUT: 0",
+     "index": 0,
+     "at": 0.482
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     492616
+    ]
    },
    {
     "t": 488.141,
@@ -5305,7 +5855,18 @@
      }
     ],
     "top": 2896,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ ╙──Computing motivering_vereist",
+     "index": 0,
+     "at": 0.49
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     492774
+    ]
    },
    {
     "t": 488.291,
@@ -5318,7 +5879,18 @@
      }
     ],
     "top": 2774,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ ├──Resolving $INKOMEN",
+     "index": 0,
+     "at": 0.494
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     492924
+    ]
    },
    {
     "t": 488.449,
@@ -5331,7 +5903,18 @@
      }
     ],
     "top": 2714,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ └──IF(took default) = 209691.78888",
+     "index": 1,
+     "at": 0.486
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     493082
+    ]
    },
    {
     "t": 488.616,
@@ -5344,7 +5927,18 @@
      }
     ],
     "top": 2684,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ └──DEFAULT: 209691.78888",
+     "index": 0,
+     "at": 0.492
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     493249
+    ]
    },
    {
     "t": 488.776,
@@ -5357,7 +5951,18 @@
      }
     ],
     "top": 2676,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ └──DEFAULT: 209691.78888",
+     "index": 0,
+     "at": 0.499
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     493409
+    ]
    },
    {
     "t": 492.762,
@@ -5370,7 +5975,18 @@
      }
     ],
     "top": 2675,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ └──DEFAULT: 209691.78888",
+     "index": 0,
+     "at": 0.5
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     497395
+    ]
    },
    {
     "t": 492.912,
@@ -5383,7 +5999,18 @@
      }
     ],
     "top": 2738,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ ├──CASE 0: False",
+     "index": 2,
+     "at": 0.486
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     497545
+    ]
    },
    {
     "t": 493.062,
@@ -5396,7 +6023,18 @@
      }
     ],
     "top": 2819,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "span",
+     "text": "Inkomstenbelasting",
+     "index": 7,
+     "at": 0.498
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     497695
+    ]
    },
    {
     "t": 493.22,
@@ -5409,7 +6047,18 @@
      }
     ],
     "top": 2872,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ╟──HOOK: Hook PreActions on BESCHIKKING stage BESLUIT → algemene_wet_b",
+     "index": 0,
+     "at": 0.491
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     497853
+    ]
    },
    {
     "t": 493.379,
@@ -5422,7 +6071,18 @@
      }
     ],
     "top": 2897,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ ╙──Computing motivering_vereist",
+     "index": 0,
+     "at": 0.489
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     498012
+    ]
    },
    {
     "t": 493.562,
@@ -5435,7 +6095,18 @@
      }
     ],
     "top": 2904,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ ╙──Computing motivering_vereist",
+     "index": 0,
+     "at": 0.484
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     498195
+    ]
    },
    {
     "t": 495.516,
@@ -5448,7 +6119,18 @@
      }
     ],
     "top": 2906,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ ╙──Computing motivering_vereist",
+     "index": 0,
+     "at": 0.482
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     500149
+    ]
    },
    {
     "t": 495.67,
@@ -5461,7 +6143,18 @@
      }
     ],
     "top": 3027,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ │ │ └──Resolving from DATA_SOURCE: $LOON_UIT_DIENSTBETREKKING = 7954",
+     "index": 0,
+     "at": 0.497
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     500303
+    ]
    },
    {
     "t": 495.821,
@@ -5474,7 +6167,18 @@
      }
     ],
     "top": 3212,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ │ │ ├──Resolving from RESOLVED_INPUT: 0",
+     "index": 2,
+     "at": 0.497
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     500454
+    ]
    },
    {
     "t": 495.979,
@@ -5487,7 +6191,18 @@
      }
     ],
     "top": 3301,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ │ ├──Resolving from RESOLVED_INPUT: 0",
+     "index": 0,
+     "at": 0.481
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     500612
+    ]
    },
    {
     "t": 496.137,
@@ -5500,7 +6215,18 @@
      }
     ],
     "top": 3347,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ └──Result: box1_inkomen = 79547",
+     "index": 0,
+     "at": 0.481
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     500770
+    ]
    },
    {
     "t": 496.295,
@@ -5513,7 +6239,18 @@
      }
     ],
     "top": 3410,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ │ ├──Resolving $REGULIERE_VOORDELEN",
+     "index": 0,
+     "at": 0.487
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     500928
+    ]
    },
    {
     "t": 496.446,
@@ -5526,7 +6263,18 @@
      }
     ],
     "top": 3682,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ │ │ │ ├──Resolving from RESOLVED_INPUT: 0",
+     "index": 0,
+     "at": 0.492
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     501079
+    ]
    },
    {
     "t": 496.596,
@@ -5539,7 +6287,18 @@
      }
     ],
     "top": 3823,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ │ │ ├──Resolving from RESOLVED_INPUT: 0",
+     "index": 4,
+     "at": 0.491
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     501229
+    ]
    },
    {
     "t": 496.753,
@@ -5552,7 +6311,18 @@
      }
     ],
     "top": 3892,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ │ │ ├──Resolving from RESOLVED_INPUT: 0",
+     "index": 5,
+     "at": 0.491
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     501386
+    ]
    },
    {
     "t": 496.979,
@@ -5565,7 +6335,18 @@
      }
     ],
     "top": 3929,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ │ └──IF(took default) = 5772900",
+     "index": 0,
+     "at": 0.499
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     501612
+    ]
    },
    {
     "t": 497.129,
@@ -5578,7 +6359,18 @@
      }
     ],
     "top": 4186,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ └──Result: box3_bezittingen = 0",
+     "index": 0,
+     "at": 0.498
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     501762
+    ]
    },
    {
     "t": 497.286,
@@ -5591,7 +6383,18 @@
      }
     ],
     "top": 4475,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ ├──Compute ADD(...) = 79547",
+     "index": 1,
+     "at": 0.489
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     501919
+    ]
    },
    {
     "t": 497.437,
@@ -5604,7 +6407,18 @@
      }
     ],
     "top": 4598,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ ║ └──Result: inkomen = 79547.0",
+     "index": 0,
+     "at": 0.483
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     502070
+    ]
    },
    {
     "t": 497.587,
@@ -5617,7 +6431,18 @@
      }
     ],
     "top": 4657,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ │ └──Result: bezwaartermijn_weken = 6",
+     "index": 0,
+     "at": 0.492
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     502220
+    ]
    },
    {
     "t": 497.754,
@@ -5630,7 +6455,18 @@
      }
     ],
     "top": 4687,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ │ └──Resolving from DEFINITION: $DREMPELINKOMEN_ALLEENSTAANDE = 3971900",
+     "index": 0,
+     "at": 0.486
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     502387
+    ]
    },
    {
     "t": 497.916,
@@ -5643,7 +6479,18 @@
      }
     ],
     "top": 4696,
-    "left": 0
+    "left": 0,
+    "max": 4698,
+    "anchor": {
+     "tag": "div",
+     "text": "║ ║ │ └──DEFAULT: 209691.78888",
+     "index": 1,
+     "at": 0.498
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     502549
+    ]
    },
    {
     "t": 500.905,
@@ -5960,7 +6807,18 @@
      }
     ],
     "top": 4,
-    "left": 0
+    "left": 0,
+    "max": 248,
+    "anchor": {
+     "tag": "p",
+     "text": "10 constanten",
+     "index": 0,
+     "at": 0.493
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     677004
+    ]
    },
    {
     "t": 670.828,
@@ -5973,7 +6831,18 @@
      }
     ],
     "top": 291,
-    "left": 0
+    "left": 0,
+    "max": 248,
+    "anchor": {
+     "tag": "nldd-container",
+     "text": "Regelingen waar deze wetten op steunen",
+     "index": 0,
+     "at": -0.103
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     677162
+    ]
    },
    {
     "t": 672.76,
@@ -6051,7 +6920,18 @@
      }
     ],
     "top": 305,
-    "left": 0
+    "left": 0,
+    "max": 285,
+    "anchor": {
+     "tag": "p",
+     "text": "Inkomstenbelasting",
+     "index": 0,
+     "at": 0.493
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     685140
+    ]
    },
    {
     "t": 679.832,
@@ -6085,7 +6965,18 @@
      }
     ],
     "top": 340,
-    "left": 0
+    "left": 0,
+    "max": 377,
+    "anchor": {
+     "tag": "p",
+     "text": "Kiesrecht Tweede Kamer",
+     "index": 0,
+     "at": 0.487
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     689816
+    ]
    },
    {
     "t": 683.64,
@@ -6098,7 +6989,18 @@
      }
     ],
     "top": 274,
-    "left": 0
+    "left": 0,
+    "max": 377,
+    "anchor": {
+     "tag": "nldd-container",
+     "text": "Regelingen waar deze wetten op steunen",
+     "index": 0,
+     "at": -0.125
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     689974
+    ]
    },
    {
     "t": 683.79,
@@ -6111,7 +7013,18 @@
      }
     ],
     "top": 77,
-    "left": 0
+    "left": 0,
+    "max": 377,
+    "anchor": {
+     "tag": "nldd-container",
+     "text": "Regelingen waar deze wetten op steunen",
+     "index": 0,
+     "at": 0.041
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     690124
+    ]
    },
    {
     "t": 685.587,
@@ -6124,7 +7037,18 @@
      }
     ],
     "top": 1,
-    "left": 0
+    "left": 0,
+    "max": 377,
+    "anchor": {
+     "tag": "p",
+     "text": "Bepalen kinderopvangtoeslag",
+     "index": 0,
+     "at": 0.493
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     692420
+    ]
    },
    {
     "t": 688.643,
@@ -6175,7 +7099,18 @@
      }
     ],
     "top": 340,
-    "left": 0
+    "left": 0,
+    "max": 377,
+    "anchor": {
+     "tag": "p",
+     "text": "Kiesrecht Tweede Kamer",
+     "index": 0,
+     "at": 0.487
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     700028
+    ]
    },
    {
     "t": 691.9,
@@ -6188,7 +7123,18 @@
      }
     ],
     "top": 0,
-    "left": 0
+    "left": 0,
+    "max": 377,
+    "anchor": {
+     "tag": "p",
+     "text": "Bepalen kinderopvangtoeslag",
+     "index": 0,
+     "at": 0.494
+    },
+    "src": [
+     "2026-10-03T19-38-01",
+     700186
+    ]
    },
    {
     "t": 691.9,

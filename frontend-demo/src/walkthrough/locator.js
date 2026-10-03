@@ -231,3 +231,120 @@ export function offsetIn(el, clientX, clientY) {
   if (!r.width || !r.height) return { fx: 0.5, fy: 0.5 };
   return { fx: Math.min(1, Math.max(0, (clientX - r.left) / r.width)), fy: Math.min(1, Math.max(0, (clientY - r.top) / r.height)) };
 }
+
+// ---- scroll anchors ------------------------------------------------------------------
+
+/**
+ * Every element under `root`, shadow roots included, in document order: the
+ * same order on every load, whatever the layout.
+ */
+function* deepElements(root) {
+  for (const el of root.querySelectorAll('*')) {
+    yield el;
+    if (el.shadowRoot) yield* deepElements(el.shadowRoot);
+    // A scroller inside a design-system component holds the page's content
+    // through a slot: that content is not its descendant, but it is what
+    // scrolls.
+    if (el.tagName === 'SLOT') {
+      for (const a of el.assignedElements({ flatten: true })) {
+        yield a;
+        if (a.shadowRoot) yield* deepElements(a.shadowRoot);
+        yield* deepElements(a);
+      }
+    }
+  }
+}
+
+/**
+ * The smallest element with text under `container` that crosses the line at
+ * `y`: the line of the law or the trace the presenter had in the middle. Not
+ * a hit test, which would find whatever lies on top (a dialog, a tooltip).
+ */
+function lineAt(container, y) {
+  let best = null;
+  let bestHeight = Infinity;
+  // Nothing with text across the line (a chart, an image): the nearest text.
+  let near = null;
+  let nearDist = Infinity;
+  for (const el of deepElements(container)) {
+    const r = el.getBoundingClientRect();
+    if (!r.height || !textOf(el)) continue;
+    if (r.top <= y && r.bottom > y) {
+      if (r.height < bestHeight) {
+        best = el;
+        bestHeight = r.height;
+      }
+    } else if (!best) {
+      const d = Math.min(Math.abs(r.top - y), Math.abs(r.bottom - y));
+      if (d < nearDist && r.height < 200) {
+        near = el;
+        nearDist = d;
+      }
+    }
+  }
+  return best ?? near;
+}
+
+/** The visible box of a scroller, the page itself included. */
+export function viewBox(container) {
+  if (container === document.scrollingElement || container === document.documentElement) {
+    return { top: 0, left: 0, width: window.innerWidth, height: window.innerHeight };
+  }
+  return container.getBoundingClientRect();
+}
+
+const anchorMatches = (el, a) => el.tagName.toLowerCase() === a.tag && textOf(el) === a.text;
+
+/**
+ * What is in the middle of a scroller: an element with text, which one of
+ * its kind it is under the scroller, and where it sits in the visible box.
+ *
+ * A scroll position in pixels only holds for the layout it was recorded in.
+ * On a wider or narrower screen the same text wraps differently and the
+ * same number of pixels lands somewhere else in the law. The element in the
+ * middle is what the presenter was showing; the replay brings that back to
+ * the same place, on any screen.
+ */
+export function scrollAnchor(container) {
+  const box = viewBox(container);
+  if (!box.height) return null;
+  const el = lineAt(container, box.top + box.height / 2);
+  if (!el) return null;
+  const tag = el.tagName.toLowerCase();
+  const text = textOf(el);
+  let index = 0;
+  for (const c of deepElements(container)) {
+    if (c === el) break;
+    if (anchorMatches(c, { tag, text })) index += 1;
+  }
+  const r = el.getBoundingClientRect();
+  return { tag, text, index, at: Math.round(((r.top - box.top) / box.height) * 1000) / 1000 };
+}
+
+/** The element an anchor names under `container` now, or null. */
+export function findAnchor(container, anchor) {
+  if (!anchor) return null;
+  let n = 0;
+  for (const c of deepElements(container)) {
+    if (!anchorMatches(c, anchor)) continue;
+    if (n === anchor.index) return c;
+    n += 1;
+  }
+  return null;
+}
+
+/**
+ * Where to scroll `container` to for a recorded scroll event: its anchor back
+ * where it was in the box; without one (older takes), the recorded position
+ * scaled to how far this layout can scroll; without that, the pixels.
+ */
+export function scrollTarget(container, e) {
+  const a = findAnchor(container, e.anchor);
+  if (a) {
+    const box = viewBox(container);
+    return Math.max(0, Math.round(container.scrollTop + (a.getBoundingClientRect().top - box.top) - e.anchor.at * box.height));
+  }
+  const max = container.scrollHeight - container.clientHeight;
+  if (e.max > 0 && max > 0) return Math.round(((e.top ?? 0) * max) / e.max);
+  return e.top ?? 0;
+}

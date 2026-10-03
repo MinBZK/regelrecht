@@ -19,7 +19,7 @@
  * What is typed is recorded: the replay has to type it again. It is demo
  * input in a demo with fictitious personas, said aloud in the same take.
  */
-import { actionTarget, describe, offsetIn } from './locator.js';
+import { actionTarget, describe, offsetIn, scrollAnchor } from './locator.js';
 import { graphView } from './graphBridge.js';
 
 const IGNORE = '.recorder, .deck';
@@ -69,14 +69,54 @@ export function captureActions(log) {
     log({ type: 'key', key: e.key, target: el?.nodeType === 1 && el !== document.body ? describe(el) : null });
   }
 
+  function logScroll(el) {
+    log({
+      type: 'scroll',
+      target: el === document.scrollingElement ? null : describe(el),
+      top: Math.round(el.scrollTop),
+      left: Math.round(el.scrollLeft),
+      // How far it could scroll, and what was in the middle: the replay
+      // finds the same place on a screen where the text wraps differently.
+      max: Math.round(el.scrollHeight - el.clientHeight),
+      anchor: scrollAnchor(el),
+    });
+  }
+
+  // Throttled, with the resting position always logged: a fling ends where
+  // the presenter stopped, not at the last sample before it.
+  const restScroll = new Map();
   function onScroll(e) {
     if (!e.isTrusted) return;
     const el = e.target === document ? document.scrollingElement : e.target;
     if (!el || el.nodeType !== 1 || el.closest?.(IGNORE)) return;
+    clearTimeout(restScroll.get(el));
+    restScroll.set(
+      el,
+      setTimeout(() => {
+        lastScroll.set(el, performance.now());
+        logScroll(el);
+      }, 200),
+    );
     const now = performance.now();
     if (now - (lastScroll.get(el) ?? 0) < 150) return;
     lastScroll.set(el, now);
-    log({ type: 'scroll', target: el === document.scrollingElement ? null : describe(el), top: Math.round(el.scrollTop), left: Math.round(el.scrollLeft) });
+    logScroll(el);
+  }
+
+  // A scroll event does not leave a shadow root, so the listener on the
+  // document never hears a design-system pane scroll (the law's YAML, a
+  // sheet). Whatever the presenter is about to scroll (wheel, a key, a
+  // scrollbar) is on the composed path of that gesture: listen there too.
+  const watched = new Set();
+  function watchScrollers(e) {
+    if (!e.isTrusted) return;
+    for (const n of e.composedPath?.() ?? []) {
+      if (n?.nodeType !== 1 || watched.has(n) || n.getRootNode() === document) continue;
+      if (n.scrollHeight > n.clientHeight + 1 || n.scrollWidth > n.clientWidth + 1) {
+        watched.add(n);
+        n.addEventListener('scroll', onScroll);
+      }
+    }
   }
 
   // The graph's camera: throttled, with the resting position always logged,
@@ -102,8 +142,12 @@ export function captureActions(log) {
   document.addEventListener('change', onChange, true);
   document.addEventListener('keydown', onKey, true);
   document.addEventListener('scroll', onScroll, true);
+  for (const type of ['wheel', 'keydown', 'pointerdown', 'touchstart']) document.addEventListener(type, watchScrollers, { capture: true, passive: true });
   return () => {
+    for (const type of ['wheel', 'keydown', 'pointerdown', 'touchstart']) document.removeEventListener(type, watchScrollers, { capture: true });
+    for (const n of watched) n.removeEventListener('scroll', onScroll);
     clearTimeout(pending);
+    for (const timer of restScroll.values()) clearTimeout(timer);
     graphView.onView = null;
     document.removeEventListener('click', onClick, true);
     document.removeEventListener('input', onInput, true);

@@ -24,7 +24,7 @@ import { setPersistence } from '../store/demoStore.js';
 import { localeRouteName, pageForConfigPath } from '../router.js';
 import { click, setChecked, setValue, key as pressKey, scrollTo } from './actions.js';
 import { installClock, uninstallClock } from './clock.js';
-import { resolve } from './locator.js';
+import { resolve, scrollAnchor, scrollTarget } from './locator.js';
 import { graphView, showView } from './graphBridge.js';
 import { CAPTIONS_BASE, MEDIA_BASE, chapterAt, parseVtt } from './timeline.js';
 import { resetViews } from './viewEpoch.js';
@@ -276,7 +276,11 @@ async function apply(e, { fast = false, token = seekToken } = {}) {
     }
     case 'scroll': {
       const el = e.target ? await find(e.target, { ...opts, timeout: 1000 }) : document.scrollingElement;
-      if (el && current(token)) scrollTo(el, e.top ?? 0, e.left ?? 0);
+      if (!el || !current(token)) return;
+      scrollTo(el, scrollTarget(el, e), e.left ?? 0);
+      // For `walkthrough anchors`: what an older take lacks, measured in the
+      // layout it was recorded in. Dev only.
+      if (import.meta.env.DEV) window.__rrReplay?.afterScroll?.(e, el);
       return;
     }
     default:
@@ -681,5 +685,5 @@ export function audioTime() {
 // A handle for scripted checks against the dev server (the Playwright runs
 // that verify a recording); not in the production bundle.
 if (import.meta.env.DEV && typeof window !== 'undefined') {
-  window.__rrReplay = { replay, play, pause, seek, openFaq, backToMain, deckIndex: () => ctx?.presentation?.index?.value };
+  window.__rrReplay = { replay, play, pause, seek, openFaq, backToMain, scrollAnchor, deckIndex: () => ctx?.presentation?.index?.value };
 }

@@ -29,6 +29,33 @@ describe('locator', () => {
     expect(signature(a).href).toBe('/wetten/zorgtoeslagwet');
   });
 
+  it('scrolls to the line that was in view, not to the same pixels', async () => {
+    const { scrollAnchor, findAnchor, scrollTarget } = await import('./locator.js');
+    const box = document.createElement('div');
+    for (const text of ['artikel 2', 'parameters:', '-bsn', 'parameters:', 'actions:']) {
+      const line = document.createElement('span');
+      line.textContent = text;
+      box.appendChild(line);
+    }
+    document.body.appendChild(box);
+    const lines = [...box.children];
+    // jsdom has no layout: a box 100px high, lines of 20px, the second
+    // "parameters:" across its middle.
+    box.getBoundingClientRect = () => ({ top: 0, left: 0, width: 400, height: 100, bottom: 100 });
+    lines.forEach((l, i) => (l.getBoundingClientRect = () => ({ top: i * 15 - 5, bottom: i * 15 + 15, height: 20 })));
+    lines[3].getBoundingClientRect = () => ({ top: 40, bottom: 60, height: 20 });
+    const anchor = scrollAnchor(box);
+    expect(anchor).toEqual({ tag: 'span', text: 'parameters:', index: 1, at: 0.4 });
+    expect(findAnchor(box, anchor)).toBe(lines[3]);
+    // In another layout that line sits 300px down: scroll it back to 40%.
+    lines[3].getBoundingClientRect = () => ({ top: 300 });
+    expect(scrollTarget(box, { top: 999, anchor })).toBe(260);
+    // An older take without an anchor: the position scaled to this layout.
+    Object.defineProperty(box, 'scrollHeight', { value: 1100 });
+    Object.defineProperty(box, 'clientHeight', { value: 100 });
+    expect(scrollTarget(box, { top: 250, max: 500 })).toBe(500);
+  });
+
   it('leaves out an id a component makes up on every render', () => {
     const input = document.createElement('input');
     input.id = 'nldd-field-input-3ec46f7f-58fa-4d60-9122-9bcc611bab37';

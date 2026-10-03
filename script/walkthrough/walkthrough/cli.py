@@ -13,6 +13,7 @@
     walkthrough script <take>    a draft script per slide, from what was said and done
     walkthrough voices           the voices on the ElevenLabs account (the clone's id)
     walkthrough check <take>     how a take sounds, in numbers, with a verdict per line
+    walkthrough anchors          scroll anchors for takes recorded without them (dev server on)
     walkthrough publish <tag>    the media into a GitHub release (asks first)
 
 Raw takes live in `.walkthrough/takes/<take>/` (not in git). What decides the
@@ -60,6 +61,7 @@ HERE = Path(__file__).resolve().parent
 DENOISE = ["--python", "3.11", "--with", "deepfilternet==0.5.6", "--with", "torch==2.0.1", "--with", "torchaudio==2.0.2", "--with", "numpy<2"]
 WHISPERX = ["--python", "3.12", "--with", "whisperx"]
 OPENCV = ["--with", "opencv-python-headless<5"]
+PLAYWRIGHT = ["--with", "playwright"]
 
 MAX_WIDTH = 2560
 CAM_SIZE = 480
@@ -866,6 +868,48 @@ def publish(tag: str, yes: bool) -> None:
     say(f"klaar: timeline.json wijst naar {tag}. Commit corpus/demo/walkthrough/ en de Docker-build haalt de media op.")
 
 
+def anchors(url: str) -> None:
+    """Scroll anchors for the takes in the walkthrough that lack them.
+
+    Replays the built walkthrough on the dev server, per take in the layout
+    it was recorded in, and writes what was in the middle of each scroller
+    into the take's events.json (the original is kept as events.orig.json).
+    A rebuild then carries the anchors into timeline.json.
+    """
+    timeline = read_json(CORPUS / "timeline.json")
+    if not timeline:
+        raise SystemExit("nog geen timeline.json; draai eerst `walkthrough build`")
+    tracks = [timeline["main"], *(timeline.get("faq") or [])]
+    takes = sorted({e["src"][0] for t in tracks for e in t.get("events") or [] if e.get("type") == "scroll" and e.get("src") and not e.get("anchor")})
+    # The dev server plays its own copy of the timeline; it has to be this one.
+    subprocess.run(["node", str(ROOT / "frontend-demo" / "scripts" / "copy-demo-corpus.mjs")], check=True, capture_output=True)
+    if not takes:
+        say("alle scrolls hebben al een anker")
+        return
+    for take in takes:
+        d = take_dir(take)
+        vp = (read_json(d / "meta.json", {}) or {}).get("viewport")
+        if not vp:
+            say(f"{take}: geen viewport in meta.json; overgeslagen")
+            continue
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "vp.json").write_text(json.dumps(vp))
+            say(f"{take}: ankers meten in {vp['width']}x{vp['height']} (dit duurt een paar minuten)")
+            uv_run(PLAYWRIGHT, "python", HERE / "anchors_run.py", CORPUS / "timeline.json", Path(tmp) / "vp.json", Path(tmp) / "out.json", url)
+            found = json.loads((Path(tmp) / "out.json").read_text())
+        events = read_json(d / "events.json", [])
+        if not (d / "events.orig.json").exists():
+            (d / "events.orig.json").write_text(json.dumps(events))
+        n = 0
+        for e in events:
+            hit = found.get(json.dumps([take, e["t"]])) if e.get("type") == "scroll" else None
+            if hit and hit.get("anchor"):
+                e.update(hit)
+                n += 1
+        (d / "events.json").write_text(json.dumps(events))
+        say(f"{take}: {n} scrolls met een anker; draai `just walkthrough build` opnieuw")
+
+
 def takes_in_use(cfg: dict) -> set[str]:
     """Every take the walkthrough draws on: directly, or through a script."""
     segments = list((cfg.get("main") or {}).get("segments") or [])
@@ -1005,6 +1049,8 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("voices", help="de stemmen op je ElevenLabs-account")
     p = sub.add_parser("check", help="hoe een opname klinkt, in getallen")
     p.add_argument("take", nargs="?", help="map in .walkthrough/takes (standaard: de laatste)")
+    p = sub.add_parser("anchors", help="scrollankers meten voor oudere opnames")
+    p.add_argument("--url", default="http://127.0.0.1:7400", help="de dev-server")
     p = sub.add_parser("publish", help="media in een GitHub-release zetten")
     p.add_argument("tag", help="bijvoorbeeld walkthrough-2026-10")
     p.add_argument("--yes", action="store_true", help="niet vragen")
@@ -1027,6 +1073,8 @@ def main(argv: list[str] | None = None) -> None:
         transcript(args.which)
     elif args.cmd == "build":
         build(args.release)
+    elif args.cmd == "anchors":
+        anchors(args.url)
     elif args.cmd == "export":
         export()
     elif args.cmd == "script":
