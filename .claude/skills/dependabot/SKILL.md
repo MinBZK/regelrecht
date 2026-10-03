@@ -132,25 +132,16 @@ git rev-list --count origin/<headRefName>..origin/<baseRefName>
 
 ### Step 2d: Merge the PR and Wait for Completion
 
-```bash
-gh pr merge <NUMBER> --squash --auto
-```
+`main` merges through a merge queue. Merge with the procedure in the
+`merge-train` skill, which waits on the queue entry and not on the PR state: a
+PR that drops out of the queue stays `OPEN`.
 
-Use `--squash` to keep the git history clean. Use `--auto` to let GitHub merge once all checks pass.
+Do not merge a Dependabot security update unless **Security update approved**
+is green on the commit being merged (`AGENTS.md`, "Security updates"). Report
+it and move to the next PR.
 
-**IMPORTANT: Wait until the PR is actually merged before moving to the next PR.** Merging one PR changes `main`, which makes other Dependabot PRs outdated. If you move on too early, the next PR may fail to merge or produce conflicts.
-
-Poll every **30 seconds** until the PR state is `MERGED`:
-
-```bash
-gh pr view <NUMBER> --json state --jq '.state'
-```
-
-- If state is `MERGED` → log and move to next PR
-- If state is `CLOSED` (without merge) → log warning and move to next PR
-- If after **15 minutes** (30 checks) the PR still hasn't merged → log a warning and move to next PR (auto-merge remains enabled, GitHub will handle it eventually)
-
-After confirming the merge, do a brief `sleep 10` before starting the next PR to allow GitHub to update the remaining PR branches.
+Wait until the PR is merged before starting the next one, because each merge
+changes `main` and makes the other Dependabot PRs outdated.
 
 Log: `"Merged PR #<NUMBER>: <title>"`
 

@@ -272,7 +272,7 @@ Create directories if they don't exist.
 
 ### Step 9: Validate YAML Against Schema (with repair loop)
 
-**CRITICAL**: The generated YAML MUST pass `just validate`. The schema is the single
+The generated YAML has to pass `just validate`. The schema is the single
 source of truth.
 
 ```bash

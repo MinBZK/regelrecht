@@ -55,7 +55,7 @@ The MCP tool returns:
 ### 3. Compare Figma vs Implementation
 
 1. Get component specs from Figma using node ID from `reference.md`
-2. Read the implementation file (listed in reference.md)
+2. Read the `nldd-*` component the frontend uses for it
 3. Compare:
    - Token usage (should match Figma variables)
    - Sizing (min-height, padding, gap)
@@ -128,74 +128,9 @@ Always use semantic tokens when available. Only use primitives when no semantic 
 
 ---
 
-## Storybook Integration
+## Design system components
 
-The project uses **@minbzk/storybook** web components. When implementing UI, always use these components instead of custom HTML/CSS.
-
-**Storybook Docs:** https://minbzk.github.io/storybook
-
-### Available Web Components
-
-| Component | Tag | Variants |
-|-----------|-----|----------|
-| Box | `<rr-box>` | padding, radius |
-| Button | `<rr-button>` | accent-filled, accent-outlined, accent-tinted, neutral-tinted, accent-transparent, danger-tinted; sizes: xs, s, m |
-| Checkbox | `<rr-checkbox>` | checked, indeterminate, disabled |
-| Icon Button | `<rr-icon-button>` | Same variants as Button |
-| Menu Bar | `<rr-menu-bar>` | With title, links, disabled items |
-| Radio Button | `<rr-radio-button>` | In groups |
-| Switch | `<rr-switch>` | On/off states, disabled |
-| Toggle Button | `<rr-toggle-button>` | selected states, with icons |
-| Top Navigation Bar | `<rr-top-navigation-bar>` | With logo, back button, utility menu |
-| Back Button | `<rr-back-button>` | Sub-component |
-| Logo | `<rr-logo>` | Sub-component with branding |
-| Utility Menu Bar | `<rr-utility-menu-bar>` | Search, help, settings |
-
-### Figma → Storybook Mapping
-
-When converting Figma designs to code:
-
-| Figma Component | Storybook Tag |
-|-----------------|---------------|
-| button (accent-filled) | `<rr-button variant="accent-filled">` |
-| button (accent-outlined) | `<rr-button variant="accent-outlined">` |
-| icon-button | `<rr-icon-button>` |
-| checkbox-list-cell | `<rr-checkbox>` |
-| radio-button-list-cell | `<rr-radio-button>` |
-| switch-list-cell | `<rr-switch>` |
-| toggle-button | `<rr-toggle-button>` |
-| top-navigation-bar | `<rr-top-navigation-bar>` |
-
-### Components NOT in Storybook
-
-These components don't exist in Storybook and require custom CSS:
-
-| Component | Description | Custom CSS Location |
-|-----------|-------------|---------------------|
-| List | Lists with sections, headers, chevrons | `css/components/list.css` |
-| Tabs | Tab navigation with panels | `css/components/tabs.css` |
-| Search Field | Input with search icon | Custom |
-| Split Pane Layout | Multi-column layout system | `css/layout.css` |
-| Editor Toolbar | Rich text toolbar (B, I, U, undo, redo) | `css/components/editor.css` |
-
-### Usage in HTML
-
-```html
-<!-- Import web components -->
-<script type="module" src="/main.js"></script>
-
-<!-- Use components -->
-<rr-button variant="accent-filled" size="m">Primary Button</rr-button>
-<rr-button variant="accent-outlined" size="m">Secondary Button</rr-button>
-<rr-icon-button variant="neutral-tinted" size="s">
-  <svg>...</svg>
-</rr-icon-button>
-```
-
-### Installation
-
-```bash
-npm install @minbzk/storybook
-```
-
-Requires `GITHUB_TOKEN` with `read:packages` scope for npm registry access.
+UI is built with the NLDD web components (`nldd-*`, from `@nldd/design-system`).
+The rules are in `AGENTS.md` under "Frontend / UI Components"; the nesting and
+layout patterns are in the `storybook-component-hierarchy` skill. Check an
+attribute against the package's own `.d.ts` before using it.
