@@ -188,13 +188,13 @@ pub fn decision_parameter_of(
 /// establishment or a verdict (such as on default) is not an execution: what
 /// it works out on its legal basis is exactly what it records.
 pub fn assessments(service: &LawExecutionService, article: &str, event: &Event) -> Vec<String> {
-    if event.type_ != "executogram" {
+    if event.type_ != EXECUTOGRAM {
         return Vec::new();
     }
     let Ok(a) = regulations::article(service, article) else {
         return Vec::new();
     };
-    if a.get_produces().and_then(|p| p.legal_character.as_deref()) != Some("TOETS") {
+    if a.get_produces().and_then(|p| p.legal_character.as_deref()) != Some(TOETS) {
         return Vec::new();
     }
     let grounds: Vec<regulations::LegalBasis<'_>> = event
@@ -207,12 +207,12 @@ pub fn assessments(service: &LawExecutionService, article: &str, event: &Event) 
             None => true,
             Some(l) => lb.paragraph.as_deref() == Some(l),
         };
-    // The name of a regulation as a legal_basis writes it: its id,
-    // its name, or its id in words ("Algemene wet bestuursrecht").
+    // The name of a regulation as a legal_basis writes it: its id or its
+    // name as the regulation itself states it ("Algemene wet
+    // bestuursrecht"). No guessing from the spelling.
     let names = |lb: &regelrecht_law_model::ProvisionReference, regulation: &str| {
         lb.law.as_deref().is_some_and(|w| {
             w == regulation
-                || w.to_lowercase().replace(' ', "_") == regulation
                 || service
                     .resolver()
                     .get_law(regulation)
@@ -337,24 +337,17 @@ pub fn prepare_for(
             .filter(|t| !h.outputs.contains(t))
             .collect();
     }
-    // The kind: per article with a procedure the earliest stage is the
-    // decision, every later one a follow-up.
+    // The kind: an action whose event is a decision (opens or amends) is a
+    // decision; per article with a procedure, the decision a follow-up
+    // belongs to is the one that opens (see [`decisions_per_article`]).
     let list = &mut handling.actions;
-    let mut earliest: BTreeMap<String, (usize, String)> = BTreeMap::new();
-    for h in list.iter() {
+    let earliest = decisions_per_article(list.iter().filter_map(|h| {
         let (Some(stage), Some(p)) = (&h.stage, procedure_of(service, &h.article)) else {
-            continue;
+            return None;
         };
-        let Some(i) = p.stages.iter().position(|s| &s.name == stage) else {
-            continue;
-        };
-        let e = earliest
-            .entry(h.article.clone())
-            .or_insert((i, h.name.clone()));
-        if i < e.0 {
-            *e = (i, h.name.clone());
-        }
-    }
+        let i = p.stages.iter().position(|s| &s.name == stage)?;
+        Some((h.article.as_str(), i, h.decision_role, h.name.as_str()))
+    }));
     for h in list.iter_mut() {
         let who = format!("action '{}'", h.name);
         let Some(stage) = h.stage.clone() else {
@@ -381,8 +374,10 @@ pub fn prepare_for(
             ));
             continue;
         }
-        let decision = earliest.get(&h.article).map(|(_, n)| n.clone());
-        if decision.as_deref() == Some(h.name.as_str()) {
+        let decision = earliest.get(&h.article).cloned();
+        if h.decision_role.is_some_and(Decision::is_decision)
+            || decision.as_deref() == Some(h.name.as_str())
+        {
             h.kind = ActionKind::Decision;
             h.not_yet = not_yet(service, h, p, &from_the_case);
         } else if let Some(decision) = decision {
@@ -410,6 +405,28 @@ pub fn prepare_for(
         h.types = types;
     }
     errors
+}
+
+/// Per article, the action of the decision its follow-ups belong to:
+/// `(article, stage index, decision role, action)`. An action whose event
+/// opens a decision wins over one that does not, so that an amendment
+/// declared on the same article (or at an earlier stage) never becomes the
+/// decision its follow-ups refer to; between equals the earliest stage wins,
+/// and between those the first declared.
+fn decisions_per_article<'a>(
+    actions: impl Iterator<Item = (&'a str, usize, Option<Decision>, &'a str)>,
+) -> BTreeMap<String, String> {
+    let mut best: BTreeMap<String, ((bool, usize), String)> = BTreeMap::new();
+    for (article, i, role, name) in actions {
+        let key = (role != Some(Decision::Opens), i);
+        let e = best
+            .entry(article.to_string())
+            .or_insert((key, name.to_string()));
+        if key < e.0 {
+            *e = (key, name.to_string());
+        }
+    }
+    best.into_iter().map(|(a, (_, n))| (a, n)).collect()
 }
 
 /// The kind of form field for a type from the regulation. An
@@ -461,21 +478,14 @@ pub fn set_form(d: &mut ProcessDefinition, service: &LawExecutionService, cell: 
                     .map(|r| {
                         let b = required.get(&r.name);
                         Field {
-                            name: r.name.clone(),
-                            label: b
-                                .and_then(|b| b.description.as_deref())
-                                .map(crate::origin::label_from)
-                                .unwrap_or_else(|| readable(&r.name)),
                             kind: Some(field_kind(r.req_type)),
                             unit: b.and_then(|b| b.typing.unit.clone()),
-                            options: None,
-                            columns: None,
-                            explanation: None,
-                            group: None,
-                            legal_basis: Vec::new(),
-                            optional: false,
-                            supplied: None,
-                            why: None,
+                            ..Field::new(
+                                r.name.clone(),
+                                b.and_then(|b| b.description.as_deref())
+                                    .map(crate::origin::label_from)
+                                    .unwrap_or_else(|| readable(&r.name)),
+                            )
                         }
                     })
                     .collect()
@@ -574,18 +584,11 @@ fn fact_field(
         });
     }
     Field {
-        name: key.to_string(),
-        label: readable(key),
         kind,
         unit,
-        options: None,
-        columns: None,
         explanation,
-        group: None,
         legal_basis: field_legal_basis(event, &paths, effective_at),
-        optional: false,
-        supplied: None,
-        why: None,
+        ..Field::new(key, readable(key))
     }
 }
 
@@ -805,6 +808,24 @@ articles:
         )
         .unwrap();
         assert!(assessments(&s, "testregeling_bevoegd#1", &other_paragraph).is_empty());
+    }
+
+    /// An amendment on the same article as its decision is a decision, not a
+    /// follow-up, whatever the order of declaration; follow-ups belong to the
+    /// decision that opens.
+    #[test]
+    fn a_decision_follows_from_its_role_not_from_the_order() {
+        let actions = [
+            ("w#1", 0, Some(Decision::Amends), "wijzigen"),
+            ("w#1", 0, Some(Decision::Opens), "besluiten"),
+            ("w#1", 1, Some(Decision::Follows), "bekendmaken"),
+            ("w#2", 2, None, "later"),
+            ("w#2", 1, None, "eerder"),
+        ];
+        let d = decisions_per_article(actions.into_iter());
+        assert_eq!(d.get("w#1").map(String::as_str), Some("besluiten"));
+        // Without roles: the earliest stage.
+        assert_eq!(d.get("w#2").map(String::as_str), Some("eerder"));
     }
 
     const PAYMENT_POLICY: &str = r#"

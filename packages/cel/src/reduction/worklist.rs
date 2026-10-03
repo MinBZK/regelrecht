@@ -1,18 +1,18 @@
 //! The worklist (RFC-047): the cases of the submissions in a cell on which
-//! not every requested decision has been taken yet, the applications "waarop
-//! nog niet is besloten" (DVB art. 3 lid 1). The runtime offers it for every
-//! cell with a submission, as a list lexostatus with the reduction DSL, so it
-//! goes through the same checks and the same reduction as one from
-//! `lexostatuses.yaml`; no cell defines the name itself.
+//! not every requested decision has been taken yet (in the NAPP corpus the
+//! policy calls them the applications "waarop nog niet is besloten"). The
+//! runtime offers it for every cell with a submission, as a list lexostatus
+//! with the reduction DSL, so it goes through the same checks and the same
+//! reduction as one from `lexostatuses.yaml`; no cell defines the name itself.
 //!
 //! **Which cases (per requested decision).** A case stays until every
 //! decision on the submission has been taken: the articles that name its
 //! establishing article in `decides_on` (`Event::decided_by`), or without
 //! those the articles that establish a decision (stage BESLUIT) in its
-//! chronicle. With exactly one such article (NAPP Wpp 107, the afnemer), a
-//! decision gram takes the case off: `without: {stage: BESLUIT}`. With more
-//! than one (the toeslag: the voorschot and the vaststelling) the case
-//! should leave only when each has a BESLUIT gram. The reduction DSL cannot
+//! chronicle. With exactly one such article a decision gram takes the case
+//! off: `without: {stage: BESLUIT}`. With more than one (for example an
+//! advance and a final determination) the case should leave only when each
+//! has a BESLUIT gram. The reduction DSL cannot
 //! say that (`without` is one filter, and any gram through it takes the case
 //! off), so such a worklist leaves out `without` and keeps every case: a
 //! known limitation, until the DSL can require a gram per article.
@@ -22,18 +22,20 @@
 //! cell. The filter names that event.
 //!
 //! **Columns**, derived and never configured per cell: the moment of receipt
-//! and of recording, the field of the submission the portal channel names as
+//! (`received_at`) and of recording (`recorded_at`), the field of the
+//! submission the portal channel names as
 //! `owner` (who follows the case, see [`crate::channel::owner_binding`]), and
 //! the field whose parameter has origin role `TIJDVAK` (the window of the
-//! requested decision, Awb 4:2 lid 1).
+//! requested decision, Awb 4:2 lid 1). A derived column with the name of
+//! another is an error, not a silent overwrite.
 //!
 //! **All cases.** Next to the worklist the runtime offers the list `cases`:
 //! every case of the same submission, decided or not, with the same columns
-//! and `besloten`, the date of the latest decision gram (stage BESLUIT;
+//! and `decided_at`, the date of the latest decision gram (stage BESLUIT;
 //! null without one). A chronicle without a decision event has no
-//! `besloten` column: the checks refuse a filter that selects no event. A handler reaches a decided case through it, for what
-//! follows the decision (the announcement, the payment). The name is
-//! reserved as well.
+//! `decided_at` column: the checks refuse a filter that selects no event. A
+//! handler reaches a decided case through it, for what follows the decision
+//! (the announcement, the payment). The name is reserved as well.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -53,7 +55,13 @@ pub const WORKLIST: &str = "worklist";
 pub const CASES: &str = "cases";
 
 /// The column of `cases` with the date of the decision.
-const DECIDED: &str = "besloten";
+const DECIDED: &str = "decided_at";
+
+/// The column with the moment of receipt (`effective_at`).
+const RECEIVED: &str = "received_at";
+
+/// The column with the moment of recording.
+const RECORDED: &str = "recorded_at";
 
 /// A column of the worklist beyond the moments: its name and derivation.
 pub type Column = (String, Value);
@@ -65,6 +73,13 @@ pub fn worklist(
     service: &LawExecutionService,
     date: Option<NaiveDate>,
 ) -> Result<Vec<LexostatusDefinition>, String> {
+    // A cell without a submission has no worklist, whatever its policy says.
+    if !streams
+        .iter()
+        .any(|s| s.events.iter().any(Event::is_submission))
+    {
+        return Ok(Vec::new());
+    }
     let policies = crate::policy::read(service, date)
         .map_err(|e| format!("worklist: the policy cannot be read ({})", e.join("; ")))?;
     let Some((portal, stream, event)) = submission(streams, &policies)? else {
@@ -83,17 +98,10 @@ pub fn worklist(
     if let Some(column) = window(event, service)? {
         columns.push(column);
     }
-    Ok(
-        worklist_definition(&stream.chronicle, event, streams, &columns)
-            .into_iter()
-            .chain(cases_definition(
-                &stream.chronicle,
-                event,
-                streams,
-                &columns,
-            ))
-            .collect(),
-    )
+    Ok(vec![
+        worklist_definition(&stream.chronicle, event, streams, &columns)?,
+        cases_definition(&stream.chronicle, event, streams, &columns)?,
+    ])
 }
 
 /// The portal channel (with its policy) and the submission of the worklist:
@@ -167,8 +175,8 @@ pub fn worklist_definition(
     event: &Event,
     streams: &[Stream],
     columns: &[Column],
-) -> Option<LexostatusDefinition> {
-    let mut reduction = list_reduction(chronicle, event, columns);
+) -> Result<LexostatusDefinition, String> {
+    let mut reduction = list_reduction(WORKLIST, chronicle, event, columns)?;
     if requested_decisions(chronicle, event, streams).len() == 1 {
         reduction["without"] = json!({"stage": DECISION});
     }
@@ -177,21 +185,24 @@ pub fn worklist_definition(
 
 /// Every case of the submission `event` in `chronicle`, decided or not:
 /// the columns of the worklist and, when the chronicle has a decision event,
-/// `besloten`, the date of the latest decision gram of the case (null
+/// `decided_at`, the date of the latest decision gram of the case (null
 /// without one).
 pub fn cases_definition(
     chronicle: &str,
     event: &Event,
     streams: &[Stream],
     columns: &[Column],
-) -> Option<LexostatusDefinition> {
-    let mut reduction = list_reduction(chronicle, event, columns);
+) -> Result<LexostatusDefinition, String> {
+    let mut reduction = list_reduction(CASES, chronicle, event, columns)?;
     let decides = streams
         .iter()
         .filter(|s| s.chronicle == chronicle)
         .flat_map(|s| &s.events)
         .any(|e| e.stage.as_deref() == Some(DECISION));
     if decides {
+        if reduction["derivations"].get(DECIDED).is_some() {
+            return Err(collision(CASES, DECIDED));
+        }
         reduction["derivations"][DECIDED] = json!({
         "filter": {"stage": DECISION},
         "pick": "latest",
@@ -202,26 +213,38 @@ pub fn cases_definition(
     list_definition(CASES, reduction)
 }
 
+fn collision(list: &str, column: &str) -> String {
+    format!("{list}: two columns are called '{column}'; rename the field of the submission")
+}
+
 /// A list of the cases of the submission `event`, one row per root, with
-/// the moments and `columns`.
-fn list_reduction(chronicle: &str, event: &Event, columns: &[Column]) -> Value {
+/// the moments and `columns`. Two columns with one name are an error.
+fn list_reduction(
+    list: &str,
+    chronicle: &str,
+    event: &Event,
+    columns: &[Column],
+) -> Result<Value, String> {
     let mut derivations = Map::new();
-    derivations.insert("ontvangen_op".into(), json!({"moment": "effective_at"}));
-    derivations.insert("vastgelegd_op".into(), json!({"moment": "recorded_at"}));
+    derivations.insert(RECEIVED.into(), json!({"moment": "effective_at"}));
+    derivations.insert(RECORDED.into(), json!({"moment": "recorded_at"}));
     for (name, d) in columns {
-        derivations.insert(name.clone(), d.clone());
+        if derivations.insert(name.clone(), d.clone()).is_some() {
+            return Err(collision(list, name));
+        }
     }
-    json!({
+    Ok(json!({
         "chronicle": chronicle,
         "filter": {"name": event.name},
         "group_by": "root",
         "pick": "latest",
         "derivations": derivations,
-    })
+    }))
 }
 
-fn list_definition(name: &str, reduction: Value) -> Option<LexostatusDefinition> {
-    serde_json::from_value(json!({"name": name, "inputs": [], "reduction": reduction})).ok()
+fn list_definition(name: &str, reduction: Value) -> Result<LexostatusDefinition, String> {
+    serde_json::from_value(json!({"name": name, "inputs": [], "reduction": reduction}))
+        .map_err(|e| format!("{name}: the runtime's list is not a lexostatus: {e}"))
 }
 
 /// The field of the submission whose parameter, in a regulation that takes
@@ -321,6 +344,36 @@ mod tests {
         serde_json::to_value(&d).unwrap()
     }
 
+    /// A derived column with the name of another is an error, not an
+    /// overwrite.
+    #[test]
+    fn two_columns_with_one_name_are_an_error() {
+        let s = stream(APPLICATION);
+        let f = worklist_definition(
+            "k",
+            &s.events[0],
+            std::slice::from_ref(&s),
+            &[("received_at".into(), json!({"field": "x"}))],
+        )
+        .unwrap_err();
+        assert!(f.contains("two columns are called 'received_at'"), "{f}");
+    }
+
+    /// A cell without a submission has no worklist, also when the policy
+    /// cannot be read: its policy is not the worklist's business.
+    #[test]
+    fn a_cell_without_a_submission_does_not_read_the_policy() {
+        let s = stream("  - {name: ingeschreven, intake: medewerker, legal_basis: ['r#1'], type: act, fields: {x: $external.x}}\n");
+        let mut service = LawExecutionService::new();
+        service
+            .load_law(
+                "$id: kapot_beleid\nregulatory_layer: MINISTERIELE_REGELING\npublication_date: '2025-01-01'\ncompetent_authority: {name: X}\narticles:\n  - number: '1'\n    text: x\n    machine_readable:\n      execution:\n        produces:\n          legal_character: TOETS\n          decision_type: GEEN_BESLUIT\n          extensions:\n            chronolex:\n              channels:\n                medewerker: {kind: handling, role: behandelaar, legal_basis: 'kapot_beleid#1'}\n",
+            )
+            .unwrap();
+        assert!(crate::policy::read(&service, None).is_err());
+        assert_eq!(worklist(&[s], &service, None).unwrap().len(), 0);
+    }
+
     /// The list of all cases keeps every case and adds the date of the
     /// decision, read over the whole case.
     #[test]
@@ -348,9 +401,9 @@ mod tests {
         );
         let d = &v["reduction"]["derivations"];
         let columns: Vec<&String> = d.as_object().unwrap().keys().collect();
-        assert_eq!(columns, ["besloten", "ontvangen_op", "vastgelegd_op", "x"]);
+        assert_eq!(columns, ["decided_at", "received_at", "recorded_at", "x"]);
         assert_eq!(
-            d["besloten"],
+            d["decided_at"],
             json!({"filter": {"stage": "BESLUIT"}, "pick": "latest", "moment": "effective_at", "no_gram": null})
         );
     }
@@ -372,7 +425,7 @@ mod tests {
             .unwrap()
             .keys()
             .collect();
-        assert_eq!(columns, ["ontvangen_op", "vastgelegd_op", "x"]);
+        assert_eq!(columns, ["received_at", "recorded_at", "x"]);
     }
 
     /// Without a decision in the chronicle every application is undecided;
@@ -403,7 +456,7 @@ mod tests {
         let a = def("test_afnemer");
         let d = &a["reduction"]["derivations"];
         let names: Vec<&String> = d.as_object().unwrap().keys().collect();
-        assert_eq!(names, ["kvk_nummer", "ontvangen_op", "vastgelegd_op"]);
+        assert_eq!(names, ["kvk_nummer", "received_at", "recorded_at"]);
         assert_eq!(d["kvk_nummer"]["field"], "core.signed_via.kvk_nummer");
         assert_eq!(
             a["reduction"]["filter"],
@@ -415,7 +468,7 @@ mod tests {
         let names: Vec<&String> = d.as_object().unwrap().keys().collect();
         assert_eq!(
             names,
-            ["maand", "ontvangen_op", "persoonsnummer", "vastgelegd_op"]
+            ["maand", "persoonsnummer", "received_at", "recorded_at"]
         );
         assert_eq!(d["maand"], json!({"period_of": "maand", "period": "month"}));
         assert_eq!(d["persoonsnummer"]["field"], "persoonsnummer");
@@ -426,12 +479,7 @@ mod tests {
         let names: Vec<&String> = d.as_object().unwrap().keys().collect();
         assert_eq!(
             names,
-            [
-                "aanvraagjaar",
-                "kvk_nummer",
-                "ontvangen_op",
-                "vastgelegd_op"
-            ]
+            ["aanvraagjaar", "kvk_nummer", "received_at", "recorded_at"]
         );
         assert_eq!(d["aanvraagjaar"]["field"], "content.aanvraagjaar");
         assert!(i["reduction"]["without"].is_null());
@@ -442,7 +490,7 @@ mod tests {
                 .is_none());
         }
         // The list of all cases has the columns of the worklist and
-        // `besloten`; the instantie has no decision, so no `besloten`.
+        // `decided_at`; the instantie has no decision, so no `decided_at`.
         for (cell, decides) in [
             ("test_afnemer", true),
             ("test_toeslag", true),

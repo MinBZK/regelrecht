@@ -165,6 +165,28 @@ fn without_supplier_and_not_required_is_a_warning() {
         );
 }
 
+/// A warning is about the parameter, not about the execution: two
+/// executions that ask for it give one warning. An error is per execution.
+#[test]
+fn a_warning_is_reported_once_for_every_execution() {
+    let c = consumer(
+        |t| t.replace("          - {name: bekendgemaakt, type: boolean}\n", ""),
+        |d| {
+            let actions = &mut d.handling.as_mut().unwrap().actions;
+            let mut again = actions
+                .iter()
+                .find(|a| a.name == "besluit_genomen")
+                .unwrap()
+                .clone();
+            again.name = "besluit_herzien".into();
+            actions.push(again);
+        },
+        &[],
+    );
+    assert!(c.errors.is_empty(), "{:?}", c.errors);
+    assert_eq!(c.warnings.len(), 1, "{:?}", c.warnings);
+}
+
 /// A supplier of the wrong kind is an error, and the message says
 /// where the parameter comes from now.
 #[test]
@@ -448,7 +470,7 @@ fn the_payment_example_is_missing_a_supplier() {
         );
 }
 
-/// Every output of the decision counts (RFC-043: "every outcome"), not
+/// Every output of the decision counts (RFC-048: "every outcome"), not
 /// only the first: the parameters of a second article too.
 #[test]
 fn every_output_of_the_decision_counts() {
@@ -612,7 +634,7 @@ fn the_shape_of_origins_at_load_time() {
     .unwrap();
     assert_eq!(
         validate(&law),
-        ["article 1: origins is only allowed in implementing policy (RFC-043)"]
+        ["article 1: origins is only allowed in implementing policy (RFC-048)"]
     );
     let policy: ArticleBasedLaw =
         serde_yaml_ng::from_str(&POLICY.replace("parameter: jaar", "parameter_: jaar")).unwrap();

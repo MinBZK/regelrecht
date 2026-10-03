@@ -46,7 +46,7 @@ const template = computed(() => ['90px', 'minmax(280px,1.4fr)', ...props.columns
   <nldd-table v-else-if="loaded" :columns="template" :accessible-label="title" :empty-text="empty">
     <nldd-table-row slot="header">
       <nldd-text-cell text=""></nldd-text-cell>
-      <nldd-text-cell text="Zaakkenmerk"></nldd-text-cell>
+      <nldd-text-cell text="Zaak (gram-id)"></nldd-text-cell>
       <nldd-text-cell v-for="c in columns" :key="c" :text="c"></nldd-text-cell>
     </nldd-table-row>
     <nldd-table-row v-for="r in list" :key="r.root">

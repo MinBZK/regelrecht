@@ -1,0 +1,26 @@
+---
+# invalid: a key the chronolex namespace does not know (RFC-022 §3.2)
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.8.0/schema/v0.8.0/schema.json
+$id: test_conformance_extensions_unknown_key
+regulatory_layer: WET
+publication_date: '2025-01-01'
+url: https://example.invalid/extensions
+bwb_id: BWBR0000000
+articles:
+  - number: '1'
+    url: https://example.invalid/extensions/1
+    text: De aanvraag wordt ingediend.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: TOETS
+          extensions:
+            chronolex:
+              establish:
+                - event: aanvraag_ingediend
+        output:
+          - name: ingediend
+            type: boolean
+        actions:
+          - output: ingediend
+            value: true

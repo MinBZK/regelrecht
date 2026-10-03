@@ -726,8 +726,31 @@ impl<'l, 'f> ArticleChecker<'l, 'f> {
                 }
                 info
             }
+            ActionValue::Literal(record @ Value::Object(fields)) => {
+                for field in fields.values() {
+                    self.check_record_field(field, facts);
+                }
+                Info::present(Ty::of_literal(record), "the record")
+            }
             ActionValue::Literal(value) => Info::present(Ty::of_literal(value), "the literal"),
             ActionValue::Operation(op) => self.check_operation(op, facts, slot),
+        }
+    }
+
+    /// One field of a record literal (RFC-045). The engine evaluates the
+    /// fields (`evaluate_value`): an operation-shaped field runs, a `$name`
+    /// resolves and a nested record is a record too, so each is checked here
+    /// as it runs. A list stays data and is not descended into. Fields are
+    /// untyped and may be absent, so a field is checked in a slot that allows
+    /// absence; an operation in it is still checked inside. An operation that
+    /// does not parse was already refused at load (`reject_literal_operations`).
+    fn check_record_field(&mut self, field: &Value, facts: &Facts) {
+        if crate::operations::is_operation_shaped(field) {
+            if let Ok(op) = crate::operations::parse_literal_operation(field) {
+                self.check_operation(&op, facts, ABSENCE_ALLOWED);
+            }
+        } else {
+            self.check_expr(&ActionValue::Literal(field.clone()), facts, ABSENCE_ALLOWED);
         }
     }
 
@@ -3305,6 +3328,41 @@ actions:
     }
 
     // -- environment and edge cases ---------------------------------------------
+
+    /// A record literal (RFC-045) is evaluated field by field, so its fields
+    /// are checked like any other operand: an operation-shaped field, also in
+    /// a nested record, is a checked operation, not an opaque object literal.
+    #[test]
+    fn the_fields_of_a_record_literal_are_checked() {
+        let base = r#"
+input:
+  - name: huur
+    type: amount
+    source: {}
+output:
+  - name: rij
+    type: object
+actions:
+  - output: rij
+    value:
+      bedrag: $huur
+FIELD"#;
+        let field = "      leeg: {operation: EQUALS, subject: $huur, value: null}\n";
+        assert_only(
+            &base.replace("FIELD", field),
+            Rule::N1,
+            "'huur' is not nullable",
+        );
+        let nested = "      sub:\n        leeg: {operation: EQUALS, subject: $huur, value: null}\n";
+        assert_only(
+            &base.replace("FIELD", nested),
+            Rule::N1,
+            "'huur' is not nullable",
+        );
+        // A list stays data: the checker does not descend into it.
+        assert_clean(&base.replace("FIELD", "      lijst: [1, 2]\n"));
+        assert_clean(&base.replace("FIELD", ""));
+    }
 
     #[test]
     fn a_foreach_binding_and_an_undeclared_name_make_no_claim() {

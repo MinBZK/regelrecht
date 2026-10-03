@@ -179,6 +179,8 @@ pub fn reduce_case<'g>(
     let mut state = CaseState::default();
     let mut latest: Option<(chrono::DateTime<chrono::FixedOffset>, String)> = None;
     let mut is_owner = false;
+    // Per gram id the decision (index in `state.decisions`) it is or follows.
+    let mut decision_of: BTreeMap<String, usize> = BTreeMap::new();
     for g in grams {
         if !as_of.let_through(g)? {
             continue;
@@ -193,13 +195,19 @@ pub fn reduce_case<'g>(
             latest = Some((m, g.effective_at.clone()));
         }
         // A gram with stage BESLUIT is a decision (with `amends`, an
-        // amendment); a gram that refers to a decision in the group follows
-        // it. The rest belongs to the group itself (such as the application).
+        // amendment); a gram that refers to a decision in the group, or to a
+        // gram that follows one, follows it. The rest belongs to the group
+        // itself (such as the application).
         let is_decision = g.stage.as_deref() == Some(crate::stream::DECISION);
-        let followed = state
-            .decisions
-            .iter()
-            .position(|b| g.refers_to.values().any(|d| *d == b.id));
+        let followed = g
+            .refers_to
+            .values()
+            .find_map(|d| decision_of.get(d.as_str()).copied());
+        if is_decision {
+            decision_of.insert(g.id.clone(), state.decisions.len());
+        } else if let Some(i) = followed {
+            decision_of.insert(g.id.clone(), i);
+        }
         let stages = if is_decision {
             state.decisions.push(DecisionState {
                 id: g.id.clone(),
@@ -295,6 +303,7 @@ mod tests {
             acting_actor: None,
             effective_at: effective_at.into(),
             effective_at_legal_basis: None,
+            effective_at_stated: false,
             recorded_at: "2025-03-12T10:00:00+01:00".into(),
             refers_to: BTreeMap::new(),
             stream: StreamReference {
@@ -389,6 +398,25 @@ mod tests {
         let l = s.as_lexostatus("z1", &AsOf::default()).unwrap();
         assert!(l.parameters.is_empty(), "never goes to the engine");
         assert_eq!(CaseState::out(&l).unwrap(), s);
+    }
+
+    /// A gram that refers to a gram that follows a decision (two hops, such
+    /// as a refund on a payment) follows that decision too.
+    #[test]
+    fn what_follows_a_follower_follows_the_decision() {
+        let mut z = case();
+        let mut refund = gram(
+            "terugbetaald",
+            None,
+            "2025-03-11T00:00:00+01:00",
+            json!({"bedrag": 10}),
+        );
+        refund.refers_to.insert("payment".into(), z[2].id.clone());
+        z.push(refund);
+        let s = reduce_case(&z, &AsOf::default(), None, binds)
+            .unwrap()
+            .unwrap();
+        assert_eq!(s.decisions[0].events["voorbeeldstroom/terugbetaald"], 1);
     }
 
     /// Whether someone knows the case, the cell says: a gram whose field bound

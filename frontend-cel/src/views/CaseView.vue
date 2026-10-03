@@ -15,7 +15,11 @@ import Actions from '../components/Actions.vue';
 import { valueText } from '../text.js';
 import { caseLayout, decisionHeading } from '../case.js';
 
-const props = defineProps({ root: { type: String, required: true } });
+const props = defineProps({
+  root: { type: String, required: true },
+  // The list the case was opened from, for the back button.
+  backLabel: { type: String, default: 'Werkvoorraad' },
+});
 const emit = defineEmits(['back']);
 const api = inject('api');
 
@@ -63,7 +67,7 @@ async function recorded() {
 </script>
 
 <template>
-  <nldd-button variant="neutral-transparent" start-icon="arrow-left" text="Werkvoorraad" @click="emit('back')"></nldd-button>
+  <nldd-button variant="neutral-transparent" start-icon="arrow-left" :text="backLabel" @click="emit('back')"></nldd-button>
   <nldd-spacer size="8"></nldd-spacer>
   <nldd-title size="2">
     <h1>Aanvraag {{ root }} en wat erop volgt</h1>

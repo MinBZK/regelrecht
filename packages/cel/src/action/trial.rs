@@ -172,14 +172,18 @@ async fn case_lexostatus(
     };
     match response {
         Ok(l) => Ok(l),
-        // If the definition picks a gram and there is none, it delivers nothing.
-        Err(TransportError::Response { status: 404, .. }) => Ok((
-            Lexostatus {
-                not_derived: def.reduction.derivations.keys().cloned().collect(),
-                ..Lexostatus::empty(&def.name)
-            },
-            None,
-        )),
+        // If the definition picks a gram and there is none, it delivers
+        // nothing. Any other 404 (a wrong route, an unknown lexostatus) is
+        // an error of the cell.
+        Err(TransportError::Response { status: 404, error }) if error == synthesis::NO_GRAM => {
+            Ok((
+                Lexostatus {
+                    not_derived: def.reduction.derivations.keys().cloned().collect(),
+                    ..Lexostatus::empty(&def.name)
+                },
+                None,
+            ))
+        }
         // The draft does not fit in a gram: an error in the form.
         Err(TransportError::Response { status: 400, error }) => Err(Refusal::Invalid(error)),
         Err(TransportError::Response { status: 409, error }) => Err(Refusal::Conflict(error)),
@@ -196,44 +200,70 @@ async fn case_lexostatus(
 /// for it; otherwise today. A decision thus reads the law and the cells on the day
 /// it is taken, even if the handler records it later.
 /// The third part is an objection to that moment: it lies after today (what
-/// has yet to happen is not a fact), or on a day before the latest fact of
-/// the case (a case moves forward in time). The cell refuses such a gram too;
-/// the process says so beforehand.
+/// has yet to happen is not a fact). The fourth is the form field and the
+/// day, if the form binds the moment: whether it lies before a gram it
+/// refers to follows once the decision the action acts on is known (see
+/// [`before_a_reference`]).
+#[allow(clippy::type_complexity)]
 fn reference_date(
     event: &Event,
     form: &Map<String, Value>,
     nu: &DateTime<FixedOffset>,
-    case: &CaseState,
-) -> Result<(String, String, Option<String>), Refusal> {
+) -> Result<(String, String, Option<String>, Option<(String, String)>), Refusal> {
     let bound =
         crate::stream::bound_moment(event, None, form, *nu.offset()).map_err(Refusal::Invalid)?;
     let Some((moment, b)) = bound else {
-        return Ok((date::reference_date(nu), "today".to_string(), None));
+        return Ok((date::reference_date(nu), "today".to_string(), None, None));
     };
     let path = b.source.strip_prefix("$external.").unwrap_or(&b.source);
     let day = date::reference_date(&moment);
-    let latest = case
-        .latest_effective_at
-        .as_deref()
-        .map(date::reference_date_of)
-        .transpose()
-        .map_err(Refusal::Cell)?;
-    let objection = if moment > *nu {
-        Some(format!(
-            "{path} {day} lies after today: what has yet to happen is not a fact"
-        ))
-    } else {
-        latest.filter(|l| day < *l).map(|l| {
-            format!(
-                "{path} {day} lies before the case: its latest fact holds on {l}; a case moves forward in time"
-            )
-        })
-    };
+    let objection = (moment > *nu)
+        .then(|| format!("{path} {day} lies after today: what has yet to happen is not a fact"));
     Ok((
-        day,
+        day.clone(),
         format!("{path} (effective_at, {})", b.legal_basis.join(", ")),
         objection,
+        Some((path.to_string(), day)),
     ))
+}
+
+/// The rule of the cell, said beforehand: a gram does not lie on a day before
+/// a gram it refers to (the root of the case, or the decision the action
+/// acts on); what follows moves forward in time. The cell refuses such a
+/// gram when recording (`not_for` in the cell API); a later fact of the
+/// case that the gram does not refer to does not bind it.
+async fn before_a_reference(
+    env: &Environment<'_>,
+    event: &Event,
+    root: &str,
+    decision: Option<&DecisionReference>,
+    (path, day): (&str, &str),
+) -> Result<Option<String>, Refusal> {
+    let refers_to = super::references(
+        &env.process.cell,
+        event,
+        root,
+        decision.map(|b| b.id.as_str()),
+    );
+    if refers_to.is_empty() {
+        return Ok(None);
+    }
+    let grams = cell_client::read_case(env.cell, env.process.cell.id(), root)
+        .await
+        .map_err(|f| Refusal::Cell(format!("case {root}: {f}")))?;
+    for (name, id) in &refers_to {
+        let Some(g) = grams.iter().map(|g| &g.gram).find(|g| &g.id == id) else {
+            continue;
+        };
+        let d = date::reference_date_of(&g.effective_at).map_err(Refusal::Cell)?;
+        if day < d.as_str() {
+            return Ok(Some(format!(
+                "{path} {day} lies before the gram it refers to ({name}: '{}', {d}); what follows moves forward in time",
+                g.name
+            )));
+        }
+    }
+    Ok(None)
 }
 
 /// Why an action is not taken on its own.
@@ -271,7 +301,7 @@ pub async fn trial(
         .cell
         .event(&h.record.stream, &h.record.event)
         .ok_or_else(|| Refusal::Cell(format!("action '{}': no record event", h.name)))?;
-    let (reference_date, reference_date_from, time) = reference_date(event, form, &env.now, case)?;
+    let (reference_date, reference_date_from, time, bound) = reference_date(event, form, &env.now)?;
     let mut p = TrialAction {
         action: h.name.clone(),
         kind: h.kind.clone(),
@@ -312,6 +342,13 @@ pub async fn trial(
         }
     };
     p.decision = target.and_then(reference);
+    let time = match (time, bound) {
+        (Some(t), _) => Some(t),
+        (None, Some((path, day))) => {
+            before_a_reference(env, event, root, p.decision.as_ref(), (&path, &day)).await?
+        }
+        (None, None) => None,
+    };
     if let Some(r) = already_taken(process, h, case) {
         p.reason = Some(format!("not takeable: {r}"));
         return Ok(p);
@@ -504,25 +541,25 @@ async fn at_the_case(
         .chain(h.assessments.iter())
         .map(String::as_str)
         .collect();
-    let e = crate::register::with_trial(trial_gram.into_iter().collect(), || {
-        assessment::evaluate_with_trace(
-            service,
-            &h.regulation,
-            &requested,
-            &combined.parameters,
-            &p.reference_date,
-        )
-    });
+    let e =
+        crate::register::with_trial(process.cell.id(), trial_gram.into_iter().collect(), || {
+            assessment::evaluate_with_trace(
+                service,
+                &h.regulation,
+                &requested,
+                &combined.parameters,
+                &p.reference_date,
+            )
+        });
     let complete = e.complete(&requested);
-    let mut reason = (!complete).then(|| e.reason("not takeable"));
-    if !complete {
-        // The synthesis gives its reason with its own prefix (the assessment's
-        // "not assessable"); an action replaces that prefix with its own.
-        if let Some(r) = combined.reason() {
-            let rest = r.split_once(": ").map_or(r.as_str(), |(_, rest)| rest);
-            reason = Some(format!("not takeable: {rest}"));
-        }
-    }
+    // A source that should have delivered a missing value is the reason;
+    // one that failed but delivers nothing that is missing is not.
+    let reason = (!complete).then(|| {
+        combined
+            .reason_for(env.sources, &e.missing)
+            .map(|r| format!("not takeable: {r}"))
+            .unwrap_or_else(|| e.reason("not takeable"))
+    });
     for (name, w) in e.values {
         if h.assessments.contains(&name) {
             p.assessments.insert(name, w);
@@ -644,9 +681,9 @@ fn follow_up(
                 }
             }
             Some(w) => {
-                if let Ok(v) = serde_json::to_value(w) {
-                    p.outputs.insert(u.clone(), v);
-                }
+                let v = serde_json::to_value(w)
+                    .map_err(|e| Refusal::Cell(format!("output '{u}': {e}")))?;
+                p.outputs.insert(u.clone(), v);
             }
             None => {}
         }

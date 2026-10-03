@@ -4,7 +4,7 @@
 //! The derivation (RFC-047, [`crate::derive`]) names per action an article
 //! (a regulation and outputs) and the event in which the cell records it. What
 //! an action needs and from whom follows from the
-//! stage of the event (RFC-008) and from the origin of the parameters (RFC-043).
+//! stage of the event (RFC-008) and from the origin of the parameters (RFC-048).
 //! There are three kinds ([`ActionKind`]), and the event says which:
 //!
 //! - **The decision**: the event has a stage that the procedure of the
@@ -71,7 +71,7 @@ use crate::process::Process;
 use crate::reduction::{AsOf, CaseState, DecisionState, Lexostatus};
 use crate::regulations::{self, Required, ValueType};
 use crate::rows::{self, Rows};
-use crate::stream::{Binding, Case, Decision, Event};
+use crate::stream::{Binding, Case, Decision, Event, DECRETOGRAM, EXECUTOGRAM};
 use crate::synthesis::{self, Provenance, Source, SourceResult};
 use crate::transport::{Transport, TransportError};
 
@@ -80,6 +80,9 @@ mod load;
 mod state;
 mod take;
 mod trial;
+
+/// The legal character of an assessment article (RFC-008).
+const TOETS: &str = "TOETS";
 
 // Helpers used by more than one part.
 use load::{article_with, outputs_of};

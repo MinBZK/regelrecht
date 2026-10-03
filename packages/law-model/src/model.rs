@@ -177,7 +177,7 @@ pub struct Parameter {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub legal_basis: Option<ProvisionReference>,
     /// Who supplies this parameter, per the law, with the provision that says
-    /// so (RFC-043). Metadata for a process runtime and an editor; the engine
+    /// so (RFC-048). Metadata for a process runtime and an editor; the engine
     /// does not read it. An `origin` that is not valid does not stop the law
     /// from loading: it is kept as written, and a runtime that reads it
     /// reports it with the file and the parameter.
@@ -186,7 +186,7 @@ pub struct Parameter {
 }
 
 /// A field a law declares for a process runtime and not for the engine
-/// (RFC-043): valid, or kept as written. The engine never fails to load a law
+/// (RFC-048): valid, or kept as written. The engine never fails to load a law
 /// because such a field is wrong; whoever reads it asks [`Declared::valid`]
 /// and reports the reason.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -215,7 +215,7 @@ impl<T: serde::de::DeserializeOwned> Declared<T> {
     }
 }
 
-/// Who supplies a parameter, per the law (RFC-043). Always with a
+/// Who supplies a parameter, per the law (RFC-048). Always with a
 /// `grondslag`: `<regulation>#<article>`, optionally followed by ` lid <n>`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -225,7 +225,10 @@ pub struct Origin {
     /// kept.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub register: Option<String>,
-    pub grondslag: String,
+    /// The provision that says who supplies the parameter. The YAML key is
+    /// Dutch (`grondslag`), as written in the corpus.
+    #[serde(rename = "grondslag")]
+    pub legal_basis: String,
     /// What the parameter is within the decision requested, when that matters
     /// to a process beyond who supplies it, or (`BESLUIT`) the decision
     /// already taken that the parameter is about (RFC-047).
@@ -233,7 +236,7 @@ pub struct Origin {
     pub rol: Option<OriginRole>,
 }
 
-/// The role of a parameter (RFC-043): within the decision requested
+/// The role of a parameter (RFC-048): within the decision requested
 /// (`TIJDVAK`, `GEVRAAGD_BESLUIT`), or the decision already taken that the
 /// parameter is about (`BESLUIT`, RFC-047).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -265,7 +268,7 @@ impl OriginRole {
     }
 }
 
-/// The five origins of a parameter (RFC-043).
+/// The five origins of a parameter (RFC-048).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum OriginValue {
@@ -296,7 +299,7 @@ impl OriginValue {
 }
 
 /// An implementing policy overriding the origin that a law gives one of its
-/// parameters, with the provision of the policy as `grondslag` (RFC-043).
+/// parameters, with the provision of the policy as `grondslag` (RFC-048).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OriginOverride {
@@ -410,6 +413,23 @@ pub struct Produces {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub decides_on: Option<Vec<String>>,
 }
+
+/// The legal characters of `produces.legal_character` in the schema. The
+/// model reads them as free strings; a consumer that matches on one (a hook's
+/// `decided_by`, RFC-046) checks against this list, so a typo is refused
+/// instead of matching nothing.
+pub const LEGAL_CHARACTERS: &[&str] = &[
+    "BESCHIKKING",
+    "TOETS",
+    "WAARDEBEPALING",
+    "BESLUIT_VAN_ALGEMENE_STREKKING",
+    "INFORMATIEF",
+    "RECHTSPOSITIE",
+];
+
+/// The kinds of [`Submission::kind`] and of a hook's `applies_to.submission`
+/// in the schema (RFC-046).
+pub const SUBMISSION_KINDS: &[&str] = &["AANVRAAG"];
 
 /// What an article establishes that a belanghebbende submits (RFC-046).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1321,12 +1341,51 @@ impl ExecutesKind {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Executes {
-    /// `<regulation>#<article>`, without a paragraph.
+    /// `<regulation>#<article>`, without a paragraph ([`is_article_reference`]).
+    /// Another shape makes the entry invalid: the index is keyed on the
+    /// article, so it would never be found.
+    #[serde(deserialize_with = "article_reference")]
     pub article: String,
     /// The subject of Awb 1:3 lid 4 the policy works out; absent when the
     /// policy executes the article without being a beleidsregel in that sense.
     #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<ExecutesKind>,
+}
+
+/// Whether `s` is an article reference of the schema (`articleReference`):
+/// `<regulation>#<article>`, without a paragraph. The regulation is
+/// `[a-z][a-z0-9_]*`; the article starts and ends with a letter or digit and
+/// holds only letters, digits and `:._-` in between, so no space and no
+/// ` lid <n>`.
+pub fn is_article_reference(s: &str) -> bool {
+    let Some((regulation, article)) = s.split_once('#') else {
+        return false;
+    };
+    let mut reg = regulation.chars();
+    let reg_ok = reg.next().is_some_and(|c| c.is_ascii_lowercase())
+        && reg.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_');
+    let edge = |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphanumeric());
+    let art_ok = edge(article.chars().next())
+        && edge(article.chars().last())
+        && article
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, ':' | '.' | '_' | '-'));
+    reg_ok && art_ok
+}
+
+/// Deserialize a string that must be an [`is_article_reference`].
+fn article_reference<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    if is_article_reference(&s) {
+        Ok(s)
+    } else {
+        Err(serde::de::Error::custom(format!(
+            "'{s}' is not <regulation>#<article> without a paragraph"
+        )))
+    }
 }
 
 /// Machine-readable section of an article
@@ -1367,12 +1426,12 @@ pub struct MachineReadable {
     #[serde(default)]
     pub declares: Option<Vec<Declaration>>,
     /// Origins this article (of an implementing policy) gives parameters of
-    /// another regulation, overriding what that regulation says (RFC-043).
+    /// another regulation, overriding what that regulation says (RFC-048).
     /// Each entry is kept as written when it is not valid; see [`Declared`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origins: Option<Vec<Declared<OriginOverride>>>,
     /// The articles of law this (policy) article executes, and how (RFC-047).
-    /// Metadata, like `origin` (RFC-043): an entry that is not valid does not
+    /// Metadata, like `origin` (RFC-048): an entry that is not valid does not
     /// stop the law from loading; it is kept as written, and the runtime that
     /// reads it reports it. See [`Article::get_executes`] and
     /// [`Article::get_invalid_executes`].

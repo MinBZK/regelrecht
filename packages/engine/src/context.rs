@@ -21,14 +21,19 @@
 //! # Child Context Behavior
 //!
 //! The `create_child()` method creates a child context for nested evaluation
-//! (e.g., FOREACH loops). Important: **child contexts start with an empty local scope**.
+//! (e.g., FOREACH loops). A child context **starts with a copy of its parent's
+//! local scope** (lexical scoping, RFC-045 §5, experiment A): an inner FOREACH
+//! sees the binding of the outer one, so it can join on the outer element.
 //!
-//! This is an intentional design difference from the Python implementation:
-//! - **Rust**: Clears local scope in child contexts (safer, prevents variable pollution)
-//! - **Python**: Copies local scope to child contexts (allows cross-iteration access)
+//! - A name bound in the child shadows the parent's binding of that name.
+//! - What the child binds never reaches the parent: the copy is the child's own.
+//! - Each FOREACH iteration runs in a fresh child, so nothing an iteration binds
+//!   is visible to the next.
 //!
-//! If you need to pass values between iterations, use parameters or store them
-//! in outputs rather than relying on local scope inheritance.
+//! Earlier a child started with an empty local scope. The difference shows
+//! only where a nested body names an outer loop variable: that used to fail
+//! with "Variable not found", or resolve to an output, input or parameter of
+//! the same name. RFC-045 marks the rule experimental.
 
 use crate::article::{ActionValue, CombineOp, Definition};
 use crate::config;
@@ -214,33 +219,29 @@ impl RuleContext {
 
     /// Create a child context for nested evaluation (e.g., FOREACH).
     ///
-    /// The child inherits definitions, parameters, resolved_inputs, and outputs,
-    /// but starts with an **empty local scope**. This ensures that FOREACH loop
-    /// variables from a parent context don't leak into child iterations.
+    /// The child inherits definitions, parameters, resolved_inputs and outputs,
+    /// and starts with a **copy of the parent's local scope**.
     ///
     /// # Design Note
     ///
-    /// This behavior differs from the Python implementation, which copies the
-    /// local scope to child contexts. The Rust implementation intentionally
-    /// clears local scope to:
+    /// Lexical scoping (RFC-045 §5, experiment A): an inner FOREACH can read
+    /// the element of the outer one (`$r.gebied` in the inner filter), which a
+    /// join needs. A binding in the child shadows the parent's, and the child's
+    /// bindings stay in the child, because the local scope is copied rather
+    /// than shared. A FOREACH runs each iteration in its own child, so no
+    /// binding leaks from one iteration into the next.
     ///
-    /// 1. **Prevent variable pollution**: Loop variables shouldn't accidentally
-    ///    affect nested operations
-    /// 2. **Explicit is better**: If you need values in a child context, pass
-    ///    them explicitly via parameters or outputs
-    /// 3. **Safety**: Reduces the risk of subtle bugs from shared mutable state
-    ///
-    /// If Python compatibility is required for specific use cases, pass the
-    /// needed values explicitly via parameters before evaluation.
+    /// Earlier the child started with an empty local scope. RFC-045 calls the
+    /// new rule experimental: a nested body that names an outer loop variable
+    /// now reads it, where it used to fail or fall through to an output, input
+    /// or parameter of the same name.
     pub fn create_child(&self) -> Self {
         Self {
             definitions: Rc::clone(&self.definitions),
             parameters: Rc::clone(&self.parameters),
             outputs: Rc::clone(&self.outputs),
-            // Experiment A (exp/reductie-als-engine): a child sees the locals
-            // of its parent, so an inner FOREACH can join on the outer
-            // element (`$r.gebied` inside the inner filter). Each iteration
-            // gets its own child, so nothing leaks between iterations.
+            // Lexical scope (see the Design Note): a copy, so the child can
+            // read and shadow the parent's locals without changing them.
             local: self.local.clone(),
             resolved_inputs: Rc::clone(&self.resolved_inputs),
             reference_date: self.reference_date,
@@ -877,22 +878,35 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "experiment A: FOREACH sees the outer binding"]
-    fn test_child_context_empty_local_scope() {
+    fn test_child_context_inherits_local_scope() {
         let mut ctx = make_context();
-        ctx.set_local("parent_loop_var", Value::Int(999));
-        ctx.set_local("index", Value::Int(5));
+        ctx.set_local("outer", Value::Int(999));
 
-        // Create child - should NOT inherit parent's local variables
         let child = ctx.create_child();
 
-        // Child should NOT see parent's loop variables
-        assert!(child.resolve("parent_loop_var").is_err());
-        assert!(child.resolve("index").is_err());
+        // Lexical scope: the child sees the parent's loop variable.
+        assert_eq!(child.resolve("outer").unwrap(), Value::Int(999));
+    }
 
-        // But parent should still have them
-        assert_eq!(ctx.resolve("parent_loop_var").unwrap(), Value::Int(999));
-        assert_eq!(ctx.resolve("index").unwrap(), Value::Int(5));
+    #[test]
+    fn test_child_context_shadowing_stays_in_child() {
+        let mut ctx = make_context();
+        ctx.set_local("x", Value::Int(1));
+
+        let mut child = ctx.create_child();
+        child.set_local("x", Value::Int(2));
+        child.set_local("child_only", Value::Int(3));
+
+        // The child's binding shadows the parent's ...
+        assert_eq!(child.resolve("x").unwrap(), Value::Int(2));
+        // ... and neither it nor a new binding reaches the parent.
+        assert_eq!(ctx.resolve("x").unwrap(), Value::Int(1));
+        assert!(ctx.resolve("child_only").is_err());
+
+        // A sibling child (the next iteration) starts from the parent again.
+        let sibling = ctx.create_child();
+        assert_eq!(sibling.resolve("x").unwrap(), Value::Int(1));
+        assert!(sibling.resolve("child_only").is_err());
     }
 
     // -------------------------------------------------------------------------

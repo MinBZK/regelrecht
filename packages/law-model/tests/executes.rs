@@ -62,3 +62,47 @@ fn an_entry_without_as_round_trips_without_it() {
     let out = serde_yaml_ng::to_string(&law.articles[0].get_declared_executes()[1]).unwrap();
     assert_eq!(out.trim(), "article: een_wet#2");
 }
+
+/// The schema's `articleReference`: an article, no paragraph. An entry that
+/// names a paragraph would never be found in the index (keyed on the
+/// article), so it is invalid rather than valid and silent.
+#[test]
+fn an_article_with_a_paragraph_is_invalid() {
+    let law: ArticleBasedLaw = serde_yaml_ng::from_str(
+        r#"
+$id: een_beleid
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het beleid.
+    machine_readable:
+      executes:
+        - {article: 'een_wet#1 lid 2'}
+        - {article: 'een_wet'}
+        - {article: 'Een_wet#1'}
+        - {article: 'een_wet#4:2'}
+"#,
+    )
+    .unwrap();
+    let a = &law.articles[0];
+    let valid: Vec<_> = a.get_executes().map(|e| e.article.as_str()).collect();
+    assert_eq!(valid, ["een_wet#4:2"]);
+    let invalid = a.get_invalid_executes();
+    assert_eq!(invalid.len(), 3, "{invalid:?}");
+    assert!(invalid[0].contains("<regulation>#<article>"), "{invalid:?}");
+}
+
+#[test]
+fn article_reference_follows_the_schema_pattern() {
+    use regelrecht_law_model::is_article_reference as ok;
+    assert!(ok("wet_x#1"));
+    assert!(ok("algemene_wet_bestuursrecht#4:2"));
+    assert!(!ok("kieswet#G 1"));
+    assert!(!ok("wet_x#1 lid 2"));
+    assert!(!ok("wet_x#"));
+    assert!(!ok("#1"));
+    assert!(!ok("wet_x#1-"));
+    assert!(!ok("1wet#1"));
+    assert!(!ok("wet_x#1#2"));
+}

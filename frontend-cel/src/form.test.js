@@ -4,7 +4,10 @@ import {
   fieldLabel,
   fieldText,
   getPath,
+  formUnit,
+  formValue,
   inEuros,
+  inputKind,
   isEmpty,
   options,
   setPath,
@@ -60,6 +63,34 @@ describe('external', () => {
   it('leaves out a table with only empty rows', () => {
     expect(external({ rijen: [{ a: '' }] })).toEqual({});
   });
+
+  it('gives an amount the unit of the law, also in a table column', () => {
+    const fields = [
+      { name: 'inkomen', type: 'amount', unit: 'eurocent' },
+      { name: 'kosten', type: 'table', columns: [{ id: 'bedrag', type: 'amount', unit: 'eurocent' }, { id: 'post' }] },
+    ];
+    expect(external({ inkomen: 12.5, kosten: [{ bedrag: 1.25, post: 'huur' }] }, fields)).toEqual({
+      inkomen: 1250,
+      kosten: [{ bedrag: 125, post: 'huur' }],
+    });
+  });
+});
+
+describe('inputKind and formValues', () => {
+  it('asks for an amount as a number', () => {
+    expect(inputKind({ type: 'amount' })).toBe('number');
+    expect(inputKind({ type: 'date' })).toBe('date');
+  });
+
+  it('turns values of the law into the units of the form', () => {
+    const fields = [
+      { name: 'inkomen', type: 'amount', unit: 'eurocent' },
+      { name: 'kosten', type: 'table', columns: [{ id: 'bedrag', type: 'amount', unit: 'eurocent' }] },
+    ];
+    expect(formValue(fields[0], 1250)).toBe(12.5);
+    expect(formValue(fields[1], [{ bedrag: 125 }])).toEqual([{ bedrag: 1.25 }]);
+    expect(formValue(fields[1], null)).toBe(null);
+  });
 });
 
 describe('options', () => {
@@ -96,6 +127,8 @@ describe('an amount in the unit of the regulation', () => {
     expect(fieldLabel(cent)).toBe('Bedrag (euro)');
     expect(fieldLabel({ ...cent, unit: 'punten' })).toBe('Bedrag (punten)');
     expect(fieldLabel(bare)).toBe('Bedrag');
+    expect(formUnit(cent)).toBe('euro');
+    expect(formUnit(bare)).toBe('');
   });
 
   it('converts only eurocents', () => {

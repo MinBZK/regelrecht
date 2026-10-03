@@ -1,8 +1,9 @@
 ---
 # Fictieve cel die aanvragen en het verloop van een zaak vastlegt, met een
 # lexostatus voor de inhoud van de aanvraag, een werkvoorraad en het
-# zaakverloop. Wie er handelt (portaal, synthese, besluit), staat in het
-# proces processes/afnemer/proces.yaml.
+# zaakverloop. Wie er handelt (portaal, synthese, besluit), volgt uit het
+# uitvoeringsbeleid regulation/testbeleid_afnemer en de bestanden in
+# deployment/ (RFC-047).
 id: test_afnemer
 recording_actor: test_afnemer
 streams:

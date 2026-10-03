@@ -114,7 +114,11 @@ pub(super) async fn counter_submit(
         }
     }
 
-    let mut intake = channel::intake("counter", channels.iter().copied(), Some((kid, &fields)));
+    let mut intake = channel::intake(
+        Routes::Counter.as_text(),
+        channels.iter().copied(),
+        Some((kid, &fields)),
+    );
     // What the channel of the applicant supplies (not the day of
     // submission: the application states its own date), and what a register
     // fills in beforehand.
@@ -129,7 +133,7 @@ pub(super) async fn counter_submit(
     if let Value::Object(m) = &mut intake {
         crate::gram::set_path(m, &path, Value::String(input.received_at.clone()));
         m.insert(
-            "ingevoerd_door".into(),
+            "entered_by".into(),
             json!({"role": who.role, "channel": who.channel, "identity": who.fields}),
         );
     }

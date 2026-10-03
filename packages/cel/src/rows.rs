@@ -262,11 +262,10 @@ async fn compose_row(
         };
         let delivered = match b.request(&input, as_of).await {
             Ok(l) => {
-                out.sources
-                    .push(Query::Queried(l.reduction.map(|r| r.route)));
-                let mut combined = l.parameters;
-                combined.extend(l.extra_fields);
-                combined
+                out.sources.push(Query::Queried(
+                    l.reduction.as_ref().map(|r| r.route.clone()),
+                ));
+                crate::synthesis::delivered(l)
             }
             Err(f) => {
                 let status = match f {
@@ -456,12 +455,15 @@ pub async fn apply(
 /// Checks a rows definition at load time: the table comes from one of the
 /// `own` lexostatuses (which delivers it) or from an extra field a synthesis
 /// source passes on, every column comes from only one place, a source is
-/// another cell, and every input of a source is filled. `who` is the
-/// execution (assessment or decision), `otherwise` says what another
+/// another cell, and every input of a source is filled (by something before
+/// it; a parameter by the synthesis). `who` is the
+/// execution (assessment or decision), `before` are the rows definitions of
+/// that execution that run before `r`, `otherwise` says what another
 /// lexostatus then is not.
 pub fn check(
     who: &str,
     r: &RowsDefinition,
+    before: &[RowsDefinition],
     own: &[&str],
     otherwise: &str,
     d: &ProcessDefinition,
@@ -474,6 +476,19 @@ pub fn check(
     let passed_on_field = |lexostatus: &str, field: &str| {
         d.other_sources()
             .any(|s| s.lexostatus == lexostatus && s.extra_fields.iter().any(|e| e == field))
+    };
+    // A parameter input comes from what the synthesis combines before these
+    // rows: an own lexostatus, a synthesis source, or a rows definition of
+    // the same execution that runs before it.
+    let parameter_known = |p: &str| {
+        own.iter().any(|l| {
+            cell.lexostatuses
+                .lexostatus(l)
+                .is_some_and(|l| l.reduction.derivations.contains_key(p))
+        }) || d
+            .other_sources()
+            .any(|s| s.parameters.iter().any(|x| x == p))
+            || before.iter().any(|x| x.parameter == p)
     };
     if passed_on_field(&r.table.lexostatus, &r.table.field) {
         // From a source: the synthesis checks the source itself.
@@ -504,12 +519,6 @@ pub fn check(
                 "{source_who}: a source is another cell, not the cell itself"
             ));
         }
-        for name in source.columns.values() {
-            columns
-                .entry(name)
-                .or_default()
-                .push(format!("source {}/{}", source.cell, source.lexostatus));
-        }
         for (i, v) in &source.input {
             match v {
                 RowInput::Column { column } if !columns.contains_key(column.as_str()) => {
@@ -539,8 +548,21 @@ pub fn check(
                         "{source_who}, input '{i}': lexostatus '{lexostatus}' does not deliver '{field}'"
                     ));
                 }
+                RowInput::Parameter { parameter } if !parameter_known(parameter) => {
+                    errors.push(format!(
+                        "{source_who}, input '{i}': parameter '{parameter}' comes from no own lexostatus, synthesis source or other rows"
+                    ));
+                }
                 _ => {}
             }
+        }
+        // A source's own columns count only after its inputs: an input
+        // cannot be filled by the source it is the input of.
+        for name in source.columns.values() {
+            columns
+                .entry(name)
+                .or_default()
+                .push(format!("source {}/{}", source.cell, source.lexostatus));
         }
     }
     for (name, where_) in &columns {

@@ -34,15 +34,44 @@ export function getPath(source, name) {
   return v ?? null;
 }
 
-export function external(values) {
+// `fields` (the fields of the form) gives each amount the unit of the law,
+// also in a table column; without it the values go as they are.
+export function external(values, fields = []) {
+  const byName = Object.fromEntries(fields.map((f) => [f.name, f]));
   const out = {};
   for (const [name, value] of Object.entries(values)) {
     let v = value;
-    if (Array.isArray(v)) v = v.map(cleanRow).filter((r) => Object.keys(r).length > 0);
+    const field = byName[name];
+    if (Array.isArray(v)) {
+      v = v.map(cleanRow).filter((r) => Object.keys(r).length > 0);
+      if (field) v = convertRows(field, v, toLaw);
+    } else if (field) {
+      v = toLaw(field, v);
+    }
     if (isEmpty(v)) continue;
     setPath(out, name, v);
   }
   return out;
+}
+
+// The rows of a table field, each cell converted with `convert` per column.
+function convertRows(field, rows, convert) {
+  const columns = Object.fromEntries((field.columns ?? []).map((c) => [c.id, c]));
+  return rows.map((r) =>
+    Object.fromEntries(Object.entries(r).map(([k, v]) => [k, columns[k] ? convert(columns[k], v) : v])),
+  );
+}
+
+// A value of the law (an example, what a register supplies) in the units of
+// the form, also per column of a table.
+export function formValue(field, v) {
+  if (Array.isArray(v)) return convertRows(field, v, toForm);
+  return toForm(field, v);
+}
+
+// The input an amount gets: a number, in the unit `fieldLabel` names.
+export function inputKind(field) {
+  return field.type === 'amount' ? 'number' : field.type;
 }
 
 // Options from a form are strings or {value, label}.
@@ -78,10 +107,16 @@ export function toForm(field, v) {
   return field.type === 'amount' && field.unit === 'eurocent' && typeof v === 'number' ? centsToEuros(v) : v;
 }
 
+// The unit the form asks an amount in, or '' when it names none.
+export function formUnit(field) {
+  if (inEuros(field)) return 'euro';
+  return field.type === 'amount' && field.unit ? field.unit : '';
+}
+
 // The label of a field, with the unit the form asks in.
 export function fieldLabel(field) {
-  if (inEuros(field)) return `${field.label} (euro)`;
-  return field.type === 'amount' && field.unit ? `${field.label} (${field.unit})` : field.label;
+  const unit = formUnit(field);
+  return unit ? `${field.label} (${unit})` : field.label;
 }
 
 // What the channel or a register supplies for a field (`supplied` from

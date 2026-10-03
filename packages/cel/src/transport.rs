@@ -369,6 +369,35 @@ impl Transport for Http {
     }
 }
 
+/// The largest response body a cell may send: what is larger is not read
+/// into memory.
+const MAX_BODY: usize = 64 * 1024 * 1024;
+
+/// The body of a response, at most `max` bytes; a larger body is an error.
+async fn limited_body(
+    url: &str,
+    mut resp: reqwest::Response,
+    max: usize,
+) -> Result<Vec<u8>, TransportError> {
+    let too_large =
+        || TransportError::Json(format!("{url}: the response is larger than {max} bytes"));
+    if resp.content_length().is_some_and(|n| n > max as u64) {
+        return Err(too_large());
+    }
+    let mut body = Vec::new();
+    while let Some(chunk) = resp
+        .chunk()
+        .await
+        .map_err(|e| TransportError::Unreachable(format!("{url}: {e}")))?
+    {
+        if body.len() + chunk.len() > max {
+            return Err(too_large());
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
+}
+
 impl Http {
     async fn response(
         &self,
@@ -387,10 +416,7 @@ impl Http {
             .map_err(|e| TransportError::Unreachable(format!("{url}: {e}")))?;
         let status = StatusCode::from_u16(resp.status().as_u16())
             .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-        let body = resp
-            .bytes()
-            .await
-            .map_err(|e| TransportError::Unreachable(format!("{url}: {e}")))?;
+        let body = limited_body(url, resp, MAX_BODY).await?;
         if !status.is_success() {
             return Err(error_text(status, &body));
         }
@@ -500,6 +526,27 @@ mod tests {
                 status: 404,
                 error: "weg".into()
             }
+        );
+    }
+
+    /// A body larger than the limit is not read into memory, whether or not
+    /// the cell says its length beforehand.
+    #[tokio::test]
+    async fn a_body_over_the_limit_is_an_error() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, router()).await });
+        let url = format!("http://{address}/goed");
+        let body = limited_body(&url, reqwest::get(&url).await.unwrap(), 100)
+            .await
+            .unwrap();
+        assert_eq!(body, br#"{"a":1}"#);
+        let f = limited_body(&url, reqwest::get(&url).await.unwrap(), 4)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(&f, TransportError::Json(r) if r.contains("larger than 4 bytes")),
+            "{f:?}"
         );
     }
 

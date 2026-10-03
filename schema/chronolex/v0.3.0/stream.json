@@ -164,7 +164,7 @@
         },
         "effective_at": {
           "type": "object",
-          "description": "Binds the gram's effective_at (when the fact legally applies or took place) to a submitted value: a date (YYYY-MM-DD, the start of that day) or a moment with a time zone. This way the stream says, per event, who supplies the legal moment. To $external: the acting actor, as part of the act (the date of a decision, the day of notification under Awb 3:41, the day of payment). To $intake: the intake channel, when the submitter may not choose the moment themselves (the counter sets a date stamp, not the aanvrager). Always with a legal_basis, and within limits: not later than the recording, and for a gram that follows a case not on a day before the latest effective_at in that case; otherwise the cell rejects it. If the value is absent, effective_at is the moment of recording (recorded_at). Without this binding that is always the case. With establishes the law says which moment counts and the runtime derives the binding: a parameter or a field of the event binds to itself, a moment without either (the receipt, Awb 4:13) to $intake.received_at, which the counter supplies and the portal does not (then it is the moment of recording).",
+          "description": "Binds the gram's effective_at (when the fact legally applies or took place) to a submitted value: a date (YYYY-MM-DD, the start of that day) or a moment with a time zone. This way the stream says, per event, who supplies the legal moment. To $external: the acting actor, as part of the act (the date of a decision, the day of notification under Awb 3:41, the day of payment). To $intake: the intake channel, when the submitter may not choose the moment themselves (the counter sets a date stamp, not the aanvrager). Without establishes always with a source and a legal_basis; with establishes the law gives them. Within limits: not later than the recording, and not on a day before the effective_at of a gram it refers to; otherwise the cell rejects it. If the value is absent, effective_at is the moment of recording (recorded_at). Without this binding that is always the case. With establishes the law says which moment counts and the runtime derives the binding: a parameter or a field of the event binds to itself, a moment without either (the receipt, Awb 4:13) to $intake.received_at, which the counter supplies and the portal does not (then it is the moment of recording).",
           "required": [],
           "additionalProperties": false,
           "properties": {
@@ -236,7 +236,15 @@
           "then": {
             "required": [
               "fields"
-            ]
+            ],
+            "properties": {
+              "effective_at": {
+                "required": [
+                  "source",
+                  "legal_basis"
+                ]
+              }
+            }
           }
         }
       ]

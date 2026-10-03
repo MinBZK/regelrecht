@@ -1,5 +1,5 @@
 //! Who supplies a parameter, according to the law: `origin` on a parameter and
-//! `origins` in implementing policy (RFC-043).
+//! `origins` in implementing policy (RFC-048).
 //!
 //! The law gives the origin of each parameter with a legal basis. Implementing
 //! policy of the process's actor can override it. At startup the
@@ -80,7 +80,7 @@ impl InForce {
         if let Some(r) = self.origin.rol {
             s.push_str(&format!(", rol {}", r.as_str()));
         }
-        s.push_str(&format!(", grondslag {}", self.origin.grondslag));
+        s.push_str(&format!(", grondslag {}", self.origin.legal_basis));
         if let Some(b) = &self.policy {
             s.push_str(&format!(", from {b}"));
         }

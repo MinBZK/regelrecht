@@ -141,7 +141,7 @@ beperken."
   van haar eigen wet, en in de proof of concept een verzonnen startstand, met
   gegevens die het echte register misschien niet heeft (gemarkeerd als
   aangevuld). De regeling zegt met `origin: REGISTER` alleen onder welke wet het
-  register wordt bijgehouden (RFC-043), niet welke cel het is. Wie bepaalt dan
+  register wordt bijgehouden (RFC-048), niet welke cel het is. Wie bepaalt dan
   wat zo'n registercel vastlegt en aanbiedt: de houder, de wet van het
   register, of de afnemer die haar nodig heeft?
 
@@ -267,7 +267,7 @@ behoudt één tijdsas.
 
 ## Zelf besloten, ter bevestiging
 
-Deze keuzes hebben we gemaakt en gebouwd. Ze staan in RFC-043, RFC-044 en de
+Deze keuzes hebben we gemaakt en gebouwd. Ze staan in RFC-048, RFC-044 en de
 docs van de cel. We leggen ze voor om te horen of ze in de geest van de paper
 zijn, niet om er lang over te praten.
 
@@ -275,7 +275,7 @@ zijn, niet om er lang over te praten.
   proces informeert, concludeert en laat vastleggen ("reductie vindt altijd
   plaats ín de cel", "synthese gebeurt bij de afnemer").
 - **De wet noemt geen cel.** Een regeling zegt per parameter wie hem levert en
-  onder welke regeling een register wordt bijgehouden (`origin`, RFC-043). Welke
+  onder welke regeling een register wordt bijgehouden (`origin`, RFC-048). Welke
   cel dat register bijhoudt, is configuratie van het proces.
 - **Twee tijden per gram.** `op_moment` (wanneer het feit rechtens geldt) en
   `vastgelegd_op` (wanneer de cel het vastlegde), met peilen op beide: het

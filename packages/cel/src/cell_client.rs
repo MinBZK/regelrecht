@@ -88,7 +88,7 @@ pub struct TrialReduction {
 
 /// A route of a cell.
 pub fn cell_path(cell: &str, route: &str) -> String {
-    format!("/cells/{cell}/api/{route}")
+    format!("/cells/{}/api/{route}", url_segment(cell))
 }
 
 fn read<T: DeserializeOwned>(v: Value, what: &str) -> Result<T, TransportError> {
@@ -108,7 +108,9 @@ pub async fn read_case(
     id: &str,
     root: &str,
 ) -> Result<Vec<WithYaml>, TransportError> {
-    let v = cell.fetch(&cell_path(id, &format!("cases/{root}"))).await?;
+    let v = cell
+        .fetch(&cell_path(id, &format!("cases/{}", url_segment(root))))
+        .await?;
     read(
         v,
         &format!("the cell gave no list of grams for root {root}"),
@@ -226,5 +228,14 @@ mod tests {
             matches!(&error, TransportError::Json(r) if r.contains("unreadable")),
             "{error:?}"
         );
+    }
+
+    /// A root and a cell are path segments: what is not safe in one is
+    /// encoded, so a root cannot reach another route.
+    #[tokio::test]
+    async fn a_root_is_one_path_segment() {
+        let t = crate::transport::trial::Fixed::new(Ok(json!([])));
+        read_case(&t, "c/d", "../grams?x=1").await.unwrap();
+        assert_eq!(t.ask(), ["/cells/c%2Fd/api/cases/..%2Fgrams%3Fx%3D1"]);
     }
 }

@@ -142,7 +142,7 @@ pub async fn take(
     // The legal character and the regulation belong to a decision (a
     // decretogram); input and receipt to every action the engine
     // computed.
-    let decretogram = event.type_ == "decretogram";
+    let decretogram = event.type_ == DECRETOGRAM;
     let article = regulations::article(service, &h.article).map_err(Refusal::Cell)?;
     let produces = article
         .get_execution_spec()

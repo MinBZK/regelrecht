@@ -17,7 +17,7 @@
     :accessible-label="label"
     @click="open = true"
   >
-    <img v-if="!icon" slot="icon" :src="icoon" alt="" width="20" height="20" />
+    <img v-if="!icon" slot="icon" :src="regelrechtIcon" alt="" width="20" height="20" />
   </nldd-icon-button>
   <nldd-sheet
     ref="sheetEl"
@@ -30,9 +30,9 @@
       <nldd-container padding="24" gap="16">
         <nldd-title :size="3">
           <span slot="overline">{{ overline }}</span>
-          <h2>{{ titel }}</h2>
+          <h2>{{ title }}</h2>
         </nldd-title>
-        <nldd-rich-text v-if="toelichting"><p>{{ toelichting }}</p></nldd-rich-text>
+        <nldd-rich-text v-if="description"><p>{{ description }}</p></nldd-rich-text>
         <template v-if="slots.default">
           <slot></slot>
           <nldd-title v-if="showTrace" :size="4"><h3>Trace van de engine</h3></nldd-title>
@@ -49,14 +49,16 @@
 
 <script setup>
 import { computed, nextTick, ref, useSlots, watch } from 'vue';
-import icoon from '../assets/regelrecht-icon.svg';
+import regelrechtIcon from '../assets/regelrecht-icon.svg';
 
 const props = defineProps({
   // De trace van de engine als tekst (`render_box_drawing`), zoals de
   // editor hem toont.
   traceText: { type: String, default: null },
-  titel: { type: String, required: true },
-  toelichting: { type: String, default: '' },
+  // Props in het Engels, zoals de rest van de code (componentnamen in
+  // deze map zijn nog Nederlands).
+  title: { type: String, required: true },
+  description: { type: String, default: '' },
   // Een NLDD-icoonnaam; zonder: het RegelRecht-icoon.
   icon: { type: String, default: '' },
   // De toegankelijke naam van knop en sheet; zonder: "Hoe dit is berekend".
@@ -69,7 +71,7 @@ const props = defineProps({
 });
 
 const slots = useSlots();
-const label = computed(() => props.accessibleLabel || `Hoe dit is berekend: ${props.titel}`);
+const label = computed(() => props.accessibleLabel || `Hoe dit is berekend: ${props.title}`);
 
 const open = ref(false);
 const sheetEl = ref(null);

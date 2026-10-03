@@ -153,18 +153,18 @@ impl Derivation {
             Derivation::Sum { sum, .. } => {
                 let (mut whole, mut real, mut only_whole) = (0_i64, 0.0_f64, true);
                 for g in &passed {
-                    match g.field(sum) {
-                        None | Some(Value::Null) => {}
-                        Some(Value::Number(n)) => {
-                            match n.as_i64() {
-                                Some(i) => whole = whole.saturating_add(i),
-                                None => only_whole = false,
-                            }
-                            real += n.as_f64().unwrap_or(0.0);
+                    let Some(n) = number_in(sum, g.field(sum))? else {
+                        continue;
+                    };
+                    match n.as_i64() {
+                        Some(i) => {
+                            whole = whole
+                                .checked_add(i)
+                                .ok_or_else(|| format!("sum of '{sum}': too large"))?
                         }
-                        // Not a number: the sum cannot be derived.
-                        Some(_) => return Ok(None),
+                        None => only_whole = false,
                     }
+                    real += n.as_f64().unwrap_or(0.0);
                 }
                 if only_whole {
                     Some(Value::from(whole))
@@ -240,28 +240,58 @@ fn date_in(path: &str, value: Option<&Value>) -> Result<Option<chrono::NaiveDate
     }
 }
 
+/// A number in the field `path`, `None` if it is empty; anything else is an
+/// error, like a date that is not a date.
+fn number_in<'v>(
+    path: &str,
+    value: Option<&'v Value>,
+) -> Result<Option<&'v serde_json::Number>, String> {
+    match value {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Number(n)) => Ok(Some(n)),
+        Some(w) => Err(format!("field '{path}': {w} is not a number")),
+    }
+}
+
 /// Whether every field of a gram that a lexostatus of its chronicle reads as a
-/// date (`year_of`, `period_of`) is a date or empty. A chronicle is not
-/// rewritten: such a gram would make every reduction over that chronicle
-/// fail, so the cell refuses it when recording.
-pub fn dates_in_order<'d>(
+/// date (`year_of`, `period_of`) is a date or empty, and every field it sums
+/// a number or empty. A chronicle is not rewritten: such a gram would make
+/// every reduction over that chronicle fail, so the cell refuses it when
+/// recording. Only a gram the reduction can read counts: one through the
+/// filter of the lexostatus for a derivation on the chosen gram, through the
+/// filter of the derivation for one over a collection (and, outside a list,
+/// through the filter of the lexostatus as well).
+pub fn fields_in_order<'d>(
     definitions: impl IntoIterator<Item = &'d LexostatusDefinition>,
     gram: &Gram,
 ) -> Result<(), String> {
     for def in definitions {
-        if def.reduction.chronicle != gram.chronicle {
+        let r = &def.reduction;
+        if r.chronicle != gram.chronicle {
             continue;
         }
+        let through_own = may_fit(&r.filter, gram)?;
         for (name, a) in def.all_derivations() {
-            let path = match &a.derivation {
-                Derivation::YearOf { year_of } | Derivation::LatestYearOf { year_of, .. } => {
-                    year_of
+            let read = match a.derivation.filter() {
+                None => through_own,
+                Some(f) => (def.is_list() || through_own) && may_fit(f, gram)?,
+            };
+            if !read {
+                continue;
+            }
+            let in_order = match &a.derivation {
+                Derivation::YearOf { year_of: path }
+                | Derivation::LatestYearOf { year_of: path, .. }
+                | Derivation::PeriodOf {
+                    period_of: path, ..
                 }
-                Derivation::PeriodOf { period_of, .. }
-                | Derivation::LatestPeriodOf { period_of, .. } => period_of,
+                | Derivation::LatestPeriodOf {
+                    period_of: path, ..
+                } => date_in(path, gram.field(path)).map(|_| ()),
+                Derivation::Sum { sum: path, .. } => number_in(path, gram.field(path)).map(|_| ()),
                 _ => continue,
             };
-            date_in(path, gram.field(path))
+            in_order
                 .map_err(|f| format!("{f} (lexostatus '{}' derives '{name}' from it)", def.name))?;
         }
     }
@@ -440,6 +470,17 @@ pub fn absent(
         })
         .map(|(name, _)| name.clone())
         .collect()
+}
+
+/// Whether a gram may pass the filter when the inputs are not known yet, as
+/// when recording: a value `$x` may fit any gram, the rest must.
+fn may_fit(filter: &Filter, gram: &Gram) -> Result<bool, String> {
+    let known: Filter = filter
+        .iter()
+        .filter(|(_, v)| !v.starts_with('$'))
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    fits(&known, &Map::new(), gram)
 }
 
 /// Whether a gram passes the filter. A value `$x` comes from the inputs.
@@ -697,6 +738,7 @@ mod tests {
             acting_actor: None,
             effective_at: moment.into(),
             effective_at_legal_basis: None,
+            effective_at_stated: false,
             recorded_at: moment.into(),
             refers_to: BTreeMap::new(),
             stream: StreamReference {
@@ -1067,14 +1109,43 @@ mod tests {
         )
         .unwrap();
         let g = |f: Value| gram(CASE, "2025-03-01T09:00:00+01:00", f);
-        dates_in_order([&def], &g(json!({"a": {"datum": "2025-03-01"}}))).unwrap();
-        dates_in_order([&def], &g(json!({"a": {"datum": null}, "b": "geen datum"}))).unwrap();
-        let error = dates_in_order([&def], &g(json!({"a": {"datum": "morgen"}}))).unwrap_err();
+        fields_in_order([&def], &g(json!({"a": {"datum": "2025-03-01"}}))).unwrap();
+        fields_in_order([&def], &g(json!({"a": {"datum": null}, "b": "geen datum"}))).unwrap();
+        let error = fields_in_order([&def], &g(json!({"a": {"datum": "morgen"}}))).unwrap_err();
         assert!(error.contains("'morgen' is not a date"), "{error}");
         assert!(error.contains("lexostatus 'l'"), "{error}");
         let mut other = g(json!({"a": {"datum": "morgen"}}));
         other.chronicle = "andere_kroniek".into();
-        dates_in_order([&def], &other).unwrap();
+        fields_in_order([&def], &other).unwrap();
+    }
+
+    /// Only a gram the reduction can read is checked: one through the filter
+    /// of the lexostatus (a derivation on the chosen gram) or through the
+    /// filter of the derivation (over a collection). A field with the same
+    /// name on another event is no business of this lexostatus. A filter
+    /// value from the inputs is not known when recording: it may fit.
+    #[test]
+    fn only_a_gram_the_reduction_reads_is_checked() {
+        let def: LexostatusDefinition = serde_yaml_ng::from_str(
+            "name: l\ninputs: [{name: root, type: string}]\nreduction:\n  chronicle: test_kroniek\n  filter: {name: betaald, root: $root}\n  pick: latest\n  derivations:\n    jaar: {year_of: datum}\n    totaal: {sum: bedrag, filter: {name: betaald}}\n",
+        )
+        .unwrap();
+        let g = |name: &str, f: Value| {
+            let mut g = gram(CASE, "2025-03-01T09:00:00+01:00", f);
+            g.name = name.into();
+            g
+        };
+        // Another event with a text in the same fields: not read.
+        fields_in_order(
+            [&def],
+            &g("notitie", json!({"datum": "morgen", "bedrag": "veel"})),
+        )
+        .unwrap();
+        // The event the reduction reads: checked, despite `$root`.
+        let error = fields_in_order([&def], &g("betaald", json!({"datum": "morgen"}))).unwrap_err();
+        assert!(error.contains("'morgen' is not a date"), "{error}");
+        let error = fields_in_order([&def], &g("betaald", json!({"bedrag": "veel"}))).unwrap_err();
+        assert!(error.contains("is not a number"), "{error}");
     }
 
     /// Every key of the gram itself has a value in `Gram::attribute`; any
@@ -1241,14 +1312,24 @@ mod tests {
     }
 
     #[test]
-    fn sum_without_number_cannot_be_derived() {
+    fn a_sum_over_what_is_not_a_number_is_an_error() {
         let a = der("{filter: {name: uitslag_vastgesteld}, sum: zetels}");
         let g = decision(
             "uitslag_vastgesteld",
             "2024-03-20T09:00:00+01:00",
             json!({"zetels": "vier"}),
         );
-        assert_eq!(a.apply_at_collection(&Map::new(), &[&g]).unwrap(), None);
+        let f = a.apply_at_collection(&Map::new(), &[&g]).unwrap_err();
+        assert!(f.contains("is not a number"), "{f}");
+        let big = decision(
+            "uitslag_vastgesteld",
+            "2024-03-20T09:00:00+01:00",
+            json!({"zetels": i64::MAX}),
+        );
+        let f = a
+            .apply_at_collection(&Map::new(), &[&big, &big])
+            .unwrap_err();
+        assert!(f.contains("too large"), "{f}");
         let h = decision(
             "uitslag_vastgesteld",
             "2024-03-20T09:00:00+01:00",

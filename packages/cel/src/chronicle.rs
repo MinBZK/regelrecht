@@ -18,7 +18,7 @@
 //! it is not a write error but a broken chronicle, and then the chronicle does
 //! not open.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::OpenOptions;
 use std::io::{Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
@@ -298,6 +298,16 @@ impl Chronicle {
             new.push((k.to_string(), length, grams));
         }
         let mut state = self.write_state();
+        // A duplicate id refuses the whole load before anything changes: a
+        // retry must not find half of it in memory.
+        let mut seen: HashSet<&str> = HashSet::new();
+        for (k, _, grams) in &new {
+            for g in grams {
+                if state.per_id.contains_key(&g.id) || !seen.insert(g.id.as_str()) {
+                    return Err(format!("chronicle '{k}': id {} occurs twice", g.id));
+                }
+            }
+        }
         // The roots, in rounds: a gram can refer to a gram that comes later in
         // the list (another chronicle).
         let mut known: HashMap<String, String> = HashMap::new();
@@ -326,9 +336,6 @@ impl Chronicle {
                 if g.root.is_none() {
                     loose += 1;
                     g.root = Some(g.id.clone());
-                }
-                if state.per_id.contains_key(&g.id) {
-                    return Err(format!("chronicle '{k}': id {} occurs twice", g.id));
                 }
                 state.add(g);
             }
@@ -498,15 +505,25 @@ impl Chronicle {
         let mut known: HashMap<String, String> = HashMap::new();
         for g in grams {
             let mut g = g.clone();
-            let mut w = g.id.clone();
+            let mut w: Option<String> = None;
             for id in g.refers_to.values() {
-                w = known.get(id).cloned().ok_or_else(|| {
+                let of = known.get(id).ok_or_else(|| {
                     format!(
                         "initial_state: gram {} refers to {id}, which is not in it (earlier)",
                         g.id
                     )
                 })?;
+                match &w {
+                    Some(other) if other != of => {
+                        return Err(format!(
+                        "initial_state: gram {} refers to grams of different roots ({other}, {of})",
+                        g.id
+                    ))
+                    }
+                    _ => w = Some(of.clone()),
+                }
             }
+            let w = w.unwrap_or_else(|| g.id.clone());
             if known.insert(g.id.clone(), w.clone()).is_some() {
                 return Err(format!("initial_state: id {} occurs twice", g.id));
             }
@@ -747,6 +764,27 @@ mod tests {
         assert!(f.contains("empty DATA_DIR"), "{f}");
     }
 
+    /// A chronicle with an id twice is refused as a whole, also on a retry:
+    /// the first attempt leaves nothing half loaded behind.
+    #[test]
+    fn a_duplicate_id_refuses_the_whole_chronicle_every_time() {
+        let dir = tempfile::tempdir().unwrap();
+        let row = serde_json::to_string(&root(Z1)).unwrap();
+        std::fs::write(
+            dir.path().join("test_kroniek.jsonl"),
+            format!("{row}\n{row}\n"),
+        )
+        .unwrap();
+        let k = Chronicle::open(dir.path(), &[]).unwrap();
+        for _ in 0..2 {
+            let f = k
+                .add_provided(&root(Z2), K, |_, _| Ok::<(), ()>(()))
+                .err()
+                .unwrap();
+            assert!(f.contains("occurs twice"), "{f}");
+        }
+    }
+
     #[test]
     fn append_only_earlier_lines_remain() {
         let dir = tempfile::tempdir().unwrap();
@@ -966,6 +1004,7 @@ mod tests {
         let mut bound = root(Z1);
         bound.effective_at = "2025-03-13T00:00:00+01:00".into();
         bound.effective_at_legal_basis = Some(vec!["testregeling_aanvraag#1".into()]);
+        bound.effective_at_stated = true;
         let f = k
             .record_provided(
                 bound,
@@ -1076,6 +1115,14 @@ mod tests {
         assert!(k.set_initial_state(K, &[root(Z1), bad]).is_err());
         assert_eq!(count(&k), 0);
         assert!(!empty.path().join("test_kroniek.jsonl").exists());
+        // A gram that refers to two roots: refused, not the last one taken.
+        let mut both = gram(Z1);
+        both.refers_to.insert("other".into(), Z2.into());
+        let f = k
+            .set_initial_state(K, &[root(Z1), root(Z2), both])
+            .unwrap_err();
+        assert!(f.contains("different roots"), "{f}");
+        assert_eq!(count(&k), 0);
     }
 
     #[test]

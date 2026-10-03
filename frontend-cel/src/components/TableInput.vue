@@ -1,8 +1,13 @@
 <script setup>
 // A table field: rows with the columns from the form. One root, so the
 // caller can place it as a single block; the default slot sits next to the
-// add button (for example the "waarom?" icon of the field).
+// add button (for example the "waarom?" icon of the field). An amount column
+// asks in the unit `fieldLabel` names; `external` converts it back.
+
+// A column as a field: its label (or id) with the unit of an amount.
+const columnLabel = (c) => fieldLabel({ ...c, label: c.label ?? c.id });
 import InputField from './InputField.vue';
+import { fieldLabel, inputKind } from '../form.js';
 
 const props = defineProps({
   label: { type: String, required: true },
@@ -33,7 +38,7 @@ const columnWidths = () => ['56px', ...props.columns.map(() => 'minmax(120px,1fr
     <nldd-table :columns="columnWidths()" :accessible-label="label" empty-text="Nog geen regels">
       <nldd-table-row slot="header">
         <nldd-text-cell text=""></nldd-text-cell>
-        <nldd-text-cell v-for="c in columns" :key="c.id" :text="c.label ?? c.id"></nldd-text-cell>
+        <nldd-text-cell v-for="c in columns" :key="c.id" :text="columnLabel(c)"></nldd-text-cell>
       </nldd-table-row>
       <nldd-table-row v-for="(r, i) in modelValue" :key="i">
         <nldd-cell>
@@ -46,8 +51,8 @@ const columnWidths = () => ['56px', ...props.columns.map(() => 'minmax(120px,1fr
         </nldd-cell>
         <nldd-cell v-for="c in columns" :key="c.id">
           <InputField
-            :kind="c.type"
-            :label="`${c.label ?? c.id}, regel ${i + 1}`"
+            :kind="inputKind(c)"
+            :label="`${columnLabel(c)}, regel ${i + 1}`"
             :choices="c.options"
             :model-value="r[c.id] ?? null"
             @update:model-value="set(i, c.id, $event)"

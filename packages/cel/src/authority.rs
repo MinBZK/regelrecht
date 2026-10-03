@@ -59,7 +59,12 @@ pub fn authority_of(
     regulation: &str,
     article: &str,
 ) -> Option<String> {
-    let law = service.resolver().get_law(regulation)?;
+    authority_of_article(service.resolver().get_law(regulation)?, article)
+}
+
+/// The competent authority of an article in one version of a regulation:
+/// of the article itself, otherwise of the regulation.
+pub fn authority_of_article(law: &ArticleBasedLaw, article: &str) -> Option<String> {
     let authority = law
         .find_article_by_number(article)
         .and_then(|a| a.machine_readable.as_ref())
@@ -84,9 +89,16 @@ pub fn authorities_of_regulation(
     service: &LawExecutionService,
     regulation: &str,
 ) -> BTreeSet<String> {
-    let Some(law) = service.resolver().get_law(regulation) else {
-        return BTreeSet::new();
-    };
+    service
+        .resolver()
+        .get_law(regulation)
+        .map(authorities_of_law)
+        .unwrap_or_default()
+}
+
+/// Every authority one version of a regulation names, on itself or on an
+/// article.
+pub fn authorities_of_law(law: &ArticleBasedLaw) -> BTreeSet<String> {
     let mut out: BTreeSet<String> = authority_of_law(law).into_iter().collect();
     for a in &law.articles {
         out.extend(

@@ -115,6 +115,31 @@ pub struct Field {
     /// the channel supplies; see [`explain`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub why: Option<crate::law::FieldExplanation>,
+    /// Whether the form gives the field a label of its own; otherwise the
+    /// label comes from the law (or is the name).
+    #[serde(skip)]
+    pub own_label: bool,
+}
+
+impl Field {
+    /// A field with only a name and a label, and nothing else known yet.
+    pub fn new(name: impl Into<String>, label: impl Into<String>) -> Field {
+        Field {
+            name: name.into(),
+            label: label.into(),
+            kind: None,
+            unit: None,
+            options: None,
+            columns: None,
+            explanation: None,
+            group: None,
+            legal_basis: Vec::new(),
+            optional: false,
+            supplied: None,
+            why: None,
+            own_label: false,
+        }
+    }
 }
 
 /// Add to the fields what `intake` supplies (`$intake.supplied`), per field,
@@ -204,7 +229,7 @@ pub fn explain(
             .map(|g| format!(", groep '{g}'"))
             .unwrap_or_default();
         // A form entry without a label of its own has the label of the law.
-        why.here.push(if entry.is_some_and(|v| v.label != v.name) {
+        why.here.push(if entry.is_some_and(|v| v.own_label) {
             Step::new(
                 StepKind::Presentation,
                 SourceRef::config("form", &f.name),
@@ -312,19 +337,16 @@ struct FieldDoc {
 
 impl FieldDoc {
     fn field(self, group: Option<&String>) -> Field {
+        let own_label = self.label.is_some();
         Field {
-            label: self.label.unwrap_or_else(|| self.id.clone()),
-            name: self.id,
             kind: self.kind.as_deref().map(document_type),
-            unit: None,
             options: self.options.map(document_options),
             columns: self.columns.map(document_columns),
             explanation: self.explanation,
             group: group.cloned(),
             legal_basis: legal_basis_from(self.legal_basis.as_ref()),
-            optional: false,
-            supplied: None,
-            why: None,
+            own_label,
+            ..Field::new(self.id.clone(), self.label.unwrap_or(self.id))
         }
     }
 }
@@ -376,7 +398,9 @@ fn document_options(v: Value) -> Value {
     }
 }
 
-/// The columns of a table field, with the keys and types of the API.
+/// The columns of a table field, with the keys and types of the API. The
+/// law names a table's columns but not their types, so the unit of an
+/// amount column comes from the form (`eenheid`, as `unit`).
 fn document_columns(v: Value) -> Value {
     match v {
         Value::Array(l) => Value::Array(
@@ -391,6 +415,7 @@ fn document_columns(v: Value) -> Value {
                                 "opties" => ("options".to_string(), document_options(w)),
                                 "uitleg" => ("explanation".to_string(), w),
                                 "grondslag" => ("legal_basis".to_string(), w),
+                                "eenheid" => ("unit".to_string(), w),
                                 _ => (k, w),
                             })
                             .collect(),
@@ -450,20 +475,7 @@ pub fn fields(event: &Event, form: Option<&Form>) -> Result<Vec<Field>, String> 
         .unwrap_or_default();
     for key in keys {
         if !out.iter().any(|v| v.name == key) {
-            out.push(Field {
-                label: key.clone(),
-                name: key,
-                kind: None,
-                unit: None,
-                options: None,
-                columns: None,
-                explanation: None,
-                group: None,
-                legal_basis: Vec::new(),
-                optional: false,
-                supplied: None,
-                why: None,
-            });
+            out.push(Field::new(key.clone(), key));
         }
     }
     // What the law says per field: the label if the form has none, the
@@ -472,7 +484,7 @@ pub fn fields(event: &Event, form: Option<&Form>) -> Result<Vec<Field>, String> 
         let Some(d) = event.field_defs.iter().find(|d| d.name == field.name) else {
             continue;
         };
-        if field.label == field.name {
+        if !field.own_label {
             field.label = match d.description.as_deref().filter(|t| t.contains("Naam:")) {
                 Some(t) => crate::origin::label_from(t),
                 None => readable(&field.name),
@@ -481,15 +493,22 @@ pub fn fields(event: &Event, form: Option<&Form>) -> Result<Vec<Field>, String> 
         if field.legal_basis.is_empty() {
             field.legal_basis = d.legal_basis.clone();
         }
-        if field.kind.is_none() {
-            field.kind = d.type_.as_deref().map(|t| match t {
-                "string" => "text".to_string(),
-                "boolean" => "yes_no".to_string(),
-                "amount" => "amount".to_string(),
-                other => other.to_string(),
-            });
-            field.unit = d.unit.clone();
+        // The type and unit of the law hold; a form type that contradicts
+        // an amount of the law would let the applicant submit in the wrong
+        // unit (euros where the law counts eurocents).
+        let kind = d.type_.as_deref().map(kind_of_type);
+        if kind.as_deref() == Some("amount") && field.kind.as_ref().is_some_and(|k| k != "amount") {
+            return Err(format!(
+                "form field '{}': type '{}', but the law ({}) makes it an amount",
+                field.name,
+                field.kind.as_deref().unwrap_or_default(),
+                d.declared_by
+            ));
         }
+        if field.kind.is_none() {
+            field.kind = kind;
+        }
+        field.unit = d.unit.clone();
         field.optional = d.optional_for_applicant();
     }
     // Whether a field is a table is determined by the stream: otherwise the
@@ -506,6 +525,14 @@ pub fn fields(event: &Event, form: Option<&Form>) -> Result<Vec<Field>, String> 
         }
     }
     Ok(out)
+}
+
+/// The kind of form field for a type as the law writes it (`amount`,
+/// `boolean`, ...); see [`crate::action::field_kind`].
+fn kind_of_type(t: &str) -> String {
+    serde_json::from_value(Value::String(t.to_string()))
+        .map(crate::action::field_kind)
+        .unwrap_or_else(|_| t.to_string())
 }
 
 /// The columns of a table field: the columns of the form that the stream
@@ -649,6 +676,96 @@ mod tests {
         let v = fields(&s.events[0], Some(&f)).unwrap();
         let year = v.iter().find(|v| v.name == "aanvraagjaar").unwrap();
         assert_eq!(year.legal_basis, ["testregeling_aanvraag#1 lid 1"]);
+    }
+
+    fn amount(name: &str) -> crate::law::FieldDef {
+        crate::law::FieldDef {
+            name: name.into(),
+            type_: Some("amount".into()),
+            unit: Some("eurocent".into()),
+            columns: None,
+            origin: None,
+            origin_policy: None,
+            optional: false,
+            description: None,
+            legal_basis: Vec::new(),
+            declared_by: "w#1".into(),
+            via: crate::law::Via::Establishes,
+        }
+    }
+
+    /// The unit of the law reaches the field also when the form gives a
+    /// type of its own; a form type that contradicts an amount is refused.
+    #[test]
+    fn the_unit_of_the_law_holds_whatever_the_form_says() {
+        let mut s = stream::parse(STREAM, "fixture").unwrap();
+        s.events[0].field_defs.push(amount("aanvraagjaar"));
+        let own = parse(
+            &FORM.replace(
+                "label: Aanvraagjaar, type: getal",
+                "label: Aanvraagjaar, type: bedrag",
+            ),
+            "aanvraag",
+            "fixture",
+        )
+        .unwrap();
+        let v = fields(&s.events[0], Some(&own)).unwrap();
+        let year = v.iter().find(|v| v.name == "aanvraagjaar").unwrap();
+        assert_eq!(year.kind.as_deref(), Some("amount"));
+        assert_eq!(year.unit.as_deref(), Some("eurocent"));
+        let f = parse(FORM, "aanvraag", "fixture").unwrap();
+        let e = fields(&s.events[0], Some(&f)).unwrap_err();
+        assert!(e.contains("aanvraagjaar") && e.contains("amount"), "{e}");
+    }
+
+    /// A label equal to the id is still the form's own label.
+    #[test]
+    fn a_label_equal_to_the_id_is_the_forms_own() {
+        let f = parse(
+            &FORM.replace("label: Adres", "label: adres"),
+            "aanvraag",
+            "fixture",
+        )
+        .unwrap();
+        let adres = f.fields.iter().find(|v| v.name == "adres").unwrap();
+        assert!(adres.own_label);
+        let telefoon = parse(
+            &FORM.replace(
+                "{id: telefoon, label: Telefoonnummer, type: tekst}",
+                "{id: telefoon}",
+            ),
+            "aanvraag",
+            "fixture",
+        )
+        .unwrap();
+        assert!(
+            !telefoon
+                .fields
+                .iter()
+                .find(|v| v.name == "telefoon")
+                .unwrap()
+                .own_label
+        );
+    }
+
+    /// An amount column carries the unit the form names (`eenheid`).
+    #[test]
+    fn an_amount_column_carries_its_unit() {
+        let f = parse(
+            &FORM.replace(
+                "{id: zetels, label: Zetels, type: getal,",
+                "{id: zetels, label: Zetels, type: bedrag, eenheid: eurocent,",
+            ),
+            "aanvraag",
+            "fixture",
+        )
+        .unwrap();
+        let s = stream::parse(STREAM, "fixture").unwrap();
+        let v = fields(&s.events[0], Some(&f)).unwrap();
+        let organen = v.iter().find(|v| v.name == "organen").unwrap();
+        let zetels = &organen.columns.as_ref().unwrap()[1];
+        assert_eq!(zetels["type"], "amount");
+        assert_eq!(zetels["unit"], "eurocent");
     }
 
     #[test]

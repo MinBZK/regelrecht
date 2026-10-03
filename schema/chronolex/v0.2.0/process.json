@@ -30,7 +30,7 @@
         "strict"
       ],
       "default": "lenient",
-      "description": "How strict the origin check (RFC-043) is on startup. lenient: a parameter without origin is a warning. strict: a parameter without origin is an error, because then it cannot be traced who supplies it. With strict, every synthesis source that translates also carries a legal_basis (see source.legal_basis)."
+      "description": "How strict the origin check (RFC-048) is on startup. lenient: a parameter without origin is a warning. strict: a parameter without origin is an error, because then it cannot be traced who supplies it. With strict, every synthesis source that translates also carries a legal_basis (see source.legal_basis)."
     },
     "on_behalf_of": {
       "$ref": "#/definitions/on_behalf_of"
@@ -190,7 +190,7 @@
             },
             "windows": {
               "$ref": "#/definitions/identifier",
-              "description": "An output of the same regulation: the list of windows the policy offers, if the offer article asks for a window (the parameter with origin BELANGHEBBENDE and legal basis Awb 4:2 lid 1, RFC-043). The runtime computes it in a separate run on today's date, without parameters, and runs the offer once per window. Which windows exist is policy, not configuration."
+              "description": "An output of the same regulation: the list of windows the policy offers, if the offer article asks for a window (the parameter with origin BELANGHEBBENDE and legal basis Awb 4:2 lid 1, RFC-048). The runtime computes it in a separate run on today's date, without parameters, and runs the offer once per window. Which windows exist is policy, not configuration."
             },
             "start": {
               "$ref": "#/definitions/identifier",
@@ -430,7 +430,7 @@
     },
     "handling": {
       "type": "object",
-      "description": "What the handler does in the process: view the worklist, open a case and perform actions in it: on trial, and then record. What an action needs, and from whom, follows from the stage of its record event (RFC-008) and from the origin of the parameters of its article (RFC-043), not from this configuration. Requires a role with the handling route.",
+      "description": "What the handler does in the process: view the worklist, open a case and perform actions in it: on trial, and then record. What an action needs, and from whom, follows from the stage of its record event (RFC-008) and from the origin of the parameters of its article (RFC-048), not from this configuration. Requires a role with the handling route.",
       "required": [
         "worklist",
         "actions"

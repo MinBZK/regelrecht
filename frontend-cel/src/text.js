@@ -36,8 +36,8 @@ export function outputText(v, type) {
   return type?.type === 'amount' ? amountText(v, type.unit) : valueText(v);
 }
 
-// Where a parameter came from: one text per variant of Herkomst in
-// packages/cel/src/synthese.rs (the tests in text.test.js cover them all).
+// Where a parameter came from: one text per variant of Provenance in
+// packages/cel/src/synthesis.rs (the tests in text.test.js cover them all).
 export function provenanceText(p) {
   switch (p?.source) {
     case 'own':
@@ -52,6 +52,8 @@ export function provenanceText(p) {
       return p.stage ? `stand bij besluit (ontstaat pas in stage ${p.stage})` : 'stand bij besluit';
     case 'choice':
       return 'keuze van de aanvrager (portaal)';
+    case 'decision':
+      return 'het besluit waarop de handeling werkt';
     default:
       // A variant the runtime knows and this text does not yet: show what
       // came in instead of nothing.

@@ -259,9 +259,10 @@ impl ChannelDefinition {
     pub fn validate(&self, input: &Map<String, Value>) -> Result<BTreeMap<String, String>, String> {
         let mut out = BTreeMap::new();
         for v in &self.fields {
+            // Only text: a number loses its leading zeros (a BSN, a KvK
+            // number) before the pattern can see them.
             let value = match input.get(&v.name) {
                 Some(Value::String(s)) => s.trim().to_string(),
-                Some(Value::Number(n)) => n.to_string(),
                 _ => String::new(),
             };
             if value.is_empty() {
@@ -352,31 +353,39 @@ pub fn elfproef(number: &str) -> bool {
     sum % 11 == 0
 }
 
+/// The key under `$intake` that names the channel of the submission.
+pub const INTAKE_CHANNEL: &str = "channel";
+
 /// What a channel passes to the cell under `$intake`: `channel` and, for every
 /// channel in `channels`, its fields: with the values of the logged-in
 /// user for their own channel, and empty (`null`) for the others. That way
 /// every channel of a portal supplies every path the event binds, and
-/// what another channel would supply stays empty.
+/// what another channel would supply stays empty. Channels that share a
+/// prefix share its object: an empty field of one never wipes a value of
+/// another.
 pub fn intake<'a>(
     channel: &str,
     channels: impl IntoIterator<Item = (&'a str, &'a ChannelDefinition)>,
     user: Option<(&str, &BTreeMap<String, String>)>,
 ) -> Value {
     let mut out = Map::new();
-    out.insert("channel".into(), Value::String(channel.to_string()));
+    out.insert(INTAKE_CHANNEL.into(), Value::String(channel.to_string()));
     for (id, k) in channels {
         let own = user.filter(|(g, _)| *g == id).map(|(_, v)| v);
-        let fields: Map<String, Value> = k
-            .fields
-            .iter()
-            .map(|v| {
-                let w = own
-                    .and_then(|e| e.get(&v.name))
-                    .map_or(Value::Null, |w| Value::String(w.clone()));
-                (v.name.clone(), w)
-            })
-            .collect();
-        set_path(&mut out, k.intake_prefix(id), Value::Object(fields));
+        let prefix = k.intake_prefix(id);
+        if crate::gram::at_path(&out, prefix).is_none_or(|v| !v.is_object()) {
+            set_path(&mut out, prefix, Value::Object(Map::new()));
+        }
+        for v in &k.fields {
+            let w = own
+                .and_then(|e| e.get(&v.name))
+                .map_or(Value::Null, |w| Value::String(w.clone()));
+            let path = format!("{prefix}.{}", v.name);
+            if w.is_null() && crate::gram::at_path(&out, &path).is_some() {
+                continue;
+            }
+            set_path(&mut out, &path, w);
+        }
     }
     Value::Object(out)
 }
@@ -391,7 +400,7 @@ pub fn supply(
     submitted_on: Option<chrono::NaiveDate>,
 ) {
     let route = intake
-        .get("channel")
+        .get(INTAKE_CHANNEL)
         .and_then(Value::as_str)
         .map(str::to_string);
     let Some(m) = intake.as_object_mut() else {
@@ -490,7 +499,7 @@ pub fn prefill(
 /// of every channel of a role with routes `portal` or `counter`. The counter
 /// identifies the applicant with the fields of a portal channel.
 pub fn portal_intake_paths(d: &ProcessDefinition) -> Vec<String> {
-    let mut out = vec!["channel".to_string()];
+    let mut out = vec![INTAKE_CHANNEL.to_string()];
     for (id, k) in d.channels_with(Routes::Portal) {
         out.extend(k.intake_paths(id));
     }
@@ -498,10 +507,13 @@ pub fn portal_intake_paths(d: &ProcessDefinition) -> Vec<String> {
 }
 
 /// The path under `$intake` to which the event binds its `effective_at`, if it
-/// does: that is where the counter puts the day of receipt.
+/// does and the law gives a legal basis for a stated moment: that is where
+/// the counter puts the day of receipt. A law that only says why the moment
+/// of recording counts gives the counter's date stamp no basis.
 pub fn receipt_path(event: &Event) -> Option<String> {
-    match event.effective_at.as_ref()?.binding() {
-        Binding::Intake(path) => Some(path),
+    let b = event.effective_at.as_ref()?;
+    match b.binding() {
+        Binding::Intake(path) if !b.legal_basis.is_empty() => Some(path),
         _ => None,
     }
 }
@@ -516,7 +528,8 @@ pub fn receipt_path(event: &Event) -> Option<String> {
 /// - a portal requires a role with routes `portal`, and such a role a
 ///   portal; a handling and routes `handling` likewise;
 /// - routes `counter` require a portal whose event binds its `effective_at`
-///   to `$intake`: that is where the day of receipt goes;
+///   to `$intake`, with a legal basis for a stated moment: that is where
+///   the day of receipt goes;
 /// - if the portal event follows a case, every portal channel names an
 ///   owner: whoever follows a case must know it.
 pub fn check_process(
@@ -527,6 +540,14 @@ pub fn check_process(
     let mut errors = Vec::new();
     for (id, k) in &d.channels {
         errors.extend(k.check(id));
+        let prefix = k.intake_prefix(id);
+        let head = prefix.split('.').next().unwrap_or(prefix);
+        if [INTAKE_CHANNEL, crate::stream::SUPPLIED].contains(&head) {
+            errors.push(format!(
+                "channel '{id}': intake prefix '{prefix}' is a reserved name under $intake (channel, {})",
+                crate::stream::SUPPLIED
+            ));
+        }
         let fields = k.fields.iter().flat_map(|v| {
             v.legal_basis
                 .iter()
@@ -578,10 +599,18 @@ pub fn check_process(
             (false, _) => errors.push(
                 "a role with routes counter and no portal: the counter enters an application in the event of the portal".into(),
             ),
-            (true, Some(e)) if receipt_path(e).is_none() => errors.push(format!(
-                "counter: event '{}' does not bind effective_at to $intake; the counter provides the day of receipt (Awb 4:13)",
-                e.name
-            )),
+            (true, Some(e)) if receipt_path(e).is_none() => errors.push(
+                match e.effective_at.as_ref().map(|b| (b.binding(), b.legal_basis.is_empty())) {
+                    Some((Binding::Intake(_), true)) => format!(
+                        "counter: event '{}' has no legal basis for a stated moment (effective_at.legal_basis): the law only says why the moment of recording counts, so the counter cannot state the day of receipt (Awb 4:13)",
+                        e.name
+                    ),
+                    _ => format!(
+                        "counter: event '{}' does not bind effective_at to $intake; the counter provides the day of receipt (Awb 4:13)",
+                        e.name
+                    ),
+                },
+            ),
             _ => {}
         }
         if !has(Routes::Portal) {
@@ -767,6 +796,29 @@ pub(crate) mod tests {
             k.validate(&input(json!({"nummer": "111222334"}))),
             Err("Burgernummer is ongeldig".into())
         );
+    }
+
+    /// Two channels under the same prefix: the empty field of the other
+    /// channel does not wipe the value of the logged-in user.
+    #[test]
+    fn channels_with_one_prefix_share_it() {
+        let b = citizen();
+        let other = citizen();
+        let fields: BTreeMap<String, String> =
+            [("nummer".to_string(), "111222333".to_string())].into();
+        let i = intake(
+            "portaal",
+            [("burgerlogin", &b), ("tweede", &other)],
+            Some(("burgerlogin", &fields)),
+        );
+        assert_eq!(i["burger"]["nummer"], "111222333", "{i}");
+    }
+
+    /// An identification field is text: a number has lost its leading zeros.
+    #[test]
+    fn an_identification_field_is_text() {
+        let k = citizen();
+        assert!(k.validate(&input(json!({"nummer": 111222333}))).is_err());
     }
 
     #[test]

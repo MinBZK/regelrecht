@@ -44,17 +44,20 @@ use crate::load;
 pub const NAME_REGISTER: &str = "naam_register";
 
 thread_local! {
-    /// The grams of a trial, for the duration of [`with_trial`].
-    static TRIAL: RefCell<Vec<Gram>> = const { RefCell::new(Vec::new()) };
+    /// The grams of a trial, with the cell that would record them, for the
+    /// duration of [`with_trial`].
+    static TRIAL: RefCell<Vec<(String, Gram)>> = const { RefCell::new(Vec::new()) };
 }
 
-/// Run `f` with `grams` added to every register source: the draft of an
-/// action on trial counts as if it were recorded. Only on this thread, and
-/// only during `f` (an engine run is synchronous).
+/// Run `f` with `grams` of the cell `cell` added to every register source
+/// of that cell: the draft of an action on trial counts as if it were
+/// recorded. Only on this thread, and only during `f` (an engine run is
+/// synchronous).
 /// The overlay is removed even after a panic in `f`: the thread serves
 /// another request afterwards.
-pub fn with_trial<T>(grams: Vec<Gram>, f: impl FnOnce() -> T) -> T {
-    struct Back(Option<Vec<Gram>>);
+pub fn with_trial<T>(cell: &str, grams: Vec<Gram>, f: impl FnOnce() -> T) -> T {
+    let grams = grams.into_iter().map(|g| (cell.to_string(), g)).collect();
+    struct Back(Option<Vec<(String, Gram)>>);
     impl Drop for Back {
         fn drop(&mut self) {
             let old = self.0.take().unwrap_or_default();
@@ -87,6 +90,7 @@ pub struct RegisterSource {
     name: String,
     policy: String,
     field: String,
+    cell: String,
     chronicle: String,
     source: Arc<OnceLock<Arc<Chronicle>>>,
 }
@@ -108,14 +112,33 @@ impl DataSource for RegisterSource {
         if field != self.field {
             return None;
         }
-        let chronicle = self.source.get()?;
-        let fixed = chronicle.read(&self.chronicle).ok()?;
-        let trial: Vec<Gram> = TRIAL.with(|p| p.borrow().clone());
-        let grams = fixed
-            .iter()
-            .map(|v| &v.gram)
-            .chain(trial.iter().filter(|g| g.chronicle == self.chronicle));
-        let list = lexostatus_engine::as_chronicle(grams, &self.chronicle).ok()?;
+        // The engine's data source answers with a value or nothing; a
+        // register that cannot be read is not silent about it.
+        let fail = |what: &str, e: String| {
+            tracing::error!(register = %self.name, cell = %self.cell, chronicle = %self.chronicle, error = %e, "{what}");
+        };
+        let Some(chronicle) = self.source.get() else {
+            fail(
+                "register: the chronicle of the cell is not open",
+                String::new(),
+            );
+            return None;
+        };
+        let fixed = chronicle
+            .read(&self.chronicle)
+            .map_err(|e| fail("register: the chronicle cannot be read", e))
+            .ok()?;
+        let trial: Vec<Gram> = TRIAL.with(|p| {
+            p.borrow()
+                .iter()
+                .filter(|(cell, g)| *cell == self.cell && g.chronicle == self.chronicle)
+                .map(|(_, g)| g.clone())
+                .collect()
+        });
+        let grams = fixed.iter().map(|v| &v.gram).chain(trial.iter());
+        let list = lexostatus_engine::as_chronicle(grams, &self.chronicle)
+            .map_err(|e| fail("register: the chronicle cannot be read as a list", e))
+            .ok()?;
         Some(EngineValue::from(&list))
     }
     fn fields(&self) -> Vec<&str> {
@@ -384,6 +407,7 @@ pub fn load(
             name: format!("register:{key}"),
             policy: policy.to_string(),
             field,
+            cell: k.cell.clone(),
             chronicle: k.chronicle.clone(),
             source: lock.clone(),
         }));
@@ -595,9 +619,9 @@ mod tests {
     #[test]
     fn a_trial_is_removed_even_after_a_panic() {
         let g = crate::gram::test_gram("00000000-0000-4000-8000-000000000001");
-        assert_eq!(with_trial(vec![g.clone()], trial), 1);
+        assert_eq!(with_trial("c", vec![g.clone()], trial), 1);
         assert_eq!(trial(), 0);
-        let out = std::panic::catch_unwind(|| with_trial(vec![g], || panic!("engine")));
+        let out = std::panic::catch_unwind(|| with_trial("c", vec![g], || panic!("engine")));
         assert!(out.is_err());
         assert_eq!(trial(), 0);
     }

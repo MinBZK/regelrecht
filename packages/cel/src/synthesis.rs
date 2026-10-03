@@ -103,6 +103,8 @@ pub struct PolicySource {
     regulation: String,
     outputs: Vec<String>,
     name: String,
+    /// The runtime's clock, for the date of a query without `as_of`.
+    clock: crate::api::Clock,
 }
 
 impl PolicySource {
@@ -112,17 +114,23 @@ impl PolicySource {
             regulation: d.regulation.clone().unwrap_or_default(),
             outputs: d.extra_fields.clone(),
             name: d.lexostatus.clone(),
+            clock: Arc::new(|| chrono::Local::now().fixed_offset()),
         }
+    }
+
+    /// Read the date of a query without `as_of` from this clock (the
+    /// runtime's), instead of the wall clock.
+    pub fn with_clock(mut self, clock: crate::api::Clock) -> Self {
+        self.clock = clock;
+        self
     }
 
     /// A parameter from the query with the type the regulation gives it:
     /// the query knows only text (see [`path`]), the engine computes with a
-    /// number, an amount or a boolean. `null` is not a value.
+    /// number, an amount or a boolean. A null input is not in the query at
+    /// all, so the text "null" is that text.
     fn value(&self, name: &str, text: String) -> Value {
         use regelrecht_engine::ParameterType as T;
-        if text == "null" {
-            return Value::Null;
-        }
         let kind = self
             .service
             .resolver()
@@ -148,7 +156,7 @@ impl PolicySource {
         let pairs: Vec<(String, String)> = serde_urlencoded::from_str(query)
             .map_err(|e| TransportError::Json(format!("the query cannot be read: {e}")))?;
         let mut parameters: BTreeMap<String, Value> = BTreeMap::new();
-        let mut date = crate::date::reference_date(&chrono::Local::now().fixed_offset());
+        let mut date = crate::date::reference_date(&(self.clock)());
         for (k, v) in pairs {
             match k.as_str() {
                 // A date or a moment: the engine reads the regulation on that day.
@@ -284,31 +292,61 @@ impl Combination {
     /// Why the assessment cannot be judged when a source delivered nothing,
     /// in words; `None` if every source responded.
     pub fn reason(&self) -> Option<String> {
-        self.sources.iter().find_map(|b| {
-            let error = b.error.as_deref().unwrap_or_default();
-            match b.status {
-                Status::Queried => None,
-                Status::Unreachable => {
-                    Some(format!("cannot be judged: source {} unreachable", b.cell))
-                }
-                Status::Error => Some(format!(
-                    "cannot be judged: source {} returned no lexostatus ({error})",
-                    b.cell
-                )),
-                Status::NotQueried => Some(format!(
-                    "cannot be judged: source {} not queried ({error})",
-                    b.cell
-                )),
-            }
-        })
+        self.sources
+            .iter()
+            .find_map(SourceResult::failure)
+            .map(|r| format!("cannot be judged: {r}"))
+    }
+
+    /// Why a source that should deliver one of `missing` delivered nothing,
+    /// without a prefix; `None` if no such source failed. A failed source
+    /// whose parameters are all there is not the reason.
+    pub fn reason_for(&self, sources: &[Source], missing: &[String]) -> Option<String> {
+        self.sources
+            .iter()
+            .filter(|b| {
+                sources.iter().any(|s| {
+                    s.definition.cell == b.cell
+                        && s.definition.lexostatus == b.lexostatus
+                        && s.definition.parameters.iter().any(|p| missing.contains(p))
+                })
+            })
+            .find_map(SourceResult::failure)
     }
 }
 
+impl SourceResult {
+    /// What went wrong with this source, in words; `None` if it was queried.
+    fn failure(&self) -> Option<String> {
+        let error = self.error.as_deref().unwrap_or_default();
+        match self.status {
+            Status::Queried => None,
+            Status::Unreachable => Some(format!("source {} unreachable", self.cell)),
+            Status::Error => Some(format!(
+                "source {} returned no lexostatus ({error})",
+                self.cell
+            )),
+            Status::NotQueried => Some(format!("source {} not queried ({error})", self.cell)),
+        }
+    }
+}
+
+/// What a cell answers (with a 404) when a lexostatus picks a gram and the
+/// chronicle has none for the query: the lexostatus is then empty, which is
+/// not an error. Any other 404 is.
+pub const NO_GRAM: &str = "no gram for this query";
+
+/// The names of the query that are not an input: the as-of (see [`AsOf`]).
+/// An input with such a name would be overwritten.
+pub const RESERVED_INPUTS: [&str; 2] = ["as_of", "known_at"];
+
 /// The path of a lexostatus on a runtime, with the input and the as-of (see
-/// [`AsOf`]) as query.
+/// [`AsOf`]) as query. A null input is left out: in a query it would be
+/// indistinguishable from the text "null".
 pub fn path(cell: &str, lexostatus: &str, input: &Map<String, Value>, as_of: &AsOf) -> String {
     let mut pairs: BTreeMap<&str, String> = input
         .iter()
+        .filter(|(_, v)| !v.is_null())
         .map(|(k, v)| {
             let text = match v {
                 Value::String(s) => s.clone(),
@@ -489,14 +527,7 @@ async fn request(
                         result.extra_fields.insert(field.clone(), w.clone());
                     }
                 }
-                // What the consumer asks for as a parameter, the source may
-                // deliver as a parameter or as an extra field: the consumer's
-                // law says which facts are parameters, not the source.
-                let mut delivered = l.parameters;
-                for (k, v) in l.extra_fields {
-                    delivered.entry(k).or_insert(v);
-                }
-                (result, Some(delivered))
+                (result, Some(delivered(l)))
             }
             Err(TransportError::Unreachable(r)) => {
                 result.status = Status::Unreachable;
@@ -541,6 +572,19 @@ async fn request(
         provenance,
         sources: results,
     }
+}
+
+/// What a source delivered: what the consumer asks for as a parameter, the
+/// source may deliver as a parameter or as an extra field (the consumer's
+/// law says which facts are parameters, not the source). A parameter wins
+/// over an extra field of the same name. Shared with the per-row synthesis
+/// ([`crate::rows`]).
+pub(crate) fn delivered(l: Lexostatus) -> BTreeMap<String, Value> {
+    let mut out = l.parameters;
+    for (k, v) in l.extra_fields {
+        out.entry(k).or_insert(v);
+    }
+    out
 }
 
 /// The checks on sources that pass on an extra field, with and without a
@@ -611,21 +655,6 @@ fn pass_on(process: &Process) -> Vec<String> {
     errors
 }
 
-/// The checks on the synthesis of a process at startup. An error here stops
-/// the runtime:
-///
-/// - synthesis requires a portal or a decision, because only the assessment
-///   and the trial decision use it;
-/// - a source is a cell other than the one the process records in, unless it
-///   is a source of the case (`case: true`);
-/// - every input comes from a field of the assessment lexostatus (with a
-///   portal), or from an earlier source that passes it on (see [`pass_on`]);
-/// - every parameter is a parameter of the article of the assessment, of the
-///   decision or of the offer (`portal.offer`), or of an article that
-///   transitively calls one of those;
-/// - a parameter comes from only one source: the own reduction or a source.
-///
-/// What the decision requires further is in [`crate::action::check`].
 /// The legal basis of the translations in the synthesis, at startup: every
 /// legal basis of a synthesis source or of a per-row source points at a
 /// loaded article, with the paragraph it names, and every source that
@@ -687,6 +716,23 @@ pub fn legal_bases(
     errors.into_iter().collect()
 }
 
+/// The checks on the synthesis of a process at startup. An error here stops
+/// the runtime:
+///
+/// - synthesis requires a portal or a decision, because only the assessment
+///   and the trial decision use it;
+/// - a source is a cell other than the one the process records in, unless it
+///   is a source of the case (`case: true`);
+/// - every input comes from a field of the assessment lexostatus (with a
+///   portal), or from an earlier source that passes it on (see [`pass_on`]);
+/// - every parameter is a parameter of the article of the assessment, of the
+///   decision or of the offer (`portal.offer`), or of an article that
+///   transitively calls one of those;
+/// - a parameter comes from only one source: the own reduction or a source
+///   (with and without a portal);
+/// - no input is named after a reserved query name ([`RESERVED_INPUTS`]).
+///
+/// What the decision requires further is in [`crate::action::check`].
 pub fn check(process: &Process) -> Vec<String> {
     let mut errors = Vec::new();
     if process.definition.synthesis.is_empty() {
@@ -696,6 +742,18 @@ pub fn check(process: &Process) -> Vec<String> {
     let cell = &process.cell;
     let service = process.service.as_ref();
     errors.extend(pass_on(process));
+    for source in &sources {
+        for name in source
+            .input
+            .keys()
+            .filter(|n| RESERVED_INPUTS.contains(&n.as_str()))
+        {
+            errors.push(format!(
+                "synthesis source {}/{}, input '{name}': a reserved name of the query (the as-of); name the input differently",
+                source.cell, source.lexostatus
+            ));
+        }
+    }
     let passers: Vec<&str> = sources
         .iter()
         .filter(|b| !b.extra_fields.is_empty())
@@ -740,6 +798,16 @@ pub fn check(process: &Process) -> Vec<String> {
                 ));
             }
         }
+        let mut per: BTreeMap<&str, Vec<String>> = BTreeMap::new();
+        for source in &sources {
+            for p in &source.parameters {
+                per.entry(p).or_default().push(format!(
+                    "synthesis source {}/{}",
+                    source.cell, source.lexostatus
+                ));
+            }
+        }
+        errors.extend(more_than_one_source(per));
         return errors;
     };
     let own = cell.lexostatuses.lexostatus(&portal.assessment.lexostatus);
@@ -821,15 +889,21 @@ pub fn check(process: &Process) -> Vec<String> {
             per.entry(p).or_default().push(who.clone());
         }
     }
-    for (p, who) in per {
-        if who.len() > 1 {
-            errors.push(format!(
+    errors.extend(more_than_one_source(per));
+    errors
+}
+
+/// A parameter comes from only one source.
+fn more_than_one_source(per: BTreeMap<&str, Vec<String>>) -> Vec<String> {
+    per.into_iter()
+        .filter(|(_, who)| who.len() > 1)
+        .map(|(p, who)| {
+            format!(
                 "parameter '{p}' comes from more than one source: {}",
                 who.join(", ")
-            ));
-        }
-    }
-    errors
+            )
+        })
+        .collect()
 }
 
 /// What a runtime says about its cells (`GET /api/cells`), as far as the
@@ -870,7 +944,10 @@ fn names(v: &Value, key: &str) -> BTreeSet<String> {
 /// later.
 pub async fn warnings(process: &str, sources: &[Source]) -> Vec<String> {
     let mut out = Vec::new();
-    for source in sources {
+    // A policy source is the consumer's own regulation, computed by the
+    // engine here: there is no runtime to ask, and a query without
+    // parameters would only compute outputs without a value.
+    for source in sources.iter().filter(|b| b.definition.regulation.is_none()) {
         let d = &source.definition;
         let who = format!(
             "process '{process}': synthesis source {}/{} ({})",
@@ -1202,6 +1279,36 @@ mod tests {
             path("a", "b", &i, &now),
             "/cells/a/api/lexostatus/b?jaar=2025"
         );
+    }
+
+    /// A null input is not in the query: the text "null" is a text.
+    #[test]
+    fn a_null_input_is_left_out_of_the_query() {
+        let i = json!({"jaar": null, "naam": "null"})
+            .as_object()
+            .unwrap()
+            .clone();
+        assert_eq!(
+            path("a", "b", &i, &AsOf::default()),
+            "/cells/a/api/lexostatus/b?naam=null"
+        );
+    }
+
+    /// The startup check does not query a policy source: it is computed
+    /// here, and a query without parameters only gives bogus warnings.
+    #[tokio::test]
+    async fn the_startup_check_skips_a_policy_source() {
+        let t = fixed(json!([]));
+        let b = Source {
+            definition: serde_json::from_value(json!({
+                "regulation": "beleid", "lexostatus": "beleid#1",
+                "parameters": [], "extra_fields": ["x"]
+            }))
+            .unwrap(),
+            transport: t.clone(),
+        };
+        assert!(warnings("p", &[b]).await.is_empty());
+        assert!(t.ask().is_empty());
     }
 
     #[test]

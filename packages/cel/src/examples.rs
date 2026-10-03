@@ -36,17 +36,24 @@ pub const TODAY: &str = "$today";
 
 impl Examples {
     /// The examples as the frontend receives them: `"$today"` becomes
-    /// `today` (YYYY-MM-DD).
+    /// `today` (YYYY-MM-DD), at any depth (also in the rows of a table).
     pub fn on(&self, today: &str) -> Self {
         let mut out = self.clone();
         for f in out.actions.values_mut() {
             for w in f.values_mut() {
-                if w.as_str() == Some(TODAY) {
-                    *w = Value::String(today.to_string());
-                }
+                replace_today(w, today);
             }
         }
         out
+    }
+}
+
+fn replace_today(w: &mut Value, today: &str) {
+    match w {
+        Value::String(s) if s == TODAY => *w = Value::String(today.to_string()),
+        Value::Array(l) => l.iter_mut().for_each(|x| replace_today(x, today)),
+        Value::Object(m) => m.values_mut().for_each(|x| replace_today(x, today)),
+        _ => {}
     }
 }
 
@@ -269,6 +276,23 @@ mod tests {
         assert_eq!(v.actions["besluit"]["besluitdatum"], "$today");
         assert_eq!(
             v.on("2025-03-20").actions["besluit"]["besluitdatum"],
+            "2025-03-20"
+        );
+    }
+
+    /// "$today" in the rows of a table becomes today's date too.
+    #[test]
+    fn today_at_any_depth() {
+        let mut e = Examples::default();
+        e.actions.insert(
+            "a".into(),
+            serde_json::json!({"rijen": [{"datum": "$today"}]})
+                .as_object()
+                .unwrap()
+                .clone(),
+        );
+        assert_eq!(
+            e.on("2025-03-20").actions["a"]["rijen"][0]["datum"],
             "2025-03-20"
         );
     }

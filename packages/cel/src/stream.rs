@@ -31,6 +31,11 @@ use crate::gram::{at_path, set_path, Gram, StreamReference};
 use crate::load;
 use crate::schema::Kind;
 
+/// The gram type of a decision (RFC-022).
+pub const DECRETOGRAM: &str = "decretogram";
+/// The gram type of a delivery or settlement that executes a decision.
+pub const EXECUTOGRAM: &str = "executogram";
+
 /// A loaded stream definition.
 #[derive(Debug, Clone)]
 pub struct Stream {
@@ -390,8 +395,10 @@ pub struct EffectiveAtBinding {
 }
 
 impl EffectiveAtBinding {
-    /// The source as a [`Binding`]: the schema allows only `$intake` and
-    /// `$external`.
+    /// The source as a [`Binding`]: the schema allows only `$intake`,
+    /// `$supplied` and `$external`, and the law derives only those. Any other
+    /// source binds nothing ([`Binding::Constant`] null): the moment is then
+    /// the recording.
     pub fn binding(&self) -> Binding {
         if let Some(r) = self.source.strip_prefix("$intake.") {
             return Binding::Intake(r.to_string());
@@ -399,12 +406,10 @@ impl EffectiveAtBinding {
         if let Some(r) = self.source.strip_prefix(SUPPLIED_BINDING) {
             return Binding::Supplied(r.to_string());
         }
-        Binding::External(
-            self.source
-                .strip_prefix("$external.")
-                .unwrap_or(&self.source)
-                .to_string(),
-        )
+        match self.source.strip_prefix("$external.") {
+            Some(r) => Binding::External(r.to_string()),
+            None => Binding::Constant(Value::Null),
+        }
     }
 }
 
@@ -551,7 +556,7 @@ impl Event {
             .iter()
             .find(|d| d.name == name && source == "channel")
             .and_then(|d| d.origin.as_ref())
-            .map(|o| vec![o.grondslag.clone()]);
+            .map(|o| vec![o.legal_basis.clone()]);
         of_origin.unwrap_or_else(|| {
             supplied
                 .get("legal_basis")
@@ -672,7 +677,7 @@ impl Event {
             "chronicle" => EventAttribute::Fixed(Some(stream.chronicle.as_str())),
             // The fields of a decision that a process passes.
             "legal_character" | "decision_type" | "regulation" | "competent_authority" => {
-                free_as(self.type_ == "decretogram")
+                free_as(self.type_ == DECRETOGRAM)
             }
             _ => return None,
         })
@@ -916,7 +921,8 @@ pub fn build_gram(
         };
         set_path(&mut fields, &leaf.path, value);
     }
-    let (effective_at, effective_at_legal_basis) = effective_at_of(event, submission)?;
+    let (effective_at, effective_at_legal_basis, effective_at_stated) =
+        effective_at_of(event, submission)?;
 
     Ok(Gram {
         kind: "chronolexogram".to_string(),
@@ -936,6 +942,7 @@ pub fn build_gram(
         acting_actor: None,
         effective_at: date::as_effective_at(&effective_at),
         effective_at_legal_basis,
+        effective_at_stated,
         recorded_at: date::as_effective_at(&submission.recorded_at),
         refers_to: submission.refers_to.clone(),
         stream: StreamReference {
@@ -958,6 +965,9 @@ pub const SUPPLIED_BINDING: &str = "$supplied.";
 /// The key under `$intake` where the receiving channel puts what it supplies,
 /// per field: `{value, source, legal_basis}`.
 pub const SUPPLIED: &str = "supplied";
+
+/// The sources a receiving channel can name under `$intake.supplied`.
+const SUPPLIED_SOURCES: [&str; 2] = ["channel", "register"];
 
 /// The value of a `$supplied` field and where it came from: what the
 /// receiving channel supplies under `$intake.supplied.<name>`, and otherwise
@@ -986,6 +996,15 @@ fn supplied_value(
                 .and_then(Value::as_str)
                 .unwrap_or("channel")
                 .to_string();
+            // What a receiving channel supplies comes from the login or the
+            // route, or from a register; `applicant` and `handler` are for
+            // what was typed in (gram.json `field_provenance.source`).
+            if !SUPPLIED_SOURCES.contains(&source.as_str()) {
+                return Err(format!(
+                    "field '{path}': $intake.supplied gives source '{source}'; a receiving channel supplies from: {}",
+                    SUPPLIED_SOURCES.join(", ")
+                ));
+            }
             if !submitted.is_null() && submitted != value {
                 return Err(format!(
                     "field '{path}' is supplied by the {source} ({value}); the submission may not change it ({submitted})"
@@ -1092,14 +1111,16 @@ pub fn bound_moment<'e>(
     Ok(Some((moment, b)))
 }
 
-/// The `effective_at` of a gram and, if the event bound it to a submitted
-/// value and that value was present, its legal basis. Without a value (or
-/// without a binding) it is the moment of recording. A bound moment after
-/// the recording is refused: what has yet to happen is not a fact.
-fn effective_at_of(
-    event: &Event,
-    submission: &Submission<'_>,
-) -> Result<(DateTime<FixedOffset>, Option<Vec<String>>), String> {
+/// The `effective_at` of a gram, its legal basis, and whether it was stated.
+type EffectiveAt = (DateTime<FixedOffset>, Option<Vec<String>>, bool);
+
+/// The `effective_at` of a gram, its legal basis, and whether it was stated:
+/// bound to a submitted value that was present. Without a value (or without
+/// a binding) it is the moment of recording, with the legal basis the law
+/// gives for that, if any. A bound moment after the recording is refused:
+/// what has yet to happen is not a fact. So is a stated moment for which the
+/// law gives no legal basis.
+fn effective_at_of(event: &Event, submission: &Submission<'_>) -> Result<EffectiveAt, String> {
     let now = submission.recorded_at;
     let intake = submission.intake.as_object();
     let Some((moment, b)) = bound_moment(event, intake, submission.external, *now.offset())? else {
@@ -1110,8 +1131,14 @@ fn effective_at_of(
             .as_ref()
             .map(|b| b.legal_basis_recorded.clone())
             .filter(|g| !g.is_empty());
-        return Ok((now, recorded));
+        return Ok((now, recorded, false));
     };
+    if b.legal_basis.is_empty() {
+        return Err(format!(
+            "effective_at is stated ('{}'), but the law only says why the moment of recording counts: leave it out",
+            b.source
+        ));
+    }
     if moment > now {
         return Err(format!(
             "effective_at {} from '{}' lies after the recording ({}): what has yet to happen is not recorded",
@@ -1120,7 +1147,7 @@ fn effective_at_of(
             date::as_effective_at(&now)
         ));
     }
-    Ok((moment, Some(b.legal_basis.clone())))
+    Ok((moment, Some(b.legal_basis.clone()), true))
 }
 
 #[cfg(test)]
@@ -1295,6 +1322,29 @@ mod tests {
                 refers_to: &BTreeMap::new(),
             },
         )
+    }
+
+    /// What a receiving channel supplies names a source from the vocabulary
+    /// of gram.json; another source is refused on building (a 400), not at
+    /// the schema check under the lock.
+    #[test]
+    fn a_supplied_value_from_an_unknown_source_is_refused() {
+        let text = STREAM.replace(
+            "        rekeningnummer: $external.rekeningnummer\n",
+            "        rekeningnummer: $supplied.rekeningnummer\n",
+        );
+        assert_ne!(text, STREAM);
+        let s = parse(&text, "t").unwrap();
+        let mut i = intake();
+        i["supplied"] = json!({"rekeningnummer": {"value": "NL01", "source": "register", "legal_basis": ["testregeling_aanvraag#1"]}});
+        let g = with_intake(&s, i.clone()).unwrap();
+        assert_eq!(
+            g.field_provenance["content.rekeningnummer"].source,
+            "register"
+        );
+        i["supplied"]["rekeningnummer"]["source"] = json!("elders");
+        let f = with_intake(&s, i).unwrap_err();
+        assert!(f.contains("source 'elders'"), "{f}");
     }
 
     /// Two times: without a stated receipt, effective_at is the recording;

@@ -6,7 +6,16 @@
 // filled in and read-only, and is not sent along: the cell takes it from the
 // channel. A field the law lets the applicant leave out says so.
 import { computed, inject, onMounted, ref } from 'vue';
-import { external, getPath, setPath, suppliedText, withoutSupplied } from '../form.js';
+import {
+  external,
+  fieldLabel,
+  formValue,
+  getPath,
+  inputKind,
+  setPath,
+  suppliedText,
+  withoutSupplied,
+} from '../form.js';
 import { provenanceRows, routesFrom, sourceStatusText } from '../text.js';
 import InputField from '../components/InputField.vue';
 import TableInput from '../components/TableInput.vue';
@@ -71,7 +80,7 @@ async function assess() {
   error.value = '';
   busy.value = 'assessment';
   try {
-    assessment.value = await api.assess(external(withoutSupplied(values.value, form.value.fields)));
+    assessment.value = await api.assess(external(withoutSupplied(values.value, form.value.fields), form.value.fields));
   } catch (e) {
     error.value = e.message;
   } finally {
@@ -84,12 +93,12 @@ async function assess() {
 // filling in the example, the key rebuilds the form.
 const version = ref(0);
 
-// Fill the form with the example; what is fixed beforehand (the chosen
-// window) wins.
+// Fill the form with the example, in the units of the form; what is fixed
+// beforehand (the chosen window) wins.
 function fillExample() {
   const out = {};
   for (const f of form.value.fields) {
-    const v = props.prefilled[f.name] ?? getPath(example.value, f.name);
+    const v = props.prefilled[f.name] ?? formValue(f, getPath(example.value, f.name));
     out[f.name] = v ?? (f.type === 'table' ? [{}] : null);
   }
   values.value = out;
@@ -97,7 +106,8 @@ function fillExample() {
   version.value++;
 }
 
-// The example as it is, with what is fixed beforehand on top.
+// The example as it is (already in the units of the law), with what is fixed
+// beforehand on top.
 function exampleExternal() {
   const out = withoutSupplied(JSON.parse(JSON.stringify(example.value)), form.value.fields);
   for (const [name, v] of Object.entries(props.prefilled)) setPath(out, name, v);
@@ -109,7 +119,9 @@ async function submit(withExample = false) {
   busy.value = withExample ? 'example' : 'submit';
   try {
     const send = props.send ?? api.submit;
-    const r = await send(withExample ? exampleExternal() : external(withoutSupplied(values.value, form.value.fields)));
+    const r = await send(
+      withExample ? exampleExternal() : external(withoutSupplied(values.value, form.value.fields), form.value.fields),
+    );
     // The recorded gram with its YAML: {gram, yaml}.
     emit('submitted', r);
   } catch (e) {
@@ -156,7 +168,7 @@ const resultExplanation = computed(() => {
     <TraceKnop
       v-if="form?.why"
       :show-trace="false"
-      titel="Waarom ziet deze aanvraag er zo uit?"
+      title="Waarom ziet deze aanvraag er zo uit?"
       overline="Waarom?"
       accessible-label="Waarom ziet deze aanvraag er zo uit?"
     >
@@ -200,15 +212,19 @@ const resultExplanation = computed(() => {
               <FieldWhy :field="f" />
             </nldd-container>
           </nldd-form-field>
-          <nldd-form-field v-else-if="f.supplied" :label="f.label" :supporting-label="suppliedText(f)">
+          <nldd-form-field v-else-if="f.supplied" :label="fieldLabel(f)" :supporting-label="suppliedText(f)">
             <nldd-container layout="row" gap="8" vertical-alignment="center">
-              <nldd-text-field readonly :value="String(f.supplied.value ?? '')" :accessible-label="f.label"></nldd-text-field>
+              <nldd-text-field
+                readonly
+                :value="String(formValue(f, f.supplied.value) ?? '')"
+                :accessible-label="fieldLabel(f)"
+              ></nldd-text-field>
               <FieldWhy :field="f" />
             </nldd-container>
           </nldd-form-field>
           <nldd-form-field
             v-else
-            :label="f.label"
+            :label="fieldLabel(f)"
             :supporting-label="f.name !== f.label ? f.name : undefined"
             :optional="f.optional || undefined"
             :optional-label="f.optional ? 'niet verplicht' : undefined"
@@ -224,8 +240,8 @@ const resultExplanation = computed(() => {
             </TableInput>
             <nldd-container v-else layout="row" gap="8" vertical-alignment="center">
               <InputField
-                :kind="f.type"
-                :label="f.label"
+                :kind="inputKind(f)"
+                :label="fieldLabel(f)"
                 :choices="f.options"
                 :model-value="values[f.name]"
                 @update:model-value="set(f.name, $event)"
@@ -242,7 +258,7 @@ const resultExplanation = computed(() => {
             :text="resultText"
             :supporting-text="resultExplanation"
           ></nldd-inline-dialog>
-          <TraceKnop v-if="result.trace_text" :trace-text="result.trace_text" :titel="result.output" />
+          <TraceKnop v-if="result.trace_text" :trace-text="result.trace_text" :title="result.output" />
         </nldd-container>
       </template>
       <template v-if="provenance.length">

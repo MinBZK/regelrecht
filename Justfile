@@ -955,9 +955,13 @@ cel:
     cargo build --manifest-path packages/Cargo.toml --package regelrecht-cel
     cargo run --quiet --manifest-path packages/Cargo.toml --package regelrecht-cel &
     runtime=$!
-    trap 'kill "$runtime" 2>/dev/null || true' EXIT
+    npm run dev -w cel &
+    frontend=$!
+    trap 'kill "$runtime" "$frontend" 2>/dev/null || true' EXIT
     echo "cellen en processen → http://localhost:${CELL_FRONTEND_PORT:-7171}"
-    npm run dev -w cel
+    # Stopt de runtime (een mislukte controle bij het opstarten) of de
+    # frontend, dan stopt het recept, en de trap ruimt de ander op.
+    wait -n "$runtime" "$frontend"
 
 # --- PoC-portaal ---
 

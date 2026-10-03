@@ -1,4 +1,4 @@
-//! `origin` on a parameter and `origins` on an article (RFC-043): metadata for
+//! `origin` on a parameter and `origins` on an article (RFC-048): metadata for
 //! a process runtime and an editor. The engine does not read it, so a law
 //! without it parses as before, a law with it survives a round trip, and a
 //! law with an invalid one still loads: the runtime that reads it reports it.
@@ -64,7 +64,7 @@ fn origin_on_a_parameter() {
         .and_then(Declared::as_valid)
         .expect("origin");
     assert_eq!(o.waarde, OriginValue::Belanghebbende);
-    assert_eq!(o.grondslag, "een_regeling#1 lid 1");
+    assert_eq!(o.legal_basis, "een_regeling#1 lid 1");
     assert_eq!(o.register, None);
     let r = p[1]
         .origin

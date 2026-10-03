@@ -233,7 +233,10 @@ impl Runtime {
                     // The engine computes the consumer's own policy (note on
                     // source and gram id); the process queries a cell.
                     transport: match &b.regulation {
-                        Some(_) => Arc::new(synthesis::PolicySource::new(service.clone(), b)),
+                        Some(_) => Arc::new(
+                            synthesis::PolicySource::new(service.clone(), b)
+                                .with_clock(clock.clone()),
+                        ),
                         None => transport(&b.url)?,
                     },
                 });
@@ -325,7 +328,10 @@ impl Runtime {
             }
             out.extend(synthesis::warnings(s.process.id(), &s.sources).await);
         }
-        out.dedup();
+        // The same warning from two processes once, in the order of first
+        // appearance.
+        let mut seen = std::collections::HashSet::new();
+        out.retain(|w| seen.insert(w.clone()));
         out
     }
 }

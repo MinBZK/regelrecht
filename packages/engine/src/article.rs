@@ -164,33 +164,56 @@ impl LawLoad for ArticleBasedLaw {
 /// every operand of a parsed operation, into the action fields beside `value`
 /// (`values`, `conditions`, `subject`), into `open_terms[].default.actions`,
 /// and into the preamble's machine_readable section.
+///
+/// One mapping with an `operation` key inside a literal is legitimate: a field
+/// of a record literal (RFC-045, experiment A; see
+/// [`crate::operations::evaluate_value`]), such as
+/// `{zetels: {operation: ADD, ...}}`. The engine runs it, so the guard parses
+/// it and walks it like any other operation. One that does not parse is
+/// refused, which is the case this guard exists for, and so is a well-formed
+/// one inside a literal list: a list is data, and the engine would hand the
+/// operation back unrun.
 fn reject_literal_operations(law: &ArticleBasedLaw) -> Result<()> {
-    fn walk(v: &regelrecht_law_model::Value, where_: &str) -> Result<()> {
+    /// `runs` says whether the engine evaluates this position: a record
+    /// literal and the fields of a record (nested maps) are evaluated, a list
+    /// and everything under it is data (see
+    /// [`crate::operations::evaluate_value`]).
+    fn walk(v: &regelrecht_law_model::Value, where_: &str, runs: bool) -> Result<()> {
         match v {
             regelrecht_law_model::Value::Object(map) => {
-                if let Some(regelrecht_law_model::Value::String(op)) = map.get("operation") {
-                    // Experiment A (exp/reductie-als-engine): a record literal
-                    // may hold an operation as a field value; a well-formed one
-                    // is walked like any other operation.
-                    if let Ok(parsed) = serde_json::to_value(v)
-                        .and_then(serde_json::from_value::<regelrecht_law_model::ActionOperation>)
-                    {
-                        return walk_operation(&parsed, where_);
-                    }
-                    return Err(EngineError::LoadError(format!(
-                        "{where_}: operation {op} could not be read as an operation and was \
-                         taken as a literal value. It is missing a field the operation needs, \
-                         or carries one it does not know."
-                    )));
+                // The same test the evaluator uses, so the guard sees every
+                // field the engine would try to run (an `operation` key of any
+                // value, not only a string one).
+                if crate::operations::is_operation_shaped(v) {
+                    let op = match map.get("operation") {
+                        Some(regelrecht_law_model::Value::String(op)) => op.clone(),
+                        Some(other) => format!("{other:?}"),
+                        None => String::new(),
+                    };
+                    let parsed = crate::operations::parse_literal_operation(v);
+                    return match parsed {
+                        // A record field may be an operation (see above): a
+                        // well-formed one is walked like any other operation.
+                        Ok(parsed) if runs => walk_operation(&parsed, where_),
+                        Ok(_) => Err(EngineError::LoadError(format!(
+                            "{where_}: operation {op} sits inside a literal list, where the \
+                             engine does not run it; it would come back as data."
+                        ))),
+                        Err(_) => Err(EngineError::LoadError(format!(
+                            "{where_}: operation {op} could not be read as an operation and was \
+                             taken as a literal value. It is missing a field the operation needs, \
+                             or carries one it does not know."
+                        ))),
+                    };
                 }
                 for inner in map.values() {
-                    walk(inner, where_)?;
+                    walk(inner, where_, runs)?;
                 }
                 Ok(())
             }
             regelrecht_law_model::Value::Array(items) => {
                 for inner in items {
-                    walk(inner, where_)?;
+                    walk(inner, where_, false)?;
                 }
                 Ok(())
             }
@@ -200,7 +223,7 @@ fn reject_literal_operations(law: &ArticleBasedLaw) -> Result<()> {
 
     fn walk_action_value(v: &ActionValue, where_: &str) -> Result<()> {
         match v {
-            ActionValue::Literal(lit) => walk(lit, where_),
+            ActionValue::Literal(lit) => walk(lit, where_, true),
             ActionValue::Operation(op) => walk_operation(op, where_),
         }
     }
@@ -616,6 +639,78 @@ articles:
               - 66
 "#;
         ArticleBasedLaw::from_yaml_str(yaml).expect("a list of numbers carries no operation");
+    }
+
+    /// A law whose one action has `value` (indented to sit under `value:`).
+    fn law_with_value(value: &str) -> String {
+        format!(
+            r#"
+$id: wet_met_record
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: De rij noemt het gebied en het aantal zetels
+    machine_readable:
+      execution:
+        parameters:
+          - name: x
+            type: number
+        output:
+          - name: rij
+            type: object
+        actions:
+          - output: rij
+            value:
+{value}
+"#
+        )
+    }
+
+    /// A record field that is a well-formed operation is evaluated by the
+    /// engine (`evaluate_value`), so the guard lets it through.
+    #[test]
+    fn test_a_well_formed_operation_as_record_field_loads() {
+        let yaml = law_with_value(
+            "              gebied: $x\n              zetels: {operation: ADD, values: [$x, 1]}",
+        );
+        ArticleBasedLaw::from_yaml_str(&yaml).expect("a record field may be an operation");
+    }
+
+    #[test]
+    fn test_a_broken_operation_as_record_field_is_refused() {
+        let yaml =
+            law_with_value("              zetels: {operation: GREATER_THAN_OR_EQUAL, subject: $x}");
+        let err = ArticleBasedLaw::from_yaml_str(&yaml)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("could not be read"), "{err}");
+    }
+
+    /// The guard and the evaluator share one test for "operation-shaped"
+    /// (`is_operation_shaped`: an `operation` key, whatever its value). A
+    /// non-string `operation` would otherwise pass the guard as data and only
+    /// fail when the engine tried to run the record field.
+    #[test]
+    fn test_a_record_field_with_a_non_string_operation_is_refused() {
+        let yaml = law_with_value("              zetels: {operation: 5, values: [$x, 1]}");
+        let err = ArticleBasedLaw::from_yaml_str(&yaml)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("could not be read"), "{err}");
+    }
+
+    /// A list is data: even a well-formed operation in it would come back
+    /// unrun, inside a record as much as at the top.
+    #[test]
+    fn test_a_well_formed_operation_inside_a_list_is_refused() {
+        let yaml = law_with_value(
+            "              zetels:\n                - {operation: ADD, values: [$x, 1]}",
+        );
+        let err = ArticleBasedLaw::from_yaml_str(&yaml)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("literal list"), "{err}");
     }
 
     /// The guard descends into parsed operations and into every action field

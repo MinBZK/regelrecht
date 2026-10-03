@@ -103,15 +103,28 @@ pub fn load(map: &Path) -> Result<Corpus, Vec<String>> {
             Ok(id) => {
                 // The engine also loads a regulation with an invalid `origin`
                 // (it does not read it); the runtime then does not start, with
-                // file, article and parameter in the message (RFC-043).
-                if let Some(law) = service.resolver().get_law(&id) {
-                    errors.extend(
+                // file, article and parameter in the message (RFC-048). The
+                // version of this file, not the newest of the regulation.
+                // A version the runtime cannot find back is not checked
+                // silently: that is an error too.
+                let read = |key: &str| doc.get(key).and_then(serde_yaml_ng::Value::as_str);
+                match service.resolver().all_law_versions().find(|l| {
+                    l.id == id
+                        && l.valid_from.as_deref() == read("valid_from")
+                        && l.publication_date == read("publication_date").unwrap_or_default()
+                }) {
+                    Some(law) => errors.extend(
                         crate::origin::validate(law)
                             .into_iter()
                             .map(|f| format!("{}: {f}", path.display())),
-                    );
+                    ),
+                    None => errors.push(format!(
+                        "{}: regulation '{id}' loaded, but no loaded version has valid_from {:?} and publication_date {:?} of this file: its origin cannot be checked",
+                        path.display(),
+                        read("valid_from"),
+                        read("publication_date")
+                    )),
                 }
-                let read = |key: &str| doc.get(key).and_then(serde_yaml_ng::Value::as_str);
                 let version = version_key(
                     read("valid_from"),
                     read("publication_date").unwrap_or_default(),
@@ -185,9 +198,31 @@ fn is_paragraph_number(text: &str) -> bool {
         && text.len() - digits.len() <= 1
 }
 
+/// Whether a text is a regulation id: `[a-z0-9_]+`.
+fn is_regulation_id(text: &str) -> bool {
+    !text.is_empty()
+        && text
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+}
+
+/// Whether a text is an article number: letters, digits, `:`, `.`, `_`,
+/// `-` and spaces, starting and ending with a letter or digit (`4:13`,
+/// `G 1`, `2.1a`). The schema's `provisionGround` says the same.
+fn is_article_number(text: &str) -> bool {
+    let edge = |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphanumeric());
+    edge(text.chars().next())
+        && edge(text.chars().last())
+        && text
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, ':' | '.' | '_' | '-' | ' '))
+}
+
 /// Parse a legal basis. An article number may contain a space
 /// (`kieswet#G 1`), so the paragraph follows the last ` lid `, and only if a
-/// paragraph number stands there.
+/// paragraph number stands there. The regulation is a regulation id and the
+/// article an article number ([`is_article_number`]); anything else (a
+/// trailing space, a second `#`, an empty article) is refused, not looked up.
 pub fn parse(legal_basis: &str) -> Result<LegalBasis<'_>, String> {
     let (regulation, rest) = legal_basis.split_once('#').ok_or_else(|| {
         format!("legal basis '{legal_basis}' does not have the form <regulation>#<article>")
@@ -196,6 +231,11 @@ pub fn parse(legal_basis: &str) -> Result<LegalBasis<'_>, String> {
         Some((article, paragraph)) if is_paragraph_number(paragraph) => (article, Some(paragraph)),
         _ => (rest, None),
     };
+    if !is_regulation_id(regulation) || !is_article_number(article) {
+        return Err(format!(
+            "legal basis '{legal_basis}' does not have the form <regulation>#<article>: the regulation is a-z, 0-9 and _, the article letters, digits, ':', '.', '_', '-' and spaces, starting and ending with a letter or digit, optionally followed by ' lid <n>'"
+        ));
+    }
     Ok(LegalBasis {
         regulation,
         article,
@@ -264,13 +304,34 @@ pub fn transitive_parameters(
     article: &Article,
 ) -> BTreeSet<String> {
     let mut parameters = BTreeSet::new();
+    walk_calls(
+        service,
+        regulation,
+        article,
+        |_, _, _| true,
+        |_, a| parameters.extend(a.get_parameters().iter().map(|p| p.name.clone())),
+    );
+    parameters
+}
+
+/// Visit an article and every article it calls through an input with
+/// `source.output` (in `source.regulation` or in the same regulation),
+/// transitively and each once, as `(regulation, article)`. `follow` says per
+/// call `(calling regulation, called regulation, source)` whether to go on.
+fn walk_calls<'s>(
+    service: &'s LawExecutionService,
+    regulation: &str,
+    article: &'s Article,
+    follow: impl Fn(&str, &str, &regelrecht_law_model::Source) -> bool,
+    mut visit: impl FnMut(&str, &'s Article),
+) {
     let mut seen: BTreeSet<(String, String)> = BTreeSet::new();
     let mut to_do: Vec<(String, &Article)> = vec![(regulation.to_string(), article)];
     while let Some((law, a)) = to_do.pop() {
         if !seen.insert((law.clone(), a.number.clone())) {
             continue;
         }
-        parameters.extend(a.get_parameters().iter().map(|p| p.name.clone()));
+        visit(&law, a);
         for input in a.get_inputs() {
             let Some(source) = &input.source else {
                 continue;
@@ -279,6 +340,9 @@ pub fn transitive_parameters(
                 continue;
             };
             let target = source.regulation.clone().unwrap_or_else(|| law.clone());
+            if !follow(&law, &target, source) {
+                continue;
+            }
             if let Some(next) = service
                 .resolver()
                 .get_article_by_output(&target, output, None)
@@ -287,7 +351,6 @@ pub fn transitive_parameters(
             }
         }
     }
-    parameters
 }
 
 /// The type of a value according to the regulation: `type` and the unit
@@ -357,40 +420,25 @@ pub fn required_parameters(
     article: &Article,
 ) -> BTreeMap<String, Required> {
     let mut out: BTreeMap<String, Required> = BTreeMap::new();
-    let mut seen: BTreeSet<(String, String)> = BTreeSet::new();
-    let mut to_do: Vec<(String, &Article)> = vec![(regulation.to_string(), article)];
-    while let Some((law, a)) = to_do.pop() {
-        if !seen.insert((law.clone(), a.number.clone())) {
-            continue;
-        }
-        for p in a.get_parameters() {
-            out.entry(p.name.clone()).or_insert_with(|| Required {
-                name: p.name.clone(),
-                article: format!("{law}#{}", a.number),
-                typing: ValueType::new(p.param_type, p.type_spec.as_ref()),
-                nullable: p.is_nullable(),
-                description: p.description.clone(),
-            });
-        }
-        for input in a.get_inputs() {
-            let Some(source) = &input.source else {
-                continue;
-            };
-            let Some(output) = &source.output else {
-                continue;
-            };
-            let target = source.regulation.clone().unwrap_or_else(|| law.clone());
-            if target != law || source.parameters.as_ref().is_some_and(|p| !p.is_empty()) {
-                continue;
+    walk_calls(
+        service,
+        regulation,
+        article,
+        |law, target, source| {
+            target == law && source.parameters.as_ref().is_none_or(|p| p.is_empty())
+        },
+        |law, a| {
+            for p in a.get_parameters() {
+                out.entry(p.name.clone()).or_insert_with(|| Required {
+                    name: p.name.clone(),
+                    article: format!("{law}#{}", a.number),
+                    typing: ValueType::new(p.param_type, p.type_spec.as_ref()),
+                    nullable: p.is_nullable(),
+                    description: p.description.clone(),
+                });
             }
-            if let Some(next) = service
-                .resolver()
-                .get_article_by_output(&target, output, None)
-            {
-                to_do.push((target, next));
-            }
-        }
-    }
+        },
+    );
     out
 }
 
@@ -481,6 +529,30 @@ mod tests {
         // No paragraph number: then it belongs to the article number.
         assert_eq!(parse("een_wet#A lid B").unwrap().article, "A lid B");
         assert_eq!(parse("een_wet#1 lid 12ab").unwrap().paragraph, None);
+        assert_eq!(parse("awb#4:13").unwrap().article, "4:13");
+        assert_eq!(parse("een_wet#2.1a-b lid 3").unwrap().article, "2.1a-b");
+    }
+
+    /// The grammar of a legal basis: a regulation id, an article number that
+    /// starts and ends with a letter or digit; nothing else is looked up.
+    #[test]
+    fn a_legal_basis_outside_the_grammar_is_refused() {
+        for wrong in [
+            "zonder_hekje",
+            "#1",
+            "een_wet#",
+            "Een_Wet#1",
+            "een-wet#1",
+            "een_wet#1 ",
+            "een_wet# 1",
+            "een_wet#1#2",
+            "een_wet#1 lid 1 ",
+            "een_wet#1/2",
+            "een_wet#-1",
+        ] {
+            let f = parse(wrong).expect_err(wrong);
+            assert!(f.contains("does not have the form"), "{wrong}: {f}");
+        }
 
         let s = load(&fixtures()).unwrap().service;
         let a = article(&s, "testregeling_aanvraag#1 lid 1").unwrap();

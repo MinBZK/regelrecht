@@ -151,6 +151,7 @@ fn portal_of<'a>(
     let [(channel, submits)] = portal[..] else {
         let named: Vec<String> = if portal.is_empty() {
             let mut articles: Vec<&str> = p.channels.iter().map(|c| c.article.as_str()).collect();
+            articles.sort_unstable();
             articles.dedup();
             vec![format!(
                 "the channels are declared in {}",
@@ -248,28 +249,34 @@ fn channel_and_role(
             legal_basis.push(by.clone());
         }
     }
-    // The owner names a field of the submission; the channel keeps the
-    // field of its login that carries it, and the path the gram binds to.
-    let owner = c.def.owner.as_ref().and_then(|o| {
-        let prefix = k.intake.as_deref().unwrap_or(&c.id);
-        let none = BTreeMap::new();
-        let supplies = supplied.map_or(&none, |(_, s)| s);
-        crate::channel::owner_binding(o, prefix, supplies, submission)
-            .map_err(|e| errors.push(format!("{}: channel '{}': {e}", c.article, c.id)))
-            .ok()
-    });
-    let channel = ChannelDefinition {
+    let mut channel = ChannelDefinition {
         label: k.label.clone(),
         explanation: k.explanation.clone(),
         fields,
-        owner: owner.as_ref().map(|o| o.login.clone()),
-        owner_path: owner.map(|o| o.path),
+        owner: None,
+        owner_path: None,
         intake: k.intake.clone(),
         legal_basis,
         supplies: supplied.map(|(_, s)| s.clone()).unwrap_or_default(),
         declared_by: c.article.clone(),
         supplied_by: supplied.map(|(by, _)| by.clone()),
     };
+    // The owner names a field of the submission; the channel keeps the
+    // field of its login that carries it, and the path the gram binds to.
+    if let Some(o) = &c.def.owner {
+        match crate::channel::owner_binding(
+            o,
+            channel.intake_prefix(&c.id),
+            &channel.supplies,
+            submission,
+        ) {
+            Ok(b) => {
+                channel.owner = Some(b.login);
+                channel.owner_path = Some(b.path);
+            }
+            Err(e) => errors.push(format!("{}: channel '{}': {e}", c.article, c.id)),
+        }
+    }
     let role = RoleDefinition {
         channel: c.id.clone(),
         routes: vec![c.def.kind.routes()],

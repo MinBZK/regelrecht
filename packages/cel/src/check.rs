@@ -155,7 +155,8 @@ pub fn periods(
                 .chain(events.iter().flat_map(|(_, e)| e.legal_basis.iter()))
                 .cloned()
                 .collect();
-            let Some(period) = a.derivation.period_mut().filter(|p| p.is_none()) else {
+            // Checked above: the derivation has a period, and it is empty.
+            let Some(period) = a.derivation.period_mut() else {
                 continue;
             };
             let found: BTreeSet<String> = legal_basis
@@ -424,10 +425,10 @@ fn read_by_cell<'a>(
         if events_for(def, None, streams).iter().any(this_event) {
             read.extend(reduction::filter_paths(&def.reduction.filter));
         }
-        if events_in(&def.reduction.chronicle, &def.reduction.without, streams)
-            .iter()
-            .any(this_event)
-            && !def.reduction.without.is_empty()
+        if !def.reduction.without.is_empty()
+            && events_in(&def.reduction.chronicle, &def.reduction.without, streams)
+                .iter()
+                .any(this_event)
         {
             read.extend(reduction::filter_paths(&def.reduction.without));
         }

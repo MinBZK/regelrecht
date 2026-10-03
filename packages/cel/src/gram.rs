@@ -78,9 +78,16 @@ pub struct Gram {
     /// When the fact legally holds or took place.
     pub effective_at: String,
     /// Only if the event bound `effective_at` to a submitted value and that
-    /// value was present: its legal basis, from the stream.
+    /// value was present: its legal basis, from the stream. Also when nothing
+    /// was stated, if the law says why the moment of recording counts.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effective_at_legal_basis: Option<Vec<String>>,
+    /// Whether `effective_at` is a value that was stated (bound to a
+    /// submitted value that was present). If not, it is the moment of
+    /// recording and the stamp moves it along. Not part of the gram: only
+    /// for the gram the cell is about to record.
+    #[serde(skip)]
+    pub effective_at_stated: bool,
     /// When the cell recorded the gram: its own clock.
     pub recorded_at: String,
     /// Which grams this gram refers to, per name from the law text
@@ -287,6 +294,11 @@ impl Gram {
         if let Some(name) = key.strip_prefix(REFERS_TO) {
             return Some(self.refers_to.get(name).map(String::as_str));
         }
+        // GRAM_KEYS decides which keys are fields of the gram; the match
+        // only reads them (a test keeps the two in step).
+        if !crate::reduction::GRAM_KEYS.contains(&key) {
+            return None;
+        }
         Some(match key {
             "id" => Some(self.id.as_str()),
             "root" => self.root.as_deref(),
@@ -300,7 +312,7 @@ impl Gram {
             "decision_type" => self.decision_type.as_deref(),
             "regulation" => self.regulation.as_deref(),
             "competent_authority" => self.competent_authority.as_deref(),
-            _ => return None,
+            _ => None,
         })
     }
 
@@ -328,9 +340,9 @@ impl Gram {
     /// so the order of the lines in the chronicle is that of `recorded_at`.
     /// `not_for` is the `recorded_at` of the last line of the chronicle: if the
     /// clock runs backwards, the gram gets that moment, not an earlier one. An
-    /// `effective_at` that the event did not bind to a value (without
-    /// `effective_at_legal_basis`) is the moment of recording and moves along;
-    /// a bound `effective_at` may not lie after it.
+    /// `effective_at` that was not stated (see `effective_at_stated`) is the
+    /// moment of recording and moves along, also when the law gives a legal
+    /// basis for that; a stated `effective_at` may not lie after it.
     pub fn stamp(
         &mut self,
         now: DateTime<FixedOffset>,
@@ -341,7 +353,7 @@ impl Gram {
             _ => now,
         };
         let text = date::as_effective_at(&moment);
-        if self.effective_at_legal_basis.is_none() && self.provenance.is_none() {
+        if !self.effective_at_stated && self.provenance.is_none() {
             self.effective_at = text.clone();
         } else if self.moment()? > moment {
             return Err(format!(
@@ -350,6 +362,8 @@ impl Gram {
             ));
         }
         self.recorded_at = text;
+        // The parsed times belong to the old texts.
+        self.times = Times::default();
         Ok(())
     }
 
@@ -419,6 +433,7 @@ pub(crate) fn test_gram(id: &str) -> Gram {
         acting_actor: None,
         effective_at: "2025-03-12T10:14:03+01:00".into(),
         effective_at_legal_basis: None,
+        effective_at_stated: false,
         recorded_at: "2025-03-12T10:14:05+01:00".into(),
         refers_to: BTreeMap::new(),
         stream: StreamReference {
@@ -480,5 +495,42 @@ mod tests {
         );
         g.effective_at = "not a moment".into();
         assert!(g.moment().is_err());
+    }
+
+    /// Every filter key of [`crate::reduction::GRAM_KEYS`] reads a field of
+    /// the gram; any other key is a field path.
+    #[test]
+    fn every_gram_key_is_an_attribute() {
+        let mut g = test_gram("z");
+        g.root = Some("z".into());
+        g.subtype = Some("s".into());
+        g.stage = Some("S".into());
+        g.legal_character = Some("l".into());
+        g.decision_type = Some("d".into());
+        g.regulation = Some("r".into());
+        g.competent_authority = Some("c".into());
+        for k in crate::reduction::GRAM_KEYS {
+            assert!(matches!(g.attribute(k), Some(Some(_))), "{k}");
+        }
+        assert_eq!(g.attribute("content.naam"), None);
+    }
+
+    /// An effective_at that nobody stated is the moment of recording, also
+    /// when the law says why that moment counts; a stated one stays.
+    #[test]
+    fn an_unstated_effective_at_with_a_legal_basis_moves_along() {
+        let later = DateTime::parse_from_rfc3339("2025-03-13T09:00:00+01:00").unwrap();
+        let mut g = test_gram("z");
+        g.effective_at_legal_basis = Some(vec!["testwet#1".into()]);
+        g.stamp(later, None).unwrap();
+        assert_eq!(g.moment().unwrap(), later);
+        assert_eq!(g.effective_at, g.recorded_at);
+
+        let mut g = test_gram("z");
+        let stated = g.effective_at.clone();
+        g.effective_at_stated = true;
+        g.effective_at_legal_basis = Some(vec!["testwet#1".into()]);
+        g.stamp(later, None).unwrap();
+        assert_eq!(g.effective_at, stated);
     }
 }

@@ -130,10 +130,12 @@ fn role_for(
 }
 
 /// `POST /api/channels/{channel}/login`: the fields of the channel, and `role`
-/// if more than one role logs in through the channel.
+/// if more than one role logs in through the channel. A session the request
+/// still carries ends: logging in again does not leave the old one valid.
 pub(super) async fn login(
     State(state): State<ProcessState>,
     Path(id): Path<String>,
+    headers: HeaderMap,
     Json(input): Json<Map<String, Value>>,
 ) -> Result<Response, Error> {
     let k = channel(&state, &id)?;
@@ -146,6 +148,7 @@ pub(super) async fn login(
         channel: id,
         fields,
     };
+    state.sessions.remove(&headers);
     let token = state.sessions.open(session.clone());
     let cookie = cookie(&state, &token, "");
     Ok(([(header::SET_COOKIE, cookie)], Json(session)).into_response())

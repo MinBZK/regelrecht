@@ -1,0 +1,27 @@
+---
+# invalid: an origin REGISTER that does not name the regulation of the
+# register (RFC-048 §1)
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.8.0/schema/v0.8.0/schema.json
+$id: test_conformance_origin_register_without_register
+regulatory_layer: WET
+publication_date: '2025-01-01'
+url: https://example.invalid/origin
+bwb_id: BWBR0000000
+articles:
+  - number: '1'
+    url: https://example.invalid/origin/1
+    text: De inschrijving blijkt uit het register.
+    machine_readable:
+      execution:
+        parameters:
+          - name: inschrijving
+            type: boolean
+            origin:
+              waarde: REGISTER
+              grondslag: test_conformance_origin_register_without_register#1
+        output:
+          - name: ingeschreven
+            type: boolean
+        actions:
+          - output: ingeschreven
+            value: $inschrijving

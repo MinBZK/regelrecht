@@ -3,8 +3,9 @@
 //!
 //! The first tests run on the fictional register cell. The test
 //! `compare_from_env` does the same for cells and articles outside this repo
-//! (for example another corpus), with paths from the environment; without
-//! those variables it skips. The derivations and the extra fields of a
+//! (for example another corpus), with paths from the environment. The tests
+//! that need the environment are ignored by default: run them with
+//! `--ignored` and the variables set (without them they fail). The derivations and the extra fields of a
 //! lexostatus are both compared.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
@@ -33,17 +34,20 @@ fn fixtures() -> PathBuf {
 
 /// The grams of a cell: the initial state, plus `extra` (json lines in the
 /// shape of the initial state), placed as the runtime does (with a fixed load
-/// time as `recorded_at`).
-fn grams_of(cell_dir: &Path, extra: &[Value]) -> (CellDefinition, Vec<Gram>) {
+/// time as `recorded_at`). A stream with `establishes` gets its shape from
+/// the law in `corpus`.
+fn grams_of(
+    cell_dir: &Path,
+    extra: &[Value],
+    corpus: Option<&Path>,
+) -> (CellDefinition, Vec<Gram>) {
     let def = CellDefinition::load(cell_dir).unwrap();
     let mut streams = Vec::new();
     for s in &def.streams {
         streams.extend(stream::load(&cell_dir.join(s)).unwrap());
     }
-    // A stream with `establishes` gets its shape from the law: with
-    // `EXP_REGULATION` the corpus that contains that law.
-    if let Ok(path) = std::env::var("EXP_REGULATION") {
-        let corpus = regelrecht_cel::regulations::load(Path::new(&path)).unwrap();
+    if let Some(path) = corpus {
+        let corpus = regelrecht_cel::regulations::load(path).unwrap();
         let errors = regelrecht_cel::law::establish(&mut streams, &corpus.service, None);
         assert!(errors.is_empty(), "{errors:?}");
     }
@@ -54,7 +58,7 @@ fn grams_of(cell_dir: &Path, extra: &[Value]) -> (CellDefinition, Vec<Gram>) {
         text.push('\n');
         text.push_str(&e.to_string());
     }
-    let grams = initial_state::parse(&text, "initial_state", &streams).unwrap();
+    let grams = initial_state::parse(&text, "initial_state", &streams, &[]).unwrap();
     let load_time = chrono::DateTime::parse_from_rfc3339(LOAD_TIME).unwrap();
     (def, initial_state::placed(&grams, &load_time).unwrap())
 }
@@ -120,7 +124,7 @@ fn register() -> (reduction::LexostatusDefinition, Vec<Gram>) {
         json!({"stream": "test_registers", "name": "mededeling_gedaan", "effective_at": "2024-12-02T08:30:00+00:00", "provenance": "initial_state", "fields": {"aanduiding": "VOORBEELD", "datum": "2024-12-02", "geblokkeerd_voor": ["raad"]}}),
         json!({"stream": "test_registers", "name": "mededeling_gedaan", "effective_at": "2024-12-02T09:00:00+01:00", "provenance": "initial_state", "fields": {"aanduiding": "VOORBEELD", "datum": "2024-12-01", "geblokkeerd_voor": []}}),
     ];
-    let (def, grams) = grams_of(&map, &extra);
+    let (def, grams) = grams_of(&map, &extra, None);
     let lexo = reduction::load(&map.join(&def.lexostatuses)).unwrap();
     (lexo.lexostatus("registerstatus").unwrap().clone(), grams)
 }
@@ -321,13 +325,12 @@ fn measure(
 /// - `lexostatus`: the name of the lexostatus in the cell;
 /// - `inputs`: a list of inputs, one object per case.
 ///
-/// Without that variable the test skips.
+/// Ignored by default: run with `--ignored` and the variable set.
 #[test]
+#[ignore = "needs EXP_COMPARE (and EXP_REGULATION for a stream with establishes)"]
 fn compare_from_env() {
-    let Ok(input) = std::env::var("EXP_COMPARE") else {
-        eprintln!("EXP_COMPARE not set: skipped");
-        return;
-    };
+    let input = std::env::var("EXP_COMPARE").expect("EXP_COMPARE");
+    let regulation = std::env::var("EXP_REGULATION").ok().map(PathBuf::from);
     let list: Vec<Value> = serde_json::from_str(&input).unwrap();
     let (mut cases, mut values) = (0, 0);
     let mut differences = Vec::new();
@@ -342,7 +345,7 @@ fn compare_from_env() {
                 .collect(),
             None => Vec::new(),
         };
-        let (def, grams) = grams_of(&map, &extra);
+        let (def, grams) = grams_of(&map, &extra, regulation.as_deref());
         let lexo = reduction::load(&map.join(&def.lexostatuses)).unwrap();
         let name = v["lexostatus"].as_str().unwrap();
         let def = lexo.lexostatus(name).unwrap().clone();
@@ -406,17 +409,16 @@ fn compare_from_env() {
 ///   consumer gets the synthesis output as the parameter named by `table`
 ///   and the year as the parameter named by `year`.
 #[test]
+#[ignore = "needs EXP_REGULATION, EXP_SYNTHESIS_DIR, EXP_BINDING, EXP_SYNTHESIS and EXP_CONSUMER"]
 fn synthesis_from_env() {
-    let (Ok(corpus), Ok(map), Ok(binding), Ok(synthesis), Ok(consumer)) = (
-        std::env::var("EXP_REGULATION"),
-        std::env::var("EXP_SYNTHESIS_DIR"),
-        std::env::var("EXP_BINDING"),
-        std::env::var("EXP_SYNTHESIS"),
-        std::env::var("EXP_CONSUMER"),
-    ) else {
-        eprintln!("EXP_* not set: skipped");
-        return;
-    };
+    let var = |n: &str| std::env::var(n).unwrap_or_else(|_| panic!("{n} not set"));
+    let (corpus, map, binding, synthesis, consumer) = (
+        var("EXP_REGULATION"),
+        var("EXP_SYNTHESIS_DIR"),
+        var("EXP_BINDING"),
+        var("EXP_SYNTHESIS"),
+        var("EXP_CONSUMER"),
+    );
     let t = Instant::now();
     let mut service = regelrecht_cel::regulations::load(Path::new(&corpus))
         .unwrap()
@@ -435,7 +437,11 @@ fn synthesis_from_env() {
     }
     let binding: Vec<Value> = serde_json::from_str(&binding).unwrap();
     for k in &binding {
-        let (_, grams) = grams_of(Path::new(k["cell_dir"].as_str().unwrap()), &[]);
+        let (_, grams) = grams_of(
+            Path::new(k["cell_dir"].as_str().unwrap()),
+            &[],
+            Some(Path::new(&corpus)),
+        );
         service.add_data_source(Box::new(
             lexostatus_engine::ChronicleSource::new(
                 k["regulation"].as_str().unwrap(),
@@ -718,17 +724,15 @@ fn advance_and_determination_per_decision_with_offset() {
 }
 
 /// Step 8 for a corpus outside this repo (for example the variant of a real
-/// case), with paths from the environment; without `EXP_PAYMENT` it skips.
+/// case), with paths from the environment; ignored by default (needs `EXP_PAYMENT`).
 /// `EXP_PAYMENT`: json `{regulation, grams (jsonl), policy, chronicle,
 /// cases: [{regulation, outputs, parameters, date, expected}]}`: the policy
 /// gets the grams as the source of its register, and every case must give
 /// its expected outputs.
 #[test]
+#[ignore = "needs EXP_PAYMENT"]
 fn payment_from_env() {
-    let Ok(input) = std::env::var("EXP_PAYMENT") else {
-        eprintln!("EXP_PAYMENT not set: skipped");
-        return;
-    };
+    let input = std::env::var("EXP_PAYMENT").expect("EXP_PAYMENT");
     let v: Value = serde_json::from_str(&input).unwrap();
     let mut corpus =
         regelrecht_cel::regulations::load(Path::new(v["regulation"].as_str().unwrap())).unwrap();

@@ -183,7 +183,7 @@ fn validate(cell: &Cell, gram: &Gram) -> Result<(), Error> {
             format!("gram does not validate: {}", f.join("; ")),
         )
     })?;
-    reduction::dates_in_order(&cell.lexostatuses.lexostatus_definitions, gram)
+    reduction::fields_in_order(&cell.lexostatuses.lexostatus_definitions, gram)
         .map_err(|f| error(StatusCode::BAD_REQUEST, f))
 }
 
@@ -608,7 +608,7 @@ fn reduce<'g>(
         ),
     }
     .map_err(|e| error(StatusCode::BAD_REQUEST, e))?
-    .ok_or_else(|| error(StatusCode::NOT_FOUND, "no gram for this query"))
+    .ok_or_else(|| error(StatusCode::NOT_FOUND, crate::synthesis::NO_GRAM))
 }
 
 /// The state of the group around a root (see [`reduction::CaseState`]): the

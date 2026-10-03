@@ -248,13 +248,6 @@ fn decision_of(
     Ok(None)
 }
 
-/// The article a fact executes, its outputs and the parameter that receives
-/// the decision id (decision 12 of the plan): (a) a policy article of the
-/// actor with a parameter of origin role BESLUIT that executes an article
-/// in the legal basis of the event, for a fact that follows a decision;
-/// otherwise (b) the article that reads the event, through the
-/// lexostatuses that read it. `None`: no article apart from a decision
-/// reads it.
 /// The article a fact executes, with its outputs and the parameter that
 /// receives the decision id.
 #[derive(Debug, Clone)]
@@ -264,6 +257,13 @@ struct FactArticle {
     parameter: Option<String>,
 }
 
+/// The article a fact executes, its outputs and the parameter that receives
+/// the decision id (decision 12 of the plan): (a) a policy article of the
+/// actor with a parameter of origin role BESLUIT that executes an article
+/// in the legal basis of the event, for a fact that follows a decision;
+/// otherwise (b) the article that reads the event, through the
+/// lexostatuses that read it. `None`: no article apart from a decision
+/// reads it.
 fn fact(
     p: &ActorPolicy,
     cell: &Cell,

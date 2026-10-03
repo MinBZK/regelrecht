@@ -27,7 +27,10 @@
 //! output `latest`: the sequence of that gram, or null (no gram, so no
 //! lexostatus). An output null is a derivation the chronicle says nothing
 //! about, unless the derivation says with `no_gram: null` that null is the value.
-//! See the report in the superpowers-specs.
+//!
+//! A list lexostatus (`group_by`), such as the worklist and the list of all
+//! cases the runtime offers ([`reduction::WORKLIST`], [`reduction::CASES`]),
+//! cannot go via the engine: without a binding it goes along the DSL.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -48,6 +51,10 @@ use crate::reduction::{
 
 /// The output with the sequence of the gram the lexostatus picks.
 pub const LATEST: &str = "latest";
+
+/// Why a list lexostatus without a binding goes along the DSL.
+const LIST_REASON: &str =
+    "a list lexostatus (group_by): the engine computes one row, not a list per group";
 
 /// The place in time of each gram, in the order of `grams`: as
 /// `pick: latest` reads it ([`Gram::time_order`]: first `effective_at`, then
@@ -283,6 +290,7 @@ pub fn load_binding(
     let mut loaded: BTreeMap<PathBuf, String> = BTreeMap::new();
     let mut errors = Vec::new();
     let mut modes_per_cell: BTreeMap<String, BTreeMap<String, Mode>> = BTreeMap::new();
+    let mut generated: BTreeMap<String, String> = BTreeMap::new();
     for id in file.cells.keys() {
         if !cells.iter().any(|(c, _)| c == id) {
             errors.push(format!(
@@ -294,11 +302,12 @@ pub fn load_binding(
         let empty = BTreeMap::new();
         let bindings = match file.cells.get(*id) {
             Some(k) => k,
-            // Only lexostatuses from the law: those need no binding.
+            // Only lexostatuses from the law and lists: those need no
+            // binding.
             None if lexostatuses
                 .lexostatus_definitions
                 .iter()
-                .all(|d| d.law.is_some()) =>
+                .all(|d| d.law.is_some() || d.is_list()) =>
             {
                 &empty
             }
@@ -318,6 +327,9 @@ pub fn load_binding(
         for def in &lexostatuses.lexostatus_definitions {
             let where_ = format!("{source}: cell '{id}', lexostatus '{}'", def.name);
             let mode = match bindings.get(&def.name) {
+                None if def.is_list() => Mode::Dsl {
+                    reason: LIST_REASON.into(),
+                },
                 None if def.law.is_some() => {
                     let regulation = format!(
                         "lexostatus_{}_{}",
@@ -331,6 +343,14 @@ pub fn load_binding(
                             })
                             .collect::<String>()
                     );
+                    // Two names can sanitize to the same id: the second
+                    // regulation would silently replace the first.
+                    if let Some(other) = generated.insert(regulation.clone(), def.name.clone()) {
+                        errors.push(format!(
+                            "{where_}: its engine regulation '{regulation}' has the same id as that of '{other}'"
+                        ));
+                        continue;
+                    }
                     let loaded = crate::engine_regulation::regulation(def, &regulation, &names)
                         .and_then(|text| service.load_law(&text).map_err(|e| e.to_string()));
                     match loaded {
@@ -684,5 +704,47 @@ impl regelrecht_engine::DataSource for ChronicleSource {
     }
     fn key_fields(&self) -> Option<&[String]> {
         Some(&[])
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    /// A list lexostatus (such as the worklist the runtime offers) cannot go
+    /// via the engine: without a binding it goes along the DSL, so a cell
+    /// need not bind it by hand.
+    #[test]
+    fn a_list_lexostatus_needs_no_binding() {
+        let cells = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/cells");
+        let lexo = reduction::load(&cells.join("afnemer/lexostatuses.yaml")).unwrap();
+        let list = lexo
+            .lexostatus_definitions
+            .iter()
+            .find(|d| d.is_list())
+            .unwrap()
+            .name
+            .clone();
+        let dir = tempfile::tempdir().unwrap();
+        let mut text = format!("cells:\n  {}:\n", lexo.cell);
+        for d in lexo.lexostatus_definitions.iter().filter(|d| !d.is_list()) {
+            text.push_str(&format!("    {}: {{dsl: test}}\n", d.name));
+        }
+        let path = dir.path().join("koppeling.yaml");
+        std::fs::write(&path, text).unwrap();
+        let routes = load_binding(
+            &path,
+            false,
+            &[(lexo.cell.as_str(), &lexo)],
+            &LawExecutionService::new(),
+        )
+        .unwrap();
+        assert_eq!(
+            routes[&lexo.cell].modes[&list],
+            Mode::Dsl {
+                reason: LIST_REASON.into()
+            }
+        );
     }
 }

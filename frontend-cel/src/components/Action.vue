@@ -10,7 +10,7 @@
 import { computed, inject, ref } from 'vue';
 import InputField from './InputField.vue';
 import { kindOf, outputText, provenanceRows, routesFrom, sourceStatusText } from '../text.js';
-import { fieldLabel, toForm, toLaw } from '../form.js';
+import { fieldLabel, inputKind, toForm, toLaw } from '../form.js';
 import TraceKnop from '@regelrecht/frontend-shared/components/TraceKnop.vue';
 
 const props = defineProps({
@@ -23,10 +23,6 @@ const api = inject('api');
 const examples = inject('examples');
 // The example form of this action, or null.
 const example = computed(() => examples.value.actions?.[props.action.name] ?? null);
-
-// An amount is a number in the form; in which unit, the regulation says (see
-// form.js).
-const inputKind = (f) => (f.type === 'amount' ? 'number' : f.type);
 
 const values = ref(Object.fromEntries(props.action.form.map((f) => [f.name, null])));
 const trial = ref(props.action.trial?.error ? null : props.action.trial);
@@ -197,7 +193,7 @@ const kindLabel = computed(() => {
         :text="trial.takeable ? 'Te nemen' : 'Niet te nemen'"
         :supporting-text="trial.reason"
       ></nldd-inline-dialog>
-      <TraceKnop v-if="trial.trace_text" :trace-text="trial.trace_text" :titel="trial.article" />
+      <TraceKnop v-if="trial.trace_text" :trace-text="trial.trace_text" :title="trial.article" />
     </nldd-container>
     <template v-if="trial.reportable && !taken">
       <nldd-spacer size="8"></nldd-spacer>

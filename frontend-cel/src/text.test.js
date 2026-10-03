@@ -27,7 +27,7 @@ describe('valueText', () => {
 });
 
 describe('provenanceText', () => {
-  // One case per variant of Herkomst in packages/cel/src/synthese.rs, as
+  // One case per variant of Provenance in packages/cel/src/synthesis.rs, as
   // serde serializes it (tag `source`, snake_case).
   const variants = [
     [{ source: 'own', lexostatus: 'aanvraag' }, 'eigen lexostatus aanvraag'],
@@ -43,6 +43,7 @@ describe('provenanceText', () => {
     [{ source: 'state_at_decision' }, 'stand bij besluit'],
     [{ source: 'state_at_decision', stage: 'BEKENDMAKING' }, 'stand bij besluit (ontstaat pas in stage BEKENDMAKING)'],
     [{ source: 'choice' }, 'keuze van de aanvrager (portaal)'],
+    [{ source: 'decision' }, 'het besluit waarop de handeling werkt'],
   ];
 
   it.each(variants)('%o', (provenance, text) => {

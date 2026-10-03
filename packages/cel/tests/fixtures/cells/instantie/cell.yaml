@@ -1,7 +1,8 @@
 ---
 # Fictieve cel van een instantie die een aanvraag ontvangt en vastlegt. Het
-# portaal dat vóór het indienen toetst of zij volledig is, staat in het proces
-# processes/instantie/proces.yaml.
+# portaal dat vóór het indienen toetst of zij volledig is, volgt uit het
+# uitvoeringsbeleid regulation/testbeleid_instantie en de bestanden in
+# deployment/ (RFC-047).
 id: test_instantie
 recording_actor: test_instantie
 streams: [../../chronicles/test_aanvragen.yaml]

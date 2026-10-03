@@ -41,6 +41,9 @@ just cel          # runtime op :7170, frontend op :7171, op de fixtures
 | `CELL_CHANNELS` | `channels.yaml` van de deployment: per cel-id de techniek van elk kanaal dat het beleid noemt. Optioneel: zonder draaien alleen de cellen; met volgen de processen uit het beleid (RFC-047). |
 | `CELL_SYNTHESIS` | `synthesis.yaml` van de deployment: per cel-id `synthesis`, `assessment_rows` en `action_rows`, tot RFC-045, gevalideerd tegen `schema/chronolex/v0.3.0/synthesis.json`. Alleen met `CELL_CHANNELS`. |
 | `CELL_EXAMPLES` | `examples.yaml` van de deployment: per cel-id de standaardgegevens van een proefopstelling. Alleen met `CELL_CHANNELS`. |
+| `CELL_REGISTERS` | Optioneel koppelbestand van de registers (RFC-045 §1): per `<beleid>#<naam van het register>` de cel en kroniek die de input zonder bron (`source: {}`) van dat beleid vullen. Zonder houdt een beleid dat een register bevraagt de runtime tegen. Zie `src/register.rs`. |
+| `CELL_REDUCTION` | Experiment A: `dsl` (standaard), `engine` (elke lexostatus als engine-run) of `compare` (allebei; elk verschil is een fout). `engine` en `compare` vragen `CELL_ENGINE_BINDING`. |
+| `CELL_ENGINE_BINDING` | Experiment A: het koppelbestand van lexostatus naar regeling (zie `src/lexostatus_engine.rs`). Alleen samen met `engine` of `compare`. |
 | `REGULATION_PATH` | Map met regelingen, gedeeld door de hele runtime; elk YAML-bestand met `$id` en `articles` wordt geladen. |
 | `DATA_DIR` | Map voor de kronieken: per cel een submap `<id>/`. |
 | `CELL_PORT` | Poort, standaard 7170. De runtime luistert op `0.0.0.0`. |
@@ -92,11 +95,11 @@ Wat de runtime daaruit afleidt:
   vestigt, de toets de ene lexostatus van die cel die het event leest en een
   parameter van dat artikel afleidt;
 - de werkvoorraad is de ingebouwde lijst `worklist`: de zaken waarop nog niet
-  elk gevraagd besluit is genomen, met de kolommen `ontvangen_op`,
-  `vastgelegd_op`, het eigenaarsveld van het portaalkanaal en het veld met
+  elk gevraagd besluit is genomen, met de kolommen `received_at`,
+  `recorded_at`, het eigenaarsveld van het portaalkanaal en het veld met
   origin-rol `TIJDVAK`;
 - naast de werkvoorraad staat de ingebouwde lijst `cases`: elke zaak van die
-  indiening, ook een beslote, met dezelfde kolommen en `besloten` (de datum
+  indiening, ook een beslote, met dezelfde kolommen en `decided_at` (de datum
   van het laatste besluitgram, leeg zonder besluit). Langs die lijst bereikt
   de behandelaar een zaak na het besluit, voor de bekendmaking en de betaling;
 - de handelingen zijn de events van de cel met een intake die een kanaal van
@@ -171,8 +174,8 @@ De deployment houdt alleen de techniek, per cel-id gegroepeerd:
 Het portaal, de handelingen en de bronnen met `case: true` noemen dezelfde
 cel: in deze stap handelt een proces over de zaken van een cel, en die cel
 draait in dezelfde runtime. Een bron met `case: true` is een lexostatus van
-de zaak zelf, met als enige input `zaakkenmerk`: het besluit vraagt haar met
-het zaakkenmerk en neemt al haar parameters en extra velden over. Het
+de zaak zelf, met als enige input `root`: het besluit vraagt haar met het id
+van de wortel van de zaak en neemt al haar parameters en extra velden over. Het
 formulierbestand levert alleen labels, soorten en volgorde; het bepaalt nooit
 het gedrag.
 
@@ -185,10 +188,13 @@ het gedrag.
 | `GET /cells/<id>/api/chronicle` | runtime- of leestoken: de grammen, elk met YAML |
 | `GET /cells/<id>/api/cases/<root>` | runtime- of leestoken: de grammen van één zaak, elk met YAML; de cel filtert, 404 als ze de zaak niet kent |
 | `GET /cells/<id>/api/lexostatus/<naam>?<input>=...` | runtime- of leestoken: een reductie; de inputs als query, en optioneel `as_of` en `known_at` (zie "Tijd"); `case_state` biedt de runtime aan (zie "De stand van een zaak") |
-| `POST /cells/<id>/api/lexostatus/<naam>/trial` | alleen met het runtime-token: `{draft, inputs}`: de cel bouwt het gram van het concept in het geheugen en reduceert de kroniek mét dat gram (`inputs` mag een peil dragen); er wordt niets vastgelegd |
-| `POST /cells/<id>/api/grams` | alleen met het runtime-token: `{actor, stream, event, intake, external, zaakkenmerk?, besluitkenmerk?, decision?, zaak_grammen?}`: de cel bouwt het gram, valideert het, controleert de actor en de zaak, en legt het vast (201); 409 als die stage al vastligt in de zaak, als het `effective_at` op een dag voor de zaak ligt, of als de zaak niet meer `zaak_grammen` grammen heeft |
+| `POST /cells/<id>/api/lexostatus/<naam>/trial` | alleen met het runtime-token: `{draft, inputs}`: de cel bouwt het gram van het concept in het geheugen en reduceert de kroniek mét dat gram (`inputs` mag een peil dragen; zonder input `root` telt de wortel van het concept); er wordt niets vastgelegd |
+| `POST /cells/<id>/api/grams` | alleen met het runtime-token: `{actor, stream, event, intake, external, refers_to?, decision?, root_grams?}`: `refers_to` geeft per verwijzing van het event het id van het gram waarnaar het nieuwe gram verwijst. De cel bouwt het gram, geeft het een id, valideert het, controleert de actor en de verwijzingen, en legt het vast (201); 400 als een verwijzing een gram noemt dat de cel niet heeft of dat niet past bij `to`; 409 als er al een gram met die stage naar hetzelfde gram verwijst, als een besluit van hetzelfde event al naar hetzelfde gram verwijst, als het `effective_at` op een dag ligt voor een gram waarnaar het verwijst, of als de wortel niet meer `root_grams` grammen heeft |
 | `GET /cells/<id>/api/stream` | de stroomdefinities van de cel, met hun hash; open |
 | `GET /processes/<id>/api/examples` | de voorbeelden per handeling, zonder login |
+| `GET /processes/<id>/api/map` | de kaart van het proces (pagina Opbouw): welke configuratie, events, lexostatussen en artikelen het gebruikt en hoe ze samenhangen; open |
+| `GET /processes/<id>/api/law/<regeling>[/<artikel>]` | de YAML van een geladen regeling in de versie die vandaag geldt, of van een artikel daarvan; open, 404 voor wat niet geladen is |
+| `GET /processes/<id>/api/config/<config>?anchor=<sleutel>` | een configuratiebestand dat het proces laadde (`form`, `stream/<id>`, `cell`, `lexostatuses`, `registers`, `channels`, `synthesis`, `examples`), of het blok van `anchor` daarin; open, 404 voor wat niet geladen is |
 | `POST /processes/<id>/api/channels/<kanaal>/login`, `GET .../session`, `POST .../logout` | met rollen: de velden van het kanaal (en `role` als er langs het kanaal meer rollen inloggen) naar een sessie `{role, channel, fields}` |
 | `GET /processes/<id>/api/session` | met rollen: wie er is ingelogd, langs welk kanaal ook |
 | `GET /processes/<id>/api/form` | routes `portal`: de stroom en de formuliervelden |
@@ -197,11 +203,11 @@ het gedrag.
 | `GET /processes/<id>/api/possibilities` | routes `portal`: wat het aanbod zegt per tijdvak dat het beleid aanbiedt (`offer.windows`) |
 | `POST /processes/<id>/api/counter/application` | routes `counter`: `{applicant, received_at, external}`; een aanvraag die langs een andere weg binnenkwam, met de dag van ontvangst als `effective_at` (niet na vandaag, niet vóór `offer.opening`) |
 | `GET /processes/<id>/api/worklist` | routes `handling`: de werkvoorraad, een lijst uit de cel |
-| `GET /processes/<id>/api/cases` | routes `handling`: alle zaken, ook beslote, met `besloten`; een lijst uit de cel |
+| `GET /processes/<id>/api/cases` | routes `handling`: alle zaken, ook beslote, met `decided_at`; een lijst uit de cel |
 | `GET /processes/<id>/api/inspection/<cel>/chronicle`, `.../lexostatus/<naam>?...` | routes `handling`: inzage in een cel die het proces leest (de eigen cel en de bronnen zonder url); het proces geeft door wat de cel antwoordt |
 | `GET /processes/<id>/api/cases/<root>` | routes `handling`: de grammen van de zaak, de procedure van de zaak (de stages zonder besluit), de besluiten met per besluit zijn stages, de rechtsbescherming die daaruit volgt en de handelingen die erop handelen, en per handeling of zij kan, op welk besluit, haar formulier en een proef zonder formulier |
-| `POST /processes/<id>/api/cases/<root>/actions/<naam>/trial` | routes `handling` (en de rol van de handeling): `{form}` naar een handeling op proef; niets wordt vastgelegd |
-| `POST /processes/<id>/api/cases/<root>/actions/<naam>` | idem: `{form, happened?}` naar een vastgelegde handeling (201), of een weigering (409); met `happened: true` een gebeurd feit dat de proef om de inhoud tegenhield |
+| `POST /processes/<id>/api/cases/<root>/actions/<naam>/trial` | routes `handling` (en de rol van de handeling): `{form, decision?}` naar een handeling op proef, met in `decision` het id van het besluit waarop de handeling werkt (zonder: het laatste); niets wordt vastgelegd |
+| `POST /processes/<id>/api/cases/<root>/actions/<naam>` | idem: `{form, decision?, happened?}` naar een vastgelegde handeling (201), of een weigering (409); met `happened: true` een gebeurd feit dat de proef om de inhoud tegenhield |
 
 Een proces met rollen heeft een sessie per gebruiker (een cookie per proces);
 wie als de andere rol inlogt, vervangt de sessie. Een sessie vervalt na acht
@@ -254,13 +260,20 @@ erboven: het leest lexostatussen en vraagt de cel vast te leggen.
    afleiding of filter leest. Een event met een zaak mag een RFC-008-stage
    dragen: een besluit `BESLUIT`, een aanvraag `AANVRAAG`, een bekendmaking
    `BEKENDMAKING`; alleen op een decretogram, een indiening of een handeling.
-   Een event dat een zaak volgt, zegt met `besluit` welk besluit in de zaak
-   zijn grammen betreffen: `opent` (het gram is een besluit; de cel geeft een
-   `besluitkenmerk`, `<zaakkenmerk>/<n>`), `volgt` (het gram volgt een besluit,
-   zoals de bekendmaking of een betaling die het uitvoert) of `wijzigt` (een
-   besluit dat een ander besluit in de zaak wijzigt, met eigen grondslag; het
-   gram draagt het gewijzigde als `wijzigt`). Zonder hoort het gram bij de
-   zaak zelf, zoals de aanvraag.
+   Een event kan naar andere grammen verwijzen: `refers_to` noemt per naam
+   uit de wettekst (`on_application`, `application`, `decision`, `amends`,
+   `concerns`) wat het gram waarnaar verwezen wordt moet zijn (`to`: een
+   artikel dat het vestigt, een eventnaam of `{stage: <STAGE>}`) en of het
+   proces de verwijzing moet meegeven (`required`). Een event dat het
+   vestigende artikel noemt (`establishes`), haalt verwijzingen, type,
+   stage, grondslag en velden uit dat artikel (`produces.extensions.chronolex`).
+   Wat een event voor een zaak is, volgt daaruit en staat niet in de stroom:
+   een event waarnaar andere events kunnen verwijzen en dat zelf nergens naar
+   verwijst, opent een zaak (de aanvraag); een event met een verwijzing volgt
+   er een. Een event met stage `BESLUIT` is een besluit, met een
+   `amends`-verwijzing een besluit dat een ander wijzigt; een event waarvan
+   een verwijzing alleen naar een besluit kan wijzen, volgt dat besluit, zoals
+   de bekendmaking of een betaling.
    `effective_at: {source, legal_basis}` bindt het
    moment waarop het feit rechtens geldt aan een ingediende waarde (zie
    "Tijd").
@@ -279,20 +292,20 @@ erboven: het leest lexostatussen en vraagt de cel vast te leggen.
      `period_of: <pad>` of `moment` (en optioneel `no_gram: <waarde>`, de lezing van afwezigheid)
      of met `contains: {field, value}`.
 
-   Met `group_by: zaakkenmerk` is de lexostatus een **lijst**: een regel per
+   Met `group_by: root` is de lexostatus een **lijst**: een regel per
    zaak waarvan ten minste een gram door `filter` komt, en met `without:
-   {filter}` geen gram door dat filter. `kies` en de afleidingen werken per
+   {filter}` geen gram door dat filter. `pick` en de afleidingen werken per
    zaak; de afleidingen zijn kolommen, geen parameters. Een lijst gaat nooit
    naar de engine. Zonder `pick` staat een zaak op de volgorde van haar eerste
    gram; zo kan een lijst zonder `filter` elke zaak tonen met hoe ver zij is
    (`exists` op een stage, `sum` van de betalingen).
 
-   Een filtersleutel is een veld van het gram zelf (`name`, `type`, `subtype`,
-   `stage`, `zaak`, `zaakkenmerk`, `besluit`, `besluitkenmerk`, `wijzigt`,
-   `recording_actor`, `chronicle`, `legal_character`, `decision_type`,
-   `regulation`, `competent_authority`) of een veldpad onder `fields`; `$x`
-   komt uit de inputs. Met `besluitkenmerk` filtert een lexostatus per besluit
-   in een zaak. Geen gram is "nee" bij `exists` en
+   Een filtersleutel is een veld van het gram zelf (`id`, `root`, `name`,
+   `type`, `subtype`, `stage`, `recording_actor`, `chronicle`,
+   `legal_character`, `decision_type`, `regulation`, `competent_authority`),
+   een verwijzing `refers_to.<naam>`, of een veldpad onder `fields`; `$x`
+   komt uit de inputs. Met `refers_to.decision` filtert een lexostatus per
+   besluit in een zaak. Geen gram is "nee" bij `exists` en
    `contains`, en nul bij `sum`: de cel spreekt alleen over haar eigen kroniek.
    Een waarde die er niet is (`field` op een leeg veld, `pick` zonder gram)
    blijft weg, tenzij de definitie met `no_gram` zegt hoe zij het ontbreken
@@ -314,12 +327,17 @@ erboven: het leest lexostatussen en vraagt de cel vast te leggen.
    `legal_character`, `decision_type`, `regulation`, `regulation_valid_from`
    en zo nodig `competent_authority`. Elk gram heeft twee
    tijden, `effective_at` en `recorded_at` (zie "Tijd"); een gram waarvan een
-   van beide geen moment met tijdzone is, valideert niet. Een regel van voor
-   `recorded_at` laadt nog: die krijgt zijn `effective_at`, met een
-   waarschuwing.
+   van beide geen moment met tijdzone is, valideert niet. Elk gram heeft een
+   `id` (een uuid v7, dat de cel onder het schrijfslot geeft) en, als zijn
+   event verwijst, `refers_to` met het id per verwijzing. De wortel (het gram
+   zonder verwijzing waar de verwijzingen op uitkomen, zoals de aanvraag)
+   staat niet in het gram: de kroniek houdt een index van id naar wortel. Een
+   kroniek van voor chronolex v0.2.0 (met `zaakkenmerk` en `besluitkenmerk`,
+   zonder `id`) wordt niet omgezet: de runtime weigert haar te laden en vraagt
+   om een lege `DATA_DIR`.
 
    Het bestand is de bron; de runtime houdt de grammen daarnaast in het
-   geheugen, met een index per zaak, en maakt de YAML van een gram een keer.
+   geheugen, met een index per id en per wortel, en maakt de YAML van een gram een keer.
    Een reductie of een zaakvraag leest het bestand dus niet opnieuw, en wie
    de runtime draait schrijft niet zelf in het bestand. Een regel telt pas
    als ze met een regeleinde eindigt: een onvolledige laatste regel (de
@@ -348,9 +366,13 @@ gemeente-ambtenaar vastgesteld dat ... per 2 april"):
   het loket opgeeft (Awb 4:1, 4:13), en het portaal levert die niet. De
   waarde is een datum (het begin van die dag) of een moment met tijdzone,
   binnen twee grenzen die de cel afdwingt: niet later dan het vastleggen, en
-  bij een gram dat een zaak volgt niet op een dag voor het laatste
-  `effective_at` in die zaak (409). De proef van een handeling noemt beide
-  vooraf.
+  bij een gram dat verwijst niet op een dag voor het `effective_at` van een
+  gram waarnaar het verwijst (409). De proef van een handeling past dezelfde
+  regel toe voordat zij handelt: een datum voor een gram waarnaar de handeling
+  verwijst (de wortel van de zaak, of het besluit waarop zij werkt) houdt zij
+  tegen, en een later feit in de zaak waarnaar de handeling niet verwijst,
+  bindt haar niet. Zij vergelijkt per dag, omdat een gebonden datum het begin
+  van die dag is. Beide grenzen noemt de proef voordat er iets wordt vastgelegd.
 - `recorded_at`: wanneer de cel het vastlegde, altijd haar eigen klok,
   gezet onder het schrijfslot en nooit voor de regel ervoor: de volgorde in
   het bestand is die van `recorded_at`. Bij een startstand de laadtijd.
@@ -383,7 +405,9 @@ een input `as_of` of `known_at` hebben (het schema weert ze).
 
 `initial_state.jsonl` heeft per regel `stream`, `name`, `effective_at` (met de
 hand gezet: wanneer het besluit of de vaststelling rechtens geldt),
-`provenance: initial_state`, `fields` en optioneel `zaakkenmerk`. Geen
+`provenance: initial_state`, `fields` en optioneel `id` en `refers_to` (naar
+een eerder gram van de startstand, met de namen van het event; zonder `id`
+krijgt het gram een vast id dat uit de regel volgt). Geen
 `recorded_at`: dat is de laadtijd, het moment waarop de runtime de
 startstand in de lege kroniek zet. Een regel met een `effective_at` na de
 laadtijd houdt de start tegen, zoals bij elk gram: wat nog moet gebeuren, is
@@ -449,31 +473,35 @@ voor het besluit.
 ## De stand van een zaak
 
 Elke cel met een event dat een zaak opent of volgt, biedt een lexostatus die
-geen `lexostatuses.yaml` noemt: `case_state`, met input `zaakkenmerk`. De cel
-filtert de grammen van de zaak en leidt af, als extra velden die nooit naar de
+geen `lexostatuses.yaml` noemt: `case_state`, met input `root`, het id van het
+wortelgram. De zaak is de groep rond die wortel: de aanvraag en elk gram dat
+er, direct of via een ander gram, naar verwijst. De cel neemt de grammen
+onder de wortel en leidt af, als extra velden die nooit naar de
 engine gaan: `grams` (het aantal; het proces stuurt het terug als
-`zaak_grammen`), `events` (per `<stroom>/<event>` het aantal),
+`root_grams`), `events` (per `<stroom>/<event>` het aantal),
 `latest_effective_at`, `stages` (voor de stages die bij geen besluit horen,
 zoals de aanvraag: per stage het gram dat haar tot stand bracht: event,
 tijden, regeling, velden en de waarden van de invoer), `decisions` (per
-besluit in de zaak zijn `besluitkenmerk`, het event dat het vastlegde, het
-besluit dat het wijzigt, zijn stages en per event het aantal grammen dat het
+besluit in de zaak zijn `id` (dat van het besluitgram), het event dat het
+vastlegde, het besluit dat het wijzigt (`amends`), zijn stages en per event het aantal grammen dat het
 volgt) en, met de inputs `owner_path` en `owner`, `owner`. Het proces
 leest de zaak alleen zo: welke handelingen kunnen en op welk besluit, het
-besluit waarop een vervolg verdergaat, de rechtsbescherming per besluit, de
-ondergrens van een nieuw `effective_at` en of een aanvrager
-de zaak kent. De grammen die het een behandelaar toont, zijn het dossier en
-geen invoer. De runtime biedt haar aan, niet de configuratie: de zaak, het
-zaakkenmerk, de besluiten en een stage per besluit zijn begrippen van de
+besluit waarop een vervolg verdergaat, de rechtsbescherming per besluit en
+of een aanvrager de zaak kent. `latest_effective_at` is ter informatie: de
+ondergrens van een nieuw `effective_at` volgt uit de grammen waarnaar het
+verwijst, niet uit de zaak als geheel. De grammen die het een behandelaar toont, zijn het dossier en
+geen invoer. De runtime biedt haar aan, niet de configuratie: de wortel, de
+verwijzingen, de besluiten en een stage per besluit zijn begrippen van de
 runtime, niet van een corpus. Een cel mag de naam daarom niet zelf gebruiken.
 
-De cel houdt de besluiten uit elkaar. Een gram met `besluit: opent` of
-`wijzigt` krijgt onder het schrijfslot het volgende besluitkenmerk; een gram
-dat een besluit volgt of wijzigt, noemt een besluit in de zaak. Elk besluit
-doorloopt elke stage een keer, en een stage zonder besluit ligt een keer in
-de zaak. Een tweede gram van een event met `besluit: opent` in dezelfde zaak
-weigert de cel (409): een ander besluit over dezelfde aanvraag vraagt een
-eigen grondslag, een event met `besluit: wijzigt` (zoals Awb 4:49).
+De cel toetst de verwijzingen van een gram onder het schrijfslot. Elk gram
+waarnaar verwezen wordt, staat in de kronieken van de cel en past bij wat de
+verwijzing mag aanwijzen, en ze hebben allemaal dezelfde wortel; anders 400.
+Elk besluit doorloopt elke stage een keer: een tweede gram met dezelfde stage
+dat naar hetzelfde gram verwijst, weigert de cel (409). Een tweede besluit van
+hetzelfde event dat naar hetzelfde gram verwijst ook (409): een ander besluit
+over dezelfde aanvraag vraagt een eigen grondslag, een event met een
+`amends`-verwijzing (zoals Awb 4:49).
 
 ## Handelingen in een zaak
 
@@ -486,17 +514,16 @@ feit het beleidsartikel dat een artikel uit de grondslag van het event
 uitvoert met een parameter met origin-rol `BESLUIT`, of anders het artikel
 waarvan de uitkomsten afhangen van wat de lexostatussen uit het event lezen.
 Wat een handeling nodig heeft en van wie, volgt uit de stage van het event
-(RFC-008) en uit de origin van de parameters (RFC-043). Er is een route voor
+(RFC-008) en uit de origin van de parameters (RFC-048). Er is een route voor
 elke handeling, `cases/<root>/actions/<naam>` en `.../trial`; er zijn geen
 routes per soort besluit. Het event zegt welke soort een handeling is:
 
 - **Besluit**: het event heeft een stage die de procedure van het
   rechtskarakter van het artikel kent, en het is de eerste zo'n handeling op
   dat artikel. Een zaak kan meer besluiten hebben, elk van een eigen artikel
-  (een voorschot, een vaststelling, een terugvordering); het event opent een
-  besluit (`besluit: opent`). Een besluit dat een ander wijzigt, legt vast in
-  een event met `besluit: wijzigt` en noemt met `decision` de handeling van
-  het gewijzigde besluit. Laat de wet een uitkomst van een wijziging leeg
+  (een voorschot, een vaststelling, een terugvordering); het event heeft stage
+  `BESLUIT`. Een besluit dat een ander wijzigt, legt vast in een event met een
+  `amends`-verwijzing naar het artikel van het gewijzigde besluit. Laat de wet een uitkomst van een wijziging leeg
   (null), dan neemt het proces haar niet. Het formulier zijn de parameters met origin `OORDEEL` (met het
   label na "Naam:" in hun omschrijving; herkomst `handler`). Wat een
   latere stage pas vraagt (zoals de bekendmaking in stage `BEKENDMAKING`), is
@@ -507,8 +534,9 @@ routes per soort besluit. Het event zegt welke soort een handeling is:
   `effective_at`).
 - **Vervolg**: een latere stage van hetzelfde artikel, zoals de bekendmaking,
   op het laatste besluit dat de handeling van dat artikel in de zaak
-  vastlegde (`besluit: volgt`), tenzij de behandelaar er een noemt
-  (`besluitkenmerk` naast het formulier; zo ook bij een feit of wijziging). De engine voert die stage uit (`execute_stage`) op de invoer en de
+  vastlegde (het event verwijst met `decision` naar het besluit), tenzij de
+  behandelaar er een noemt (`decision` naast het formulier, het id van het
+  besluitgram; zo ook bij een feit of wijziging). De engine voert die stage uit (`execute_stage`) op de invoer en de
   uitkomsten van het vastgelegde besluit: het gram van het besluit is de
   toestand van RFC-008. Het formulier is wat de stage vraagt (`requires`,
   met het label van de parameter van het besluit). De haken die de wet op die
@@ -519,8 +547,8 @@ routes per soort besluit. Het event zegt welke soort een handeling is:
   termijn.
 - **Feit**: het event heeft geen stage, zoals een verzoek om aanvulling, een
   ontvangst of een betaling. Volgt het event een besluit (een betaling die
-  het uitvoert), dan noemt `decision` de handeling van dat besluit, en wacht
-  het feit tot dat besluit er ligt. Het formulier zijn de `$external`-velden van het
+  het uitvoert), dan wijst zijn `decision`-verwijzing het artikel van dat
+  besluit aan, en wacht het feit tot dat besluit er ligt. Het formulier zijn de `$external`-velden van het
   event die geen uitkomst zijn, met het type van de parameter die een
   lexostatus uit dat veld afleidt. Op proef laat de cel de lexostatussen van
   de zaak reduceren alsof het feit al vastlag (`POST .../trial` met het
@@ -550,7 +578,7 @@ true}`), dan legt de cel het vast, gaat de reden mee als waarschuwing, en
 tonen de lexostatussen de gevolgen: een betaling boven het bedrag telt mee in
 wat betaald is, en de wet zegt wat onverschuldigd is betaald. Wat de vorm
 raakt (een leeg formulier, een vervolg zonder besluit, een moment na vandaag
-of voor de zaak) houdt ook een melding tegen. Een besluit wordt niet gemeld
+of voor een gram waarnaar het verwijst) houdt ook een melding tegen. Een besluit wordt niet gemeld
 (400): dat neemt het proces zelf.
 
 De peildatum van een handeling is de dag van het `effective_at` dat haar event
@@ -586,11 +614,13 @@ blijven de drie assen van RFC-022 par. 2 gescheiden: `recording_actor`,
 
 Deze leiden tot een weigering met 409 en zonder gram: de proef is niet te
 nemen en het feit is niet als gebeurd gemeld (of kan dat niet, om de vorm),
-de cel weigert omdat de stage al in de zaak ligt (het wijzigen van een besluit
-valt buiten deze stap), omdat het `effective_at` voor de zaak ligt of omdat de
+de cel weigert omdat er al een gram met die stage naar hetzelfde gram verwijst,
+omdat een besluit van hetzelfde event al naar hetzelfde gram verwijst (een
+wijziging vraagt een event met een `amends`-verwijzing), omdat het
+`effective_at` op een dag ligt voor een gram waarnaar het verwijst, of omdat de
 zaak veranderde sinds het proces haar las, of de wet wijst een ander gezag
 aan zonder mandaat. Het proces geeft de cel mee hoeveel grammen de zaak had
-(`zaak_grammen`); de cel legt alleen vast als dat onder haar slot nog zo is.
+(`root_grams`); de cel legt alleen vast als dat onder haar slot nog zo is.
 Wat het proces uitrekende (zoals wat er nog te betalen is), gold voor de zaak
 zoals die toen was: twee gelijktijdige betalingen komen er niet allebei door,
 net zo min als twee besluiten. Het gram wordt voor het vastleggen tegen
@@ -625,10 +655,12 @@ Per cel:
 3. Geen weesveld: elk veld wordt door een afleiding of filter gelezen, of
    staat in `not_reduced`.
 4. Een parameter krijgt maar een afleiding.
-5. Een filter of input op `zaakkenmerk` wijst alleen events met een zaak aan.
+5. Elke verwijzing van een event kan naar een event van de cel wijzen: haar
+   `to` noemt een artikel dat een event vestigt, een bestaand event of een
+   stage die een event heeft.
 6. De startstand past in de stromen van de cel.
-7. Een lijst (`group_by`) wijst alleen events met een zaak aan, ook in
-   `without`, en `without` wijst een event aan. Haar kolommen hoeven geen
+7. De `without` van een lijst (`group_by: root`) wijst een event aan; elk
+   gram heeft een wortel, dus `filter` en `without` mogen elk event aanwijzen. Haar kolommen hoeven geen
    parameter te zijn en botsen niet met die van andere lexostatussen.
 8. Een lexostatus levert iets: ten minste een afleiding of een extra veld.
 
@@ -646,13 +678,19 @@ Per proces:
    beleid is een gezag dat een geladen regeling noemt; een
    mandaat noemt zo'n gezag, niet het eigen, en een grondslag die een geladen
    artikel aanwijst. Elk kanaal heeft unieke velden, leesbare patronen en een
-   eigenaar die een veld is; de grondslag van een kanaal of veld wijst geladen
+   eigenaar die een veld is. Het eerste deel van het intake-prefix van
+   een kanaal is niet `channel` of `supplied`: die namen onder `$intake` houdt de runtime
+   voor de route van binnenkomst en voor wat het ontvangende kanaal levert.
+   De grondslag van een kanaal of veld wijst geladen
    artikelen aan; elke rol noemt een bestaand kanaal. Routes
    `portal` en `handling` passen bij de blokken; routes `counter` vragen een
-   portaal-event dat `effective_at` aan `$intake` bindt.
+   portaal-event dat `effective_at` aan `$intake` bindt, met een grondslag
+   voor een opgegeven moment (`effective_at.legal_basis`). Zonder die
+   grondslag zegt de wet alleen waarom het moment van vastleggen telt, en kan
+   de balie de dag van ontvangst niet opgeven.
 3. Het portaal wijst naar een bestaand event van die cel, dat alleen
    `$intake`-paden leest die de kanalen van het portaal leveren, een lexostatus die dat event
-   leest en een gram kiest (geen lijst, alleen input `zaakkenmerk`), en een
+   leest en een gram kiest (geen lijst, geen andere input dan `root`), en een
    uitkomst van een artikel uit de grondslag van het event. Het aanbod noemt een
    bestaande uitkomst en een termijn uit hetzelfde artikel, en leunt alleen op
    wat vooraf vaststaat: elke parameter van zijn artikel heeft origin `KANAAL`
@@ -674,12 +712,12 @@ Per proces:
    lezing van de wet.
 5. Behandeling: de werkvoorraad is een lijst; een bron van de zaak vraagt een
    behandeling; de lexostatussen van de zaak hebben als enige input
-   `zaakkenmerk`. Per handeling: een unieke naam; een rol die ze noemt, mag
+   `root`. Per handeling: een unieke naam; een rol die ze noemt, mag
    de behandeling; de uitkomsten komen uit een artikel (bij een vervolg ook
    uit de haken van zijn stage); elke parameter uit het formulier, de stand
    van wat nog niet gebeurd is of een rijen-definitie moet de aanroeper van
    het artikel leveren; een parameter komt uit maar een bron. Het
-   vastleg-event bestaat en volgt een zaak; een
+   vastleg-event bestaat en verwijst naar een gram van de zaak; een
    stage erop staat in de procedure van het artikel. Een besluit legt elke
    uitkomst vast en verder alleen oordelen; een vervolg legt vast wat de
    stage vraagt en wat de haken uitrekenen, en niets anders.
@@ -691,7 +729,7 @@ Per proces:
    de toets, het aanbod of een uitkomst van een handeling (behalve een
    vervolg, dat op het vastgelegde besluit rekent) moet leveren, heeft een
    leverancier die bij zijn geldende origin past, en geen die er niet bij past
-   (RFC-043; zie `origin`). Een verkeerde bron is altijd een fout, ook bij
+   (RFC-048; zie `origin`). Een verkeerde bron is altijd een fout, ook bij
    `required: false`. Of een afleiding van de eigen cel van de belanghebbende
    of uit het dossier komt, volgt uit wat haar filters doorlaten: grammen van
    type `submission` (wat de aanvrager aanlevert) of andere grammen van de
@@ -733,7 +771,7 @@ komen.
 | `chronicle` | append-only opslag, in het geheugen met een index per zaak, en herstel van een half geschreven regel |
 | `check` | de controles bij het opstarten |
 | `synthesis` | bronnen bevragen, samenvoegen met herkomst, en de controles erop |
-| `origin` | wie een parameter levert volgens de wet (RFC-043): de controle bij het opstarten, de aanbodregel, het tijdvak en het besluitformulier |
+| `origin` | wie een parameter levert volgens de wet (RFC-048): de controle bij het opstarten, de aanbodregel, het tijdvak en het besluitformulier |
 | `transport` | intern en HTTP |
 | `channel` | kanalen en rollen: de vorm van een login, de intake, de eigenaar, de controles |
 | `authority` | het gezag waarvoor een proces handelt en zijn mandaten, en de toets tegen de wet |

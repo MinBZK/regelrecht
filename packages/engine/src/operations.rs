@@ -233,18 +233,17 @@ pub fn evaluate_value<R: ValueResolver>(
                     return resolver.resolve(var_name);
                 }
             }
-            // Experiment A (exp/reductie-als-engine): an object literal is a
-            // record whose field values are evaluated, so a FOREACH body can
-            // build a table row (`{gemeentecode: $r.gebied, zetels: ...}`).
+            // A record literal (RFC-045, experiment A): the field values of an
+            // object literal are evaluated, so a FOREACH body can build a table
+            // row (`{gemeentecode: $r.gebied, zetels: ...}`). A field that is a
+            // `$name` resolves, a field that is an operation runs, a nested
+            // object is a record too, and anything else (a number, a plain
+            // string, a list) stays as written. An object literal without any
+            // of these therefore keeps its value.
             if let Value::Object(fields) = v {
                 let mut out = std::collections::BTreeMap::new();
                 for (k, field) in fields {
-                    let av: ActionValue = serde_json::to_value(field)
-                        .and_then(serde_json::from_value)
-                        .map_err(|e| {
-                            EngineError::InvalidOperation(format!("record field '{k}': {e}"))
-                        })?;
-                    out.insert(k.clone(), evaluate_value(&av, resolver, depth + 1)?);
+                    out.insert(k.clone(), evaluate_record_field(k, field, resolver, depth)?);
                 }
                 return Ok(Value::Object(out));
             }
@@ -252,6 +251,44 @@ pub fn evaluate_value<R: ValueResolver>(
         }
         ActionValue::Operation(op) => execute_operation(op, resolver, depth + 1),
     }
+}
+
+/// Whether a mapping inside a literal is an operation: it carries an
+/// `operation` key, whatever its value.
+///
+/// This is the one test for "operation-shaped" that the evaluator (a record
+/// field, see [`evaluate_value`]), the loader guard
+/// (`reject_literal_operations`) and the load-time type and unit checks
+/// share, so none of them can treat a field as data that another runs.
+pub(crate) fn is_operation_shaped(v: &Value) -> bool {
+    matches!(v, Value::Object(m) if m.contains_key("operation"))
+}
+
+/// Read an operation-shaped mapping (see [`is_operation_shaped`]) as an
+/// operation.
+pub(crate) fn parse_literal_operation(v: &Value) -> serde_json::Result<ActionOperation> {
+    serde_json::to_value(v).and_then(serde_json::from_value)
+}
+
+/// One field of a record literal (see [`evaluate_value`]).
+///
+/// Only an operation-shaped mapping ([`is_operation_shaped`]) goes through
+/// serde to become an operation; every other field is evaluated as a literal,
+/// which is the cheap path a record of plain values takes. The loader has
+/// already refused an operation-shaped field that does not parse
+/// (`reject_literal_operations`), so the error here is a safety net.
+fn evaluate_record_field<R: ValueResolver>(
+    key: &str,
+    field: &Value,
+    resolver: &R,
+    depth: usize,
+) -> Result<Value> {
+    if !is_operation_shaped(field) {
+        return evaluate_value(&ActionValue::Literal(field.clone()), resolver, depth + 1);
+    }
+    let op = parse_literal_operation(field)
+        .map_err(|e| EngineError::InvalidOperation(format!("record field '{key}': {e}")))?;
+    execute_operation(&op, resolver, depth + 1)
 }
 
 /// Execute an operation and return the result.
@@ -3781,8 +3818,9 @@ mod tests {
 
         #[test]
         fn test_foreach_nested_inner_collection_sees_outer_binding() {
-            // The outer binding is reachable from the inner `collection`, and
-            // only from there. That is the whole scope contract of RFC-016.
+            // The outer binding is reachable from the inner `collection`
+            // (RFC-016), and since RFC-045 §5 from the inner body too (see
+            // `test_foreach_inner_body_sees_outer_binding`).
             let context = ctx(vec![(
                 "huishoudens",
                 Value::Array(vec![
@@ -3814,33 +3852,146 @@ mod tests {
         }
 
         #[test]
-        #[ignore = "experiment A: FOREACH sees the outer binding"]
-        fn test_foreach_inner_scope_does_not_see_outer_binding() {
-            // `$huishouden` is bound in the parent, and a child context starts
-            // with an empty local scope, so the inner body cannot resolve it.
+        fn test_foreach_inner_body_sees_outer_binding() {
+            // Lexical scope (RFC-045 §5): the inner body reads the outer
+            // element, which a join needs. (1+10) + (2+10) + (5+100) = 128.
             let context = ctx(vec![(
                 "huishoudens",
-                Value::Array(vec![obj(vec![(
-                    "leden",
-                    Value::Array(vec![Value::Int(1)]),
-                )])]),
+                Value::Array(vec![
+                    obj(vec![
+                        ("leden", Value::Array(vec![Value::Int(1), Value::Int(2)])),
+                        ("toeslag", Value::Int(10)),
+                    ]),
+                    obj(vec![
+                        ("leden", Value::Array(vec![Value::Int(5)])),
+                        ("toeslag", Value::Int(100)),
+                    ]),
+                ]),
             )]);
             let inner = ActionOperation::Foreach {
                 collection: var("huishouden.leden"),
                 as_name: "lid".to_string(),
-                body: var("huishouden"),
+                body: ActionValue::Operation(Box::new(ActionOperation::Add {
+                    values: vec![var("lid"), var("huishouden.toeslag")],
+                })),
                 filter: None,
-                combine: None,
+                combine: Some(CombineOp::Add),
             };
             let outer = ActionOperation::Foreach {
                 collection: var("huishoudens"),
                 as_name: "huishouden".to_string(),
                 body: ActionValue::Operation(Box::new(inner)),
                 filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            assert_eq!(
+                execute_operation(&outer, &context, 0).unwrap(),
+                Value::Int(128)
+            );
+        }
+
+        #[test]
+        fn test_foreach_inner_binding_shadows_outer() {
+            // Both loops bind `x`; the inner body reads the inner one.
+            let context = ctx(vec![
+                ("outer", Value::Array(vec![Value::Int(1), Value::Int(2)])),
+                ("inner", Value::Array(vec![Value::Int(10)])),
+            ]);
+            let inner = ActionOperation::Foreach {
+                collection: var("inner"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            let outer = ActionOperation::Foreach {
+                collection: var("outer"),
+                as_name: "x".to_string(),
+                body: ActionValue::Operation(Box::new(inner)),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+            assert_eq!(
+                execute_operation(&outer, &context, 0).unwrap(),
+                Value::Int(20)
+            );
+        }
+
+        #[test]
+        fn test_foreach_iteration_does_not_leak_into_next() {
+            // An element's fields are bare locals of its own iteration only:
+            // the second element has no `a`, and must not see the first's.
+            let context = ctx(vec![(
+                "items",
+                Value::Array(vec![
+                    obj(vec![("a", Value::Int(1))]),
+                    obj(vec![("b", Value::Int(2))]),
+                ]),
+            )]);
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "e".to_string(),
+                body: var("a"),
+                filter: None,
                 combine: None,
             };
             assert!(matches!(
-                execute_operation(&outer, &context, 0),
+                execute_operation(&op, &context, 0),
+                Err(EngineError::VariableNotFound(_))
+            ));
+            // Nor does the binding outlive the loop.
+            assert!(context.resolve("e").is_err());
+        }
+
+        /// A record literal parsed the way a law file is.
+        fn record(json: serde_json::Value) -> ActionValue {
+            let av: ActionValue = serde_json::from_value(json).unwrap();
+            assert!(matches!(av, ActionValue::Literal(Value::Object(_))));
+            av
+        }
+
+        #[test]
+        fn test_record_literal_evaluates_its_fields() {
+            let context = ctx(vec![("x", Value::Int(7))]);
+            let row = record(serde_json::json!({
+                "plain": "text",
+                "number": 3,
+                "ref": "$x",
+                "sum": {"operation": "ADD", "values": ["$x", 1]},
+                "nested": {"inner": "$x"},
+                "list": ["$x"],
+            }));
+            let expected = obj(vec![
+                ("plain", Value::String("text".into())),
+                ("number", Value::Int(3)),
+                ("ref", Value::Int(7)),
+                ("sum", Value::Int(8)),
+                ("nested", obj(vec![("inner", Value::Int(7))])),
+                // A list stays as written, as it does outside a record.
+                ("list", Value::Array(vec![Value::String("$x".into())])),
+            ]);
+            assert_eq!(evaluate_value(&row, &context, 0).unwrap(), expected);
+        }
+
+        #[test]
+        fn test_record_literal_without_references_keeps_its_value() {
+            let context = ctx(vec![]);
+            let row = record(serde_json::json!({"a": 1, "b": {"c": "d"}}));
+            assert_eq!(
+                evaluate_value(&row, &context, 0).unwrap(),
+                obj(vec![
+                    ("a", Value::Int(1)),
+                    ("b", obj(vec![("c", Value::String("d".into()))])),
+                ])
+            );
+        }
+
+        #[test]
+        fn test_record_field_unknown_variable_is_an_error() {
+            let context = ctx(vec![]);
+            let row = record(serde_json::json!({"a": "$missing"}));
+            assert!(matches!(
+                evaluate_value(&row, &context, 0),
                 Err(EngineError::VariableNotFound(_))
             ));
         }

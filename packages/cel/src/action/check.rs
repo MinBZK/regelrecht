@@ -286,13 +286,14 @@ fn check_action(
             .push("the state of what has not happened yet".into());
     }
     let case: Vec<&str> = case.iter().map(|z| z.as_str()).collect();
-    for r in &h.rows {
+    for (i, r) in h.rows.iter().enumerate() {
         per.entry(&r.parameter)
             .or_default()
             .push(format!("the per-row synthesis from '{}'", r.table.field));
         errors.extend(rows::check(
             &who,
             r,
+            &h.rows[..i],
             &case,
             "not a lexostatus of the case (case: true)",
             d,

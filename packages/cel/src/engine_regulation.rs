@@ -202,6 +202,12 @@ fn legal_basis(legal_basis: &str, names: &BTreeMap<String, String>) -> Option<Va
     Some(Value::Object(o))
 }
 
+/// The version date of a generated lexostatus regulation. It is a
+/// translation of a reduction, not a regulation with a history of its own:
+/// it holds on every reference date the engine may be asked for, so that a
+/// reduction before some arbitrary date does not fail to find a version.
+const SINCE_ALWAYS: &str = "0001-01-01";
+
 /// The engine regulation of a lexostatus as YAML text (JSON is YAML), with
 /// `$id` `id`. `names` gives per regulation id the name for `legal_basis`. A
 /// derivation the engine route does not know (`period_of`, `contains`,
@@ -360,8 +366,8 @@ pub fn regulation(
         "$id": id,
         "name": format!("Lexostatus {}", def.name),
         "regulatory_layer": "UITVOERINGSBELEID",
-        "publication_date": "2025-01-01",
-        "valid_from": "2025-01-01",
+        "publication_date": SINCE_ALWAYS,
+        "valid_from": SINCE_ALWAYS,
         "url": format!("urn:regelrecht:cel:lexostatus:{}", def.name),
         "articles": [{
             "number": "1",

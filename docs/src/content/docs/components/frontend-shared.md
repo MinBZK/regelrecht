@@ -22,7 +22,7 @@ The editor is the reference for what lives here, and the other apps conform to i
 | Demo (`frontend-demo/`) | The color scheme, value helpers, the Gherkin runner |
 | The two static PoCs (`frontend-poc-*`) | The Gherkin runner, saved state, browser variants, the line diff, the reload-on-stale-bundle handler, the shared components |
 | Lawmaking (`frontend-lawmaking/`) | Lists the package as a dependency, imports nothing from it today |
-| Cel frontend (`frontend-cel/`) | Value helpers, the eurocent conversion |
+| Cel frontend (`frontend-cel/`) | API calls, value helpers, the eurocent conversion, `TraceKnop.vue` |
 
 ## Architecture
 
@@ -68,7 +68,7 @@ These came in with the proof-of-concepts behind the [PoC Portal](./poc-portal). 
 | `browserVarianten.js` | Variants a user saves in their own browser, in the same shape as the variants checked into the case. Each file keeps a fingerprint of the law text it started from, so the app can say when the corpus has changed underneath it |
 | `reloadOnStaleBundle.js` | Reloads the page when a lazily loaded view no longer exists after a deploy, at most once per ten seconds |
 | `lib/diff.js` | A line diff (longest common subsequence) for showing a change to a law's YAML, with no dependency |
-| `components/` | `Paneel.vue` (a collapsible section), `KolommenMenu.vue` (a menu to pick variants as columns), `AssistentMeldingen.vue` (notices from the policy assistant) and `OptimalisatiepadChart.vue` (the path the assistant takes toward a target, which needs the optional `echarts` peer dependency) |
+| `components/` | `Paneel.vue` (a collapsible section), `KolommenMenu.vue` (a menu to pick variants as columns), `AssistentMeldingen.vue` (notices from the policy assistant), `OptimalisatiepadChart.vue` (the path the assistant takes toward a target, which needs the optional `echarts` peer dependency) and `TraceKnop.vue` (an icon button next to an outcome of an engine run that opens a sheet with the run's trace, used by the cel frontend; without an `icon` it shows the RegelRecht icon from `assets/regelrecht-icon.svg`). `TraceKnop.vue` takes its props in English (`title`, `description`); the other components keep Dutch props |
 
 ## Further reading
 

@@ -38,7 +38,7 @@ A reader meets these constructs in a law file or a running service whatever the 
 
 | RFC | Topic | Prose coverage |
 |-----|-------|----------------|
-| RFC-022 | Chronolexogram types and the cell (partially built: the cell runtime; `decision_type` is still closed, `modality` and `extensions` are not built) | [Cel](../components/cel) |
+| RFC-022 | Chronolexogram types and the cell (partially built: the cell runtime; `decision_type` is still closed, `modality` is not built, and `extensions` are read by the cel runtime only) | [Cel](../components/cel) |
 | RFC-023 | Quantities (money, percentages, units) | [Law Format](../concepts/law-format), [Schema](./schema) |
 | RFC-024 | Precision and rounding | [Law Format](../concepts/law-format), [Temporal Validity and Dates](../concepts/temporal-and-dates) |
 | RFC-026 | Enricher work queue (partially built) | Backlog: no prose page |
@@ -51,10 +51,11 @@ A reader meets these constructs in a law file or a running service whatever the 
 | RFC-038 | Callable is not presentable | Backlog: [Schema](./schema) lists the `RECHTSPOSITIE` value it added; the entry-point rule itself has no page |
 | RFC-040 | The schema documents itself | [Schema](./schema) |
 | RFC-041 | A void is not scoped like a replacement | [Voiding an output](../concepts/hooks-and-reactive-execution#voiding-an-output) |
-| RFC-043 | Who supplies a parameter (partially built, still Draft) | [Cel: who supplies a parameter](../components/cel#who-supplies-a-parameter) |
 | RFC-044 | Cells and processes in a chronolex runtime (partially built, still Draft) | [Cel](../components/cel) |
+| RFC-045 | Reduction and synthesis as engine runs (partially built: gram ids and references, register queries in the keeper's policy; the engine changes and synthesis through `source` are not; still Draft) | [Cel](../components/cel) |
 | RFC-046 | The application as something the Awb hooks onto (partially built, still Draft) | [Cel](../components/cel) |
 | RFC-047 | The process from law and policy (partially built: the synthesis waits for RFC-045; still Draft) | [Cel: the process from policy](../components/cel#the-process-from-policy) |
+| RFC-048 | Who supplies a parameter (partially built, still Draft) | [Cel: who supplies a parameter](../components/cel#who-supplies-a-parameter) |
 
 ## Backlog
 
@@ -75,4 +76,4 @@ When one of these gets a page, move it up into the table above.
 
 Drafts that will owe prose once built:
 
-- **RFC-045 (reduction and synthesis as engine runs)** is a draft and not built. When it lands, [Collections](../concepts/collections) needs the new scope rule, `let`, `empty`, `FIRST`/`LAST` and `RECORD`, and [Cel](../components/cel) needs register queries as articles in the keeper's implementing policy, `source` in the consumer's regulation in place of `synthese` and `rijen`, and gram ids and references in place of `zaakkenmerk`.
+- **RFC-045 (reduction and synthesis as engine runs)** is a draft, and only its gram ids, references and register queries are built (see the table above). When the engine changes land, [Collections](../concepts/collections) needs the new scope rule, `let`, `empty`, `FIRST`/`LAST` and `RECORD`, and [Cel](../components/cel) needs `source` in the consumer's regulation in place of `synthesis` and `rows`.

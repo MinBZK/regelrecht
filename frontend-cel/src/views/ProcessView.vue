@@ -217,7 +217,13 @@ const who = computed(() => sessionText(props.process, session.value));
     <ApplicationView v-else-if="screen === 'application'" :key="JSON.stringify(prefilled)" :prefilled="prefilled" @submitted="onSubmitted" />
     <CounterView v-else-if="screen === 'counter'" @submitted="onSubmitted" />
     <template v-else-if="screen === 'worklist' || screen === 'cases'">
-      <CaseView v-if="caseRoot" :key="caseRoot" :root="caseRoot" @back="caseRoot = null" />
+      <CaseView
+        v-if="caseRoot"
+        :key="caseRoot"
+        :root="caseRoot"
+        :back-label="screen === 'cases' ? 'Alle zaken' : 'Werkvoorraad'"
+        @back="caseRoot = null"
+      />
       <WorklistView v-else-if="screen === 'worklist'" key="worklist" :columns="worklistColumns" @open="caseRoot = $event" />
       <WorklistView
         v-else

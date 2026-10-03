@@ -95,7 +95,7 @@ impl Cell {
             return Err(error(errors));
         };
         // The lexostatuses the law reads in this cell, next to the cell's own.
-        match law::lexostatuses(&streams, &service, &lexostatuses.law) {
+        match law::lexostatuses(&streams, &service, &lexostatuses.law, date) {
             Ok(from_law) => {
                 for d in from_law {
                     if lexostatuses.lexostatus(&d.name).is_some() {
@@ -143,9 +143,13 @@ impl Cell {
             errors.extend(f);
         }
         let initial_state = match &definition.initial_state {
-            Some(path) => initial_state::load(&map.join(path), &streams)
-                .map_err(|f| errors.extend(f))
-                .unwrap_or_default(),
+            Some(path) => initial_state::load(
+                &map.join(path),
+                &streams,
+                &lexostatuses.lexostatus_definitions,
+            )
+            .map_err(|f| errors.extend(f))
+            .unwrap_or_default(),
             None => Vec::new(),
         };
         if !errors.is_empty() {

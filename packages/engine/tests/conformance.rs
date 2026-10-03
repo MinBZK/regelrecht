@@ -95,8 +95,13 @@ const KNOWN_GAPS: &[&str] = &[
     // as a literal (`article.rs`, `reject_literal_operations`), so the
     // model rejects it like the schema does.
     //
-    // -- Metadata the model keeps as written (RFC-043 rule, `Declared<T>`).
-    "executes_unknown_kind.yaml", // model accepts invalid executes as Declared::Invalid (RFC-043 rule); schema rejects
+    // -- Metadata the model keeps as written (RFC-048 rule, `Declared<T>`).
+    "executes_unknown_kind.yaml", // model accepts invalid executes as Declared::Invalid (RFC-048 rule); schema rejects
+    "origin_register_without_register.yaml", // same rule for `origin` (RFC-048): the model keeps it, the process runtime reports a REGISTER without `register` at start-up
+    "origin_besluit_not_dossier.yaml", // same rule: the model keeps a rol/waarde pair the schema refuses; the process runtime reports it at start-up (`cel` `origin::shape`)
+    //
+    // -- Integration blocks the engine does not own (RFC-022 §3.2).
+    "extensions_chronolex_unknown_key.yaml", // model keeps `produces.extensions` as written JSON; the chronolex runtime refuses the unknown key when it loads the law (`deny_unknown_fields` on its block)
 ];
 
 /// Corpus laws whose re-serialized model is not value-stable, with the measured

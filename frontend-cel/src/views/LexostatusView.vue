@@ -94,7 +94,7 @@ const rows = computed(() => {
       empty-supporting-text="Een lijst gaat nooit naar de engine."
     >
       <nldd-table-row slot="header">
-        <nldd-text-cell text="Zaakkenmerk"></nldd-text-cell>
+        <nldd-text-cell text="Zaak (gram-id)"></nldd-text-cell>
         <nldd-text-cell v-for="c in columns" :key="c" :text="c"></nldd-text-cell>
       </nldd-table-row>
       <nldd-table-row v-for="r in list" :key="r.root">
@@ -106,7 +106,7 @@ const rows = computed(() => {
   <template v-else-if="result">
     <nldd-spacer size="24"></nldd-spacer>
     <template v-if="result.reduction?.trace_text">
-      <TraceKnop :trace-text="result.reduction.trace_text" :titel="`${name} (${result.reduction.regulation})`" />
+      <TraceKnop :trace-text="result.reduction.trace_text" :title="`${name} (${result.reduction.regulation})`" />
       <nldd-spacer size="16"></nldd-spacer>
     </template>
     <nldd-table columns="minmax(200px,1fr) minmax(160px,1fr) minmax(200px,1fr)" accessible-label="Parameters van de lexostatus">

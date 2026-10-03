@@ -11,7 +11,7 @@ use super::*;
 /// of that decision gram.
 fn shape(o: &Origin) -> Vec<String> {
     let mut errors = Vec::new();
-    if let Err(f) = regulations::parse(&o.grondslag) {
+    if let Err(f) = regulations::parse(&o.legal_basis) {
         errors.push(f);
     }
     match (o.waarde, o.register.as_deref().map(str::trim)) {
@@ -63,7 +63,7 @@ pub fn validate(law: &ArticleBasedLaw) -> Vec<String> {
         };
         if law.regulatory_layer != RegulatoryLayer::Uitvoeringsbeleid {
             errors.push(format!(
-                "article {}: origins is only allowed in implementing policy (RFC-043)",
+                "article {}: origins is only allowed in implementing policy (RFC-048)",
                 a.number
             ));
         }
@@ -124,7 +124,7 @@ pub fn overwrites(
                 .iter()
                 .filter_map(Declared::<OriginOverride>::as_valid)
             {
-                if let Err(f) = regulations::parse(&o.origin.grondslag) {
+                if let Err(f) = regulations::parse(&o.origin.legal_basis) {
                     errors.push(format!("origins in {article}: {f}"));
                     continue;
                 }

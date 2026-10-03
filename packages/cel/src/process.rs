@@ -111,10 +111,11 @@ impl Process {
                 &service,
                 &channel::portal_intake_paths(&definition),
             ));
-            for r in &p.assessment.rows {
+            for (i, r) in p.assessment.rows.iter().enumerate() {
                 errors.extend(rows::check(
                     "assessment",
                     r,
+                    &p.assessment.rows[..i],
                     &[p.assessment.lexostatus.as_str()],
                     "not the assessment lexostatus",
                     &definition,

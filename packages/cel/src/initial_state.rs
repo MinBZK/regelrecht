@@ -30,6 +30,7 @@ use serde_json::{Map, Value};
 use crate::date;
 use crate::gram::{at_path, Gram, StreamReference};
 use crate::load;
+use crate::reduction::{self, LexostatusDefinition};
 use crate::stream::{Event, Stream};
 
 /// The only provenance a line of the initial state may have.
@@ -50,23 +51,80 @@ struct Row {
 }
 
 /// Read the initial state and build the grams. Every error names the line.
-pub fn load(path: &Path, streams: &[Stream]) -> Result<Vec<Gram>, Vec<String>> {
-    load::load(path, |text, source| parse(text, source, streams))
+pub fn load(
+    path: &Path,
+    streams: &[Stream],
+    definitions: &[LexostatusDefinition],
+) -> Result<Vec<Gram>, Vec<String>> {
+    load::load(path, |text, source| {
+        parse(text, source, streams, definitions)
+    })
 }
 
-/// Build the grams from the text of an initial state.
-pub fn parse(text: &str, source: &str, streams: &[Stream]) -> Result<Vec<Gram>, Vec<String>> {
+/// Build the grams from the text of an initial state. Every gram must also
+/// be readable by the lexostatuses of the cell (`definitions`): a field they
+/// read as a date or sum as a number is a date or number, or empty, as the
+/// cell checks when recording ([`reduction::fields_in_order`]). Otherwise
+/// every reduction over that chronicle would fail at runtime.
+pub fn parse(
+    text: &str,
+    source: &str,
+    streams: &[Stream],
+    definitions: &[LexostatusDefinition],
+) -> Result<Vec<Gram>, Vec<String>> {
     let mut grams = Vec::new();
     let mut errors = Vec::new();
     for (i, row) in text.lines().enumerate() {
         if row.trim().is_empty() {
             continue;
         }
-        match build(row, streams) {
-            Ok(g) => grams.push(g),
+        match build(row, streams).and_then(|g| {
+            reduction::fields_in_order(definitions, &g)?;
+            Ok(g)
+        }) {
+            Ok(g) => grams.push((i + 1, g)),
             Err(f) => errors.push(format!("{source} line {}: {f}", i + 1)),
         }
     }
+    // A reference points at a gram of the initial state that fits what it
+    // may point to, and the gram does not lie before it on the day, as the
+    // cell checks when recording.
+    let event_of = |g: &Gram| {
+        streams
+            .iter()
+            .find(|s| s.id == g.stream.id)
+            .and_then(|s| s.event(&g.name))
+    };
+    for (line, g) in &grams {
+        let Some(event) = event_of(g) else { continue };
+        for (name, id) in &g.refers_to {
+            let (Some(r), Some((_, target))) = (
+                event.refers_to.get(name),
+                grams.iter().find(|(_, t)| &t.id == id),
+            ) else {
+                continue;
+            };
+            if !r.to.fits(target, event_of(target)) {
+                errors.push(format!(
+                    "{source} line {line}: '{name}' refers to {id} ('{}'), which is not {}",
+                    target.name, r.to
+                ));
+            }
+            // Both moments were read when building the gram.
+            if let (Ok(day), Ok(d)) = (
+                date::reference_date_of(&g.effective_at),
+                date::reference_date_of(&target.effective_at),
+            ) {
+                if day < d {
+                    errors.push(format!(
+                        "{source} line {line}: effective_at {day} lies before the gram '{name}' refers to ('{}', {d}); what follows moves forward in time",
+                        target.name
+                    ));
+                }
+            }
+        }
+    }
+    let grams: Vec<Gram> = grams.into_iter().map(|(_, g)| g).collect();
     if errors.is_empty() {
         Ok(grams)
     } else {
@@ -116,6 +174,7 @@ fn build(text: &str, streams: &[Stream]) -> Result<Gram, String> {
         acting_actor: None,
         effective_at: row.effective_at,
         effective_at_legal_basis: None,
+        effective_at_stated: false,
         // The load time comes with placing, see `placed`.
         recorded_at: String::new(),
         refers_to: row.refers_to,
@@ -207,12 +266,12 @@ mod tests {
     }
 
     fn error(row: &str) -> String {
-        parse(row, "s", &streams()).unwrap_err().join("; ")
+        parse(row, "s", &streams(), &[]).unwrap_err().join("; ")
     }
 
     #[test]
     fn fixture_initial_state() {
-        let grams = parse(INITIAL_STATE, "s", &streams()).unwrap();
+        let grams = parse(INITIAL_STATE, "s", &streams(), &[]).unwrap();
         assert_eq!(grams.len(), 4);
         let load_time = date::moment("2025-03-12T10:14:03+01:00").unwrap();
         for (g, placed) in grams.iter().zip(placed(&grams, &load_time).unwrap()) {
@@ -228,10 +287,34 @@ mod tests {
         assert_eq!(grams[0].legal_basis, ["testregeling_register#1"]);
     }
 
+    /// A field a lexostatus of the cell sums or reads as a date must be a
+    /// number or date (or empty) in the initial state too, as when
+    /// recording: otherwise every reduction over the chronicle fails at
+    /// runtime instead of the cell failing at startup.
+    #[test]
+    fn a_field_a_lexostatus_cannot_read_is_refused() {
+        let def: LexostatusDefinition = serde_yaml_ng::from_str(
+            "name: zetels\ninputs: []\nreduction:\n  chronicle: test_register\n  pick: latest\n  derivations:\n    totaal: {sum: zetels, filter: {name: uitslag_vastgesteld}}\n    jaar: {year_of: datum, filter: {name: mededeling_gedaan}}\n",
+        )
+        .unwrap();
+        let defs = [def];
+        parse(INITIAL_STATE, "s", &streams(), &defs).unwrap();
+        let seats = r#"{"stream": "test_registers", "name": "uitslag_vastgesteld", "effective_at": "2024-03-20T09:00:00+01:00", "provenance": "initial_state", "fields": {"orgaan": "raad", "gebied": "Buurdorp", "lijst": "VOORBEELD", "zetels": "vier"}}"#;
+        let date = r#"{"stream": "test_registers", "name": "mededeling_gedaan", "effective_at": "2024-11-01T09:00:00+01:00", "provenance": "initial_state", "fields": {"aanduiding": "VOORBEELD", "datum": "morgen", "geblokkeerd_voor": []}}"#;
+        let f = parse(&format!("{seats}\n{date}"), "s", &streams(), &defs)
+            .unwrap_err()
+            .join("; ");
+        assert!(f.contains("s line 1: field 'zetels'"), "{f}");
+        assert!(f.contains("is not a number"), "{f}");
+        assert!(f.contains("s line 2: "), "{f}");
+        assert!(f.contains("'morgen' is not a date"), "{f}");
+        assert!(f.contains("lexostatus 'zetels'"), "{f}");
+    }
+
     /// A line with an effective_at after the load time is not placed.
     #[test]
     fn an_initial_state_from_the_future_is_refused() {
-        let grams = parse(INITIAL_STATE, "s", &streams()).unwrap();
+        let grams = parse(INITIAL_STATE, "s", &streams(), &[]).unwrap();
         let earlier = date::moment("2024-02-01T00:00:00+01:00").unwrap();
         let f = placed(&grams, &earlier).unwrap_err();
         assert!(f.contains("after the load time"), "{f}");
@@ -276,17 +359,71 @@ mod tests {
     /// may name an id and references, with the names of the event.
     #[test]
     fn id_and_references() {
-        let a = parse(INITIAL_STATE, "s", &streams()).unwrap();
-        let b = parse(INITIAL_STATE, "s", &streams()).unwrap();
+        let a = parse(INITIAL_STATE, "s", &streams(), &[]).unwrap();
+        let b = parse(INITIAL_STATE, "s", &streams(), &[]).unwrap();
         assert_eq!(a[0].id, b[0].id, "every load gives the same id");
         assert_ne!(a[0].id, a[1].id);
         assert!(a[0].refers_to.is_empty());
         let r = r#"{"stream": "test_registers", "name": "aanduiding_geschrapt", "effective_at": "2024-01-10T09:00:00+01:00", "provenance": "initial_state", "refers_to": {"zaak": "00000000-0000-4000-8000-000000000001"}, "fields": {"aanduiding": "X", "orgaan": "raad"}}"#;
         assert!(error(r).contains("'zaak'"), "{}", error(r));
         let r = r#"{"stream": "test_registers", "name": "aanduiding_geschrapt", "effective_at": "2024-01-10T09:00:00+01:00", "provenance": "initial_state", "id": "00000000-0000-4000-8000-00000000000a", "fields": {"aanduiding": "X", "orgaan": "raad"}}"#;
-        let g = parse(r, "s", &streams()).unwrap().remove(0);
+        let g = parse(r, "s", &streams(), &[]).unwrap().remove(0);
         assert_eq!(g.id, "00000000-0000-4000-8000-00000000000a");
         let load_time = date::moment("2025-03-12T10:14:03+01:00").unwrap();
         placed(&[g], &load_time).unwrap()[0].validate().unwrap();
+    }
+
+    /// A reference in the initial state must fit what it may point to, not
+    /// only name a reference of the event.
+    #[test]
+    fn a_reference_that_does_not_fit_is_refused() {
+        let streams = vec![crate::stream::parse(
+            include_str!("../tests/fixtures/chronicles/test_afnemer_zaakverloop.yaml"),
+            "stream",
+        )
+        .unwrap()];
+        let suspended = r#"{"stream": "test_afnemer_zaakverloop", "name": "termijn_opgeschort", "effective_at": "2024-01-10T09:00:00+01:00", "provenance": "initial_state", "id": "00000000-0000-4000-8000-00000000000b", "refers_to": {"application": "00000000-0000-4000-8000-00000000000a"}, "fields": {"dagen": 5}}"#;
+        let paid = r#"{"stream": "test_afnemer_zaakverloop", "name": "betaling_verricht", "effective_at": "2024-01-11T09:00:00+01:00", "provenance": "initial_state", "refers_to": {"decision": "00000000-0000-4000-8000-00000000000b"}, "fields": {"bedrag": 5}}"#;
+        let f = parse(&format!("{suspended}\n{paid}"), "s", &streams, &[])
+            .unwrap_err()
+            .join("; ");
+        assert!(f.contains("line 2: 'decision' refers to"), "{f}");
+    }
+
+    /// A gram in the initial state does not lie before the gram it refers
+    /// to, on the day, as the cell checks when recording.
+    #[test]
+    fn a_gram_before_its_reference_is_refused() {
+        let streams = vec![crate::stream::parse(
+            include_str!("../tests/fixtures/chronicles/test_afnemer_zaakverloop.yaml"),
+            "stream",
+        )
+        .unwrap()];
+        let decision = r#"{"stream": "test_afnemer_zaakverloop", "name": "besluit_genomen", "effective_at": "2024-01-10T15:00:00+01:00", "provenance": "initial_state", "id": "00000000-0000-4000-8000-00000000000b", "refers_to": {"on_application": "00000000-0000-4000-8000-00000000000a"}, "fields": {"vastgesteld_bedrag": 5, "gebiedsbedrag": null, "besluit_tijdig": true, "besluitdeadline": null, "zorgvuldig": true}}"#;
+        let paid = |at: &str| {
+            format!(
+                r#"{{"stream": "test_afnemer_zaakverloop", "name": "betaling_verricht", "effective_at": "{at}", "provenance": "initial_state", "refers_to": {{"decision": "00000000-0000-4000-8000-00000000000b"}}, "fields": {{"bedrag": 5}}}}"#
+            )
+        };
+        // Earlier on the same day: the day counts.
+        parse(
+            &format!("{decision}\n{}", paid("2024-01-10T09:00:00+01:00")),
+            "s",
+            &streams,
+            &[],
+        )
+        .unwrap();
+        let f = parse(
+            &format!("{decision}\n{}", paid("2024-01-09T09:00:00+01:00")),
+            "s",
+            &streams,
+            &[],
+        )
+        .unwrap_err()
+        .join("; ");
+        assert!(
+            f.contains("line 2: effective_at 2024-01-09 lies before the gram 'decision' refers to"),
+            "{f}"
+        );
     }
 }

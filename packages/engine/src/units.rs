@@ -232,9 +232,32 @@ impl SymbolUnits {
 /// they return `Ok(Unit::Unknown)`.
 pub fn infer_unit(expr: &ActionValue, symbols: &SymbolUnits) -> Result<Unit, EngineError> {
     match expr {
+        ActionValue::Literal(Value::Object(fields)) => {
+            for field in fields.values() {
+                check_record_field(field, symbols)?;
+            }
+            Ok(Unit::Unknown)
+        }
         ActionValue::Literal(v) => Ok(literal_unit(v, symbols)),
         ActionValue::Operation(op) => infer_operation_unit(op, symbols),
     }
+}
+
+/// A field of a record literal (RFC-045) is evaluated like an operand (see
+/// `evaluate_value`), so the arithmetic in it is checked; the record itself
+/// has no unit. A list stays data. An operation-shaped field that does not
+/// parse was already refused at load (`reject_literal_operations`).
+fn check_record_field(field: &Value, symbols: &SymbolUnits) -> Result<(), EngineError> {
+    if crate::operations::is_operation_shaped(field) {
+        if let Ok(op) = crate::operations::parse_literal_operation(field) {
+            infer_operation_unit(&op, symbols)?;
+        }
+        return Ok(());
+    }
+    if let Value::Object(_) = field {
+        infer_unit(&ActionValue::Literal(field.clone()), symbols)?;
+    }
+    Ok(())
 }
 
 fn literal_unit(v: &Value, symbols: &SymbolUnits) -> Unit {
@@ -685,6 +708,32 @@ mod tests {
             infer_operation_unit(&op, &symbols()),
             Err(EngineError::UnitMismatch { .. })
         ));
+    }
+
+    /// A record literal (RFC-045) evaluates its fields, so an operation in a
+    /// field, also in a nested record, is unit-checked. A list stays data.
+    #[test]
+    fn infer_checks_inside_record_literal_fields() {
+        let mismatch: Value = serde_json::from_value(serde_json::json!({
+            "operation": "ADD", "values": ["$inkomen", "$dagen"]
+        }))
+        .unwrap();
+        let record = |field: Value| {
+            let mut m = std::collections::BTreeMap::new();
+            m.insert("veld".to_string(), field);
+            Value::Object(m)
+        };
+        for value in [record(mismatch.clone()), record(record(mismatch.clone()))] {
+            assert!(matches!(
+                infer_unit(&ActionValue::Literal(value), &symbols()),
+                Err(EngineError::UnitMismatch { .. })
+            ));
+        }
+        let list = record(Value::Array(vec![mismatch]));
+        assert_eq!(
+            infer_unit(&ActionValue::Literal(list), &symbols()).unwrap(),
+            Unit::Unknown
+        );
     }
 
     /// `FOREACH items as x: <body>` with the given combine.

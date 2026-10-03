@@ -136,7 +136,7 @@
     },
     "recorded_at": {
       "$ref": "#/definitions/moment",
-      "description": "The moment at which the cell recorded the gram: always its own clock, for an initial state the load time. A gram in a chronicle from before this field lacks it; the runtime then reads it as effective_at, with a warning."
+      "description": "The moment at which the cell recorded the gram: always its own clock, for an initial state the load time. Required: a chronicle with a gram that lacks it is refused when loaded."
     },
     "refers_to": {
       "type": "object",

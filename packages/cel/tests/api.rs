@@ -185,6 +185,40 @@ async fn login_rejects_an_invalid_kvk() {
     assert!(body["error"].as_str().unwrap().contains("acht cijfers"));
 }
 
+/// Logging in again ends the session the request still carries: the old
+/// cookie no longer gives access.
+#[tokio::test]
+async fn logging_in_again_ends_the_old_session() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = app(dir.path());
+    let old = logins(&app, "12345678").await;
+    let (status, _, new) = call(
+        &app,
+        "POST",
+        &format!("{AGENCY}/api/channels/eherkenning/login"),
+        Some(&old),
+        Some(json!({"kvk": "87654321", "persoon": "B. Tester"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let session = |c: String| {
+        let app = app.clone();
+        async move {
+            call(
+                &app,
+                "GET",
+                &format!("{AGENCY}/api/channels/eherkenning/session"),
+                Some(&c),
+                None,
+            )
+            .await
+            .0
+        }
+    };
+    assert_eq!(session(old).await, StatusCode::UNAUTHORIZED);
+    assert_eq!(session(new.unwrap()).await, StatusCode::OK);
+}
+
 #[tokio::test]
 async fn form_gives_fields_with_labels() {
     let dir = tempfile::tempdir().unwrap();
@@ -837,7 +871,7 @@ async fn synthesis_over_http_to_another_runtime() {
         &[&format!("http://{address}")],
     );
     // What the runtime cannot see of a source outside it, it reports (the
-    // provenance, RFC-043); besides that only the derivation's own warning
+    // provenance, RFC-048); besides that only the derivation's own warning
     // about an event no article reads (RFC-047). The other processes of A
     // have their own warnings.
     let w: Vec<String> = a
@@ -1148,6 +1182,54 @@ fn decision_check_at_startup() {
     );
 }
 
+/// The counter states the day of receipt. A law that only gives a legal
+/// basis for the moment of recording gives none for a stated moment: the
+/// counter route is refused at startup, not every submission at runtime.
+#[test]
+fn a_counter_without_a_basis_for_a_stated_moment_is_refused_at_startup() {
+    // The handling channel of the toeslag service becomes a counter; its
+    // portal event takes its moment from the hook of the testregeling awb.
+    let counter = |t: String| {
+        t.replace(
+            "medewerker: {kind: handling, role: behandelaar}",
+            "medewerker: {kind: counter, role: behandelaar}",
+        )
+    };
+    let errors = |only_recorded: bool| {
+        let awb = |t: String| {
+            t.replace(
+                "effective_at: {legal_basis: [testregeling_awb#9 lid 2]}",
+                "effective_at: {legal_basis: [testregeling_awb#9 lid 2], only: recorded}",
+            )
+        };
+        let mut adjustments: Vec<Adjustment> =
+            vec![("regulation/testbeleid_toeslag/2025-01-01.yaml", &counter)];
+        if only_recorded {
+            adjustments.push(("regulation/testregeling_awb/2025-01-01.yaml", &awb));
+        }
+        let setup = own_setup(&adjustments);
+        let data = tempfile::tempdir().unwrap();
+        runtime_at(setup.path(), data.path())
+            .err()
+            .unwrap_or_default()
+    };
+    // With a legal basis for the stated moment the counter is in order.
+    let before = errors(false);
+    assert!(before.iter().all(|f| !f.contains("counter")), "{before:?}");
+    // The law only says why the moment of recording counts: refused at
+    // startup, not every submission at runtime.
+    let after = errors(true);
+    assert!(
+        after
+            .iter()
+            .any(|f| f.starts_with("process 'test_toeslag': ")
+                && f.contains(
+                    "counter: event 'aanvraag_ontvangen' has no legal basis for a stated moment"
+                )),
+        "{after:?}"
+    );
+}
+
 // --- The handler: worklist, case and trial decision ---
 
 const CONSUMER: &str = "/processes/test_afnemer";
@@ -1370,7 +1452,7 @@ async fn the_built_in_worklist_lists_the_undecided_applications() {
     assert_eq!(list.len(), 1);
     assert_eq!(list[0]["root"], a.as_str());
     assert_eq!(list[0]["fields"]["kvk_nummer"], "12345678");
-    assert_eq!(list[0]["fields"]["ontvangen_op"], "2025-03-12");
+    assert_eq!(list[0]["fields"]["received_at"], "2025-03-12");
     add_gram_to(
         &rt,
         "besluit_genomen",
@@ -1426,7 +1508,7 @@ async fn worklist_is_a_list_of_cases_without_a_decision() {
     let row = list.iter().find(|r| r["root"] == a.as_str()).unwrap();
     assert_eq!(
         row["fields"],
-        json!({"ontvangen_op": "2025-03-12", "vastgelegd_op": "2025-03-12", "kvk_nummer": "12345678"})
+        json!({"received_at": "2025-03-12", "recorded_at": "2025-03-12", "kvk_nummer": "12345678"})
     );
 
     // A case-progress gram leaves the case in place; a decision takes it off.
@@ -1476,11 +1558,11 @@ async fn worklist_is_a_list_of_cases_without_a_decision() {
     let decided = list.iter().find(|r| r["root"] == a.as_str()).unwrap();
     assert_eq!(
         decided["fields"],
-        json!({"ontvangen_op": "2025-03-12", "vastgelegd_op": "2025-03-12", "kvk_nummer": "12345678",
-               "besloten": "2025-03-12"})
+        json!({"received_at": "2025-03-12", "recorded_at": "2025-03-12", "kvk_nummer": "12345678",
+               "decided_at": "2025-03-12"})
     );
     let open = list.iter().find(|r| r["root"] == two.as_str()).unwrap();
-    assert_eq!(open["fields"]["besloten"], Value::Null);
+    assert_eq!(open["fields"]["decided_at"], Value::Null);
     let (status, z, _) = call(
         &app,
         "GET",
@@ -2735,6 +2817,31 @@ fn assessment_rows_check_at_startup() {
     );
 }
 
+/// A parameter input of a per-row source comes from what the same execution
+/// combines before it: the rows of the assessment are not there when the
+/// decision builds its table.
+#[test]
+fn a_row_input_from_the_rows_of_another_execution_is_refused() {
+    let other = |t: String| {
+        with_assessment_rows(t)
+            .replacen("- parameter: gebiedstabel", "- parameter: toetstabel", 1)
+            .replace(
+                "              gebied: {column: gebied}\n            columns: {ingeschreven: ingeschreven}",
+                "              gebied: {column: gebied}\n              tabel: {parameter: toetstabel}\n            columns: {ingeschreven: ingeschreven}",
+            )
+    };
+    let setup = own_setup(&[(SYNTHESIS, &other)]);
+    let data = tempfile::tempdir().unwrap();
+    let errors = runtime_at(setup.path(), data.path()).err().unwrap();
+    assert!(
+        errors
+            .iter()
+            .any(|f| f
+                .contains("input 'tabel': parameter 'toetstabel' comes from no own lexostatus")),
+        "{errors:?}"
+    );
+}
+
 /// A legal basis in the form that points to no article of a loaded
 /// regulation, or a paragraph the article does not have: the runtime does not
 /// start.
@@ -3674,10 +3781,11 @@ async fn a_reported_fact_is_recorded_by_the_cell() {
     assert!(f["error"].as_str().unwrap().contains("fill in"), "{f}");
 }
 
-/// The moment of an action: not in the future and not before the case. The
-/// process says so on trial; the cell also refuses such a gram itself.
+/// The moment of an action: not in the future and not before the gram it
+/// refers to (here the application). The process says so on trial; the cell
+/// also refuses such a gram itself.
 #[tokio::test]
-async fn a_moment_does_not_lie_before_the_case_or_in_the_future() {
+async fn a_moment_does_not_lie_before_its_reference_or_in_the_future() {
     let data = tempfile::tempdir().unwrap();
     let rt = runtime_at(&fixtures(), data.path()).unwrap();
     let app = as_reader(&rt);
@@ -3700,7 +3808,7 @@ async fn a_moment_does_not_lie_before_the_case_or_in_the_future() {
         p["reason"]
             .as_str()
             .unwrap()
-            .contains("lies before the case"),
+            .contains("lies before the gram it refers to"),
         "{p}"
     );
     let (status, f) = action(

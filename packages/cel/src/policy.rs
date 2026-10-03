@@ -213,8 +213,16 @@ pub fn check_executes(service: &LawExecutionService) -> Vec<String> {
                 .map(|reason| format!("{from}: an entry of executes is not valid: {reason}"))
                 .collect();
             let own = authority::authority_of_law(law);
+            // The target as it holds when this version of the policy
+            // starts to hold, not its newest version.
+            let date = law
+                .valid_from
+                .as_deref()
+                .unwrap_or(&law.publication_date)
+                .parse::<chrono::NaiveDate>()
+                .ok();
             for e in a.get_executes() {
-                found.extend(check_one(service, own.as_deref(), &from, &e.article).err());
+                found.extend(check_one(service, own.as_deref(), &from, &e.article, date).err());
             }
             for f in found {
                 if !errors.contains(&f) {
@@ -226,12 +234,14 @@ pub fn check_executes(service: &LawExecutionService) -> Vec<String> {
     errors
 }
 
-/// One `executes` target of the article `from`, of a policy of `own`.
+/// One `executes` target of the article `from`, of a policy of `own`, in
+/// the version of the target that holds on `date` (the newest without one).
 fn check_one(
     service: &LawExecutionService,
     own: Option<&str>,
     from: &str,
     article: &str,
+    date: Option<chrono::NaiveDate>,
 ) -> Result<(), String> {
     let target = crate::regulations::parse(article).map_err(|_| {
         format!("{from}: executes '{article}', which does not have the form <regulation>#<article>")
@@ -241,16 +251,24 @@ fn check_one(
             "{from}: executes '{article}', a paragraph; executes names the article itself"
         ));
     }
-    if crate::regulations::article(service, article).is_err() {
+    // A corpus that loads no version of the target on that date (only a
+    // later one) is checked against the newest: the corpus is incomplete,
+    // the policy not necessarily wrong.
+    let resolver = service.resolver();
+    let Some(law) = resolver
+        .get_law_for_date(target.regulation, date)
+        .or_else(|| resolver.get_law(target.regulation))
+        .filter(|l| l.find_article_by_number(target.article).is_some())
+    else {
         return Err(format!(
             "{from}: executes {article}, which is not a loaded article"
         ));
-    }
+    };
     let own = own.ok_or_else(|| {
         format!("{from}: executes {article}, but the policy names no competent_authority")
     })?;
-    let of_target = authority::authority_of(service, target.regulation, target.article);
-    let named = authority::authorities_of_regulation(service, target.regulation);
+    let of_target = authority::authority_of_article(law, target.article);
+    let named = authority::authorities_of_law(law);
     let fits = match &of_target {
         Some(t) => t == own,
         None => named.is_empty() || named.contains(own),
@@ -405,6 +423,28 @@ articles:
         // A general law without any authority may be executed (Awb, BW).
         let general = LAW.replace("competent_authority: {name: Instantie T}\n", "");
         let s = service(&[&general, POLICY]);
+        assert_eq!(check_executes(&s), Vec::<String>::new());
+    }
+
+    /// An older version of the policy is checked against the version of the
+    /// law that held then, not against the newest: a later move of the
+    /// competence to another authority does not make the old policy wrong.
+    #[test]
+    fn an_old_policy_version_is_checked_against_the_law_of_its_time() {
+        let first = LAW.replace(
+            "publication_date: '2025-01-01'",
+            "publication_date: '2025-01-01'\nvalid_from: '2025-01-01'",
+        );
+        let later = LAW
+            .replace(
+                "publication_date: '2025-01-01'",
+                "publication_date: '2026-01-01'\nvalid_from: '2026-01-01'",
+            )
+            .replace(
+                "competent_authority: {name: Instantie T}",
+                "competent_authority: {name: Instantie U}",
+            );
+        let s = service(&[&first, &later, POLICY]);
         assert_eq!(check_executes(&s), Vec::<String>::new());
     }
 

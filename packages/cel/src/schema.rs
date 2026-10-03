@@ -115,7 +115,7 @@ mod tests {
         }
     }
 
-    /// A cell whose lexostatuses all come from the law (RFC-043) and the
+    /// A cell whose lexostatuses all come from the law (RFC-048) and the
     /// runtime (the worklist, RFC-047) defines none of its own.
     #[test]
     fn a_cell_may_define_no_lexostatus_of_its_own() {
@@ -148,8 +148,8 @@ mod tests {
         })
     }
 
-    /// A gram has an id (a uuid) and refers by name to another id; v0.2.0
-    /// no longer knows a case or decision reference number.
+    /// A gram has an id (a uuid) and refers by name to another id; since
+    /// v0.2.0 the schema no longer knows a case or decision reference number.
     #[test]
     fn gram_id_and_references() {
         let mut g = gram();

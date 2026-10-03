@@ -27,6 +27,7 @@ use crate::error::{EngineError, Result};
 use crate::priority::{self, Candidate};
 use crate::types::{RegulatoryLayer, Value};
 use chrono::NaiveDate;
+use regelrecht_law_model::{is_article_reference, LEGAL_CHARACTERS, SUBMISSION_KINDS};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 /// Why a law version could not be selected for a reference date.
@@ -357,16 +358,24 @@ fn declaration_fingerprint(law: &ArticleBasedLaw) -> Vec<String> {
                 ));
             }
         }
-        for target in article
-            .get_produces()
-            .and_then(|p| p.decides_on.as_ref())
-            .into_iter()
-            .flatten()
-        {
-            parts.push(format!("decides_on\0{}\0{target}", article.number));
+        if let Some(produces) = article.get_produces() {
+            // What `find_submission_hooks` and `decisions_on` read (RFC-046):
+            // the submission, and each decision with its legal character.
+            if let Some(submission) = &produces.submission {
+                parts.push(format!(
+                    "submission\0{}\0{}",
+                    article.number, submission.kind
+                ));
+            }
+            for target in produces.decides_on.iter().flatten() {
+                parts.push(format!(
+                    "decides_on\0{}\0{target}\0{:?}",
+                    article.number, produces.legal_character
+                ));
+            }
         }
         // Over every entry as written, valid or not: an invalid entry is
-        // a declaration of this version too (RFC-043 rule).
+        // a declaration of this version too (RFC-048 rule).
         for d in article.get_declared_executes() {
             let entry = match d {
                 regelrecht_law_model::Declared::Valid(e) => {
@@ -694,6 +703,7 @@ impl RuleResolver {
         }
 
         Self::check_hook_filters(&law)?;
+        Self::check_submissions(&law)?;
 
         // Count total laws across all versions
         let total_laws: usize = self.law_versions.values().map(|v| v.len()).sum();
@@ -745,54 +755,138 @@ impl RuleResolver {
         Ok(())
     }
 
-    /// Refuse a hook that does not say which legal character it applies to.
+    /// Refuse a hook that names no event to fire on, or one it cannot match.
     ///
-    /// The hooks index is keyed by (hook_point, legal_character), so a hook
-    /// without one has no key. Dropping it while loading the rest of the law is
-    /// the worst of the three options: the article declares that it fires on an
+    /// A hook is filed under (hook_point, legal_character) for a decision, or
+    /// under (hook_point, submission kind) for a submission (RFC-046). A hook
+    /// with neither has no key. Dropping it while loading the rest of the law
+    /// is the worst of the options: the article declares that it fires on an
     /// event, the engine keeps that article, and the hook never fires — a
     /// motiveringsplicht or a bezwaartermijn that quietly does not happen.
+    /// Reading an absent key as "every event" is guesswork the schema does not
+    /// support. So is a hook with both keys, `decided_by` on a hook on a
+    /// decision, `stage` or `decision_type` on a hook on a submission, and a
+    /// `legal_character`, submission kind or `decided_by` outside the
+    /// schema's enums (a typo files the hook under a key nothing ever looks
+    /// up). Every problem in the law is reported at once.
     ///
-    /// Reading it as "applies to every legal character" is the other tempting
-    /// option, and it is guesswork: schema v0.7.0 makes `legal_character`
-    /// required on `applies_to`, so nothing in the corpus says what an absent
-    /// one would mean. The model is more permissive than the schema, which is
-    /// exactly why this check exists here. Like the unknown `delegation_type`
-    /// in [`Self::matches_delegation`], it is a safety net a schema-conformant
+    /// The model is more permissive than the schema, which is exactly why this
+    /// check exists here. Like the unknown `delegation_type` in
+    /// [`Self::matches_delegation`], it is a safety net a schema-conformant
     /// corpus never trips.
     fn check_hook_filters(law: &ArticleBasedLaw) -> Result<()> {
+        let mut problems = Vec::new();
         for article in &law.articles {
             let Some(hooks) = article.get_hooks() else {
                 continue;
             };
             for decl in hooks {
                 let f = &decl.applies_to;
-                let problem = match (&f.legal_character, &f.submission) {
+                let problem: Option<String> = match (&f.legal_character, &f.submission) {
                     (None, None) => Some(
                         "hook declares neither applies_to.legal_character nor applies_to.submission, \
-                         so it can never fire",
+                         so it can never fire"
+                            .to_string(),
                     ),
                     (Some(_), Some(_)) => Some(
                         "hook declares both applies_to.legal_character and applies_to.submission; \
-                         a hook applies to a decision or to a submission (RFC-046)",
+                         a hook applies to a decision or to a submission (RFC-046)"
+                            .to_string(),
                     ),
                     (Some(_), None) if f.decided_by.is_some() => {
-                        Some("applies_to.decided_by only narrows a hook on a submission")
+                        Some("applies_to.decided_by only narrows a hook on a submission".to_string())
                     }
+                    (Some(lc), None) if !LEGAL_CHARACTERS.contains(&lc.as_str()) => Some(format!(
+                        "applies_to.legal_character '{lc}' is not one of {LEGAL_CHARACTERS:?}"
+                    )),
                     (None, Some(_)) if f.stage.is_some() || f.decision_type.is_some() => Some(
-                        "a hook on a submission takes no stage or decision_type; decided_by narrows it",
+                        "a hook on a submission takes no stage or decision_type; decided_by narrows it"
+                            .to_string(),
                     ),
+                    (None, Some(kind)) if !SUBMISSION_KINDS.contains(&kind.as_str()) => Some(
+                        format!("applies_to.submission '{kind}' is not one of {SUBMISSION_KINDS:?}"),
+                    ),
+                    (None, Some(_)) => f
+                        .decided_by
+                        .as_deref()
+                        .filter(|lc| !LEGAL_CHARACTERS.contains(lc))
+                        .map(|lc| {
+                            format!(
+                                "applies_to.decided_by '{lc}' is not one of {LEGAL_CHARACTERS:?}"
+                            )
+                        }),
                     _ => None,
                 };
                 if let Some(problem) = problem {
-                    return Err(EngineError::LoadError(format!(
-                        "law '{}' article {}: {problem}",
-                        law.id, article.number
-                    )));
+                    problems.push(format!("article {}: {problem}", article.number));
                 }
             }
         }
-        Ok(())
+        Self::refuse_if_any(law, problems)
+    }
+
+    /// Refuse the law with every problem a load-time check found, so a corpus
+    /// author sees them all at once instead of one per reload.
+    fn refuse_if_any(law: &ArticleBasedLaw, problems: Vec<String>) -> Result<()> {
+        if problems.is_empty() {
+            return Ok(());
+        }
+        Err(EngineError::LoadError(format!(
+            "law '{}' {}",
+            law.id,
+            problems.join("; ")
+        )))
+    }
+
+    /// Refuse a submission or a decision on one that no hook can match
+    /// (RFC-046). A `submission.kind` outside the schema's enum is never the
+    /// kind a hook names. A `decides_on` needs the article's own
+    /// `legal_character`, because that is what `decided_by` reads: without it
+    /// the decision would be left out of the index, and a hook with
+    /// `decided_by` would never fire. A target that is not
+    /// `<regulation>#<article>` (with a paragraph, say) is never the key of
+    /// the article that establishes the submission.
+    fn check_submissions(law: &ArticleBasedLaw) -> Result<()> {
+        let mut problems = Vec::new();
+        for article in &law.articles {
+            let Some(produces) = article.get_produces() else {
+                continue;
+            };
+            let problem = if let Some(kind) = produces
+                .submission
+                .as_ref()
+                .map(|s| s.kind.as_str())
+                .filter(|k| !SUBMISSION_KINDS.contains(k))
+            {
+                Some(format!(
+                    "produces.submission.kind '{kind}' is not one of {SUBMISSION_KINDS:?}"
+                ))
+            } else if let Some(targets) = &produces.decides_on {
+                match produces.legal_character.as_deref() {
+                    None => Some(
+                        "produces.decides_on needs produces.legal_character: a hook's \
+                         decided_by reads it"
+                            .to_string(),
+                    ),
+                    Some(lc) if !LEGAL_CHARACTERS.contains(&lc) => Some(format!(
+                        "produces.legal_character '{lc}' of a decision on a submission is not \
+                         one of {LEGAL_CHARACTERS:?}"
+                    )),
+                    Some(_) => targets.iter().find(|t| !is_article_reference(t)).map(|t| {
+                        format!(
+                            "produces.decides_on '{t}' is not <regulation>#<article> without \
+                             a paragraph"
+                        )
+                    }),
+                }
+            } else {
+                None
+            };
+            if let Some(problem) = problem {
+                problems.push(format!("article {}: {problem}", article.number));
+            }
+        }
+        Self::refuse_if_any(law, problems)
     }
 
     /// Load a law from YAML string.
@@ -1552,9 +1646,12 @@ impl RuleResolver {
                         }
                     }
 
-                    // Hooks index. A hook without a legal_character never gets
-                    // here: `load_law` refuses the law, because there is no
-                    // honest key to file it under (see `check_hook_filters`).
+                    // Hooks index: under its legal_character for a hook on a
+                    // decision, under its submission kind for a hook on a
+                    // submission (RFC-046). A hook with neither, or with both,
+                    // never gets here: `load_law` refuses the law, because
+                    // there is no honest key to file it under (see
+                    // `check_hook_filters`).
                     if let Some(hook_decls) = article.get_hooks() {
                         for decl in hook_decls {
                             let entry = HookEntry {
@@ -1575,7 +1672,9 @@ impl RuleResolver {
                         }
                     }
 
-                    // Decisions taken on a submission (RFC-046).
+                    // Decisions taken on a submission (RFC-046). A
+                    // `decides_on` without a legal character never gets here
+                    // (see `check_submissions`), so nothing is dropped.
                     if let Some(produces) = article.get_produces() {
                         if let (Some(targets), Some(lc)) =
                             (&produces.decides_on, &produces.legal_character)
@@ -1769,6 +1868,12 @@ impl RuleResolver {
     /// The decisions taken on the submission that `<law_id>#<article>`
     /// establishes (RFC-046): the articles that name it in
     /// `produces.decides_on`, with their legal character.
+    ///
+    /// Read from the index, so from the newest version of each law, like
+    /// [`Self::find_hooks`]. When a version in force on an earlier date
+    /// declares other decisions, [`Self::declarations_from_another_version`]
+    /// says so (the declarations are part of its fingerprint), and an
+    /// execution puts that note on its trace and receipt.
     pub fn decisions_on(&self, law_id: &str, article_number: &str) -> &[DecisionOn] {
         self.decides_on_index
             .get(&format!("{law_id}#{article_number}"))
@@ -4368,6 +4473,78 @@ articles:
         assert_eq!(resolver.law_count(), 0);
     }
 
+    /// A hook filed under a `legal_character` outside the schema's enum (a
+    /// typo) sits under a key no decision ever looks up, so it never fires.
+    #[test]
+    fn test_a_hook_with_an_unknown_legal_character_is_refused_at_load() {
+        let mut resolver = RuleResolver::new();
+        let err = resolver
+            .load_from_yaml(
+                r#"
+$id: wet_met_typo_hook
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '3:46'
+    text: Een besluit dient te berusten op een deugdelijke motivering
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKING
+      execution:
+        output:
+          - name: motivering_vereist
+            type: boolean
+        actions:
+          - output: motivering_vereist
+            value: true
+"#,
+            )
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("3:46") && err.contains("BESCHIKING"),
+            "the error must name the article and the unknown character: {err}"
+        );
+        assert_eq!(resolver.law_count(), 0);
+    }
+
+    /// The load-time checks report every problem in the law at once, so a
+    /// corpus author does not fix them one reload at a time.
+    #[test]
+    fn test_submission_problems_are_all_reported() {
+        let mut resolver = RuleResolver::new();
+        let err = resolver
+            .load_from_yaml(
+                r#"
+$id: wet_met_twee_fouten
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Een aanvraag
+    machine_readable:
+      execution:
+        produces:
+          submission:
+            kind: AANVRAGG
+  - number: '2'
+    text: Een besluit op de aanvraag
+    machine_readable:
+      execution:
+        produces:
+          decides_on: [wet_met_twee_fouten#1]
+"#,
+            )
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("article 1") && err.contains("article 2"),
+            "both articles must be named: {err}"
+        );
+    }
+
     /// A procedure asked for by name and not found is a defect, and must be
     /// distinguishable from "this legal character has no procedure at all".
     #[test]
@@ -4561,6 +4738,65 @@ articles:
                 .is_empty(),
             "versions that declare the same thing need no note"
         );
+    }
+
+    /// What `decisions_on` and `find_submission_hooks` read (RFC-046) is a
+    /// declaration too: two versions that differ only in the legal character
+    /// of a decision on a submission, or only in the submission an article
+    /// establishes, are reported on a date the older one covers.
+    #[test]
+    fn test_versions_differing_in_submission_declarations_are_reported() {
+        let version = |from: &str, kind_line: &str, lc: &str| {
+            format!(
+                r#"
+$id: wet_indiening
+regulatory_layer: WET
+publication_date: '{from}'
+valid_from: '{from}'
+articles:
+  - number: '1'
+    text: De aanvraag
+    machine_readable:
+      execution:
+        produces:
+          legal_character: TOETS
+{kind_line}
+        output: [{{name: gedaan, type: boolean}}]
+        actions: [{{output: gedaan, value: true}}]
+  - number: '2'
+    text: Het besluit op de aanvraag
+    machine_readable:
+      execution:
+        produces:
+          legal_character: {lc}
+          decides_on: ['wet_indiening#1']
+        output: [{{name: besloten, type: boolean}}]
+        actions: [{{output: besloten, value: true}}]
+"#
+            )
+        };
+        let with_kind = "          submission: {kind: AANVRAAG}";
+        let cases = [
+            // Only the legal character of the decision differs.
+            (
+                version("2024-01-01", with_kind, "TOETS"),
+                version("2025-01-01", with_kind, "BESCHIKKING"),
+            ),
+            // Only the submission differs.
+            (
+                version("2024-01-01", "", "BESCHIKKING"),
+                version("2025-01-01", with_kind, "BESCHIKKING"),
+            ),
+        ];
+        for (old, new) in cases {
+            let mut resolver = RuleResolver::new();
+            resolver.load_from_yaml(&old).unwrap();
+            resolver.load_from_yaml(&new).unwrap();
+            let notes = resolver.declarations_from_another_version(Some(
+                NaiveDate::from_ymd_opt(2024, 6, 1).unwrap(),
+            ));
+            assert_eq!(notes.len(), 1, "{old}\n{new}");
+        }
     }
 
     /// The output index must lose exactly the unloaded law's outputs.
@@ -4944,7 +5180,7 @@ articles:
         assert_eq!(r.executes_of("test_beleid", "1")[0].target, "test_law#1");
     }
 
-    /// `executes` is metadata (RFC-043 rule): an invalid entry does not stop
+    /// `executes` is metadata (RFC-048 rule): an invalid entry does not stop
     /// the policy from loading, is not indexed, and stays retrievable.
     #[test]
     fn an_invalid_executes_entry_does_not_stop_the_load() {

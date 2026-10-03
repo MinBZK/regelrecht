@@ -1,0 +1,29 @@
+---
+# invalid: an origin with rol BESLUIT that is not DOSSIER. The decision an
+# action acts on is a fact of the course of the case, which the runtime gives
+# (RFC-047); GEVRAAGD_BESLUIT likewise needs BELANGHEBBENDE (RFC-048).
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.8.0/schema/v0.8.0/schema.json
+$id: test_conformance_origin_besluit_not_dossier
+regulatory_layer: WET
+publication_date: '2025-01-01'
+url: https://example.invalid/origin
+bwb_id: BWBR0000000
+articles:
+  - number: '1'
+    url: https://example.invalid/origin/1
+    text: Het besluit waarop de handeling ziet.
+    machine_readable:
+      execution:
+        parameters:
+          - name: besluit
+            type: string
+            origin:
+              waarde: BELANGHEBBENDE
+              grondslag: test_conformance_origin_besluit_not_dossier#1
+              rol: BESLUIT
+        output:
+          - name: besluit_id
+            type: string
+        actions:
+          - output: besluit_id
+            value: $besluit

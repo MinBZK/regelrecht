@@ -431,9 +431,11 @@ fn required_parameter_not_passed(
         })
 }
 
-/// What a policy article executes (RFC-047), for the trace: "art. <n> voert
-/// uit: <article>", followed by the Awb term of its kind if it has one
-/// ("(vaststelling van feiten, Awb 1:3 lid 4)"), one per valid entry. The article number is in
+/// What a policy article executes (RFC-047), for the trace: "art. <n>
+/// executes: <article>", followed by the Awb term of its kind if it has one
+/// ("(vaststelling van feiten, Awb 1:3 lid 4)"), one per valid entry. English
+/// like the rest of the trace; only the term of the Awb stays Dutch, because
+/// it quotes the law. The article number is in
 /// it because one trace node can carry several articles (a root with outputs
 /// from more than one article, or an open term with several candidates).
 fn executes_note(article: &Article) -> Option<String> {
@@ -441,7 +443,7 @@ fn executes_note(article: &Article) -> Option<String> {
         .get_executes()
         .map(|e| {
             format!(
-                "art. {} voert uit: {}{}",
+                "art. {} executes: {}{}",
                 article.number,
                 e.article,
                 regelrecht_law_model::ExecutesKind::note(e.kind)
@@ -2589,7 +2591,7 @@ impl LawExecutionService {
                 let impl_params =
                     Self::filter_parameters_for_article(impl_article, context.parameters());
                 // The open-term node is shared by all candidates: keep what a
-                // candidate appends to it (RFC-047 "voert uit") off the node,
+                // candidate appends to it (RFC-047 "executes") off the node,
                 // and name it below with the candidate it belongs to.
                 let before = res_ctx.trace_message();
                 let evaluated = self.evaluate_article_with_service(
@@ -8698,9 +8700,6 @@ articles:
         );
     }
 
-    /// The motiveringsplicht commences next year. Today the beschikking comes
-    /// out without a motivering, and the engine used to log "Hook law not
-    /// found" — untrue, the law is loaded — and say nothing anywhere else.
     /// RFC-046: the general law hooks onto an application, not onto the
     /// decision. A specific law establishes the application (`submission`),
     /// a decision article says it decides on it (`decides_on`), and a hook
@@ -8893,15 +8892,14 @@ articles:
             .unwrap();
         let trace = r.trace.expect("trace");
         assert!(
-            trace_mentions(&trace, "art. 1 voert uit: wet_x#1"),
+            trace_mentions(&trace, "art. 1 executes: wet_x#1"),
             "{trace:?}"
         );
         let rendered = trace.render_box_drawing();
         assert!(
-            rendered.contains("art. 1 voert uit: wet_x#1") && !rendered.contains("wet_x#1 ("),
+            rendered.contains("art. 1 executes: wet_x#1") && !rendered.contains("wet_x#1 ("),
             "without `as` the note names no kind: {rendered}"
         );
-        assert!(rendered.contains("art. 1 voert uit: wet_x#1"), "{rendered}");
         assert!(
             !rendered.contains("Evaluating rules for executes"),
             "{rendered}"
@@ -8914,7 +8912,7 @@ articles:
         let r = service
             .evaluate_law_output_with_trace("wet_x", "uitkomst", BTreeMap::new(), "2025-06-01")
             .unwrap();
-        assert!(!trace_mentions(&r.trace.expect("trace"), "voert uit"));
+        assert!(!trace_mentions(&r.trace.expect("trace"), " executes: "));
     }
 
     /// An open term filled by a policy article that executes an article
@@ -8943,12 +8941,12 @@ articles:
         assert!(
             rendered.contains(
                 "Open term 'standaardpremie' implemented by regeling_sp_ioc article 1 \
-                 (art. 1 voert uit: zorgtoeslag_ioc#4 (uitleg van wettelijke voorschriften, \
+                 (art. 1 executes: zorgtoeslag_ioc#4 (uitleg van wettelijke voorschriften, \
                  Awb 1:3 lid 4))"
             ),
             "{rendered}"
         );
-        assert_eq!(rendered.matches("voert uit").count(), 1, "{rendered}");
+        assert_eq!(rendered.matches(" executes: ").count(), 1, "{rendered}");
         assert!(
             !rendered.contains("Evaluating rules for executes"),
             "{rendered}"
@@ -8977,6 +8975,60 @@ articles:
         assert!(e.contains("decided_by"), "{e}");
     }
 
+    /// A declaration that can never match is refused at load, rather than
+    /// loaded as a hook that silently never fires (RFC-046).
+    #[test]
+    fn test_a_submission_declaration_that_cannot_match_is_refused() {
+        let refused = |law: &str, general: &str, needle: &str| {
+            let mut service = LawExecutionService::new();
+            let e = service
+                .load_law(law)
+                .and_then(|_| service.load_law(general))
+                .unwrap_err()
+                .to_string();
+            assert!(e.contains(needle), "expected '{needle}' in: {e}");
+        };
+        // A decision on a submission without a legal character: `decided_by`
+        // reads exactly that, so the decision would be dropped.
+        refused(
+            &SUBMISSION_LAW.replacen(
+                "legal_character: BESCHIKKING\n          decides_on",
+                "decides_on",
+                1,
+            ),
+            GENERAL_LAW,
+            "legal_character",
+        );
+        // A target with a paragraph is never the article that establishes it.
+        refused(
+            &SUBMISSION_LAW.replace("['wet_bijdrage#1']", "['wet_bijdrage#1 lid 1']"),
+            GENERAL_LAW,
+            "wet_bijdrage#1 lid 1",
+        );
+        // Typos in the labels a hook is matched on.
+        refused(
+            &SUBMISSION_LAW.replace(
+                "submission: {kind: AANVRAAG}",
+                "submission: {kind: AANVRAGG}",
+            ),
+            GENERAL_LAW,
+            "AANVRAGG",
+        );
+        refused(
+            SUBMISSION_LAW,
+            &GENERAL_LAW.replace("submission: AANVRAAG,", "submission: AANVRAGG,"),
+            "AANVRAGG",
+        );
+        refused(
+            SUBMISSION_LAW,
+            &GENERAL_LAW.replace("decided_by: BESCHIKKING", "decided_by: BESCHIKING"),
+            "BESCHIKING",
+        );
+    }
+
+    /// The motiveringsplicht commences next year. Today the beschikking comes
+    /// out without a motivering, and the engine used to log "Hook law not
+    /// found" — untrue, the law is loaded — and say nothing anywhere else.
     #[test]
     fn test_a_hook_not_in_force_is_recorded_instead_of_silently_skipped() {
         let besluit = r#"
@@ -8990,7 +9042,7 @@ articles:
     machine_readable:
       execution:
         produces:
-          legal_character: TEST_BESCHIKKING
+          legal_character: BESCHIKKING
         output:
           - name: bedrag
             type: number
@@ -9010,7 +9062,7 @@ articles:
       hooks:
         - hook_point: post_actions
           applies_to:
-            legal_character: TEST_BESCHIKKING
+            legal_character: BESCHIKKING
             stage: BESLUIT
       execution:
         output:
@@ -9037,7 +9089,7 @@ articles:
         assert_eq!(note.law_id, "wet_motiveringsplicht");
         assert_eq!(note.article, "3");
         assert!(
-            note.subject.contains("post_actions") && note.subject.contains("TEST_BESCHIKKING"),
+            note.subject.contains("post_actions") && note.subject.contains("BESCHIKKING"),
             "the note must name the hook point it would have fired at: {}",
             note.subject
         );
@@ -9203,7 +9255,7 @@ articles:
     machine_readable:
       execution:
         produces:
-          legal_character: TEST_BESCHIKKING
+          legal_character: BESCHIKKING
         output:
           - name: bedrag
             type: number
@@ -9234,7 +9286,7 @@ articles:
       hooks:
         - hook_point: post_actions
           applies_to:
-            legal_character: TEST_BESCHIKKING
+            legal_character: BESCHIKKING
             stage: BESLUIT
       execution:
         output:
@@ -9263,7 +9315,7 @@ articles:
                 kind: DeclarationKind::Hook,
                 law_id: "wet_motiveringsplicht".to_string(),
                 article: "3".to_string(),
-                subject: "hook point post_actions on TEST_BESCHIKKING at stage BESLUIT".to_string(),
+                subject: "hook point post_actions on BESCHIKKING at stage BESLUIT".to_string(),
                 reason: "the version of wet_motiveringsplicht in force on this date (valid_from 2024-01-01) \
                          has no article 3"
                     .to_string(),
@@ -9304,7 +9356,7 @@ articles:
             node.message.as_deref(),
             Some(
                 "Not applied: hook wet_motiveringsplicht article 3 would have applied to \
-                 hook point post_actions on TEST_BESCHIKKING at stage BESLUIT, but the \
+                 hook point post_actions on BESCHIKKING at stage BESLUIT, but the \
                  version of wet_motiveringsplicht in force on this date (valid_from 2024-01-01) has no article 3"
             )
         );
@@ -9340,7 +9392,7 @@ articles:
     machine_readable:
       execution:
         produces:
-          legal_character: TEST_BESCHIKKING
+          legal_character: BESCHIKKING
         output:
           - name: bedrag
             type: number
@@ -9374,28 +9426,28 @@ articles:
                  publication_date: '{valid_from}'\nvalid_from: '{valid_from}'\narticles:"
             )
         };
-        let besluit_filter = "legal_character: TEST_BESCHIKKING\n            stage: BESLUIT";
+        let besluit_filter = "legal_character: BESCHIKKING\n            stage: BESLUIT";
         let oud = [
             header("2024-01-01"),
             // Offered by the index itself, and fires: no renumbering.
             hook("4", "post_actions", besluit_filter),
             // Stage left out, which means BESLUIT: this one would fire here.
-            hook("5", "post_actions", "legal_character: TEST_BESCHIKKING"),
+            hook("5", "post_actions", "legal_character: BESCHIKKING"),
             hook("6", "pre_actions", besluit_filter),
             hook(
                 "7",
                 "post_actions",
-                "legal_character: TEST_BESCHIKKING\n            stage: BEKENDMAKING",
+                "legal_character: BESCHIKKING\n            stage: BEKENDMAKING",
             ),
             hook(
                 "8",
                 "post_actions",
-                "legal_character: ANDERE_BESCHIKKING\n            stage: BESLUIT",
+                "legal_character: TOETS\n            stage: BESLUIT",
             ),
             hook(
                 "9",
                 "post_actions",
-                "legal_character: TEST_BESCHIKKING\n            decision_type: AFWIJZING",
+                "legal_character: BESCHIKKING\n            decision_type: AFWIJZING",
             ),
         ]
         .concat();

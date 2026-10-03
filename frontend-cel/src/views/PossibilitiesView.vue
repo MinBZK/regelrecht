@@ -79,7 +79,7 @@ function ground(p) {
   <template v-if="error">
     <nldd-inline-dialog variant="alert" text="De mogelijkheden zijn niet te bepalen" :supporting-text="error"></nldd-inline-dialog>
   </template>
-  <template v-for="p in possibilities" :key="windowText(p)">
+  <template v-for="(p, i) in possibilities" :key="`${i}:${windowText(p)}`">
     <nldd-container layout="row" gap="8" vertical-alignment="center">
       <nldd-button
         variant="primary"
@@ -90,7 +90,7 @@ function ground(p) {
       <TraceKnop
         icon="help"
         overline="Waarom"
-        :titel="title(p)"
+        :title="title(p)"
         :accessible-label="`Waarom: ${title(p).toLowerCase()}`"
         :trace-text="p.trace_text"
       >
@@ -104,7 +104,7 @@ function ground(p) {
             <nldd-text-cell :text="ground(p)"></nldd-text-cell>
           </nldd-table-row>
           <nldd-table-row>
-            <nldd-text-cell text="Indienen vóór"></nldd-text-cell>
+            <nldd-text-cell text="Uiterlijk indienen op"></nldd-text-cell>
             <nldd-text-cell :text="deadlineText(p)" :supporting-text="p.regulation"></nldd-text-cell>
           </nldd-table-row>
         </nldd-table>

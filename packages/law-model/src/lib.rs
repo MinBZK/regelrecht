@@ -19,6 +19,7 @@ mod model;
 mod value;
 
 pub use header::{parse_law_header, LawHeader};
+pub use model::{is_article_reference, LEGAL_CHARACTERS, SUBMISSION_KINDS};
 pub use model::{
     Action, ActionOperation, ActionValue, Article, ArticleBasedLaw, ArticleReference,
     ArticleRequirement, AuthorityType, Case, CombineOp, CompetentAuthority, Declaration, Declared,

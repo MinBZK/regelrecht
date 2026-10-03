@@ -181,7 +181,7 @@ pub struct CellDefinition {
 /// A process definition: who acts and how. Informing (synthesis,
 /// assessment, offer), concluding (the decision) and having a cell record.
 /// The runtime derives it from the policy of the actor and the deployment
-/// (RFC-047, [`crate::derive`]); the origin check (RFC-043) is always strict.
+/// (RFC-047, [`crate::derive`]); the origin check (RFC-048) is always strict.
 #[derive(Debug, Clone, Default)]
 pub struct ProcessDefinition {
     /// The id of the cell that records the submissions.
@@ -267,7 +267,7 @@ pub struct LexostatusReference {
 /// article, and the event in which the cell records it. The derivation
 /// (RFC-047) sets the fields up to `record`; what the action needs and from
 /// whom follows at load time from the stage of the event (RFC-008) and from
-/// the origin of the parameters (RFC-043), in the fields after it.
+/// the origin of the parameters (RFC-048), in the fields after it.
 #[derive(Debug, Clone, Default)]
 pub struct ActionDefinition {
     /// Unique in the process; the route is `cases/<c>/actions/<name>`.

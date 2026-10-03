@@ -23,7 +23,7 @@ fn in_order(service: &LawExecutionService, regulation: &str, article: &Article) 
 }
 
 /// The outputs the process executes: the assessment, the offer and every
-/// output of the decision (RFC-043: "every outcome").
+/// output of the decision (RFC-048: "every outcome").
 fn executions(d: &ProcessDefinition) -> Vec<(Execution<'_>, &str, &str)> {
     let mut out: Vec<(Execution<'_>, &str, &str)> = Vec::new();
     if let Some(p) = &d.portal {
@@ -65,8 +65,10 @@ pub fn check(
         }
     };
     // One message per parameter of an article, even if more executions
-    // ask for it.
-    let mut reported: BTreeSet<(String, String, &'static str)> = BTreeSet::new();
+    // ask for it; except for an error about the supplier, which differs per
+    // execution (one execution's warning must not swallow another's error,
+    // and every execution that misses its supplier is named).
+    let mut reported: BTreeSet<(String, String, &'static str, String)> = BTreeSet::new();
     // What cannot be verified, per source and reason: the parameters with it.
     let mut unverifiable: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for (execution, regulation, output) in executions(d) {
@@ -98,7 +100,12 @@ pub fn check(
         }
         for (b, p, g) in new {
             let mut report = |kind: &'static str, text: String, error: bool| {
-                if reported.insert((b.article.clone(), b.name.clone(), kind)) {
+                let per_execution = if kind == SUPPLIER && error {
+                    execution.name()
+                } else {
+                    String::new()
+                };
+                if reported.insert((b.article.clone(), b.name.clone(), kind, per_execution)) {
                     if error {
                         c.errors.push(text);
                     } else {
@@ -135,6 +142,10 @@ pub fn check(
     window(d, &mut c);
     c
 }
+
+/// The kind of message about the supplier of a parameter: reported per
+/// execution.
+const SUPPLIER: &str = "leverancier";
 
 /// A parameter an execution asks for, with what the check knows
 /// about it.
@@ -188,7 +199,7 @@ fn check_parameter(
     );
     // A legal basis in a regulation that is not loaded may be right; the
     // runtime just cannot verify it.
-    if let Err(f) = regulations::article(service, &g.origin.grondslag) {
+    if let Err(f) = regulations::article(service, &g.origin.legal_basis) {
         report(
             "grondslag",
             format!("provenance: {where_}: {f}; cannot be verified"),
@@ -222,7 +233,7 @@ fn check_parameter(
             }
         }
         SupplierOutcome::Wrong(reason) => report(
-            "leverancier",
+            SUPPLIER,
             format!("{}: wrong source for {where_}: {reason}", execution.name()),
             true,
         ),
@@ -230,14 +241,14 @@ fn check_parameter(
             let text = format!("{}: no supplier for {where_}{reason}", execution.name());
             if p.required == Some(false) {
                 report(
-                    "leverancier",
+                    SUPPLIER,
                     format!(
                         "{text}; required: false, so the engine does not get it and computes with an unknown value (RFC-036)"
                     ),
                     false,
                 );
             } else {
-                report("leverancier", text, true);
+                report(SUPPLIER, text, true);
             }
         }
     }
@@ -292,7 +303,7 @@ pub fn verdicts(c: &Check, service: &LawExecutionService, action: &str) -> Vec<V
             Some(Verdict {
                 parameter: b.name.clone(),
                 label: label(p),
-                group: group(service, &g.origin.grondslag),
+                group: group(service, &g.origin.legal_basis),
                 explanation: None,
             })
         })

@@ -26,10 +26,10 @@ use crate::config::Offer;
 pub enum Verdict {
     /// The output is true (or positive): the portal offers the application.
     Possible,
-    /// The output is definitively zero or false: no offer.
+    /// The output is definitively zero, negative or false: no offer.
     Excluded,
-    /// No verdict: the output is empty, a fact is missing, or the engine
-    /// gave an error.
+    /// No verdict: the output is empty, not a yes/no or a number, a fact is
+    /// missing, or the engine gave an error.
     Undeterminable,
 }
 
@@ -65,24 +65,21 @@ pub struct Possibility {
     pub trace_text: Option<String>,
 }
 
-/// Zero or false.
-fn is_no(w: &Value) -> bool {
-    match w {
-        Value::Bool(b) => !b,
-        Value::Number(n) => n.as_f64() == Some(0.0),
-        _ => false,
-    }
-}
-
-/// The verdict on `output` in an evaluation: true is possible, zero or false
-/// is excluded, and everything else is undeterminable. Empty is not a no,
-/// and unknown is not a yes: an output that misses a fact says nothing about
+/// The verdict on `output` in an evaluation: true or a positive number is
+/// possible, false, zero or a negative number is excluded, and everything
+/// else (empty, a text, a list) is undeterminable. Empty is not a no, and
+/// unknown is not a yes: an output that misses a fact says nothing about
 /// the offer.
 pub fn verdict(e: &Evaluation, output: &str) -> Verdict {
     match e.values.get(output) {
-        Some(Value::Null) | None => Verdict::Undeterminable,
-        Some(w) if is_no(w) => Verdict::Excluded,
-        Some(_) => Verdict::Possible,
+        Some(Value::Bool(true)) => Verdict::Possible,
+        Some(Value::Bool(false)) => Verdict::Excluded,
+        Some(Value::Number(n)) => match n.as_f64() {
+            Some(x) if x > 0.0 => Verdict::Possible,
+            Some(_) => Verdict::Excluded,
+            None => Verdict::Undeterminable,
+        },
+        _ => Verdict::Undeterminable,
     }
 }
 
@@ -212,6 +209,15 @@ mod tests {
     #[test]
     fn positive_is_possible() {
         assert_eq!(verdict(&ev(Some(json!(1200)), &[]), "u"), Verdict::Possible);
+    }
+
+    /// A negative number is not a yes; a text or a list is no verdict.
+    #[test]
+    fn only_a_yes_or_a_number_gives_a_verdict() {
+        assert_eq!(verdict(&ev(Some(json!(-5)), &[]), "u"), Verdict::Excluded);
+        for w in [json!(""), json!([]), json!("ja")] {
+            assert_eq!(verdict(&ev(Some(w), &[]), "u"), Verdict::Undeterminable);
+        }
     }
 
     #[test]
