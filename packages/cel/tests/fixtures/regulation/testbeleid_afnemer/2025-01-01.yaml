@@ -21,7 +21,7 @@ articles:
       3. Het behandelportaal is het kanaal medewerker.
     machine_readable:
       executes:
-        - {article: testregeling_afnemer#1, as: procedure}
+        - {article: testregeling_afnemer#1}
       execution:
         produces:
           legal_character: TOETS

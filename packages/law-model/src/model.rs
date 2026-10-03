@@ -1273,28 +1273,45 @@ pub struct UntranslatableEntry {
     pub accepted: bool,
 }
 
-/// How a policy article works out the article of law it executes (RFC-047).
-/// The first three are the subjects of a beleidsregel in Awb 1:3 lid 4;
-/// `procedure` is not an Awb term (own choice): the way of working without a
-/// weighing of its own, such as a portal or a channel.
+/// How a policy article works out the article of law it executes (RFC-047):
+/// the three subjects of a beleidsregel in Awb 1:3 lid 4. Only what the law
+/// names is a kind; a policy that executes an article without being a
+/// beleidsregel in that sense (a portal, a channel) has none.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecutesKind {
     FactFinding,
     Interpretation,
     Weighing,
-    Procedure,
 }
 
 impl ExecutesKind {
+    /// Where the kinds come from.
+    pub const SOURCE: &'static str = "Awb 1:3 lid 4";
+
     /// The value as it is written in a law.
     pub fn as_str(self) -> &'static str {
         match self {
             ExecutesKind::FactFinding => "fact_finding",
             ExecutesKind::Interpretation => "interpretation",
             ExecutesKind::Weighing => "weighing",
-            ExecutesKind::Procedure => "procedure",
         }
+    }
+
+    /// The words of Awb 1:3 lid 4 for this kind, as a user reads it.
+    pub fn awb_term(self) -> &'static str {
+        match self {
+            ExecutesKind::FactFinding => "vaststelling van feiten",
+            ExecutesKind::Interpretation => "uitleg van wettelijke voorschriften",
+            ExecutesKind::Weighing => "afweging van belangen",
+        }
+    }
+
+    /// What follows the executed article in a text a user reads:
+    /// " (vaststelling van feiten, Awb 1:3 lid 4)", or nothing without a kind.
+    pub fn note(kind: Option<Self>) -> String {
+        kind.map(|k| format!(" ({}, {})", k.awb_term(), Self::SOURCE))
+            .unwrap_or_default()
     }
 }
 
@@ -1306,8 +1323,10 @@ impl ExecutesKind {
 pub struct Executes {
     /// `<regulation>#<article>`, without a paragraph.
     pub article: String,
-    #[serde(rename = "as")]
-    pub kind: ExecutesKind,
+    /// The subject of Awb 1:3 lid 4 the policy works out; absent when the
+    /// policy executes the article without being a beleidsregel in that sense.
+    #[serde(rename = "as", default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<ExecutesKind>,
 }
 
 /// Machine-readable section of an article

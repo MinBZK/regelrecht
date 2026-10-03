@@ -5948,9 +5948,6 @@ async fn the_form_names_what_the_policy_executes() {
         .find(|s| s["kind"] == "executes")
         .unwrap();
     assert_eq!(step["source"], json!({"law": "testbeleid_toeslag#4"}));
-    assert_eq!(
-        step["reason"],
-        "voert testregeling_toeslag#1 uit (procedure)"
-    );
+    assert_eq!(step["reason"], "voert testregeling_toeslag#1 uit");
     every_source_resolves(&app, TOESLAG, &form).await;
 }

@@ -648,7 +648,7 @@ articles:
     text: De dienst betaalt een voorschot overeenkomstig het besluit tot verlening ervan.
     machine_readable:
       executes:
-        - {article: 'testregeling_toeslag#8', as: procedure}
+        - {article: 'testregeling_toeslag#8'}
       execution:
         produces: {legal_character: TOETS, decision_type: GEEN_BESLUIT}
         parameters:

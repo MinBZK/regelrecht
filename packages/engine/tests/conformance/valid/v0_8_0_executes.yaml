@@ -1,5 +1,6 @@
 ---
-# Tier C: a policy article that executes an article of law (RFC-047).
+# Tier C: a policy article that executes an article of law (RFC-047), with
+# and without the subject of Awb 1:3 lid 4 it works out.
 $schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.8.0/schema/v0.8.0/schema.json
 $id: test_conformance_executes
 regulatory_layer: UITVOERINGSBELEID
@@ -16,4 +17,3 @@ articles:
         - article: test_conformance_submission#1
           as: fact_finding
         - article: test_conformance_submission#2
-          as: procedure

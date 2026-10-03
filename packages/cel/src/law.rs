@@ -420,7 +420,9 @@ pub enum StepKind {
 }
 
 /// After the first step of an article that executes another (RFC-047): a
-/// step "voert <artikel> uit (<soort>)" with the policy article as source.
+/// step "voert <artikel> uit" with the policy article as source, followed by
+/// the Awb term of its kind if it has one ("(vaststelling van feiten, Awb 1:3
+/// lid 4)").
 /// Once per policy article in the chain; calling it twice changes nothing.
 /// What an article executes is read in the version in force on `date` (the
 /// newest without one).
@@ -450,7 +452,11 @@ pub fn with_executes(
             out.push(Step::new(
                 StepKind::Executes,
                 SourceRef::law(&article),
-                format!("voert {} uit ({})", e.target, e.kind.as_str()),
+                format!(
+                    "voert {} uit{}",
+                    e.target,
+                    regelrecht_law_model::ExecutesKind::note(e.kind)
+                ),
             ));
         }
     }
@@ -3166,12 +3172,13 @@ articles:
     }
 
     /// A step whose article executes another gets a step "voert ... uit"
-    /// after it, once per executed article (RFC-047).
+    /// after it, once per executed article, with the Awb term of its kind
+    /// (RFC-047).
     #[test]
     fn a_step_of_an_executing_article_says_what_it_executes() {
         let mut s = LawExecutionService::new();
         s.load_law("$id: wet_e\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - {number: '1', text: Een aanvraag.}\n").unwrap();
-        s.load_law("$id: beleid_e\nregulatory_layer: UITVOERINGSBELEID\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Het portaal.\n    machine_readable:\n      executes: [{article: 'wet_e#1', as: procedure}]\n").unwrap();
+        s.load_law("$id: beleid_e\nregulatory_layer: UITVOERINGSBELEID\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Het portaal.\n    machine_readable:\n      executes: [{article: 'wet_e#1', as: fact_finding}]\n").unwrap();
         let mut steps = vec![
             Step::new(
                 StepKind::Origin,
@@ -3187,7 +3194,10 @@ articles:
             [StepKind::Origin, StepKind::Executes, StepKind::Supply]
         );
         assert_eq!(steps[1].source, SourceRef::law("beleid_e#1"));
-        assert_eq!(steps[1].reason, "voert wet_e#1 uit (procedure)");
+        assert_eq!(
+            steps[1].reason,
+            "voert wet_e#1 uit (vaststelling van feiten, Awb 1:3 lid 4)"
+        );
         with_executes(&mut steps, &s, None);
         assert_eq!(steps.len(), 3, "idempotent");
     }
@@ -3200,7 +3210,7 @@ articles:
         let mut s = LawExecutionService::new();
         s.load_law("$id: wet_d\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - {number: '1', text: Een aanvraag.}\n  - {number: '2', text: Een besluit.}\n").unwrap();
         let policy = |valid_from: &str, target: &str| {
-            format!("$id: beleid_d\nregulatory_layer: UITVOERINGSBELEID\npublication_date: '{valid_from}'\nvalid_from: '{valid_from}'\narticles:\n  - number: '1'\n    text: Het portaal.\n    machine_readable:\n      executes: [{{article: '{target}', as: procedure}}]\n")
+            format!("$id: beleid_d\nregulatory_layer: UITVOERINGSBELEID\npublication_date: '{valid_from}'\nvalid_from: '{valid_from}'\narticles:\n  - number: '1'\n    text: Het portaal.\n    machine_readable:\n      executes: [{{article: '{target}'}}]\n")
         };
         s.load_law(&policy("2025-01-01", "wet_d#1")).unwrap();
         s.load_law(&policy("2026-01-01", "wet_d#2")).unwrap();
@@ -3218,14 +3228,8 @@ articles:
                 .collect::<Vec<_>>()
         };
         let day = |d: &str| Some(NaiveDate::parse_from_str(d, "%Y-%m-%d").unwrap());
-        assert_eq!(
-            reasons(day("2025-06-01")),
-            ["voert wet_d#1 uit (procedure)"]
-        );
-        assert_eq!(
-            reasons(day("2026-06-01")),
-            ["voert wet_d#2 uit (procedure)"]
-        );
-        assert_eq!(reasons(None), ["voert wet_d#2 uit (procedure)"]);
+        assert_eq!(reasons(day("2025-06-01")), ["voert wet_d#1 uit"]);
+        assert_eq!(reasons(day("2026-06-01")), ["voert wet_d#2 uit"]);
+        assert_eq!(reasons(None), ["voert wet_d#2 uit"]);
     }
 }

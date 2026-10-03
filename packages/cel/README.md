@@ -106,6 +106,14 @@ Wat de runtime daaruit afleidt:
 - de origin-controle is altijd strict: een parameter zonder origin is een
   fout.
 
+Welk wetsartikel een beleidsartikel uitwerkt, staat in `executes`
+(RFC-047), optioneel met `as`: `fact_finding`, `interpretation` of
+`weighing`, de drie onderwerpen van een beleidsregel in Awb 1:3 lid 4. De
+uitleg bij een formulierveld ("Waarom?") toont het als stap met de term uit
+de Awb en de bron: "voert wet_op_de_politieke_partijen#102 uit (vaststelling
+van feiten, Awb 1:3 lid 4)". Zonder `as` staat er alleen "voert
+wet_op_de_politieke_partijen#102 uit".
+
 De deployment houdt alleen de techniek, per cel-id gegroepeerd:
 
 ```yaml

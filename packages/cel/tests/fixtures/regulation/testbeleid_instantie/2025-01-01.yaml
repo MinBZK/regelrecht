@@ -24,7 +24,7 @@ articles:
       4. Aan het loket voert een medewerker een aanvraag in, langs het kanaal medewerker.
     machine_readable:
       executes:
-        - {article: testregeling_aanvraag#1, as: procedure}
+        - {article: testregeling_aanvraag#1}
       execution:
         produces:
           legal_character: TOETS

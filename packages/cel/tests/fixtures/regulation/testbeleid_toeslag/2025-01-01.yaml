@@ -99,7 +99,7 @@ articles:
       2. Het portaal legt bij de aanvraag vast met welk persoonsnummer is ingelogd en langs welke weg de aanvraag binnenkwam.
     machine_readable:
       executes:
-        - {article: testregeling_toeslag#1, as: procedure}
+        - {article: testregeling_toeslag#1}
       origins:
         - regulation: testregeling_awb
           parameter: ondertekening
@@ -159,7 +159,7 @@ articles:
       2. Het behandelportaal is het kanaal medewerker.
     machine_readable:
       executes:
-        - {article: testregeling_toeslag#1, as: procedure}
+        - {article: testregeling_toeslag#1}
       execution:
         produces:
           legal_character: TOETS

@@ -294,7 +294,7 @@ articles:
   - number: '1'
     text: Het portaal is het kanaal eherkenning; het behandelportaal het kanaal medewerker.
     machine_readable:
-      executes: [{article: 'wet_t#1', as: procedure}]
+      executes: [{article: 'wet_t#1'}]
       execution:
         produces:
           legal_character: TOETS
@@ -561,14 +561,14 @@ articles:
         let s = service(&[
             LAW,
             &POLICY.replace(
-                "executes: [{article: 'wet_t#1', as: procedure}]",
-                "executes: [{article: 'wet_t#1', as: procedure}, {article: 'wet_t#1', as: zomaar}]",
+                "executes: [{article: 'wet_t#1'}]",
+                "executes: [{article: 'wet_t#1'}, {article: 'wet_t#1', as: procedure}]",
             ),
         ]);
         let e = check_executes(&s);
         assert!(
             e.iter()
-                .any(|f| f.contains("beleid_t#1") && f.contains("zomaar")),
+                .any(|f| f.contains("beleid_t#1") && f.contains("procedure")),
             "{e:?}"
         );
         // A paragraph is not an article (`articleReference`).

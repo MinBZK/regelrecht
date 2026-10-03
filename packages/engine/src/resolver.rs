@@ -370,7 +370,8 @@ fn declaration_fingerprint(law: &ArticleBasedLaw) -> Vec<String> {
         for d in article.get_declared_executes() {
             let entry = match d {
                 regelrecht_law_model::Declared::Valid(e) => {
-                    format!("{}\0{}", e.article, e.kind.as_str())
+                    let kind = e.kind.map_or("", |k| k.as_str());
+                    format!("{}\0{kind}", e.article)
                 }
                 regelrecht_law_model::Declared::Invalid(raw) => format!("invalid\0{raw}"),
             };
@@ -431,9 +432,9 @@ pub struct ExecutesEntry {
     pub article_number: String,
     /// The executed article, `<regulation>#<article>`, without a paragraph.
     pub target: String,
-    /// How the policy works the article out (fact finding, interpretation,
-    /// weighing or procedure).
-    pub kind: regelrecht_law_model::ExecutesKind,
+    /// The subject of Awb 1:3 lid 4 the policy works out, if it is a
+    /// beleidsregel in that sense.
+    pub kind: Option<regelrecht_law_model::ExecutesKind>,
 }
 
 impl ExecutesEntry {
@@ -4868,7 +4869,7 @@ articles:
     text: Het portaal neemt de aanvraag van artikel 1 van de wet aan.
     machine_readable:
       executes:
-        - {article: 'test_law#1', as: procedure}
+        - {article: 'test_law#1', as: weighing}
 "#;
 
     /// A policy article says which article of law it executes (RFC-047); the
@@ -4882,7 +4883,10 @@ articles:
         assert_eq!(by.len(), 1, "{by:?}");
         assert_eq!(by[0].law_id, "test_beleid");
         assert_eq!(by[0].article_number, "1");
-        assert_eq!(by[0].kind, regelrecht_law_model::ExecutesKind::Procedure);
+        assert_eq!(
+            by[0].kind,
+            Some(regelrecht_law_model::ExecutesKind::Weighing)
+        );
         let of = r.executes_of("test_beleid", "1");
         assert_eq!(of.len(), 1);
         assert_eq!(of[0].target, "test_law#1");
@@ -4947,8 +4951,8 @@ articles:
         let mut r = RuleResolver::new();
         r.load_from_yaml(make_test_law()).unwrap();
         r.load_from_yaml(&EXECUTING_POLICY.replace(
-            "- {article: 'test_law#1', as: procedure}",
-            "- {article: 'test_law#1', as: procedure}\n        - {article: 'test_law#2', as: guidance}",
+            "- {article: 'test_law#1', as: weighing}",
+            "- {article: 'test_law#1', as: weighing}\n        - {article: 'test_law#2', as: procedure}",
         ))
         .unwrap();
         assert_eq!(r.executed_by("test_law", "1").len(), 1);

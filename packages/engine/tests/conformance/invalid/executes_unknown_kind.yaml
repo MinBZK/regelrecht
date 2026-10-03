@@ -1,5 +1,6 @@
 ---
-# invalid: 'as' outside the four kinds (RFC-047)
+# invalid: 'as' outside the three subjects of Awb 1:3 lid 4 (RFC-047);
+# procedure is not a term of the law
 $schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.8.0/schema/v0.8.0/schema.json
 $id: test_conformance_executes_unknown_kind
 regulatory_layer: UITVOERINGSBELEID
@@ -14,4 +15,4 @@ articles:
     machine_readable:
       executes:
         - article: test_conformance_submission#1
-          as: guidance
+          as: procedure

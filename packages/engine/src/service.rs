@@ -432,7 +432,8 @@ fn required_parameter_not_passed(
 }
 
 /// What a policy article executes (RFC-047), for the trace: "art. <n> voert
-/// uit: <article> (<kind>)", one per valid entry. The article number is in
+/// uit: <article>", followed by the Awb term of its kind if it has one
+/// ("(vaststelling van feiten, Awb 1:3 lid 4)"), one per valid entry. The article number is in
 /// it because one trace node can carry several articles (a root with outputs
 /// from more than one article, or an open term with several candidates).
 fn executes_note(article: &Article) -> Option<String> {
@@ -440,10 +441,10 @@ fn executes_note(article: &Article) -> Option<String> {
         .get_executes()
         .map(|e| {
             format!(
-                "art. {} voert uit: {} ({})",
+                "art. {} voert uit: {}{}",
                 article.number,
                 e.article,
-                e.kind.as_str()
+                regelrecht_law_model::ExecutesKind::note(e.kind)
             )
         })
         .collect();
@@ -8879,7 +8880,7 @@ articles:
   - number: '1'
     text: Het beleid werkt artikel 1 van de wet uit.
     machine_readable:
-      executes: [{article: 'wet_x#1', as: procedure}]
+      executes: [{article: 'wet_x#1'}]
       execution:
         output: [{name: uitgewerkt, type: number}]
         actions: [{output: uitgewerkt, value: 2}]
@@ -8892,14 +8893,15 @@ articles:
             .unwrap();
         let trace = r.trace.expect("trace");
         assert!(
-            trace_mentions(&trace, "art. 1 voert uit: wet_x#1 (procedure)"),
+            trace_mentions(&trace, "art. 1 voert uit: wet_x#1"),
             "{trace:?}"
         );
         let rendered = trace.render_box_drawing();
         assert!(
-            rendered.contains("art. 1 voert uit: wet_x#1 (procedure)"),
-            "{rendered}"
+            rendered.contains("art. 1 voert uit: wet_x#1") && !rendered.contains("wet_x#1 ("),
+            "without `as` the note names no kind: {rendered}"
         );
+        assert!(rendered.contains("art. 1 voert uit: wet_x#1"), "{rendered}");
         assert!(
             !rendered.contains("Evaluating rules for executes"),
             "{rendered}"
@@ -8941,7 +8943,8 @@ articles:
         assert!(
             rendered.contains(
                 "Open term 'standaardpremie' implemented by regeling_sp_ioc article 1 \
-                 (art. 1 voert uit: zorgtoeslag_ioc#4 (interpretation))"
+                 (art. 1 voert uit: zorgtoeslag_ioc#4 (uitleg van wettelijke voorschriften, \
+                 Awb 1:3 lid 4))"
             ),
             "{rendered}"
         );
