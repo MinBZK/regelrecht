@@ -44,6 +44,11 @@ frontend-poc-*/public/laws/
 frontend-poc-*/public/data/
 frontend-poc-*/public/wasm/
 
+# De opgenomen rondleiding: ruwe opnames en tussenbestanden blijven lokaal,
+# de video's gaan via een GitHub-release (zie script/walkthrough/).
+.walkthrough/
+frontend-demo/public/walkthrough/
+
 # PoC-portaal: wat `just poc` lokaal samenstelt om te serveren.
 .poc-static/
 .poc-shot.sh

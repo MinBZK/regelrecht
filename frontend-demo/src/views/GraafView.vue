@@ -1,6 +1,7 @@
 <script setup>
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { VueFlow, useVueFlow } from '@vue-flow/core';
+import { centerOf, graphView } from '../walkthrough/graphBridge.js';
 import { Background } from '@vue-flow/background';
 import '@vue-flow/core/dist/style.css';
 import '@vue-flow/core/dist/theme-default.css';
@@ -35,7 +36,20 @@ const { t } = useI18n();
 const demo = useDemo();
 const { corpus, profile, portalLaws, dataVersion } = demo;
 // Same store id as the <VueFlow> below, otherwise fitView talks to a different instance.
-const { fitView, zoomIn, zoomOut } = useVueFlow({ id: 'demo-graph' });
+const { fitView, zoomIn, zoomOut, setCenter, getViewport, dimensions } = useVueFlow({ id: 'demo-graph' });
+
+// The recorded walkthrough follows and steers the graph's camera through this
+// bridge (walkthrough/graphBridge.js): panning and zooming leave no clicked
+// element behind for it to replay.
+onMounted(() => {
+  graphView.api = { setCenter, getViewport, dimensions };
+});
+onUnmounted(() => {
+  if (graphView.api?.setCenter === setCenter) graphView.api = null;
+});
+function onViewportChange(viewport) {
+  graphView.onView?.(centerOf(viewport, dimensions.value));
+}
 // The law list is a sheet, closed until asked for; the presets live in the toolbar.
 const splitView = ref(null);
 
@@ -236,6 +250,7 @@ function unique(laws) {
             @node-double-click="onNodeDoubleClick"
             @pane-click="onPaneClick"
             @nodes-initialized="refit"
+            @viewport-change="onViewportChange"
           >
             <template #node-law="{ data }"><GraphLawNode :data="data" /></template>
             <template #node-box="{ data }"><GraphBoxNode :data="data" /></template>

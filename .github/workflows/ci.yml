@@ -743,6 +743,13 @@ jobs:
       - name: Run demo tests
         run: npm test -w frontend-demo
 
+      # De rekenkunde van de opgenomen rondleiding (knippen, hoofdstukken,
+      # ondertitels): pure Python zonder ffmpeg, dus hier in een paar seconden.
+      - name: Run walkthrough pipeline tests
+        # pipx, niet pip: de systeem-Python van de runner weigert een globale
+        # pip install (PEP 668).
+        run: pipx run pytest -q script/walkthrough/tests
+
       # packages/arch-extract/ui is geen workspace-member (eigen package.json en
       # lockfile), dus `npm test -w` bereikt het niet en de test die er ligt
       # draaide nergens.

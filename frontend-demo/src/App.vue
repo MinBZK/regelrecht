@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useColorScheme } from '@regelrecht/frontend-shared';
 import { FEATURES, useDemo } from './store/demoStore.js';
@@ -8,6 +8,11 @@ import { LOCALES, useI18n } from './i18n/index.js';
 import { localeRouteName } from './router.js';
 import PresentationDeck from './presentation/PresentationDeck.vue';
 import { usePresentation } from './presentation/usePresentation.js';
+import { replay } from './walkthrough/replay.js';
+import { viewEpoch } from './walkthrough/viewEpoch.js';
+import ReplayAside from './walkthrough/ReplayAside.vue';
+import ReplayControls from './walkthrough/ReplayControls.vue';
+import ReplayOverlay from './walkthrough/ReplayOverlay.vue';
 import { lockWhy, probeWhy, unlockWhy, whyAvailable, whyUnlocked } from './why/why.js';
 
 // The workspace shell: one bar with the tab bar and the presenter menu, and
@@ -60,12 +65,25 @@ router.afterEach(refreshScrollMode);
 // The presentation deck drives the tabs; it needs the router, the store (to
 // switch persona) and the slides from the demo config once that has loaded.
 const presentation = usePresentation();
+
+// The walkthrough recorder, in dev and only with `?record` in the address. A
+// literal `import.meta.env.DEV` so the production build drops the import
+// altogether: the deployed demo has no microphone or camera permission anyway.
+const RecorderPanel =
+  import.meta.env.DEV && typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('record')
+    ? defineAsyncComponent(() => import('./walkthrough/RecorderPanel.vue'))
+    : null;
 presentation.init({ router, demo });
-watch(corpus, (c) => presentation.init({ slides: c?.config?.slides ?? [] }), { immediate: true });
+// Not while the recorded walkthrough runs: it shows the deck as it was
+// recorded, and a language switch by the viewer must not swap it out.
+watch(corpus, (c) => replay.active || presentation.init({ slides: c?.config?.slides ?? [] }), { immediate: true });
 // De modus staat in de store (en dus in localStorage); het dek houdt er zijn
 // eigen ref voor, zodat de store niet om de presentatiemodule heen cirkelt.
 watch(() => state.presentationMode, (m) => presentation.setMode(m), { immediate: true });
 function onGlobalKey(e) {
+  // While the recorded walkthrough runs it drives the deck; Shift+P would
+  // pull the deck out from under it.
+  if (replay.active) return;
   if (e.key === 'P' && e.shiftKey && !e.target?.closest?.('input, textarea, select, [contenteditable]')) {
     e.preventDefault();
     // Een schakelaar, ook als het dek uit beeld staat. `start()` navigeert naar
@@ -289,7 +307,14 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
 
 <template>
   <nldd-app-view ref="appView" background="tinted">
-    <PresentationDeck />
+    <!-- While the recorded walkthrough plays, the deck carries its controls
+         and, under the slide, the presenter's bubble and the questions. -->
+    <PresentationDeck>
+      <template v-if="replay.active" #aside><ReplayAside /></template>
+      <template v-if="replay.active" #footer><ReplayControls /></template>
+    </PresentationDeck>
+    <ReplayOverlay v-if="replay.active" />
+    <component :is="RecorderPanel" v-if="RecorderPanel" />
     <nldd-bar-split-view>
       <nldd-container slot="toolbar" padding="8" background="base">
         <nldd-toolbar size="md" :label="t('app.toolbar.label')">
@@ -528,7 +553,9 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
           </nldd-simple-section>
         </nldd-page>
         <router-view v-else v-slot="{ Component }">
-          <keep-alive>
+          <!-- Keyed so the walkthrough can drop every cached tab when it
+               jumps (walkthrough/viewEpoch.js). -->
+          <keep-alive :key="viewEpoch">
             <component :is="Component" />
           </keep-alive>
         </router-view>

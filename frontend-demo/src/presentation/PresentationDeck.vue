@@ -5,6 +5,7 @@ import { useDemo } from '../store/demoStore.js';
 import { intlLocale } from '../data/format.js';
 import { useI18n } from '../i18n/index.js';
 import { HINTS, hintSegments } from './keyHints.js';
+import { clockEpoch } from '../walkthrough/clock.js';
 
 // The deck: a Rijkshuisstijl-blue panel, full-screen for the intro and the
 // closing, a left rail while the live demo runs on the right. Slides are data
@@ -16,7 +17,12 @@ const { t } = useI18n();
 
 // Een computed: het dek blijft staan tijdens een taalwissel, dus een datum die
 // eenmalig is uitgerekend zou in de oude taal blijven hangen.
-const today = computed(() => new Date().toLocaleDateString(intlLocale(), { day: 'numeric', month: 'long', year: 'numeric' }));
+// Ook afhankelijk van `clockEpoch`: tijdens een opgenomen rondleiding staat
+// de klok op het moment van opnemen, en de datum moet daarna weer vandaag zijn.
+const today = computed(() => {
+  void clockEpoch.value;
+  return new Date().toLocaleDateString(intlLocale(), { day: 'numeric', month: 'long', year: 'numeric' });
+});
 const counter = computed(() => `${p.index.value + 1} / ${p.total.value}`);
 const progress = computed(() => (p.total.value ? `${((p.index.value + 1) / p.total.value) * 100}%` : '0%'));
 const isLast = computed(() => p.index.value === p.total.value - 1);
@@ -88,6 +94,11 @@ function saveName(e) {
       </div>
       </div>
 
+      <!-- Slots for the recorded walkthrough (walkthrough/Replay*.vue): under
+           the slide its bubble and questions, in place of the footer its
+           controls. Empty, the deck is the presentation it always was. -->
+      <slot name="aside"></slot>
+      <slot name="footer">
       <div class="footer">
         <!-- De tellerregel en de toetsenregel staan links onder elkaar; de
              knoppen staan daar rechts naast, gecentreerd over allebei. Eerder
@@ -142,6 +153,7 @@ function saveName(e) {
           ></nldd-icon-button>
         </nldd-button-bar>
       </div>
+      </slot>
       <div class="progress" aria-hidden="true"><div class="progress-fill" :style="{ width: progress }"></div></div>
     </div>
   </Teleport>
@@ -458,6 +470,11 @@ function saveName(e) {
   height: 100%;
   background: var(--primitives-color-donkergeel-200);
   transition: width 0.3s ease;
+}
+/* The walkthrough's controls replace the footer, so on a full slide they take
+   the footer's inset too. */
+.deck.full :slotted(.controls) {
+  padding-inline: clamp(1.5rem, 4vw, 4rem);
 }
 @media (max-width: 1024px) {
   .deck {

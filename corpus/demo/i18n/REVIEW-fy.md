@@ -100,6 +100,15 @@ is: in tekst dêr't men rjochten oan ûntliene kin`.
   "Geslaagd" zijn afgeleid van woorden die elders in de vertaling staan
   (`opjûn`, `mislearre`), niet opgezocht.
 
+- **De opgenomen rondleiding** (`walkthrough.*`, `recorder.*`). `rûnlieding`
+  voor "rondleiding" is gekozen, niet opgezocht. Het pad is `/fy/runlieding`
+  zonder kapje, omdat een `û` in een adres als `%C3%BB` op het scherm komt;
+  past `rûnlieding` niet, dan moet het pad mee. Verder afgeleid en niet
+  opgezocht: `Skoftsje` voor "Pauzeren" (een pauze nemen, niet een video
+  stilzetten; `Stilsette` kan ook), `Ûndertitels`, `Útskreaune tekst` voor
+  "uitgeschreven tekst" en `fersprekking` voor "verspreking". De
+  opnameknoppen (`recorder.*`) ziet alleen wie de rondleiding opneemt.
+
 ## 5. Beelden die in het Fries misschien niet werken
 
 - **`baalje`** (balie), in "de andere kant van de balie". Het woord bestaat,

@@ -317,6 +317,45 @@ demo-why password="lokaal-demo-wachtwoord":
 dev-demo: wasm-build
     cd frontend-demo && npm run dev -- --port 7400 --strictPort --host 0.0.0.0
 
+# The recorded walkthrough of the demo, one entry point:
+#
+#   just walkthrough record          the demo with the recorder panel (Chrome)
+#   just walkthrough prepare [take]  clean the voice, transcribe, draft cuts
+#   just walkthrough check [take]    what a take sounds like, in numbers
+#   just walkthrough script [take]   a draft script per slide, for the cloned voice
+#   just walkthrough build           walkthrough.yaml -> what the demo plays
+#   just walkthrough publish <tag>   the media into a GitHub release (asks first)
+#   just walkthrough status          which takes there are, and how far along
+#   just walkthrough test            the pipeline's own tests
+#
+# Takes land in .walkthrough/takes/. The route from recording to release is in
+# docs/src/content/docs/components/demo.md#from-recording-to-release. The
+# pipeline needs ffmpeg and downloads its models on first use.
+[doc("The recorded walkthrough: record, prepare, check, script, build, publish, status, test")]
+walkthrough *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    set -- {{args}}
+    case "${1:-}" in
+      record)
+        just wasm-build
+        # Open Chrome once the server answers; Vite's own --open races a cold
+        # start. The endpoint that writes takes exists only with this variable.
+        ( until curl -sf -o /dev/null http://127.0.0.1:7400/; do sleep 0.3; done
+          case "$(uname -s)" in
+            Darwin) open -a "Google Chrome" "http://127.0.0.1:7400/presentatie?record" ;;
+            *) xdg-open "http://127.0.0.1:7400/presentatie?record" >/dev/null 2>&1 || true ;;
+          esac ) &
+        cd frontend-demo && WALKTHROUGH_RECORD=1 npm run dev -- --port 7400 --strictPort --host 127.0.0.1
+        ;;
+      test)
+        uv run --quiet --project script/walkthrough pytest -q script/walkthrough/tests
+        ;;
+      *)
+        uv run --quiet --project script/walkthrough walkthrough "$@"
+        ;;
+    esac
+
 # Everything the demo consists of, in the order a failure is cheapest to read:
 # the laws themselves, then what they compute, then the app around them.
 #
