@@ -219,7 +219,8 @@ onUnmounted(() => {
   border-radius: 50%;
   object-fit: cover;
   box-shadow: 0 6px 24px rgb(0 0 0 / 0.35);
-  border: 3px solid var(--primitives-color-coolgray-0);
+  /* Fixed white, not a primitive: those flip to black in dark mode. */
+  border: 3px solid #fff;
   transition: left 0.5s cubic-bezier(0.22, 1, 0.36, 1), top 0.5s cubic-bezier(0.22, 1, 0.36, 1), width 0.5s, height 0.5s;
   pointer-events: none;
 }
@@ -255,8 +256,9 @@ onUnmounted(() => {
   transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .cursor path {
-  fill: var(--primitives-color-coolgray-1000);
-  stroke: var(--primitives-color-coolgray-0);
+  /* A pointer is black with a white edge in either color scheme. */
+  fill: #000;
+  stroke: #fff;
   stroke-width: 1.5;
 }
 .ripple {
@@ -292,7 +294,9 @@ onUnmounted(() => {
   padding: 0.4rem 0.8rem;
   border-radius: 6px;
   background: rgb(0 0 0 / 0.78);
-  color: var(--primitives-color-coolgray-0);
+  /* Fixed white on the fixed black box: the primitive tokens are light-dark()
+     pairs and gave black on black in dark mode. */
+  color: #fff;
   font-family: 'RijksSans', system-ui, sans-serif;
   font-size: clamp(1rem, 1.4vw, 1.4rem);
   line-height: 1.35;

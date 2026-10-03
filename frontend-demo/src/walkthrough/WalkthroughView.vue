@@ -103,6 +103,6 @@ onUnmounted(() => (here = false));
   width: 100%;
   height: auto;
   border-radius: 8px;
-  background: var(--primitives-color-coolgray-1000);
+  background: #000;
 }
 </style>
