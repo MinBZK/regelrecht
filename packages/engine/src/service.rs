@@ -1734,8 +1734,8 @@ impl LawExecutionService {
             ));
         }
         let trigger = match (produces.legal_character.as_deref(), kind) {
-            (Some(lc), Some(k)) => format!("{lc} at stage {stage}, submission {k}"),
-            (Some(lc), None) => format!("{lc} at stage {stage}"),
+            (Some(lc), Some(k)) => format!("{lc} stage {stage}, submission {k}"),
+            (Some(lc), None) => format!("{lc} stage {stage}"),
             (None, Some(k)) => format!("submission {k}"),
             (None, None) => return Ok((hook_outputs, hook_provenance)),
         };
@@ -9315,7 +9315,7 @@ articles:
                 kind: DeclarationKind::Hook,
                 law_id: "wet_motiveringsplicht".to_string(),
                 article: "3".to_string(),
-                subject: "hook point post_actions on BESCHIKKING at stage BESLUIT".to_string(),
+                subject: "hook point post_actions on BESCHIKKING stage BESLUIT".to_string(),
                 reason: "the version of wet_motiveringsplicht in force on this date (valid_from 2024-01-01) \
                          has no article 3"
                     .to_string(),
@@ -9356,7 +9356,7 @@ articles:
             node.message.as_deref(),
             Some(
                 "Not applied: hook wet_motiveringsplicht article 3 would have applied to \
-                 hook point post_actions on BESCHIKKING at stage BESLUIT, but the \
+                 hook point post_actions on BESCHIKKING stage BESLUIT, but the \
                  version of wet_motiveringsplicht in force on this date (valid_from 2024-01-01) has no article 3"
             )
         );
