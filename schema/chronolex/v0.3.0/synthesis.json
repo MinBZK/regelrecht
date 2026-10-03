@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.3.0/synthesis.json",
+  "title": "Synthesis of the deployment (synthesis.yaml) v0.3.0",
+  "description": "Per actor, under the id of its cell: the synthesis sources and the synthesis per row of the assessment and of each act (RFC-047). The deployment keeps them until the migration of RFC-045 moves them into the consumer's regulation. The shapes are those of process.json, whose definitions this schema reuses.",
+  "type": "object",
+  "propertyNames": {
+    "$ref": "process.json#/definitions/identifier"
+  },
+  "additionalProperties": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "synthesis": {
+        "type": "array",
+        "description": "Lexostatuses from cells that the process merges (see process.json, synthesis).",
+        "items": {
+          "$ref": "process.json#/definitions/source"
+        }
+      },
+      "assessment_rows": {
+        "type": "array",
+        "description": "Per-row synthesis of the assessment before submitting.",
+        "items": {
+          "$ref": "process.json#/definitions/rows"
+        }
+      },
+      "action_rows": {
+        "type": "object",
+        "description": "Per act, by the name of its event: its per-row synthesis.",
+        "propertyNames": {
+          "$ref": "process.json#/definitions/identifier"
+        },
+        "additionalProperties": {
+          "type": "array",
+          "items": {
+            "$ref": "process.json#/definitions/rows"
+          }
+        }
+      }
+    }
+  }
+}

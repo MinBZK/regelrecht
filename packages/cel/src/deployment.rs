@@ -12,6 +12,7 @@ use serde::Deserialize;
 use crate::channel::IdentificationField;
 use crate::config::{Config, ExamplesDefinition, RowsDefinition, SynthesisSource};
 use crate::load;
+use crate::schema::Kind;
 
 /// The technique of a channel. Only a simulated login in this PoC.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -100,7 +101,8 @@ impl ChannelDeployment {
 pub type Channels = BTreeMap<String, BTreeMap<String, ChannelDeployment>>;
 
 /// `synthesis.yaml` for one actor: the same shape as `synthesis` and the
-/// `rows` of `process.yaml` had.
+/// `rows` of `process.yaml` had, validated against
+/// `schema/chronolex/v0.3.0/synthesis.json`.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SynthesisDeployment {
@@ -128,6 +130,15 @@ fn read<T: serde::de::DeserializeOwned>(file: &Path) -> Result<T, Vec<String>> {
     load::load(file, load::yaml)
 }
 
+/// `synthesis.yaml`, validated against its schema: a source names a cell or
+/// a regulation, a source of the case (`case: true`) names no input,
+/// parameters, extra fields or url, and a synthesis per row has columns.
+pub fn load_synthesis(file: &Path) -> Result<BTreeMap<String, SynthesisDeployment>, Vec<String>> {
+    load::load(file, |text, source| {
+        load::definition(text, source, Kind::Synthesis)
+    })
+}
+
 /// `examples.yaml`, with every path made absolute against its directory.
 pub fn load_examples(file: &Path) -> Result<BTreeMap<String, ExamplesDefinition>, Vec<String>> {
     let dir = file.parent().unwrap_or(Path::new("."));
@@ -153,7 +164,9 @@ pub fn load(config: &Config) -> Result<Option<Deployment>, Vec<String>> {
         .map_err(|e| errors.extend(e))
         .unwrap_or_default();
     let synthesis = match &config.synthesis {
-        Some(f) => read(f).map_err(|e| errors.extend(e)).unwrap_or_default(),
+        Some(f) => load_synthesis(f)
+            .map_err(|e| errors.extend(e))
+            .unwrap_or_default(),
         None => BTreeMap::new(),
     };
     let examples = match &config.examples {
@@ -223,8 +236,51 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("synthesis.yaml");
         std::fs::write(&file, "test_afnemer:\n  synthese: []\n").unwrap();
-        let e = read::<BTreeMap<String, SynthesisDeployment>>(&file).unwrap_err();
+        let e = load_synthesis(&file).unwrap_err();
         assert!(e.iter().any(|f| f.contains("synthese")), "{e:?}");
+    }
+
+    /// The schema of `synthesis.yaml` keeps the rules of the synthesis: a
+    /// source names a cell or a regulation, and a source of the case names
+    /// no input.
+    #[test]
+    fn the_synthesis_is_validated_against_its_schema() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("synthesis.yaml");
+        for (text, expect) in [
+            (
+                "test_afnemer:\n  synthesis:\n    - {cell: test_afnemer, lexostatus: besluit, case: true}\n",
+                "",
+            ),
+            // Neither a cell nor a regulation.
+            (
+                "test_afnemer:\n  synthesis:\n    - {lexostatus: besluit, case: true}\n",
+                "/test_afnemer/synthesis/0",
+            ),
+            // A source of the case with input.
+            (
+                "test_afnemer:\n  synthesis:\n    - {cell: test_afnemer, lexostatus: besluit, case: true, input: {root: {value: x}}}\n",
+                "/test_afnemer/synthesis/0",
+            ),
+        ] {
+            std::fs::write(&file, text).unwrap();
+            match load_synthesis(&file) {
+                Ok(s) => assert!(expect.is_empty(), "{text}: {s:?}"),
+                Err(e) => assert!(
+                    !expect.is_empty() && e.iter().all(|f| f.contains(expect)),
+                    "{text}: {e:?}"
+                ),
+            }
+        }
+    }
+
+    /// The synthesis of the fixtures validates.
+    #[test]
+    fn the_fixture_synthesis_validates() {
+        let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/deployment/synthesis.yaml");
+        let s = load_synthesis(&file).unwrap();
+        assert!(!s.is_empty());
     }
 
     #[test]

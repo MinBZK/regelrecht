@@ -10,6 +10,10 @@ const STREAM: &str = include_str!("../../../schema/chronolex/v0.3.0/stream.json"
 const LEXOSTATUS: &str = include_str!("../../../schema/chronolex/v0.3.0/lexostatus.json");
 const GRAM: &str = include_str!("../../../schema/chronolex/v0.3.0/gram.json");
 const CELL: &str = include_str!("../../../schema/chronolex/v0.3.0/cell.json");
+const SYNTHESIS: &str = include_str!("../../../schema/chronolex/v0.3.0/synthesis.json");
+/// Not a document of its own since RFC-047: `synthesis.json` reuses its
+/// definitions of a source and of the synthesis per row.
+const PROCESS: &str = include_str!("../../../schema/chronolex/v0.3.0/process.json");
 
 /// Which of the schemas.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,6 +26,8 @@ pub enum Kind {
     Cell,
     /// A recorded gram (`gram.json`).
     Gram,
+    /// The synthesis of the deployment, `synthesis.yaml` (`synthesis.json`).
+    Synthesis,
 }
 
 fn compile(source: &str, name: &str) -> Result<Validator, String> {
@@ -36,6 +42,30 @@ static LEXOSTATUS_V: LazyLock<Result<Validator, String>> =
     LazyLock::new(|| compile(LEXOSTATUS, "lexostatus.json"));
 static GRAM_V: LazyLock<Result<Validator, String>> = LazyLock::new(|| compile(GRAM, "gram.json"));
 static CELL_V: LazyLock<Result<Validator, String>> = LazyLock::new(|| compile(CELL, "cell.json"));
+static SYNTHESIS_V: LazyLock<Result<Validator, String>> = LazyLock::new(compile_synthesis);
+
+/// `synthesis.json`, with `process.json` registered under its `$id` so the
+/// references to its definitions resolve without fetching anything.
+fn compile_synthesis() -> Result<Validator, String> {
+    let parse = |source: &str, name: &str| -> Result<Value, String> {
+        serde_json::from_str(source)
+            .map_err(|e| format!("embedded schema {name} is not valid JSON: {e}"))
+    };
+    let process = parse(PROCESS, "process.json")?;
+    let schema = parse(SYNTHESIS, "synthesis.json")?;
+    let id = process["$id"]
+        .as_str()
+        .ok_or("embedded schema process.json has no $id")?
+        .to_string();
+    let registry = jsonschema::Registry::new()
+        .add(id, process)
+        .and_then(|r| r.prepare())
+        .map_err(|e| format!("embedded schema process.json does not register: {e}"))?;
+    jsonschema::options()
+        .with_registry(&registry)
+        .build(&schema)
+        .map_err(|e| format!("embedded schema synthesis.json does not compile: {e}"))
+}
 
 /// Validate a document against one of the schemas. On failure: every
 /// violation as `<path>: <message>`.
@@ -45,6 +75,7 @@ pub fn validate(kind: Kind, doc: &Value) -> Result<(), Vec<String>> {
         Kind::Lexostatus => &*LEXOSTATUS_V,
         Kind::Gram => &*GRAM_V,
         Kind::Cell => &*CELL_V,
+        Kind::Synthesis => &*SYNTHESIS_V,
     }
     .as_ref()
     .map_err(|e| vec![e.clone()])?;
@@ -78,6 +109,7 @@ mod tests {
             ("lexostatus", &*LEXOSTATUS_V),
             ("gram", &*GRAM_V),
             ("cell", &*CELL_V),
+            ("synthesis", &*SYNTHESIS_V),
         ] {
             assert!(v.is_ok(), "{name}: {:?}", v.as_ref().err());
         }

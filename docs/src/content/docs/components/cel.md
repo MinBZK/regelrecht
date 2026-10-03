@@ -15,7 +15,7 @@ Cells are configuration and processes follow from the law, not from code. The ru
 
 - **Language**: Rust (axum) for the runtime, Vue 3 with Vite and `@nldd/design-system` for the frontend
 - **Location**: `packages/cel/` and `frontend-cel/`
-- **Schemas**: `schema/chronolex/v0.3.0/` (`cell.json`, `stream.json`, `lexostatus.json`, `gram.json`). `process.json` is still in the directory as a record of the earlier configuration; nothing reads it since RFC-047.
+- **Schemas**: `schema/chronolex/v0.3.0/` (`cell.json`, `stream.json`, `lexostatus.json`, `gram.json`, `synthesis.json`). `process.json` describes the earlier configuration; since RFC-047 no document has that shape, and `synthesis.json` reuses its definitions of a synthesis source and of the synthesis per row.
 - **Run locally**: `just cel` starts the runtime on port 7170 with the fixture cells and processes, and the frontend on port 7171
 - **Frontend checks**: `npm test -w frontend-cel` (vitest) and `npm run build -w frontend-cel` run in CI's frontend job; `frontend-cel/src/nldd-components.js` imports only the design-system components in use and is kept in sync by `script/check-nldd-imports.mjs`
 
@@ -90,7 +90,7 @@ The process id is the id of the cell that records the portal's submission. Its a
 The deployment keeps what is technique rather than law. Each file is grouped under the cell id, because one runtime can run several actors with the same channel names:
 
 - `CELL_CHANNELS` (`channels.yaml`): per channel its adapter (only `simulated` exists), the label and explanation of the login screen, an optional `intake` prefix, the `role_label`, and the identification fields with their label, `pattern`, `check`, `message` and `numeric`. The name of a field is its key, and its legal ground comes from `identifies` in the policy. A channel of the policy without an adapter, or an adapter without a channel, is an error.
-- `CELL_SYNTHESIS` (`synthesis.yaml`): the synthesis sources, the synthesis per row of the check (`assessment_rows`) and of each act (`action_rows`, under the act's name), in the shape described under "Synthesis". It goes with the migration of RFC-045.
+- `CELL_SYNTHESIS` (`synthesis.yaml`): the synthesis sources, the synthesis per row of the check (`assessment_rows`) and of each act (`action_rows`, under the act's name), in the shape described under "Synthesis". At start-up the file is validated against `synthesis.json`. It goes with the migration of RFC-045.
 - `CELL_EXAMPLES` (`examples.yaml`): the examples of a trial setup (see "Examples").
 
 ## Channels and roles

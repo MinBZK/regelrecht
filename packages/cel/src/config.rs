@@ -406,6 +406,7 @@ pub struct RowsDefinition {
 
 /// A source queried per row.
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RowSource {
     pub cell: String,
     /// Without url: the source cell runs in the same runtime (internal transport).
@@ -675,6 +676,7 @@ impl SynthesisSource {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct InputReference {
     pub lexostatus: String,
     pub field: String,

@@ -39,7 +39,7 @@ just cel          # runtime op :7170, frontend op :7171, op de fixtures
 |---|---|
 | `CELLS_PATH` | Map met een submap per cel, elk met een `cell.yaml`. |
 | `CELL_CHANNELS` | `channels.yaml` van de deployment: per cel-id de techniek van elk kanaal dat het beleid noemt. Optioneel: zonder draaien alleen de cellen; met volgen de processen uit het beleid (RFC-047). |
-| `CELL_SYNTHESIS` | `synthesis.yaml` van de deployment: per cel-id `synthesis`, `assessment_rows` en `action_rows`, tot RFC-045. Alleen met `CELL_CHANNELS`. |
+| `CELL_SYNTHESIS` | `synthesis.yaml` van de deployment: per cel-id `synthesis`, `assessment_rows` en `action_rows`, tot RFC-045, gevalideerd tegen `schema/chronolex/v0.3.0/synthesis.json`. Alleen met `CELL_CHANNELS`. |
 | `CELL_EXAMPLES` | `examples.yaml` van de deployment: per cel-id de standaardgegevens van een proefopstelling. Alleen met `CELL_CHANNELS`. |
 | `REGULATION_PATH` | Map met regelingen, gedeeld door de hele runtime; elk YAML-bestand met `$id` en `articles` wordt geladen. |
 | `DATA_DIR` | Map voor de kronieken: per cel een submap `<id>/`. |
