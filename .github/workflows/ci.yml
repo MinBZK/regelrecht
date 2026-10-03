@@ -35,6 +35,7 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       docs-source: ${{ steps.filter.outputs.docs-source }}
       rust-image: ${{ steps.filter.outputs.rust-image }}
+      walkthrough: ${{ steps.filter.outputs.walkthrough }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
@@ -134,6 +135,19 @@ jobs:
               # reden dan in de repo.
               - schema/**
               - rust-toolchain.toml
+              - .github/workflows/ci.yml
+            # Wat de opgenomen rondleiding kan breken: de demo zelf, het
+            # demo-corpus en de rondleiding erin, en de engine die de demo
+            # rekent. Een wijziging elders raakt geen knop waar de opname op
+            # klikt.
+            walkthrough:
+              - frontend-demo/**
+              - corpus/demo/**
+              - packages/engine/**
+              - packages/law-model/**
+              - packages/frontend-shared/**
+              - schema/**
+              - package-lock.json
               - .github/workflows/ci.yml
 
   protect-schema:
@@ -806,6 +820,7 @@ jobs:
       - docs-a11y
       - docs-source
       - rust-image
+      - walkthrough-replay
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -847,6 +862,7 @@ jobs:
           check docs-a11y "${{ needs.docs-a11y.result }}"
           check docs-source "${{ needs.docs-source.result }}"
           check rust-image "${{ needs.rust-image.result }}"
+          check walkthrough-replay "${{ needs.walkthrough-replay.result }}"
           exit "$status"
 
   wasm:
@@ -1007,38 +1023,10 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-registry-
 
       # `just test-e2e` hangt aan `wasm-build`, dat `wasm-bindgen` op PATH
-      # verwacht. Versie en checksum staan in frontend/Dockerfile en worden hier
-      # gelezen in plaats van een tweede keer opgeschreven; dat houdt CI en het
-      # editor-image op precies dezelfde binary. De versie moet gelijk lopen met
-      # de wasm-bindgen-crate uit packages/Cargo.lock, anders faalt de
-      # bindgen-stap verderop met een versie-mismatch.
+      # verwacht; het script leest versie en checksum uit frontend/Dockerfile.
       - name: Install wasm-bindgen-cli
         if: needs.changes.outputs.ci == 'true'
-        run: |
-          set -eu
-          locked=$(grep -A1 '^name = "wasm-bindgen"$' packages/Cargo.lock \
-            | sed -n '/^version = /{s/^version = "\(.*\)"$/\1/p;q;}')
-          version=$(sed -n 's/^ARG WASM_BINDGEN_VERSION=\(.*\)$/\1/p' frontend/Dockerfile)
-          sha=$(sed -n 's/^ARG WASM_BINDGEN_SHA256_AMD64=\(.*\)$/\1/p' frontend/Dockerfile)
-          if [ -z "$locked" ]; then
-            echo "::error::kon wasm-bindgen-versie niet uit packages/Cargo.lock lezen"
-            exit 1
-          fi
-          if [ -z "$version" ] || [ -z "$sha" ]; then
-            echo "::error::kon WASM_BINDGEN_VERSION/WASM_BINDGEN_SHA256_AMD64 niet uit frontend/Dockerfile lezen"
-            exit 1
-          fi
-          if [ "$version" != "$locked" ]; then
-            echo "::error::wasm-bindgen-cli is in frontend/Dockerfile gepind op $version, packages/Cargo.lock heeft $locked. Werk WASM_BINDGEN_VERSION en beide WASM_BINDGEN_SHA256_* bij naar $locked; de checksums staan naast de release op https://github.com/wasm-bindgen/wasm-bindgen/releases/tag/$locked"
-            exit 1
-          fi
-          dir="wasm-bindgen-${version}-x86_64-unknown-linux-musl"
-          curl -fsSLo "/tmp/${dir}.tar.gz" \
-            "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/${version}/${dir}.tar.gz"
-          echo "${sha}  /tmp/${dir}.tar.gz" | sha256sum -c -
-          tar -xzf "/tmp/${dir}.tar.gz" -C /tmp
-          install -D -m0755 "/tmp/${dir}/wasm-bindgen" "$HOME/.cargo/bin/wasm-bindgen"
-          wasm-bindgen --version
+        run: script/install-wasm-bindgen.sh
 
       - name: Setup Node.js
         if: needs.changes.outputs.ci == 'true'
@@ -1110,6 +1098,85 @@ jobs:
       - name: Skip (no relevant changes)
         if: needs.changes.outputs.ci != 'true'
         run: echo "No relevant changes, skipping e2e suite"
+
+  # De opgenomen rondleiding (/rondleiding) is een stem plus een log van wat
+  # de presentator deed; de replay doet dat opnieuw in de echte demo. Een
+  # wijziging in de demo kan een opgenomen klik of scroll zonder doel laten
+  # (een hernoemde knop, een verplaatst paneel, een wet die weg is), en dan
+  # laat de rondleiding iets anders zien dan de stem zegt. Deze baan speelt
+  # elk hoofdstuk terug in twee vensterformaten en faalt op elke handeling
+  # die zijn element niet meer vindt. Hetzelfde commando als lokaal:
+  # `just walkthrough verify`. Zonder timeline.json slaagt hij meteen.
+  walkthrough-replay:
+    name: Rondleiding speelt terug
+    needs: changes
+    if: needs.changes.outputs.walkthrough == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Install just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3  # v4.0.0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Run sccache
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba  # v0.0.11
+
+      - name: Cache cargo registry (shared)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('packages/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-registry-
+
+      - name: Install wasm-bindgen-cli
+        run: script/install-wasm-bindgen.sh
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v6
+        with:
+          node-version: '22'
+          registry-url: https://npm.pkg.github.com
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install workspace dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+          restore-keys: ${{ runner.os }}-playwright-
+
+      # Zie de e2e-baan voor waarom --with-deps en waarom de Chrome-bron weg moet.
+      - name: Install Playwright Chromium
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/google-chrome*.list
+          npx playwright install --with-deps chromium
+
+      - name: Build WASM engine
+        run: just wasm-build
+
+      # Start zelf een dev-server (de testhaak van de replay bestaat alleen in
+      # een dev-build) en haalt alleen de stem uit de release.
+      - name: Replay every chapter
+        run: just walkthrough verify
 
   # Security audit
   audit:
