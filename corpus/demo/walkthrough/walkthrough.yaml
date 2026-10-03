@@ -40,7 +40,16 @@ glossary:
 #     - take: 2026-10-02T11-30-00
 main:
   segments:
+    # Opening tot en met de introductie.
     - take: 2026-10-03T19-38-01
+      to: 149.6
+    # De wet, opnieuw opgenomen: het scrollen door de YAML staat erin.
+    - take: 2026-10-03T21-10-06
+      from: 2.3
+      to: 141.6
+    # Vanaf de graaf weer de eerste opname, tot en met de simulatie.
+    - take: 2026-10-03T19-38-01
+      from: 314.05
       to: 745.4
 
 # Per opname wat eruit gaat. `just walkthrough prepare` zet een voorstel in
@@ -50,6 +59,13 @@ main:
 #     cuts:
 #       - {from: 12.3, to: 15.8, reason: dubbele zin}
 takes:
+  2026-10-03T21-10-06:
+    cuts:
+      - {from: 4.02, to: 4.6, reason: stilte van 1.4s}
+      - {from: 6.59, to: 7.12, reason: stilte van 1.3s}
+      - {from: 89.02, to: 89.52, reason: stilte van 1.3s}
+      - {from: 113.14, to: 114.54, reason: stilte van 2.2s}
+      - {from: 134.77, to: 135.36, reason: stilte van 1.4s}
   2026-10-03T19-38-01:
     cuts:
       - {from: 7.41, to: 8.02, reason: stilte van 1.4s}
@@ -70,7 +86,37 @@ takes:
 #   5:
 #     title: De wet, machine-leesbaar
 #     lead: Elk artikel staat er twee keer in, als tekst en als regels.
-slides: {}
+slides:
+  # Wat in de opname van 3 oktober gezegd wordt, kort.
+  1:
+    lines:
+      - Iedere uitvoeringsorganisatie
+      - heeft een **eigen interpretatie** van de wet
+      - die al decennia landt in **eigen software**
+  5:
+    lead: Per artikel de wettekst, en daaronder hoe hij werkt.
+    bullets:
+      - '**Parameter**: voor wie, een BSN.'
+      - '**Actions**: de voorwaarden en de berekening.'
+      - '**Input** uit andere wetten: verzekerd (Zvw), gedetineerd (Pbw).'
+  6:
+    lead: Zorgtoeslag hangt af van verzekerd zijn, en dat van detentie.
+    bullets:
+      - Volg de lijn van wet naar wet.
+      - Alle wetten samen vormen een kluwen rond de inkomstenbelasting.
+  7:
+    lead: Voorbeelden uit de memorie van toelichting, uitgevoerd.
+    bullets:
+      - '**Testbaar**: werkt de wet zoals bedoeld?'
+      - '**Navolgbaar**: welke gegevens, welke wetten.'
+      - Onder de 18 stopt het vroeg, zonder naar detentie te kijken.
+  8:
+    title: Wat doet een wijziging met iedereen?
+    lead: Alle wetten tegelijk op een populatie.
+    bullets:
+      - Besteedbaar inkomen, met alle wisselwerking tussen wetten.
+      - 'Wijziging doorrekenen: de standaardpremie omhoog.'
+      - Vergelijk voor en na, vóór er gestemd wordt.
 
 # Veelgestelde vragen, en het moment in de hoofdlijn waarop de vraag
 # verschijnt (in take-tijd, of als hoofdstuk plus seconden:

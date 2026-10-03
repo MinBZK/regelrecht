@@ -6,24 +6,24 @@
   "role": "staff engineer"
  },
  "main": {
-  "duration": 729.6,
+  "duration": 703.267,
   "audio": {
-   "src": "main-voice-22800ca02c12.m4a",
-   "sha256": "22800ca02c129df8542099ea62812c8cc86b655f5cda77d95c4f9569037eaf4f",
-   "bytes": 9130893
+   "src": "main-voice-0e744f325b62.m4a",
+   "sha256": "0e744f325b62cf8a9151405ef7788a6cc478efdad1b052003f87f51b4e6ef07b",
+   "bytes": 8809592
   },
   "video": {
-   "src": "main-c66ed6d48b3e.mp4",
-   "sha256": "c66ed6d48b3eaf9297abfb9b7123d44673217243846ddd6fdc1545c436ae09c9",
-   "bytes": 114093530,
+   "src": "main-ba899bc1851d.mp4",
+   "sha256": "ba899bc1851dec078333f92b397c61fe4b19b29902736489ba93313f27ae61d9",
+   "bytes": 111080135,
    "width": 2560,
    "height": 1674
   },
   "cam": {
-   "src": "main-cam-893e247122b4.mp4",
-   "sha256": "893e247122b4a7bdcac94f50774bc13a801c3de605155673c1c7eb2e51d18d01",
-   "bytes": 19994263,
-   "until": 729.6
+   "src": "main-cam-2d6282c59690.mp4",
+   "sha256": "2d6282c596903ea9c841f41bfdc6833c5a518e91688259e8bf0b49076b8b1ac4",
+   "bytes": 19679480,
+   "until": 703.267
   },
   "slides": [
    {
@@ -36,9 +36,9 @@
     "kind": "statement",
     "overline": "Huidige situatie",
     "lines": [
-     "Iedere organisatie",
+     "Iedere uitvoeringsorganisatie",
      "heeft een **eigen interpretatie** van de wet",
-     "die landt in **eigen software**"
+     "die al decennia landt in **eigen software**"
     ]
    },
    {
@@ -71,11 +71,11 @@
     "kind": "demo",
     "overline": "De wet",
     "title": "De wet, machine-leesbaar",
-    "lead": "De wettekst en de uitvoerbare regel staan naast elkaar, per artikel.",
+    "lead": "Per artikel de wettekst, en daaronder hoe hij werkt.",
     "bullets": [
-     "Elk artikel heeft een **machine_readable**-deel: welke gegevens erin gaan, wat eruit komt en hoe.",
-     "Een verwijzing naar een andere wet is expliciet, geen kopie van een bedrag.",
-     "Dezelfde YAML draait in de editor, in dit portaal en in de simulatie."
+     "**Parameter**: voor wie, een BSN.",
+     "**Actions**: de voorwaarden en de berekening.",
+     "**Input** uit andere wetten: verzekerd (Zvw), gedetineerd (Pbw)."
     ],
     "route": "/wetten/zorgtoeslagwet",
     "highlight": ".yaml-tree"
@@ -84,11 +84,10 @@
     "kind": "demo",
     "overline": "Samenhang",
     "title": "Wetten hangen samen",
-    "lead": "Of iemand verzekerd is, hangt af van detentie; of iemand zorgtoeslag krijgt, hangt af van verzekerd zijn.",
+    "lead": "Zorgtoeslag hangt af van verzekerd zijn, en dat van detentie.",
     "bullets": [
-     "Per wet: welke gegevens uit registers, welke uit andere wetten, wat eruit komt.",
-     "Elke lijn is een echte verwijzing uit de wet, met de waarde voor deze persoon erbij.",
-     "Wijzigt een wet, dan zie je meteen wie dat raakt."
+     "Volg de lijn van wet naar wet.",
+     "Alle wetten samen vormen een kluwen rond de inkomstenbelasting."
     ],
     "route": "/graaf"
    },
@@ -96,23 +95,23 @@
     "kind": "demo",
     "overline": "Toetsen",
     "title": "De wet getoetst, in gewone taal",
-    "lead": "Scenario's beschrijven een persoon en wat de wet voor die persoon moet opleveren.",
+    "lead": "Voorbeelden uit de memorie van toelichting, uitgevoerd.",
     "bullets": [
-     "Gegeven een 17-jarige, dan geen zorgtoeslag. Gegeven een alleenstaande met laag inkomen, dan wel.",
-     "Dezelfde scenario's draaien hier in de browser en in de bouwstraat.",
-     "Wie de wet wijzigt, ziet welk scenario omvalt."
+     "**Testbaar**: werkt de wet zoals bedoeld?",
+     "**Navolgbaar**: welke gegevens, welke wetten.",
+     "Onder de 18 stopt het vroeg, zonder naar detentie te kijken."
     ],
     "route": "/scenarios"
    },
    {
     "kind": "demo",
     "overline": "Beleid",
-    "title": "Wat doet het met tweeduizend mensen?",
-    "lead": "Een gegenereerde bevolking door alle regelingen, met de echte wetten.",
+    "title": "Wat doet een wijziging met iedereen?",
+    "lead": "Alle wetten tegelijk op een populatie.",
     "bullets": [
-     "Wie voldoet aan de voorwaarden, voor hoeveel, uitgesplitst naar leeftijd, inkomen, huishouden.",
-     "Draai aan een drempel in de wet en zie het verschil, voor de wet ingaat.",
-     "Ook voor ondernemers: vergunningen, meldplichten, precario."
+     "Besteedbaar inkomen, met alle wisselwerking tussen wetten.",
+     "Wijziging doorrekenen: de standaardpremie omhoog.",
+     "Vergelijk voor en na, vóór er gestemd wordt."
     ],
     "route": "/simulatie"
    },
@@ -461,9 +460,9 @@
      "kind": "statement",
      "overline": "Huidige situatie",
      "lines": [
-      "Iedere organisatie",
+      "Iedere uitvoeringsorganisatie",
       "heeft een **eigen interpretatie** van de wet",
-      "die landt in **eigen software**"
+      "die al decennia landt in **eigen software**"
      ]
     },
     "profile": "merijn",
@@ -1519,20 +1518,20 @@
      "delegationKey": null,
      "featureOverrides": {}
     },
-    "end": 149.391
+    "end": 148.067
    },
    {
-    "start": 149.391,
+    "start": 148.067,
     "slideIndex": 5,
     "slide": {
      "kind": "demo",
      "overline": "De wet",
      "title": "De wet, machine-leesbaar",
-     "lead": "De wettekst en de uitvoerbare regel staan naast elkaar, per artikel.",
+     "lead": "Per artikel de wettekst, en daaronder hoe hij werkt.",
      "bullets": [
-      "Elk artikel heeft een **machine_readable**-deel: welke gegevens erin gaan, wat eruit komt en hoe.",
-      "Een verwijzing naar een andere wet is expliciet, geen kopie van een bedrag.",
-      "Dezelfde YAML draait in de editor, in dit portaal en in de simulatie."
+      "**Parameter**: voor wie, een BSN.",
+      "**Actions**: de voorwaarden en de berekening.",
+      "**Input** uit andere wetten: verzekerd (Zvw), gedetineerd (Pbw)."
      ],
      "route": "/wetten/zorgtoeslagwet",
      "highlight": ".yaml-tree"
@@ -1790,20 +1789,19 @@
      "delegationKey": null,
      "featureOverrides": {}
     },
-    "end": 306.659
+    "end": 283.767
    },
    {
-    "start": 306.659,
+    "start": 283.767,
     "slideIndex": 6,
     "slide": {
      "kind": "demo",
      "overline": "Samenhang",
      "title": "Wetten hangen samen",
-     "lead": "Of iemand verzekerd is, hangt af van detentie; of iemand zorgtoeslag krijgt, hangt af van verzekerd zijn.",
+     "lead": "Zorgtoeslag hangt af van verzekerd zijn, en dat van detentie.",
      "bullets": [
-      "Per wet: welke gegevens uit registers, welke uit andere wetten, wat eruit komt.",
-      "Elke lijn is een echte verwijzing uit de wet, met de waarde voor deze persoon erbij.",
-      "Wijzigt een wet, dan zie je meteen wie dat raakt."
+      "Volg de lijn van wet naar wet.",
+      "Alle wetten samen vormen een kluwen rond de inkomstenbelasting."
      ],
      "route": "/graaf"
     },
@@ -2060,20 +2058,20 @@
      "delegationKey": null,
      "featureOverrides": {}
     },
-    "end": 374.471
+    "end": 348.138
    },
    {
-    "start": 374.471,
+    "start": 348.138,
     "slideIndex": 7,
     "slide": {
      "kind": "demo",
      "overline": "Toetsen",
      "title": "De wet getoetst, in gewone taal",
-     "lead": "Scenario's beschrijven een persoon en wat de wet voor die persoon moet opleveren.",
+     "lead": "Voorbeelden uit de memorie van toelichting, uitgevoerd.",
      "bullets": [
-      "Gegeven een 17-jarige, dan geen zorgtoeslag. Gegeven een alleenstaande met laag inkomen, dan wel.",
-      "Dezelfde scenario's draaien hier in de browser en in de bouwstraat.",
-      "Wie de wet wijzigt, ziet welk scenario omvalt."
+      "**Testbaar**: werkt de wet zoals bedoeld?",
+      "**Navolgbaar**: welke gegevens, welke wetten.",
+      "Onder de 18 stopt het vroeg, zonder naar detentie te kijken."
      ],
      "route": "/scenarios"
     },
@@ -2330,20 +2328,20 @@
      "delegationKey": null,
      "featureOverrides": {}
     },
-    "end": 590.526
+    "end": 564.193
    },
    {
-    "start": 590.526,
+    "start": 564.193,
     "slideIndex": 8,
     "slide": {
      "kind": "demo",
      "overline": "Beleid",
-     "title": "Wat doet het met tweeduizend mensen?",
-     "lead": "Een gegenereerde bevolking door alle regelingen, met de echte wetten.",
+     "title": "Wat doet een wijziging met iedereen?",
+     "lead": "Alle wetten tegelijk op een populatie.",
      "bullets": [
-      "Wie voldoet aan de voorwaarden, voor hoeveel, uitgesplitst naar leeftijd, inkomen, huishouden.",
-      "Draai aan een drempel in de wet en zie het verschil, voor de wet ingaat.",
-      "Ook voor ondernemers: vergunningen, meldplichten, precario."
+      "Besteedbaar inkomen, met alle wisselwerking tussen wetten.",
+      "Wijziging doorrekenen: de standaardpremie omhoog.",
+      "Vergelijk voor en na, vóór er gestemd wordt."
      ],
      "route": "/simulatie"
     },
@@ -2600,7 +2598,7 @@
      "delegationKey": null,
      "featureOverrides": {}
     },
-    "end": 729.6
+    "end": 703.267
    }
   ],
   "events": [
@@ -2887,17 +2885,274 @@
     "index": 4
    },
    {
-    "t": 149.391,
+    "t": 148.067,
+    "type": "restore",
+    "state": {
+     "profileKey": "merijn",
+     "referenceDate": "2026-09-30",
+     "manualReview": false,
+     "autoAnnounce": true,
+     "cases": [
+      {
+       "id": "zaak-munvqcgm-e9n0m",
+       "bsn": "999100001",
+       "kvk": null,
+       "lawId": "wet_op_de_huurtoeslag",
+       "lawPath": "wet_op_de_huurtoeslag",
+       "lawName": "Huurtoeslag",
+       "service": "TOESLAGEN",
+       "parameters": {
+        "bsn": "999100001"
+       },
+       "claimedResult": {
+        "basishuur": 23801,
+        "bezwaartermijn_weken": 6,
+        "is_gerechtigd": true,
+        "motivering_vereist": true,
+        "subsidiebedrag": 40695,
+        "voldoet_aan_voorwaarden": true
+       },
+       "verifiedResult": {
+        "basishuur": 23801,
+        "bezwaartermijn_weken": 6,
+        "is_gerechtigd": true,
+        "motivering_vereist": true,
+        "subsidiebedrag": 40695,
+        "voldoet_aan_voorwaarden": true
+       },
+       "status": "DECIDED",
+       "approved": false,
+       "reasonKey": null,
+       "submittedAt": "2026-09-30T09:04:59.542Z",
+       "decidedAt": "2026-09-30T09:06:32.160Z",
+       "objection": null,
+       "acting": null,
+       "events": [
+        {
+         "at": "2026-09-30T09:04:59.542Z",
+         "type": "SUBMITTED",
+         "key": "case.event.submitted"
+        },
+        {
+         "at": "2026-09-30T09:04:59.542Z",
+         "type": "IN_REVIEW",
+         "key": "case.review.citizen_changed_data"
+        },
+        {
+         "at": "2026-09-30T09:06:32.160Z",
+         "type": "DECIDED",
+         "approved": false,
+         "key": "case.event.refused_by_officer",
+         "vars": {
+          "reason": "Klopt niet"
+         }
+        },
+        {
+         "at": "2026-09-30T09:06:32.163Z",
+         "type": "BEKENDMAKING",
+         "key": "case.event.announced",
+         "vars": {
+          "date": "2026-09-30"
+         }
+        }
+       ],
+       "lifecycleInputs": {
+        "aanvraag_datum": "2026-09-30",
+        "beslistermijn_start": "2026-09-30",
+        "besluit_datum": "2026-09-30",
+        "bekendmaking_datum": "2026-09-30"
+       },
+       "lifecycleError": null,
+       "stageState": {
+        "procedure_id": "beschikking",
+        "contextual_law": "wet_op_de_huurtoeslag",
+        "current_stage": "BEZWAAR",
+        "accumulated_outputs": {
+         "basishuur": 23801,
+         "bezwaartermijn_weken": 6,
+         "is_gerechtigd": true,
+         "motivering_vereist": true,
+         "subsidiebedrag": 40695,
+         "voldoet_aan_voorwaarden": true,
+         "bezwaartermijn_einddatum": "2026-11-11",
+         "bezwaartermijn_startdatum": "2026-10-01"
+        },
+        "parameters": {
+         "aanvraag_datum": "2026-09-30",
+         "beslistermijn_start": "2026-09-30",
+         "bsn": "999100001"
+        }
+       },
+       "pendingInputs": [],
+       "reason": "Klopt niet",
+       "publishedAt": "2026-09-30T09:06:32.163Z"
+      },
+      {
+       "id": "zaak-munvnwds-npomu",
+       "bsn": "999100001",
+       "kvk": null,
+       "lawId": "zorgtoeslagwet",
+       "lawPath": "zorgtoeslagwet",
+       "lawName": "Zorgtoeslag",
+       "service": "TOESLAGEN",
+       "parameters": {
+        "bsn": "999100001"
+       },
+       "claimedResult": {
+        "bezwaartermijn_weken": 6,
+        "hoogte_toeslag": 212812,
+        "is_verzekerde_zorgtoeslag": true,
+        "motivering_vereist": true,
+        "voldoet_aan_voorwaarden": true
+       },
+       "verifiedResult": null,
+       "status": "IN_REVIEW",
+       "approved": null,
+       "reasonKey": null,
+       "submittedAt": "2026-09-30T09:03:05.392Z",
+       "decidedAt": null,
+       "objection": null,
+       "acting": null,
+       "events": [
+        {
+         "at": "2026-09-30T09:03:05.392Z",
+         "type": "SUBMITTED",
+         "key": "case.event.submitted"
+        },
+        {
+         "at": "2026-09-30T09:03:05.392Z",
+         "type": "DECIDED",
+         "key": "case.event.granted_auto"
+        },
+        {
+         "at": "2026-09-30T09:03:05.396Z",
+         "type": "BEKENDMAKING",
+         "key": "case.event.announced",
+         "vars": {
+          "date": "2026-09-30"
+         }
+        },
+        {
+         "at": "2026-09-30T09:05:25.561Z",
+         "type": "SUBMITTED",
+         "key": "case.event.amended"
+        },
+        {
+         "at": "2026-09-30T09:05:25.561Z",
+         "type": "IN_REVIEW",
+         "key": "case.review.citizen_changed_data"
+        }
+       ],
+       "lifecycleInputs": {
+        "aanvraag_datum": "2026-09-30",
+        "beslistermijn_start": "2026-09-30"
+       },
+       "lifecycleError": null,
+       "stageState": {
+        "procedure_id": "beschikking",
+        "contextual_law": "zorgtoeslagwet",
+        "current_stage": "BESLUIT",
+        "accumulated_outputs": {
+         "hoogte_toeslag": 212812,
+         "is_verzekerde_zorgtoeslag": true,
+         "voldoet_aan_voorwaarden": true
+        },
+        "parameters": {
+         "aanvraag_datum": "2026-09-30",
+         "beslistermijn_start": "2026-09-30",
+         "bsn": "999100001"
+        }
+       },
+       "pendingInputs": [
+        "besluit_datum"
+       ],
+       "publishedAt": null
+      }
+     ],
+     "claims": [
+      {
+       "id": "claim-munvq6qn-3gw0x",
+       "bsn": "999100001",
+       "lawId": "wet_inkomstenbelasting",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "winst_uit_onderneming",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": 2500000,
+       "newValue": 0,
+       "reason": "onderneming heb ik niet meer",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": false,
+       "status": "PENDING",
+       "caseId": "zaak-munvqcgm-e9n0m",
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:52.127Z",
+       "decidedAt": null
+      },
+      {
+       "id": "claim-munvpgir-psnat",
+       "bsn": "999100001",
+       "lawId": "wet_op_de_huurtoeslag",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "subsidiabele_servicekosten",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": null,
+       "newValue": 4800,
+       "reason": "Opgegeven bij de aanvraag.",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": true,
+       "status": "APPROVED",
+       "caseId": null,
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:18.147Z",
+       "decidedAt": "2026-09-30T09:04:18.148Z"
+      },
+      {
+       "id": "claim-munvpf9p-bue2s",
+       "bsn": "999100001",
+       "lawId": "wet_op_de_huurtoeslag",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "huurprijs",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": null,
+       "newValue": 72000,
+       "reason": "Opgegeven bij de aanvraag.",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": true,
+       "status": "APPROVED",
+       "caseId": null,
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:16.525Z",
+       "decidedAt": "2026-09-30T09:04:16.525Z"
+      }
+     ],
+     "presenterName": "Team RegelRecht",
+     "presentationMode": "zelfstandig",
+     "delegationKey": null,
+     "featureOverrides": {}
+    },
+    "slideIndex": 5
+   },
+   {
+    "t": 148.067,
     "type": "slide",
     "index": 5
    },
    {
-    "t": 149.433,
+    "t": 148.067,
     "type": "route",
     "path": "/wetten/zorgtoeslagwet"
    },
    {
-    "t": 157.655,
+    "t": 150.618,
     "type": "click",
     "target": [
      {
@@ -2906,24 +3161,11 @@
       "nth": 0
      }
     ],
-    "fx": 0.206560001642053,
+    "fx": 0.2302055645070249,
     "fy": 0.5447761194029851
    },
    {
-    "t": 157.821,
-    "type": "click",
-    "target": [
-     {
-      "tag": "nldd-container",
-      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
-      "nth": 0
-     }
-    ],
-    "fx": 0.206560001642053,
-    "fy": 0.5447761194029851
-   },
-   {
-    "t": 165.638,
+    "t": 157.346,
     "type": "click",
     "target": [
      {
@@ -2933,24 +3175,11 @@
       "nth": 0
      }
     ],
-    "fx": 0.07049707049707049,
-    "fy": 0.5555555555555556
+    "fx": 0.06243306243306243,
+    "fy": 0.4444444444444444
    },
    {
-    "t": 172.479,
-    "type": "click",
-    "target": [
-     {
-      "tag": "nldd-container",
-      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
-      "nth": 0
-     }
-    ],
-    "fx": 0.76879894087583,
-    "fy": 0.6079136690647482
-   },
-   {
-    "t": 175.875,
+    "t": 163.14,
     "type": "click",
     "target": [
      {
@@ -2960,37 +3189,291 @@
       "nth": 0
      }
     ],
-    "fx": 0.30180831826401444,
-    "fy": 0.8148148148148148
+    "fx": 0.20922242314647377,
+    "fy": 0.37037037037037035
    },
    {
-    "t": 182.463,
+    "t": 163.679,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 1,
+    "left": 0,
+    "max": 657,
+    "anchor": {
+     "tag": "span",
+     "text": "1 Indien de normpremie voor een verzekerde in het berekeningsjaar minder bedraag",
+     "index": 0,
+     "at": 0.418
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     19012
+    ]
+   },
+   {
+    "t": 163.842,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 193,
+    "left": 0,
+    "max": 657,
+    "anchor": {
+     "tag": "span",
+     "text": "1 Indien de normpremie voor een verzekerde in het berekeningsjaar minder bedraag",
+     "index": 0,
+     "at": 0.247
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     19175
+    ]
+   },
+   {
+    "t": 163.992,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 505,
+    "left": 0,
+    "max": 657,
+    "anchor": {
+     "tag": "span",
+     "text": "1 Indien de normpremie voor een verzekerde in het berekeningsjaar minder bedraag",
+     "index": 0,
+     "at": -0.03
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     19325
+    ]
+   },
+   {
+    "t": 164.143,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 641,
+    "left": 0,
+    "max": 657,
+    "anchor": {
+     "tag": "span",
+     "text": "1 Indien de normpremie voor een verzekerde in het berekeningsjaar minder bedraag",
+     "index": 0,
+     "at": -0.151
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     19476
+    ]
+   },
+   {
+    "t": 164.376,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 657,
+    "left": 0,
+    "max": 657,
+    "anchor": {
+     "tag": "span",
+     "text": "1 Indien de normpremie voor een verzekerde in het berekeningsjaar minder bedraag",
+     "index": 0,
+     "at": -0.165
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     19709
+    ]
+   },
+   {
+    "t": 166.48,
     "type": "click",
     "target": [
      {
-      "tag": "nldd-container",
-      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "tag": "button",
+      "type": "button",
+      "textContent": "machine_readable:",
       "nth": 0
      }
     ],
-    "fx": 0.3418651669249479,
-    "fy": 0.9222022740873729
+    "fx": 0.7476712328767123,
+    "fy": 0.5555555555555556
    },
    {
-    "t": 185.62,
+    "t": 166.485,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 441,
+    "left": 0,
+    "max": 441,
+    "anchor": {
+     "tag": "span",
+     "text": "1 Indien de normpremie voor een verzekerde in het berekeningsjaar minder bedraag",
+     "index": 0,
+     "at": 0.027
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     21818
+    ]
+   },
+   {
+    "t": 166.687,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 441,
+    "left": 0,
+    "max": 441,
+    "anchor": {
+     "tag": "span",
+     "text": "1 Indien de normpremie voor een verzekerde in het berekeningsjaar minder bedraag",
+     "index": 0,
+     "at": 0.027
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     22020
+    ]
+   },
+   {
+    "t": 168.246,
     "type": "click",
     "target": [
      {
-      "tag": "nldd-container",
-      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "tag": "button",
+      "type": "button",
+      "textContent": "machine_readable:2 velden",
       "nth": 0
      }
     ],
-    "fx": 0.3944108621804411,
-    "fy": 0.9228007181328546
+    "fx": 0.3399890740234908,
+    "fy": 0.3333333333333333
    },
    {
-    "t": 191.379,
+    "t": 168.252,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 657,
+    "left": 0,
+    "max": 657,
+    "anchor": {
+     "tag": "span",
+     "text": "1 Indien de normpremie voor een verzekerde in het berekeningsjaar minder bedraag",
+     "index": 0,
+     "at": -0.165
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     23585
+    ]
+   },
+   {
+    "t": 168.455,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 657,
+    "left": 0,
+    "max": 657,
+    "anchor": {
+     "tag": "span",
+     "text": "1 Indien de normpremie voor een verzekerde in het berekeningsjaar minder bedraag",
+     "index": 0,
+     "at": -0.165
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     23788
+    ]
+   },
+   {
+    "t": 190.897,
     "type": "click",
     "target": [
      {
@@ -3000,11 +3483,249 @@
       "nth": 0
      }
     ],
-    "fx": 0.05192012288786482,
-    "fy": 0.5555555555555556
+    "fx": 0.07439104674127715,
+    "fy": 0.5925925925925926
    },
    {
-    "t": 214.484,
+    "t": 191.248,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 658,
+    "left": 0,
+    "max": 1251,
+    "anchor": {
+     "tag": "span",
+     "text": "1 Indien de normpremie voor een verzekerde in het berekeningsjaar minder bedraag",
+     "index": 0,
+     "at": -0.166
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     46581
+    ]
+   },
+   {
+    "t": 191.402,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 838,
+    "left": 0,
+    "max": 1251,
+    "anchor": {
+     "tag": "button",
+     "text": "minder",
+     "index": 0,
+     "at": 0.488
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     46735
+    ]
+   },
+   {
+    "t": 191.553,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 1074,
+    "left": 0,
+    "max": 1251,
+    "anchor": {
+     "tag": "span",
+     "text": "input",
+     "index": 0,
+     "at": 0.496
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     46886
+    ]
+   },
+   {
+    "t": 191.702,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 1183,
+    "left": 0,
+    "max": 1251,
+    "anchor": {
+     "tag": "span",
+     "text": "output",
+     "index": 1,
+     "at": 0.495
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     47035
+    ]
+   },
+   {
+    "t": 191.852,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 1237,
+    "left": 0,
+    "max": 1251,
+    "anchor": {
+     "tag": "span",
+     "text": "operation",
+     "index": 0,
+     "at": 0.495
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     47185
+    ]
+   },
+   {
+    "t": 192.113,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 1251,
+    "left": 0,
+    "max": 1251,
+    "anchor": {
+     "tag": "span",
+     "text": "operation",
+     "index": 0,
+     "at": 0.483
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     47446
+    ]
+   },
+   {
+    "t": 199.725,
+    "type": "click",
+    "target": [
+     {
+      "tag": "button",
+      "type": "button",
+      "textContent": "reference_date:",
+      "nth": 0
+     }
+    ],
+    "fx": 0.05192012288786482,
+    "fy": 0.6296296296296297
+   },
+   {
+    "t": 199.733,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 1170,
+    "left": 0,
+    "max": 1170,
+    "anchor": {
+     "tag": "span",
+     "text": "-",
+     "index": 2,
+     "at": 0.483
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     55066
+    ]
+   },
+   {
+    "t": 199.935,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 1170,
+    "left": 0,
+    "max": 1170,
+    "anchor": {
+     "tag": "span",
+     "text": "-",
+     "index": 2,
+     "at": 0.483
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     55268
+    ]
+   },
+   {
+    "t": 208.241,
     "type": "click",
     "target": [
      {
@@ -3014,11 +3735,765 @@
       "nth": 0
      }
     ],
-    "fx": 0.03225806451612903,
-    "fy": 0.48148148148148145
+    "fx": 0.0434935264428352,
+    "fy": 0.5185185185185185
    },
    {
-    "t": 246.439,
+    "t": 208.506,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 1171,
+    "left": 0,
+    "max": 2088,
+    "anchor": {
+     "tag": "span",
+     "text": "-",
+     "index": 2,
+     "at": 0.482
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     63839
+    ]
+   },
+   {
+    "t": 208.658,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 1376,
+    "left": 0,
+    "max": 2088,
+    "anchor": {
+     "tag": "span",
+     "text": "date_of_birth",
+     "index": 0,
+     "at": 0.492
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     63991
+    ]
+   },
+   {
+    "t": 208.808,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 1714,
+    "left": 0,
+    "max": 2088,
+    "anchor": {
+     "tag": "span",
+     "text": "value",
+     "index": 3,
+     "at": 0.479
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     64141
+    ]
+   },
+   {
+    "t": 208.968,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 1880,
+    "left": 0,
+    "max": 2088,
+    "anchor": {
+     "tag": "span",
+     "text": "value",
+     "index": 4,
+     "at": 0.5
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     64301
+    ]
+   },
+   {
+    "t": 209.126,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 1951,
+    "left": 0,
+    "max": 2088,
+    "anchor": {
+     "tag": "span",
+     "text": "operation",
+     "index": 6,
+     "at": 0.484
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     64459
+    ]
+   },
+   {
+    "t": 209.293,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 1985,
+    "left": 0,
+    "max": 2088,
+    "anchor": {
+     "tag": "div",
+     "text": "precision:0",
+     "index": 0,
+     "at": 0.477
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     64626
+    ]
+   },
+   {
+    "t": 209.442,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 1997,
+    "left": 0,
+    "max": 2088,
+    "anchor": {
+     "tag": "span",
+     "text": "value",
+     "index": 5,
+     "at": 0.492
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     64775
+    ]
+   },
+   {
+    "t": 209.661,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 2000,
+    "left": 0,
+    "max": 2088,
+    "anchor": {
+     "tag": "span",
+     "text": "value",
+     "index": 5,
+     "at": 0.489
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     64994
+    ]
+   },
+   {
+    "t": 210.007,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 2088,
+    "left": 0,
+    "max": 2088,
+    "anchor": {
+     "tag": "span",
+     "text": "-",
+     "index": 9,
+     "at": 0.483
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     65340
+    ]
+   },
+   {
+    "t": 216.029,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-container",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     }
+    ],
+    "fx": 0.6702757622717803,
+    "fy": 0.9319793681495809
+   },
+   {
+    "t": 217.275,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-container",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     }
+    ],
+    "fx": 0.6807849013228789,
+    "fy": 0.937137330754352
+   },
+   {
+    "t": 230.519,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 2087,
+    "left": 0,
+    "max": 2088,
+    "anchor": {
+     "tag": "span",
+     "text": "-",
+     "index": 9,
+     "at": 0.484
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     85852
+    ]
+   },
+   {
+    "t": 230.667,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 2047,
+    "left": 0,
+    "max": 2088,
+    "anchor": {
+     "tag": "span",
+     "text": "cases",
+     "index": 1,
+     "at": 0.495
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     86000
+    ]
+   },
+   {
+    "t": 230.818,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 1959,
+    "left": 0,
+    "max": 2088,
+    "anchor": {
+     "tag": "div",
+     "text": "precision:0",
+     "index": 0,
+     "at": 0.5
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     86151
+    ]
+   },
+   {
+    "t": 230.969,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 1805,
+    "left": 0,
+    "max": 2088,
+    "anchor": {
+     "tag": "span",
+     "text": "when",
+     "index": 0,
+     "at": 0.494
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     86302
+    ]
+   },
+   {
+    "t": 231.125,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 1694,
+    "left": 0,
+    "max": 2088,
+    "anchor": {
+     "tag": "span",
+     "text": "value",
+     "index": 3,
+     "at": 0.497
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     86458
+    ]
+   },
+   {
+    "t": 231.283,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 1646,
+    "left": 0,
+    "max": 2088,
+    "anchor": {
+     "tag": "span",
+     "text": "-",
+     "index": 7,
+     "at": 0.492
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     86616
+    ]
+   },
+   {
+    "t": 231.442,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 1627,
+    "left": 0,
+    "max": 2088,
+    "anchor": {
+     "tag": "span",
+     "text": "-",
+     "index": 6,
+     "at": 0.484
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     86775
+    ]
+   },
+   {
+    "t": 231.593,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 1623,
+    "left": 0,
+    "max": 2088,
+    "anchor": {
+     "tag": "span",
+     "text": "-",
+     "index": 6,
+     "at": 0.488
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     86926
+    ]
+   },
+   {
+    "t": 231.75,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 1576,
+    "left": 0,
+    "max": 2088,
+    "anchor": {
+     "tag": "span",
+     "text": "value",
+     "index": 2,
+     "at": 0.482
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     87083
+    ]
+   },
+   {
+    "t": 232.02,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 1561,
+    "left": 0,
+    "max": 2088,
+    "anchor": {
+     "tag": "span",
+     "text": "value",
+     "index": 2,
+     "at": 0.495
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     87353
+    ]
+   },
+   {
+    "t": 232.311,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 1560,
+    "left": 0,
+    "max": 2088,
+    "anchor": {
+     "tag": "span",
+     "text": "value",
+     "index": 2,
+     "at": 0.496
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     87644
+    ]
+   },
+   {
+    "t": 232.468,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 1517,
+    "left": 0,
+    "max": 2088,
+    "anchor": {
+     "tag": "span",
+     "text": "subject",
+     "index": 1,
+     "at": 0.486
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     87801
+    ]
+   },
+   {
+    "t": 232.625,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 1452,
+    "left": 0,
+    "max": 2088,
+    "anchor": {
+     "tag": "span",
+     "text": "value",
+     "index": 1,
+     "at": 0.496
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     87958
+    ]
+   },
+   {
+    "t": 232.775,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 1406,
+    "left": 0,
+    "max": 2088,
+    "anchor": {
+     "tag": "span",
+     "text": "reference_date",
+     "index": 0,
+     "at": 0.489
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     88108
+    ]
+   },
+   {
+    "t": 232.935,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 1385,
+    "left": 0,
+    "max": 2088,
+    "anchor": {
+     "tag": "span",
+     "text": "date_of_birth",
+     "index": 0,
+     "at": 0.484
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     88268
+    ]
+   },
+   {
+    "t": 233.136,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 1379,
+    "left": 0,
+    "max": 2088,
+    "anchor": {
+     "tag": "span",
+     "text": "date_of_birth",
+     "index": 0,
+     "at": 0.489
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     88469
+    ]
+   },
+   {
+    "t": 233.337,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 1379,
+    "left": 0,
+    "max": 2088,
+    "anchor": {
+     "tag": "span",
+     "text": "date_of_birth",
+     "index": 0,
+     "at": 0.489
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     88670
+    ]
+   },
+   {
+    "t": 235.734,
     "type": "click",
     "target": [
      {
@@ -3028,11 +4503,11 @@
       "nth": 0
      }
     ],
-    "fx": 0.05527262533289726,
-    "fy": 0.4074074074074074
+    "fx": 0.04929215530533103,
+    "fy": 0.4444444444444444
    },
    {
-    "t": 262.809,
+    "t": 246.11,
     "type": "click",
     "target": [
      {
@@ -3042,16 +4517,124 @@
       "nth": 0
      }
     ],
-    "fx": 0.6152362584378014,
+    "fx": 0.6460945033751205,
     "fy": 0.5185185185185185
    },
    {
-    "t": 262.846,
+    "t": 246.148,
     "type": "route",
     "path": "/wetten/zvw"
    },
    {
-    "t": 278.705,
+    "t": 246.157,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 522,
+    "left": 0,
+    "max": 522,
+    "anchor": {
+     "tag": "span",
+     "text": "operation",
+     "index": 0,
+     "at": 0.483
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     101990
+    ]
+   },
+   {
+    "t": 246.356,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 522,
+    "left": 0,
+    "max": 522,
+    "anchor": {
+     "tag": "span",
+     "text": "operation",
+     "index": 0,
+     "at": 0.483
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     102189
+    ]
+   },
+   {
+    "t": 248.308,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-container",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     }
+    ],
+    "fx": 0.3733925840782438,
+    "fy": 0.6158854166666666
+   },
+   {
+    "t": 250.2,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-container",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     }
+    ],
+    "fx": 0.5612434446166319,
+    "fy": 0.7701822916666666
+   },
+   {
+    "t": 250.987,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-container",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     }
+    ],
+    "fx": 0.6203573517790618,
+    "fy": 0.8372395833333334
+   },
+   {
+    "t": 255.851,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-container",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     }
+    ],
+    "fx": 0.6190437093976744,
+    "fy": 0.953125
+   },
+   {
+    "t": 260.216,
     "type": "click",
     "target": [
      {
@@ -3061,11 +4644,11 @@
       "nth": 0
      }
     ],
-    "fx": 0.052697302697302696,
-    "fy": 0.5185185185185185
+    "fx": 0.07187812187812188,
+    "fy": 0.4444444444444444
    },
    {
-    "t": 281.646,
+    "t": 264.267,
     "type": "click",
     "target": [
      {
@@ -3075,194 +4658,526 @@
       "nth": 0
      }
     ],
-    "fx": 0.5621969189551239,
-    "fy": 0.7037037037037037
+    "fx": 0.18839919624916276,
+    "fy": 0.5555555555555556
    },
    {
-    "t": 281.676,
+    "t": 264.298,
     "type": "route",
     "path": "/wetten/penitentiaire_beginselenwet"
    },
    {
-    "t": 303.351,
-    "type": "click",
+    "t": 264.304,
+    "type": "scroll",
     "target": [
      {
-      "tag": "nldd-tab-bar-item",
-      "text": "Graaf",
-      "href": "/graaf",
-      "@role": "none",
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
       "nth": 0
      },
      {
-      "tag": "a",
-      "text": "Graaf",
-      "href": "/graaf",
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 252,
+    "left": 0,
+    "max": 252,
+    "anchor": {
+     "tag": "span",
+     "text": "output",
+     "index": 0,
+     "at": 0.483
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     121537
+    ]
+   },
+   {
+    "t": 264.506,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     },
+     {
+      "tag": "div",
+      "nth": 1
+     }
+    ],
+    "top": 252,
+    "left": 0,
+    "max": 252,
+    "anchor": {
+     "tag": "span",
+     "text": "output",
+     "index": 0,
+     "at": 0.483
+    },
+    "src": [
+     "2026-10-03T21-10-06",
+     121739
+    ]
+   },
+   {
+    "t": 266.025,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-container",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
       "nth": 0
      }
     ],
-    "fx": 0.583132322536182,
-    "fy": 0.6363636363636364
+    "fx": 0.45483841172425826,
+    "fy": 0.8072669826224329
    },
    {
-    "t": 303.39,
-    "type": "route",
-    "path": "/graaf"
+    "t": 267.516,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-container",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     }
+    ],
+    "fx": 0.4811112593520048,
+    "fy": 0.8341232227488151
    },
    {
-    "t": 303.8,
-    "type": "viewport",
-    "cx": 8182,
-    "cy": 1176,
-    "zoom": 0.131
+    "t": 268.584,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-container",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     }
+    ],
+    "fx": 0.4522111269614836,
+    "fy": 0.9328593996840442
    },
    {
-    "t": 306.659,
+    "t": 269.267,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-container",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     }
+    ],
+    "fx": 0.4522111269614836,
+    "fy": 0.9644549763033176
+   },
+   {
+    "t": 283.767,
+    "type": "restore",
+    "state": {
+     "profileKey": "merijn",
+     "referenceDate": "2026-09-30",
+     "manualReview": false,
+     "autoAnnounce": true,
+     "cases": [
+      {
+       "id": "zaak-munvqcgm-e9n0m",
+       "bsn": "999100001",
+       "kvk": null,
+       "lawId": "wet_op_de_huurtoeslag",
+       "lawPath": "wet_op_de_huurtoeslag",
+       "lawName": "Huurtoeslag",
+       "service": "TOESLAGEN",
+       "parameters": {
+        "bsn": "999100001"
+       },
+       "claimedResult": {
+        "basishuur": 23801,
+        "bezwaartermijn_weken": 6,
+        "is_gerechtigd": true,
+        "motivering_vereist": true,
+        "subsidiebedrag": 40695,
+        "voldoet_aan_voorwaarden": true
+       },
+       "verifiedResult": {
+        "basishuur": 23801,
+        "bezwaartermijn_weken": 6,
+        "is_gerechtigd": true,
+        "motivering_vereist": true,
+        "subsidiebedrag": 40695,
+        "voldoet_aan_voorwaarden": true
+       },
+       "status": "DECIDED",
+       "approved": false,
+       "reasonKey": null,
+       "submittedAt": "2026-09-30T09:04:59.542Z",
+       "decidedAt": "2026-09-30T09:06:32.160Z",
+       "objection": null,
+       "acting": null,
+       "events": [
+        {
+         "at": "2026-09-30T09:04:59.542Z",
+         "type": "SUBMITTED",
+         "key": "case.event.submitted"
+        },
+        {
+         "at": "2026-09-30T09:04:59.542Z",
+         "type": "IN_REVIEW",
+         "key": "case.review.citizen_changed_data"
+        },
+        {
+         "at": "2026-09-30T09:06:32.160Z",
+         "type": "DECIDED",
+         "approved": false,
+         "key": "case.event.refused_by_officer",
+         "vars": {
+          "reason": "Klopt niet"
+         }
+        },
+        {
+         "at": "2026-09-30T09:06:32.163Z",
+         "type": "BEKENDMAKING",
+         "key": "case.event.announced",
+         "vars": {
+          "date": "2026-09-30"
+         }
+        }
+       ],
+       "lifecycleInputs": {
+        "aanvraag_datum": "2026-09-30",
+        "beslistermijn_start": "2026-09-30",
+        "besluit_datum": "2026-09-30",
+        "bekendmaking_datum": "2026-09-30"
+       },
+       "lifecycleError": null,
+       "stageState": {
+        "procedure_id": "beschikking",
+        "contextual_law": "wet_op_de_huurtoeslag",
+        "current_stage": "BEZWAAR",
+        "accumulated_outputs": {
+         "basishuur": 23801,
+         "bezwaartermijn_weken": 6,
+         "is_gerechtigd": true,
+         "motivering_vereist": true,
+         "subsidiebedrag": 40695,
+         "voldoet_aan_voorwaarden": true,
+         "bezwaartermijn_einddatum": "2026-11-11",
+         "bezwaartermijn_startdatum": "2026-10-01"
+        },
+        "parameters": {
+         "aanvraag_datum": "2026-09-30",
+         "beslistermijn_start": "2026-09-30",
+         "bsn": "999100001"
+        }
+       },
+       "pendingInputs": [],
+       "reason": "Klopt niet",
+       "publishedAt": "2026-09-30T09:06:32.163Z"
+      },
+      {
+       "id": "zaak-munvnwds-npomu",
+       "bsn": "999100001",
+       "kvk": null,
+       "lawId": "zorgtoeslagwet",
+       "lawPath": "zorgtoeslagwet",
+       "lawName": "Zorgtoeslag",
+       "service": "TOESLAGEN",
+       "parameters": {
+        "bsn": "999100001"
+       },
+       "claimedResult": {
+        "bezwaartermijn_weken": 6,
+        "hoogte_toeslag": 212812,
+        "is_verzekerde_zorgtoeslag": true,
+        "motivering_vereist": true,
+        "voldoet_aan_voorwaarden": true
+       },
+       "verifiedResult": null,
+       "status": "IN_REVIEW",
+       "approved": null,
+       "reasonKey": null,
+       "submittedAt": "2026-09-30T09:03:05.392Z",
+       "decidedAt": null,
+       "objection": null,
+       "acting": null,
+       "events": [
+        {
+         "at": "2026-09-30T09:03:05.392Z",
+         "type": "SUBMITTED",
+         "key": "case.event.submitted"
+        },
+        {
+         "at": "2026-09-30T09:03:05.392Z",
+         "type": "DECIDED",
+         "key": "case.event.granted_auto"
+        },
+        {
+         "at": "2026-09-30T09:03:05.396Z",
+         "type": "BEKENDMAKING",
+         "key": "case.event.announced",
+         "vars": {
+          "date": "2026-09-30"
+         }
+        },
+        {
+         "at": "2026-09-30T09:05:25.561Z",
+         "type": "SUBMITTED",
+         "key": "case.event.amended"
+        },
+        {
+         "at": "2026-09-30T09:05:25.561Z",
+         "type": "IN_REVIEW",
+         "key": "case.review.citizen_changed_data"
+        }
+       ],
+       "lifecycleInputs": {
+        "aanvraag_datum": "2026-09-30",
+        "beslistermijn_start": "2026-09-30"
+       },
+       "lifecycleError": null,
+       "stageState": {
+        "procedure_id": "beschikking",
+        "contextual_law": "zorgtoeslagwet",
+        "current_stage": "BESLUIT",
+        "accumulated_outputs": {
+         "hoogte_toeslag": 212812,
+         "is_verzekerde_zorgtoeslag": true,
+         "voldoet_aan_voorwaarden": true
+        },
+        "parameters": {
+         "aanvraag_datum": "2026-09-30",
+         "beslistermijn_start": "2026-09-30",
+         "bsn": "999100001"
+        }
+       },
+       "pendingInputs": [
+        "besluit_datum"
+       ],
+       "publishedAt": null
+      }
+     ],
+     "claims": [
+      {
+       "id": "claim-munvq6qn-3gw0x",
+       "bsn": "999100001",
+       "lawId": "wet_inkomstenbelasting",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "winst_uit_onderneming",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": 2500000,
+       "newValue": 0,
+       "reason": "onderneming heb ik niet meer",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": false,
+       "status": "PENDING",
+       "caseId": "zaak-munvqcgm-e9n0m",
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:52.127Z",
+       "decidedAt": null
+      },
+      {
+       "id": "claim-munvpgir-psnat",
+       "bsn": "999100001",
+       "lawId": "wet_op_de_huurtoeslag",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "subsidiabele_servicekosten",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": null,
+       "newValue": 4800,
+       "reason": "Opgegeven bij de aanvraag.",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": true,
+       "status": "APPROVED",
+       "caseId": null,
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:18.147Z",
+       "decidedAt": "2026-09-30T09:04:18.148Z"
+      },
+      {
+       "id": "claim-munvpf9p-bue2s",
+       "bsn": "999100001",
+       "lawId": "wet_op_de_huurtoeslag",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "huurprijs",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": null,
+       "newValue": 72000,
+       "reason": "Opgegeven bij de aanvraag.",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": true,
+       "status": "APPROVED",
+       "caseId": null,
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:16.525Z",
+       "decidedAt": "2026-09-30T09:04:16.525Z"
+      }
+     ],
+     "presenterName": "Team RegelRecht",
+     "presentationMode": "zelfstandig",
+     "delegationKey": null,
+     "featureOverrides": {}
+    },
+    "slideIndex": 6
+   },
+   {
+    "t": 283.767,
     "type": "slide",
     "index": 6
    },
    {
-    "t": 310.283,
+    "t": 283.95,
     "type": "viewport",
     "cx": 8201.6,
     "cy": 1170.3,
     "zoom": 0.132
    },
    {
-    "t": 310.387,
+    "t": 284.054,
     "type": "viewport",
     "cx": 8519.2,
     "cy": 1077.4,
     "zoom": 0.145
    },
    {
-    "t": 310.615,
+    "t": 284.282,
     "type": "viewport",
     "cx": 8676,
     "cy": 1031.6,
     "zoom": 0.152
    },
    {
-    "t": 310.778,
+    "t": 284.445,
     "type": "viewport",
     "cx": 8713.7,
     "cy": 1020.6,
     "zoom": 0.154
    },
    {
-    "t": 310.885,
+    "t": 284.552,
     "type": "viewport",
     "cx": 9944.7,
     "cy": 660.7,
     "zoom": 0.26
    },
    {
-    "t": 310.991,
+    "t": 284.658,
     "type": "viewport",
     "cx": 10800.4,
     "cy": 410.6,
     "zoom": 0.497
    },
    {
-    "t": 311.21,
+    "t": 284.877,
     "type": "viewport",
     "cx": 10989.3,
     "cy": 355.4,
     "zoom": 0.622
    },
    {
-    "t": 311.549,
+    "t": 285.216,
     "type": "viewport",
     "cx": 10996.5,
     "cy": 353.3,
     "zoom": 0.628
    },
    {
-    "t": 311.671,
+    "t": 285.338,
     "type": "viewport",
     "cx": 11165.5,
     "cy": 303.8,
     "zoom": 0.814
    },
    {
-    "t": 311.774,
+    "t": 285.441,
     "type": "viewport",
     "cx": 11376.1,
     "cy": 242.3,
     "zoom": 1.29
    },
    {
-    "t": 311.882,
+    "t": 285.549,
     "type": "viewport",
     "cx": 11478.5,
     "cy": 212.4,
     "zoom": 1.801
    },
    {
-    "t": 312.116,
+    "t": 285.783,
     "type": "viewport",
     "cx": 11498.3,
     "cy": 206.6,
     "zoom": 1.95
    },
    {
-    "t": 312.363,
+    "t": 286.03,
     "type": "viewport",
     "cx": 11498.3,
     "cy": 206.6,
     "zoom": 1.95
    },
    {
-    "t": 312.507,
+    "t": 286.174,
     "type": "viewport",
     "cx": 11497.7,
     "cy": 206.6,
     "zoom": 1.95
    },
    {
-    "t": 312.608,
+    "t": 286.275,
     "type": "viewport",
     "cx": 11482.9,
     "cy": 206.6,
     "zoom": 1.95
    },
    {
-    "t": 312.715,
+    "t": 286.382,
     "type": "viewport",
     "cx": 11469.5,
     "cy": 219.4,
     "zoom": 1.95
    },
    {
-    "t": 312.882,
+    "t": 286.549,
     "type": "viewport",
     "cx": 11465.4,
     "cy": 223,
     "zoom": 1.95
    },
    {
-    "t": 312.982,
+    "t": 286.649,
     "type": "viewport",
     "cx": 11465.4,
     "cy": 224,
     "zoom": 1.95
    },
    {
-    "t": 313.12,
+    "t": 286.787,
     "type": "viewport",
     "cx": 11464.9,
     "cy": 228.1,
     "zoom": 1.95
    },
    {
-    "t": 313.291,
+    "t": 286.958,
     "type": "viewport",
     "cx": 11464.9,
     "cy": 228.1,
     "zoom": 1.95
    },
    {
-    "t": 314.89,
+    "t": 288.557,
     "type": "click",
     "target": [
      {
@@ -3275,133 +5190,133 @@
     "fy": 0.35968028419182946
    },
    {
-    "t": 315.346,
+    "t": 289.013,
     "type": "viewport",
     "cx": 11469.3,
     "cy": 230,
     "zoom": 1.912
    },
    {
-    "t": 315.449,
+    "t": 289.116,
     "type": "viewport",
     "cx": 11692,
     "cy": 322.6,
     "zoom": 0.969
    },
    {
-    "t": 315.557,
+    "t": 289.224,
     "type": "viewport",
     "cx": 12056.8,
     "cy": 474.2,
     "zoom": 0.536
    },
    {
-    "t": 315.666,
+    "t": 289.333,
     "type": "viewport",
     "cx": 12369.3,
     "cy": 604.1,
     "zoom": 0.388
    },
    {
-    "t": 315.766,
+    "t": 289.433,
     "type": "viewport",
     "cx": 12802.3,
     "cy": 784.2,
     "zoom": 0.28
    },
    {
-    "t": 315.975,
+    "t": 289.642,
     "type": "viewport",
     "cx": 13117.5,
     "cy": 915.2,
     "zoom": 0.233
    },
    {
-    "t": 316.399,
+    "t": 290.066,
     "type": "viewport",
     "cx": 13113.3,
     "cy": 915.2,
     "zoom": 0.233
    },
    {
-    "t": 316.503,
+    "t": 290.17,
     "type": "viewport",
     "cx": 12410,
     "cy": 915.2,
     "zoom": 0.233
    },
    {
-    "t": 316.612,
+    "t": 290.279,
     "type": "viewport",
     "cx": 11719.6,
     "cy": 966.7,
     "zoom": 0.233
    },
    {
-    "t": 316.72,
+    "t": 290.387,
     "type": "viewport",
     "cx": 11127.9,
     "cy": 1103.9,
     "zoom": 0.233
    },
    {
-    "t": 316.82,
+    "t": 290.487,
     "type": "viewport",
     "cx": 10943.5,
     "cy": 1189.7,
     "zoom": 0.233
    },
    {
-    "t": 316.928,
+    "t": 290.595,
     "type": "viewport",
     "cx": 10776.3,
     "cy": 1296.9,
     "zoom": 0.233
    },
    {
-    "t": 317.178,
+    "t": 290.845,
     "type": "viewport",
     "cx": 10746.3,
     "cy": 1335.4,
     "zoom": 0.233
    },
    {
-    "t": 317.971,
+    "t": 291.638,
     "type": "viewport",
     "cx": 10714.2,
     "cy": 1328.5,
     "zoom": 0.239
    },
    {
-    "t": 318.087,
+    "t": 291.754,
     "type": "viewport",
     "cx": 9875.3,
     "cy": 1147.1,
     "zoom": 0.626
    },
    {
-    "t": 318.194,
+    "t": 291.861,
     "type": "viewport",
     "cx": 9598.4,
     "cy": 1087.3,
     "zoom": 1.346
    },
    {
-    "t": 318.295,
+    "t": 291.962,
     "type": "viewport",
     "cx": 9551.4,
     "cy": 1077.1,
     "zoom": 1.674
    },
    {
-    "t": 318.403,
+    "t": 292.07,
     "type": "viewport",
     "cx": 9537.6,
     "cy": 1074.1,
     "zoom": 1.803
    },
    {
-    "t": 320.41,
+    "t": 294.077,
     "type": "click",
     "target": [
      {
@@ -3414,441 +5329,441 @@
     "fy": 0.7362344582593251
    },
    {
-    "t": 320.801,
+    "t": 294.468,
     "type": "viewport",
     "cx": 9540.7,
     "cy": 1072.6,
     "zoom": 1.783
    },
    {
-    "t": 320.903,
+    "t": 294.57,
     "type": "viewport",
     "cx": 9658.5,
     "cy": 1015.2,
     "zoom": 1.253
    },
    {
-    "t": 321.004,
+    "t": 294.671,
     "type": "viewport",
     "cx": 9947.8,
     "cy": 874.3,
     "zoom": 0.724
    },
    {
-    "t": 321.104,
+    "t": 294.771,
     "type": "viewport",
     "cx": 10274.2,
     "cy": 715.3,
     "zoom": 0.491
    },
    {
-    "t": 321.211,
+    "t": 294.878,
     "type": "viewport",
     "cx": 10739.5,
     "cy": 488.6,
     "zoom": 0.336
    },
    {
-    "t": 321.312,
+    "t": 294.979,
     "type": "viewport",
     "cx": 11509.9,
     "cy": 113.3,
     "zoom": 0.221
    },
    {
-    "t": 321.478,
+    "t": 295.145,
     "type": "viewport",
     "cx": 11566.7,
     "cy": 85.6,
     "zoom": 0.216
    },
    {
-    "t": 321.828,
+    "t": 295.495,
     "type": "viewport",
     "cx": 11571.3,
     "cy": 90.2,
     "zoom": 0.216
    },
    {
-    "t": 321.953,
+    "t": 295.62,
     "type": "viewport",
     "cx": 11566.7,
     "cy": 90.2,
     "zoom": 0.216
    },
    {
-    "t": 322.062,
+    "t": 295.729,
     "type": "viewport",
     "cx": 9488.2,
     "cy": 206.2,
     "zoom": 0.216
    },
    {
-    "t": 322.162,
+    "t": 295.829,
     "type": "viewport",
     "cx": 8370.1,
     "cy": 512.4,
     "zoom": 0.216
    },
    {
-    "t": 322.387,
+    "t": 296.054,
     "type": "viewport",
     "cx": 8189.2,
     "cy": 633.1,
     "zoom": 0.216
    },
    {
-    "t": 322.711,
+    "t": 296.378,
     "type": "viewport",
     "cx": 8189.2,
     "cy": 633.1,
     "zoom": 0.216
    },
    {
-    "t": 322.817,
+    "t": 296.484,
     "type": "viewport",
     "cx": 8147.4,
     "cy": 633.1,
     "zoom": 0.216
    },
    {
-    "t": 322.924,
+    "t": 296.591,
     "type": "viewport",
     "cx": 6588.5,
     "cy": 633.1,
     "zoom": 0.216
    },
    {
-    "t": 323.032,
+    "t": 296.699,
     "type": "viewport",
     "cx": 6143.1,
     "cy": 633.1,
     "zoom": 0.216
    },
    {
-    "t": 323.208,
+    "t": 296.875,
     "type": "viewport",
     "cx": 6133.9,
     "cy": 633.1,
     "zoom": 0.216
    },
    {
-    "t": 323.845,
+    "t": 297.512,
     "type": "viewport",
     "cx": 6099.3,
     "cy": 627.2,
     "zoom": 0.22
    },
    {
-    "t": 323.949,
+    "t": 297.616,
     "type": "viewport",
     "cx": 5048.5,
     "cy": 449.7,
     "zoom": 0.537
    },
    {
-    "t": 324.05,
+    "t": 297.717,
     "type": "viewport",
     "cx": 4717.2,
     "cy": 393.8,
     "zoom": 0.986
    },
    {
-    "t": 324.166,
+    "t": 297.833,
     "type": "viewport",
     "cx": 4660.8,
     "cy": 384.3,
     "zoom": 1.15
    },
    {
-    "t": 324.341,
+    "t": 298.008,
     "type": "viewport",
     "cx": 4657.1,
     "cy": 383.6,
     "zoom": 1.162
    },
    {
-    "t": 324.496,
+    "t": 298.163,
     "type": "viewport",
     "cx": 4657.1,
     "cy": 383.6,
     "zoom": 1.162
    },
    {
-    "t": 324.599,
+    "t": 298.266,
     "type": "viewport",
     "cx": 4519.5,
     "cy": 383.6,
     "zoom": 1.162
    },
    {
-    "t": 324.707,
+    "t": 298.374,
     "type": "viewport",
     "cx": 4457.5,
     "cy": 385.4,
     "zoom": 1.162
    },
    {
-    "t": 324.916,
+    "t": 298.583,
     "type": "viewport",
     "cx": 4447.2,
     "cy": 394,
     "zoom": 1.162
    },
    {
-    "t": 325.358,
+    "t": 299.025,
     "type": "viewport",
     "cx": 4446.2,
     "cy": 393.4,
     "zoom": 1.171
    },
    {
-    "t": 325.466,
+    "t": 299.133,
     "type": "viewport",
     "cx": 4438.1,
     "cy": 388.6,
     "zoom": 1.253
    },
    {
-    "t": 325.567,
+    "t": 299.234,
     "type": "viewport",
     "cx": 4422.3,
     "cy": 379.3,
     "zoom": 1.45
    },
    {
-    "t": 325.674,
+    "t": 299.341,
     "type": "viewport",
     "cx": 4415.6,
     "cy": 375.3,
     "zoom": 1.555
    },
    {
-    "t": 325.867,
+    "t": 299.534,
     "type": "viewport",
     "cx": 4413.8,
     "cy": 374.3,
     "zoom": 1.584
    },
    {
-    "t": 326.163,
+    "t": 299.83,
     "type": "viewport",
     "cx": 4413.8,
     "cy": 374.3,
     "zoom": 1.584
    },
    {
-    "t": 326.265,
+    "t": 299.932,
     "type": "viewport",
     "cx": 4413.8,
     "cy": 433.6,
     "zoom": 1.584
    },
    {
-    "t": 326.365,
+    "t": 300.032,
     "type": "viewport",
     "cx": 4415.7,
     "cy": 522.6,
     "zoom": 1.584
    },
    {
-    "t": 326.474,
+    "t": 300.141,
     "type": "viewport",
     "cx": 4421.4,
     "cy": 531.5,
     "zoom": 1.584
    },
    {
-    "t": 332.53,
+    "t": 306.197,
     "type": "viewport",
     "cx": 4421.2,
     "cy": 531.8,
     "zoom": 1.564
    },
    {
-    "t": 332.638,
+    "t": 306.305,
     "type": "viewport",
     "cx": 4405.4,
     "cy": 557.1,
     "zoom": 0.776
    },
    {
-    "t": 332.741,
+    "t": 306.408,
     "type": "viewport",
     "cx": 4386.8,
     "cy": 587.1,
     "zoom": 0.486
    },
    {
-    "t": 332.848,
+    "t": 306.515,
     "type": "viewport",
     "cx": 4369.9,
     "cy": 614.4,
     "zoom": 0.363
    },
    {
-    "t": 332.949,
+    "t": 306.616,
     "type": "viewport",
     "cx": 4353.6,
     "cy": 640.6,
     "zoom": 0.292
    },
    {
-    "t": 333.057,
+    "t": 306.724,
     "type": "viewport",
     "cx": 4330.1,
     "cy": 678.4,
     "zoom": 0.227
    },
    {
-    "t": 333.242,
+    "t": 306.909,
     "type": "viewport",
     "cx": 4326.4,
     "cy": 684.4,
     "zoom": 0.22
    },
    {
-    "t": 333.483,
+    "t": 307.15,
     "type": "viewport",
     "cx": 4321.8,
     "cy": 684.4,
     "zoom": 0.22
    },
    {
-    "t": 333.592,
+    "t": 307.259,
     "type": "viewport",
     "cx": 4576.7,
     "cy": 684.4,
     "zoom": 0.22
    },
    {
-    "t": 333.692,
+    "t": 307.359,
     "type": "viewport",
     "cx": 5719.2,
     "cy": 811.8,
     "zoom": 0.22
    },
    {
-    "t": 333.799,
+    "t": 307.466,
     "type": "viewport",
     "cx": 5823.9,
     "cy": 875.5,
     "zoom": 0.22
    },
    {
-    "t": 334.042,
+    "t": 307.709,
     "type": "viewport",
     "cx": 5901.3,
     "cy": 930.2,
     "zoom": 0.22
    },
    {
-    "t": 334.149,
+    "t": 307.816,
     "type": "viewport",
     "cx": 5927.5,
     "cy": 986.8,
     "zoom": 0.205
    },
    {
-    "t": 334.257,
+    "t": 307.924,
     "type": "viewport",
     "cx": 6056.5,
     "cy": 1266.5,
     "zoom": 0.154
    },
    {
-    "t": 334.357,
+    "t": 308.024,
     "type": "viewport",
     "cx": 6104.3,
     "cy": 1370.1,
     "zoom": 0.142
    },
    {
-    "t": 334.574,
+    "t": 308.241,
     "type": "viewport",
     "cx": 6130.7,
     "cy": 1427.3,
     "zoom": 0.135
    },
    {
-    "t": 334.962,
+    "t": 308.629,
     "type": "viewport",
     "cx": 6138.1,
     "cy": 1427.3,
     "zoom": 0.135
    },
    {
-    "t": 335.066,
+    "t": 308.733,
     "type": "viewport",
     "cx": 7350.5,
     "cy": 1427.3,
     "zoom": 0.135
    },
    {
-    "t": 335.166,
+    "t": 308.833,
     "type": "viewport",
     "cx": 8341.2,
     "cy": 1427.3,
     "zoom": 0.135
    },
    {
-    "t": 335.375,
+    "t": 309.042,
     "type": "viewport",
     "cx": 8548.2,
     "cy": 1412.5,
     "zoom": 0.135
    },
    {
-    "t": 335.483,
+    "t": 309.15,
     "type": "viewport",
     "cx": 8684.3,
     "cy": 1587.6,
     "zoom": 0.123
    },
    {
-    "t": 335.59,
+    "t": 309.257,
     "type": "viewport",
     "cx": 9024.7,
     "cy": 2025.2,
     "zoom": 0.1
    },
    {
-    "t": 335.691,
+    "t": 309.358,
     "type": "viewport",
     "cx": 9024.7,
     "cy": 2025.2,
     "zoom": 0.1
    },
    {
-    "t": 336.149,
+    "t": 309.816,
     "type": "viewport",
     "cx": 9024.7,
     "cy": 2035.2,
     "zoom": 0.1
    },
    {
-    "t": 336.282,
+    "t": 309.949,
     "type": "viewport",
     "cx": 9024.7,
     "cy": 2035.2,
     "zoom": 0.1
    },
    {
-    "t": 336.389,
+    "t": 310.056,
     "type": "viewport",
     "cx": 8474.7,
     "cy": 2035.2,
     "zoom": 0.1
    },
    {
-    "t": 336.566,
+    "t": 310.233,
     "type": "viewport",
     "cx": 8454.7,
     "cy": 2035.2,
     "zoom": 0.1
    },
    {
-    "t": 338.755,
+    "t": 312.422,
     "type": "click",
     "target": [
      {
@@ -3868,210 +5783,210 @@
     "fy": 0.75
    },
    {
-    "t": 339.309,
+    "t": 312.976,
     "type": "viewport",
     "cx": 6608,
     "cy": 1176,
     "zoom": 0.1
    },
    {
-    "t": 339.468,
+    "t": 313.135,
     "type": "viewport",
     "cx": 6608,
     "cy": 1176,
     "zoom": 0.1
    },
    {
-    "t": 343.032,
+    "t": 316.699,
     "type": "viewport",
     "cx": 6618,
     "cy": 1176,
     "zoom": 0.1
    },
    {
-    "t": 343.138,
+    "t": 316.805,
     "type": "viewport",
     "cx": 7438,
     "cy": 1176,
     "zoom": 0.1
    },
    {
-    "t": 343.267,
+    "t": 316.934,
     "type": "viewport",
     "cx": 7628,
     "cy": 1176,
     "zoom": 0.1
    },
    {
-    "t": 343.372,
+    "t": 317.039,
     "type": "viewport",
     "cx": 7908,
     "cy": 1176,
     "zoom": 0.1
    },
    {
-    "t": 343.474,
+    "t": 317.141,
     "type": "viewport",
     "cx": 8478,
     "cy": 1206,
     "zoom": 0.1
    },
    {
-    "t": 343.582,
+    "t": 317.249,
     "type": "viewport",
     "cx": 9218,
     "cy": 1256,
     "zoom": 0.1
    },
    {
-    "t": 343.692,
+    "t": 317.359,
     "type": "viewport",
     "cx": 9788,
     "cy": 1306,
     "zoom": 0.1
    },
    {
-    "t": 343.909,
+    "t": 317.576,
     "type": "viewport",
     "cx": 9898,
     "cy": 1316,
     "zoom": 0.1
    },
    {
-    "t": 344.018,
+    "t": 317.685,
     "type": "viewport",
     "cx": 9688,
     "cy": 1366,
     "zoom": 0.1
    },
    {
-    "t": 344.118,
+    "t": 317.785,
     "type": "viewport",
     "cx": 7418,
     "cy": 1726,
     "zoom": 0.1
    },
    {
-    "t": 344.22,
+    "t": 317.887,
     "type": "viewport",
     "cx": 4788,
     "cy": 2156,
     "zoom": 0.1
    },
    {
-    "t": 344.327,
+    "t": 317.994,
     "type": "viewport",
     "cx": 4788,
     "cy": 2406,
     "zoom": 0.1
    },
    {
-    "t": 344.516,
+    "t": 318.183,
     "type": "viewport",
     "cx": 4788,
     "cy": 2416,
     "zoom": 0.1
    },
    {
-    "t": 344.811,
+    "t": 318.478,
     "type": "viewport",
     "cx": 4788,
     "cy": 2416,
     "zoom": 0.1
    },
    {
-    "t": 344.918,
+    "t": 318.585,
     "type": "viewport",
     "cx": 4808,
     "cy": 2416,
     "zoom": 0.1
    },
    {
-    "t": 345.027,
+    "t": 318.694,
     "type": "viewport",
     "cx": 6458,
     "cy": 2416,
     "zoom": 0.1
    },
    {
-    "t": 345.13,
+    "t": 318.797,
     "type": "viewport",
     "cx": 7708,
     "cy": 2346,
     "zoom": 0.1
    },
    {
-    "t": 345.237,
+    "t": 318.904,
     "type": "viewport",
     "cx": 8358,
     "cy": 2126,
     "zoom": 0.1
    },
    {
-    "t": 345.427,
+    "t": 319.094,
     "type": "viewport",
     "cx": 8468,
     "cy": 2066,
     "zoom": 0.1
    },
    {
-    "t": 346.258,
+    "t": 319.925,
     "type": "viewport",
     "cx": 8491,
     "cy": 2054.9,
     "zoom": 0.102
    },
    {
-    "t": 346.363,
+    "t": 320.03,
     "type": "viewport",
     "cx": 8960.6,
     "cy": 1828.1,
     "zoom": 0.147
    },
    {
-    "t": 346.484,
+    "t": 320.151,
     "type": "viewport",
     "cx": 9329.5,
     "cy": 1650,
     "zoom": 0.228
    },
    {
-    "t": 346.594,
+    "t": 320.261,
     "type": "viewport",
     "cx": 9492.9,
     "cy": 1571.1,
     "zoom": 0.302
    },
    {
-    "t": 346.71,
+    "t": 320.377,
     "type": "viewport",
     "cx": 9631.6,
     "cy": 1504.1,
     "zoom": 0.415
    },
    {
-    "t": 346.826,
+    "t": 320.493,
     "type": "viewport",
     "cx": 9723.3,
     "cy": 1459.8,
     "zoom": 0.553
    },
    {
-    "t": 346.932,
+    "t": 320.599,
     "type": "viewport",
     "cx": 9753,
     "cy": 1445.5,
     "zoom": 0.619
    },
    {
-    "t": 347.038,
+    "t": 320.705,
     "type": "viewport",
     "cx": 9773.4,
     "cy": 1435.6,
     "zoom": 0.675
    },
    {
-    "t": 351.032,
+    "t": 324.699,
     "type": "click",
     "target": [
      {
@@ -4084,245 +5999,245 @@
     "fy": 0.9422735346358793
    },
    {
-    "t": 351.244,
+    "t": 324.911,
     "type": "viewport",
     "cx": 6608,
     "cy": 1176,
     "zoom": 0.1
    },
    {
-    "t": 353.405,
+    "t": 327.072,
     "type": "viewport",
     "cx": 6693.4,
     "cy": 1197.7,
     "zoom": 0.102
    },
    {
-    "t": 353.51,
+    "t": 327.177,
     "type": "viewport",
     "cx": 8655.4,
     "cy": 1696.5,
     "zoom": 0.224
    },
    {
-    "t": 353.618,
+    "t": 327.285,
     "type": "viewport",
     "cx": 9515.4,
     "cy": 1915.2,
     "zoom": 0.468
    },
    {
-    "t": 353.729,
+    "t": 327.396,
     "type": "viewport",
     "cx": 9780.6,
     "cy": 1982.6,
     "zoom": 0.704
    },
    {
-    "t": 353.833,
+    "t": 327.5,
     "type": "viewport",
     "cx": 9933.9,
     "cy": 2021.5,
     "zoom": 0.995
    },
    {
-    "t": 354.375,
+    "t": 328.042,
     "type": "viewport",
     "cx": 9933.9,
     "cy": 2021.5,
     "zoom": 0.995
    },
    {
-    "t": 354.482,
+    "t": 328.149,
     "type": "viewport",
     "cx": 9979.1,
     "cy": 1913,
     "zoom": 0.995
    },
    {
-    "t": 354.589,
+    "t": 328.256,
     "type": "viewport",
     "cx": 10023.3,
     "cy": 1851.7,
     "zoom": 0.995
    },
    {
-    "t": 354.695,
+    "t": 328.362,
     "type": "viewport",
     "cx": 10036.4,
     "cy": 1833.6,
     "zoom": 0.995
    },
    {
-    "t": 354.92,
+    "t": 328.587,
     "type": "viewport",
     "cx": 10033.3,
     "cy": 1789.4,
     "zoom": 0.995
    },
    {
-    "t": 357.208,
+    "t": 330.875,
     "type": "viewport",
     "cx": 10037.5,
     "cy": 1784.7,
     "zoom": 1.027
    },
    {
-    "t": 357.316,
+    "t": 330.983,
     "type": "viewport",
     "cx": 10097.2,
     "cy": 1715.7,
     "zoom": 1.922
    },
    {
-    "t": 357.416,
+    "t": 331.083,
     "type": "viewport",
     "cx": 10099.9,
     "cy": 1712.7,
     "zoom": 2
    },
    {
-    "t": 357.659,
+    "t": 331.326,
     "type": "viewport",
     "cx": 10099.9,
     "cy": 1712.7,
     "zoom": 2
    },
    {
-    "t": 359.625,
+    "t": 333.292,
     "type": "viewport",
     "cx": 10098.9,
     "cy": 1713.2,
     "zoom": 1.975
    },
    {
-    "t": 359.732,
+    "t": 333.399,
     "type": "viewport",
     "cx": 10078.3,
     "cy": 1723.7,
     "zoom": 1.567
    },
    {
-    "t": 359.832,
+    "t": 333.499,
     "type": "viewport",
     "cx": 10061.5,
     "cy": 1732.4,
     "zoom": 1.34
    },
    {
-    "t": 359.942,
+    "t": 333.609,
     "type": "viewport",
     "cx": 10047.3,
     "cy": 1739.6,
     "zoom": 1.194
    },
    {
-    "t": 360.043,
+    "t": 333.71,
     "type": "viewport",
     "cx": 10038,
     "cy": 1744.4,
     "zoom": 1.115
    },
    {
-    "t": 360.201,
+    "t": 333.868,
     "type": "viewport",
     "cx": 10037.8,
     "cy": 1744.5,
     "zoom": 1.113
    },
    {
-    "t": 361.891,
+    "t": 335.558,
     "type": "viewport",
     "cx": 10037.3,
     "cy": 1744.8,
     "zoom": 1.109
    },
    {
-    "t": 361.999,
+    "t": 335.666,
     "type": "viewport",
     "cx": 10020.4,
     "cy": 1752.7,
     "zoom": 0.989
    },
    {
-    "t": 362.107,
+    "t": 335.774,
     "type": "viewport",
     "cx": 10009.2,
     "cy": 1758,
     "zoom": 0.923
    },
    {
-    "t": 362.351,
+    "t": 336.018,
     "type": "viewport",
     "cx": 10001.6,
     "cy": 1761.6,
     "zoom": 0.883
    },
    {
-    "t": 366.107,
+    "t": 339.774,
     "type": "viewport",
     "cx": 10000.9,
     "cy": 1761.9,
     "zoom": 0.879
    },
    {
-    "t": 366.207,
+    "t": 339.874,
     "type": "viewport",
     "cx": 9978.7,
     "cy": 1772.4,
     "zoom": 0.781
    },
    {
-    "t": 366.315,
+    "t": 339.982,
     "type": "viewport",
     "cx": 9933.4,
     "cy": 1793.8,
     "zoom": 0.636
    },
    {
-    "t": 366.416,
+    "t": 340.083,
     "type": "viewport",
     "cx": 9883.9,
     "cy": 1817.1,
     "zoom": 0.528
    },
    {
-    "t": 366.524,
+    "t": 340.191,
     "type": "viewport",
     "cx": 9838.1,
     "cy": 1838.8,
     "zoom": 0.457
    },
    {
-    "t": 366.627,
+    "t": 340.294,
     "type": "viewport",
     "cx": 9794.8,
     "cy": 1859.2,
     "zoom": 0.405
    },
    {
-    "t": 366.741,
+    "t": 340.408,
     "type": "viewport",
     "cx": 9762.4,
     "cy": 1874.5,
     "zoom": 0.373
    },
    {
-    "t": 366.851,
+    "t": 340.518,
     "type": "viewport",
     "cx": 9727.5,
     "cy": 1890.9,
     "zoom": 0.344
    },
    {
-    "t": 367.1,
+    "t": 340.767,
     "type": "viewport",
     "cx": 9677.2,
     "cy": 1914.6,
     "zoom": 0.31
    },
    {
-    "t": 372.948,
+    "t": 346.615,
     "type": "click",
     "target": [
      {
@@ -4343,27 +6258,27 @@
     "fy": 0.4772727272727273
    },
    {
-    "t": 373.026,
+    "t": 346.693,
     "type": "route",
     "path": "/scenarios"
    },
    {
-    "t": 373.132,
+    "t": 346.799,
     "type": "route",
     "path": "/scenarios/zorgtoeslagwet/scenarios/zorgtoeslagwet_TOESLAGEN-2025-01-01.feature"
    },
    {
-    "t": 374.471,
+    "t": 348.138,
     "type": "slide",
     "index": 7
    },
    {
-    "t": 374.472,
+    "t": 348.139,
     "type": "route",
     "path": "/scenarios"
    },
    {
-    "t": 407.393,
+    "t": 381.059,
     "type": "click",
     "target": [
      {
@@ -4376,7 +6291,7 @@
     "fy": 0.509765625
    },
    {
-    "t": 416.472,
+    "t": 390.138,
     "type": "click",
     "target": [
      {
@@ -4389,7 +6304,7 @@
     "fy": 0.3524305555555556
    },
    {
-    "t": 416.655,
+    "t": 390.321,
     "type": "click",
     "target": [
      {
@@ -4402,7 +6317,7 @@
     "fy": 0.3524305555555556
    },
    {
-    "t": 416.822,
+    "t": 390.488,
     "type": "click",
     "target": [
      {
@@ -4415,7 +6330,7 @@
     "fy": 0.3524305555555556
    },
    {
-    "t": 417.688,
+    "t": 391.354,
     "type": "click",
     "target": [
      {
@@ -4428,7 +6343,7 @@
     "fy": 0.5079861111111111
    },
    {
-    "t": 417.897,
+    "t": 391.563,
     "type": "click",
     "target": [
      {
@@ -4441,7 +6356,7 @@
     "fy": 0.5079861111111111
    },
    {
-    "t": 418.089,
+    "t": 391.755,
     "type": "click",
     "target": [
      {
@@ -4454,7 +6369,7 @@
     "fy": 0.5079861111111111
    },
    {
-    "t": 420.592,
+    "t": 394.258,
     "type": "click",
     "target": [
      {
@@ -4467,7 +6382,7 @@
     "fy": 0.596875
    },
    {
-    "t": 420.818,
+    "t": 394.484,
     "type": "click",
     "target": [
      {
@@ -4480,7 +6395,7 @@
     "fy": 0.596875
    },
    {
-    "t": 422.994,
+    "t": 396.66,
     "type": "click",
     "target": [
      {
@@ -4501,7 +6416,7 @@
     "fy": 0.017903645833333332
    },
    {
-    "t": 428.555,
+    "t": 402.221,
     "type": "scroll",
     "target": [
      {
@@ -4525,7 +6440,7 @@
     ]
    },
    {
-    "t": 428.712,
+    "t": 402.378,
     "type": "scroll",
     "target": [
      {
@@ -4549,7 +6464,7 @@
     ]
    },
    {
-    "t": 428.863,
+    "t": 402.529,
     "type": "scroll",
     "target": [
      {
@@ -4573,7 +6488,7 @@
     ]
    },
    {
-    "t": 429.837,
+    "t": 403.503,
     "type": "scroll",
     "target": [
      {
@@ -4597,7 +6512,7 @@
     ]
    },
    {
-    "t": 429.996,
+    "t": 403.662,
     "type": "scroll",
     "target": [
      {
@@ -4621,7 +6536,7 @@
     ]
    },
    {
-    "t": 430.154,
+    "t": 403.82,
     "type": "scroll",
     "target": [
      {
@@ -4645,7 +6560,7 @@
     ]
    },
    {
-    "t": 430.304,
+    "t": 403.97,
     "type": "scroll",
     "target": [
      {
@@ -4669,7 +6584,7 @@
     ]
    },
    {
-    "t": 432.685,
+    "t": 406.351,
     "type": "click",
     "target": [
      {
@@ -4682,7 +6597,7 @@
     "fy": 0.03987710289409793
    },
    {
-    "t": 432.86,
+    "t": 406.526,
     "type": "click",
     "target": [
      {
@@ -4695,7 +6610,7 @@
     "fy": 0.03987710289409793
    },
    {
-    "t": 434.902,
+    "t": 408.568,
     "type": "click",
     "target": [
      {
@@ -4708,7 +6623,7 @@
     "fy": 0.04090840727929012
    },
    {
-    "t": 435.076,
+    "t": 408.742,
     "type": "click",
     "target": [
      {
@@ -4721,7 +6636,7 @@
     "fy": 0.04090840727929012
    },
    {
-    "t": 436.568,
+    "t": 410.234,
     "type": "click",
     "target": [
      {
@@ -4734,7 +6649,7 @@
     "fy": 0.04142405947188621
    },
    {
-    "t": 436.735,
+    "t": 410.401,
     "type": "click",
     "target": [
      {
@@ -4747,7 +6662,7 @@
     "fy": 0.04142405947188621
    },
    {
-    "t": 440.993,
+    "t": 414.659,
     "type": "click",
     "target": [
      {
@@ -4767,7 +6682,7 @@
     "fy": 0.5833333333333334
    },
    {
-    "t": 441.012,
+    "t": 414.678,
     "type": "scroll",
     "target": [
      {
@@ -4791,7 +6706,7 @@
     ]
    },
    {
-    "t": 441.162,
+    "t": 414.828,
     "type": "scroll",
     "target": [
      {
@@ -4815,7 +6730,7 @@
     ]
    },
    {
-    "t": 441.32,
+    "t": 414.986,
     "type": "scroll",
     "target": [
      {
@@ -4839,7 +6754,7 @@
     ]
    },
    {
-    "t": 441.47,
+    "t": 415.136,
     "type": "scroll",
     "target": [
      {
@@ -4863,7 +6778,7 @@
     ]
    },
    {
-    "t": 447.851,
+    "t": 421.517,
     "type": "click",
     "target": [
      {
@@ -4883,7 +6798,7 @@
     "fy": 0.4166666666666667
    },
    {
-    "t": 447.862,
+    "t": 421.528,
     "type": "scroll",
     "target": [
      {
@@ -4907,7 +6822,7 @@
     ]
    },
    {
-    "t": 448.012,
+    "t": 421.678,
     "type": "scroll",
     "target": [
      {
@@ -4931,7 +6846,7 @@
     ]
    },
    {
-    "t": 448.162,
+    "t": 421.828,
     "type": "scroll",
     "target": [
      {
@@ -4955,7 +6870,7 @@
     ]
    },
    {
-    "t": 448.32,
+    "t": 421.986,
     "type": "scroll",
     "target": [
      {
@@ -4979,7 +6894,7 @@
     ]
    },
    {
-    "t": 453.734,
+    "t": 427.4,
     "type": "scroll",
     "target": [
      {
@@ -5003,7 +6918,7 @@
     ]
    },
    {
-    "t": 453.891,
+    "t": 427.557,
     "type": "scroll",
     "target": [
      {
@@ -5027,7 +6942,7 @@
     ]
    },
    {
-    "t": 454.041,
+    "t": 427.707,
     "type": "scroll",
     "target": [
      {
@@ -5051,7 +6966,7 @@
     ]
    },
    {
-    "t": 454.241,
+    "t": 427.907,
     "type": "scroll",
     "target": [
      {
@@ -5075,7 +6990,7 @@
     ]
    },
    {
-    "t": 454.4,
+    "t": 428.066,
     "type": "scroll",
     "target": [
      {
@@ -5099,7 +7014,7 @@
     ]
    },
    {
-    "t": 454.55,
+    "t": 428.216,
     "type": "scroll",
     "target": [
      {
@@ -5123,7 +7038,7 @@
     ]
    },
    {
-    "t": 454.708,
+    "t": 428.374,
     "type": "scroll",
     "target": [
      {
@@ -5147,7 +7062,7 @@
     ]
    },
    {
-    "t": 454.866,
+    "t": 428.532,
     "type": "scroll",
     "target": [
      {
@@ -5171,7 +7086,7 @@
     ]
    },
    {
-    "t": 455.016,
+    "t": 428.682,
     "type": "scroll",
     "target": [
      {
@@ -5195,7 +7110,7 @@
     ]
    },
    {
-    "t": 455.175,
+    "t": 428.841,
     "type": "scroll",
     "target": [
      {
@@ -5219,7 +7134,7 @@
     ]
    },
    {
-    "t": 455.325,
+    "t": 428.991,
     "type": "scroll",
     "target": [
      {
@@ -5243,7 +7158,7 @@
     ]
    },
    {
-    "t": 455.483,
+    "t": 429.149,
     "type": "scroll",
     "target": [
      {
@@ -5267,7 +7182,7 @@
     ]
    },
    {
-    "t": 455.633,
+    "t": 429.299,
     "type": "scroll",
     "target": [
      {
@@ -5291,7 +7206,7 @@
     ]
    },
    {
-    "t": 455.791,
+    "t": 429.457,
     "type": "scroll",
     "target": [
      {
@@ -5315,7 +7230,7 @@
     ]
    },
    {
-    "t": 455.942,
+    "t": 429.608,
     "type": "scroll",
     "target": [
      {
@@ -5339,7 +7254,7 @@
     ]
    },
    {
-    "t": 456.1,
+    "t": 429.766,
     "type": "scroll",
     "target": [
      {
@@ -5363,7 +7278,7 @@
     ]
    },
    {
-    "t": 456.258,
+    "t": 429.924,
     "type": "scroll",
     "target": [
      {
@@ -5387,7 +7302,7 @@
     ]
    },
    {
-    "t": 460.098,
+    "t": 433.764,
     "type": "click",
     "target": [
      {
@@ -5400,7 +7315,7 @@
     "fy": 0.9931461229400769
    },
    {
-    "t": 460.272,
+    "t": 433.938,
     "type": "click",
     "target": [
      {
@@ -5413,7 +7328,7 @@
     "fy": 0.9931461229400769
    },
    {
-    "t": 485.191,
+    "t": 458.857,
     "type": "scroll",
     "target": [
      {
@@ -5437,7 +7352,7 @@
     ]
    },
    {
-    "t": 485.342,
+    "t": 459.008,
     "type": "scroll",
     "target": [
      {
@@ -5461,7 +7376,7 @@
     ]
    },
    {
-    "t": 485.508,
+    "t": 459.174,
     "type": "scroll",
     "target": [
      {
@@ -5485,7 +7400,7 @@
     ]
    },
    {
-    "t": 485.665,
+    "t": 459.331,
     "type": "scroll",
     "target": [
      {
@@ -5509,7 +7424,7 @@
     ]
    },
    {
-    "t": 485.817,
+    "t": 459.483,
     "type": "scroll",
     "target": [
      {
@@ -5533,7 +7448,7 @@
     ]
    },
    {
-    "t": 485.975,
+    "t": 459.641,
     "type": "scroll",
     "target": [
      {
@@ -5557,7 +7472,7 @@
     ]
    },
    {
-    "t": 486.134,
+    "t": 459.8,
     "type": "scroll",
     "target": [
      {
@@ -5581,7 +7496,7 @@
     ]
    },
    {
-    "t": 486.35,
+    "t": 460.016,
     "type": "scroll",
     "target": [
      {
@@ -5605,7 +7520,7 @@
     ]
    },
    {
-    "t": 486.5,
+    "t": 460.166,
     "type": "scroll",
     "target": [
      {
@@ -5629,7 +7544,7 @@
     ]
    },
    {
-    "t": 486.658,
+    "t": 460.324,
     "type": "scroll",
     "target": [
      {
@@ -5653,7 +7568,7 @@
     ]
    },
    {
-    "t": 486.808,
+    "t": 460.474,
     "type": "scroll",
     "target": [
      {
@@ -5677,7 +7592,7 @@
     ]
    },
    {
-    "t": 487.033,
+    "t": 460.699,
     "type": "scroll",
     "target": [
      {
@@ -5701,7 +7616,7 @@
     ]
    },
    {
-    "t": 487.2,
+    "t": 460.866,
     "type": "scroll",
     "target": [
      {
@@ -5725,7 +7640,7 @@
     ]
    },
    {
-    "t": 487.35,
+    "t": 461.016,
     "type": "scroll",
     "target": [
      {
@@ -5749,7 +7664,7 @@
     ]
    },
    {
-    "t": 487.508,
+    "t": 461.174,
     "type": "scroll",
     "target": [
      {
@@ -5773,7 +7688,7 @@
     ]
    },
    {
-    "t": 487.658,
+    "t": 461.324,
     "type": "scroll",
     "target": [
      {
@@ -5797,7 +7712,7 @@
     ]
    },
    {
-    "t": 487.825,
+    "t": 461.491,
     "type": "scroll",
     "target": [
      {
@@ -5821,7 +7736,7 @@
     ]
    },
    {
-    "t": 487.983,
+    "t": 461.649,
     "type": "scroll",
     "target": [
      {
@@ -5845,7 +7760,7 @@
     ]
    },
    {
-    "t": 488.141,
+    "t": 461.807,
     "type": "scroll",
     "target": [
      {
@@ -5869,7 +7784,7 @@
     ]
    },
    {
-    "t": 488.291,
+    "t": 461.957,
     "type": "scroll",
     "target": [
      {
@@ -5893,7 +7808,7 @@
     ]
    },
    {
-    "t": 488.449,
+    "t": 462.115,
     "type": "scroll",
     "target": [
      {
@@ -5917,7 +7832,7 @@
     ]
    },
    {
-    "t": 488.616,
+    "t": 462.282,
     "type": "scroll",
     "target": [
      {
@@ -5941,7 +7856,7 @@
     ]
    },
    {
-    "t": 488.776,
+    "t": 462.442,
     "type": "scroll",
     "target": [
      {
@@ -5965,7 +7880,7 @@
     ]
    },
    {
-    "t": 492.762,
+    "t": 466.428,
     "type": "scroll",
     "target": [
      {
@@ -5989,7 +7904,7 @@
     ]
    },
    {
-    "t": 492.912,
+    "t": 466.578,
     "type": "scroll",
     "target": [
      {
@@ -6013,7 +7928,7 @@
     ]
    },
    {
-    "t": 493.062,
+    "t": 466.728,
     "type": "scroll",
     "target": [
      {
@@ -6037,7 +7952,7 @@
     ]
    },
    {
-    "t": 493.22,
+    "t": 466.886,
     "type": "scroll",
     "target": [
      {
@@ -6061,7 +7976,7 @@
     ]
    },
    {
-    "t": 493.379,
+    "t": 467.045,
     "type": "scroll",
     "target": [
      {
@@ -6085,7 +8000,7 @@
     ]
    },
    {
-    "t": 493.562,
+    "t": 467.228,
     "type": "scroll",
     "target": [
      {
@@ -6109,7 +8024,7 @@
     ]
    },
    {
-    "t": 495.516,
+    "t": 469.182,
     "type": "scroll",
     "target": [
      {
@@ -6133,7 +8048,7 @@
     ]
    },
    {
-    "t": 495.67,
+    "t": 469.336,
     "type": "scroll",
     "target": [
      {
@@ -6157,7 +8072,7 @@
     ]
    },
    {
-    "t": 495.821,
+    "t": 469.487,
     "type": "scroll",
     "target": [
      {
@@ -6181,7 +8096,7 @@
     ]
    },
    {
-    "t": 495.979,
+    "t": 469.645,
     "type": "scroll",
     "target": [
      {
@@ -6205,7 +8120,7 @@
     ]
    },
    {
-    "t": 496.137,
+    "t": 469.803,
     "type": "scroll",
     "target": [
      {
@@ -6229,7 +8144,7 @@
     ]
    },
    {
-    "t": 496.295,
+    "t": 469.961,
     "type": "scroll",
     "target": [
      {
@@ -6253,7 +8168,7 @@
     ]
    },
    {
-    "t": 496.446,
+    "t": 470.112,
     "type": "scroll",
     "target": [
      {
@@ -6277,7 +8192,7 @@
     ]
    },
    {
-    "t": 496.596,
+    "t": 470.262,
     "type": "scroll",
     "target": [
      {
@@ -6301,7 +8216,7 @@
     ]
    },
    {
-    "t": 496.753,
+    "t": 470.419,
     "type": "scroll",
     "target": [
      {
@@ -6325,7 +8240,7 @@
     ]
    },
    {
-    "t": 496.979,
+    "t": 470.645,
     "type": "scroll",
     "target": [
      {
@@ -6349,7 +8264,7 @@
     ]
    },
    {
-    "t": 497.129,
+    "t": 470.795,
     "type": "scroll",
     "target": [
      {
@@ -6373,7 +8288,7 @@
     ]
    },
    {
-    "t": 497.286,
+    "t": 470.952,
     "type": "scroll",
     "target": [
      {
@@ -6397,7 +8312,7 @@
     ]
    },
    {
-    "t": 497.437,
+    "t": 471.103,
     "type": "scroll",
     "target": [
      {
@@ -6421,7 +8336,7 @@
     ]
    },
    {
-    "t": 497.587,
+    "t": 471.253,
     "type": "scroll",
     "target": [
      {
@@ -6445,7 +8360,7 @@
     ]
    },
    {
-    "t": 497.754,
+    "t": 471.42,
     "type": "scroll",
     "target": [
      {
@@ -6469,7 +8384,7 @@
     ]
    },
    {
-    "t": 497.916,
+    "t": 471.582,
     "type": "scroll",
     "target": [
      {
@@ -6493,7 +8408,7 @@
     ]
    },
    {
-    "t": 500.905,
+    "t": 474.571,
     "type": "click",
     "target": [
      {
@@ -6506,7 +8421,7 @@
     "fy": 0.5
    },
    {
-    "t": 503.747,
+    "t": 477.413,
     "type": "click",
     "target": [
      {
@@ -6519,7 +8434,7 @@
     "fy": 0.96435546875
    },
    {
-    "t": 507.026,
+    "t": 480.692,
     "type": "click",
     "target": [
      {
@@ -6532,7 +8447,7 @@
     "fy": 0.46431107954545453
    },
    {
-    "t": 510.827,
+    "t": 484.493,
     "type": "click",
     "target": [
      {
@@ -6546,7 +8461,7 @@
     "fy": 0.4415838068181818
    },
    {
-    "t": 511.018,
+    "t": 484.684,
     "type": "click",
     "target": [
      {
@@ -6560,7 +8475,7 @@
     "fy": 0.4415838068181818
    },
    {
-    "t": 511.176,
+    "t": 484.842,
     "type": "click",
     "target": [
      {
@@ -6574,7 +8489,7 @@
     "fy": 0.4415838068181818
    },
    {
-    "t": 513.805,
+    "t": 487.471,
     "type": "click",
     "target": [
      {
@@ -6587,7 +8502,7 @@
     "fy": 0.3746527777777778
    },
    {
-    "t": 516.138,
+    "t": 489.804,
     "type": "click",
     "target": [
      {
@@ -6608,7 +8523,7 @@
     "fy": 0.5595703125
    },
    {
-    "t": 520.298,
+    "t": 493.964,
     "type": "click",
     "target": [
      {
@@ -6621,7 +8536,7 @@
     "fy": 0.4008144483729409
    },
    {
-    "t": 520.497,
+    "t": 494.163,
     "type": "click",
     "target": [
      {
@@ -6634,7 +8549,7 @@
     "fy": 0.4008144483729409
    },
    {
-    "t": 520.697,
+    "t": 494.363,
     "type": "click",
     "target": [
      {
@@ -6647,7 +8562,7 @@
     "fy": 0.4008144483729409
    },
    {
-    "t": 574.075,
+    "t": 547.742,
     "type": "click",
     "target": [
      {
@@ -6672,7 +8587,7 @@
     "fy": 0.45454545454545453
    },
    {
-    "t": 579.196,
+    "t": 552.863,
     "type": "click",
     "target": [
      {
@@ -6685,7 +8600,7 @@
     "fy": 0.33935546875
    },
    {
-    "t": 586.88,
+    "t": 560.547,
     "type": "click",
     "target": [
      {
@@ -6706,17 +8621,17 @@
     "fy": 0.6590909090909091
    },
    {
-    "t": 587.027,
+    "t": 560.694,
     "type": "route",
     "path": "/simulatie"
    },
    {
-    "t": 590.526,
+    "t": 564.193,
     "type": "slide",
     "index": 8
    },
    {
-    "t": 596.496,
+    "t": 570.163,
     "type": "click",
     "target": [
      {
@@ -6737,7 +8652,7 @@
     "fy": 0.6704545454545454
    },
    {
-    "t": 642.179,
+    "t": 615.846,
     "type": "click",
     "target": [
      {
@@ -6750,7 +8665,7 @@
     "fy": 0.6993080802157852
    },
    {
-    "t": 643.525,
+    "t": 617.192,
     "type": "click",
     "target": [
      {
@@ -6764,7 +8679,7 @@
     "fy": 0.371549314975121
    },
    {
-    "t": 644.109,
+    "t": 617.776,
     "type": "click",
     "target": [
      {
@@ -6777,7 +8692,7 @@
     "fy": 0.36191104272001173
    },
    {
-    "t": 669.946,
+    "t": 643.613,
     "type": "click",
     "target": [
      {
@@ -6797,7 +8712,7 @@
     "fy": 0.4431818181818182
    },
    {
-    "t": 670.67,
+    "t": 644.337,
     "type": "scroll",
     "target": [
      {
@@ -6821,7 +8736,7 @@
     ]
    },
    {
-    "t": 670.828,
+    "t": 644.495,
     "type": "scroll",
     "target": [
      {
@@ -6845,7 +8760,7 @@
     ]
    },
    {
-    "t": 672.76,
+    "t": 646.427,
     "type": "click",
     "target": [
      {
@@ -6858,7 +8773,7 @@
     "fy": 0.30859758090879374
    },
    {
-    "t": 675.021,
+    "t": 648.688,
     "type": "click",
     "target": [
      {
@@ -6878,7 +8793,7 @@
     "fy": 0.48125
    },
    {
-    "t": 675.952,
+    "t": 649.619,
     "type": "input",
     "target": [
      {
@@ -6897,7 +8812,7 @@
     "value": "411200"
    },
    {
-    "t": 676.972,
+    "t": 650.639,
     "type": "click",
     "target": [
      {
@@ -6910,7 +8825,7 @@
     "fy": 0.3774422735346359
    },
    {
-    "t": 678.806,
+    "t": 652.473,
     "type": "scroll",
     "target": [
      {
@@ -6934,7 +8849,7 @@
     ]
    },
    {
-    "t": 679.832,
+    "t": 653.499,
     "type": "click",
     "target": [
      {
@@ -6955,7 +8870,7 @@
     "fy": 0.5216619318181818
    },
    {
-    "t": 683.482,
+    "t": 657.149,
     "type": "scroll",
     "target": [
      {
@@ -6979,7 +8894,7 @@
     ]
    },
    {
-    "t": 683.64,
+    "t": 657.307,
     "type": "scroll",
     "target": [
      {
@@ -7003,7 +8918,7 @@
     ]
    },
    {
-    "t": 683.79,
+    "t": 657.457,
     "type": "scroll",
     "target": [
      {
@@ -7027,7 +8942,7 @@
     ]
    },
    {
-    "t": 685.587,
+    "t": 659.254,
     "type": "scroll",
     "target": [
      {
@@ -7051,7 +8966,7 @@
     ]
    },
    {
-    "t": 688.643,
+    "t": 662.31,
     "type": "click",
     "target": [
      {
@@ -7076,7 +8991,7 @@
     "fy": 0.84375
    },
    {
-    "t": 689.343,
+    "t": 663.01,
     "type": "click",
     "target": [
      {
@@ -7089,7 +9004,7 @@
     "fy": 0
    },
    {
-    "t": 691.9,
+    "t": 665.567,
     "type": "scroll",
     "target": [
      {
@@ -7113,7 +9028,7 @@
     ]
    },
    {
-    "t": 691.9,
+    "t": 665.567,
     "type": "scroll",
     "target": [
      {
@@ -7137,7 +9052,7 @@
     ]
    },
    {
-    "t": 691.9,
+    "t": 665.567,
     "type": "click",
     "target": [
      {
@@ -7150,7 +9065,7 @@
     "fy": 0.918918918918919
    },
    {
-    "t": 691.9,
+    "t": 665.567,
     "type": "click",
     "target": [
      {
@@ -7163,7 +9078,7 @@
     "fy": 0.2719843085975809
    },
    {
-    "t": 692.181,
+    "t": 665.848,
     "type": "key",
     "target": [
      {
@@ -7180,7 +9095,7 @@
     "key": "Escape"
    },
    {
-    "t": 694.814,
+    "t": 668.481,
     "type": "click",
     "target": [
      {
@@ -7203,7 +9118,7 @@
     "fy": 0.75
    },
    {
-    "t": 707.171,
+    "t": 680.838,
     "type": "click",
     "target": [
      {
@@ -7216,7 +9131,7 @@
     "fy": 0.4751131221719457
    },
    {
-    "t": 714.985,
+    "t": 688.652,
     "type": "click",
     "target": [
      {
@@ -7231,7 +9146,7 @@
    }
   ],
   "captions": {
-   "nl": "main-9623e865d832.nl.vtt"
+   "nl": "main-116a19db12ee.nl.vtt"
   },
   "pieces": [
    {
@@ -7255,62 +9170,92 @@
    {
     "take": "2026-10-03T19-38-01",
     "from": 88.0667,
-    "to": 208.5333,
+    "to": 149.6,
     "at": 86.533
    },
    {
-    "take": "2026-10-03T19-38-01",
-    "from": 209.0667,
-    "to": 251.5,
-    "at": 207.0
+    "take": "2026-10-03T21-10-06",
+    "from": 2.3,
+    "to": 4.0333,
+    "at": 148.067
+   },
+   {
+    "take": "2026-10-03T21-10-06",
+    "from": 4.6,
+    "to": 6.6,
+    "at": 149.8
+   },
+   {
+    "take": "2026-10-03T21-10-06",
+    "from": 7.1333,
+    "to": 89.0333,
+    "at": 151.8
+   },
+   {
+    "take": "2026-10-03T21-10-06",
+    "from": 89.5333,
+    "to": 113.1333,
+    "at": 233.7
+   },
+   {
+    "take": "2026-10-03T21-10-06",
+    "from": 114.5333,
+    "to": 134.7667,
+    "at": 257.3
+   },
+   {
+    "take": "2026-10-03T21-10-06",
+    "from": 135.3667,
+    "to": 141.6,
+    "at": 277.533
    },
    {
     "take": "2026-10-03T19-38-01",
-    "from": 253.4,
+    "from": 314.0667,
     "to": 379.1333,
-    "at": 249.433
+    "at": 283.767
    },
    {
     "take": "2026-10-03T19-38-01",
     "from": 379.8,
     "to": 557.7667,
-    "at": 375.167
+    "at": 348.833
    },
    {
     "take": "2026-10-03T19-38-01",
     "from": 558.4667,
     "to": 568.7667,
-    "at": 553.133
+    "at": 526.8
    },
    {
     "take": "2026-10-03T19-38-01",
     "from": 569.7667,
     "to": 691.4333,
-    "at": 563.433
+    "at": 537.1
    },
    {
     "take": "2026-10-03T19-38-01",
     "from": 691.9333,
     "to": 695.0667,
-    "at": 685.1
+    "at": 658.767
    },
    {
     "take": "2026-10-03T19-38-01",
     "from": 695.6,
     "to": 699.2667,
-    "at": 688.233
+    "at": 661.9
    },
    {
     "take": "2026-10-03T19-38-01",
     "from": 707.1,
     "to": 743.2333,
-    "at": 691.9
+    "at": 665.567
    },
    {
     "take": "2026-10-03T19-38-01",
     "from": 743.8333,
     "to": 745.4,
-    "at": 728.033
+    "at": 701.7
    }
   ]
  },
