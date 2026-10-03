@@ -199,3 +199,14 @@ def test_suggested_cut_for_a_flub_goes_back_to_the_sentence_start():
     words = [w("Klaar.", 0, 0.4), w("Dit", 1.0, 1.2), w("is", 1.25, 1.4), w("de", 1.45, 1.5), w("Dit", 4.0, 4.2), w("is", 4.25, 4.4)]
     cuts = suggest_cuts(words, [ev(2.0, "flub")], long_pause=99)
     assert cuts == [{"from": 0.95, "to": 3.95, "reason": "verspreking (Shift+X)"}]
+
+
+def test_returning_to_a_take_after_a_retake_restores_its_state_there():
+    events = {
+        "a": [ev(0, "slide", index=0, state={"n": 0}), ev(10, "slide", index=6, state={"n": 6}), ev(20, "slide", index=7, state={"n": 7})],
+        "b": [ev(0, "slide", index=6, state={"n": 60})],
+    }
+    # a up to slide 6, the retake of slide 6, then a again from slide 7.
+    track = build_track([{"take": "a", "to": 10}, {"take": "b", "to": 5}, {"take": "a", "from": 20}], {}, {"a": 30, "b": 5})
+    restores = [(a["t"], a["state"]) for a in remap_actions(track, events) if a["type"] == "restore"]
+    assert restores == [(0, {"n": 0}), (10, {"n": 60}), (15, {"n": 7})]

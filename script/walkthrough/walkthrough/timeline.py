@@ -423,8 +423,9 @@ def remap_actions(track: Track, events_by_take: dict[str, list[dict]]) -> list[d
     stretch that is used: it all happens at the start of that stretch.
 
     Where a piece from another take begins, a `restore` puts the demo in the
-    state that take started from (its first slide's snapshot), since a retake
-    is recorded from its own starting point.
+    state of that take at the piece's start (the snapshot of its slide), since
+    a retake is recorded from its own starting point, and the take it returns
+    to was in its own state there.
     """
     out: list[dict] = []
     for i, p in enumerate(track.pieces):
@@ -432,10 +433,13 @@ def remap_actions(track: Track, events_by_take: dict[str, list[dict]]) -> list[d
         same_take_before = i > 0 and track.pieces[i - 1].take == p.take
         if not same_take_before:
             slides = [e for e in events if e.get("type") == "slide"]
-            # The slide the take starts on: the last one logged in its first
-            # half second (a take's log can open with the slide the deck
-            # showed a moment before it started).
-            first = next((e for e in reversed(slides) if e["t"] <= slides[0]["t"] + 500), None) if slides else None
+            # The slide the piece starts on: the last one logged by its start
+            # (plus half a second: a take's log can open with the slide the
+            # deck showed a moment before it started). A piece that returns
+            # to a take after a retake starts from that take's snapshot at
+            # the return, not from where the take began.
+            at = max(p.start * 1000, slides[0]["t"]) + 500 if slides else 0
+            first = next((e for e in reversed(slides) if e["t"] <= at), None) if slides else None
             if first is not None:
                 out.append({"t": round(p.out, 3), "type": "restore", "state": first.get("state"), "slideIndex": first.get("index", 0)})
         # This piece collects what happened after the piece before it in the
