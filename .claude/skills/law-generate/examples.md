@@ -775,7 +775,7 @@ cases:
 default: 0
 ```
 
-### Mistake 2. Using SWITCH (removed in v0.5.1)
+### Mistake 2. Using SWITCH (removed in v0.5.0)
 **Wrong:**
 ```yaml
 operation: SWITCH

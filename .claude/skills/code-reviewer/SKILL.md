@@ -45,7 +45,7 @@ git diff --cached
 
 ## Step 3: Review the Changes
 
-**CRITICAL RULE: Only review lines that were actually changed in the diff.**
+Only review lines that were actually changed in the diff.
 
 Do NOT comment on:
 - Pre-existing code that was not modified in this PR/commit
@@ -54,7 +54,7 @@ Do NOT comment on:
 - Pre-existing patterns, style, or naming choices in unchanged code
 
 You may read the full file to *understand* context, but every finding you report
-MUST point to a line that was added or modified in the diff. If a line was not
+has to point to a line that was added or modified in the diff. If a line was not
 changed, it is out of scope — no matter how wrong it looks.
 
 For each changed line/block:
