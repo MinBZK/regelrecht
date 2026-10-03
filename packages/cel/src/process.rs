@@ -294,6 +294,7 @@ fn the_cell(
     }
     if let Some(b) = &definition.handling {
         named.push(("handling.worklist".into(), &b.worklist.cell));
+        named.push(("handling.cases".into(), &b.cases.cell));
         for h in &b.actions {
             named.push((format!("action '{}', record", h.name), &h.record.cell));
         }

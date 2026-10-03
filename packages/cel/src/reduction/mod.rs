@@ -19,7 +19,9 @@
 //! With `group_by: root` a lexostatus is a **list**: one row per root (an
 //! application and what follows it) of which at least one gram passes
 //! `filter`, and with `without` no gram passes that filter. `pick` and the
-//! derivations then work per root. A list is for the consumer, such as a
+//! derivations then work per root: `pick` among the grams through `filter`,
+//! a derivation over a collection over every gram of the case (so a column
+//! can say when the case was decided). A list is for the consumer, such as a
 //! handler with a worklist; it has no parameters and never goes to the
 //! engine.
 //!
@@ -50,7 +52,7 @@ mod worklist;
 pub use as_of::*;
 pub use case_state::*;
 pub use definition::*;
-pub use worklist::{worklist, worklist_definition, WORKLIST};
+pub use worklist::{cases_definition, worklist, worklist_definition, CASES, WORKLIST};
 
 impl Derivation {
     /// Apply a derivation to the chosen gram. `None`: the gram says nothing
@@ -473,12 +475,15 @@ struct Yield<'g> {
     not_derived: Vec<String>,
 }
 
-/// Pick a gram from `passed` if needed and apply every derivation. `None`:
-/// the definition picks a gram and there is none.
+/// Pick a gram from `passed` if needed and apply every derivation. A
+/// derivation over a collection reads `collection`: the grams through
+/// `filter` for a single lexostatus, every gram of the case for a list.
+/// `None`: the definition picks a gram and there is none.
 fn derive_from<'g>(
     definition: &LexostatusDefinition,
     inputs: &Map<String, Value>,
     passed: &[&'g Gram],
+    collection: &[&'g Gram],
 ) -> Result<Option<Yield<'g>>, String> {
     let r = &definition.reduction;
     let chosen = match r.pick {
@@ -509,7 +514,7 @@ fn derive_from<'g>(
             })?;
             derivation.apply(gram)?
         } else {
-            derivation.apply_at_collection(inputs, passed)?
+            derivation.apply_at_collection(inputs, collection)?
         };
         match (value, extra) {
             (Some(w), false) => {
@@ -577,7 +582,7 @@ pub fn reduce_at<'g>(
         return reduce_list(definition, inputs, in_chronicle).map(|l| Some(as_of(l)));
     }
     let passed = through_filter(&r.filter, inputs, in_chronicle)?;
-    let Some(a) = derive_from(definition, inputs, &passed)? else {
+    let Some(a) = derive_from(definition, inputs, &passed, &passed)? else {
         return Ok(None);
     };
     Ok(Some(as_of(Lexostatus {
@@ -592,7 +597,9 @@ pub fn reduce_at<'g>(
 }
 
 /// A list lexostatus: group per root, keep the roots with a gram through
-/// `filter` and without a gram through `without`, and derive per root. The
+/// `filter` and without a gram through `without`, and derive per root: `pick`
+/// chooses among the grams through `filter`, a derivation over a collection
+/// (with its own `filter`) reads every gram of the case. The
 /// rows are placed at the moment of the chosen gram (without `pick`: the
 /// first gram of the root), oldest first.
 fn reduce_list<'g>(
@@ -619,7 +626,7 @@ fn reduce_list<'g>(
         if passed.is_empty() {
             continue;
         }
-        let Some(a) = derive_from(definition, inputs, &passed)? else {
+        let Some(a) = derive_from(definition, inputs, &passed, &group)? else {
             continue;
         };
         // Without a chosen gram the case is placed at its first gram: the opening.
@@ -1399,6 +1406,40 @@ mod tests {
         let only = vec![stage(a, "2025-03-04T09:00:00+01:00", "BEKENDMAKING")];
         let l = reduce(def, &Map::new(), &only).unwrap().unwrap();
         assert!(l.list.unwrap().is_empty());
+    }
+
+    /// In a list, `pick` chooses among the grams through `filter`, but a
+    /// derivation over a collection reads every gram of the case: the
+    /// decision of a case, which the filter of the submission leaves out.
+    #[test]
+    fn a_list_derivation_over_a_collection_reads_the_whole_case() {
+        let text = WORKLIST.replace("      without: {stage: BESLUIT}\n", "").replace(
+            "        naam: {field: content.naam}\n",
+            "        besloten: {filter: {stage: BESLUIT}, pick: latest, moment: effective_at, no_gram: null}\n",
+        );
+        let c = parse(&text, "w").unwrap();
+        let def = &c.lexostatus_definitions[0];
+        let (a, d) = (
+            "00000000-0000-4000-8000-00000000000a",
+            "00000000-0000-4000-8000-00000000000d",
+        );
+        let grams = vec![
+            gram(a, "2025-03-01T09:00:00+01:00", json!({})),
+            gram(d, "2025-03-03T09:00:00+01:00", json!({})),
+            stage(d, "2025-03-04T09:00:00+01:00", "BESLUIT"),
+            stage(d, "2025-03-05T09:00:00+01:00", "BEKENDMAKING"),
+        ];
+        let list = reduce(def, &Map::new(), &grams)
+            .unwrap()
+            .unwrap()
+            .list
+            .unwrap();
+        let cases: Vec<&str> = list.iter().map(|r| r.root.as_str()).collect();
+        assert_eq!(cases, [a, d]);
+        assert_eq!(list[0].fields["besloten"], Value::Null);
+        assert_eq!(list[1].fields["besloten"], json!("2025-03-04"));
+        // The chosen gram is still the submission.
+        assert_eq!(list[1].fields["ontvangen_op"], json!("2025-03-03"));
     }
 
     #[test]

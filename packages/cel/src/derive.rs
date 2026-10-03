@@ -595,6 +595,7 @@ pub(crate) mod tests {
         let handling = d.handling.as_ref().map(|h| {
             json!({
                 "worklist": [h.worklist.cell, h.worklist.lexostatus],
+                "cases": [h.cases.cell, h.cases.lexostatus],
                 "actions": h.actions.iter().map(|a| json!({
                     "name": a.name,
                     "label": a.label,

@@ -1,4 +1,5 @@
-//! The handling in a process: the worklist, a case and the actions in it,
+//! The handling in a process: the worklist, all cases, a case and the
+//! actions in it,
 //! on trial and taken. One generic route for every action
 //! (`cases/{root}/actions/{name}`), not a route per kind of decision: what an
 //! action needs follows from the stage and the origin (see
@@ -31,13 +32,32 @@ fn handling(state: &ProcessState) -> Result<&crate::config::Handling, Error> {
         .ok_or_else(|| error(StatusCode::INTERNAL_SERVER_ERROR, "no handling configured"))
 }
 
-/// The worklist: the list lexostatus from the cell.
+/// The worklist: the list lexostatus of the undecided cases from the cell.
 pub(super) async fn worklist_route(
     State(state): State<ProcessState>,
     headers: HeaderMap,
 ) -> Result<Json<Value>, Error> {
     handler(&state, &headers)?;
     let w = &handling(&state)?.worklist;
+    list(&state, w).await
+}
+
+/// All cases: the list lexostatus of every case from the cell, decided or
+/// not.
+pub(super) async fn cases_route(
+    State(state): State<ProcessState>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, Error> {
+    handler(&state, &headers)?;
+    let c = &handling(&state)?.cases;
+    list(&state, c).await
+}
+
+/// A list lexostatus of the handling, from the cell.
+async fn list(
+    state: &ProcessState,
+    w: &crate::config::LexostatusReference,
+) -> Result<Json<Value>, Error> {
     let v = state
         .cell
         .fetch(&synthesis::path(

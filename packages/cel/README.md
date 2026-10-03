@@ -95,6 +95,10 @@ Wat de runtime daaruit afleidt:
   elk gevraagd besluit is genomen, met de kolommen `ontvangen_op`,
   `vastgelegd_op`, het eigenaarsveld van het portaalkanaal en het veld met
   origin-rol `TIJDVAK`;
+- naast de werkvoorraad staat de ingebouwde lijst `cases`: elke zaak van die
+  indiening, ook een beslote, met dezelfde kolommen en `besloten` (de datum
+  van het laatste besluitgram, leeg zonder besluit). Langs die lijst bereikt
+  de behandelaar een zaak na het besluit, voor de bekendmaking en de betaling;
 - de handelingen zijn de events van de cel met een intake die een kanaal van
   `kind: handling` noemt, genoemd naar hun event (een vervolg bij meer
   besluiten: `<event>_<besluit-event>`), met het artikel uit de wet (zie
@@ -185,6 +189,7 @@ het gedrag.
 | `GET /processes/<id>/api/possibilities` | routes `portal`: wat het aanbod zegt per tijdvak dat het beleid aanbiedt (`offer.windows`) |
 | `POST /processes/<id>/api/counter/application` | routes `counter`: `{applicant, received_at, external}`; een aanvraag die langs een andere weg binnenkwam, met de dag van ontvangst als `effective_at` (niet na vandaag, niet vóór `offer.opening`) |
 | `GET /processes/<id>/api/worklist` | routes `handling`: de werkvoorraad, een lijst uit de cel |
+| `GET /processes/<id>/api/cases` | routes `handling`: alle zaken, ook beslote, met `besloten`; een lijst uit de cel |
 | `GET /processes/<id>/api/inspection/<cel>/chronicle`, `.../lexostatus/<naam>?...` | routes `handling`: inzage in een cel die het proces leest (de eigen cel en de bronnen zonder url); het proces geeft door wat de cel antwoordt |
 | `GET /processes/<id>/api/cases/<root>` | routes `handling`: de grammen van de zaak, de procedure van de zaak (de stages zonder besluit), de besluiten met per besluit zijn stages, de rechtsbescherming die daaruit volgt en de handelingen die erop handelen, en per handeling of zij kan, op welk besluit, haar formulier en een proef zonder formulier |
 | `POST /processes/<id>/api/cases/<root>/actions/<naam>/trial` | routes `handling` (en de rol van de handeling): `{form}` naar een handeling op proef; niets wordt vastgelegd |

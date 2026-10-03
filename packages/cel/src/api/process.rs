@@ -13,7 +13,7 @@ use serde_json::{json, Value};
 
 use super::counter::counter_submit;
 use super::fragment;
-use super::handling::{action_route, case_route, trial_action_route, worklist_route};
+use super::handling::{action_route, case_route, cases_route, trial_action_route, worklist_route};
 use super::inspection;
 use super::portal::{assessment_route, form_route, possibilities_route, submit};
 use super::session::{channel_session, login, logout, session};
@@ -115,6 +115,7 @@ pub fn process_router(state: ProcessState) -> Router {
                 get(inspection::lexostatus_route),
             )
             .route("/api/worklist", get(worklist_route))
+            .route("/api/cases", get(cases_route))
             .route("/api/cases/{root}", get(case_route))
             .route("/api/cases/{root}/actions/{name}", post(action_route))
             .route(
@@ -195,6 +196,7 @@ pub fn process_description(state: &ProcessState) -> Value {
         "counter": d.roles_with(Routes::Counter).next().is_some(),
         "handling": d.handling.as_ref().map(|b| json!({
             "worklist": b.worklist.lexostatus,
+            "cases": b.cases.lexostatus,
             "actions": b.actions.iter().map(|h| json!({
                 "name": h.name,
                 "label": h.label(),

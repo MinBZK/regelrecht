@@ -246,12 +246,15 @@ pub struct Mandate {
     pub legal_basis: String,
 }
 
-/// What the handler does in the process: a worklist, and actions in a
-/// case.
+/// What the handler does in the process: a worklist, the list of all
+/// cases, and actions in a case.
 #[derive(Debug, Clone)]
 pub struct Handling {
-    /// A list lexostatus of the process's cell.
+    /// A list lexostatus of the process's cell: the undecided cases.
     pub worklist: LexostatusReference,
+    /// A list lexostatus of the process's cell: every case, also a decided
+    /// one, for what follows the decision.
+    pub cases: LexostatusReference,
     pub actions: Vec<ActionDefinition>,
 }
 

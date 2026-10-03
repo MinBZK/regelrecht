@@ -70,7 +70,10 @@ export function processApi(id) {
     // The counter: an application that came in some other way,
     // {applicant, received_at, external}.
     submitAtCounter: (input) => request('POST', `${p}/counter/application`, input),
+    // The undecided cases, and every case (also a decided one, with the
+    // date of its decision): list lexostatuses the runtime offers.
     worklist: () => request('GET', `${p}/worklist`),
+    cases: () => request('GET', `${p}/cases`),
     fetchCase: (root) => request('GET', `${p}/cases/${encodeURIComponent(root)}`),
     // An action in a case (the decision, a later stage, a fact from its
     // course): on trial, or taken and recorded. One route per action; which

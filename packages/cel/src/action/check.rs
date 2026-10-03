@@ -7,7 +7,8 @@ use super::*;
 /// here stops the runtime:
 ///
 /// - an action that names a role names a role that may do the handling;
-/// - the worklist is a list lexostatus of the cell;
+/// - the worklist and the list of all cases are list lexostatuses of the
+///   cell;
 /// - a source of the case requires a handling;
 /// - the outputs of an action come from one and the same article (for
 ///   a follow-up also from the hooks of that stage);
@@ -32,16 +33,18 @@ pub fn check(process: &Process) -> Vec<String> {
         }
         return errors;
     };
-    match cell.lexostatuses.lexostatus(&handling.worklist.lexostatus) {
-        None => errors.push(format!(
-            "handling: worklist '{}' is not a lexostatus of the cell",
-            handling.worklist.lexostatus
-        )),
-        Some(l) if !l.is_list() => errors.push(format!(
-            "handling: worklist '{}' is not a list (group_by: root)",
-            l.name
-        )),
-        Some(_) => {}
+    for list in [&handling.worklist, &handling.cases] {
+        match cell.lexostatuses.lexostatus(&list.lexostatus) {
+            None => errors.push(format!(
+                "handling: list '{}' is not a lexostatus of the cell",
+                list.lexostatus
+            )),
+            Some(l) if !l.is_list() => errors.push(format!(
+                "handling: list '{}' is not a list (group_by: root)",
+                l.name
+            )),
+            Some(_) => {}
+        }
     }
 
     // The lexostatuses of the case: once, for all actions.

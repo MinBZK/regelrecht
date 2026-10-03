@@ -327,10 +327,11 @@ fn lexostatus_part(b: &mut Builder, input: &MapInput) {
     for d in &cell.lexostatuses.lexostatus_definitions {
         let source = match &d.law {
             Some(law) => SourceRef::law(&law.article),
-            // The runtime offers the worklist (RFC-047); no file defines
-            // it, so it opens to the submission it lists (its filter names
-            // the one the portal submits).
-            None if d.name == crate::reduction::WORKLIST => {
+            // The runtime offers the worklist and the list of all cases
+            // (RFC-047); no file defines them, so they open to the
+            // submission they list (the filter names the one the portal
+            // submits).
+            None if d.name == crate::reduction::WORKLIST || d.name == crate::reduction::CASES => {
                 crate::check::events_for(d, None, &cell.streams)
                     .first()
                     .map(|(s, e)| SourceRef::stream(&s.id, &e.name))
@@ -377,17 +378,20 @@ fn rows_part(b: &mut Builder, input: &MapInput, from: &str, rows: &[RowsDefiniti
     }
 }
 
-/// The worklist and the actions of the handling: the article each action
-/// executes, the hooks on its stage and the event it records.
+/// The worklist, the list of all cases and the actions of the handling:
+/// the article each action executes, the hooks on its stage and the event
+/// it records.
 fn handling_part(b: &mut Builder, input: &MapInput, proc: &str) {
     let Some(h) = &input.process.definition.handling else {
         return;
     };
-    b.edge(
-        proc,
-        &lexostatus_id(&h.worklist.cell, &h.worklist.lexostatus),
-        EdgeKind::Synthesis,
-    );
+    for list in [&h.worklist, &h.cases] {
+        b.edge(
+            proc,
+            &lexostatus_id(&list.cell, &list.lexostatus),
+            EdgeKind::Synthesis,
+        );
+    }
     for action in &h.actions {
         let a = b.node(
             format!("action:{}", action.name),

@@ -24,8 +24,8 @@
 //!    with those of other lexostatuses. Its `without` selects an event in its
 //!    chronicle, otherwise it would never leave anything out.
 //! 7. No lexostatus is named [`crate::reduction::CASE_STATE`]: the runtime
-//!    offers that one. The same holds for [`crate::reduction::WORKLIST`],
-//!    which the runtime adds before these checks (see [`crate::cell`]), so
+//!    offers that one. The same holds for [`crate::reduction::WORKLIST`] and
+//!    [`crate::reduction::CASES`], which the runtime adds before these checks (see [`crate::cell`]), so
 //!    that it passes them like any other list.
 //!
 //! A process with a portal points at an existing event of its cell, an
@@ -66,19 +66,22 @@ fn event_fits(filter: &Filter, stream: &Stream, event: &Event) -> bool {
 
 /// The events a definition can select: in the chronicle of the reduction,
 /// through the filter of the lexostatus and, for a derivation over a
-/// collection, also through its own filter.
+/// collection, also through its own filter. In a list such a derivation
+/// reads every gram of the case (see [`crate::reduction`]), so only its own
+/// filter counts.
 pub fn events_for<'a>(
     def: &LexostatusDefinition,
     derivation_filter: Option<&Filter>,
     streams: &'a [Stream],
 ) -> Vec<StreamEvent<'a>> {
+    let whole_case = def.is_list() && derivation_filter.is_some();
     let mut out = Vec::new();
     for stream in streams
         .iter()
         .filter(|s| s.chronicle == def.reduction.chronicle)
     {
         for event in &stream.events {
-            if event_fits(&def.reduction.filter, stream, event)
+            if (whole_case || event_fits(&def.reduction.filter, stream, event))
                 && derivation_filter.is_none_or(|f| event_fits(f, stream, event))
             {
                 out.push((stream, event));

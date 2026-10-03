@@ -56,7 +56,8 @@
 //!
 //! | Route | Does |
 //! |---|---|
-//! | `GET /api/worklist` | the list lexostatus of the worklist, from the cell |
+//! | `GET /api/worklist` | the list lexostatus of the worklist, from the cell: the undecided cases |
+//! | `GET /api/cases` | the list lexostatus of all cases, decided or not, with `besloten` |
 //! | `GET /api/inspection/{cell}/chronicle` | the chronicle of a cell the process reads ([`inspection`]) |
 //! | `GET /api/inspection/{cell}/lexostatus/{name}?...` | a lexostatus of such a cell |
 //! | `GET /api/cases/{root}` | the grams of the case, the procedure, the legal protection, and per action its form, whether it can be taken, and a trial without form |

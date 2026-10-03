@@ -11,6 +11,8 @@ cells:
     besluit: afnemer_besluit.yaml
     worklist:
       dsl: een lijst met een regel per zaak (groepeer); de engine kent geen groeperen
+    cases:
+      dsl: een lijst met een regel per zaak (groepeer); de engine kent geen groeperen
     werkvoorraad:
       dsl: een lijst met een regel per zaak (groepeer); de engine kent geen groeperen
   test_gebieden:
@@ -18,6 +20,8 @@ cells:
   test_instantie:
     aanvraag_inhoud: instantie_aanvraag_inhoud.yaml
     worklist:
+      dsl: een lijst met een regel per zaak (groepeer); de engine kent geen groeperen
+    cases:
       dsl: een lijst met een regel per zaak (groepeer); de engine kent geen groeperen
   test_register:
     register: register_register.yaml
@@ -31,4 +35,6 @@ cells:
     besluiten:
       dsl: niet nagebouwd; dezelfde patronen als besluit van test_afnemer
     worklist:
+      dsl: een lijst met een regel per zaak (groepeer); de engine kent geen groeperen
+    cases:
       dsl: een lijst met een regel per zaak (groepeer); de engine kent geen groeperen

@@ -106,17 +106,21 @@ impl Cell {
             }
             Err(f) => errors.extend(f),
         }
-        // The worklist the runtime offers for every cell with submissions
-        // (RFC-047); the name is the runtime's.
-        if lexostatuses.lexostatus(reduction::WORKLIST).is_some() {
-            errors.push(format!(
-                "lexostatus '{}': that name belongs to the runtime, which offers it for every cell with submissions",
-                reduction::WORKLIST
-            ));
+        // The worklist and the list of all cases the runtime offers for
+        // every cell with submissions (RFC-047); the names are the runtime's.
+        let reserved: Vec<&str> = [reduction::WORKLIST, reduction::CASES]
+            .into_iter()
+            .filter(|n| lexostatuses.lexostatus(n).is_some())
+            .collect();
+        if !reserved.is_empty() {
+            for name in reserved {
+                errors.push(format!(
+                    "lexostatus '{name}': that name belongs to the runtime, which offers it for every cell with submissions"
+                ));
+            }
         } else {
             match reduction::worklist(&streams, &service, date) {
-                Ok(Some(d)) => lexostatuses.lexostatus_definitions.push(d),
-                Ok(None) => {}
+                Ok(lists) => lexostatuses.lexostatus_definitions.extend(lists),
                 Err(e) => errors.push(e),
             }
         }
@@ -292,25 +296,29 @@ mod tests {
             .any(|f| f.contains("'ander_register' is not the id")));
     }
 
-    /// The worklist is the runtime's (RFC-047): a cell that defines one
-    /// itself does not start, also without submissions.
+    /// The worklist and the list of all cases are the runtime's (RFC-047):
+    /// a cell that defines one itself does not start, also without
+    /// submissions.
     #[test]
-    fn the_worklist_name_belongs_to_the_runtime() {
-        let dir = copy("afnemer");
-        let map = dir.path().join("cells/afnemer");
-        let lexo = std::fs::read_to_string(map.join("lexostatuses.yaml")).unwrap();
-        std::fs::write(
-            map.join("lexostatuses.yaml"),
-            lexo.replace("  - name: werkvoorraad", "  - name: worklist"),
-        )
-        .unwrap();
-        let errors = Cell::load(&map, service()).err().unwrap();
-        assert!(
-            errors
-                .iter()
-                .any(|f| f.contains("'worklist'") && f.contains("belongs to the runtime")),
-            "{errors:?}"
-        );
+    fn the_list_names_belong_to_the_runtime() {
+        for name in [reduction::WORKLIST, reduction::CASES] {
+            let dir = copy("afnemer");
+            let map = dir.path().join("cells/afnemer");
+            let lexo = std::fs::read_to_string(map.join("lexostatuses.yaml")).unwrap();
+            std::fs::write(
+                map.join("lexostatuses.yaml"),
+                lexo.replace("  - name: werkvoorraad", &format!("  - name: {name}")),
+            )
+            .unwrap();
+            let errors = Cell::load(&map, service()).err().unwrap();
+            assert!(
+                errors
+                    .iter()
+                    .any(|f| f.contains(&format!("'{name}'"))
+                        && f.contains("belongs to the runtime")),
+                "{errors:?}"
+            );
+        }
     }
 
     #[test]

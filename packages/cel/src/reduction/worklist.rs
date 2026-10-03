@@ -26,6 +26,14 @@
 //! `owner` (who follows the case, see [`crate::channel::owner_binding`]), and
 //! the field whose parameter has origin role `TIJDVAK` (the window of the
 //! requested decision, Awb 4:2 lid 1).
+//!
+//! **All cases.** Next to the worklist the runtime offers the list `cases`:
+//! every case of the same submission, decided or not, with the same columns
+//! and `besloten`, the date of the latest decision gram (stage BESLUIT;
+//! null without one). A chronicle without a decision event has no
+//! `besloten` column: the checks refuse a filter that selects no event. A handler reaches a decided case through it, for what
+//! follows the decision (the announcement, the payment). The name is
+//! reserved as well.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -41,19 +49,26 @@ use crate::stream::{Binding, Event, Stream, DECISION};
 /// The name of the worklist. Reserved.
 pub const WORKLIST: &str = "worklist";
 
+/// The name of the list of all cases. Reserved.
+pub const CASES: &str = "cases";
+
+/// The column of `cases` with the date of the decision.
+const DECIDED: &str = "besloten";
+
 /// A column of the worklist beyond the moments: its name and derivation.
 pub type Column = (String, Value);
 
-/// The worklist of a cell, if it has a submission (see the module).
+/// The worklist and the list of all cases of a cell, if it has a
+/// submission (see the module); empty without one.
 pub fn worklist(
     streams: &[Stream],
     service: &LawExecutionService,
     date: Option<NaiveDate>,
-) -> Result<Option<LexostatusDefinition>, String> {
+) -> Result<Vec<LexostatusDefinition>, String> {
     let policies = crate::policy::read(service, date)
         .map_err(|e| format!("worklist: the policy cannot be read ({})", e.join("; ")))?;
     let Some((portal, stream, event)) = submission(streams, &policies)? else {
-        return Ok(None);
+        return Ok(Vec::new());
     };
     let mut columns = Vec::new();
     if let Some((p, c)) = portal {
@@ -68,12 +83,17 @@ pub fn worklist(
     if let Some(column) = window(event, service)? {
         columns.push(column);
     }
-    Ok(worklist_definition(
-        &stream.chronicle,
-        event,
-        streams,
-        &columns,
-    ))
+    Ok(
+        worklist_definition(&stream.chronicle, event, streams, &columns)
+            .into_iter()
+            .chain(cases_definition(
+                &stream.chronicle,
+                event,
+                streams,
+                &columns,
+            ))
+            .collect(),
+    )
 }
 
 /// The portal channel (with its policy) and the submission of the worklist:
@@ -148,23 +168,60 @@ pub fn worklist_definition(
     streams: &[Stream],
     columns: &[Column],
 ) -> Option<LexostatusDefinition> {
+    let mut reduction = list_reduction(chronicle, event, columns);
+    if requested_decisions(chronicle, event, streams).len() == 1 {
+        reduction["without"] = json!({"stage": DECISION});
+    }
+    list_definition(WORKLIST, reduction)
+}
+
+/// Every case of the submission `event` in `chronicle`, decided or not:
+/// the columns of the worklist and, when the chronicle has a decision event,
+/// `besloten`, the date of the latest decision gram of the case (null
+/// without one).
+pub fn cases_definition(
+    chronicle: &str,
+    event: &Event,
+    streams: &[Stream],
+    columns: &[Column],
+) -> Option<LexostatusDefinition> {
+    let mut reduction = list_reduction(chronicle, event, columns);
+    let decides = streams
+        .iter()
+        .filter(|s| s.chronicle == chronicle)
+        .flat_map(|s| &s.events)
+        .any(|e| e.stage.as_deref() == Some(DECISION));
+    if decides {
+        reduction["derivations"][DECIDED] = json!({
+        "filter": {"stage": DECISION},
+        "pick": "latest",
+        "moment": "effective_at",
+        "no_gram": null,
+        });
+    }
+    list_definition(CASES, reduction)
+}
+
+/// A list of the cases of the submission `event`, one row per root, with
+/// the moments and `columns`.
+fn list_reduction(chronicle: &str, event: &Event, columns: &[Column]) -> Value {
     let mut derivations = Map::new();
     derivations.insert("ontvangen_op".into(), json!({"moment": "effective_at"}));
     derivations.insert("vastgelegd_op".into(), json!({"moment": "recorded_at"}));
     for (name, d) in columns {
         derivations.insert(name.clone(), d.clone());
     }
-    let mut reduction = json!({
+    json!({
         "chronicle": chronicle,
         "filter": {"name": event.name},
         "group_by": "root",
         "pick": "latest",
         "derivations": derivations,
-    });
-    if requested_decisions(chronicle, event, streams).len() == 1 {
-        reduction["without"] = json!({"stage": DECISION});
-    }
-    serde_json::from_value(json!({"name": WORKLIST, "inputs": [], "reduction": reduction})).ok()
+    })
+}
+
+fn list_definition(name: &str, reduction: Value) -> Option<LexostatusDefinition> {
+    serde_json::from_value(json!({"name": name, "inputs": [], "reduction": reduction})).ok()
 }
 
 /// The field of the submission whose parameter, in a regulation that takes
@@ -264,6 +321,40 @@ mod tests {
         serde_json::to_value(&d).unwrap()
     }
 
+    /// The list of all cases keeps every case and adds the date of the
+    /// decision, read over the whole case.
+    #[test]
+    fn cases_keeps_every_case_and_says_when_it_was_decided() {
+        let s = stream(&format!(
+            "{APPLICATION}  - {{name: besluit, intake: medewerker, legal_basis: ['r#2'], type: decretogram, stage: BESLUIT, fields: {{y: $external.y}}}}\n"
+        ));
+        let d = cases_definition(
+            "k",
+            &s.events[0],
+            std::slice::from_ref(&s),
+            &[("x".into(), json!({"field": "x"}))],
+        )
+        .unwrap();
+        assert_eq!(d.name, CASES);
+        assert!(d.is_list());
+        let v = serde_json::to_value(&d).unwrap();
+        assert!(
+            v["reduction"].get("without").is_none_or(Value::is_null),
+            "{v}"
+        );
+        assert_eq!(
+            v["reduction"]["filter"],
+            json!({"name": "aanvraag_ontvangen"})
+        );
+        let d = &v["reduction"]["derivations"];
+        let columns: Vec<&String> = d.as_object().unwrap().keys().collect();
+        assert_eq!(columns, ["besloten", "ontvangen_op", "vastgelegd_op", "x"]);
+        assert_eq!(
+            d["besloten"],
+            json!({"filter": {"stage": "BESLUIT"}, "pick": "latest", "moment": "effective_at", "no_gram": null})
+        );
+    }
+
     #[test]
     fn one_requested_decision_takes_the_case_off() {
         let s = stream(&format!(
@@ -344,9 +435,41 @@ mod tests {
         );
         assert_eq!(d["aanvraagjaar"]["field"], "content.aanvraagjaar");
         assert!(i["reduction"]["without"].is_null());
-        assert!(cells["test_register"]
-            .lexostatuses
-            .lexostatus(WORKLIST)
-            .is_none());
+        for name in [WORKLIST, CASES] {
+            assert!(cells["test_register"]
+                .lexostatuses
+                .lexostatus(name)
+                .is_none());
+        }
+        // The list of all cases has the columns of the worklist and
+        // `besloten`; the instantie has no decision, so no `besloten`.
+        for (cell, decides) in [
+            ("test_afnemer", true),
+            ("test_toeslag", true),
+            ("test_instantie", false),
+        ] {
+            let w = def(cell);
+            let c =
+                serde_json::to_value(cells[cell].lexostatuses.lexostatus(CASES).unwrap()).unwrap();
+            let keys = |v: &Value| -> Vec<String> {
+                v["reduction"]["derivations"]
+                    .as_object()
+                    .unwrap()
+                    .keys()
+                    .cloned()
+                    .collect()
+            };
+            let mut expected = keys(&w);
+            if decides {
+                expected.push(DECIDED.to_string());
+            }
+            expected.sort();
+            let got = keys(&c);
+            assert_eq!(got, expected, "{cell}");
+            assert!(
+                c["reduction"].get("without").is_none_or(Value::is_null),
+                "{cell}"
+            );
+        }
     }
 }

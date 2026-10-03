@@ -21,7 +21,8 @@ const DECISION: &str = crate::stream::DECISION;
 /// (spec §3, decision 12 of the plan). A decision executes its establishing
 /// article; a later stage of its procedure is a follow-up on it, one per
 /// decision it can follow; a fact executes the article that reads it. The
-/// worklist is the one the runtime offers ([`crate::reduction::WORKLIST`]).
+/// worklist and the list of all cases are the ones the runtime offers
+/// ([`crate::reduction::WORKLIST`], [`crate::reduction::CASES`]).
 pub(super) fn handling(
     p: &ActorPolicy,
     cell: &Cell,
@@ -188,6 +189,10 @@ pub(super) fn handling(
             worklist: LexostatusReference {
                 cell: cell.id().to_string(),
                 lexostatus: crate::reduction::WORKLIST.into(),
+            },
+            cases: LexostatusReference {
+                cell: cell.id().to_string(),
+                lexostatus: crate::reduction::CASES.into(),
             },
             actions: out,
         }),

@@ -2,7 +2,8 @@
 // A process. Which roles there are, through which channel they log in and
 // which screens they have, GET /api/processes says (the channels of the
 // actor's policy, RFC-047): a role with routes portal sees what the policy offers
-// and submits, a role with routes handling sees the worklist, a case with
+// and submits, a role with routes handling sees the worklist and all cases
+// (also a decided one, for what follows the decision), a case with
 // its actions (the decision, the publication, a payment, a fact from its
 // course), a role with routes counter enters an application that came in
 // some other way. The chronicle and the lexostatuses belong to the cell the
@@ -93,9 +94,9 @@ function chooseRole(r) {
 }
 
 const loggedIn = computed(() => session.value !== null && session.value.role === role.value);
-const worklistColumns = computed(
-  () => props.cell.lexostatuses.find((l) => l.name === props.process.handling?.worklist)?.columns ?? [],
-);
+const columnsOf = (name) => props.cell.lexostatuses.find((l) => l.name === name)?.columns ?? [];
+const worklistColumns = computed(() => columnsOf(props.process.handling?.worklist));
+const casesColumns = computed(() => columnsOf(props.process.handling?.cases));
 
 function possibilitiesLoaded(list) {
   possible.value = list.filter((p) => p.verdict === 'possible');
@@ -173,6 +174,12 @@ const who = computed(() => sessionText(props.process, session.value));
           :current="screen === 'worklist' || undefined"
         ></nldd-tab-bar-item>
         <nldd-tab-bar-item
+          v-if="may('handling') && process.handling?.cases"
+          data-screen="cases"
+          text="Alle zaken"
+          :current="screen === 'cases' || undefined"
+        ></nldd-tab-bar-item>
+        <nldd-tab-bar-item
           v-if="may('counter') && process.counter"
           data-screen="counter"
           text="Loket"
@@ -209,9 +216,19 @@ const who = computed(() => sessionText(props.process, session.value));
     <PossibilitiesView v-if="screen === 'possibilities'" @loaded="possibilitiesLoaded" @apply="apply" />
     <ApplicationView v-else-if="screen === 'application'" :key="JSON.stringify(prefilled)" :prefilled="prefilled" @submitted="onSubmitted" />
     <CounterView v-else-if="screen === 'counter'" @submitted="onSubmitted" />
-    <template v-else-if="screen === 'worklist'">
+    <template v-else-if="screen === 'worklist' || screen === 'cases'">
       <CaseView v-if="caseRoot" :key="caseRoot" :root="caseRoot" @back="caseRoot = null" />
-      <WorklistView v-else :columns="worklistColumns" @open="caseRoot = $event" />
+      <WorklistView v-else-if="screen === 'worklist'" key="worklist" :columns="worklistColumns" @open="caseRoot = $event" />
+      <WorklistView
+        v-else
+        key="cases"
+        source="cases"
+        title="Alle zaken"
+        subtitle="Elke zaak, ook als er al op is besloten"
+        empty="Geen zaken"
+        :columns="casesColumns"
+        @open="caseRoot = $event"
+      />
     </template>
     <template v-else-if="screen === 'submitted' && submitted">
       <nldd-title size="2"><h1>Ingediend</h1></nldd-title>

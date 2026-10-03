@@ -126,6 +126,10 @@
         "role": null
       }
     ],
+    "cases": [
+      "test_afnemer",
+      "cases"
+    ],
     "worklist": [
       "test_afnemer",
       "worklist"

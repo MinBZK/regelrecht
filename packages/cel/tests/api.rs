@@ -1268,6 +1268,7 @@ async fn roles_decide_who_may_do_what() {
     let aanvrager = aanvrager.as_deref();
     for (method, path) in [
         ("GET", format!("{CONSUMER}/api/worklist")),
+        ("GET", format!("{CONSUMER}/api/cases")),
         ("GET", format!("{CONSUMER}/api/cases/{a}")),
         (
             "POST",
@@ -1457,6 +1458,42 @@ async fn worklist_is_a_list_of_cases_without_a_decision() {
     let list = w["list"].as_array().unwrap();
     assert_eq!(list.len(), 1);
     assert_eq!(list[0]["root"], two.as_str());
+
+    // The decided case is still in the list of all cases, with the date of
+    // its decision, and the handler can open it for what follows.
+    let (status, c, _) = call(
+        &app,
+        "GET",
+        &format!("{CONSUMER}/api/cases"),
+        Some(&b),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{c}");
+    assert_eq!(c["name"], "cases");
+    let list = c["list"].as_array().unwrap();
+    assert_eq!(list.len(), 2);
+    let decided = list.iter().find(|r| r["root"] == a.as_str()).unwrap();
+    assert_eq!(
+        decided["fields"],
+        json!({"ontvangen_op": "2025-03-12", "vastgelegd_op": "2025-03-12", "kvk_nummer": "12345678",
+               "besloten": "2025-03-12"})
+    );
+    let open = list.iter().find(|r| r["root"] == two.as_str()).unwrap();
+    assert_eq!(open["fields"]["besloten"], Value::Null);
+    let (status, z, _) = call(
+        &app,
+        "GET",
+        &format!("{CONSUMER}/api/cases/{a}"),
+        Some(&b),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{z}");
+    assert!(z["grams"].as_array().unwrap().len() >= 3, "{z}");
+    // Like the worklist, only for the handler.
+    let (status, _, _) = call(&app, "GET", &format!("{CONSUMER}/api/cases"), None, None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
 
     // The cell list calls the worklist a list, with columns; the process list
     // says who sees it.
