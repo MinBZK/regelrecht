@@ -14,7 +14,7 @@
     walkthrough voices           the voices on the ElevenLabs account (the clone's id)
     walkthrough check <take>     how a take sounds, in numbers, with a verdict per line
     walkthrough anchors          scroll anchors for takes recorded without them (dev server on)
-    walkthrough verify           replay every chapter headless and report what it could not find (dev server on)
+    (verify: `just walkthrough verify` runs frontend-demo/scripts/verify-walkthrough.mjs)
     walkthrough publish <tag>    the media into a GitHub release (asks first)
 
 Raw takes live in `.walkthrough/takes/<take>/` (not in git). What decides the
@@ -911,23 +911,6 @@ def anchors(url: str) -> None:
         say(f"{take}: {n} scrolls met een anker; draai `just walkthrough build` opnieuw")
 
 
-def verify(url: str, sizes: list[str]) -> None:
-    """Replay the built walkthrough on the dev server, per chapter, in one or
-    more window sizes, and report the actions it could not find."""
-    if not read_json(CORPUS / "timeline.json"):
-        raise SystemExit("nog geen timeline.json; draai eerst `walkthrough build`")
-    # The dev server plays its own copy of the timeline; it has to be this one.
-    subprocess.run(["node", str(ROOT / "frontend-demo" / "scripts" / "copy-demo-corpus.mjs")], check=True, capture_output=True)
-    uv = shutil.which("uv") or "uv"
-    failed = False
-    for size in sizes:
-        w, h = size.lower().split("x")
-        proc = subprocess.run([uv, "run", "--quiet", "--no-project", *PLAYWRIGHT, "python", str(HERE / "verify_run.py"), str(CORPUS / "timeline.json"), w, h, url])
-        failed = failed or proc.returncode != 0
-    if failed:
-        raise SystemExit("niet alles speelt terug; zie hierboven")
-
-
 def takes_in_use(cfg: dict) -> set[str]:
     """Every take the walkthrough draws on: directly, or through a script."""
     segments = list((cfg.get("main") or {}).get("segments") or [])
@@ -1067,9 +1050,6 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("voices", help="de stemmen op je ElevenLabs-account")
     p = sub.add_parser("check", help="hoe een opname klinkt, in getallen")
     p.add_argument("take", nargs="?", help="map in .walkthrough/takes (standaard: de laatste)")
-    p = sub.add_parser("verify", help="elk hoofdstuk headless terugspelen en missers melden")
-    p.add_argument("--url", default="http://127.0.0.1:7400", help="de dev-server")
-    p.add_argument("--size", action="append", help="vensterformaat, bijv. 1600x1000 (vaker mag)")
     p = sub.add_parser("anchors", help="scrollankers meten voor oudere opnames")
     p.add_argument("--url", default="http://127.0.0.1:7400", help="de dev-server")
     p = sub.add_parser("publish", help="media in een GitHub-release zetten")
@@ -1094,8 +1074,6 @@ def main(argv: list[str] | None = None) -> None:
         transcript(args.which)
     elif args.cmd == "build":
         build(args.release)
-    elif args.cmd == "verify":
-        verify(args.url, args.size or ["1600x1000", "1280x800"])
     elif args.cmd == "anchors":
         anchors(args.url)
     elif args.cmd == "export":

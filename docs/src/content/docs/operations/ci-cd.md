@@ -46,6 +46,25 @@ what the live laws currently produce, so a failure there means a law changed or 
 scenario went stale; a human decides what that is worth. Run it locally with
 `BDD_BUCKET=corpus`.
 
+### Walkthrough replay (on demo changes)
+
+The **Rondleiding speelt terug** job checks that the recorded walkthrough
+(`/rondleiding`, see [the demo page](/components/demo)) still replays in the demo
+as it is now. The walkthrough is the presenter's voice plus a log of what the
+presenter clicked, typed and scrolled; a change to the demo can leave one of those actions
+with nothing to act on (a renamed button, a moved panel, a law that is gone), and
+the walkthrough would then show something other than what the voice says.
+
+The job builds the engine for the browser, starts the demo's dev server, fetches
+only the voice from the walkthrough's release, and replays every chapter in a
+headless Chromium in two window sizes. An action whose element is not found
+fails the job, with an annotation naming the chapter; an action that only finds
+its element with the numbers in its description masked is reported as a
+warning, since it may now point at something else. It runs when `frontend-demo/`,
+`corpus/demo/`, the engine or the schema changes, hangs on the `Test` gate, and
+is the same command as locally: `just walkthrough verify`. A failure is fixed in
+the demo, or by recording that chapter again.
+
 ### WASM build (on engine changes)
 
 Builds the engine for the WebAssembly target to catch compilation issues early.

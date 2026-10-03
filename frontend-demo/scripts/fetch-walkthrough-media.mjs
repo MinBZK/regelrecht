@@ -13,6 +13,8 @@
  * the right checksum (after `walkthrough build` on a laptop) is left alone.
  *
  * WALKTHROUGH_MEDIA_BASE overrides where the files come from, for a test.
+ * `--audio-only` fetches only the voice: what the replay check in CI needs
+ * (verify-walkthrough.mjs), without the video it never plays.
  */
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -26,16 +28,18 @@ const dest = resolve(appRoot, 'public', 'walkthrough');
 const REPO = 'MinBZK/regelrecht';
 
 /** Every media file the timeline names, with its checksum. */
-export function mediaFiles(timeline) {
+export function mediaFiles(timeline, { audioOnly = false } = {}) {
   const tracks = [timeline.main, ...(timeline.faq ?? [])];
-  return tracks.flatMap((t) => [t.audio, t.video, t.cam].filter(Boolean)).map(({ src, sha256 }) => ({ src, sha256 }));
+  return tracks
+    .flatMap((t) => (audioOnly ? [t.audio] : [t.audio, t.video, t.cam]).filter(Boolean))
+    .map(({ src, sha256 }) => ({ src, sha256 }));
 }
 
 function sha256(buf) {
   return createHash('sha256').update(buf).digest('hex');
 }
 
-async function main() {
+export async function fetchMedia({ audioOnly = false } = {}) {
   if (!existsSync(timelinePath)) {
     console.log('walkthrough: geen timeline.json, niets op te halen');
     return;
@@ -44,7 +48,7 @@ async function main() {
   const base = process.env.WALKTHROUGH_MEDIA_BASE ?? (timeline.release ? `https://github.com/${REPO}/releases/download/${timeline.release}/` : null);
   if (!base) throw new Error('walkthrough: timeline.json noemt geen `release`, en WALKTHROUGH_MEDIA_BASE is niet gezet');
   mkdirSync(dest, { recursive: true });
-  for (const { src, sha256: want } of mediaFiles(timeline)) {
+  for (const { src, sha256: want } of mediaFiles(timeline, { audioOnly })) {
     if (!/^[A-Za-z0-9._-]+$/.test(src)) throw new Error(`walkthrough: ongeldige bestandsnaam ${src}`);
     const target = join(dest, src);
     if (existsSync(target) && sha256(readFileSync(target)) === want) continue;
@@ -59,7 +63,7 @@ async function main() {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  main().catch((e) => {
+  fetchMedia({ audioOnly: process.argv.includes('--audio-only') }).catch((e) => {
     console.error(e.message);
     process.exit(1);
   });

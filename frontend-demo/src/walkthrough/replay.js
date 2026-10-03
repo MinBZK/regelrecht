@@ -48,6 +48,8 @@ export const replay = reactive({
   ripples: [],
   /** Actions whose element was not found: what a recording needs redone. */
   misses: [],
+  /** Actions found only by a looser match: worth a look after a demo change. */
+  loose: [],
   /** The media did not load: the page says so instead of spinning. */
   failed: false,
 });
@@ -137,7 +139,7 @@ function current(token) {
  * the exact element does not show up is a looser match tried: trying it at
  * once would click a look-alike while the real one is still rendering.
  */
-async function find(target, { timeout = 4000, fast = false, token = seekToken } = {}) {
+async function find(target, { timeout = 4000, fast = false, token = seekToken, event = null } = {}) {
   const started = performance.now();
   const limit = fast ? 1500 : timeout;
   let paused = false;
@@ -147,8 +149,10 @@ async function find(target, { timeout = 4000, fast = false, token = seekToken } 
       return null;
     }
     const waited = performance.now() - started;
-    const el = resolve(target, { loose: waited > limit / 2 });
+    const exact = resolve(target);
+    const el = exact ?? (waited > limit / 2 ? resolve(target, { loose: true }) : null);
     if (el) {
+      if (!exact && event) noteLoose(event);
       if (paused) {
         replay.waiting = false;
         if (replay.playing) audio?.play().catch(() => {});
@@ -179,6 +183,18 @@ function noteMiss(e) {
   const last = e.target?.at?.(-1) ?? {};
   replay.misses.push({ t: e.t, type: e.type, what: last.text ?? last['@aria-label'] ?? last.textContent ?? last.tag ?? '?' });
   if (import.meta.env.DEV) console.warn('[walkthrough] niet gevonden:', e.type, last);
+}
+
+/**
+ * Remember an action that found its element only with the numbers in its
+ * description masked ("Wetten, 79" became "Wetten, 81"). Usually harmless, a
+ * count that moved; but it can also be a different element that now carries
+ * those words, and then the recording means something else than it did.
+ * The verify run lists these as warnings, for a person to look at.
+ */
+function noteLoose(e) {
+  const last = e.target?.at?.(-1) ?? {};
+  replay.loose.push({ t: e.t, type: e.type, what: last.text ?? last['@aria-label'] ?? last.textContent ?? last.tag ?? '?' });
 }
 
 function pointIn(el, fx = 0.5, fy = 0.5) {
@@ -227,7 +243,7 @@ async function apply(e, { fast = false, token = seekToken } = {}) {
       return;
     }
     case 'click': {
-      const el = await find(e.target, opts);
+      const el = await find(e.target, { ...opts, event: e });
       if (!el && current(token)) noteMiss(e);
       if (!el || !current(token)) return;
       el.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
@@ -240,7 +256,7 @@ async function apply(e, { fast = false, token = seekToken } = {}) {
       return;
     }
     case 'input': {
-      const el = await find(e.target, opts);
+      const el = await find(e.target, { ...opts, event: e });
       if (!el && current(token)) noteMiss(e);
       if (!el || !current(token)) return;
       if (!fast) showCursorAt(pointIn(el, 0.15, 0.5));
@@ -248,7 +264,7 @@ async function apply(e, { fast = false, token = seekToken } = {}) {
       return;
     }
     case 'change': {
-      const el = await find(e.target, opts);
+      const el = await find(e.target, { ...opts, event: e });
       if (!el && current(token)) noteMiss(e);
       if (!el || !current(token)) return;
       if (typeof e.checked === 'boolean') setChecked(el, e.checked);
@@ -256,7 +272,7 @@ async function apply(e, { fast = false, token = seekToken } = {}) {
       return;
     }
     case 'key': {
-      const el = e.target ? await find(e.target, { ...opts, timeout: 1000 }) : null;
+      const el = e.target ? await find(e.target, { ...opts, timeout: 1000, event: e }) : null;
       if (!current(token)) return;
       if (el) pressKey(el, e.key);
       else document.dispatchEvent(new KeyboardEvent('keydown', { key: e.key, bubbles: true }));
@@ -275,7 +291,7 @@ async function apply(e, { fast = false, token = seekToken } = {}) {
       return;
     }
     case 'scroll': {
-      const el = e.target ? await find(e.target, { ...opts, timeout: 1000 }) : document.scrollingElement;
+      const el = e.target ? await find(e.target, { ...opts, timeout: 1000, event: e }) : document.scrollingElement;
       if (!el || !current(token)) return;
       scrollTo(el, scrollTarget(el, e), e.left ?? 0);
       // For `walkthrough anchors`: what an older take lacks, measured in the

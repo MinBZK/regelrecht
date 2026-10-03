@@ -29,17 +29,19 @@ just walkthrough prepare <take>    # ingest, stem schoon, transcript, nakijken, 
 just walkthrough check <take>      # luidheid, oversturing, ruis, tempo, handelingen: oordeel per regel
 just walkthrough transcript <take|main>   # de tekst per dia
 just walkthrough build             # walkthrough.yaml -> media, timeline.json, ondertitels
-just walkthrough verify            # elk hoofdstuk headless terugspelen; meldt gemiste handelingen
+just walkthrough verify            # elk hoofdstuk headless terugspelen; meldt gemiste handelingen (ook in CI)
 just walkthrough anchors           # scrollankers meten voor opnames van vóór de ankers
 just walkthrough publish <tag>     # media naar een GitHub-release (openbaar)
 just walkthrough test              # de pytest-suite van de pijplijn
 ```
 
-`verify` en `anchors` hebben de dev-server nodig op `127.0.0.1:7400`, met
-de recorder aan (`just walkthrough record` start hem). Draai na elke `build`
-ook `node frontend-demo/scripts/copy-demo-corpus.mjs`, anders speelt de
-dev-server een oude kopie van de tijdlijn af. `verify` en `anchors` doen dat
-zelf.
+`verify` start zelf een dev-server en haalt de stem uit de release; het is
+hetzelfde commando dat CI draait in de job **Rondleiding speelt terug**, bij
+elke wijziging aan de demo, het demo-corpus of de engine. `anchors` heeft de
+dev-server nodig op `127.0.0.1:7400` (`just walkthrough record` start hem).
+Draai na elke `build` ook `node frontend-demo/scripts/copy-demo-corpus.mjs`
+als je in de browser kijkt, anders speelt de dev-server een oude kopie van de
+tijdlijn af.
 
 ## Na een opname
 
@@ -89,6 +91,15 @@ main:
   het knippunt worden snel nagespeeld. Dat gaat vanzelf goed.
 
 ## Wat de replay niet nadoet
+
+Faalt **Rondleiding speelt terug** in CI op een PR die de demo wijzigt, dan
+heeft die wijziging iets weggehaald of hernoemd waar de opname op klikt. De
+annotatie noemt het hoofdstuk. Eerst de vraag of de wijziging de bedoeling
+was: zo niet, herstel de demo; zo wel, dan moet dat hoofdstuk opnieuw
+worden opgenomen (en tot die tijd kan de PR niet door de poort). Een
+waarschuwing "vond alleen losser" faalt niet, maar bekijk het: een knop die
+nu "Wetten, 81" heet is onschuldig, een ander element met dezelfde woorden
+niet.
 
 - **Een gemiste klik** (`verify` meldt hem): kijk in `events.json` naar
   het `target`. Een id met een uuid erin of een teller wordt al genegeerd

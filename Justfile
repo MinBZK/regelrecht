@@ -351,6 +351,14 @@ walkthrough *args:
       test)
         uv run --quiet --project script/walkthrough pytest -q script/walkthrough/tests
         ;;
+      verify)
+        # The same check CI runs (job "Rondleiding speelt terug"): every
+        # chapter replayed headless, every action that finds nothing named.
+        # Starts its own dev server unless --url points at one; needs the
+        # WASM engine (just wasm-build).
+        shift
+        node frontend-demo/scripts/verify-walkthrough.mjs "$@"
+        ;;
       *)
         uv run --quiet --project script/walkthrough walkthrough "$@"
         ;;
