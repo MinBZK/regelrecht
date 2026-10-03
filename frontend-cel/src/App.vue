@@ -7,6 +7,7 @@
 // cells there are comes from GET /api/processes and GET /api/cells.
 import { computed, onMounted, ref } from 'vue';
 import { fetchCells, fetchProcesses } from './api.js';
+import { processLabel } from './text.js';
 import CellView from './views/CellView.vue';
 import MapView from './views/MapView.vue';
 import ProcessView from './views/ProcessView.vue';
@@ -116,7 +117,7 @@ function cellText(c) {
             v-for="p in processes"
             :key="`process:${p.id}`"
             :data-item="`process:${p.id}`"
-            :text="p.id"
+            :text="processLabel(p)"
             :current="chosen === `process:${p.id}` || undefined"
           ></nldd-tab-bar-item>
           <nldd-tab-bar-item
@@ -148,9 +149,9 @@ function cellText(c) {
             </nldd-table-row>
             <nldd-table-row v-for="p in processes" :key="p.id">
               <nldd-cell>
-                <nldd-button variant="secondary" text="Open" :accessible-label="`Open proces ${p.id}`" @click="chosen = `process:${p.id}`"></nldd-button>
+                <nldd-button variant="secondary" text="Open" :accessible-label="`Open proces ${processLabel(p)}`" @click="chosen = `process:${p.id}`"></nldd-button>
               </nldd-cell>
-              <nldd-text-cell :text="p.id" :supporting-text="p.title ?? undefined"></nldd-text-cell>
+              <nldd-text-cell :text="processLabel(p)" :supporting-text="p.title ?? undefined"></nldd-text-cell>
               <nldd-text-cell :text="processText(p)"></nldd-text-cell>
             </nldd-table-row>
           </nldd-table>

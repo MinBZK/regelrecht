@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   amountText,
+  processLabel,
   outputText,
   provenanceRows,
   provenanceText,
@@ -145,5 +146,16 @@ describe('sourceStatusText', () => {
     expect(sourceStatusText('error')).toBe('fout');
     expect(sourceStatusText('not_queried')).toBe('niet bevraagd');
     expect(sourceStatusText('iets_nieuws')).toBe('iets nieuws');
+  });
+});
+
+describe('processLabel', () => {
+  it('names a process after its competent authority', () => {
+    expect(processLabel({ id: 'autoriteit_politieke_partijen', authority: 'Nederlandse autoriteit politieke partijen' })).toBe(
+      'Nederlandse autoriteit politieke partijen',
+    );
+  });
+  it('falls back to the id without an authority', () => {
+    expect(processLabel({ id: 'test_toeslag' })).toBe('test_toeslag');
   });
 });

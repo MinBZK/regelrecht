@@ -116,3 +116,9 @@ const SOURCE_STATUS = {
 export function sourceStatusText(s) {
   return SOURCE_STATUS[s] ?? String(s ?? '').replace(/_/g, ' ');
 }
+
+// What a process is called on screen: the competent authority it acts for
+// (RFC-047: one process per actor), otherwise its id.
+export function processLabel(p) {
+  return p.authority || p.id;
+}

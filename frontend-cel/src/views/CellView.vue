@@ -6,6 +6,7 @@
 // inspection. Otherwise the screen says in which process that is possible.
 import { onMounted, provide, ref } from 'vue';
 import { inspectionApi, processApi } from '../api.js';
+import { processLabel } from '../text.js';
 import ChronicleView from './ChronicleView.vue';
 import LexostatusView from './LexostatusView.vue';
 
@@ -70,7 +71,7 @@ function tab(e) {
     ></nldd-inline-dialog>
     <nldd-spacer size="16"></nldd-spacer>
     <nldd-button-group v-if="processes.length" orientation="horizontal">
-      <nldd-button v-for="p in processes" :key="p.id" variant="secondary" :text="`Open ${p.id}`" @click="emit('open', p.id)"></nldd-button>
+      <nldd-button v-for="p in processes" :key="p.id" variant="secondary" :text="`Open ${processLabel(p)}`" @click="emit('open', p.id)"></nldd-button>
     </nldd-button-group>
   </template>
 </template>
