@@ -169,8 +169,6 @@ export default {
   'home.hero.subtitle': 'Van wet naar digitale werking',
   'home.hero.lead':
     'Wat gebeurt er als de wet zelf machine-uitvoerbaar is en openbaar gepubliceerd wordt? Deze demo rekent het voor, in je eigen browser, op verzonnen personen.',
-  'home.hero.start': 'Start de presentatie',
-  'home.hero.browse': 'Zelf rondkijken',
   'home.hero.qr': 'QR-code naar deze pagina, om de demo op je telefoon te openen',
 
   'home.links.title': 'Verder lezen',
@@ -201,7 +199,7 @@ export default {
   'home.presentation.mode.zaal': 'In de zaal',
   'home.presentation.mode.zelfstandig': 'Zelfstandig',
   'home.presentation.mode.zaal.body':
-    "De dia's van het verhaal vullen het scherm. Zodra een dia de demo opent, verdwijnen ze en is het scherm van de demo. Bladeren gaat daar gewoon door. Loop je zelf naar een ander tabblad, dan laten de dia's het toetsenbord los en is spatie weer van de pagina. {esc} stopt de presentatie, waar je ook bent.",
+    "De dia's vullen het scherm en maken plaats zodra een dia de demo opent. Bladeren gaat daar gewoon door.",
   'home.presentation.mode.zelfstandig.body':
     "De dia's blijven links naast de demo staan, zodat iemand die zelf doorklikt het verhaal erbij leest.",
   'home.presentation.slides.label': "Dia's",
@@ -954,8 +952,18 @@ export default {
   'walkthrough.faq.back': 'Terug naar de rondleiding',
   'walkthrough.missing.title': 'Nog geen rondleiding',
   'walkthrough.missing.body': 'Deze versie van de demo heeft geen opgenomen rondleiding. De presentatie en de demo zelf werken wel.',
-  'home.hero.walkthrough': 'Bekijk de rondleiding',
   'home.presentation.walkthrough': 'Opgenomen rondleiding bekijken',
+  'home.ways.label': 'Hoe wil je de demo zien?',
+  'home.ways.walkthrough.title': 'Bekijk de rondleiding',
+  'home.ways.walkthrough.text': 'Opgenomen, met stem. De demo speelt zichzelf af; je kunt pauzeren en zelf verder klikken. Ongeveer {minutes} minuten.',
+  'home.ways.browse.title': 'Zelf rondkijken',
+  'home.ways.browse.text': 'Klik zelf door de wetten, de graaf, de scenario’s en de simulatie, zonder verhaal erbij.',
+  'home.ways.present.title': 'Presenteren',
+  'home.ways.present.text': 'Voor wie de demo zelf geeft: dia’s die onderweg het juiste tabblad openen.',
+  'home.presentation.how.title': 'Zelf presenteren',
+  'home.presentation.watch.title': 'Geen presentator?',
+  'home.presentation.watch.text': 'De opgenomen rondleiding vertelt hetzelfde verhaal, met stem, en de demo speelt zichzelf af.',
+  'home.presentation.slides.hint': 'Klik een dia om de presentatie daar te beginnen.',
   'walkthrough.transcript.title': 'Uitgeschreven tekst',
   'walkthrough.transcript.open': 'Uitgeschreven tekst',
   'walkthrough.transcript.close': 'Sluiten',

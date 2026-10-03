@@ -76,6 +76,27 @@ function start() {
   router.push(pathFor('presentatie'));
 }
 
+// Drie manieren om binnen te komen, elk met wat het is: drie knoppen naast
+// elkaar zeiden niet wat het verschil was tussen een presentatie, een
+// rondleiding en zelf rondkijken. De rondleiding staat voorop, want wie hier
+// zonder presentator landt heeft daar het meest aan; alleen als deze build
+// er een heeft.
+const ways = computed(() => [
+  ...(walkthrough.value
+    ? [
+        {
+          key: 'walkthrough',
+          icon: 'video-camera',
+          title: t('home.ways.walkthrough.title'),
+          text: t('home.ways.walkthrough.text', { minutes: Math.max(1, Math.round((walkthrough.value.main?.duration ?? 0) / 60)) }),
+          go: () => router.push(pathFor('rondleiding')),
+        },
+      ]
+    : []),
+  { key: 'browse', icon: 'books', title: t('home.ways.browse.title'), text: t('home.ways.browse.text'), go: () => router.push(pathFor('wetten')) },
+  { key: 'present', icon: 'play', title: t('home.ways.present.title'), text: t('home.ways.present.text'), go: start },
+]);
+
 // De scrollpositie van een keep-alive-view blijft staan. Voor een pagina waar
 // iemand op landt is dat verkeerd: wie via het tabblad terugkomt hoort weer
 // bovenaan te beginnen.
@@ -106,32 +127,23 @@ onActivated(() => {
             <p>{{ t('home.hero.lead') }}</p>
           </nldd-rich-text>
           <nldd-spacer size="24"></nldd-spacer>
-          <nldd-button-group orientation="horizontal">
-            <nldd-button
-              size="lg"
-              variant="inherit-filled"
-              start-icon="play"
-              :text="t('home.hero.start')"
-              :disabled="!ready || undefined"
-              @click="start"
-            ></nldd-button>
-            <nldd-button
-              v-if="walkthrough"
-              size="lg"
-              variant="inherit-tinted"
-              start-icon="video-camera"
-              :text="t('home.hero.walkthrough')"
-              @click="router.push(pathFor('rondleiding'))"
-            ></nldd-button>
-            <nldd-button
-              size="lg"
-              variant="inherit-tinted"
-              start-icon="books"
-              :text="t('home.hero.browse')"
-              :disabled="!ready || undefined"
-              @click="router.push(pathFor('wetten'))"
-            ></nldd-button>
-          </nldd-button-group>
+          <!-- Kaarten in plaats van knoppen: elke manier zegt in één regel
+               wat je krijgt. Dezelfde nldd-card als de kaarten verderop. -->
+          <nldd-collection layout="grid" item-width="200px" :accessible-label="t('home.ways.label')">
+            <nldd-card v-for="w in ways" :key="w.key" button :accessible-label="w.title" @click="ready && w.go()">
+              <nldd-container padding="16" gap="8">
+                <!-- An explicit color: in the hero the icon would inherit its
+                     white and vanish on the white card. -->
+                <nldd-icon :name="w.icon" size="24" color="accent"></nldd-icon>
+                <nldd-title size="5">
+                  <h2>{{ w.title }}</h2>
+                </nldd-title>
+                <nldd-rich-text size="sm" spacing="tight">
+                  <p>{{ w.text }}</p>
+                </nldd-rich-text>
+              </nldd-container>
+            </nldd-card>
+          </nldd-collection>
         </div>
         <QrCode
           v-if="pageUrl"

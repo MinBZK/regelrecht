@@ -167,8 +167,6 @@ export default {
   'home.hero.subtitle': 'From statute to working software',
   'home.hero.lead':
     'What happens when the law itself is machine-executable and published openly? This demo works it out, in your own browser, on invented people.',
-  'home.hero.start': 'Start the presentation',
-  'home.hero.browse': 'Look around yourself',
   'home.hero.qr': 'QR code to this page, to open the demo on your phone',
 
   'home.links.title': 'Further reading',
@@ -199,7 +197,7 @@ export default {
   'home.presentation.mode.zaal': 'To an audience',
   'home.presentation.mode.zelfstandig': 'On your own',
   'home.presentation.mode.zaal.body':
-    'The slides fill the screen. As soon as a slide opens the demo they step aside and the screen belongs to the demo. Moving through them carries on there. Walk to another tab yourself and the slides release the keyboard, so space belongs to the page again. {esc} stops the presentation, wherever you are.',
+    'The slides fill the screen and step aside as soon as a slide opens the demo. Moving through them carries on there.',
   'home.presentation.mode.zelfstandig.body':
     'The slides stay to the left of the demo, so someone clicking through on their own reads the story alongside it.',
   'home.presentation.slides.label': 'Slides',
@@ -933,8 +931,18 @@ export default {
   'walkthrough.faq.back': 'Back to the walkthrough',
   'walkthrough.missing.title': 'No walkthrough yet',
   'walkthrough.missing.body': 'This version of the demo has no recorded walkthrough. The presentation and the demo itself do work.',
-  'home.hero.walkthrough': 'Watch the walkthrough',
   'home.presentation.walkthrough': 'Watch the recorded walkthrough',
+  'home.ways.label': 'How do you want to see the demo?',
+  'home.ways.walkthrough.title': 'Watch the walkthrough',
+  'home.ways.walkthrough.text': 'Recorded, with a voice. The demo plays itself; you can pause and click on yourself. About {minutes} minutes.',
+  'home.ways.browse.title': 'Look around yourself',
+  'home.ways.browse.text': 'Click through the laws, the graph, the scenarios and the simulation yourself, without a story.',
+  'home.ways.present.title': 'Present',
+  'home.ways.present.text': 'For whoever gives the demo: slides that open the right tab along the way.',
+  'home.presentation.how.title': 'Presenting yourself',
+  'home.presentation.watch.title': 'No presenter?',
+  'home.presentation.watch.text': 'The recorded walkthrough tells the same story, with a voice, and the demo plays itself.',
+  'home.presentation.slides.hint': 'Click a slide to start the presentation there.',
   'walkthrough.transcript.title': 'Transcript',
   'walkthrough.transcript.open': 'Transcript',
   'walkthrough.transcript.close': 'Close',
