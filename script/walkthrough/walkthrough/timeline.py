@@ -347,6 +347,26 @@ def vtt_time(t: float) -> str:
     return f"{h:02d}:{m:02d}:{s:02d}.{ms:03d}"
 
 
+def norm_cue(text: str) -> str:
+    """A caption's text as a key: one line, single spaces."""
+    return " ".join(text.split())
+
+
+def apply_subtitles(cues: list[dict], shown: dict[str, str]) -> list[dict]:
+    """Show the edited subtitle where there is one.
+
+    Speech makes long captions: "En dan zien we hier eigenlijk dat dat best
+    wel een kluwen is" reads slower than it is said. `shown` maps what was
+    said (a cue's text) to the shorter line to show; a cue without an entry
+    keeps its words. The timing stays the cue's own.
+    """
+    out = []
+    for c in cues:
+        new = shown.get(norm_cue(c["text"]))
+        out.append({**c, "text": wrap(new)} if new else c)
+    return out
+
+
 def to_vtt(cues: list[dict]) -> str:
     lines = ["WEBVTT", ""]
     for i, c in enumerate(cues, 1):

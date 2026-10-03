@@ -14,6 +14,7 @@
     walkthrough voices           the voices on the ElevenLabs account (the clone's id)
     walkthrough check <take>     how a take sounds, in numbers, with a verdict per line
     walkthrough anchors          scroll anchors for takes recorded without them (dev server on)
+    walkthrough subtitles        shorter subtitles for what was said, in subtitles.yaml (then build)
     (verify: `just walkthrough verify` runs frontend-demo/scripts/verify-walkthrough.mjs)
     walkthrough publish <tag>    the media into a GitHub release (asks first)
 
@@ -40,10 +41,12 @@ from . import media
 from .media import FPS, ffmpeg
 from .timeline import (
     CutError,
+    apply_subtitles,
     build_track,
     captions,
     chapters,
     check_cuts,
+    norm_cue,
     protected_spans,
     remap_actions,
     remap_words,
@@ -679,12 +682,94 @@ def render_track(name: str, segments: list[dict], cfg: dict, overrides: dict, de
     # A caption ends at a chapter and at a seam between parts: a sentence cut
     # off at the end of the recorded opening is not continued by the voice.
     cues = captions(sorted(words, key=lambda w: w["start"]), breaks=[c["start"] for c in merged[1:]] + seams[:-1])
-    vtt = to_vtt(cues)
+    (WORK / f"{name}.said.json").write_text(json.dumps([norm_cue(c["text"]) for c in cues], ensure_ascii=False))
+    vtt = to_vtt(apply_subtitles(cues, shown_subtitles()))
     vtt_name = f"{name}-{hashlib.sha256(vtt.encode()).hexdigest()[:12]}.nl.vtt"
     (vtt_dest / vtt_name).write_text(vtt)
     entry["captions"] = {"nl": vtt_name}
     entry["pieces"] = pieces
     return entry
+
+
+SUBTITLES = CORPUS / "subtitles.yaml"
+
+SUBTITLE_PROMPT = """Hieronder staan de ondertitels van een gesproken rondleiding door de demo
+van RegelRecht (wetten als machine-uitvoerbare regels), als JSON-lijst, in
+volgorde. Het is spreektaal, letterlijk uitgeschreven. Maak er ondertitels
+van die prettig lezen.
+
+Regels:
+- Kort: hooguit twee regels van 42 tekens, liefst één.
+- Laat vulwoorden, herhalingen en valse starts weg ("eigenlijk", "dus",
+  "best wel", "En dan zien we hier").
+- Houd de betekenis, de vakbegrippen, namen en getallen precies zoals ze
+  zijn. Voeg niets toe dat niet gezegd is.
+- Een ondertitel die al kort en helder is, laat je staan.
+- Een ondertitel hoort bij zijn eigen moment: schuif geen tekst naar een
+  andere.
+
+{context}
+Antwoord met alleen een JSON-lijst van strings, even lang als de invoer,
+in dezelfde volgorde.
+
+{cues}
+"""
+
+
+def shown_subtitles() -> dict[str, str]:
+    """What was said -> the subtitle to show, from subtitles.yaml."""
+    data = yaml.safe_load(SUBTITLES.read_text()) if SUBTITLES.exists() else None
+    return {norm_cue(e["gezegd"]): e["ondertitel"] for e in (data or []) if e.get("gezegd") and e.get("ondertitel")}
+
+
+def subtitles() -> None:
+    """Shorter subtitles for the captions that have none yet.
+
+    Reads the captions of the last build, asks a language model (headless
+    Claude Code) for a short version of each one not in subtitles.yaml yet,
+    and appends them there: a list of `gezegd` and `ondertitel`, in git,
+    for anyone to correct. A rebuild puts them on screen. The words as said
+    stay the key, so an edited line keeps holding when the cuts change.
+    """
+    said = []
+    for f in sorted(WORK.glob("*.said.json")):
+        said += [t for t in json.loads(f.read_text()) if t not in said]
+    if not said:
+        raise SystemExit("geen ondertitels gevonden; draai eerst `just walkthrough build`")
+    have = shown_subtitles()
+    todo = [t for t in said if t not in have]
+    if not todo:
+        say("alle ondertitels hebben al een korte versie")
+        return
+    if not shutil.which("claude"):
+        raise SystemExit("geen `claude` op het pad; vul subtitles.yaml met de hand")
+    terms = load_config(required=False).get("glossary") or []
+    context = ("Begrippen: " + ", ".join(terms) + ".\n") if terms else ""
+    say(f"{len(todo)} ondertitels inkorten met een taalmodel")
+    r = subprocess.run(
+        ["claude", "-p", "--model", "sonnet", "--tools", ""],
+        input=SUBTITLE_PROMPT.format(context=context, cues=json.dumps(todo, ensure_ascii=False, indent=0)),
+        capture_output=True,
+        text=True,
+    )
+    out = r.stdout.strip()
+    out = out[out.find("[") : out.rfind("]") + 1]
+    try:
+        short = json.loads(out)
+    except json.JSONDecodeError:
+        raise SystemExit(f"het taalmodel gaf geen JSON-lijst terug:\n{r.stdout[:500]}{r.stderr[:300]}")
+    if len(short) != len(todo) or not all(isinstance(s, str) and s.strip() for s in short):
+        raise SystemExit(f"het taalmodel gaf {len(short)} ondertitels voor {len(todo)}; niets overgenomen")
+    entries = (yaml.safe_load(SUBTITLES.read_text()) if SUBTITLES.exists() else None) or []
+    entries += [{"gezegd": a, "ondertitel": " ".join(b.split())} for a, b in zip(todo, short)]
+    header = (
+        "---\n# Ondertitels: wat er gezegd is, en wat er in beeld komt.\n"
+        "# `just walkthrough subtitles` vult nieuwe aan; corrigeer gerust met de hand.\n"
+        "# Een rebuild (`just walkthrough build`) zet ze in beeld.\n"
+    )
+    SUBTITLES.write_text(header + yaml.safe_dump(entries, allow_unicode=True, sort_keys=False, width=1000))
+    shorter = sum(1 for a, b in zip(todo, short) if len(b) < len(a))
+    say(f"{len(todo)} ondertitels in {SUBTITLES.relative_to(ROOT)}, {shorter} korter; draai `just walkthrough build`")
 
 
 def build(release: str | None = None) -> None:
@@ -1050,6 +1135,7 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("voices", help="de stemmen op je ElevenLabs-account")
     p = sub.add_parser("check", help="hoe een opname klinkt, in getallen")
     p.add_argument("take", nargs="?", help="map in .walkthrough/takes (standaard: de laatste)")
+    sub.add_parser("subtitles", help="kortere ondertitels laten maken, in subtitles.yaml")
     p = sub.add_parser("anchors", help="scrollankers meten voor oudere opnames")
     p.add_argument("--url", default="http://127.0.0.1:7400", help="de dev-server")
     p = sub.add_parser("publish", help="media in een GitHub-release zetten")
@@ -1074,6 +1160,8 @@ def main(argv: list[str] | None = None) -> None:
         transcript(args.which)
     elif args.cmd == "build":
         build(args.release)
+    elif args.cmd == "subtitles":
+        subtitles()
     elif args.cmd == "anchors":
         anchors(args.url)
     elif args.cmd == "export":

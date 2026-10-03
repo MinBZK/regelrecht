@@ -137,6 +137,17 @@ def test_a_corrected_text_keeps_the_timing_of_what_it_corrects():
     assert align_text(words, "") == words
 
 
+def test_an_edited_subtitle_replaces_what_was_said_and_keeps_its_time():
+    from walkthrough.timeline import apply_subtitles
+
+    cues = [
+        {"start": 1, "end": 4, "text": "En dan zien we hier eigenlijk\ndat dat best wel een kluwen is."},
+        {"start": 4, "end": 6, "text": "Rond de inkomstenbelasting."},
+    ]
+    got = apply_subtitles(cues, {"En dan zien we hier eigenlijk dat dat best wel een kluwen is.": "Dat is een kluwen."})
+    assert [(c["start"], c["end"], c["text"]) for c in got] == [(1, 4, "Dat is een kluwen."), (4, 6, "Rond de inkomstenbelasting.")]
+
+
 def test_long_caption_wraps_on_two_lines():
     text = "Elke organisatie vertaalt de wet opnieuw naar haar eigen software"
     assert wrap(text).count("\n") == 1

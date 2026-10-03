@@ -29,6 +29,7 @@ just walkthrough prepare <take>    # ingest, stem schoon, transcript, nakijken, 
 just walkthrough check <take>      # luidheid, oversturing, ruis, tempo, handelingen: oordeel per regel
 just walkthrough transcript <take|main>   # de tekst per dia
 just walkthrough build             # walkthrough.yaml -> media, timeline.json, ondertitels
+just walkthrough subtitles         # kortere ondertitels voor wat gezegd is (daarna weer build)
 just walkthrough verify            # elk hoofdstuk headless terugspelen; meldt gemiste handelingen (ook in CI)
 just walkthrough anchors           # scrollankers meten voor opnames van vóór de ankers
 just walkthrough publish <tag>     # media naar een GitHub-release (openbaar)
@@ -120,6 +121,11 @@ niet.
 - Het transcript wordt bij `prepare` nagekeken door een taalmodel met de
   schermbeelden erbij (`corrected.txt` in de take). Klopt er toch een
   woord niet, verbeter dan `corrected.txt`; geen lijst met vaste fixes.
+- **Ondertitels** zijn ingekorte spreektaal: na een `build` maakt
+  `just walkthrough subtitles` een korte versie van elke ondertitel die er
+  nog geen heeft, in `corpus/demo/walkthrough/subtitles.yaml` (`gezegd` ->
+  `ondertitel`); dan opnieuw `build`. Lees de nieuwe na en verbeter met de
+  hand wat niet loopt; betekenis, begrippen en getallen moeten kloppen.
 - De dia's van de rondleiding zijn die van het moment van opnemen.
   Pas ze aan in `slides:` van `walkthrough.yaml`, per dia-index, **kort**,
   en zo dat ze volgen wat er gezegd wordt. De zaal-deck in
@@ -130,7 +136,7 @@ niet.
 - `publish` zet de media in een **openbare** GitHub-release, met stem en
   gezicht. Vraag het de presentator de eerste keer per tag; daarna voegt
   een publish aan dezelfde tag alleen bestanden toe.
-- Commit daarna `walkthrough.yaml`, `timeline.json` en de `.vtt`'s;
+- Commit daarna `walkthrough.yaml`, `subtitles.yaml`, `timeline.json` en de `.vtt`'s;
   stage een verdwenen `.vtt` mee. Nooit committen: lokale testconfiguraties
   en `corpus/demo/walkthrough/script/` met proefscripts.
 - Met het label `deploy:preview` op de PR haalt de preview de media uit de
