@@ -210,3 +210,14 @@ def test_returning_to_a_take_after_a_retake_restores_its_state_there():
     track = build_track([{"take": "a", "to": 10}, {"take": "b", "to": 5}, {"take": "a", "from": 20}], {}, {"a": 30, "b": 5})
     restores = [(a["t"], a["state"]) for a in remap_actions(track, events) if a["type"] == "restore"]
     assert restores == [(0, {"n": 0}), (10, {"n": 60}), (15, {"n": 7})]
+
+
+def test_returning_to_a_take_does_not_replay_what_came_before():
+    events = {
+        "a": [ev(0, "slide", index=0, state={}), ev(2, "click", target=[]), ev(10, "slide", index=6, state={}), ev(21, "click", target=[])],
+        "b": [ev(0, "slide", index=6, state={})],
+    }
+    track = build_track([{"take": "a", "to": 10}, {"take": "b", "to": 5}, {"take": "a", "from": 20}], {}, {"a": 30, "b": 5})
+    clicks = [a["t"] for a in remap_actions(track, events) if a["type"] == "click"]
+    # The click at 2 s once, in the first piece; the one at 21 s in the third.
+    assert clicks == [2, 16]

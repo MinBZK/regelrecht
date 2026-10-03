@@ -443,8 +443,15 @@ def remap_actions(track: Track, events_by_take: dict[str, list[dict]]) -> list[d
             if first is not None:
                 out.append({"t": round(p.out, 3), "type": "restore", "state": first.get("state"), "slideIndex": first.get("index", 0)})
         # This piece collects what happened after the piece before it in the
-        # same take (or from the take's start) up to its own end.
-        lower = track.pieces[i - 1].end if same_take_before else float("-inf")
+        # same take up to its own end; after a restore, from the restored
+        # slide on (what came before it is in the snapshot, and replaying it
+        # again would walk the demo through the whole take once more).
+        if same_take_before:
+            lower = track.pieces[i - 1].end
+        elif first is not None:
+            lower = first["t"] / 1000 - 1e-6
+        else:
+            lower = float("-inf")
         for e in events:
             if e.get("type") not in REPLAYED:
                 continue
