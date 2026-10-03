@@ -152,7 +152,7 @@ voice:
     Awb: A-W-B
 ```
 
-`elevenlabs` reads the API key from `ELEVENLABS_API_KEY` or from `.walkthrough/.env`, which is not in git. Generated lines are cached by a hash of their text and voice settings, so a rebuild only pays for lines that changed. Where a track contains generated speech, the player says so next to its controls ("De stem in de hoofdstukken is gegenereerd met AI"), as the AI Act asks of generated speech that can pass for a person. The webcam bubble shows only during the recorded parts at the start (`cam.until`).
+`elevenlabs` reads the API key from `ELEVENLABS_API_KEY` or from `.walkthrough/.env`, which is not in git. Generated lines are cached by a hash of their text and voice settings, so a rebuild only pays for lines that changed. Where a track contains generated speech, the player says so next to its controls ("De stem in de hoofdstukken is gegenereerd met AI"), as the AI Act asks of generated speech that can pass for a person. The webcam bubble shows only during the recorded parts at the start (`cam.until`). On a full slide (the opening, or an answer without a tab) the bubble is large next to the slide; once a slide opens the demo it shrinks to a corner of the rail.
 
 A track with generated chapters has no recording of the window, so a phone gets a message instead of the video, and `walkthrough export` skips it; an MP4 of such a track has to be recorded from the replay itself, which is not built yet.
 

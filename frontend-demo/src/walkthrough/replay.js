@@ -463,7 +463,11 @@ export async function seek(t, { play: playAfter = replay.playing } = {}) {
 }
 
 export async function play() {
-  if (!audio) return;
+  // Still loading: the start of the replay plays when it is ready.
+  if (!audio) {
+    if (replay.active) replay.playing = true;
+    return;
+  }
   // A seek in progress plays when it is done.
   if (seeking !== null) {
     replay.playing = true;
@@ -612,6 +616,7 @@ async function begin(data, context, { at, faqId }) {
   adoptLocale(SOURCE_LOCALE);
   await nextTick();
   replay.active = true;
+  const loading = seekToken;
   replay.faq = null;
   document.addEventListener('pointerdown', onViewerAct, true);
   document.addEventListener('keydown', onViewerAct, true);
@@ -624,8 +629,12 @@ async function begin(data, context, { at, faqId }) {
     fail();
     return;
   }
+  // A jump made while the track was loading (a chapter picked, the arrows)
+  // already put the demo where the viewer wants it.
+  if (seekToken !== loading) return;
   ctx.presentation.start(currentTrack().chapters[0].slideIndex, { keys: false });
-  await seek(faq ? 0 : at, { play: false });
+  // Play pressed while loading plays from here, rather than being undone.
+  await seek(faq ? 0 : at, { play: replay.playing });
 }
 
 export function stopReplay() {

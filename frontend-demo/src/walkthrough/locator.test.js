@@ -29,6 +29,17 @@ describe('locator', () => {
     expect(signature(a).href).toBe('/wetten/zorgtoeslagwet');
   });
 
+  it('leaves out an id a component makes up on every render', () => {
+    const input = document.createElement('input');
+    input.id = 'nldd-field-input-3ec46f7f-58fa-4d60-9122-9bcc611bab37';
+    input.setAttribute('aria-label', 'Standaardpremie 2025');
+    document.body.appendChild(input);
+    expect(signature(input).id).toBeUndefined();
+    // A take recorded with the old id still finds the field under its new one.
+    const recorded = [{ tag: 'input', id: 'nldd-field-input-00000000-1111-2222-3333-444444444444', '@aria-label': 'Standaardpremie 2025', nth: 0 }];
+    expect(resolve(recorded)).toBe(input);
+  });
+
   it('finds a button inside a shadow root again, through its host', () => {
     host('rr-test-bar', 'Wetten, 79');
     const { button } = host('rr-test-bar', 'Graaf');

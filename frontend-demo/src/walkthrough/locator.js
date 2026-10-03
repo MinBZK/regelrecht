@@ -41,6 +41,14 @@ const ACTIONABLE = [
 const PROPS = ['id', 'text', 'accessibleLabel', 'label', 'href', 'name', 'placeholder', 'value', 'icon', 'startIcon', 'type'];
 const ATTRS = ['aria-label', 'title', 'role', 'slot'];
 
+/**
+ * An id a component made up on render (`nldd-field-input-3ec46f7f-…`): it
+ * differs on every load, so it names nothing a replay can find again.
+ */
+export function generatedId(id) {
+  return /[0-9a-f]{8}-[0-9a-f]{4}-|\d{5,}/i.test(String(id ?? ''));
+}
+
 function scopeOf(el) {
   const root = el.getRootNode?.();
   return root && root !== el ? root : document;
@@ -86,6 +94,7 @@ export function signature(el) {
     // A field's value is what the user typed, not who the field is.
     if (p === 'value' && isFormField(el)) continue;
     const v = read(el, p);
+    if (p === 'id' && generatedId(v)) continue;
     if (v && v.length <= 200) sig[p] = v;
   }
   for (const a of ATTRS) {
@@ -109,6 +118,8 @@ function matches(el, sig) {
   if (el.tagName.toLowerCase() !== sig.tag) return false;
   for (const [k, v] of Object.entries(sig)) {
     if (k === 'tag' || k === '__masked') continue;
+    // Takes recorded before generated ids were left out still carry them.
+    if (k === 'id' && generatedId(v)) continue;
     const have = read(el, k);
     if ((sig.__masked && have != null ? MASK(have) : have) !== v) return false;
   }

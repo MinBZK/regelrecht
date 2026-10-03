@@ -18,11 +18,12 @@ const track = computed(() => currentTrack());
 const cue = computed(() => (replay.captionsOn ? cueAt(replay.cues, replay.now) : null));
 const full = computed(() => p.isFull.value);
 /**
- * An answer to a question with no demo in it (a full slide, the presenter on
- * camera): then the face is what there is to see, so the bubble is large,
- * next to the question, instead of a corner of the screen.
+ * A full slide with the presenter on camera (the opening, or an answer with
+ * no demo in it): then the face is what there is to see, so the bubble is
+ * large, next to the slide, instead of a corner of the screen. Once a slide
+ * opens the demo it shrinks back.
  */
-const face = computed(() => full.value && !!replay.faq && camVisible(track.value, replay.now));
+const face = computed(() => full.value && camVisible(track.value, replay.now));
 // The deck lives outside this component; a class on <html> lets its slide
 // make room for the face (presentation.css).
 watch(face, (on) => document.documentElement.classList.toggle('rr-face', on), { immediate: true });
