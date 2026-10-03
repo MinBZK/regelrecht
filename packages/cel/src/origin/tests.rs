@@ -72,8 +72,7 @@ fn check_with_state(
     c: &BTreeMap<String, Arc<Cell>>,
     s: &Arc<LawExecutionService>,
 ) -> Check {
-    let authority = crate::authority::own(&d, s);
-    let f = crate::action::prepare_for(&mut d, authority.as_deref(), s, &c["test_afnemer"]);
+    let f = crate::action::prepare_for(&mut d, s, &c["test_afnemer"]);
     assert!(f.is_empty(), "{f:?}");
     check(&d, &c["test_afnemer"], c, s)
 }
@@ -143,12 +142,11 @@ fn without_the_decision_source(d: &mut ProcessDefinition) {
 
 /// The decision of the consumer's process executes `regulation` with
 /// `outputs` instead.
-fn the_decision_executes(d: &mut ProcessDefinition, regulation: &str, outputs: &[&str]) {
+fn the_decision_executes(d: &mut ProcessDefinition, article: &str, outputs: &[&str]) {
     let a = &mut d.handling.as_mut().unwrap().actions[0];
-    a.regulation = regulation.to_string();
+    a.regulation = article.split('#').next().unwrap().to_string();
     a.outputs = outputs.iter().map(|o| o.to_string()).collect();
-    // The article follows from the first output again.
-    a.article.clear();
+    a.article = article.to_string();
 }
 
 /// With required: false and without a supplier the engine does not get the
@@ -437,7 +435,7 @@ fn the_payment_example_is_missing_a_supplier() {
         |d| {
             only_the_decision(d);
             without_the_decision_source(d);
-            the_decision_executes(d, "testregeling_betaling", &["nog_te_betalen"]);
+            the_decision_executes(d, "testregeling_betaling#1", &["nog_te_betalen"]);
         },
         &[PAYMENT],
     );
@@ -454,18 +452,29 @@ fn the_payment_example_is_missing_a_supplier() {
 /// only the first: the parameters of a second article too.
 #[test]
 fn every_output_of_the_decision_counts() {
-    let with = |outputs: &'static [&'static str]| {
+    let with = |article: &'static str, outputs: &'static [&'static str]| {
         move |d: &mut ProcessDefinition| {
             only_the_decision(d);
             without_the_decision_source(d);
-            the_decision_executes(d, "testregeling_betaling", outputs);
+            the_decision_executes(d, article, outputs);
         }
     };
     // Only the second article: nothing to supply.
-    let c = consumer(same, with(&["vermeldt_dag"]), &[PAYMENT]);
+    let c = consumer(
+        same,
+        with("testregeling_betaling#2", &["vermeldt_dag"]),
+        &[PAYMENT],
+    );
     assert!(c.errors.is_empty(), "{:?}", c.errors);
     // The article without parameters first: the second still counts.
-    let c = consumer(same, with(&["vermeldt_dag", "nog_te_betalen"]), &[PAYMENT]);
+    let c = consumer(
+        same,
+        with(
+            "testregeling_betaling#2",
+            &["vermeldt_dag", "nog_te_betalen"],
+        ),
+        &[PAYMENT],
+    );
     assert_eq!(c.errors.len(), 2, "{:?}", c.errors);
     assert!(
         c.errors[0].contains("'vastgesteld_bedrag'"),
@@ -765,8 +774,7 @@ fn prepared_with_besluit(
     );
     let c = cells(&s);
     let mut d = process("test_afnemer", adjust);
-    let authority = crate::authority::own(&d, &s);
-    let errors = crate::action::prepare_for(&mut d, authority.as_deref(), &s, &c["test_afnemer"]);
+    let errors = crate::action::prepare_for(&mut d, &s, &c["test_afnemer"]);
     (d, errors)
 }
 
@@ -789,30 +797,9 @@ fn prepare_for_fills_in_the_decision_parameter_from_the_law() {
     let s = service(same, &[]);
     let c = cells(&s);
     let mut d = process("test_afnemer", keep);
-    let authority = crate::authority::own(&d, &s);
-    let errors = crate::action::prepare_for(&mut d, authority.as_deref(), &s, &c["test_afnemer"]);
+    let errors = crate::action::prepare_for(&mut d, &s, &c["test_afnemer"]);
     assert!(errors.is_empty(), "{errors:?}");
     assert_eq!(decision_parameter(&d, "besluit_genomen"), None);
-}
-
-#[test]
-fn a_configured_decision_parameter_that_contradicts_the_law_is_an_error() {
-    let (_, errors) = prepared_with_besluit(same, |d| {
-        d.handling
-            .as_mut()
-            .unwrap()
-            .actions
-            .iter_mut()
-            .find(|a| a.name == "besluit_genomen")
-            .unwrap()
-            .decision_parameter = Some("jaar".into());
-    });
-    assert!(
-        errors.iter().any(|e| e.contains("action 'besluit_genomen'")
-            && e.contains("'jaar'")
-            && e.contains("'bekendgemaakt'")),
-        "{errors:?}"
-    );
 }
 
 #[test]

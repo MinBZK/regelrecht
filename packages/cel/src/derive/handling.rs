@@ -548,9 +548,8 @@ mod tests {
                 .iter()
                 .map(|h| h.article.clone())
                 .collect();
-            let authority = crate::authority::own(&d, &service);
             let cell = cells[&d.id].clone();
-            let errors = crate::action::prepare_for(&mut d, authority.as_deref(), &service, &cell);
+            let errors = crate::action::prepare_for(&mut d, &service, &cell);
             assert!(errors.is_empty(), "{}: {errors:?}", d.id);
             let actions = &d.handling.as_ref().unwrap().actions;
             let after: Vec<String> = actions.iter().map(|h| h.article.clone()).collect();

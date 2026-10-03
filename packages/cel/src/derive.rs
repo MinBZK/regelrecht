@@ -11,7 +11,7 @@ use regelrecht_engine::LawExecutionService;
 
 use crate::cell::Cell;
 use crate::channel::{ChannelDefinition, RoleDefinition};
-use crate::config::{Assessment, FormReference, OnBehalfOf, Portal, ProcessDefinition};
+use crate::config::{Assessment, FormReference, Portal, ProcessDefinition};
 use crate::deployment::{ChannelDeployment, Deployment};
 use crate::policy::{ActorPolicy, DeclaredChannel};
 use crate::stream::{Event, Stream};
@@ -376,9 +376,7 @@ fn process(
     let definition = ProcessDefinition {
         id: id.clone(),
         actor: portal.stream.recording_actor.clone(),
-        on_behalf_of: Some(OnBehalfOf::Authority {
-            authority: p.authority.clone(),
-        }),
+        on_behalf_of: p.authority.clone(),
         mandates: p.mandates.clone(),
         channels,
         roles,
@@ -533,10 +531,7 @@ pub(crate) mod tests {
     /// authority, mandates, channels, roles, portal, offer, form and actions
     /// (in their order). The synthesis, its rows and the examples are not in
     /// it: the derivation takes those from the deployment as they are.
-    pub(crate) fn summary(
-        d: &ProcessDefinition,
-        service: &LawExecutionService,
-    ) -> serde_json::Value {
+    pub(crate) fn summary(d: &ProcessDefinition) -> serde_json::Value {
         use serde_json::json;
         let channels: serde_json::Map<String, serde_json::Value> = d
             .channels
@@ -612,7 +607,7 @@ pub(crate) mod tests {
         json!({
             "id": d.id,
             "actor": d.actor,
-            "authority": crate::authority::own(d, service),
+            "authority": d.on_behalf_of,
             "declared_by": d.declared_by,
             "mandates": d.mandates,
             "channels": channels,
@@ -636,7 +631,7 @@ pub(crate) mod tests {
             let file = fixtures().join("derived").join(format!("{}.json", d.id));
             let expected: serde_json::Value =
                 serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
-            assert_eq!(summary(d, &service), expected, "{}", file.display());
+            assert_eq!(summary(d), expected, "{}", file.display());
             // The synthesis and its rows per action come from the deployment
             // as they are, the rows under the name of their action.
             let s = deployment.synthesis.get(&d.id);
@@ -684,10 +679,7 @@ pub(crate) mod tests {
             Some("testbeleid_toeslag#4 lid 1")
         );
         let a = derived("test_afnemer");
-        assert!(matches!(
-            &a.on_behalf_of,
-            Some(crate::config::OnBehalfOf::Authority { authority }) if authority == "Test afnemer"
-        ));
+        assert_eq!(a.on_behalf_of, "Test afnemer");
     }
 
     #[test]

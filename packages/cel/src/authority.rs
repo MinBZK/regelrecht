@@ -13,8 +13,8 @@
 //! What connects the actor to the authority is the policy (RFC-047): the
 //! process acts on behalf of the competent authority of the implementing
 //! policy that declares its channels (`on_behalf_of`), by the name a
-//! regulation gives in `competent_authority`, or a regulation whose
-//! competent authority it is. The runtime compares names literally; there is
+//! regulation gives in `competent_authority`. The runtime compares names
+//! literally; there is
 //! no normalization that reads an id as a name. If the process also acts for
 //! another authority, `mandates` in that policy names that authority with a
 //! legal basis (Awb 10:1). Without a mandate
@@ -25,7 +25,7 @@ use std::collections::BTreeSet;
 use regelrecht_engine::{ArticleBasedLaw, LawExecutionService};
 use serde_json::Value;
 
-use crate::config::{Mandate, OnBehalfOf, ProcessDefinition};
+use crate::config::{Mandate, ProcessDefinition};
 use crate::regulations;
 
 /// A name of an authority from `competent_authority`: a text, or an
@@ -99,51 +99,14 @@ pub fn authorities_of_regulation(
     out
 }
 
-/// The beschikkingen for which `authority` is competent, as (regulation, article):
-/// every article that produces a `BESCHIKKING` and whose competent authority
-/// (of the article, otherwise of the regulation) is `authority`. That way a process finds
-/// its decision in the law, without the configuration designating it.
-pub fn decision_orders_of(service: &LawExecutionService, authority: &str) -> Vec<(String, String)> {
-    let mut out = Vec::new();
-    for id in service.list_laws() {
-        let Some(law) = service.resolver().get_law(id) else {
-            continue;
-        };
-        for a in &law.articles {
-            let decision_order = a
-                .get_execution_spec()
-                .and_then(|e| e.produces.as_ref())
-                .and_then(|p| p.legal_character.as_deref())
-                == Some("BESCHIKKING");
-            if decision_order && authority_of(service, id, &a.number).as_deref() == Some(authority)
-            {
-                out.push((id.to_string(), a.number.clone()));
-            }
-        }
-    }
-    out.sort();
-    out.dedup();
-    out
-}
-
-/// The authority the process acts for, from `on_behalf_of`, without checking:
-/// `None` if the process names none or the regulation has none.
-pub fn own(d: &ProcessDefinition, service: &LawExecutionService) -> Option<String> {
-    match d.on_behalf_of.as_ref()? {
-        OnBehalfOf::Authority { authority } => Some(authority.clone()),
-        OnBehalfOf::Regulation { regulation } => authority_of_regulation(service, regulation),
-    }
-}
-
 /// The authority the process acts for, from `on_behalf_of`, checked against
-/// the law; and the check on the mandates. A name must be an authority that
-/// a loaded regulation names; a regulation must be loaded and name an
-/// authority. A mandate names such an authority, not the own authority, and a
-/// legal basis that points to a loaded article.
+/// the law; and the check on the mandates. The name must be an authority
+/// that a loaded regulation names. A mandate names such an authority, not
+/// the own authority, and a legal basis that points to a loaded article.
 pub fn loose_at(
     d: &ProcessDefinition,
     service: &LawExecutionService,
-) -> Result<Option<String>, Vec<String>> {
+) -> Result<String, Vec<String>> {
     let known = authorities(service);
     let unknown = |g: &str| {
         format!(
@@ -156,38 +119,15 @@ pub fn loose_at(
         )
     };
     let mut errors = Vec::new();
-    let own = match &d.on_behalf_of {
-        None => None,
-        Some(OnBehalfOf::Authority { authority }) => {
-            if !known.contains(authority) {
-                errors.push(format!("on_behalf_of: {}", unknown(authority)));
-            }
-            Some(authority.clone())
-        }
-        Some(OnBehalfOf::Regulation { regulation }) => match service.resolver().get_law(regulation)
-        {
-            None => {
-                errors.push(format!(
-                    "on_behalf_of: regulation '{regulation}' is not loaded"
-                ));
-                None
-            }
-            Some(_) => match authority_of_regulation(service, regulation) {
-                Some(g) => Some(g),
-                None => {
-                    errors.push(format!(
-                        "on_behalf_of: regulation '{regulation}' names no competent authority (competent_authority)"
-                    ));
-                    None
-                }
-            },
-        },
-    };
+    let own = &d.on_behalf_of;
+    if !known.contains(own) {
+        errors.push(format!("on_behalf_of: {}", unknown(own)));
+    }
     for m in &d.mandates {
         if !known.contains(&m.authority) {
             errors.push(format!("mandate: {}", unknown(&m.authority)));
         }
-        if own.as_deref() == Some(m.authority.as_str()) {
+        if own == &m.authority {
             errors.push(format!(
                 "mandate: '{}' is the authority the process itself acts for (on_behalf_of)",
                 m.authority
@@ -197,13 +137,8 @@ pub fn loose_at(
             errors.push(format!("mandate of '{}': {f}", m.authority));
         }
     }
-    if d.handling.is_some() && d.on_behalf_of.is_none() {
-        errors.push(
-            "handling without on_behalf_of: name the competent authority the process decides for (on_behalf_of: {authority: <name>} or {regulation: <$id>})".into(),
-        );
-    }
     if errors.is_empty() {
-        Ok(own)
+        Ok(own.clone())
     } else {
         Err(errors)
     }
@@ -220,24 +155,19 @@ pub enum Competence<'a> {
 /// Check the authority of the law against the own authority and the mandates. Another
 /// authority without a mandate is a refusal, with the reason.
 pub fn assessment<'a>(
-    own: Option<&str>,
+    own: &str,
     mandates: &'a [Mandate],
     law: &str,
 ) -> Result<Competence<'a>, String> {
-    if own == Some(law) {
+    if own == law {
         return Ok(Competence::Own);
     }
     if let Some(m) = mandates.iter().find(|m| m.authority == law) {
         return Ok(Competence::Mandate(m));
     }
-    Err(match own {
-        Some(e) => format!(
-            "the law designates '{law}' as competent authority, and the process acts on behalf of '{e}' without a mandate from '{law}'"
-        ),
-        None => format!(
-            "the law designates '{law}' as competent authority, and the process does not name on behalf of whom it acts"
-        ),
-    })
+    Err(format!(
+        "the law designates '{law}' as competent authority, and the process acts on behalf of '{own}' without a mandate from '{law}'"
+    ))
 }
 
 #[cfg(test)]
@@ -289,11 +219,11 @@ articles:
         s
     }
 
-    fn process(on_behalf_of: Option<OnBehalfOf>, mandates: &[(&str, &str)]) -> ProcessDefinition {
+    fn process(on_behalf_of: &str, mandates: &[(&str, &str)]) -> ProcessDefinition {
         ProcessDefinition {
             id: "p".into(),
             actor: "de_instantie".into(),
-            on_behalf_of,
+            on_behalf_of: on_behalf_of.into(),
             mandates: mandates
                 .iter()
                 .map(|(authority, legal_basis)| Mandate {
@@ -305,64 +235,32 @@ articles:
         }
     }
 
-    fn authority(name: &str) -> Option<OnBehalfOf> {
-        Some(OnBehalfOf::Authority {
-            authority: name.into(),
-        })
-    }
-
-    fn regulation(name: &str) -> Option<OnBehalfOf> {
-        Some(OnBehalfOf::Regulation {
-            regulation: name.into(),
-        })
-    }
-
     #[test]
-    fn the_beschikking_of_the_competent_authority_is_found() {
+    fn on_behalf_of_a_known_authority() {
         let s = service();
-        assert_eq!(
-            decision_orders_of(&s, "De Instantie van Voorbeeld"),
-            vec![("testregeling_bevoegd".to_string(), "2".to_string())]
-        );
+        let d = process("De Raad van Voorbeeld", &[]);
+        assert_eq!(loose_at(&d, &s).unwrap(), "De Raad van Voorbeeld");
+        let d = process("De Instantie van Voorbeeld", &[]);
+        assert_eq!(loose_at(&d, &s).unwrap(), "De Instantie van Voorbeeld");
         // Literally: an id is not a name.
-        assert!(decision_orders_of(&s, "de_instantie_van_voorbeeld").is_empty());
-        assert!(decision_orders_of(&s, "Een ander orgaan").is_empty());
-    }
-
-    #[test]
-    fn on_behalf_of_an_authority_or_a_regulation() {
-        let s = service();
-        let d = process(authority("De Raad van Voorbeeld"), &[]);
-        assert_eq!(
-            loose_at(&d, &s).unwrap().as_deref(),
-            Some("De Raad van Voorbeeld")
-        );
-        let d = process(regulation("testregeling_bevoegd"), &[]);
-        assert_eq!(
-            loose_at(&d, &s).unwrap().as_deref(),
-            Some("De Instantie van Voorbeeld")
-        );
-        let d = process(authority("de_instantie_van_voorbeeld"), &[]);
+        let d = process("de_instantie_van_voorbeeld", &[]);
         let f = loose_at(&d, &s).unwrap_err();
         assert!(
             f[0].contains("no loaded regulation names 'de_instantie_van_voorbeeld'"),
             "{f:?}"
         );
-        let d = process(regulation("bestaat_niet"), &[]);
-        assert!(loose_at(&d, &s).unwrap_err()[0].contains("not loaded"));
-        assert_eq!(loose_at(&process(None, &[]), &s).unwrap(), None);
     }
 
     #[test]
     fn a_mandate_names_a_known_authority_and_a_legal_basis() {
         let s = service();
         let ok = process(
-            regulation("testregeling_bevoegd"),
+            "De Instantie van Voorbeeld",
             &[("De Raad van Voorbeeld", "testregeling_bevoegd#4")],
         );
         assert!(loose_at(&ok, &s).is_ok());
         let error = process(
-            regulation("testregeling_bevoegd"),
+            "De Instantie van Voorbeeld",
             &[
                 ("De Instantie van Voorbeeld", "testregeling_bevoegd#9"),
                 ("Niemand", "testregeling_bevoegd#4"),
@@ -381,7 +279,7 @@ articles:
             authority: "De Raad van Voorbeeld".into(),
             legal_basis: "testregeling_bevoegd#4".into(),
         }];
-        let own = Some("De Instantie van Voorbeeld");
+        let own = "De Instantie van Voorbeeld";
         assert_eq!(
             assessment(own, &m, "De Instantie van Voorbeeld"),
             Ok(Competence::Own)
@@ -394,8 +292,5 @@ articles:
             .unwrap_err()
             .contains("without a mandate from 'Een ander'"));
         assert!(assessment(own, &[], "De Raad van Voorbeeld").is_err());
-        assert!(assessment(None, &m, "Een ander")
-            .unwrap_err()
-            .contains("does not name on behalf of whom"));
     }
 }

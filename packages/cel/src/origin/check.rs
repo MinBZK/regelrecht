@@ -57,8 +57,7 @@ pub fn check(
     service: &LawExecutionService,
 ) -> Check {
     let mut c = Check::default();
-    let authority = authority::own(d, service);
-    let overwrites = match overwrites(service, authority.as_deref()) {
+    let overwrites = match overwrites(service, Some(d.on_behalf_of.as_str())) {
         Ok(o) => o,
         Err(f) => {
             c.errors.extend(f);

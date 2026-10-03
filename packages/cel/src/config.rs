@@ -190,10 +190,10 @@ pub struct ProcessDefinition {
     /// a stream with this `recording_actor`, and the decision is the
     /// decision order ("beschikking") this actor is competent for.
     pub actor: String,
-    /// On behalf of which competent authority the process acts (see
-    /// [`crate::authority`]). Needed for a decision; without it no
-    /// implementing policy counts as the actor's.
-    pub on_behalf_of: Option<OnBehalfOf>,
+    /// The competent authority the process acts for: the
+    /// `competent_authority` of the policy that declares its channels (see
+    /// [`crate::authority`]).
+    pub on_behalf_of: String,
     /// Authorities for which the process acts under mandate (Awb 10:1), each
     /// with a legal basis.
     pub mandates: Vec<Mandate>,
@@ -226,15 +226,6 @@ pub struct ExamplesDefinition {
     /// A form per action: `{form: {...}}`.
     #[serde(default)]
     pub actions: BTreeMap<String, String>,
-}
-
-/// On behalf of which competent authority the process acts: a name as a
-/// regulation gives it in `competent_authority`, or a regulation whose
-/// competent authority it is.
-#[derive(Debug, Clone)]
-pub enum OnBehalfOf {
-    Authority { authority: String },
-    Regulation { regulation: String },
 }
 
 /// A mandate (Awb 10:1): the process also acts on behalf of this authority,
@@ -296,13 +287,9 @@ pub struct ActionDefinition {
     /// the action acts on (note on source and gram id): this is how the
     /// process calls its own policy that reads per decision, such as the
     /// payment administration. The law says which parameter it is (origin
-    /// role `BESLUIT`, RFC-047) and `prepare_for` fills it in from there; a
-    /// value set beforehand that contradicts the law is an error.
+    /// role `BESLUIT`, RFC-047) and `prepare_for` fills it in from there.
     pub decision_parameter: Option<String>,
-    /// The regulation of the article. When it is empty, the runtime fills
-    /// it at load time with the regulation of the decision order for which
-    /// the process's authority (`on_behalf_of`) is competent (see
-    /// [`crate::authority::decision_orders_of`]).
+    /// The regulation of the article, set by the derivation (RFC-047).
     pub regulation: String,
     /// Outputs of an article. For a follow-up, the outputs of the hooks
     /// of that stage are added at load time.

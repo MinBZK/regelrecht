@@ -286,15 +286,13 @@ pub fn not_yet(
     out
 }
 
-/// Prepare the actions of a process, at load time: the regulation (the
-/// beschikking of the authority the process acts for, `on_behalf_of`, if the
-/// action names none), the article,
-/// the stage, the kind, the hooks of a follow-up, the assessments and what has not
-/// happened yet for a decision. The form follows later, from the origin
+/// Prepare the actions of a process, at load time: from the article the
+/// derivation set (RFC-047), the stage, the kind, the hooks of a follow-up,
+/// the parameter that gets the decision id, the assessments and what has
+/// not happened yet for a decision. The form follows later, from the origin
 /// check (see [`set_form`]).
 pub fn prepare_for(
     d: &mut ProcessDefinition,
-    authority: Option<&str>,
     service: &LawExecutionService,
     cell: &Cell,
 ) -> Vec<String> {
@@ -322,76 +320,17 @@ pub fn prepare_for(
         };
         h.stage = event.stage.clone();
         h.decision_role = event.decision;
-        // The regulation: named, or the beschikking for which the authority of the
-        // process is competent.
-        let mut decision_order = None;
-        if h.regulation.is_empty() {
-            // Without an authority the check on `on_behalf_of` already reports it.
-            let Some(actor) = authority else {
-                continue;
-            };
-            let candidates = authority::decision_orders_of(service, actor);
-            match candidates.as_slice() {
-                [(r, a)] => {
-                    h.regulation = r.clone();
-                    decision_order = Some(format!("{r}#{a}"));
-                }
-                [] => {
-                    errors.push(format!(
-                        "{who}: no regulation names '{actor}' as competent authority for a BESCHIKKING; name the regulation in the action"
-                    ));
-                    continue;
-                }
-                more => {
-                    let list: Vec<String> = more.iter().map(|(r, a)| format!("{r}#{a}")).collect();
-                    errors.push(format!(
-                        "{who}: '{actor}' is competent for more than one beschikking ({}); choose one with regulation",
-                        list.join(", ")
-                    ));
-                    continue;
-                }
-            }
-        }
-        // The article: set by a process from policy (RFC-047), otherwise
-        // that of the first output, or the beschikking.
-        let article = if !h.article.is_empty() {
-            Some(h.article.clone())
-        } else {
-            match h.outputs.first() {
-                Some(u) => article_with(service, &h.regulation, u),
-                None => decision_order.clone(),
-            }
-        };
-        let Some(article) = article else {
-            errors.push(match h.outputs.first() {
-                Some(u) => format!("{who}: regulation '{}' has no output '{u}'", h.regulation),
-                None => format!("{who}: name an output of regulation '{}'", h.regulation),
-            });
+        // The article and its regulation come from the derivation, which
+        // always sets them (see [`crate::derive`]).
+        if h.article.is_empty() {
+            errors.push(format!("{who}: no article"));
             continue;
-        };
-        if let Some(b) = &decision_order {
-            if b != &article {
-                errors.push(format!(
-                    "{who}: output '{}' does not come from {b}, the beschikking for which '{}' is competent",
-                    h.outputs[0],
-                    authority.unwrap_or_default()
-                ));
-            }
         }
-        h.article = article;
         // The parameter that gets the decision id follows from the law
-        // (origin role BESLUIT, RFC-047); a configuration that names another
-        // one contradicts the law.
+        // (origin role BESLUIT, RFC-047).
         match decision_parameter_of(service, &h.article) {
             Err(e) => errors.push(format!("{who}: {e}")),
-            Ok(Some(by_law)) => match &h.decision_parameter {
-                Some(configured) if configured != &by_law => errors.push(format!(
-                    "{who}: decision_parameter '{configured}' contradicts {}, whose parameter with origin role BESLUIT is '{by_law}'",
-                    h.article
-                )),
-                _ => h.decision_parameter = Some(by_law),
-            },
-            Ok(None) => {}
+            Ok(found) => h.decision_parameter = found,
         }
         h.assessments = assessments(service, &h.article, event)
             .into_iter()

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.3.0/cell.json",
   "title": "Cell definition (cell.yaml) v0.3.0",
-  "description": "A cell is a directory of configuration; cell.yaml says who the cell is, which streams it records, which lexostatuses it offers, and which grams an empty chronicle starts with (initial_state). A cell records, stores and reduces; who acts is defined in a process (process.json). Paths are relative to the directory of cell.yaml.",
+  "description": "A cell is a directory of configuration; cell.yaml says who the cell is, which streams it records, which lexostatuses it offers, and which grams an empty chronicle starts with (initial_state). A cell records, stores and reduces; who acts follows from the actor's policy and the deployment (RFC-047). Paths are relative to the directory of cell.yaml.",
   "type": "object",
   "required": [
     "id",

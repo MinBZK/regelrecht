@@ -72,7 +72,7 @@ pub async fn take(
         .event(&h.record.stream, &h.record.event)
         .ok_or_else(|| Refusal::Cell(format!("action '{}': no record event", h.name)))?;
 
-    let own = process.authority.as_deref();
+    let own = process.authority.as_str();
     let mut authority = None;
     let (mut on_behalf_of, mut mandate) = (None, None);
     if !matches!(h.kind, ActionKind::Fact) {
@@ -96,7 +96,7 @@ pub async fn take(
                     "regulation '{}' names no competent authority for {}; recorded without competent_authority",
                     h.regulation, h.article
                 ));
-                on_behalf_of = own.map(str::to_string);
+                on_behalf_of = Some(own.to_string());
             }
         }
     }

@@ -47,9 +47,9 @@ pub struct Process {
     pub warnings: Vec<String>,
     /// The window the portal lets the user choose, if the offer asks for one.
     pub window: Option<Window>,
-    /// The competent authority the process acts for, from `on_behalf_of` (see
-    /// [`crate::authority`]).
-    pub authority: Option<String>,
+    /// The competent authority the process acts for, from `on_behalf_of`,
+    /// checked against the law (see [`crate::authority`]).
+    pub authority: String,
 }
 
 /// The window of the offer: the parameter with origin BELANGHEBBENDE and
@@ -95,8 +95,7 @@ impl Process {
         errors.extend(actor_records(&definition, &cell));
         let authority = authority::loose_at(&definition, &service)
             .map_err(|f| errors.extend(f))
-            .ok()
-            .flatten();
+            .unwrap_or_default();
         let portal_event = definition
             .portal
             .as_ref()
@@ -123,12 +122,7 @@ impl Process {
                 ));
             }
         }
-        errors.extend(crate::action::prepare_for(
-            &mut definition,
-            authority.as_deref(),
-            &service,
-            &cell,
-        ));
+        errors.extend(crate::action::prepare_for(&mut definition, &service, &cell));
         let form = match definition.portal.as_ref().and_then(|p| p.form.as_ref()) {
             Some(f) => form::load(&map.join(&f.path), &f.screen)
                 .map_err(|e| errors.push(e))
