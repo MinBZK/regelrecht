@@ -1,0 +1,997 @@
+WEBVTT
+
+1
+00:00:02.998 --> 00:00:05.313
+RegelRecht, van wet naar digitale werking.
+
+2
+00:00:07.791 --> 00:00:12.355
+De huidige situatie waar wij
+vanuit gaan, die ziet er zo uit.
+
+3
+00:00:12.355 --> 00:00:17.159
+Iedere organisatie, uitvoeringsorganisatie,
+heeft een eigen interpretatie van wet en
+
+4
+00:00:17.159 --> 00:00:19.821
+regelgeving.
+
+5
+00:00:19.821 --> 00:00:24.064
+En veel van die interpretatie
+landt uiteindelijk in software.
+
+6
+00:00:24.064 --> 00:00:28.928
+En dit gebeurt al jaren, decennia.
+
+7
+00:00:28.928 --> 00:00:34.633
+Dus wat er ontstaan is, is een kluwen
+aan software waar wet en regelgeving
+
+8
+00:00:34.633 --> 00:00:36.574
+ingeland is.
+
+9
+00:00:36.574 --> 00:00:40.239
+Wetswijziging naar wetswijziging,
+wetsvoorstel naar wetsvoorstel.
+
+10
+00:00:40.239 --> 00:00:45.705
+En het resultaat is software die een
+relatie heeft met wet- en regelgeving.
+
+11
+00:00:45.705 --> 00:00:47.607
+Maar die relatie is niet zo
+
+12
+00:00:47.607 --> 00:00:49.269
+duidelijk meer.
+
+13
+00:00:49.269 --> 00:00:51.467
+Het is onoverzichtelijk.
+
+14
+00:00:51.467 --> 00:00:54.230
+Hoe software zich verhaalt
+tot wet- en regelgeving.
+
+15
+00:00:54.230 --> 00:00:57.154
+En die software wordt
+hierdoor onvoorspelbaar.
+
+16
+00:00:57.154 --> 00:01:03.021
+Niet alleen maar voor burgers en ondernemers
+die te maken hebben met het resultaat
+
+17
+00:01:03.021 --> 00:01:04.563
+van die software.
+
+18
+00:01:04.563 --> 00:01:08.808
+Maar ook voor ambtenaren die
+moeten werken met die software.
+
+19
+00:01:08.808 --> 00:01:09.649
+En zelfs voor...
+
+20
+00:01:11.084 --> 00:01:15.368
+Software engineers of
+IT'ers die software bouwen.
+
+21
+00:01:15.368 --> 00:01:18.171
+En het wordt zelfs onbeheersbaar.
+
+22
+00:01:18.171 --> 00:01:23.056
+Er zijn best veel voorbeelden van systemen
+die we niet meer aan durven te raken.
+
+23
+00:01:23.056 --> 00:01:26.533
+Omdat we niet goed
+begrijpen hoe ze werken.
+
+24
+00:01:27.726 --> 00:01:31.173
+RegelRecht, wat we hier
+gaan zien, deze demo...
+
+25
+00:01:31.173 --> 00:01:34.336
+Het gaat uit van deze gedachte
+dat we beginnen met de wet
+
+26
+00:01:36.097 --> 00:01:39.960
+en regelgeving, dat we die machine-uitvoerbaar
+maken en belangrijk dat we die
+
+27
+00:01:39.960 --> 00:01:42.882
+openbaar publiceren.
+
+28
+00:01:42.882 --> 00:01:46.745
+Wat volgt is een demo van RegelRecht
+of wat we RegelRecht noemen.
+
+29
+00:01:46.745 --> 00:01:50.368
+Het idee is dat dit een compleet
+verhaal is, maar niet een eindproduct.
+
+30
+00:01:50.368 --> 00:01:51.829
+Dus je ziet werkende software.
+
+31
+00:01:52.744 --> 00:01:54.585
+Je kan zelfs spelen met deze software.
+
+32
+00:01:54.585 --> 00:01:58.227
+Je kan er zelf doorheen klikken,
+interactie mee hebben, dingen
+
+33
+00:01:58.227 --> 00:02:00.829
+wijzigen.
+
+34
+00:02:00.829 --> 00:02:03.310
+Dus het is werkende software, maar
+het is niet bedoeld als eindproduct.
+
+35
+00:02:03.310 --> 00:02:06.472
+Niet als iets om in productie te zetten.
+
+36
+00:02:06.472 --> 00:02:08.874
+Dat zijn we nu aan het maken.
+
+37
+00:02:08.874 --> 00:02:12.296
+En we doen dit vanuit een beleidsdirectie.
+
+38
+00:02:12.296 --> 00:02:16.478
+Maar dat ziet er misschien iets anders uit
+dan je gewend bent van beleidsdirecties.
+
+39
+00:02:16.478 --> 00:02:18.660
+We maken namelijk dus software.
+
+40
+00:02:18.660 --> 00:02:21.711
+We maken beleid door te
+doen, door software te maken.
+
+41
+00:02:21.711 --> 00:02:27.415
+Ik ben Anne Schuth, ik ben staff engineer
+bij RegelRecht en ik leid jullie door deze
+
+42
+00:02:27.415 --> 00:02:28.176
+demo heen.
+
+43
+00:02:28.176 --> 00:02:29.497
+En we beginnen deze demo helemaal aan
+
+44
+00:02:29.497 --> 00:02:32.699
+de achterkant, namelijk hier.
+
+45
+00:02:32.699 --> 00:02:36.702
+Bij wat wij noemen een machine-uitvoerbare
+wet en in dit geval de wet op de
+
+46
+00:02:36.702 --> 00:02:38.003
+zorgtoeslag.
+
+47
+00:02:38.003 --> 00:02:40.164
+Dat zien we hier.
+
+48
+00:02:40.164 --> 00:02:45.408
+Niet de hele wet, maar stukjes uit die
+wet, namelijk artikel 2 en artikel 4.
+
+49
+00:02:45.408 --> 00:02:46.909
+En artikel 2 kan ik dan openklappen.
+
+50
+00:02:48.062 --> 00:02:52.283
+En dan zien we de tekst van het artikel.
+
+51
+00:02:52.283 --> 00:02:54.563
+Daar begint het mee.
+
+52
+00:02:54.563 --> 00:02:59.804
+Maar we zien ook, en die tekst is langer
+overigens, we zien ook een veld, dat noemen
+
+53
+00:02:59.804 --> 00:03:01.044
+we machine readable.
+
+54
+00:03:01.044 --> 00:03:05.165
+En een van de dingen daarin is dat we
+een parameter zien, namelijk het BSN.
+
+55
+00:03:05.165 --> 00:03:09.846
+Dit stuk van de wet werkt op personen
+die we identificeren met BSN's.
+
+56
+00:03:09.846 --> 00:03:12.146
+En dat noemen we een parameter.
+
+57
+00:03:12.146 --> 00:03:13.966
+En dan zien we actions.
+
+58
+00:03:13.966 --> 00:03:17.564
+En een van de eerste actions is of
+iemand voldoet aan de voorwaarden.
+
+59
+00:03:17.564 --> 00:03:22.335
+En niemand voldoet aan de voorwaarden als
+de leeftijd, de geboortedatum, groter of
+
+60
+00:03:22.335 --> 00:03:25.503
+gelijk is aan de minimumleeftijd.
+
+61
+00:03:28.138 --> 00:03:30.160
+En verder zien we
+
+62
+00:03:31.441 --> 00:03:33.863
+dat iemand verzekerd moet zijn.
+
+63
+00:03:33.863 --> 00:03:36.966
+En dan zien we hieronder de
+hoogte van de zorgtoeslag.
+
+64
+00:03:36.966 --> 00:03:39.748
+En dat is een hele lange berekening, daar
+hoeven we niet in detail op in te gaan.
+
+65
+00:03:39.748 --> 00:03:43.731
+Maar bijvoorbeeld hieronder zien we
+Operation Add, het optellen van inkomen met
+
+66
+00:03:43.731 --> 00:03:45.092
+partnerinkomen.
+
+67
+00:03:45.092 --> 00:03:49.356
+Om dat te vergelijken met de drempel
+inkomen voor als je een toeslagpartner hebt.
+
+68
+00:03:49.356 --> 00:03:54.998
+En dit is een berekening die je
+terug ziet als je de wet leest.
+
+69
+00:03:54.998 --> 00:03:58.700
+Het is best wel een mechanische wet
+en deze berekening kan je daarin
+
+70
+00:03:58.700 --> 00:04:01.541
+herkennen.
+
+71
+00:04:01.541 --> 00:04:05.883
+Een van de dingen waar ik nu overheen
+scrolde was iets wat we input noemen.
+
+72
+00:04:05.883 --> 00:04:06.963
+En die staat hier.
+
+73
+00:04:06.963 --> 00:04:10.425
+En dan zien we inputs, verzekerden.
+
+74
+00:04:11.706 --> 00:04:13.466
+Uit de zorgverzekeringswet, de ZVW.
+
+75
+00:04:15.447 --> 00:04:18.950
+In de zorgtoeslagwet staat namelijk
+verzekerde zoals bedoeld in de
+
+76
+00:04:18.950 --> 00:04:20.752
+zorgverzekeringswet.
+
+77
+00:04:20.752 --> 00:04:23.634
+En dat is dus een verwijzing naar een
+andere wet en daar kunnen we dan ook heen
+
+78
+00:04:23.634 --> 00:04:23.974
+gaan.
+
+79
+00:04:23.974 --> 00:04:26.977
+Dan zien we hier wat het betekent
+om een verzekerde te zijn.
+
+80
+00:04:26.977 --> 00:04:29.919
+Namelijk iemand heeft een verzekering
+of een verdragsverzekering.
+
+81
+00:04:29.919 --> 00:04:33.502
+Dat is een verzekering in een land
+waar we een verdrag mee hebben.
+
+82
+00:04:33.502 --> 00:04:34.983
+En iemand moet niet gedetineerd zijn.
+
+83
+00:04:34.983 --> 00:04:37.565
+En dat gedetineerd zijn...
+
+84
+00:04:37.565 --> 00:04:39.166
+Is weer een verwijzing
+naar een andere wet.
+
+85
+00:04:39.166 --> 00:04:41.147
+Namelijk naar de
+penitentiaire beginselenwet.
+
+86
+00:04:41.147 --> 00:04:42.427
+En daar kunnen we dan ook op klikken.
+
+87
+00:04:42.427 --> 00:04:44.909
+En dan zien we wat het betekent
+om gedetineerd te zijn.
+
+88
+00:04:44.909 --> 00:04:48.370
+Namelijk iemand zit in een
+penitentiaire inrichting.
+
+89
+00:04:48.370 --> 00:04:51.732
+Of in een huis van bewaring en is
+ingesloten of tijdelijk afwezig.
+
+90
+00:04:51.732 --> 00:04:55.474
+Zo zien we dus om die
+zorgtoeslag uit te rekenen.
+
+91
+00:04:55.474 --> 00:05:00.316
+Hebben we een hele reeks aan
+wet- en regelgeving nodig.
+
+92
+00:05:00.316 --> 00:05:03.177
+En eigenlijk is het niet
+een reeks maar een graaf.
+
+93
+00:05:03.177 --> 00:05:04.758
+En die kunnen we dan
+ook inzichtelijk maken.
+
+94
+00:05:05.820 --> 00:05:08.942
+Ik zal
+
+95
+00:05:08.942 --> 00:05:10.183
+even inzoomen, want dit is niet te zien.
+
+96
+00:05:10.183 --> 00:05:12.445
+Maar dit is de graaf
+voor de zorgtoeslagwet.
+
+97
+00:05:12.445 --> 00:05:14.647
+Dus hier zien we die zorgtoeslagwet.
+
+98
+00:05:14.647 --> 00:05:16.048
+Dan zien we die is verzekerde.
+
+99
+00:05:16.048 --> 00:05:18.009
+Dan kunnen we dat lijntje volgen.
+
+100
+00:05:18.009 --> 00:05:19.890
+Dan komen we hier bij
+de verzekeringsstatus.
+
+101
+00:05:19.890 --> 00:05:21.131
+Dan zien we is gedetineerd.
+
+102
+00:05:21.131 --> 00:05:23.013
+Dan kunnen we dat lijntje volgen.
+
+103
+00:05:23.013 --> 00:05:25.875
+Dan moeten we helemaal hier links.
+
+104
+00:05:25.875 --> 00:05:28.917
+En dan zien we het bepalen
+van de detentiestatus.
+
+105
+00:05:28.917 --> 00:05:32.720
+En dit is dus het relevante stukje
+uit de penitentiaire beginselenwet.
+
+106
+00:05:33.742 --> 00:05:37.951
+Dit geheel is dus wat we nodig hebben om
+te komen tot de hoogte van de zorgtoeslag.
+
+107
+00:05:38.947 --> 00:05:42.750
+We kunnen ook alle wet- en regelgeving die
+we tot nu toe in deze demo hebben zitten
+
+108
+00:05:42.750 --> 00:05:43.931
+bekijken.
+
+109
+00:05:43.931 --> 00:05:46.293
+En dan zien we dat dat
+best wel een kluwen is.
+
+110
+00:05:46.293 --> 00:05:49.175
+Die zich bijvoorbeeld centreert
+rondom inkomstenbelastingwet.
+
+111
+00:05:49.175 --> 00:05:51.017
+Dit grote ding hier.
+
+112
+00:05:51.017 --> 00:05:52.318
+Dan zien we dat er heel
+
+113
+00:05:53.939 --> 00:05:59.024
+erg veel lijnen in en uit bijvoorbeeld
+de definities van inkomen en vermogen
+
+114
+00:05:59.024 --> 00:06:00.265
+gaan.
+
+115
+00:06:00.265 --> 00:06:05.189
+Er zijn dus andere wetten die eigenlijk
+verwijzen naar de definities van inkomen en
+
+116
+00:06:05.189 --> 00:06:06.670
+vermogen uit de inkomstenbelastingwet.
+
+117
+00:06:08.870 --> 00:06:11.911
+Dus dit is iets wat je kan doen als je
+wetten eenmaal machine-uitvoerbaar gemaakt
+
+118
+00:06:11.911 --> 00:06:12.891
+hebt.
+
+119
+00:06:12.891 --> 00:06:15.166
+Wat je ook kan doen is ze
+daadwerkelijk uitvoeren.
+
+120
+00:06:16.906 --> 00:06:21.567
+En wat je eigenlijk hier ziet, is
+iets wat we scenario's noemen.
+
+121
+00:06:21.567 --> 00:06:27.008
+Dat zijn casussen of scenario's die
+bijvoorbeeld in de memorie van toelichting
+
+122
+00:06:27.008 --> 00:06:27.668
+staan.
+
+123
+00:06:27.668 --> 00:06:32.149
+Die meegaat naar de Kamer als
+een wet wordt voorgelegd aan de
+
+124
+00:06:32.149 --> 00:06:34.970
+Kamer.
+
+125
+00:06:34.970 --> 00:06:37.738
+En wat staat er in zo'n
+memorie van toelichting?
+
+126
+00:06:37.738 --> 00:06:41.440
+Er staat soms zelfs een hele lijst als
+bijlage met een aantal voorbeelden van
+
+127
+00:06:41.440 --> 00:06:46.182
+personen of huishoudens met eigenschappen
+en wat dan de verwachte werking van die
+
+128
+00:06:46.182 --> 00:06:47.202
+wet zou zijn.
+
+129
+00:06:47.202 --> 00:06:49.984
+Zo zien we hier dus bijvoorbeeld een persoon
+boven de 18 die zou recht moeten hebben
+
+130
+00:06:49.984 --> 00:06:50.684
+op zorgtoeslag.
+
+131
+00:06:50.684 --> 00:06:55.806
+Dat is een fictief BSN-nummer
+en met fictief dus loon.
+
+132
+00:06:55.806 --> 00:06:59.288
+En als de zorgtoeslagwet dan wordt uitgevoerd,
+dan zou de hoogte van de zorgtoeslag
+
+133
+00:06:59.288 --> 00:07:02.529
+dit bedrag moeten zijn
+in eurocenten per jaar.
+
+134
+00:07:02.529 --> 00:07:04.809
+Dat kunnen we dan dus uitvoeren.
+
+135
+00:07:04.809 --> 00:07:10.834
+En dan zien we hier wat wij
+noemen een trace, een pad van hoe
+
+136
+00:07:10.834 --> 00:07:12.035
+die wet dan uitgevoerd is.
+
+137
+00:07:12.035 --> 00:07:15.698
+Dus hier zien we dat de zorgtoeslagwet
+wordt uitgevoerd om te bepalen dat de hoogte
+
+138
+00:07:15.698 --> 00:07:18.340
+van de zorgtoeslag is voor dit BSN-nummer.
+
+139
+00:07:18.340 --> 00:07:23.464
+En als we dan nog iets naar beneden
+gaan, dan zien we hier bijvoorbeeld de
+
+140
+00:07:23.464 --> 00:07:27.447
+zorgverzekeringswet wordt uitgevoerd om te
+bepalen of iemand wel een verzekerde is.
+
+141
+00:07:27.447 --> 00:07:29.989
+En als we nog iets verder naar beneden
+gaan, dan zien we dat de penitentiaire
+
+142
+00:07:29.989 --> 00:07:33.031
+beginselenwet wordt uitgevoerd om te
+bepalen of iemand in detentie zit.
+
+143
+00:07:34.255 --> 00:07:39.178
+En dan helemaal naar beneden zien we
+uiteindelijk die berekening van de hoogte van
+
+144
+00:07:39.178 --> 00:07:44.880
+de zorgtoeslag en dan het aantal
+eurocenten per jaar voor dit hele
+
+145
+00:07:44.880 --> 00:07:46.341
+specifieke geval.
+
+146
+00:07:46.341 --> 00:07:48.943
+En wat je hiermee gedaan hebt,
+
+147
+00:07:50.924 --> 00:07:53.185
+is een paar dingen eigenlijk.
+
+148
+00:07:53.185 --> 00:07:56.747
+De wet zoals die bedoeld
+is, is testbaar geworden.
+
+149
+00:07:56.747 --> 00:08:00.348
+Dus je kan nu zien of de wet
+werkt zoals die bedoeld was.
+
+150
+00:08:00.348 --> 00:08:03.490
+Zoals die bedoeld was in bijvoorbeeld
+de memorie van toelichting.
+
+151
+00:08:04.577 --> 00:08:09.059
+Maar wat we ook hebben, is dat het helemaal
+traceerbaar is hoe die wet dan werkt.
+
+152
+00:08:09.059 --> 00:08:14.661
+Dus het is navolgbaar welke gegevens gebruikt
+zijn, welke andere wetten nodig waren
+
+153
+00:08:14.661 --> 00:08:17.182
+en hoe die andere wetten
+hun werking hadden.
+
+154
+00:08:17.182 --> 00:08:21.043
+En daarmee is het navolgbaar
+geworden hoe een overheid werkt.
+
+155
+00:08:21.043 --> 00:08:22.424
+Dit levert transparantie op.
+
+156
+00:08:24.354 --> 00:08:27.995
+Een persoon onder de 18 zou geen
+recht moeten hebben op zorgtoeslag.
+
+157
+00:08:27.995 --> 00:08:32.576
+Dat is een vergelijkbaar voorbeeld, maar
+met een andere geboortedatum, namelijk 2008
+
+158
+00:08:32.576 --> 00:08:36.758
+in dit geval, en we runnen dit in 2025.
+
+159
+00:08:36.758 --> 00:08:40.739
+En als we dit dan uitvoeren, dan zien we
+dat die trace heel kort is geworden, omdat
+
+160
+00:08:40.739 --> 00:08:46.761
+we erachter komen dat deze persoon
+17 is, en dus geen recht heeft
+
+161
+00:08:46.761 --> 00:08:50.542
+op zorgtoeslag, simpelweg omdat als je
+nog geen 18 bent, je ook geen zorgpremie
+
+162
+00:08:50.542 --> 00:08:52.162
+hoeft te betalen.
+
+163
+00:08:52.162 --> 00:08:54.644
+Maar we komen er dus achter
+dat deze persoon 17 is.
+
+164
+00:08:54.644 --> 00:08:57.086
+En dan hoeven we niet verder te kijken.
+
+165
+00:08:57.086 --> 00:09:01.829
+Want er gaat geen situatie zijn
+waarin deze persoon zorgtoeslag gaat
+
+166
+00:09:01.829 --> 00:09:03.290
+krijgen.
+
+167
+00:09:03.290 --> 00:09:06.193
+En we hoeven dus ook niet naar de
+meer gevoelige datapunten te kijken.
+
+168
+00:09:06.193 --> 00:09:09.055
+Zoals het wel of niet in detentie zitten.
+
+169
+00:09:09.055 --> 00:09:11.497
+En dat is een prettige
+eigenschap om te hebben.
+
+170
+00:09:13.918 --> 00:09:16.820
+Dit is een punt trouwens dat
+mensen best wel vaak vragen.
+
+171
+00:09:18.581 --> 00:09:23.864
+Of het uitmaakt in welke volgorde je de
+
+172
+00:09:23.864 --> 00:09:24.625
+artikelen
+
+173
+00:09:25.545 --> 00:09:28.326
+dan uitvoert om te komen
+tot dataminimalisatie.
+
+174
+00:09:28.326 --> 00:09:30.007
+En het antwoord is ja, dat maakt uit.
+
+175
+00:09:30.007 --> 00:09:33.269
+Als je er meer over wil weten,
+dan kan je hieronder klikken.
+
+176
+00:09:36.185 --> 00:09:41.712
+Hier zien we, eigenlijk als je wet en
+
+177
+00:09:41.712 --> 00:09:45.578
+regelgeving eenmaal op een individu kan
+toepassen, dan kan je dat natuurlijk ook op
+
+178
+00:09:45.578 --> 00:09:47.821
+een hele populatie doen.
+
+179
+00:09:47.821 --> 00:09:49.263
+En dat zien we hier.
+
+180
+00:09:49.263 --> 00:09:50.485
+We noemen dat een simulatie.
+
+181
+00:09:52.827 --> 00:09:56.528
+Hier zien we bijvoorbeeld een
+populatie van 50 personen.
+
+182
+00:09:56.528 --> 00:10:00.589
+En als we dan een simulatie runnen, dus we
+runnen nu alle wet- en regelgeving die we
+
+183
+00:10:00.589 --> 00:10:03.430
+hebben op die 50 personen.
+
+184
+00:10:03.430 --> 00:10:08.931
+Dat gaat dus bijvoorbeeld om bijstand,
+inkomstenbelasting, kiesrecht, zorgtoeslag,
+
+185
+00:10:08.931 --> 00:10:11.352
+AOW, huurtoeslag, etc.
+
+186
+00:10:11.352 --> 00:10:15.453
+Bij die zorgtoeslag zit er bijvoorbeeld
+ook die penitentiaire beginselenwet.
+
+187
+00:10:15.453 --> 00:10:17.694
+Wat zien we dan op deze populatie?
+
+188
+00:10:18.803 --> 00:10:24.827
+Dat zijn 50 personen, gemiddeld 54
+jaar, 36% heeft een partner, 40% is
+
+189
+00:10:24.827 --> 00:10:29.711
+huurder, 18% heeft
+kinderen, 4% is student.
+
+190
+00:10:29.711 --> 00:10:31.732
+Dit is het inkomen.
+
+191
+00:10:31.732 --> 00:10:36.375
+En wat het besteedbaar inkomen is, dat
+is dus eigenlijk het inkomen minus de
+
+192
+00:10:36.375 --> 00:10:38.757
+belastingen plus de toeslagen.
+
+193
+00:10:38.757 --> 00:10:39.177
+Dat is
+
+194
+00:10:40.618 --> 00:10:45.781
+hier weer gegeven, dus het gemiddelde
+besteedbaar inkomen na de woonkosten.
+
+195
+00:10:45.781 --> 00:10:51.384
+De gedachte is dat hierin eigenlijk alle
+wisselwerkingen, alle interactie tussen wet
+
+196
+00:10:51.384 --> 00:10:53.945
+en regelgeving, verdisconteerd is.
+
+197
+00:10:53.945 --> 00:10:56.886
+Met andere woorden, als je ergens iets
+meer krijgt en ergens anders iets minder,
+
+198
+00:10:56.886 --> 00:11:01.128
+omdat je ergens iets meer krijgt, dan
+zou je dat hierin terug moeten zien.
+
+199
+00:11:01.128 --> 00:11:07.110
+En dat zorgt er dus voor dat eventuele
+effecten tussen wetten vererfd worden, of
+
+200
+00:11:07.110 --> 00:11:10.144
+in ieder geval hun werking gaan hebben.
+
+201
+00:11:10.144 --> 00:11:14.227
+En een van de dingen die je dus kan
+doen is bijvoorbeeld wetswijzigingen
+
+202
+00:11:14.227 --> 00:11:14.647
+doorrekenen.
+
+203
+00:11:14.647 --> 00:11:20.371
+Dus wat nou als de standaardpremie van de
+zorgtoeslag aanzienlijk omhoog gaat en we
+
+204
+00:11:20.371 --> 00:11:22.233
+een nieuwe simulatie draaien.
+
+205
+00:11:22.233 --> 00:11:25.617
+Dan hebben we dus straks twee
+simulaties naast elkaar.
+
+206
+00:11:25.617 --> 00:11:30.006
+En dan kunnen we die
+met elkaar vergelijken.
+
+207
+00:11:33.523 --> 00:11:34.944
+Kijk, hier zijn ze.
+
+208
+00:11:34.944 --> 00:11:36.744
+Hier hebben we de vergelijking.
+
+209
+00:11:36.744 --> 00:11:42.147
+En dan zien we dus de standaard
+situatie en de situatie met de
+
+210
+00:11:42.147 --> 00:11:44.748
+wijziging van de standaardpremie.
+
+211
+00:11:44.748 --> 00:11:50.450
+En dan zien we dus dat bijvoorbeeld na
+aftrek van woonkosten van 3.800 euro en
+
+212
+00:11:50.450 --> 00:11:51.210
+3
+
+213
+00:11:52.231 --> 00:11:55.132
+naar 3.858 euro gingen.
+
+214
+00:11:55.132 --> 00:11:56.893
+Dus dat is omhoog gegaan.
+
+215
+00:11:56.893 --> 00:11:58.393
+En dit is natuurlijk...
+
+216
+00:11:58.393 --> 00:12:02.795
+Voor bijvoorbeeld iemand die in de Tweede
+Kamer moet stemmen over zeg een amendement
+
+217
+00:12:02.795 --> 00:12:06.236
+over in dit geval dus die standaardpremie.
+
+218
+00:12:06.236 --> 00:12:08.033
+Prettig om te hebben.
+
+219
+00:12:09.577 --> 00:12:09.600
+Wat

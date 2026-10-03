@@ -12,13 +12,13 @@
 # bijkomt of afgaat. Zie docs/src/content/docs/components/demo.md.
 
 presenter:
-  name: ''
-  role: ''
+  name: Anne Schuth
+  role: staff engineer
 
 # De GitHub-release waar de video's als assets in staan. Zonder release haalt
 # de Docker-build niets op, en een timeline.json zonder release komt niet door
 # de tests (frontend-demo/src/walkthrough/corpus.test.js).
-release: ''
+release: walkthrough-2026-10-03
 
 # Woorden die de transcriptie goed moet spellen.
 glossary:
@@ -39,7 +39,9 @@ glossary:
 #       to: 512.3
 #     - take: 2026-10-02T11-30-00
 main:
-  segments: []
+  segments:
+    - take: 2026-10-03T19-38-01
+      to: 745.4
 
 # Per opname wat eruit gaat. `just walkthrough prepare` zet een voorstel in
 # .walkthrough/takes/<take>/cuts.suggested.yaml.
@@ -47,7 +49,21 @@ main:
 #   2026-10-02T10-00-00:
 #     cuts:
 #       - {from: 12.3, to: 15.8, reason: dubbele zin}
-takes: {}
+takes:
+  2026-10-03T19-38-01:
+    cuts:
+      - {from: 7.41, to: 8.02, reason: stilte van 1.4s}
+      - {from: 70.65, to: 71.13, reason: stilte van 1.3s}
+      - {from: 87.63, to: 88.08, reason: stilte van 1.3s}
+      - {from: 208.53, to: 209.08, reason: stilte van 1.4s}
+      - {from: 251.5, to: 253.4, reason: 'verspreking: zorgverzekerden, sorry'}
+      - {from: 379.12, to: 379.81, reason: stilte van 1.5s}
+      - {from: 557.78, to: 558.45, reason: stilte van 1.5s}
+      - {from: 568.77, to: 569.78, reason: stilte van 1.8s}
+      - {from: 691.43, to: 691.94, reason: stilte van 1.3s}
+      - {from: 695.06, to: 695.59, reason: stilte van 1.3s}
+      - {from: 699.25, to: 707.1, reason: zoeken in het smalle scherm}
+      - {from: 743.24, to: 743.83, reason: stilte van 1.4s}
 
 # Tekst op een dia aanpassen zonder nieuwe opname, op dia-index.
 #

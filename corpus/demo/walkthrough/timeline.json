@@ -1,0 +1,6372 @@
+{
+ "version": 1,
+ "release": "walkthrough-2026-10-03",
+ "presenter": {
+  "name": "Anne Schuth",
+  "role": "staff engineer"
+ },
+ "main": {
+  "duration": 729.6,
+  "audio": {
+   "src": "main-voice-22800ca02c12.m4a",
+   "sha256": "22800ca02c129df8542099ea62812c8cc86b655f5cda77d95c4f9569037eaf4f",
+   "bytes": 9130893
+  },
+  "video": {
+   "src": "main-c66ed6d48b3e.mp4",
+   "sha256": "c66ed6d48b3eaf9297abfb9b7123d44673217243846ddd6fdc1545c436ae09c9",
+   "bytes": 114093530,
+   "width": 2560,
+   "height": 1674
+  },
+  "cam": {
+   "src": "main-cam-893e247122b4.mp4",
+   "sha256": "893e247122b4a7bdcac94f50774bc13a801c3de605155673c1c7eb2e51d18d01",
+   "bytes": 19994263,
+   "until": 729.6
+  },
+  "slides": [
+   {
+    "kind": "title",
+    "title": "RegelRecht",
+    "subtitle": "van wet naar digitale werking",
+    "footer": "Nederlandse Digitale Dienst"
+   },
+   {
+    "kind": "statement",
+    "overline": "Huidige situatie",
+    "lines": [
+     "Iedere organisatie",
+     "heeft een **eigen interpretatie** van de wet",
+     "die landt in **eigen software**"
+    ]
+   },
+   {
+    "kind": "statement",
+    "overline": "Het gevolg",
+    "lines": [
+     "Geen overzicht",
+     "Onvoorspelbaar",
+     "Onbeheersbaar"
+    ]
+   },
+   {
+    "kind": "statement",
+    "overline": "Wat als",
+    "lines": [
+     "We **beginnen met de wet**",
+     "Deze **machine-uitvoerbaar** maken",
+     "**Openbaar** publiceren"
+    ]
+   },
+   {
+    "kind": "section",
+    "title": "Demo RegelRecht",
+    "lines": [
+     "Compleet verhaal, geen eindproduct",
+     "We maken beleid door te doen"
+    ]
+   },
+   {
+    "kind": "demo",
+    "overline": "De wet",
+    "title": "De wet, machine-leesbaar",
+    "lead": "De wettekst en de uitvoerbare regel staan naast elkaar, per artikel.",
+    "bullets": [
+     "Elk artikel heeft een **machine_readable**-deel: welke gegevens erin gaan, wat eruit komt en hoe.",
+     "Een verwijzing naar een andere wet is expliciet, geen kopie van een bedrag.",
+     "Dezelfde YAML draait in de editor, in dit portaal en in de simulatie."
+    ],
+    "route": "/wetten/zorgtoeslagwet",
+    "highlight": ".yaml-tree"
+   },
+   {
+    "kind": "demo",
+    "overline": "Samenhang",
+    "title": "Wetten hangen samen",
+    "lead": "Of iemand verzekerd is, hangt af van detentie; of iemand zorgtoeslag krijgt, hangt af van verzekerd zijn.",
+    "bullets": [
+     "Per wet: welke gegevens uit registers, welke uit andere wetten, wat eruit komt.",
+     "Elke lijn is een echte verwijzing uit de wet, met de waarde voor deze persoon erbij.",
+     "Wijzigt een wet, dan zie je meteen wie dat raakt."
+    ],
+    "route": "/graaf"
+   },
+   {
+    "kind": "demo",
+    "overline": "Toetsen",
+    "title": "De wet getoetst, in gewone taal",
+    "lead": "Scenario's beschrijven een persoon en wat de wet voor die persoon moet opleveren.",
+    "bullets": [
+     "Gegeven een 17-jarige, dan geen zorgtoeslag. Gegeven een alleenstaande met laag inkomen, dan wel.",
+     "Dezelfde scenario's draaien hier in de browser en in de bouwstraat.",
+     "Wie de wet wijzigt, ziet welk scenario omvalt."
+    ],
+    "route": "/scenarios"
+   },
+   {
+    "kind": "demo",
+    "overline": "Beleid",
+    "title": "Wat doet het met tweeduizend mensen?",
+    "lead": "Een gegenereerde bevolking door alle regelingen, met de echte wetten.",
+    "bullets": [
+     "Wie voldoet aan de voorwaarden, voor hoeveel, uitgesplitst naar leeftijd, inkomen, huishouden.",
+     "Draai aan een drempel in de wet en zie het verschil, voor de wet ingaat.",
+     "Ook voor ondernemers: vergunningen, meldplichten, precario."
+    ],
+    "route": "/simulatie"
+   },
+   {
+    "kind": "demo",
+    "overline": "De burger",
+    "title": "Eén burger, Merijn",
+    "lead": "ZZP'er in de thuiszorg, alleenstaande ouder met twee jonge kinderen.",
+    "bullets": [
+     "Alles waar hij recht op heeft, live berekend door de wet zelf.",
+     "Elk gegeven is herleidbaar naar het register dat het leverde.",
+     "Klopt een gegeven niet? Hij corrigeert het, een behandelaar beoordeelt."
+    ],
+    "route": "/portaal",
+    "profile": "merijn",
+    "highlight": "nldd-card"
+   },
+   {
+    "kind": "demo",
+    "overline": "Aanvragen",
+    "title": "Alleen vragen wat de overheid niet weet",
+    "lead": "De wet rekent met wat er al is en vraagt pas iets als ze vastloopt.",
+    "bullets": [
+     "De huurtoeslag kent de huur niet. Dat is de enige vraag, op dat moment.",
+     "Na elk antwoord rekent de wet opnieuw.",
+     "Controleren, verklaren, indienen. Zonder formulier van tien pagina's."
+    ],
+    "route": "/portaal",
+    "highlight": "[data-highlight=\"complete-data\"]"
+   },
+   {
+    "kind": "demo",
+    "overline": "De behandelaar",
+    "title": "Hetzelfde recht, andere kant van de balie",
+    "lead": "De aanvraag komt binnen met de berekening die de burger zag.",
+    "bullets": [
+     "De engine rekent het opnieuw na met de geregistreerde gegevens.",
+     "Correcties van de burger staan klaar ter beoordeling.",
+     "Toekennen of afwijzen, met motivering; bezwaar komt via het portaal terug."
+    ],
+    "route": "/zaaksysteem"
+   },
+   {
+    "kind": "demo",
+    "overline": "De ondernemer",
+    "title": "Een ondernemer, Claudia",
+    "lead": "Eigenaar van koffiezaak Noon in Rotterdam-West, met een terras.",
+    "bullets": [
+     "Dezelfde engine, andere wetten: APV, Alcoholwet, Warenwet, precario.",
+     "De terrasvergunning vraagt om locatie en oppervlakte; de precariobelasting rekent er meteen mee.",
+     "Gemeente, NVWA en RVO in één overzicht, zonder dat zij iets aan elkaar hoeven te vragen."
+    ],
+    "route": "/portaal",
+    "profile": "claudia"
+   },
+   {
+    "kind": "closing",
+    "overline": "Demo RegelRecht",
+    "title": "Van wet naar digitale werking",
+    "lines": [
+     "Compleet verhaal, **geen eindproduct**",
+     "We maken beleid **door te doen**"
+    ],
+    "link": {
+     "href": "https://regelrecht.rijks.app",
+     "label": "regelrecht.rijks.app"
+    }
+   }
+  ],
+  "recordedAt": "2026-10-03T17:38:05.322Z",
+  "viewport": {
+   "width": 1816,
+   "height": 1243,
+   "dpr": 2
+  },
+  "generatedVoice": false,
+  "chapters": [
+   {
+    "start": 0.0,
+    "slideIndex": 0,
+    "slide": {
+     "kind": "title",
+     "title": "RegelRecht",
+     "subtitle": "van wet naar digitale werking",
+     "footer": "Nederlandse Digitale Dienst"
+    },
+    "profile": "merijn",
+    "state": {
+     "profileKey": "merijn",
+     "referenceDate": "2026-09-30",
+     "manualReview": false,
+     "autoAnnounce": true,
+     "cases": [
+      {
+       "id": "zaak-munvqcgm-e9n0m",
+       "bsn": "999100001",
+       "kvk": null,
+       "lawId": "wet_op_de_huurtoeslag",
+       "lawPath": "wet_op_de_huurtoeslag",
+       "lawName": "Huurtoeslag",
+       "service": "TOESLAGEN",
+       "parameters": {
+        "bsn": "999100001"
+       },
+       "claimedResult": {
+        "basishuur": 23801,
+        "bezwaartermijn_weken": 6,
+        "is_gerechtigd": true,
+        "motivering_vereist": true,
+        "subsidiebedrag": 40695,
+        "voldoet_aan_voorwaarden": true
+       },
+       "verifiedResult": {
+        "basishuur": 23801,
+        "bezwaartermijn_weken": 6,
+        "is_gerechtigd": true,
+        "motivering_vereist": true,
+        "subsidiebedrag": 40695,
+        "voldoet_aan_voorwaarden": true
+       },
+       "status": "DECIDED",
+       "approved": false,
+       "reasonKey": null,
+       "submittedAt": "2026-09-30T09:04:59.542Z",
+       "decidedAt": "2026-09-30T09:06:32.160Z",
+       "objection": null,
+       "acting": null,
+       "events": [
+        {
+         "at": "2026-09-30T09:04:59.542Z",
+         "type": "SUBMITTED",
+         "key": "case.event.submitted"
+        },
+        {
+         "at": "2026-09-30T09:04:59.542Z",
+         "type": "IN_REVIEW",
+         "key": "case.review.citizen_changed_data"
+        },
+        {
+         "at": "2026-09-30T09:06:32.160Z",
+         "type": "DECIDED",
+         "approved": false,
+         "key": "case.event.refused_by_officer",
+         "vars": {
+          "reason": "Klopt niet"
+         }
+        },
+        {
+         "at": "2026-09-30T09:06:32.163Z",
+         "type": "BEKENDMAKING",
+         "key": "case.event.announced",
+         "vars": {
+          "date": "2026-09-30"
+         }
+        }
+       ],
+       "lifecycleInputs": {
+        "aanvraag_datum": "2026-09-30",
+        "beslistermijn_start": "2026-09-30",
+        "besluit_datum": "2026-09-30",
+        "bekendmaking_datum": "2026-09-30"
+       },
+       "lifecycleError": null,
+       "stageState": {
+        "procedure_id": "beschikking",
+        "contextual_law": "wet_op_de_huurtoeslag",
+        "current_stage": "BEZWAAR",
+        "accumulated_outputs": {
+         "basishuur": 23801,
+         "bezwaartermijn_weken": 6,
+         "is_gerechtigd": true,
+         "motivering_vereist": true,
+         "subsidiebedrag": 40695,
+         "voldoet_aan_voorwaarden": true,
+         "bezwaartermijn_einddatum": "2026-11-11",
+         "bezwaartermijn_startdatum": "2026-10-01"
+        },
+        "parameters": {
+         "aanvraag_datum": "2026-09-30",
+         "beslistermijn_start": "2026-09-30",
+         "bsn": "999100001"
+        }
+       },
+       "pendingInputs": [],
+       "reason": "Klopt niet",
+       "publishedAt": "2026-09-30T09:06:32.163Z"
+      },
+      {
+       "id": "zaak-munvnwds-npomu",
+       "bsn": "999100001",
+       "kvk": null,
+       "lawId": "zorgtoeslagwet",
+       "lawPath": "zorgtoeslagwet",
+       "lawName": "Zorgtoeslag",
+       "service": "TOESLAGEN",
+       "parameters": {
+        "bsn": "999100001"
+       },
+       "claimedResult": {
+        "bezwaartermijn_weken": 6,
+        "hoogte_toeslag": 212812,
+        "is_verzekerde_zorgtoeslag": true,
+        "motivering_vereist": true,
+        "voldoet_aan_voorwaarden": true
+       },
+       "verifiedResult": null,
+       "status": "IN_REVIEW",
+       "approved": null,
+       "reasonKey": null,
+       "submittedAt": "2026-09-30T09:03:05.392Z",
+       "decidedAt": null,
+       "objection": null,
+       "acting": null,
+       "events": [
+        {
+         "at": "2026-09-30T09:03:05.392Z",
+         "type": "SUBMITTED",
+         "key": "case.event.submitted"
+        },
+        {
+         "at": "2026-09-30T09:03:05.392Z",
+         "type": "DECIDED",
+         "key": "case.event.granted_auto"
+        },
+        {
+         "at": "2026-09-30T09:03:05.396Z",
+         "type": "BEKENDMAKING",
+         "key": "case.event.announced",
+         "vars": {
+          "date": "2026-09-30"
+         }
+        },
+        {
+         "at": "2026-09-30T09:05:25.561Z",
+         "type": "SUBMITTED",
+         "key": "case.event.amended"
+        },
+        {
+         "at": "2026-09-30T09:05:25.561Z",
+         "type": "IN_REVIEW",
+         "key": "case.review.citizen_changed_data"
+        }
+       ],
+       "lifecycleInputs": {
+        "aanvraag_datum": "2026-09-30",
+        "beslistermijn_start": "2026-09-30"
+       },
+       "lifecycleError": null,
+       "stageState": {
+        "procedure_id": "beschikking",
+        "contextual_law": "zorgtoeslagwet",
+        "current_stage": "BESLUIT",
+        "accumulated_outputs": {
+         "hoogte_toeslag": 212812,
+         "is_verzekerde_zorgtoeslag": true,
+         "voldoet_aan_voorwaarden": true
+        },
+        "parameters": {
+         "aanvraag_datum": "2026-09-30",
+         "beslistermijn_start": "2026-09-30",
+         "bsn": "999100001"
+        }
+       },
+       "pendingInputs": [
+        "besluit_datum"
+       ],
+       "publishedAt": null
+      }
+     ],
+     "claims": [
+      {
+       "id": "claim-munvq6qn-3gw0x",
+       "bsn": "999100001",
+       "lawId": "wet_inkomstenbelasting",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "winst_uit_onderneming",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": 2500000,
+       "newValue": 0,
+       "reason": "onderneming heb ik niet meer",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": false,
+       "status": "PENDING",
+       "caseId": "zaak-munvqcgm-e9n0m",
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:52.127Z",
+       "decidedAt": null
+      },
+      {
+       "id": "claim-munvpgir-psnat",
+       "bsn": "999100001",
+       "lawId": "wet_op_de_huurtoeslag",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "subsidiabele_servicekosten",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": null,
+       "newValue": 4800,
+       "reason": "Opgegeven bij de aanvraag.",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": true,
+       "status": "APPROVED",
+       "caseId": null,
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:18.147Z",
+       "decidedAt": "2026-09-30T09:04:18.148Z"
+      },
+      {
+       "id": "claim-munvpf9p-bue2s",
+       "bsn": "999100001",
+       "lawId": "wet_op_de_huurtoeslag",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "huurprijs",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": null,
+       "newValue": 72000,
+       "reason": "Opgegeven bij de aanvraag.",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": true,
+       "status": "APPROVED",
+       "caseId": null,
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:16.525Z",
+       "decidedAt": "2026-09-30T09:04:16.525Z"
+      }
+     ],
+     "presenterName": "Team RegelRecht",
+     "presentationMode": "zelfstandig",
+     "delegationKey": null,
+     "featureOverrides": {}
+    },
+    "end": 6.348
+   },
+   {
+    "start": 6.348,
+    "slideIndex": 1,
+    "slide": {
+     "kind": "statement",
+     "overline": "Huidige situatie",
+     "lines": [
+      "Iedere organisatie",
+      "heeft een **eigen interpretatie** van de wet",
+      "die landt in **eigen software**"
+     ]
+    },
+    "profile": "merijn",
+    "state": {
+     "profileKey": "merijn",
+     "referenceDate": "2026-09-30",
+     "manualReview": false,
+     "autoAnnounce": true,
+     "cases": [
+      {
+       "id": "zaak-munvqcgm-e9n0m",
+       "bsn": "999100001",
+       "kvk": null,
+       "lawId": "wet_op_de_huurtoeslag",
+       "lawPath": "wet_op_de_huurtoeslag",
+       "lawName": "Huurtoeslag",
+       "service": "TOESLAGEN",
+       "parameters": {
+        "bsn": "999100001"
+       },
+       "claimedResult": {
+        "basishuur": 23801,
+        "bezwaartermijn_weken": 6,
+        "is_gerechtigd": true,
+        "motivering_vereist": true,
+        "subsidiebedrag": 40695,
+        "voldoet_aan_voorwaarden": true
+       },
+       "verifiedResult": {
+        "basishuur": 23801,
+        "bezwaartermijn_weken": 6,
+        "is_gerechtigd": true,
+        "motivering_vereist": true,
+        "subsidiebedrag": 40695,
+        "voldoet_aan_voorwaarden": true
+       },
+       "status": "DECIDED",
+       "approved": false,
+       "reasonKey": null,
+       "submittedAt": "2026-09-30T09:04:59.542Z",
+       "decidedAt": "2026-09-30T09:06:32.160Z",
+       "objection": null,
+       "acting": null,
+       "events": [
+        {
+         "at": "2026-09-30T09:04:59.542Z",
+         "type": "SUBMITTED",
+         "key": "case.event.submitted"
+        },
+        {
+         "at": "2026-09-30T09:04:59.542Z",
+         "type": "IN_REVIEW",
+         "key": "case.review.citizen_changed_data"
+        },
+        {
+         "at": "2026-09-30T09:06:32.160Z",
+         "type": "DECIDED",
+         "approved": false,
+         "key": "case.event.refused_by_officer",
+         "vars": {
+          "reason": "Klopt niet"
+         }
+        },
+        {
+         "at": "2026-09-30T09:06:32.163Z",
+         "type": "BEKENDMAKING",
+         "key": "case.event.announced",
+         "vars": {
+          "date": "2026-09-30"
+         }
+        }
+       ],
+       "lifecycleInputs": {
+        "aanvraag_datum": "2026-09-30",
+        "beslistermijn_start": "2026-09-30",
+        "besluit_datum": "2026-09-30",
+        "bekendmaking_datum": "2026-09-30"
+       },
+       "lifecycleError": null,
+       "stageState": {
+        "procedure_id": "beschikking",
+        "contextual_law": "wet_op_de_huurtoeslag",
+        "current_stage": "BEZWAAR",
+        "accumulated_outputs": {
+         "basishuur": 23801,
+         "bezwaartermijn_weken": 6,
+         "is_gerechtigd": true,
+         "motivering_vereist": true,
+         "subsidiebedrag": 40695,
+         "voldoet_aan_voorwaarden": true,
+         "bezwaartermijn_einddatum": "2026-11-11",
+         "bezwaartermijn_startdatum": "2026-10-01"
+        },
+        "parameters": {
+         "aanvraag_datum": "2026-09-30",
+         "beslistermijn_start": "2026-09-30",
+         "bsn": "999100001"
+        }
+       },
+       "pendingInputs": [],
+       "reason": "Klopt niet",
+       "publishedAt": "2026-09-30T09:06:32.163Z"
+      },
+      {
+       "id": "zaak-munvnwds-npomu",
+       "bsn": "999100001",
+       "kvk": null,
+       "lawId": "zorgtoeslagwet",
+       "lawPath": "zorgtoeslagwet",
+       "lawName": "Zorgtoeslag",
+       "service": "TOESLAGEN",
+       "parameters": {
+        "bsn": "999100001"
+       },
+       "claimedResult": {
+        "bezwaartermijn_weken": 6,
+        "hoogte_toeslag": 212812,
+        "is_verzekerde_zorgtoeslag": true,
+        "motivering_vereist": true,
+        "voldoet_aan_voorwaarden": true
+       },
+       "verifiedResult": null,
+       "status": "IN_REVIEW",
+       "approved": null,
+       "reasonKey": null,
+       "submittedAt": "2026-09-30T09:03:05.392Z",
+       "decidedAt": null,
+       "objection": null,
+       "acting": null,
+       "events": [
+        {
+         "at": "2026-09-30T09:03:05.392Z",
+         "type": "SUBMITTED",
+         "key": "case.event.submitted"
+        },
+        {
+         "at": "2026-09-30T09:03:05.392Z",
+         "type": "DECIDED",
+         "key": "case.event.granted_auto"
+        },
+        {
+         "at": "2026-09-30T09:03:05.396Z",
+         "type": "BEKENDMAKING",
+         "key": "case.event.announced",
+         "vars": {
+          "date": "2026-09-30"
+         }
+        },
+        {
+         "at": "2026-09-30T09:05:25.561Z",
+         "type": "SUBMITTED",
+         "key": "case.event.amended"
+        },
+        {
+         "at": "2026-09-30T09:05:25.561Z",
+         "type": "IN_REVIEW",
+         "key": "case.review.citizen_changed_data"
+        }
+       ],
+       "lifecycleInputs": {
+        "aanvraag_datum": "2026-09-30",
+        "beslistermijn_start": "2026-09-30"
+       },
+       "lifecycleError": null,
+       "stageState": {
+        "procedure_id": "beschikking",
+        "contextual_law": "zorgtoeslagwet",
+        "current_stage": "BESLUIT",
+        "accumulated_outputs": {
+         "hoogte_toeslag": 212812,
+         "is_verzekerde_zorgtoeslag": true,
+         "voldoet_aan_voorwaarden": true
+        },
+        "parameters": {
+         "aanvraag_datum": "2026-09-30",
+         "beslistermijn_start": "2026-09-30",
+         "bsn": "999100001"
+        }
+       },
+       "pendingInputs": [
+        "besluit_datum"
+       ],
+       "publishedAt": null
+      }
+     ],
+     "claims": [
+      {
+       "id": "claim-munvq6qn-3gw0x",
+       "bsn": "999100001",
+       "lawId": "wet_inkomstenbelasting",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "winst_uit_onderneming",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": 2500000,
+       "newValue": 0,
+       "reason": "onderneming heb ik niet meer",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": false,
+       "status": "PENDING",
+       "caseId": "zaak-munvqcgm-e9n0m",
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:52.127Z",
+       "decidedAt": null
+      },
+      {
+       "id": "claim-munvpgir-psnat",
+       "bsn": "999100001",
+       "lawId": "wet_op_de_huurtoeslag",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "subsidiabele_servicekosten",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": null,
+       "newValue": 4800,
+       "reason": "Opgegeven bij de aanvraag.",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": true,
+       "status": "APPROVED",
+       "caseId": null,
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:18.147Z",
+       "decidedAt": "2026-09-30T09:04:18.148Z"
+      },
+      {
+       "id": "claim-munvpf9p-bue2s",
+       "bsn": "999100001",
+       "lawId": "wet_op_de_huurtoeslag",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "huurprijs",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": null,
+       "newValue": 72000,
+       "reason": "Opgegeven bij de aanvraag.",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": true,
+       "status": "APPROVED",
+       "caseId": null,
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:16.525Z",
+       "decidedAt": "2026-09-30T09:04:16.525Z"
+      }
+     ],
+     "presenterName": "Team RegelRecht",
+     "presentationMode": "zelfstandig",
+     "delegationKey": null,
+     "featureOverrides": {}
+    },
+    "end": 47.561
+   },
+   {
+    "start": 47.561,
+    "slideIndex": 2,
+    "slide": {
+     "kind": "statement",
+     "overline": "Het gevolg",
+     "lines": [
+      "Geen overzicht",
+      "Onvoorspelbaar",
+      "Onbeheersbaar"
+     ]
+    },
+    "profile": "merijn",
+    "state": {
+     "profileKey": "merijn",
+     "referenceDate": "2026-09-30",
+     "manualReview": false,
+     "autoAnnounce": true,
+     "cases": [
+      {
+       "id": "zaak-munvqcgm-e9n0m",
+       "bsn": "999100001",
+       "kvk": null,
+       "lawId": "wet_op_de_huurtoeslag",
+       "lawPath": "wet_op_de_huurtoeslag",
+       "lawName": "Huurtoeslag",
+       "service": "TOESLAGEN",
+       "parameters": {
+        "bsn": "999100001"
+       },
+       "claimedResult": {
+        "basishuur": 23801,
+        "bezwaartermijn_weken": 6,
+        "is_gerechtigd": true,
+        "motivering_vereist": true,
+        "subsidiebedrag": 40695,
+        "voldoet_aan_voorwaarden": true
+       },
+       "verifiedResult": {
+        "basishuur": 23801,
+        "bezwaartermijn_weken": 6,
+        "is_gerechtigd": true,
+        "motivering_vereist": true,
+        "subsidiebedrag": 40695,
+        "voldoet_aan_voorwaarden": true
+       },
+       "status": "DECIDED",
+       "approved": false,
+       "reasonKey": null,
+       "submittedAt": "2026-09-30T09:04:59.542Z",
+       "decidedAt": "2026-09-30T09:06:32.160Z",
+       "objection": null,
+       "acting": null,
+       "events": [
+        {
+         "at": "2026-09-30T09:04:59.542Z",
+         "type": "SUBMITTED",
+         "key": "case.event.submitted"
+        },
+        {
+         "at": "2026-09-30T09:04:59.542Z",
+         "type": "IN_REVIEW",
+         "key": "case.review.citizen_changed_data"
+        },
+        {
+         "at": "2026-09-30T09:06:32.160Z",
+         "type": "DECIDED",
+         "approved": false,
+         "key": "case.event.refused_by_officer",
+         "vars": {
+          "reason": "Klopt niet"
+         }
+        },
+        {
+         "at": "2026-09-30T09:06:32.163Z",
+         "type": "BEKENDMAKING",
+         "key": "case.event.announced",
+         "vars": {
+          "date": "2026-09-30"
+         }
+        }
+       ],
+       "lifecycleInputs": {
+        "aanvraag_datum": "2026-09-30",
+        "beslistermijn_start": "2026-09-30",
+        "besluit_datum": "2026-09-30",
+        "bekendmaking_datum": "2026-09-30"
+       },
+       "lifecycleError": null,
+       "stageState": {
+        "procedure_id": "beschikking",
+        "contextual_law": "wet_op_de_huurtoeslag",
+        "current_stage": "BEZWAAR",
+        "accumulated_outputs": {
+         "basishuur": 23801,
+         "bezwaartermijn_weken": 6,
+         "is_gerechtigd": true,
+         "motivering_vereist": true,
+         "subsidiebedrag": 40695,
+         "voldoet_aan_voorwaarden": true,
+         "bezwaartermijn_einddatum": "2026-11-11",
+         "bezwaartermijn_startdatum": "2026-10-01"
+        },
+        "parameters": {
+         "aanvraag_datum": "2026-09-30",
+         "beslistermijn_start": "2026-09-30",
+         "bsn": "999100001"
+        }
+       },
+       "pendingInputs": [],
+       "reason": "Klopt niet",
+       "publishedAt": "2026-09-30T09:06:32.163Z"
+      },
+      {
+       "id": "zaak-munvnwds-npomu",
+       "bsn": "999100001",
+       "kvk": null,
+       "lawId": "zorgtoeslagwet",
+       "lawPath": "zorgtoeslagwet",
+       "lawName": "Zorgtoeslag",
+       "service": "TOESLAGEN",
+       "parameters": {
+        "bsn": "999100001"
+       },
+       "claimedResult": {
+        "bezwaartermijn_weken": 6,
+        "hoogte_toeslag": 212812,
+        "is_verzekerde_zorgtoeslag": true,
+        "motivering_vereist": true,
+        "voldoet_aan_voorwaarden": true
+       },
+       "verifiedResult": null,
+       "status": "IN_REVIEW",
+       "approved": null,
+       "reasonKey": null,
+       "submittedAt": "2026-09-30T09:03:05.392Z",
+       "decidedAt": null,
+       "objection": null,
+       "acting": null,
+       "events": [
+        {
+         "at": "2026-09-30T09:03:05.392Z",
+         "type": "SUBMITTED",
+         "key": "case.event.submitted"
+        },
+        {
+         "at": "2026-09-30T09:03:05.392Z",
+         "type": "DECIDED",
+         "key": "case.event.granted_auto"
+        },
+        {
+         "at": "2026-09-30T09:03:05.396Z",
+         "type": "BEKENDMAKING",
+         "key": "case.event.announced",
+         "vars": {
+          "date": "2026-09-30"
+         }
+        },
+        {
+         "at": "2026-09-30T09:05:25.561Z",
+         "type": "SUBMITTED",
+         "key": "case.event.amended"
+        },
+        {
+         "at": "2026-09-30T09:05:25.561Z",
+         "type": "IN_REVIEW",
+         "key": "case.review.citizen_changed_data"
+        }
+       ],
+       "lifecycleInputs": {
+        "aanvraag_datum": "2026-09-30",
+        "beslistermijn_start": "2026-09-30"
+       },
+       "lifecycleError": null,
+       "stageState": {
+        "procedure_id": "beschikking",
+        "contextual_law": "zorgtoeslagwet",
+        "current_stage": "BESLUIT",
+        "accumulated_outputs": {
+         "hoogte_toeslag": 212812,
+         "is_verzekerde_zorgtoeslag": true,
+         "voldoet_aan_voorwaarden": true
+        },
+        "parameters": {
+         "aanvraag_datum": "2026-09-30",
+         "beslistermijn_start": "2026-09-30",
+         "bsn": "999100001"
+        }
+       },
+       "pendingInputs": [
+        "besluit_datum"
+       ],
+       "publishedAt": null
+      }
+     ],
+     "claims": [
+      {
+       "id": "claim-munvq6qn-3gw0x",
+       "bsn": "999100001",
+       "lawId": "wet_inkomstenbelasting",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "winst_uit_onderneming",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": 2500000,
+       "newValue": 0,
+       "reason": "onderneming heb ik niet meer",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": false,
+       "status": "PENDING",
+       "caseId": "zaak-munvqcgm-e9n0m",
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:52.127Z",
+       "decidedAt": null
+      },
+      {
+       "id": "claim-munvpgir-psnat",
+       "bsn": "999100001",
+       "lawId": "wet_op_de_huurtoeslag",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "subsidiabele_servicekosten",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": null,
+       "newValue": 4800,
+       "reason": "Opgegeven bij de aanvraag.",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": true,
+       "status": "APPROVED",
+       "caseId": null,
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:18.147Z",
+       "decidedAt": "2026-09-30T09:04:18.148Z"
+      },
+      {
+       "id": "claim-munvpf9p-bue2s",
+       "bsn": "999100001",
+       "lawId": "wet_op_de_huurtoeslag",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "huurprijs",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": null,
+       "newValue": 72000,
+       "reason": "Opgegeven bij de aanvraag.",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": true,
+       "status": "APPROVED",
+       "caseId": null,
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:16.525Z",
+       "decidedAt": "2026-09-30T09:04:16.525Z"
+      }
+     ],
+     "presenterName": "Team RegelRecht",
+     "presentationMode": "zelfstandig",
+     "delegationKey": null,
+     "featureOverrides": {}
+    },
+    "end": 85.784
+   },
+   {
+    "start": 85.784,
+    "slideIndex": 3,
+    "slide": {
+     "kind": "statement",
+     "overline": "Wat als",
+     "lines": [
+      "We **beginnen met de wet**",
+      "Deze **machine-uitvoerbaar** maken",
+      "**Openbaar** publiceren"
+     ]
+    },
+    "profile": "merijn",
+    "state": {
+     "profileKey": "merijn",
+     "referenceDate": "2026-09-30",
+     "manualReview": false,
+     "autoAnnounce": true,
+     "cases": [
+      {
+       "id": "zaak-munvqcgm-e9n0m",
+       "bsn": "999100001",
+       "kvk": null,
+       "lawId": "wet_op_de_huurtoeslag",
+       "lawPath": "wet_op_de_huurtoeslag",
+       "lawName": "Huurtoeslag",
+       "service": "TOESLAGEN",
+       "parameters": {
+        "bsn": "999100001"
+       },
+       "claimedResult": {
+        "basishuur": 23801,
+        "bezwaartermijn_weken": 6,
+        "is_gerechtigd": true,
+        "motivering_vereist": true,
+        "subsidiebedrag": 40695,
+        "voldoet_aan_voorwaarden": true
+       },
+       "verifiedResult": {
+        "basishuur": 23801,
+        "bezwaartermijn_weken": 6,
+        "is_gerechtigd": true,
+        "motivering_vereist": true,
+        "subsidiebedrag": 40695,
+        "voldoet_aan_voorwaarden": true
+       },
+       "status": "DECIDED",
+       "approved": false,
+       "reasonKey": null,
+       "submittedAt": "2026-09-30T09:04:59.542Z",
+       "decidedAt": "2026-09-30T09:06:32.160Z",
+       "objection": null,
+       "acting": null,
+       "events": [
+        {
+         "at": "2026-09-30T09:04:59.542Z",
+         "type": "SUBMITTED",
+         "key": "case.event.submitted"
+        },
+        {
+         "at": "2026-09-30T09:04:59.542Z",
+         "type": "IN_REVIEW",
+         "key": "case.review.citizen_changed_data"
+        },
+        {
+         "at": "2026-09-30T09:06:32.160Z",
+         "type": "DECIDED",
+         "approved": false,
+         "key": "case.event.refused_by_officer",
+         "vars": {
+          "reason": "Klopt niet"
+         }
+        },
+        {
+         "at": "2026-09-30T09:06:32.163Z",
+         "type": "BEKENDMAKING",
+         "key": "case.event.announced",
+         "vars": {
+          "date": "2026-09-30"
+         }
+        }
+       ],
+       "lifecycleInputs": {
+        "aanvraag_datum": "2026-09-30",
+        "beslistermijn_start": "2026-09-30",
+        "besluit_datum": "2026-09-30",
+        "bekendmaking_datum": "2026-09-30"
+       },
+       "lifecycleError": null,
+       "stageState": {
+        "procedure_id": "beschikking",
+        "contextual_law": "wet_op_de_huurtoeslag",
+        "current_stage": "BEZWAAR",
+        "accumulated_outputs": {
+         "basishuur": 23801,
+         "bezwaartermijn_weken": 6,
+         "is_gerechtigd": true,
+         "motivering_vereist": true,
+         "subsidiebedrag": 40695,
+         "voldoet_aan_voorwaarden": true,
+         "bezwaartermijn_einddatum": "2026-11-11",
+         "bezwaartermijn_startdatum": "2026-10-01"
+        },
+        "parameters": {
+         "aanvraag_datum": "2026-09-30",
+         "beslistermijn_start": "2026-09-30",
+         "bsn": "999100001"
+        }
+       },
+       "pendingInputs": [],
+       "reason": "Klopt niet",
+       "publishedAt": "2026-09-30T09:06:32.163Z"
+      },
+      {
+       "id": "zaak-munvnwds-npomu",
+       "bsn": "999100001",
+       "kvk": null,
+       "lawId": "zorgtoeslagwet",
+       "lawPath": "zorgtoeslagwet",
+       "lawName": "Zorgtoeslag",
+       "service": "TOESLAGEN",
+       "parameters": {
+        "bsn": "999100001"
+       },
+       "claimedResult": {
+        "bezwaartermijn_weken": 6,
+        "hoogte_toeslag": 212812,
+        "is_verzekerde_zorgtoeslag": true,
+        "motivering_vereist": true,
+        "voldoet_aan_voorwaarden": true
+       },
+       "verifiedResult": null,
+       "status": "IN_REVIEW",
+       "approved": null,
+       "reasonKey": null,
+       "submittedAt": "2026-09-30T09:03:05.392Z",
+       "decidedAt": null,
+       "objection": null,
+       "acting": null,
+       "events": [
+        {
+         "at": "2026-09-30T09:03:05.392Z",
+         "type": "SUBMITTED",
+         "key": "case.event.submitted"
+        },
+        {
+         "at": "2026-09-30T09:03:05.392Z",
+         "type": "DECIDED",
+         "key": "case.event.granted_auto"
+        },
+        {
+         "at": "2026-09-30T09:03:05.396Z",
+         "type": "BEKENDMAKING",
+         "key": "case.event.announced",
+         "vars": {
+          "date": "2026-09-30"
+         }
+        },
+        {
+         "at": "2026-09-30T09:05:25.561Z",
+         "type": "SUBMITTED",
+         "key": "case.event.amended"
+        },
+        {
+         "at": "2026-09-30T09:05:25.561Z",
+         "type": "IN_REVIEW",
+         "key": "case.review.citizen_changed_data"
+        }
+       ],
+       "lifecycleInputs": {
+        "aanvraag_datum": "2026-09-30",
+        "beslistermijn_start": "2026-09-30"
+       },
+       "lifecycleError": null,
+       "stageState": {
+        "procedure_id": "beschikking",
+        "contextual_law": "zorgtoeslagwet",
+        "current_stage": "BESLUIT",
+        "accumulated_outputs": {
+         "hoogte_toeslag": 212812,
+         "is_verzekerde_zorgtoeslag": true,
+         "voldoet_aan_voorwaarden": true
+        },
+        "parameters": {
+         "aanvraag_datum": "2026-09-30",
+         "beslistermijn_start": "2026-09-30",
+         "bsn": "999100001"
+        }
+       },
+       "pendingInputs": [
+        "besluit_datum"
+       ],
+       "publishedAt": null
+      }
+     ],
+     "claims": [
+      {
+       "id": "claim-munvq6qn-3gw0x",
+       "bsn": "999100001",
+       "lawId": "wet_inkomstenbelasting",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "winst_uit_onderneming",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": 2500000,
+       "newValue": 0,
+       "reason": "onderneming heb ik niet meer",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": false,
+       "status": "PENDING",
+       "caseId": "zaak-munvqcgm-e9n0m",
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:52.127Z",
+       "decidedAt": null
+      },
+      {
+       "id": "claim-munvpgir-psnat",
+       "bsn": "999100001",
+       "lawId": "wet_op_de_huurtoeslag",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "subsidiabele_servicekosten",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": null,
+       "newValue": 4800,
+       "reason": "Opgegeven bij de aanvraag.",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": true,
+       "status": "APPROVED",
+       "caseId": null,
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:18.147Z",
+       "decidedAt": "2026-09-30T09:04:18.148Z"
+      },
+      {
+       "id": "claim-munvpf9p-bue2s",
+       "bsn": "999100001",
+       "lawId": "wet_op_de_huurtoeslag",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "huurprijs",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": null,
+       "newValue": 72000,
+       "reason": "Opgegeven bij de aanvraag.",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": true,
+       "status": "APPROVED",
+       "caseId": null,
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:16.525Z",
+       "decidedAt": "2026-09-30T09:04:16.525Z"
+      }
+     ],
+     "presenterName": "Team RegelRecht",
+     "presentationMode": "zelfstandig",
+     "delegationKey": null,
+     "featureOverrides": {}
+    },
+    "end": 101.039
+   },
+   {
+    "start": 101.039,
+    "slideIndex": 4,
+    "slide": {
+     "kind": "section",
+     "title": "Demo RegelRecht",
+     "lines": [
+      "Compleet verhaal, geen eindproduct",
+      "We maken beleid door te doen"
+     ]
+    },
+    "profile": "merijn",
+    "state": {
+     "profileKey": "merijn",
+     "referenceDate": "2026-09-30",
+     "manualReview": false,
+     "autoAnnounce": true,
+     "cases": [
+      {
+       "id": "zaak-munvqcgm-e9n0m",
+       "bsn": "999100001",
+       "kvk": null,
+       "lawId": "wet_op_de_huurtoeslag",
+       "lawPath": "wet_op_de_huurtoeslag",
+       "lawName": "Huurtoeslag",
+       "service": "TOESLAGEN",
+       "parameters": {
+        "bsn": "999100001"
+       },
+       "claimedResult": {
+        "basishuur": 23801,
+        "bezwaartermijn_weken": 6,
+        "is_gerechtigd": true,
+        "motivering_vereist": true,
+        "subsidiebedrag": 40695,
+        "voldoet_aan_voorwaarden": true
+       },
+       "verifiedResult": {
+        "basishuur": 23801,
+        "bezwaartermijn_weken": 6,
+        "is_gerechtigd": true,
+        "motivering_vereist": true,
+        "subsidiebedrag": 40695,
+        "voldoet_aan_voorwaarden": true
+       },
+       "status": "DECIDED",
+       "approved": false,
+       "reasonKey": null,
+       "submittedAt": "2026-09-30T09:04:59.542Z",
+       "decidedAt": "2026-09-30T09:06:32.160Z",
+       "objection": null,
+       "acting": null,
+       "events": [
+        {
+         "at": "2026-09-30T09:04:59.542Z",
+         "type": "SUBMITTED",
+         "key": "case.event.submitted"
+        },
+        {
+         "at": "2026-09-30T09:04:59.542Z",
+         "type": "IN_REVIEW",
+         "key": "case.review.citizen_changed_data"
+        },
+        {
+         "at": "2026-09-30T09:06:32.160Z",
+         "type": "DECIDED",
+         "approved": false,
+         "key": "case.event.refused_by_officer",
+         "vars": {
+          "reason": "Klopt niet"
+         }
+        },
+        {
+         "at": "2026-09-30T09:06:32.163Z",
+         "type": "BEKENDMAKING",
+         "key": "case.event.announced",
+         "vars": {
+          "date": "2026-09-30"
+         }
+        }
+       ],
+       "lifecycleInputs": {
+        "aanvraag_datum": "2026-09-30",
+        "beslistermijn_start": "2026-09-30",
+        "besluit_datum": "2026-09-30",
+        "bekendmaking_datum": "2026-09-30"
+       },
+       "lifecycleError": null,
+       "stageState": {
+        "procedure_id": "beschikking",
+        "contextual_law": "wet_op_de_huurtoeslag",
+        "current_stage": "BEZWAAR",
+        "accumulated_outputs": {
+         "basishuur": 23801,
+         "bezwaartermijn_weken": 6,
+         "is_gerechtigd": true,
+         "motivering_vereist": true,
+         "subsidiebedrag": 40695,
+         "voldoet_aan_voorwaarden": true,
+         "bezwaartermijn_einddatum": "2026-11-11",
+         "bezwaartermijn_startdatum": "2026-10-01"
+        },
+        "parameters": {
+         "aanvraag_datum": "2026-09-30",
+         "beslistermijn_start": "2026-09-30",
+         "bsn": "999100001"
+        }
+       },
+       "pendingInputs": [],
+       "reason": "Klopt niet",
+       "publishedAt": "2026-09-30T09:06:32.163Z"
+      },
+      {
+       "id": "zaak-munvnwds-npomu",
+       "bsn": "999100001",
+       "kvk": null,
+       "lawId": "zorgtoeslagwet",
+       "lawPath": "zorgtoeslagwet",
+       "lawName": "Zorgtoeslag",
+       "service": "TOESLAGEN",
+       "parameters": {
+        "bsn": "999100001"
+       },
+       "claimedResult": {
+        "bezwaartermijn_weken": 6,
+        "hoogte_toeslag": 212812,
+        "is_verzekerde_zorgtoeslag": true,
+        "motivering_vereist": true,
+        "voldoet_aan_voorwaarden": true
+       },
+       "verifiedResult": null,
+       "status": "IN_REVIEW",
+       "approved": null,
+       "reasonKey": null,
+       "submittedAt": "2026-09-30T09:03:05.392Z",
+       "decidedAt": null,
+       "objection": null,
+       "acting": null,
+       "events": [
+        {
+         "at": "2026-09-30T09:03:05.392Z",
+         "type": "SUBMITTED",
+         "key": "case.event.submitted"
+        },
+        {
+         "at": "2026-09-30T09:03:05.392Z",
+         "type": "DECIDED",
+         "key": "case.event.granted_auto"
+        },
+        {
+         "at": "2026-09-30T09:03:05.396Z",
+         "type": "BEKENDMAKING",
+         "key": "case.event.announced",
+         "vars": {
+          "date": "2026-09-30"
+         }
+        },
+        {
+         "at": "2026-09-30T09:05:25.561Z",
+         "type": "SUBMITTED",
+         "key": "case.event.amended"
+        },
+        {
+         "at": "2026-09-30T09:05:25.561Z",
+         "type": "IN_REVIEW",
+         "key": "case.review.citizen_changed_data"
+        }
+       ],
+       "lifecycleInputs": {
+        "aanvraag_datum": "2026-09-30",
+        "beslistermijn_start": "2026-09-30"
+       },
+       "lifecycleError": null,
+       "stageState": {
+        "procedure_id": "beschikking",
+        "contextual_law": "zorgtoeslagwet",
+        "current_stage": "BESLUIT",
+        "accumulated_outputs": {
+         "hoogte_toeslag": 212812,
+         "is_verzekerde_zorgtoeslag": true,
+         "voldoet_aan_voorwaarden": true
+        },
+        "parameters": {
+         "aanvraag_datum": "2026-09-30",
+         "beslistermijn_start": "2026-09-30",
+         "bsn": "999100001"
+        }
+       },
+       "pendingInputs": [
+        "besluit_datum"
+       ],
+       "publishedAt": null
+      }
+     ],
+     "claims": [
+      {
+       "id": "claim-munvq6qn-3gw0x",
+       "bsn": "999100001",
+       "lawId": "wet_inkomstenbelasting",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "winst_uit_onderneming",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": 2500000,
+       "newValue": 0,
+       "reason": "onderneming heb ik niet meer",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": false,
+       "status": "PENDING",
+       "caseId": "zaak-munvqcgm-e9n0m",
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:52.127Z",
+       "decidedAt": null
+      },
+      {
+       "id": "claim-munvpgir-psnat",
+       "bsn": "999100001",
+       "lawId": "wet_op_de_huurtoeslag",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "subsidiabele_servicekosten",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": null,
+       "newValue": 4800,
+       "reason": "Opgegeven bij de aanvraag.",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": true,
+       "status": "APPROVED",
+       "caseId": null,
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:18.147Z",
+       "decidedAt": "2026-09-30T09:04:18.148Z"
+      },
+      {
+       "id": "claim-munvpf9p-bue2s",
+       "bsn": "999100001",
+       "lawId": "wet_op_de_huurtoeslag",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "huurprijs",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": null,
+       "newValue": 72000,
+       "reason": "Opgegeven bij de aanvraag.",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": true,
+       "status": "APPROVED",
+       "caseId": null,
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:16.525Z",
+       "decidedAt": "2026-09-30T09:04:16.525Z"
+      }
+     ],
+     "presenterName": "Team RegelRecht",
+     "presentationMode": "zelfstandig",
+     "delegationKey": null,
+     "featureOverrides": {}
+    },
+    "end": 149.391
+   },
+   {
+    "start": 149.391,
+    "slideIndex": 5,
+    "slide": {
+     "kind": "demo",
+     "overline": "De wet",
+     "title": "De wet, machine-leesbaar",
+     "lead": "De wettekst en de uitvoerbare regel staan naast elkaar, per artikel.",
+     "bullets": [
+      "Elk artikel heeft een **machine_readable**-deel: welke gegevens erin gaan, wat eruit komt en hoe.",
+      "Een verwijzing naar een andere wet is expliciet, geen kopie van een bedrag.",
+      "Dezelfde YAML draait in de editor, in dit portaal en in de simulatie."
+     ],
+     "route": "/wetten/zorgtoeslagwet",
+     "highlight": ".yaml-tree"
+    },
+    "profile": "merijn",
+    "state": {
+     "profileKey": "merijn",
+     "referenceDate": "2026-09-30",
+     "manualReview": false,
+     "autoAnnounce": true,
+     "cases": [
+      {
+       "id": "zaak-munvqcgm-e9n0m",
+       "bsn": "999100001",
+       "kvk": null,
+       "lawId": "wet_op_de_huurtoeslag",
+       "lawPath": "wet_op_de_huurtoeslag",
+       "lawName": "Huurtoeslag",
+       "service": "TOESLAGEN",
+       "parameters": {
+        "bsn": "999100001"
+       },
+       "claimedResult": {
+        "basishuur": 23801,
+        "bezwaartermijn_weken": 6,
+        "is_gerechtigd": true,
+        "motivering_vereist": true,
+        "subsidiebedrag": 40695,
+        "voldoet_aan_voorwaarden": true
+       },
+       "verifiedResult": {
+        "basishuur": 23801,
+        "bezwaartermijn_weken": 6,
+        "is_gerechtigd": true,
+        "motivering_vereist": true,
+        "subsidiebedrag": 40695,
+        "voldoet_aan_voorwaarden": true
+       },
+       "status": "DECIDED",
+       "approved": false,
+       "reasonKey": null,
+       "submittedAt": "2026-09-30T09:04:59.542Z",
+       "decidedAt": "2026-09-30T09:06:32.160Z",
+       "objection": null,
+       "acting": null,
+       "events": [
+        {
+         "at": "2026-09-30T09:04:59.542Z",
+         "type": "SUBMITTED",
+         "key": "case.event.submitted"
+        },
+        {
+         "at": "2026-09-30T09:04:59.542Z",
+         "type": "IN_REVIEW",
+         "key": "case.review.citizen_changed_data"
+        },
+        {
+         "at": "2026-09-30T09:06:32.160Z",
+         "type": "DECIDED",
+         "approved": false,
+         "key": "case.event.refused_by_officer",
+         "vars": {
+          "reason": "Klopt niet"
+         }
+        },
+        {
+         "at": "2026-09-30T09:06:32.163Z",
+         "type": "BEKENDMAKING",
+         "key": "case.event.announced",
+         "vars": {
+          "date": "2026-09-30"
+         }
+        }
+       ],
+       "lifecycleInputs": {
+        "aanvraag_datum": "2026-09-30",
+        "beslistermijn_start": "2026-09-30",
+        "besluit_datum": "2026-09-30",
+        "bekendmaking_datum": "2026-09-30"
+       },
+       "lifecycleError": null,
+       "stageState": {
+        "procedure_id": "beschikking",
+        "contextual_law": "wet_op_de_huurtoeslag",
+        "current_stage": "BEZWAAR",
+        "accumulated_outputs": {
+         "basishuur": 23801,
+         "bezwaartermijn_weken": 6,
+         "is_gerechtigd": true,
+         "motivering_vereist": true,
+         "subsidiebedrag": 40695,
+         "voldoet_aan_voorwaarden": true,
+         "bezwaartermijn_einddatum": "2026-11-11",
+         "bezwaartermijn_startdatum": "2026-10-01"
+        },
+        "parameters": {
+         "aanvraag_datum": "2026-09-30",
+         "beslistermijn_start": "2026-09-30",
+         "bsn": "999100001"
+        }
+       },
+       "pendingInputs": [],
+       "reason": "Klopt niet",
+       "publishedAt": "2026-09-30T09:06:32.163Z"
+      },
+      {
+       "id": "zaak-munvnwds-npomu",
+       "bsn": "999100001",
+       "kvk": null,
+       "lawId": "zorgtoeslagwet",
+       "lawPath": "zorgtoeslagwet",
+       "lawName": "Zorgtoeslag",
+       "service": "TOESLAGEN",
+       "parameters": {
+        "bsn": "999100001"
+       },
+       "claimedResult": {
+        "bezwaartermijn_weken": 6,
+        "hoogte_toeslag": 212812,
+        "is_verzekerde_zorgtoeslag": true,
+        "motivering_vereist": true,
+        "voldoet_aan_voorwaarden": true
+       },
+       "verifiedResult": null,
+       "status": "IN_REVIEW",
+       "approved": null,
+       "reasonKey": null,
+       "submittedAt": "2026-09-30T09:03:05.392Z",
+       "decidedAt": null,
+       "objection": null,
+       "acting": null,
+       "events": [
+        {
+         "at": "2026-09-30T09:03:05.392Z",
+         "type": "SUBMITTED",
+         "key": "case.event.submitted"
+        },
+        {
+         "at": "2026-09-30T09:03:05.392Z",
+         "type": "DECIDED",
+         "key": "case.event.granted_auto"
+        },
+        {
+         "at": "2026-09-30T09:03:05.396Z",
+         "type": "BEKENDMAKING",
+         "key": "case.event.announced",
+         "vars": {
+          "date": "2026-09-30"
+         }
+        },
+        {
+         "at": "2026-09-30T09:05:25.561Z",
+         "type": "SUBMITTED",
+         "key": "case.event.amended"
+        },
+        {
+         "at": "2026-09-30T09:05:25.561Z",
+         "type": "IN_REVIEW",
+         "key": "case.review.citizen_changed_data"
+        }
+       ],
+       "lifecycleInputs": {
+        "aanvraag_datum": "2026-09-30",
+        "beslistermijn_start": "2026-09-30"
+       },
+       "lifecycleError": null,
+       "stageState": {
+        "procedure_id": "beschikking",
+        "contextual_law": "zorgtoeslagwet",
+        "current_stage": "BESLUIT",
+        "accumulated_outputs": {
+         "hoogte_toeslag": 212812,
+         "is_verzekerde_zorgtoeslag": true,
+         "voldoet_aan_voorwaarden": true
+        },
+        "parameters": {
+         "aanvraag_datum": "2026-09-30",
+         "beslistermijn_start": "2026-09-30",
+         "bsn": "999100001"
+        }
+       },
+       "pendingInputs": [
+        "besluit_datum"
+       ],
+       "publishedAt": null
+      }
+     ],
+     "claims": [
+      {
+       "id": "claim-munvq6qn-3gw0x",
+       "bsn": "999100001",
+       "lawId": "wet_inkomstenbelasting",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "winst_uit_onderneming",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": 2500000,
+       "newValue": 0,
+       "reason": "onderneming heb ik niet meer",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": false,
+       "status": "PENDING",
+       "caseId": "zaak-munvqcgm-e9n0m",
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:52.127Z",
+       "decidedAt": null
+      },
+      {
+       "id": "claim-munvpgir-psnat",
+       "bsn": "999100001",
+       "lawId": "wet_op_de_huurtoeslag",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "subsidiabele_servicekosten",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": null,
+       "newValue": 4800,
+       "reason": "Opgegeven bij de aanvraag.",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": true,
+       "status": "APPROVED",
+       "caseId": null,
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:18.147Z",
+       "decidedAt": "2026-09-30T09:04:18.148Z"
+      },
+      {
+       "id": "claim-munvpf9p-bue2s",
+       "bsn": "999100001",
+       "lawId": "wet_op_de_huurtoeslag",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "huurprijs",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": null,
+       "newValue": 72000,
+       "reason": "Opgegeven bij de aanvraag.",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": true,
+       "status": "APPROVED",
+       "caseId": null,
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:16.525Z",
+       "decidedAt": "2026-09-30T09:04:16.525Z"
+      }
+     ],
+     "presenterName": "Team RegelRecht",
+     "presentationMode": "zelfstandig",
+     "delegationKey": null,
+     "featureOverrides": {}
+    },
+    "end": 306.659
+   },
+   {
+    "start": 306.659,
+    "slideIndex": 6,
+    "slide": {
+     "kind": "demo",
+     "overline": "Samenhang",
+     "title": "Wetten hangen samen",
+     "lead": "Of iemand verzekerd is, hangt af van detentie; of iemand zorgtoeslag krijgt, hangt af van verzekerd zijn.",
+     "bullets": [
+      "Per wet: welke gegevens uit registers, welke uit andere wetten, wat eruit komt.",
+      "Elke lijn is een echte verwijzing uit de wet, met de waarde voor deze persoon erbij.",
+      "Wijzigt een wet, dan zie je meteen wie dat raakt."
+     ],
+     "route": "/graaf"
+    },
+    "profile": "merijn",
+    "state": {
+     "profileKey": "merijn",
+     "referenceDate": "2026-09-30",
+     "manualReview": false,
+     "autoAnnounce": true,
+     "cases": [
+      {
+       "id": "zaak-munvqcgm-e9n0m",
+       "bsn": "999100001",
+       "kvk": null,
+       "lawId": "wet_op_de_huurtoeslag",
+       "lawPath": "wet_op_de_huurtoeslag",
+       "lawName": "Huurtoeslag",
+       "service": "TOESLAGEN",
+       "parameters": {
+        "bsn": "999100001"
+       },
+       "claimedResult": {
+        "basishuur": 23801,
+        "bezwaartermijn_weken": 6,
+        "is_gerechtigd": true,
+        "motivering_vereist": true,
+        "subsidiebedrag": 40695,
+        "voldoet_aan_voorwaarden": true
+       },
+       "verifiedResult": {
+        "basishuur": 23801,
+        "bezwaartermijn_weken": 6,
+        "is_gerechtigd": true,
+        "motivering_vereist": true,
+        "subsidiebedrag": 40695,
+        "voldoet_aan_voorwaarden": true
+       },
+       "status": "DECIDED",
+       "approved": false,
+       "reasonKey": null,
+       "submittedAt": "2026-09-30T09:04:59.542Z",
+       "decidedAt": "2026-09-30T09:06:32.160Z",
+       "objection": null,
+       "acting": null,
+       "events": [
+        {
+         "at": "2026-09-30T09:04:59.542Z",
+         "type": "SUBMITTED",
+         "key": "case.event.submitted"
+        },
+        {
+         "at": "2026-09-30T09:04:59.542Z",
+         "type": "IN_REVIEW",
+         "key": "case.review.citizen_changed_data"
+        },
+        {
+         "at": "2026-09-30T09:06:32.160Z",
+         "type": "DECIDED",
+         "approved": false,
+         "key": "case.event.refused_by_officer",
+         "vars": {
+          "reason": "Klopt niet"
+         }
+        },
+        {
+         "at": "2026-09-30T09:06:32.163Z",
+         "type": "BEKENDMAKING",
+         "key": "case.event.announced",
+         "vars": {
+          "date": "2026-09-30"
+         }
+        }
+       ],
+       "lifecycleInputs": {
+        "aanvraag_datum": "2026-09-30",
+        "beslistermijn_start": "2026-09-30",
+        "besluit_datum": "2026-09-30",
+        "bekendmaking_datum": "2026-09-30"
+       },
+       "lifecycleError": null,
+       "stageState": {
+        "procedure_id": "beschikking",
+        "contextual_law": "wet_op_de_huurtoeslag",
+        "current_stage": "BEZWAAR",
+        "accumulated_outputs": {
+         "basishuur": 23801,
+         "bezwaartermijn_weken": 6,
+         "is_gerechtigd": true,
+         "motivering_vereist": true,
+         "subsidiebedrag": 40695,
+         "voldoet_aan_voorwaarden": true,
+         "bezwaartermijn_einddatum": "2026-11-11",
+         "bezwaartermijn_startdatum": "2026-10-01"
+        },
+        "parameters": {
+         "aanvraag_datum": "2026-09-30",
+         "beslistermijn_start": "2026-09-30",
+         "bsn": "999100001"
+        }
+       },
+       "pendingInputs": [],
+       "reason": "Klopt niet",
+       "publishedAt": "2026-09-30T09:06:32.163Z"
+      },
+      {
+       "id": "zaak-munvnwds-npomu",
+       "bsn": "999100001",
+       "kvk": null,
+       "lawId": "zorgtoeslagwet",
+       "lawPath": "zorgtoeslagwet",
+       "lawName": "Zorgtoeslag",
+       "service": "TOESLAGEN",
+       "parameters": {
+        "bsn": "999100001"
+       },
+       "claimedResult": {
+        "bezwaartermijn_weken": 6,
+        "hoogte_toeslag": 212812,
+        "is_verzekerde_zorgtoeslag": true,
+        "motivering_vereist": true,
+        "voldoet_aan_voorwaarden": true
+       },
+       "verifiedResult": null,
+       "status": "IN_REVIEW",
+       "approved": null,
+       "reasonKey": null,
+       "submittedAt": "2026-09-30T09:03:05.392Z",
+       "decidedAt": null,
+       "objection": null,
+       "acting": null,
+       "events": [
+        {
+         "at": "2026-09-30T09:03:05.392Z",
+         "type": "SUBMITTED",
+         "key": "case.event.submitted"
+        },
+        {
+         "at": "2026-09-30T09:03:05.392Z",
+         "type": "DECIDED",
+         "key": "case.event.granted_auto"
+        },
+        {
+         "at": "2026-09-30T09:03:05.396Z",
+         "type": "BEKENDMAKING",
+         "key": "case.event.announced",
+         "vars": {
+          "date": "2026-09-30"
+         }
+        },
+        {
+         "at": "2026-09-30T09:05:25.561Z",
+         "type": "SUBMITTED",
+         "key": "case.event.amended"
+        },
+        {
+         "at": "2026-09-30T09:05:25.561Z",
+         "type": "IN_REVIEW",
+         "key": "case.review.citizen_changed_data"
+        }
+       ],
+       "lifecycleInputs": {
+        "aanvraag_datum": "2026-09-30",
+        "beslistermijn_start": "2026-09-30"
+       },
+       "lifecycleError": null,
+       "stageState": {
+        "procedure_id": "beschikking",
+        "contextual_law": "zorgtoeslagwet",
+        "current_stage": "BESLUIT",
+        "accumulated_outputs": {
+         "hoogte_toeslag": 212812,
+         "is_verzekerde_zorgtoeslag": true,
+         "voldoet_aan_voorwaarden": true
+        },
+        "parameters": {
+         "aanvraag_datum": "2026-09-30",
+         "beslistermijn_start": "2026-09-30",
+         "bsn": "999100001"
+        }
+       },
+       "pendingInputs": [
+        "besluit_datum"
+       ],
+       "publishedAt": null
+      }
+     ],
+     "claims": [
+      {
+       "id": "claim-munvq6qn-3gw0x",
+       "bsn": "999100001",
+       "lawId": "wet_inkomstenbelasting",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "winst_uit_onderneming",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": 2500000,
+       "newValue": 0,
+       "reason": "onderneming heb ik niet meer",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": false,
+       "status": "PENDING",
+       "caseId": "zaak-munvqcgm-e9n0m",
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:52.127Z",
+       "decidedAt": null
+      },
+      {
+       "id": "claim-munvpgir-psnat",
+       "bsn": "999100001",
+       "lawId": "wet_op_de_huurtoeslag",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "subsidiabele_servicekosten",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": null,
+       "newValue": 4800,
+       "reason": "Opgegeven bij de aanvraag.",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": true,
+       "status": "APPROVED",
+       "caseId": null,
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:18.147Z",
+       "decidedAt": "2026-09-30T09:04:18.148Z"
+      },
+      {
+       "id": "claim-munvpf9p-bue2s",
+       "bsn": "999100001",
+       "lawId": "wet_op_de_huurtoeslag",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "huurprijs",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": null,
+       "newValue": 72000,
+       "reason": "Opgegeven bij de aanvraag.",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": true,
+       "status": "APPROVED",
+       "caseId": null,
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:16.525Z",
+       "decidedAt": "2026-09-30T09:04:16.525Z"
+      }
+     ],
+     "presenterName": "Team RegelRecht",
+     "presentationMode": "zelfstandig",
+     "delegationKey": null,
+     "featureOverrides": {}
+    },
+    "end": 374.471
+   },
+   {
+    "start": 374.471,
+    "slideIndex": 7,
+    "slide": {
+     "kind": "demo",
+     "overline": "Toetsen",
+     "title": "De wet getoetst, in gewone taal",
+     "lead": "Scenario's beschrijven een persoon en wat de wet voor die persoon moet opleveren.",
+     "bullets": [
+      "Gegeven een 17-jarige, dan geen zorgtoeslag. Gegeven een alleenstaande met laag inkomen, dan wel.",
+      "Dezelfde scenario's draaien hier in de browser en in de bouwstraat.",
+      "Wie de wet wijzigt, ziet welk scenario omvalt."
+     ],
+     "route": "/scenarios"
+    },
+    "profile": "merijn",
+    "state": {
+     "profileKey": "merijn",
+     "referenceDate": "2026-09-30",
+     "manualReview": false,
+     "autoAnnounce": true,
+     "cases": [
+      {
+       "id": "zaak-munvqcgm-e9n0m",
+       "bsn": "999100001",
+       "kvk": null,
+       "lawId": "wet_op_de_huurtoeslag",
+       "lawPath": "wet_op_de_huurtoeslag",
+       "lawName": "Huurtoeslag",
+       "service": "TOESLAGEN",
+       "parameters": {
+        "bsn": "999100001"
+       },
+       "claimedResult": {
+        "basishuur": 23801,
+        "bezwaartermijn_weken": 6,
+        "is_gerechtigd": true,
+        "motivering_vereist": true,
+        "subsidiebedrag": 40695,
+        "voldoet_aan_voorwaarden": true
+       },
+       "verifiedResult": {
+        "basishuur": 23801,
+        "bezwaartermijn_weken": 6,
+        "is_gerechtigd": true,
+        "motivering_vereist": true,
+        "subsidiebedrag": 40695,
+        "voldoet_aan_voorwaarden": true
+       },
+       "status": "DECIDED",
+       "approved": false,
+       "reasonKey": null,
+       "submittedAt": "2026-09-30T09:04:59.542Z",
+       "decidedAt": "2026-09-30T09:06:32.160Z",
+       "objection": null,
+       "acting": null,
+       "events": [
+        {
+         "at": "2026-09-30T09:04:59.542Z",
+         "type": "SUBMITTED",
+         "key": "case.event.submitted"
+        },
+        {
+         "at": "2026-09-30T09:04:59.542Z",
+         "type": "IN_REVIEW",
+         "key": "case.review.citizen_changed_data"
+        },
+        {
+         "at": "2026-09-30T09:06:32.160Z",
+         "type": "DECIDED",
+         "approved": false,
+         "key": "case.event.refused_by_officer",
+         "vars": {
+          "reason": "Klopt niet"
+         }
+        },
+        {
+         "at": "2026-09-30T09:06:32.163Z",
+         "type": "BEKENDMAKING",
+         "key": "case.event.announced",
+         "vars": {
+          "date": "2026-09-30"
+         }
+        }
+       ],
+       "lifecycleInputs": {
+        "aanvraag_datum": "2026-09-30",
+        "beslistermijn_start": "2026-09-30",
+        "besluit_datum": "2026-09-30",
+        "bekendmaking_datum": "2026-09-30"
+       },
+       "lifecycleError": null,
+       "stageState": {
+        "procedure_id": "beschikking",
+        "contextual_law": "wet_op_de_huurtoeslag",
+        "current_stage": "BEZWAAR",
+        "accumulated_outputs": {
+         "basishuur": 23801,
+         "bezwaartermijn_weken": 6,
+         "is_gerechtigd": true,
+         "motivering_vereist": true,
+         "subsidiebedrag": 40695,
+         "voldoet_aan_voorwaarden": true,
+         "bezwaartermijn_einddatum": "2026-11-11",
+         "bezwaartermijn_startdatum": "2026-10-01"
+        },
+        "parameters": {
+         "aanvraag_datum": "2026-09-30",
+         "beslistermijn_start": "2026-09-30",
+         "bsn": "999100001"
+        }
+       },
+       "pendingInputs": [],
+       "reason": "Klopt niet",
+       "publishedAt": "2026-09-30T09:06:32.163Z"
+      },
+      {
+       "id": "zaak-munvnwds-npomu",
+       "bsn": "999100001",
+       "kvk": null,
+       "lawId": "zorgtoeslagwet",
+       "lawPath": "zorgtoeslagwet",
+       "lawName": "Zorgtoeslag",
+       "service": "TOESLAGEN",
+       "parameters": {
+        "bsn": "999100001"
+       },
+       "claimedResult": {
+        "bezwaartermijn_weken": 6,
+        "hoogte_toeslag": 212812,
+        "is_verzekerde_zorgtoeslag": true,
+        "motivering_vereist": true,
+        "voldoet_aan_voorwaarden": true
+       },
+       "verifiedResult": null,
+       "status": "IN_REVIEW",
+       "approved": null,
+       "reasonKey": null,
+       "submittedAt": "2026-09-30T09:03:05.392Z",
+       "decidedAt": null,
+       "objection": null,
+       "acting": null,
+       "events": [
+        {
+         "at": "2026-09-30T09:03:05.392Z",
+         "type": "SUBMITTED",
+         "key": "case.event.submitted"
+        },
+        {
+         "at": "2026-09-30T09:03:05.392Z",
+         "type": "DECIDED",
+         "key": "case.event.granted_auto"
+        },
+        {
+         "at": "2026-09-30T09:03:05.396Z",
+         "type": "BEKENDMAKING",
+         "key": "case.event.announced",
+         "vars": {
+          "date": "2026-09-30"
+         }
+        },
+        {
+         "at": "2026-09-30T09:05:25.561Z",
+         "type": "SUBMITTED",
+         "key": "case.event.amended"
+        },
+        {
+         "at": "2026-09-30T09:05:25.561Z",
+         "type": "IN_REVIEW",
+         "key": "case.review.citizen_changed_data"
+        }
+       ],
+       "lifecycleInputs": {
+        "aanvraag_datum": "2026-09-30",
+        "beslistermijn_start": "2026-09-30"
+       },
+       "lifecycleError": null,
+       "stageState": {
+        "procedure_id": "beschikking",
+        "contextual_law": "zorgtoeslagwet",
+        "current_stage": "BESLUIT",
+        "accumulated_outputs": {
+         "hoogte_toeslag": 212812,
+         "is_verzekerde_zorgtoeslag": true,
+         "voldoet_aan_voorwaarden": true
+        },
+        "parameters": {
+         "aanvraag_datum": "2026-09-30",
+         "beslistermijn_start": "2026-09-30",
+         "bsn": "999100001"
+        }
+       },
+       "pendingInputs": [
+        "besluit_datum"
+       ],
+       "publishedAt": null
+      }
+     ],
+     "claims": [
+      {
+       "id": "claim-munvq6qn-3gw0x",
+       "bsn": "999100001",
+       "lawId": "wet_inkomstenbelasting",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "winst_uit_onderneming",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": 2500000,
+       "newValue": 0,
+       "reason": "onderneming heb ik niet meer",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": false,
+       "status": "PENDING",
+       "caseId": "zaak-munvqcgm-e9n0m",
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:52.127Z",
+       "decidedAt": null
+      },
+      {
+       "id": "claim-munvpgir-psnat",
+       "bsn": "999100001",
+       "lawId": "wet_op_de_huurtoeslag",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "subsidiabele_servicekosten",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": null,
+       "newValue": 4800,
+       "reason": "Opgegeven bij de aanvraag.",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": true,
+       "status": "APPROVED",
+       "caseId": null,
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:18.147Z",
+       "decidedAt": "2026-09-30T09:04:18.148Z"
+      },
+      {
+       "id": "claim-munvpf9p-bue2s",
+       "bsn": "999100001",
+       "lawId": "wet_op_de_huurtoeslag",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "huurprijs",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": null,
+       "newValue": 72000,
+       "reason": "Opgegeven bij de aanvraag.",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": true,
+       "status": "APPROVED",
+       "caseId": null,
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:16.525Z",
+       "decidedAt": "2026-09-30T09:04:16.525Z"
+      }
+     ],
+     "presenterName": "Team RegelRecht",
+     "presentationMode": "zelfstandig",
+     "delegationKey": null,
+     "featureOverrides": {}
+    },
+    "end": 590.526
+   },
+   {
+    "start": 590.526,
+    "slideIndex": 8,
+    "slide": {
+     "kind": "demo",
+     "overline": "Beleid",
+     "title": "Wat doet het met tweeduizend mensen?",
+     "lead": "Een gegenereerde bevolking door alle regelingen, met de echte wetten.",
+     "bullets": [
+      "Wie voldoet aan de voorwaarden, voor hoeveel, uitgesplitst naar leeftijd, inkomen, huishouden.",
+      "Draai aan een drempel in de wet en zie het verschil, voor de wet ingaat.",
+      "Ook voor ondernemers: vergunningen, meldplichten, precario."
+     ],
+     "route": "/simulatie"
+    },
+    "profile": "merijn",
+    "state": {
+     "profileKey": "merijn",
+     "referenceDate": "2026-09-30",
+     "manualReview": false,
+     "autoAnnounce": true,
+     "cases": [
+      {
+       "id": "zaak-munvqcgm-e9n0m",
+       "bsn": "999100001",
+       "kvk": null,
+       "lawId": "wet_op_de_huurtoeslag",
+       "lawPath": "wet_op_de_huurtoeslag",
+       "lawName": "Huurtoeslag",
+       "service": "TOESLAGEN",
+       "parameters": {
+        "bsn": "999100001"
+       },
+       "claimedResult": {
+        "basishuur": 23801,
+        "bezwaartermijn_weken": 6,
+        "is_gerechtigd": true,
+        "motivering_vereist": true,
+        "subsidiebedrag": 40695,
+        "voldoet_aan_voorwaarden": true
+       },
+       "verifiedResult": {
+        "basishuur": 23801,
+        "bezwaartermijn_weken": 6,
+        "is_gerechtigd": true,
+        "motivering_vereist": true,
+        "subsidiebedrag": 40695,
+        "voldoet_aan_voorwaarden": true
+       },
+       "status": "DECIDED",
+       "approved": false,
+       "reasonKey": null,
+       "submittedAt": "2026-09-30T09:04:59.542Z",
+       "decidedAt": "2026-09-30T09:06:32.160Z",
+       "objection": null,
+       "acting": null,
+       "events": [
+        {
+         "at": "2026-09-30T09:04:59.542Z",
+         "type": "SUBMITTED",
+         "key": "case.event.submitted"
+        },
+        {
+         "at": "2026-09-30T09:04:59.542Z",
+         "type": "IN_REVIEW",
+         "key": "case.review.citizen_changed_data"
+        },
+        {
+         "at": "2026-09-30T09:06:32.160Z",
+         "type": "DECIDED",
+         "approved": false,
+         "key": "case.event.refused_by_officer",
+         "vars": {
+          "reason": "Klopt niet"
+         }
+        },
+        {
+         "at": "2026-09-30T09:06:32.163Z",
+         "type": "BEKENDMAKING",
+         "key": "case.event.announced",
+         "vars": {
+          "date": "2026-09-30"
+         }
+        }
+       ],
+       "lifecycleInputs": {
+        "aanvraag_datum": "2026-09-30",
+        "beslistermijn_start": "2026-09-30",
+        "besluit_datum": "2026-09-30",
+        "bekendmaking_datum": "2026-09-30"
+       },
+       "lifecycleError": null,
+       "stageState": {
+        "procedure_id": "beschikking",
+        "contextual_law": "wet_op_de_huurtoeslag",
+        "current_stage": "BEZWAAR",
+        "accumulated_outputs": {
+         "basishuur": 23801,
+         "bezwaartermijn_weken": 6,
+         "is_gerechtigd": true,
+         "motivering_vereist": true,
+         "subsidiebedrag": 40695,
+         "voldoet_aan_voorwaarden": true,
+         "bezwaartermijn_einddatum": "2026-11-11",
+         "bezwaartermijn_startdatum": "2026-10-01"
+        },
+        "parameters": {
+         "aanvraag_datum": "2026-09-30",
+         "beslistermijn_start": "2026-09-30",
+         "bsn": "999100001"
+        }
+       },
+       "pendingInputs": [],
+       "reason": "Klopt niet",
+       "publishedAt": "2026-09-30T09:06:32.163Z"
+      },
+      {
+       "id": "zaak-munvnwds-npomu",
+       "bsn": "999100001",
+       "kvk": null,
+       "lawId": "zorgtoeslagwet",
+       "lawPath": "zorgtoeslagwet",
+       "lawName": "Zorgtoeslag",
+       "service": "TOESLAGEN",
+       "parameters": {
+        "bsn": "999100001"
+       },
+       "claimedResult": {
+        "bezwaartermijn_weken": 6,
+        "hoogte_toeslag": 212812,
+        "is_verzekerde_zorgtoeslag": true,
+        "motivering_vereist": true,
+        "voldoet_aan_voorwaarden": true
+       },
+       "verifiedResult": null,
+       "status": "IN_REVIEW",
+       "approved": null,
+       "reasonKey": null,
+       "submittedAt": "2026-09-30T09:03:05.392Z",
+       "decidedAt": null,
+       "objection": null,
+       "acting": null,
+       "events": [
+        {
+         "at": "2026-09-30T09:03:05.392Z",
+         "type": "SUBMITTED",
+         "key": "case.event.submitted"
+        },
+        {
+         "at": "2026-09-30T09:03:05.392Z",
+         "type": "DECIDED",
+         "key": "case.event.granted_auto"
+        },
+        {
+         "at": "2026-09-30T09:03:05.396Z",
+         "type": "BEKENDMAKING",
+         "key": "case.event.announced",
+         "vars": {
+          "date": "2026-09-30"
+         }
+        },
+        {
+         "at": "2026-09-30T09:05:25.561Z",
+         "type": "SUBMITTED",
+         "key": "case.event.amended"
+        },
+        {
+         "at": "2026-09-30T09:05:25.561Z",
+         "type": "IN_REVIEW",
+         "key": "case.review.citizen_changed_data"
+        }
+       ],
+       "lifecycleInputs": {
+        "aanvraag_datum": "2026-09-30",
+        "beslistermijn_start": "2026-09-30"
+       },
+       "lifecycleError": null,
+       "stageState": {
+        "procedure_id": "beschikking",
+        "contextual_law": "zorgtoeslagwet",
+        "current_stage": "BESLUIT",
+        "accumulated_outputs": {
+         "hoogte_toeslag": 212812,
+         "is_verzekerde_zorgtoeslag": true,
+         "voldoet_aan_voorwaarden": true
+        },
+        "parameters": {
+         "aanvraag_datum": "2026-09-30",
+         "beslistermijn_start": "2026-09-30",
+         "bsn": "999100001"
+        }
+       },
+       "pendingInputs": [
+        "besluit_datum"
+       ],
+       "publishedAt": null
+      }
+     ],
+     "claims": [
+      {
+       "id": "claim-munvq6qn-3gw0x",
+       "bsn": "999100001",
+       "lawId": "wet_inkomstenbelasting",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "winst_uit_onderneming",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": 2500000,
+       "newValue": 0,
+       "reason": "onderneming heb ik niet meer",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": false,
+       "status": "PENDING",
+       "caseId": "zaak-munvqcgm-e9n0m",
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:52.127Z",
+       "decidedAt": null
+      },
+      {
+       "id": "claim-munvpgir-psnat",
+       "bsn": "999100001",
+       "lawId": "wet_op_de_huurtoeslag",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "subsidiabele_servicekosten",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": null,
+       "newValue": 4800,
+       "reason": "Opgegeven bij de aanvraag.",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": true,
+       "status": "APPROVED",
+       "caseId": null,
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:18.147Z",
+       "decidedAt": "2026-09-30T09:04:18.148Z"
+      },
+      {
+       "id": "claim-munvpf9p-bue2s",
+       "bsn": "999100001",
+       "lawId": "wet_op_de_huurtoeslag",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "huurprijs",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": null,
+       "newValue": 72000,
+       "reason": "Opgegeven bij de aanvraag.",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": true,
+       "status": "APPROVED",
+       "caseId": null,
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:16.525Z",
+       "decidedAt": "2026-09-30T09:04:16.525Z"
+      }
+     ],
+     "presenterName": "Team RegelRecht",
+     "presentationMode": "zelfstandig",
+     "delegationKey": null,
+     "featureOverrides": {}
+    },
+    "end": 729.6
+   }
+  ],
+  "events": [
+   {
+    "t": 0.0,
+    "type": "restore",
+    "state": {
+     "profileKey": "merijn",
+     "referenceDate": "2026-09-30",
+     "manualReview": false,
+     "autoAnnounce": true,
+     "cases": [
+      {
+       "id": "zaak-munvqcgm-e9n0m",
+       "bsn": "999100001",
+       "kvk": null,
+       "lawId": "wet_op_de_huurtoeslag",
+       "lawPath": "wet_op_de_huurtoeslag",
+       "lawName": "Huurtoeslag",
+       "service": "TOESLAGEN",
+       "parameters": {
+        "bsn": "999100001"
+       },
+       "claimedResult": {
+        "basishuur": 23801,
+        "bezwaartermijn_weken": 6,
+        "is_gerechtigd": true,
+        "motivering_vereist": true,
+        "subsidiebedrag": 40695,
+        "voldoet_aan_voorwaarden": true
+       },
+       "verifiedResult": {
+        "basishuur": 23801,
+        "bezwaartermijn_weken": 6,
+        "is_gerechtigd": true,
+        "motivering_vereist": true,
+        "subsidiebedrag": 40695,
+        "voldoet_aan_voorwaarden": true
+       },
+       "status": "DECIDED",
+       "approved": false,
+       "reasonKey": null,
+       "submittedAt": "2026-09-30T09:04:59.542Z",
+       "decidedAt": "2026-09-30T09:06:32.160Z",
+       "objection": null,
+       "acting": null,
+       "events": [
+        {
+         "at": "2026-09-30T09:04:59.542Z",
+         "type": "SUBMITTED",
+         "key": "case.event.submitted"
+        },
+        {
+         "at": "2026-09-30T09:04:59.542Z",
+         "type": "IN_REVIEW",
+         "key": "case.review.citizen_changed_data"
+        },
+        {
+         "at": "2026-09-30T09:06:32.160Z",
+         "type": "DECIDED",
+         "approved": false,
+         "key": "case.event.refused_by_officer",
+         "vars": {
+          "reason": "Klopt niet"
+         }
+        },
+        {
+         "at": "2026-09-30T09:06:32.163Z",
+         "type": "BEKENDMAKING",
+         "key": "case.event.announced",
+         "vars": {
+          "date": "2026-09-30"
+         }
+        }
+       ],
+       "lifecycleInputs": {
+        "aanvraag_datum": "2026-09-30",
+        "beslistermijn_start": "2026-09-30",
+        "besluit_datum": "2026-09-30",
+        "bekendmaking_datum": "2026-09-30"
+       },
+       "lifecycleError": null,
+       "stageState": {
+        "procedure_id": "beschikking",
+        "contextual_law": "wet_op_de_huurtoeslag",
+        "current_stage": "BEZWAAR",
+        "accumulated_outputs": {
+         "basishuur": 23801,
+         "bezwaartermijn_weken": 6,
+         "is_gerechtigd": true,
+         "motivering_vereist": true,
+         "subsidiebedrag": 40695,
+         "voldoet_aan_voorwaarden": true,
+         "bezwaartermijn_einddatum": "2026-11-11",
+         "bezwaartermijn_startdatum": "2026-10-01"
+        },
+        "parameters": {
+         "aanvraag_datum": "2026-09-30",
+         "beslistermijn_start": "2026-09-30",
+         "bsn": "999100001"
+        }
+       },
+       "pendingInputs": [],
+       "reason": "Klopt niet",
+       "publishedAt": "2026-09-30T09:06:32.163Z"
+      },
+      {
+       "id": "zaak-munvnwds-npomu",
+       "bsn": "999100001",
+       "kvk": null,
+       "lawId": "zorgtoeslagwet",
+       "lawPath": "zorgtoeslagwet",
+       "lawName": "Zorgtoeslag",
+       "service": "TOESLAGEN",
+       "parameters": {
+        "bsn": "999100001"
+       },
+       "claimedResult": {
+        "bezwaartermijn_weken": 6,
+        "hoogte_toeslag": 212812,
+        "is_verzekerde_zorgtoeslag": true,
+        "motivering_vereist": true,
+        "voldoet_aan_voorwaarden": true
+       },
+       "verifiedResult": null,
+       "status": "IN_REVIEW",
+       "approved": null,
+       "reasonKey": null,
+       "submittedAt": "2026-09-30T09:03:05.392Z",
+       "decidedAt": null,
+       "objection": null,
+       "acting": null,
+       "events": [
+        {
+         "at": "2026-09-30T09:03:05.392Z",
+         "type": "SUBMITTED",
+         "key": "case.event.submitted"
+        },
+        {
+         "at": "2026-09-30T09:03:05.392Z",
+         "type": "DECIDED",
+         "key": "case.event.granted_auto"
+        },
+        {
+         "at": "2026-09-30T09:03:05.396Z",
+         "type": "BEKENDMAKING",
+         "key": "case.event.announced",
+         "vars": {
+          "date": "2026-09-30"
+         }
+        },
+        {
+         "at": "2026-09-30T09:05:25.561Z",
+         "type": "SUBMITTED",
+         "key": "case.event.amended"
+        },
+        {
+         "at": "2026-09-30T09:05:25.561Z",
+         "type": "IN_REVIEW",
+         "key": "case.review.citizen_changed_data"
+        }
+       ],
+       "lifecycleInputs": {
+        "aanvraag_datum": "2026-09-30",
+        "beslistermijn_start": "2026-09-30"
+       },
+       "lifecycleError": null,
+       "stageState": {
+        "procedure_id": "beschikking",
+        "contextual_law": "zorgtoeslagwet",
+        "current_stage": "BESLUIT",
+        "accumulated_outputs": {
+         "hoogte_toeslag": 212812,
+         "is_verzekerde_zorgtoeslag": true,
+         "voldoet_aan_voorwaarden": true
+        },
+        "parameters": {
+         "aanvraag_datum": "2026-09-30",
+         "beslistermijn_start": "2026-09-30",
+         "bsn": "999100001"
+        }
+       },
+       "pendingInputs": [
+        "besluit_datum"
+       ],
+       "publishedAt": null
+      }
+     ],
+     "claims": [
+      {
+       "id": "claim-munvq6qn-3gw0x",
+       "bsn": "999100001",
+       "lawId": "wet_inkomstenbelasting",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "winst_uit_onderneming",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": 2500000,
+       "newValue": 0,
+       "reason": "onderneming heb ik niet meer",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": false,
+       "status": "PENDING",
+       "caseId": "zaak-munvqcgm-e9n0m",
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:52.127Z",
+       "decidedAt": null
+      },
+      {
+       "id": "claim-munvpgir-psnat",
+       "bsn": "999100001",
+       "lawId": "wet_op_de_huurtoeslag",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "subsidiabele_servicekosten",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": null,
+       "newValue": 4800,
+       "reason": "Opgegeven bij de aanvraag.",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": true,
+       "status": "APPROVED",
+       "caseId": null,
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:18.147Z",
+       "decidedAt": "2026-09-30T09:04:18.148Z"
+      },
+      {
+       "id": "claim-munvpf9p-bue2s",
+       "bsn": "999100001",
+       "lawId": "wet_op_de_huurtoeslag",
+       "tileLawId": "wet_op_de_huurtoeslag",
+       "input": "huurprijs",
+       "keyField": "bsn",
+       "keyValue": "999100001",
+       "oldValue": null,
+       "newValue": 72000,
+       "reason": "Opgegeven bij de aanvraag.",
+       "evidence": null,
+       "hardship": null,
+       "claimant": "BURGER",
+       "selfDeclared": true,
+       "status": "APPROVED",
+       "caseId": null,
+       "acting": null,
+       "submittedAt": "2026-09-30T09:04:16.525Z",
+       "decidedAt": "2026-09-30T09:04:16.525Z"
+      }
+     ],
+     "presenterName": "Team RegelRecht",
+     "presentationMode": "zelfstandig",
+     "delegationKey": null,
+     "featureOverrides": {}
+    },
+    "slideIndex": 0
+   },
+   {
+    "t": 0.002,
+    "type": "slide",
+    "index": 0
+   },
+   {
+    "t": 6.348,
+    "type": "slide",
+    "index": 1
+   },
+   {
+    "t": 47.561,
+    "type": "slide",
+    "index": 2
+   },
+   {
+    "t": 85.784,
+    "type": "slide",
+    "index": 3
+   },
+   {
+    "t": 101.039,
+    "type": "slide",
+    "index": 4
+   },
+   {
+    "t": 149.391,
+    "type": "slide",
+    "index": 5
+   },
+   {
+    "t": 149.433,
+    "type": "route",
+    "path": "/wetten/zorgtoeslagwet"
+   },
+   {
+    "t": 157.655,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-container",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     }
+    ],
+    "fx": 0.206560001642053,
+    "fy": 0.5447761194029851
+   },
+   {
+    "t": 157.821,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-container",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     }
+    ],
+    "fx": 0.206560001642053,
+    "fy": 0.5447761194029851
+   },
+   {
+    "t": 165.638,
+    "type": "click",
+    "target": [
+     {
+      "tag": "button",
+      "type": "button",
+      "textContent": "-artikel 2",
+      "nth": 0
+     }
+    ],
+    "fx": 0.07049707049707049,
+    "fy": 0.5555555555555556
+   },
+   {
+    "t": 172.479,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-container",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     }
+    ],
+    "fx": 0.76879894087583,
+    "fy": 0.6079136690647482
+   },
+   {
+    "t": 175.875,
+    "type": "click",
+    "target": [
+     {
+      "tag": "button",
+      "type": "button",
+      "textContent": "meer",
+      "nth": 0
+     }
+    ],
+    "fx": 0.30180831826401444,
+    "fy": 0.8148148148148148
+   },
+   {
+    "t": 182.463,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-container",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     }
+    ],
+    "fx": 0.3418651669249479,
+    "fy": 0.9222022740873729
+   },
+   {
+    "t": 185.62,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-container",
+      "textContent": "$schema:https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.",
+      "nth": 0
+     }
+    ],
+    "fx": 0.3944108621804411,
+    "fy": 0.9228007181328546
+   },
+   {
+    "t": 191.379,
+    "type": "click",
+    "target": [
+     {
+      "tag": "button",
+      "type": "button",
+      "textContent": "actions:3 items",
+      "nth": 0
+     }
+    ],
+    "fx": 0.05192012288786482,
+    "fy": 0.5555555555555556
+   },
+   {
+    "t": 214.484,
+    "type": "click",
+    "target": [
+     {
+      "tag": "button",
+      "type": "button",
+      "textContent": "-hoogte_toeslag",
+      "nth": 0
+     }
+    ],
+    "fx": 0.03225806451612903,
+    "fy": 0.48148148148148145
+   },
+   {
+    "t": 246.439,
+    "type": "click",
+    "target": [
+     {
+      "tag": "button",
+      "type": "button",
+      "textContent": "input:10 items",
+      "nth": 0
+     }
+    ],
+    "fx": 0.05527262533289726,
+    "fy": 0.4074074074074074
+   },
+   {
+    "t": 262.809,
+    "type": "click",
+    "target": [
+     {
+      "tag": "button",
+      "type": "button",
+      "@title": "Open zvw",
+      "nth": 0
+     }
+    ],
+    "fx": 0.6152362584378014,
+    "fy": 0.5185185185185185
+   },
+   {
+    "t": 262.846,
+    "type": "route",
+    "path": "/wetten/zvw"
+   },
+   {
+    "t": 278.705,
+    "type": "click",
+    "target": [
+     {
+      "tag": "button",
+      "type": "button",
+      "textContent": "input:4 items",
+      "nth": 0
+     }
+    ],
+    "fx": 0.052697302697302696,
+    "fy": 0.5185185185185185
+   },
+   {
+    "t": 281.646,
+    "type": "click",
+    "target": [
+     {
+      "tag": "button",
+      "type": "button",
+      "@title": "Open penitentiaire_beginselenwet",
+      "nth": 0
+     }
+    ],
+    "fx": 0.5621969189551239,
+    "fy": 0.7037037037037037
+   },
+   {
+    "t": 281.676,
+    "type": "route",
+    "path": "/wetten/penitentiaire_beginselenwet"
+   },
+   {
+    "t": 303.351,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-tab-bar-item",
+      "text": "Graaf",
+      "href": "/graaf",
+      "@role": "none",
+      "nth": 0
+     },
+     {
+      "tag": "a",
+      "text": "Graaf",
+      "href": "/graaf",
+      "nth": 0
+     }
+    ],
+    "fx": 0.583132322536182,
+    "fy": 0.6363636363636364
+   },
+   {
+    "t": 303.39,
+    "type": "route",
+    "path": "/graaf"
+   },
+   {
+    "t": 303.8,
+    "type": "viewport",
+    "cx": 8182,
+    "cy": 1176,
+    "zoom": 0.131
+   },
+   {
+    "t": 306.659,
+    "type": "slide",
+    "index": 6
+   },
+   {
+    "t": 310.283,
+    "type": "viewport",
+    "cx": 8201.6,
+    "cy": 1170.3,
+    "zoom": 0.132
+   },
+   {
+    "t": 310.387,
+    "type": "viewport",
+    "cx": 8519.2,
+    "cy": 1077.4,
+    "zoom": 0.145
+   },
+   {
+    "t": 310.615,
+    "type": "viewport",
+    "cx": 8676,
+    "cy": 1031.6,
+    "zoom": 0.152
+   },
+   {
+    "t": 310.778,
+    "type": "viewport",
+    "cx": 8713.7,
+    "cy": 1020.6,
+    "zoom": 0.154
+   },
+   {
+    "t": 310.885,
+    "type": "viewport",
+    "cx": 9944.7,
+    "cy": 660.7,
+    "zoom": 0.26
+   },
+   {
+    "t": 310.991,
+    "type": "viewport",
+    "cx": 10800.4,
+    "cy": 410.6,
+    "zoom": 0.497
+   },
+   {
+    "t": 311.21,
+    "type": "viewport",
+    "cx": 10989.3,
+    "cy": 355.4,
+    "zoom": 0.622
+   },
+   {
+    "t": 311.549,
+    "type": "viewport",
+    "cx": 10996.5,
+    "cy": 353.3,
+    "zoom": 0.628
+   },
+   {
+    "t": 311.671,
+    "type": "viewport",
+    "cx": 11165.5,
+    "cy": 303.8,
+    "zoom": 0.814
+   },
+   {
+    "t": 311.774,
+    "type": "viewport",
+    "cx": 11376.1,
+    "cy": 242.3,
+    "zoom": 1.29
+   },
+   {
+    "t": 311.882,
+    "type": "viewport",
+    "cx": 11478.5,
+    "cy": 212.4,
+    "zoom": 1.801
+   },
+   {
+    "t": 312.116,
+    "type": "viewport",
+    "cx": 11498.3,
+    "cy": 206.6,
+    "zoom": 1.95
+   },
+   {
+    "t": 312.363,
+    "type": "viewport",
+    "cx": 11498.3,
+    "cy": 206.6,
+    "zoom": 1.95
+   },
+   {
+    "t": 312.507,
+    "type": "viewport",
+    "cx": 11497.7,
+    "cy": 206.6,
+    "zoom": 1.95
+   },
+   {
+    "t": 312.608,
+    "type": "viewport",
+    "cx": 11482.9,
+    "cy": 206.6,
+    "zoom": 1.95
+   },
+   {
+    "t": 312.715,
+    "type": "viewport",
+    "cx": 11469.5,
+    "cy": 219.4,
+    "zoom": 1.95
+   },
+   {
+    "t": 312.882,
+    "type": "viewport",
+    "cx": 11465.4,
+    "cy": 223,
+    "zoom": 1.95
+   },
+   {
+    "t": 312.982,
+    "type": "viewport",
+    "cx": 11465.4,
+    "cy": 224,
+    "zoom": 1.95
+   },
+   {
+    "t": 313.12,
+    "type": "viewport",
+    "cx": 11464.9,
+    "cy": 228.1,
+    "zoom": 1.95
+   },
+   {
+    "t": 313.291,
+    "type": "viewport",
+    "cx": 11464.9,
+    "cy": 228.1,
+    "zoom": 1.95
+   },
+   {
+    "t": 314.89,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "Bepalen detentiestatusDienst Justitiële InrichtingenBronnenStatusInrichting type",
+      "nth": 0
+     }
+    ],
+    "fx": 0.1232464188966639,
+    "fy": 0.35968028419182946
+   },
+   {
+    "t": 315.346,
+    "type": "viewport",
+    "cx": 11469.3,
+    "cy": 230,
+    "zoom": 1.912
+   },
+   {
+    "t": 315.449,
+    "type": "viewport",
+    "cx": 11692,
+    "cy": 322.6,
+    "zoom": 0.969
+   },
+   {
+    "t": 315.557,
+    "type": "viewport",
+    "cx": 12056.8,
+    "cy": 474.2,
+    "zoom": 0.536
+   },
+   {
+    "t": 315.666,
+    "type": "viewport",
+    "cx": 12369.3,
+    "cy": 604.1,
+    "zoom": 0.388
+   },
+   {
+    "t": 315.766,
+    "type": "viewport",
+    "cx": 12802.3,
+    "cy": 784.2,
+    "zoom": 0.28
+   },
+   {
+    "t": 315.975,
+    "type": "viewport",
+    "cx": 13117.5,
+    "cy": 915.2,
+    "zoom": 0.233
+   },
+   {
+    "t": 316.399,
+    "type": "viewport",
+    "cx": 13113.3,
+    "cy": 915.2,
+    "zoom": 0.233
+   },
+   {
+    "t": 316.503,
+    "type": "viewport",
+    "cx": 12410,
+    "cy": 915.2,
+    "zoom": 0.233
+   },
+   {
+    "t": 316.612,
+    "type": "viewport",
+    "cx": 11719.6,
+    "cy": 966.7,
+    "zoom": 0.233
+   },
+   {
+    "t": 316.72,
+    "type": "viewport",
+    "cx": 11127.9,
+    "cy": 1103.9,
+    "zoom": 0.233
+   },
+   {
+    "t": 316.82,
+    "type": "viewport",
+    "cx": 10943.5,
+    "cy": 1189.7,
+    "zoom": 0.233
+   },
+   {
+    "t": 316.928,
+    "type": "viewport",
+    "cx": 10776.3,
+    "cy": 1296.9,
+    "zoom": 0.233
+   },
+   {
+    "t": 317.178,
+    "type": "viewport",
+    "cx": 10746.3,
+    "cy": 1335.4,
+    "zoom": 0.233
+   },
+   {
+    "t": 317.971,
+    "type": "viewport",
+    "cx": 10714.2,
+    "cy": 1328.5,
+    "zoom": 0.239
+   },
+   {
+    "t": 318.087,
+    "type": "viewport",
+    "cx": 9875.3,
+    "cy": 1147.1,
+    "zoom": 0.626
+   },
+   {
+    "t": 318.194,
+    "type": "viewport",
+    "cx": 9598.4,
+    "cy": 1087.3,
+    "zoom": 1.346
+   },
+   {
+    "t": 318.295,
+    "type": "viewport",
+    "cx": 9551.4,
+    "cy": 1077.1,
+    "zoom": 1.674
+   },
+   {
+    "t": 318.403,
+    "type": "viewport",
+    "cx": 9537.6,
+    "cy": 1074.1,
+    "zoom": 1.803
+   },
+   {
+    "t": 320.41,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "Bepalen detentiestatusDienst Justitiële InrichtingenBronnenStatusInrichting type",
+      "nth": 0
+     }
+    ],
+    "fx": 0.07248247259136771,
+    "fy": 0.7362344582593251
+   },
+   {
+    "t": 320.801,
+    "type": "viewport",
+    "cx": 9540.7,
+    "cy": 1072.6,
+    "zoom": 1.783
+   },
+   {
+    "t": 320.903,
+    "type": "viewport",
+    "cx": 9658.5,
+    "cy": 1015.2,
+    "zoom": 1.253
+   },
+   {
+    "t": 321.004,
+    "type": "viewport",
+    "cx": 9947.8,
+    "cy": 874.3,
+    "zoom": 0.724
+   },
+   {
+    "t": 321.104,
+    "type": "viewport",
+    "cx": 10274.2,
+    "cy": 715.3,
+    "zoom": 0.491
+   },
+   {
+    "t": 321.211,
+    "type": "viewport",
+    "cx": 10739.5,
+    "cy": 488.6,
+    "zoom": 0.336
+   },
+   {
+    "t": 321.312,
+    "type": "viewport",
+    "cx": 11509.9,
+    "cy": 113.3,
+    "zoom": 0.221
+   },
+   {
+    "t": 321.478,
+    "type": "viewport",
+    "cx": 11566.7,
+    "cy": 85.6,
+    "zoom": 0.216
+   },
+   {
+    "t": 321.828,
+    "type": "viewport",
+    "cx": 11571.3,
+    "cy": 90.2,
+    "zoom": 0.216
+   },
+   {
+    "t": 321.953,
+    "type": "viewport",
+    "cx": 11566.7,
+    "cy": 90.2,
+    "zoom": 0.216
+   },
+   {
+    "t": 322.062,
+    "type": "viewport",
+    "cx": 9488.2,
+    "cy": 206.2,
+    "zoom": 0.216
+   },
+   {
+    "t": 322.162,
+    "type": "viewport",
+    "cx": 8370.1,
+    "cy": 512.4,
+    "zoom": 0.216
+   },
+   {
+    "t": 322.387,
+    "type": "viewport",
+    "cx": 8189.2,
+    "cy": 633.1,
+    "zoom": 0.216
+   },
+   {
+    "t": 322.711,
+    "type": "viewport",
+    "cx": 8189.2,
+    "cy": 633.1,
+    "zoom": 0.216
+   },
+   {
+    "t": 322.817,
+    "type": "viewport",
+    "cx": 8147.4,
+    "cy": 633.1,
+    "zoom": 0.216
+   },
+   {
+    "t": 322.924,
+    "type": "viewport",
+    "cx": 6588.5,
+    "cy": 633.1,
+    "zoom": 0.216
+   },
+   {
+    "t": 323.032,
+    "type": "viewport",
+    "cx": 6143.1,
+    "cy": 633.1,
+    "zoom": 0.216
+   },
+   {
+    "t": 323.208,
+    "type": "viewport",
+    "cx": 6133.9,
+    "cy": 633.1,
+    "zoom": 0.216
+   },
+   {
+    "t": 323.845,
+    "type": "viewport",
+    "cx": 6099.3,
+    "cy": 627.2,
+    "zoom": 0.22
+   },
+   {
+    "t": 323.949,
+    "type": "viewport",
+    "cx": 5048.5,
+    "cy": 449.7,
+    "zoom": 0.537
+   },
+   {
+    "t": 324.05,
+    "type": "viewport",
+    "cx": 4717.2,
+    "cy": 393.8,
+    "zoom": 0.986
+   },
+   {
+    "t": 324.166,
+    "type": "viewport",
+    "cx": 4660.8,
+    "cy": 384.3,
+    "zoom": 1.15
+   },
+   {
+    "t": 324.341,
+    "type": "viewport",
+    "cx": 4657.1,
+    "cy": 383.6,
+    "zoom": 1.162
+   },
+   {
+    "t": 324.496,
+    "type": "viewport",
+    "cx": 4657.1,
+    "cy": 383.6,
+    "zoom": 1.162
+   },
+   {
+    "t": 324.599,
+    "type": "viewport",
+    "cx": 4519.5,
+    "cy": 383.6,
+    "zoom": 1.162
+   },
+   {
+    "t": 324.707,
+    "type": "viewport",
+    "cx": 4457.5,
+    "cy": 385.4,
+    "zoom": 1.162
+   },
+   {
+    "t": 324.916,
+    "type": "viewport",
+    "cx": 4447.2,
+    "cy": 394,
+    "zoom": 1.162
+   },
+   {
+    "t": 325.358,
+    "type": "viewport",
+    "cx": 4446.2,
+    "cy": 393.4,
+    "zoom": 1.171
+   },
+   {
+    "t": 325.466,
+    "type": "viewport",
+    "cx": 4438.1,
+    "cy": 388.6,
+    "zoom": 1.253
+   },
+   {
+    "t": 325.567,
+    "type": "viewport",
+    "cx": 4422.3,
+    "cy": 379.3,
+    "zoom": 1.45
+   },
+   {
+    "t": 325.674,
+    "type": "viewport",
+    "cx": 4415.6,
+    "cy": 375.3,
+    "zoom": 1.555
+   },
+   {
+    "t": 325.867,
+    "type": "viewport",
+    "cx": 4413.8,
+    "cy": 374.3,
+    "zoom": 1.584
+   },
+   {
+    "t": 326.163,
+    "type": "viewport",
+    "cx": 4413.8,
+    "cy": 374.3,
+    "zoom": 1.584
+   },
+   {
+    "t": 326.265,
+    "type": "viewport",
+    "cx": 4413.8,
+    "cy": 433.6,
+    "zoom": 1.584
+   },
+   {
+    "t": 326.365,
+    "type": "viewport",
+    "cx": 4415.7,
+    "cy": 522.6,
+    "zoom": 1.584
+   },
+   {
+    "t": 326.474,
+    "type": "viewport",
+    "cx": 4421.4,
+    "cy": 531.5,
+    "zoom": 1.584
+   },
+   {
+    "t": 332.53,
+    "type": "viewport",
+    "cx": 4421.2,
+    "cy": 531.8,
+    "zoom": 1.564
+   },
+   {
+    "t": 332.638,
+    "type": "viewport",
+    "cx": 4405.4,
+    "cy": 557.1,
+    "zoom": 0.776
+   },
+   {
+    "t": 332.741,
+    "type": "viewport",
+    "cx": 4386.8,
+    "cy": 587.1,
+    "zoom": 0.486
+   },
+   {
+    "t": 332.848,
+    "type": "viewport",
+    "cx": 4369.9,
+    "cy": 614.4,
+    "zoom": 0.363
+   },
+   {
+    "t": 332.949,
+    "type": "viewport",
+    "cx": 4353.6,
+    "cy": 640.6,
+    "zoom": 0.292
+   },
+   {
+    "t": 333.057,
+    "type": "viewport",
+    "cx": 4330.1,
+    "cy": 678.4,
+    "zoom": 0.227
+   },
+   {
+    "t": 333.242,
+    "type": "viewport",
+    "cx": 4326.4,
+    "cy": 684.4,
+    "zoom": 0.22
+   },
+   {
+    "t": 333.483,
+    "type": "viewport",
+    "cx": 4321.8,
+    "cy": 684.4,
+    "zoom": 0.22
+   },
+   {
+    "t": 333.592,
+    "type": "viewport",
+    "cx": 4576.7,
+    "cy": 684.4,
+    "zoom": 0.22
+   },
+   {
+    "t": 333.692,
+    "type": "viewport",
+    "cx": 5719.2,
+    "cy": 811.8,
+    "zoom": 0.22
+   },
+   {
+    "t": 333.799,
+    "type": "viewport",
+    "cx": 5823.9,
+    "cy": 875.5,
+    "zoom": 0.22
+   },
+   {
+    "t": 334.042,
+    "type": "viewport",
+    "cx": 5901.3,
+    "cy": 930.2,
+    "zoom": 0.22
+   },
+   {
+    "t": 334.149,
+    "type": "viewport",
+    "cx": 5927.5,
+    "cy": 986.8,
+    "zoom": 0.205
+   },
+   {
+    "t": 334.257,
+    "type": "viewport",
+    "cx": 6056.5,
+    "cy": 1266.5,
+    "zoom": 0.154
+   },
+   {
+    "t": 334.357,
+    "type": "viewport",
+    "cx": 6104.3,
+    "cy": 1370.1,
+    "zoom": 0.142
+   },
+   {
+    "t": 334.574,
+    "type": "viewport",
+    "cx": 6130.7,
+    "cy": 1427.3,
+    "zoom": 0.135
+   },
+   {
+    "t": 334.962,
+    "type": "viewport",
+    "cx": 6138.1,
+    "cy": 1427.3,
+    "zoom": 0.135
+   },
+   {
+    "t": 335.066,
+    "type": "viewport",
+    "cx": 7350.5,
+    "cy": 1427.3,
+    "zoom": 0.135
+   },
+   {
+    "t": 335.166,
+    "type": "viewport",
+    "cx": 8341.2,
+    "cy": 1427.3,
+    "zoom": 0.135
+   },
+   {
+    "t": 335.375,
+    "type": "viewport",
+    "cx": 8548.2,
+    "cy": 1412.5,
+    "zoom": 0.135
+   },
+   {
+    "t": 335.483,
+    "type": "viewport",
+    "cx": 8684.3,
+    "cy": 1587.6,
+    "zoom": 0.123
+   },
+   {
+    "t": 335.59,
+    "type": "viewport",
+    "cx": 9024.7,
+    "cy": 2025.2,
+    "zoom": 0.1
+   },
+   {
+    "t": 335.691,
+    "type": "viewport",
+    "cx": 9024.7,
+    "cy": 2025.2,
+    "zoom": 0.1
+   },
+   {
+    "t": 336.149,
+    "type": "viewport",
+    "cx": 9024.7,
+    "cy": 2035.2,
+    "zoom": 0.1
+   },
+   {
+    "t": 336.282,
+    "type": "viewport",
+    "cx": 9024.7,
+    "cy": 2035.2,
+    "zoom": 0.1
+   },
+   {
+    "t": 336.389,
+    "type": "viewport",
+    "cx": 8474.7,
+    "cy": 2035.2,
+    "zoom": 0.1
+   },
+   {
+    "t": 336.566,
+    "type": "viewport",
+    "cx": 8454.7,
+    "cy": 2035.2,
+    "zoom": 0.1
+   },
+   {
+    "t": 338.755,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-segmented-control-item",
+      "text": "Alles",
+      "value": "alles",
+      "nth": 0
+     },
+     {
+      "tag": "input",
+      "name": "nldd-segmented-2",
+      "type": "radio",
+      "nth": 0
+     }
+    ],
+    "fx": 0.46140592694693316,
+    "fy": 0.75
+   },
+   {
+    "t": 339.309,
+    "type": "viewport",
+    "cx": 6608,
+    "cy": 1176,
+    "zoom": 0.1
+   },
+   {
+    "t": 339.468,
+    "type": "viewport",
+    "cx": 6608,
+    "cy": 1176,
+    "zoom": 0.1
+   },
+   {
+    "t": 343.032,
+    "type": "viewport",
+    "cx": 6618,
+    "cy": 1176,
+    "zoom": 0.1
+   },
+   {
+    "t": 343.138,
+    "type": "viewport",
+    "cx": 7438,
+    "cy": 1176,
+    "zoom": 0.1
+   },
+   {
+    "t": 343.267,
+    "type": "viewport",
+    "cx": 7628,
+    "cy": 1176,
+    "zoom": 0.1
+   },
+   {
+    "t": 343.372,
+    "type": "viewport",
+    "cx": 7908,
+    "cy": 1176,
+    "zoom": 0.1
+   },
+   {
+    "t": 343.474,
+    "type": "viewport",
+    "cx": 8478,
+    "cy": 1206,
+    "zoom": 0.1
+   },
+   {
+    "t": 343.582,
+    "type": "viewport",
+    "cx": 9218,
+    "cy": 1256,
+    "zoom": 0.1
+   },
+   {
+    "t": 343.692,
+    "type": "viewport",
+    "cx": 9788,
+    "cy": 1306,
+    "zoom": 0.1
+   },
+   {
+    "t": 343.909,
+    "type": "viewport",
+    "cx": 9898,
+    "cy": 1316,
+    "zoom": 0.1
+   },
+   {
+    "t": 344.018,
+    "type": "viewport",
+    "cx": 9688,
+    "cy": 1366,
+    "zoom": 0.1
+   },
+   {
+    "t": 344.118,
+    "type": "viewport",
+    "cx": 7418,
+    "cy": 1726,
+    "zoom": 0.1
+   },
+   {
+    "t": 344.22,
+    "type": "viewport",
+    "cx": 4788,
+    "cy": 2156,
+    "zoom": 0.1
+   },
+   {
+    "t": 344.327,
+    "type": "viewport",
+    "cx": 4788,
+    "cy": 2406,
+    "zoom": 0.1
+   },
+   {
+    "t": 344.516,
+    "type": "viewport",
+    "cx": 4788,
+    "cy": 2416,
+    "zoom": 0.1
+   },
+   {
+    "t": 344.811,
+    "type": "viewport",
+    "cx": 4788,
+    "cy": 2416,
+    "zoom": 0.1
+   },
+   {
+    "t": 344.918,
+    "type": "viewport",
+    "cx": 4808,
+    "cy": 2416,
+    "zoom": 0.1
+   },
+   {
+    "t": 345.027,
+    "type": "viewport",
+    "cx": 6458,
+    "cy": 2416,
+    "zoom": 0.1
+   },
+   {
+    "t": 345.13,
+    "type": "viewport",
+    "cx": 7708,
+    "cy": 2346,
+    "zoom": 0.1
+   },
+   {
+    "t": 345.237,
+    "type": "viewport",
+    "cx": 8358,
+    "cy": 2126,
+    "zoom": 0.1
+   },
+   {
+    "t": 345.427,
+    "type": "viewport",
+    "cx": 8468,
+    "cy": 2066,
+    "zoom": 0.1
+   },
+   {
+    "t": 346.258,
+    "type": "viewport",
+    "cx": 8491,
+    "cy": 2054.9,
+    "zoom": 0.102
+   },
+   {
+    "t": 346.363,
+    "type": "viewport",
+    "cx": 8960.6,
+    "cy": 1828.1,
+    "zoom": 0.147
+   },
+   {
+    "t": 346.484,
+    "type": "viewport",
+    "cx": 9329.5,
+    "cy": 1650,
+    "zoom": 0.228
+   },
+   {
+    "t": 346.594,
+    "type": "viewport",
+    "cx": 9492.9,
+    "cy": 1571.1,
+    "zoom": 0.302
+   },
+   {
+    "t": 346.71,
+    "type": "viewport",
+    "cx": 9631.6,
+    "cy": 1504.1,
+    "zoom": 0.415
+   },
+   {
+    "t": 346.826,
+    "type": "viewport",
+    "cx": 9723.3,
+    "cy": 1459.8,
+    "zoom": 0.553
+   },
+   {
+    "t": 346.932,
+    "type": "viewport",
+    "cx": 9753,
+    "cy": 1445.5,
+    "zoom": 0.619
+   },
+   {
+    "t": 347.038,
+    "type": "viewport",
+    "cx": 9773.4,
+    "cy": 1435.6,
+    "zoom": 0.675
+   },
+   {
+    "t": 351.032,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "Accijnsplicht en tarief alcoholhoudende drankenDouaneBronnenTarief bierTarief wi",
+      "nth": 0
+     }
+    ],
+    "fx": 0.42783009672844113,
+    "fy": 0.9422735346358793
+   },
+   {
+    "t": 351.244,
+    "type": "viewport",
+    "cx": 6608,
+    "cy": 1176,
+    "zoom": 0.1
+   },
+   {
+    "t": 353.405,
+    "type": "viewport",
+    "cx": 6693.4,
+    "cy": 1197.7,
+    "zoom": 0.102
+   },
+   {
+    "t": 353.51,
+    "type": "viewport",
+    "cx": 8655.4,
+    "cy": 1696.5,
+    "zoom": 0.224
+   },
+   {
+    "t": 353.618,
+    "type": "viewport",
+    "cx": 9515.4,
+    "cy": 1915.2,
+    "zoom": 0.468
+   },
+   {
+    "t": 353.729,
+    "type": "viewport",
+    "cx": 9780.6,
+    "cy": 1982.6,
+    "zoom": 0.704
+   },
+   {
+    "t": 353.833,
+    "type": "viewport",
+    "cx": 9933.9,
+    "cy": 2021.5,
+    "zoom": 0.995
+   },
+   {
+    "t": 354.375,
+    "type": "viewport",
+    "cx": 9933.9,
+    "cy": 2021.5,
+    "zoom": 0.995
+   },
+   {
+    "t": 354.482,
+    "type": "viewport",
+    "cx": 9979.1,
+    "cy": 1913,
+    "zoom": 0.995
+   },
+   {
+    "t": 354.589,
+    "type": "viewport",
+    "cx": 10023.3,
+    "cy": 1851.7,
+    "zoom": 0.995
+   },
+   {
+    "t": 354.695,
+    "type": "viewport",
+    "cx": 10036.4,
+    "cy": 1833.6,
+    "zoom": 0.995
+   },
+   {
+    "t": 354.92,
+    "type": "viewport",
+    "cx": 10033.3,
+    "cy": 1789.4,
+    "zoom": 0.995
+   },
+   {
+    "t": 357.208,
+    "type": "viewport",
+    "cx": 10037.5,
+    "cy": 1784.7,
+    "zoom": 1.027
+   },
+   {
+    "t": 357.316,
+    "type": "viewport",
+    "cx": 10097.2,
+    "cy": 1715.7,
+    "zoom": 1.922
+   },
+   {
+    "t": 357.416,
+    "type": "viewport",
+    "cx": 10099.9,
+    "cy": 1712.7,
+    "zoom": 2
+   },
+   {
+    "t": 357.659,
+    "type": "viewport",
+    "cx": 10099.9,
+    "cy": 1712.7,
+    "zoom": 2
+   },
+   {
+    "t": 359.625,
+    "type": "viewport",
+    "cx": 10098.9,
+    "cy": 1713.2,
+    "zoom": 1.975
+   },
+   {
+    "t": 359.732,
+    "type": "viewport",
+    "cx": 10078.3,
+    "cy": 1723.7,
+    "zoom": 1.567
+   },
+   {
+    "t": 359.832,
+    "type": "viewport",
+    "cx": 10061.5,
+    "cy": 1732.4,
+    "zoom": 1.34
+   },
+   {
+    "t": 359.942,
+    "type": "viewport",
+    "cx": 10047.3,
+    "cy": 1739.6,
+    "zoom": 1.194
+   },
+   {
+    "t": 360.043,
+    "type": "viewport",
+    "cx": 10038,
+    "cy": 1744.4,
+    "zoom": 1.115
+   },
+   {
+    "t": 360.201,
+    "type": "viewport",
+    "cx": 10037.8,
+    "cy": 1744.5,
+    "zoom": 1.113
+   },
+   {
+    "t": 361.891,
+    "type": "viewport",
+    "cx": 10037.3,
+    "cy": 1744.8,
+    "zoom": 1.109
+   },
+   {
+    "t": 361.999,
+    "type": "viewport",
+    "cx": 10020.4,
+    "cy": 1752.7,
+    "zoom": 0.989
+   },
+   {
+    "t": 362.107,
+    "type": "viewport",
+    "cx": 10009.2,
+    "cy": 1758,
+    "zoom": 0.923
+   },
+   {
+    "t": 362.351,
+    "type": "viewport",
+    "cx": 10001.6,
+    "cy": 1761.6,
+    "zoom": 0.883
+   },
+   {
+    "t": 366.107,
+    "type": "viewport",
+    "cx": 10000.9,
+    "cy": 1761.9,
+    "zoom": 0.879
+   },
+   {
+    "t": 366.207,
+    "type": "viewport",
+    "cx": 9978.7,
+    "cy": 1772.4,
+    "zoom": 0.781
+   },
+   {
+    "t": 366.315,
+    "type": "viewport",
+    "cx": 9933.4,
+    "cy": 1793.8,
+    "zoom": 0.636
+   },
+   {
+    "t": 366.416,
+    "type": "viewport",
+    "cx": 9883.9,
+    "cy": 1817.1,
+    "zoom": 0.528
+   },
+   {
+    "t": 366.524,
+    "type": "viewport",
+    "cx": 9838.1,
+    "cy": 1838.8,
+    "zoom": 0.457
+   },
+   {
+    "t": 366.627,
+    "type": "viewport",
+    "cx": 9794.8,
+    "cy": 1859.2,
+    "zoom": 0.405
+   },
+   {
+    "t": 366.741,
+    "type": "viewport",
+    "cx": 9762.4,
+    "cy": 1874.5,
+    "zoom": 0.373
+   },
+   {
+    "t": 366.851,
+    "type": "viewport",
+    "cx": 9727.5,
+    "cy": 1890.9,
+    "zoom": 0.344
+   },
+   {
+    "t": 367.1,
+    "type": "viewport",
+    "cx": 9677.2,
+    "cy": 1914.6,
+    "zoom": 0.31
+   },
+   {
+    "t": 372.948,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-tab-bar-item",
+      "text": "Scenario's",
+      "href": "/scenarios",
+      "@role": "none",
+      "nth": 0
+     },
+     {
+      "tag": "a",
+      "text": "Scenario's",
+      "href": "/scenarios",
+      "nth": 0
+     }
+    ],
+    "fx": 0.28205609817180066,
+    "fy": 0.4772727272727273
+   },
+   {
+    "t": 373.026,
+    "type": "route",
+    "path": "/scenarios"
+   },
+   {
+    "t": 373.132,
+    "type": "route",
+    "path": "/scenarios/zorgtoeslagwet/scenarios/zorgtoeslagwet_TOESLAGEN-2025-01-01.feature"
+   },
+   {
+    "t": 374.471,
+    "type": "slide",
+    "index": 7
+   },
+   {
+    "t": 374.472,
+    "type": "route",
+    "path": "/scenarios"
+   },
+   {
+    "t": 407.393,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-icon-cell",
+      "icon": "chevron-right",
+      "nth": 1
+     }
+    ],
+    "fx": 0.26513671875,
+    "fy": 0.509765625
+   },
+   {
+    "t": 416.472,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-text-cell",
+      "text": "**zorgtoeslagwet** wordt uitgevoerd voor **hoogte_toeslag**",
+      "nth": 0
+     }
+    ],
+    "fx": 0.18147640631038967,
+    "fy": 0.3524305555555556
+   },
+   {
+    "t": 416.655,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-text-cell",
+      "text": "**zorgtoeslagwet** wordt uitgevoerd voor **hoogte_toeslag**",
+      "nth": 0
+     }
+    ],
+    "fx": 0.18147640631038967,
+    "fy": 0.3524305555555556
+   },
+   {
+    "t": 416.822,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-text-cell",
+      "text": "**zorgtoeslagwet** wordt uitgevoerd voor **hoogte_toeslag**",
+      "nth": 0
+     }
+    ],
+    "fx": 0.18147640631038967,
+    "fy": 0.3524305555555556
+   },
+   {
+    "t": 417.688,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-text-cell",
+      "text": "is **hoogte_toeslag** gelijk aan 209692",
+      "nth": 0
+     }
+    ],
+    "fx": 0.19047117107620956,
+    "fy": 0.5079861111111111
+   },
+   {
+    "t": 417.897,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-text-cell",
+      "text": "is **hoogte_toeslag** gelijk aan 209692",
+      "nth": 0
+     }
+    ],
+    "fx": 0.19047117107620956,
+    "fy": 0.5079861111111111
+   },
+   {
+    "t": 418.089,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-text-cell",
+      "text": "is **hoogte_toeslag** gelijk aan 209692",
+      "nth": 0
+     }
+    ],
+    "fx": 0.19047117107620956,
+    "fy": 0.5079861111111111
+   },
+   {
+    "t": 420.592,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-text-cell",
+      "text": "is **hoogte_toeslag** gelijk aan 209692",
+      "nth": 0
+     }
+    ],
+    "fx": 0.2781701275429535,
+    "fy": 0.596875
+   },
+   {
+    "t": 420.818,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-text-cell",
+      "text": "is **hoogte_toeslag** gelijk aan 209692",
+      "nth": 0
+     }
+    ],
+    "fx": 0.2781701275429535,
+    "fy": 0.596875
+   },
+   {
+    "t": 422.994,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-button",
+      "text": "Uitvoeren",
+      "startIcon": "play",
+      "type": "button",
+      "nth": 1
+     },
+     {
+      "tag": "button",
+      "type": "button",
+      "textContent": "Uitvoeren",
+      "nth": 0
+     }
+    ],
+    "fx": 0.6319792246336486,
+    "fy": 0.017903645833333332
+   },
+   {
+    "t": 428.555,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "0 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 2,
+    "left": 0
+   },
+   {
+    "t": 428.712,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "0 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 32,
+    "left": 0
+   },
+   {
+    "t": 428.863,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "0 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 49,
+    "left": 0
+   },
+   {
+    "t": 429.837,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "0 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 52,
+    "left": 0
+   },
+   {
+    "t": 429.996,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "0 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 78,
+    "left": 0
+   },
+   {
+    "t": 430.154,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "0 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 109,
+    "left": 0
+   },
+   {
+    "t": 430.304,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "0 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 139,
+    "left": 0
+   },
+   {
+    "t": 432.685,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-container",
+      "textContent": "0 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "fx": 0.05928571428571429,
+    "fy": 0.03987710289409793
+   },
+   {
+    "t": 432.86,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-container",
+      "textContent": "0 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "fx": 0.05928571428571429,
+    "fy": 0.03987710289409793
+   },
+   {
+    "t": 434.902,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-container",
+      "textContent": "0 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "fx": 0.36428571428571427,
+    "fy": 0.04090840727929012
+   },
+   {
+    "t": 435.076,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-container",
+      "textContent": "0 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "fx": 0.36428571428571427,
+    "fy": 0.04090840727929012
+   },
+   {
+    "t": 436.568,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-container",
+      "textContent": "0 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "fx": 0.29214285714285715,
+    "fy": 0.04142405947188621
+   },
+   {
+    "t": 436.735,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-container",
+      "textContent": "0 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "fx": 0.29214285714285715,
+    "fy": 0.04142405947188621
+   },
+   {
+    "t": 440.993,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-button",
+      "text": "Bepalen verzekeringsstatus 2024",
+      "type": "button",
+      "nth": 0
+     },
+     {
+      "tag": "button",
+      "type": "button",
+      "textContent": "Bepalen verzekeringsstatus 2024",
+      "nth": 0
+     }
+    ],
+    "fx": 0.349601053528546,
+    "fy": 0.5833333333333334
+   },
+   {
+    "t": 441.012,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "3 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 151,
+    "left": 0
+   },
+   {
+    "t": 441.162,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "3 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 445,
+    "left": 0
+   },
+   {
+    "t": 441.32,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "3 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 767,
+    "left": 0
+   },
+   {
+    "t": 441.47,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "3 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 844,
+    "left": 0
+   },
+   {
+    "t": 447.851,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-button",
+      "text": "Bepalen detentiestatus",
+      "type": "button",
+      "nth": 0
+     },
+     {
+      "tag": "button",
+      "type": "button",
+      "textContent": "Bepalen detentiestatus",
+      "nth": 0
+     }
+    ],
+    "fx": 0.26290059750135797,
+    "fy": 0.4166666666666667
+   },
+   {
+    "t": 447.862,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 864,
+    "left": 0
+   },
+   {
+    "t": 448.012,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 1160,
+    "left": 0
+   },
+   {
+    "t": 448.162,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 1461,
+    "left": 0
+   },
+   {
+    "t": 448.32,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 1542,
+    "left": 0
+   },
+   {
+    "t": 453.734,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 1560,
+    "left": 0
+   },
+   {
+    "t": 453.891,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 1635,
+    "left": 0
+   },
+   {
+    "t": 454.041,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 1716,
+    "left": 0
+   },
+   {
+    "t": 454.241,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 1761,
+    "left": 0
+   },
+   {
+    "t": 454.4,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 1896,
+    "left": 0
+   },
+   {
+    "t": 454.55,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 2064,
+    "left": 0
+   },
+   {
+    "t": 454.708,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 2147,
+    "left": 0
+   },
+   {
+    "t": 454.866,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 2221,
+    "left": 0
+   },
+   {
+    "t": 455.016,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 2714,
+    "left": 0
+   },
+   {
+    "t": 455.175,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 3047,
+    "left": 0
+   },
+   {
+    "t": 455.325,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 3193,
+    "left": 0
+   },
+   {
+    "t": 455.483,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 3310,
+    "left": 0
+   },
+   {
+    "t": 455.633,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 3797,
+    "left": 0
+   },
+   {
+    "t": 455.791,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 4130,
+    "left": 0
+   },
+   {
+    "t": 455.942,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 4276,
+    "left": 0
+   },
+   {
+    "t": 456.1,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 4345,
+    "left": 0
+   },
+   {
+    "t": 456.258,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 4446,
+    "left": 0
+   },
+   {
+    "t": 460.098,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-container",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "fx": 0.23714285714285716,
+    "fy": 0.9931461229400769
+   },
+   {
+    "t": 460.272,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-container",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "fx": 0.23714285714285716,
+    "fy": 0.9931461229400769
+   },
+   {
+    "t": 485.191,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 4746,
+    "left": 0
+   },
+   {
+    "t": 485.342,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 4720,
+    "left": 0
+   },
+   {
+    "t": 485.508,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 4717,
+    "left": 0
+   },
+   {
+    "t": 485.665,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 4649,
+    "left": 0
+   },
+   {
+    "t": 485.817,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 4536,
+    "left": 0
+   },
+   {
+    "t": 485.975,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 4416,
+    "left": 0
+   },
+   {
+    "t": 486.134,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 4359,
+    "left": 0
+   },
+   {
+    "t": 486.35,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 4338,
+    "left": 0
+   },
+   {
+    "t": 486.5,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 4200,
+    "left": 0
+   },
+   {
+    "t": 486.658,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 3980,
+    "left": 0
+   },
+   {
+    "t": 486.808,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 3880,
+    "left": 0
+   },
+   {
+    "t": 487.033,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 3849,
+    "left": 0
+   },
+   {
+    "t": 487.2,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 3700,
+    "left": 0
+   },
+   {
+    "t": 487.35,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 3409,
+    "left": 0
+   },
+   {
+    "t": 487.508,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 3257,
+    "left": 0
+   },
+   {
+    "t": 487.658,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 3191,
+    "left": 0
+   },
+   {
+    "t": 487.825,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 3190,
+    "left": 0
+   },
+   {
+    "t": 487.983,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 3091,
+    "left": 0
+   },
+   {
+    "t": 488.141,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 2896,
+    "left": 0
+   },
+   {
+    "t": 488.291,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 2774,
+    "left": 0
+   },
+   {
+    "t": 488.449,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 2714,
+    "left": 0
+   },
+   {
+    "t": 488.616,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 2684,
+    "left": 0
+   },
+   {
+    "t": 488.776,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 2676,
+    "left": 0
+   },
+   {
+    "t": 492.762,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 2675,
+    "left": 0
+   },
+   {
+    "t": 492.912,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 2738,
+    "left": 0
+   },
+   {
+    "t": 493.062,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 2819,
+    "left": 0
+   },
+   {
+    "t": 493.22,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 2872,
+    "left": 0
+   },
+   {
+    "t": 493.379,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 2897,
+    "left": 0
+   },
+   {
+    "t": 493.562,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 2904,
+    "left": 0
+   },
+   {
+    "t": 495.516,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 2906,
+    "left": 0
+   },
+   {
+    "t": 495.67,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 3027,
+    "left": 0
+   },
+   {
+    "t": 495.821,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 3212,
+    "left": 0
+   },
+   {
+    "t": 495.979,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 3301,
+    "left": 0
+   },
+   {
+    "t": 496.137,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 3347,
+    "left": 0
+   },
+   {
+    "t": 496.295,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 3410,
+    "left": 0
+   },
+   {
+    "t": 496.446,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 3682,
+    "left": 0
+   },
+   {
+    "t": 496.596,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 3823,
+    "left": 0
+   },
+   {
+    "t": 496.753,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 3892,
+    "left": 0
+   },
+   {
+    "t": 496.979,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 3929,
+    "left": 0
+   },
+   {
+    "t": 497.129,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 4186,
+    "left": 0
+   },
+   {
+    "t": 497.286,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 4475,
+    "left": 0
+   },
+   {
+    "t": 497.437,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 4598,
+    "left": 0
+   },
+   {
+    "t": 497.587,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 4657,
+    "left": 0
+   },
+   {
+    "t": 497.754,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 4687,
+    "left": 0
+   },
+   {
+    "t": 497.916,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "4 van 9zorgtoeslagwet (2025-02-01 {bsn: 999993653} hoogte_toeslag)Zorgtoeslag╟──",
+      "nth": 0
+     }
+    ],
+    "top": 4696,
+    "left": 0
+   },
+   {
+    "t": 500.905,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-sheet",
+      "accessibleLabel": "Uitvoering door de engine",
+      "nth": 0
+     }
+    ],
+    "fx": 0.5,
+    "fy": 0.5
+   },
+   {
+    "t": 503.747,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-icon-cell",
+      "icon": "chevron-right",
+      "nth": 1
+     }
+    ],
+    "fx": 0.5282315340909091,
+    "fy": 0.96435546875
+   },
+   {
+    "t": 507.026,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-icon-cell",
+      "icon": "chevron-right",
+      "nth": 0
+     }
+    ],
+    "fx": 0.82763671875,
+    "fy": 0.46431107954545453
+   },
+   {
+    "t": 510.827,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-text-cell",
+      "text": "2008-01-01",
+      "@role": "cell",
+      "nth": 0
+     }
+    ],
+    "fx": 0.6485238455715368,
+    "fy": 0.4415838068181818
+   },
+   {
+    "t": 511.018,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-text-cell",
+      "text": "2008-01-01",
+      "@role": "cell",
+      "nth": 0
+     }
+    ],
+    "fx": 0.6485238455715368,
+    "fy": 0.4415838068181818
+   },
+   {
+    "t": 511.176,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-text-cell",
+      "text": "2008-01-01",
+      "@role": "cell",
+      "nth": 0
+     }
+    ],
+    "fx": 0.6485238455715368,
+    "fy": 0.4415838068181818
+   },
+   {
+    "t": 513.805,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-text-cell",
+      "text": "de peildatum is **2025-02-01**",
+      "nth": 0
+     }
+    ],
+    "fx": 0.2500614876497663,
+    "fy": 0.3746527777777778
+   },
+   {
+    "t": 516.138,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-button",
+      "text": "Uitvoeren",
+      "startIcon": "play",
+      "type": "button",
+      "nth": 0
+     },
+     {
+      "tag": "button",
+      "type": "button",
+      "textContent": "Uitvoeren",
+      "nth": 0
+     }
+    ],
+    "fx": 0.5488777592283436,
+    "fy": 0.5595703125
+   },
+   {
+    "t": 520.298,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-container",
+      "textContent": "0 van 2zorgtoeslagwet (2025-02-01 {bsn: 999993653} voldoet_aan_voorwaarden, hoog",
+      "nth": 0
+     }
+    ],
+    "fx": 0.28,
+    "fy": 0.4008144483729409
+   },
+   {
+    "t": 520.497,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-container",
+      "textContent": "0 van 2zorgtoeslagwet (2025-02-01 {bsn: 999993653} voldoet_aan_voorwaarden, hoog",
+      "nth": 0
+     }
+    ],
+    "fx": 0.28,
+    "fy": 0.4008144483729409
+   },
+   {
+    "t": 520.697,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-container",
+      "textContent": "0 van 2zorgtoeslagwet (2025-02-01 {bsn: 999993653} voldoet_aan_voorwaarden, hoog",
+      "nth": 0
+     }
+    ],
+    "fx": 0.28,
+    "fy": 0.4008144483729409
+   },
+   {
+    "t": 574.075,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-top-title-bar",
+      "text": "Uitvoering door de engine",
+      "nth": 0
+     },
+     {
+      "tag": "nldd-button",
+      "text": "Sluiten",
+      "type": "button",
+      "nth": 0
+     },
+     {
+      "tag": "button",
+      "type": "button",
+      "textContent": "Sluiten",
+      "nth": 0
+     }
+    ],
+    "fx": 0.4463439752832132,
+    "fy": 0.45454545454545453
+   },
+   {
+    "t": 579.196,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-icon-cell",
+      "icon": "chevron-right",
+      "nth": 0
+     }
+    ],
+    "fx": 0.5509588068181818,
+    "fy": 0.33935546875
+   },
+   {
+    "t": 586.88,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-tab-bar-item",
+      "text": "Simulatie",
+      "href": "/simulatie",
+      "@role": "none",
+      "nth": 0
+     },
+     {
+      "tag": "a",
+      "text": "Simulatie",
+      "href": "/simulatie",
+      "nth": 0
+     }
+    ],
+    "fx": 0.527180619601221,
+    "fy": 0.6590909090909091
+   },
+   {
+    "t": 587.027,
+    "type": "route",
+    "path": "/simulatie"
+   },
+   {
+    "t": 590.526,
+    "type": "slide",
+    "index": 8
+   },
+   {
+    "t": 596.496,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-button",
+      "text": "Simuleren",
+      "startIcon": "play",
+      "type": "button",
+      "nth": 0
+     },
+     {
+      "tag": "button",
+      "type": "button",
+      "textContent": "Simuleren",
+      "nth": 0
+     }
+    ],
+    "fx": 0.6494668496621622,
+    "fy": 0.6704545454545454
+   },
+   {
+    "t": 642.179,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-title-cell",
+      "text": "€ 4.720",
+      "nth": 0
+     }
+    ],
+    "fx": 0.6888775174531233,
+    "fy": 0.6993080802157852
+   },
+   {
+    "t": 643.525,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-list",
+      "accessibleLabel": "Na woonkosten",
+      "type": "list",
+      "nth": 0
+     }
+    ],
+    "fx": 0.5836153921987447,
+    "fy": 0.371549314975121
+   },
+   {
+    "t": 644.109,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-title-cell",
+      "text": "€ 3.803",
+      "nth": 0
+     }
+    ],
+    "fx": 0.5976826638400526,
+    "fy": 0.36191104272001173
+   },
+   {
+    "t": 669.946,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-button",
+      "text": "Parameters van wetgeving",
+      "type": "button",
+      "nth": 0
+     },
+     {
+      "tag": "button",
+      "type": "button",
+      "textContent": "Parameters van wetgeving",
+      "nth": 0
+     }
+    ],
+    "fx": 0.6798722550675675,
+    "fy": 0.4431818181818182
+   },
+   {
+    "t": 670.67,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "Regelingen waar deze wetten op steunen",
+      "nth": 0
+     }
+    ],
+    "top": 4,
+    "left": 0
+   },
+   {
+    "t": 670.828,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "Regelingen waar deze wetten op steunen",
+      "nth": 0
+     }
+    ],
+    "top": 291,
+    "left": 0
+   },
+   {
+    "t": 672.76,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-text-cell",
+      "text": "Vaststellen standaardpremie",
+      "nth": 0
+     }
+    ],
+    "fx": 0.8066767939814815,
+    "fy": 0.30859758090879374
+   },
+   {
+    "t": 675.021,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-number-field",
+      "id": "nldd-field-input-3ec46f7f-58fa-4d60-9122-9bcc611bab37",
+      "accessibleLabel": "Standaardpremie 2025",
+      "nth": 0
+     },
+     {
+      "tag": "input",
+      "type": "number",
+      "@aria-label": "Standaardpremie 2025",
+      "nth": 0
+     }
+    ],
+    "fx": 0.003424657534246575,
+    "fy": 0.48125
+   },
+   {
+    "t": 675.952,
+    "type": "input",
+    "target": [
+     {
+      "tag": "nldd-number-field",
+      "id": "nldd-field-input-3ec46f7f-58fa-4d60-9122-9bcc611bab37",
+      "accessibleLabel": "Standaardpremie 2025",
+      "nth": 0
+     },
+     {
+      "tag": "input",
+      "type": "number",
+      "@aria-label": "Standaardpremie 2025",
+      "nth": 0
+     }
+    ],
+    "value": "411200"
+   },
+   {
+    "t": 676.972,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "De constanten uit de wettekst (definitions). Een gewijzigde waarde geldt alleen ",
+      "nth": 0
+     }
+    ],
+    "fx": 0.41875,
+    "fy": 0.3774422735346359
+   },
+   {
+    "t": 678.806,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "Regelingen waar deze wetten op steunen",
+      "nth": 0
+     }
+    ],
+    "top": 305,
+    "left": 0
+   },
+   {
+    "t": 679.832,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-button",
+      "text": "Simuleren",
+      "startIcon": "play",
+      "type": "button",
+      "nth": 0
+     },
+     {
+      "tag": "button",
+      "type": "button",
+      "textContent": "Simuleren",
+      "nth": 0
+     }
+    ],
+    "fx": 0.6291965793918919,
+    "fy": 0.5216619318181818
+   },
+   {
+    "t": 683.482,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "Regelingen waar deze wetten op steunen",
+      "nth": 0
+     }
+    ],
+    "top": 340,
+    "left": 0
+   },
+   {
+    "t": 683.64,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "Regelingen waar deze wetten op steunen",
+      "nth": 0
+     }
+    ],
+    "top": 274,
+    "left": 0
+   },
+   {
+    "t": 683.79,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "Regelingen waar deze wetten op steunen",
+      "nth": 0
+     }
+    ],
+    "top": 77,
+    "left": 0
+   },
+   {
+    "t": 685.587,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "Regelingen waar deze wetten op steunen",
+      "nth": 0
+     }
+    ],
+    "top": 1,
+    "left": 0
+   },
+   {
+    "t": 688.643,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-toolbar",
+      "nth": 1
+     },
+     {
+      "tag": "nldd-icon-button",
+      "text": "Meer",
+      "icon": "ellipsis",
+      "type": "button",
+      "nth": 0
+     },
+     {
+      "tag": "button",
+      "type": "button",
+      "@aria-label": "Meer",
+      "nth": 0
+     }
+    ],
+    "fx": 0.65625,
+    "fy": 0.84375
+   },
+   {
+    "t": 689.343,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-text",
+      "textContent": "De constanten uit de wettekst (definitions). Een gewijzigde waarde geldt alleen ",
+      "nth": 0
+     }
+    ],
+    "fx": 0.15202702702702703,
+    "fy": 0
+   },
+   {
+    "t": 691.9,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "Regelingen waar deze wetten op steunen",
+      "nth": 0
+     }
+    ],
+    "top": 340,
+    "left": 0
+   },
+   {
+    "t": 691.9,
+    "type": "scroll",
+    "target": [
+     {
+      "tag": "nldd-page",
+      "textContent": "Regelingen waar deze wetten op steunen",
+      "nth": 0
+     }
+    ],
+    "top": 0,
+    "left": 0
+   },
+   {
+    "t": 691.9,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-container",
+      "@slot": "header",
+      "nth": 6
+     }
+    ],
+    "fx": 0.421875,
+    "fy": 0.918918918918919
+   },
+   {
+    "t": 691.9,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-text-cell",
+      "text": "AIO-aanvulling",
+      "nth": 0
+     }
+    ],
+    "fx": 0.6029730902777778,
+    "fy": 0.2719843085975809
+   },
+   {
+    "t": 692.181,
+    "type": "key",
+    "target": [
+     {
+      "tag": "nldd-list-item",
+      "@role": "listitem",
+      "nth": 0
+     },
+     {
+      "tag": "button",
+      "type": "button",
+      "nth": 0
+     }
+    ],
+    "key": "Escape"
+   },
+   {
+    "t": 694.814,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-tab-bar-item",
+      "text": "Vergelijking",
+      "icon": "arrow-left-right",
+      "@role": "none",
+      "@data-run": "vergelijking",
+      "nth": 0
+     },
+     {
+      "tag": "button",
+      "type": "button",
+      "@role": "tab",
+      "textContent": "Vergelijking",
+      "nth": 0
+     }
+    ],
+    "fx": 0.5196810025633722,
+    "fy": 0.75
+   },
+   {
+    "t": 707.171,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-table-row",
+      "@role": "row",
+      "nth": 3
+     }
+    ],
+    "fx": 0.8757062146892656,
+    "fy": 0.4751131221719457
+   },
+   {
+    "t": 714.985,
+    "type": "click",
+    "target": [
+     {
+      "tag": "nldd-text-cell",
+      "text": "**€ 3.858**",
+      "@role": "cell",
+      "nth": 0
+     }
+    ],
+    "fx": 0.9855072463768116,
+    "fy": 0.648868778280543
+   }
+  ],
+  "captions": {
+   "nl": "main-9623e865d832.nl.vtt"
+  },
+  "pieces": [
+   {
+    "take": "2026-10-03T19-38-01",
+    "from": 0.0,
+    "to": 7.4,
+    "at": 0.0
+   },
+   {
+    "take": "2026-10-03T19-38-01",
+    "from": 8.0333,
+    "to": 70.6667,
+    "at": 7.4
+   },
+   {
+    "take": "2026-10-03T19-38-01",
+    "from": 71.1333,
+    "to": 87.6333,
+    "at": 70.033
+   },
+   {
+    "take": "2026-10-03T19-38-01",
+    "from": 88.0667,
+    "to": 208.5333,
+    "at": 86.533
+   },
+   {
+    "take": "2026-10-03T19-38-01",
+    "from": 209.0667,
+    "to": 251.5,
+    "at": 207.0
+   },
+   {
+    "take": "2026-10-03T19-38-01",
+    "from": 253.4,
+    "to": 379.1333,
+    "at": 249.433
+   },
+   {
+    "take": "2026-10-03T19-38-01",
+    "from": 379.8,
+    "to": 557.7667,
+    "at": 375.167
+   },
+   {
+    "take": "2026-10-03T19-38-01",
+    "from": 558.4667,
+    "to": 568.7667,
+    "at": 553.133
+   },
+   {
+    "take": "2026-10-03T19-38-01",
+    "from": 569.7667,
+    "to": 691.4333,
+    "at": 563.433
+   },
+   {
+    "take": "2026-10-03T19-38-01",
+    "from": 691.9333,
+    "to": 695.0667,
+    "at": 685.1
+   },
+   {
+    "take": "2026-10-03T19-38-01",
+    "from": 695.6,
+    "to": 699.2667,
+    "at": 688.233
+   },
+   {
+    "take": "2026-10-03T19-38-01",
+    "from": 707.1,
+    "to": 743.2333,
+    "at": 691.9
+   },
+   {
+    "take": "2026-10-03T19-38-01",
+    "from": 743.8333,
+    "to": 745.4,
+    "at": 728.033
+   }
+  ]
+ },
+ "faq": []
+}
