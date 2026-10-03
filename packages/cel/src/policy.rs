@@ -195,9 +195,10 @@ pub fn read(
 /// Every `executes` of every loaded version of every regulation: each entry
 /// is valid (the engine skips an invalid one, the runtime reports it), the
 /// target article exists, and the policy only works out a competence of its
-/// own authority (Awb 4:81). The target, or else its regulation, names the
-/// authority of the policy, or names none and its regulation names no other
-/// authority (general law, such as the Awb). A reference authority
+/// own authority (Awb 4:81). The target, or else its regulation itself,
+/// names the authority of the policy (A); or neither names one and the
+/// articles of the regulation name none, or A among others (general law,
+/// such as the Awb). A reference authority
 /// (`'#bevoegd_gezag'`) is not a name and counts as naming none. Each
 /// message names both articles; a message that holds for more versions is
 /// given once.
