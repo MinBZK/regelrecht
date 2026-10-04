@@ -44,8 +44,10 @@ flowchart TD
 | `load_check.rs` | Load-time checks the schema cannot express, such as refusing a law that writes the Unknown sentinel into its own literals |
 | `receipt.rs` | The Execution Receipt envelope (RFC-013) |
 | `annotation/` | Stand-off note resolution: anchors a note to law text by quote, with fuzzy matching (RFC-005, RFC-018) |
-| `telemetry.rs` | OpenTelemetry export of the engine's tracing events; compiled only with the `otel` feature |
 | `config.rs` | Security limits and the list of supported schema versions (see [Security Limits](#security-limits)) |
+| `schema.rs` | Embedded JSON schemas and version detection for the `validate` binary; compiled only with the `validate` feature |
+| `demand.rs` | Dependency closure of a requested output, so an article runs only the actions that output needs (RFC-043) |
+| `types.rs` | Runtime and trace enums, plus re-exports of the document-model types from the Law Model crate |
 
 The types a law file deserializes into are not defined in the engine. They live in the [Law Model](./law-model) crate, which `article.rs` re-exports and loads under the security limits.
 
@@ -174,7 +176,7 @@ The engine automatically loads the referenced law, executes it with the specifie
 
 ### Open Term Resolution (IoC)
 
-Higher laws declare `open_terms` that lower regulations fill via `implements`. At execution time, the engine:
+Laws declare `open_terms` that other regulations fill via `implements`, by delegation or in co-government. At execution time, the engine:
 
 1. Indexes all `implements` declarations at law load time
 2. Looks up the implementations of an `open_term` when an operation first reads it

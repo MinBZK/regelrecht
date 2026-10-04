@@ -1,0 +1,222 @@
+---
+/*
+ * Een schema uit het basiswerk, getekend uit de gegevens in
+ * src/lib/basiswerk/schemas.js.
+ *
+ * De vormentaal kent vier types, en niet meer:
+ *
+ *   kaart      statische verhoudingen tussen actoren of niveaus
+ *   stroom     verloop in de tijd, met beslispunten
+ *   matrix     twee kruisende onderscheidingen
+ *   spectrum   gradaties zonder scherpe grens
+ *
+ * De vorm zit in deze component en niet in een stijlgids, zodat een schema
+ * niet per ongeluk een vijfde vorm kan krijgen. `onthoud` verschijnt als
+ * "In het kort": kan een schema niet in één regel worden samengevat, dan is
+ * het te ingewikkeld. Een onbekende vorm of een ontbrekend `onthoud` laat de
+ * build falen (zie ook scripts/check-basiswerk.mjs).
+ */
+import '~/styles/basiswerk.css';
+import { schemas } from '~/lib/basiswerk/schemas.js';
+import paperKoppen from '~/research/rules-as-executed.headings.json';
+
+interface Props {
+  code: string;
+}
+const { code } = Astro.props;
+const s = schemas[code];
+const VORMEN = ['kaart', 'stroom', 'matrix', 'spectrum'];
+// De RegelRecht-laag: welke stap of rij RegelRecht raakt, en waarom.
+const rr = s.regelrecht ?? [];
+// "§4.6" uit de kop van de paper ("4.6 Overrides and Discretion").
+const paragraaf = (slug) => {
+  const kop = paperKoppen.find((h) => h.slug === slug);
+  if (!kop) throw new Error(`[basiswerk] schema ${code}: paragraaf ${slug} bestaat niet in Rules as Executed`);
+  return '§' + kop.text.split(' ')[0];
+};
+const rrStap = (label) => rr.findIndex((r) => r.stap === label || r.rij === label);
+if (!s) throw new Error(`[basiswerk] schema ${code} bestaat niet in schemas.js`);
+if (!VORMEN.includes(s.vorm)) throw new Error(`[basiswerk] schema ${code}: onbekende vorm "${s.vorm}"`);
+if (!s.onthoud) throw new Error(`[basiswerk] schema ${code} mist "onthoud"`);
+---
+
+<figure class={`rr-schema rr-schema--${s.vorm}`} id={s.code}>
+  <figcaption class="rr-schema__head">
+    <span class="rr-schema__code">{s.code}</span>
+    <span class="rr-schema__title">{s.title}</span>
+    <span class="rr-schema__vorm">{s.vorm}</span>
+  </figcaption>
+
+  {
+    s.vorm === 'kaart' && (
+      <div class="rr-schema__body">
+        {s.svg ? (
+          <div class="rr-kaart-eigen" set:html={s.svg} />
+        ) : s.ladder ? (
+          <div class="rr-ladderwrap">
+            <ol class="rr-ladder">
+              {s.ladder.treden.map((trede) => (
+                <li class:list={{ 'is-duo': trede.duo }}>
+                  {trede.duo ? (
+                    <Fragment>
+                      <div class="rr-ladder__duo">
+                        {trede.blokken.map((blok) => (
+                          <div>
+                            <p class="rr-ladder__label">{blok.label}</p>
+                            <dl class="rr-ladder__velden">
+                              {s.ladder.kop.map((kop, i) => (
+                                <Fragment>
+                                  <dt>{kop}</dt>
+                                  <dd>{blok.cellen[i]}</dd>
+                                </Fragment>
+                              ))}
+                            </dl>
+                          </div>
+                        ))}
+                      </div>
+                      {trede.verhouding && <p class="rr-ladder__verhouding">{trede.verhouding}</p>}
+                    </Fragment>
+                  ) : (
+                    <Fragment>
+                      <p class="rr-ladder__label">{trede.label}</p>
+                      <dl class="rr-ladder__velden">
+                        {s.ladder.kop.map((kop, i) => (
+                          <Fragment>
+                            <dt>{kop}</dt>
+                            <dd>{trede.cellen[i]}</dd>
+                          </Fragment>
+                        ))}
+                      </dl>
+                    </Fragment>
+                  )}
+                </li>
+              ))}
+            </ol>
+            {s.ernaast && (
+              <aside class="rr-ernaast">
+                <p class="rr-ernaast__kop">{s.ernaast.kop}</p>
+                {s.ernaast.vraag && <p class="rr-ernaast__vraag">{s.ernaast.vraag}</p>}
+                <ul>{s.ernaast.items.map((item) => <li>{item}</li>)}</ul>
+              </aside>
+            )}
+          </div>
+        ) : (
+          <div class="rr-kaart">
+            {s.kolommen.map((k) => (
+              <div class="rr-kaart__kolom">
+                <p class="rr-kaart__kop">{k.kop}</p>
+                {k.vraag && <p class="rr-kaart__vraag">{k.vraag}</p>}
+                <ul>{k.items.map((item) => <li>{item}</li>)}</ul>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  {
+    s.vorm === 'stroom' && (
+      <div class="rr-schema__body">
+        <ol class="rr-stroom">
+          {s.stappen.map((stap) => (
+            <li class:list={{ 'is-extern': stap.extern, 'is-markering': stap.markering, 'is-rr': rrStap(stap.label) >= 0 }}>
+              {rrStap(stap.label) >= 0 && <span class="bw-rr-nummer bw-laag" aria-hidden="true">{rrStap(stap.label) + 1}</span>}
+              <span class="rr-stroom__label">{stap.label}</span>
+              {stap.tijd && <span class="rr-stroom__tijd">{stap.tijd}</span>}
+              {stap.extern && <span class="rr-stroom__extern">van buiten beïnvloedbaar</span>}
+            </li>
+          ))}
+        </ol>
+        {(s.varianten ?? []).map((v) => (
+          <div class="rr-stroom__variant">
+            <p class="rr-stroom__variantkop">{v.label}</p>
+            <ol class="rr-stroom rr-stroom--klein">
+              {v.stappen.map((stap) => (
+                <li>
+                  <span class="rr-stroom__label">{stap.label}</span>
+                  {stap.tijd && <span class="rr-stroom__tijd">{stap.tijd}</span>}
+                </li>
+              ))}
+            </ol>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  {
+    s.vorm === 'matrix' && (
+      <div class="rr-schema__body rr-schema__body--scroll">
+        <table class="rr-matrix">
+          <thead>
+            <tr>
+              <td />
+              {s.kop.map((kop) => <th scope="col">{kop}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {s.rijen.map((rij) => (
+              <tr class:list={{ 'is-gescheiden': rij.scheiding, 'is-rr': rrStap(rij.label) >= 0 }}>
+                <th scope="row">
+                  {rrStap(rij.label) >= 0 && <span class="bw-rr-nummer bw-laag" aria-hidden="true">{rrStap(rij.label) + 1}</span>}
+                  {rij.label}
+                </th>
+                {rij.cellen.map((cel) =>
+                  cel === null ? (
+                    <td class="is-dood"><span class="rr-visually-hidden">niet toegestaan</span></td>
+                  ) : (
+                    <td>{cel}</td>
+                  ),
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+
+  {
+    s.vorm === 'spectrum' && (
+      <div class="rr-schema__body">
+        {s.assen.map((as) => (
+          <div class="rr-spectrum">
+            <p class="rr-spectrum__label">{as.label}</p>
+            <div class="rr-spectrum__balk">
+              <span class="rr-spectrum__pool">{as.links}</span>
+              <span class="rr-spectrum__pool rr-spectrum__pool--rechts">{as.rechts}</span>
+            </div>
+          </div>
+        ))}
+        {s.punten && (
+          <ul class="rr-spectrum__punten">
+            {s.punten.map((p) => (
+              <li><strong>{p.label}</strong>: {p.tekst}</li>
+            ))}
+          </ul>
+        )}
+      </div>
+    )
+  }
+
+  <p class="rr-schema__onthoud">In het kort: {s.onthoud}</p>
+  {s.caption && <p class="rr-schema__caption">{s.caption}</p>}
+  {s.stop && <p class="rr-schema__stop">Hier stopt het schema: {s.stop}</p>}
+
+  {
+    rr.length > 0 && (
+      <div class="bw-laag bw-schema-rr">
+        <p class="bw-schema-rr__kop">In RegelRecht</p>
+        <ol>
+          {rr.map((r) => (
+            <li>
+              {r.stap || r.rij ? <strong>{r.stap ?? r.rij}: </strong> : null}
+              {r.tekst} <a href={`/research/rules-as-executed#${r.paper}`}>Rules as Executed, {paragraaf(r.paper)}</a>
+            </li>
+          ))}
+        </ol>
+      </div>
+    )
+  }
+</figure>

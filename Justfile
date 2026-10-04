@@ -4,7 +4,7 @@
 set dotenv-load := true
 
 # CI uses RUSTFLAGS=-Dwarnings; ci_flags mirrors that for quality/test recipes
-# but not for dev (hot-reload), where in-flight warnings would kill cargo watch.
+# but not for dev, where a warning should not stop the stack from starting.
 # We also pass the mold link-arg here: an explicit RUSTFLAGS overrides the
 # target.rustflags in packages/.cargo/config.toml, so without it these recipes
 # would fall back to the slow default linker. (dev has no RUSTFLAGS, so it picks
@@ -723,59 +723,12 @@ dev-setup:
     printf "${dim}Optional: enable sccache locally (disables incremental, best for cold/flag-varying builds):${reset}\n"
     printf "  export RUSTC_WRAPPER=sccache CARGO_INCREMENTAL=0\n"
 
-# Start development: infra in Docker, services native with hot reload
-dev:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    export COMPOSE="{{ compose-native }}"  PIDFILE="{{ pidfile }}"
-    source script/dev-lib.sh
-
-    dev_preflight --rust --node --watch
-
-    dev_compose_up postgres prometheus grafana
-    dev_wait_postgres
-
-    if dev_ensure_deps frontend "editor frontend"; then editor_fe=true; else editor_fe=false; fi
-
-    rm -f "$PIDFILE"
-
-    db_url="postgres://regelrecht:regelrecht_dev@${DB_HOST:-localhost}:${POSTGRES_PORT:-5433}/regelrecht_pipeline"
-    dev_start "admin API (cargo watch on :8000)" .dev-admin.log \
-      "DATABASE_URL='$db_url' RUST_LOG='${RUST_LOG:-info}' cargo watch -C packages -x 'run --package regelrecht-admin'"
-
-    if [ "$editor_fe" = true ]; then
-        dev_start "editor frontend (vite on :3000)" .dev-editor.log \
-          "cd frontend && npx vite"
-    fi
-
-    printf "${bold}=> Waiting for services…${reset} "
-    sleep 4
-    printf "${green}done${reset}\n"
-
-    printf "\n"
-    printf "${bold}${green}  Dev stack is running with hot reload${reset}\n\n"
-    if [ "$editor_fe" = true ]; then
-        echo "  Editor:     http://localhost:3000     (hot reload)"
-    fi
-    echo   "  Admin API:  http://localhost:8000     (auto-recompile on save)"
-    echo   "  Grafana:    http://localhost:${GRAFANA_PORT:-3002}"
-    echo   "  Prometheus: http://localhost:${PROMETHEUS_PORT:-9090}"
-    echo   "  PostgreSQL: localhost:${POSTGRES_PORT:-5433}"
-    printf "\n"
-    printf "  ${dim}Admin API log:${reset}      tail -f .dev-admin.log\n"
-    if [ "$editor_fe" = true ]; then
-        printf "  ${dim}Editor log:${reset}         tail -f .dev-editor.log\n"
-    fi
-    printf "  ${dim}Infra logs:${reset}         just dev-logs\n"
-    printf "  ${dim}Database:${reset}           just dev-psql\n"
-    printf "  ${dim}Stop everything:${reset}    just dev-down\n"
-
 # Vite ports default to 7300/7400/7500 (the redirect URIs already registered on
 # the regelrecht-local Keycloak client); override via EDITOR_PORT /
 # LAWMAKING_PORT. No grafana / prometheus / workers are started.
 #
-# Frontend-focused dev: start only what a frontend needs (backend, DB, WASM, vite). No arg = all frontends; APP = editor | admin | lawmaking | all
-dev-frontend APP="all":
+# Start the dev stack: only what the chosen app needs (backend, DB, WASM, vite). No arg = all apps; APP = editor | admin | lawmaking | all
+dev APP="all":
     #!/usr/bin/env bash
     set -euo pipefail
     export COMPOSE="{{ compose-native }}"  PIDFILE="{{ pidfile }}"
@@ -805,7 +758,7 @@ dev-frontend APP="all":
     # When both editor and admin run (i.e. 'all'), point editor-api's
     # harvester-admin proxy at the local admin API so the editor's Corpusinwinning
     # section reaches it. In editor-only mode the proxy is unset and the Corpusinwinning
-    # screens 503 (run `just dev-frontend all` for the full harvester flow).
+    # screens 503 (run `just dev all` for the full harvester flow).
     harvest_admin_env=""
     if [ "$run_admin" = true ]; then
         harvest_admin_env="HARVEST_ADMIN_URL=http://localhost:${admin_api_port} "
@@ -867,7 +820,7 @@ dev-frontend APP="all":
     sleep 4
     printf "${green}done${reset}\n\n"
 
-    printf "${bold}${green}  Frontend dev stack (%s) is running (vite HMR; backends run-once)${reset}\n\n" "$app"
+    printf "${bold}${green}  Dev stack (%s) is running (vite HMR; backends run-once)${reset}\n\n" "$app"
     if [ "$run_editor" = true ]; then
         echo "  Editor:     http://localhost:${editor_port}     (vite HMR → editor-api :8000, SSO)"
     fi
@@ -884,7 +837,10 @@ dev-frontend APP="all":
     printf "  ${dim}Logs:${reset}            tail -f .dev-*.log\n"
     printf "  ${dim}Stop everything:${reset} just dev-down\n"
 
-# Stop dev: kill native processes and stop infra (works for dev and dev-frontend)
+# The recipe was called dev-frontend until the backend-only `dev` was dropped.
+alias dev-frontend := dev
+
+# Stop dev: kill native processes and stop infra
 dev-down:
     #!/usr/bin/env bash
     set -euo pipefail

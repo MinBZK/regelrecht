@@ -61,7 +61,7 @@ RUN cargo build --target wasm32-unknown-unknown --release --features wasm -p reg
       target/wasm32-unknown-unknown/release/regelrecht_engine.wasm
 
 # Stage 1b: Build frontend (with WASM module)
-FROM node:26-alpine@sha256:2c45bdcbf63561a54da9549612084b43ca309854a4110c87857d609ddeb61c9e AS frontend-builder
+FROM node:26-alpine@sha256:0b36e8c136b94cd4fcf02188228e76c31ad5872eef3fec8cbd2eee500cfd9e80 AS frontend-builder
 WORKDIR /app
 # Workspace manifests first so `npm ci` is cached independently of source.
 COPY package.json package-lock.json .npmrc ./

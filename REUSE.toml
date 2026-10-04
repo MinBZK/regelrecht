@@ -1,0 +1,172 @@
+version = 1
+
+# Standaard: code en tekst in deze repository vallen onder de EUPL-1.2.
+#
+# De lijst noemt bestandstypes, geen "**". Een beeld, een lettertype of een
+# bestandstype dat hier niet staat krijgt daardoor geen licentie vanzelf:
+# `reuse lint` faalt tot het bestand hieronder een eigen regel heeft. Dat is de
+# bedoeling. Van een logo of lettertype is de rechthebbende zelden dezelfde als
+# die van de code eromheen, en dat moet iemand opzoeken, niet aannemen.
+[[annotations]]
+path = [
+  "**.astro",
+  "**.conf",
+  "**.css",
+  "**.example",
+  "**.feature",
+  "**.html",
+  "**.js",
+  "**.json",
+  "**.lock",
+  "**.md",
+  "**.mdx",
+  "**.mjs",
+  "**.py",
+  "**.rs",
+  "**.sh",
+  "**.sql",
+  "**.toml",
+  "**.ts",
+  "**.txt",
+  "**.vue",
+  "**.xml",
+  "**.yaml",
+  "**.yml",
+  "**CODEOWNERS",
+  "**Dockerfile",
+  "**Justfile",
+  "**.dockerignore",
+  "**.gitignore",
+  "**.npmrc",
+  "**.skill-path-exceptions",
+  "**.yamllint",
+]
+SPDX-FileCopyrightText = "Staat der Nederlanden (Ministerie van Binnenlandse Zaken en Koninkrijksrelaties)"
+SPDX-License-Identifier = "EUPL-1.2"
+
+# De ondertitels van de opgenomen rondleiding door de demo: de tekst die de
+# presentator (een medewerker, in functie) uitspreekt, ingekort tot
+# ondertitels. Eigen werk, dus dezelfde licentie als de code; de geluids- en
+# beeldopnames zelf staan niet in deze repository maar in een GitHub-release.
+[[annotations]]
+path = "corpus/demo/walkthrough/*.vtt"
+SPDX-FileCopyrightText = "Staat der Nederlanden (Ministerie van Binnenlandse Zaken en Koninkrijksrelaties)"
+SPDX-License-Identifier = "EUPL-1.2"
+
+# Eigen beeldmateriaal: het regelrecht-icoon en schermafbeeldingen van de
+# eigen applicaties.
+[[annotations]]
+path = [
+  "**/public/regelrecht-icon.svg",
+  "docs/src/assets/editor-notities-screenshot.png",
+  "docs/src/assets/portaal-screenshot.png",
+  "docs/src/assets/simulatie-screenshot.png",
+]
+SPDX-FileCopyrightText = "Staat der Nederlanden (Ministerie van Binnenlandse Zaken en Koninkrijksrelaties)"
+SPDX-License-Identifier = "EUPL-1.2"
+
+# Het corpus en de wetgevingsfixtures van de harvester bevatten letterlijke
+# wettekst. Op wetten, besluiten en verordeningen rust geen auteursrecht
+# (artikel 11 Auteurswet). Rechthebbende en licentie hieronder gelden voor wat
+# eromheen staat: de structuur, de machine-leesbare modellering en de scenario's.
+[[annotations]]
+path = [
+  "corpus/**.yaml",
+  "corpus-poc/**.yaml",
+  "packages/harvester/tests/fixtures/**.xml",
+]
+SPDX-FileCopyrightText = "Staat der Nederlanden (Ministerie van Binnenlandse Zaken en Koninkrijksrelaties)"
+SPDX-License-Identifier = "EUPL-1.2"
+
+# Het position paper "Rules as Executed" en de bestanden die eruit gegenereerd
+# zijn. Gepubliceerd onder CC BY 4.0 (https://doi.org/10.5281/zenodo.22201094).
+[[annotations]]
+path = [
+  "docs/src/research/rules-as-executed.*",
+  "docs/public/research/depgraph-zorgtoeslag.svg",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "De auteurs van het paper, zie docs/src/research/rules-as-executed.meta.json"
+SPDX-License-Identifier = "CC-BY-4.0"
+
+# Rijkslogo, rijkswapen en de lettertypes RijksoverheidSans en -Serif.
+# Auteursrechtelijk voorbehoud van de Staat (Stcrt. 2008, nr. 115).
+[[annotations]]
+path = [
+  "**/fonts/RO*.woff",
+  "frontend-lawmaking/assets/rijkswapen.svg",
+  "frontend-demo/public/logos/ANVS.png",
+  "frontend-demo/public/logos/BELASTINGDIENST.png",
+  "frontend-demo/public/logos/CJIB.png",
+  "frontend-demo/public/logos/DJI.png",
+  "frontend-demo/public/logos/DOUANE.png",
+  "frontend-demo/public/logos/DUO.png",
+  "frontend-demo/public/logos/IND.png",
+  "frontend-demo/public/logos/JenV.png",
+  "frontend-demo/public/logos/JUSTID.png",
+  "frontend-demo/public/logos/NVWA.png",
+  "frontend-demo/public/logos/RvIG.png",
+  "frontend-demo/public/logos/RVO.png",
+  "frontend-demo/public/logos/SZW.png",
+  "frontend-demo/public/logos/TOESLAGEN.png",
+  "frontend-demo/public/logos/VWS.png",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "Staat der Nederlanden"
+SPDX-License-Identifier = "LicenseRef-Rijkshuisstijl"
+
+# Beeldmerken buiten de rijkshuisstijl, per rechthebbende.
+[[annotations]]
+path = "frontend-demo/public/logos/CBS.png"
+precedence = "override"
+SPDX-FileCopyrightText = "Centraal Bureau voor de Statistiek"
+SPDX-License-Identifier = "LicenseRef-Trademark"
+
+[[annotations]]
+path = "frontend-demo/public/logos/GEMEENTE_AMSTERDAM.png"
+precedence = "override"
+SPDX-FileCopyrightText = "Gemeente Amsterdam"
+SPDX-License-Identifier = "LicenseRef-Trademark"
+
+[[annotations]]
+path = "frontend-demo/public/logos/GEMEENTE_ROTTERDAM.png"
+precedence = "override"
+SPDX-FileCopyrightText = "Gemeente Rotterdam"
+SPDX-License-Identifier = "LicenseRef-Trademark"
+
+[[annotations]]
+path = "frontend-demo/public/logos/KADASTER.png"
+precedence = "override"
+SPDX-FileCopyrightText = "Kadaster"
+SPDX-License-Identifier = "LicenseRef-Trademark"
+
+[[annotations]]
+path = "frontend-demo/public/logos/KIESRAAD.png"
+precedence = "override"
+SPDX-FileCopyrightText = "Kiesraad"
+SPDX-License-Identifier = "LicenseRef-Trademark"
+
+[[annotations]]
+path = "frontend-demo/public/logos/KVK.png"
+precedence = "override"
+SPDX-FileCopyrightText = "Kamer van Koophandel"
+SPDX-License-Identifier = "LicenseRef-Trademark"
+
+[[annotations]]
+path = "frontend-demo/public/logos/SVB.png"
+precedence = "override"
+SPDX-FileCopyrightText = "Sociale Verzekeringsbank"
+SPDX-License-Identifier = "LicenseRef-Trademark"
+
+[[annotations]]
+path = "frontend-demo/public/logos/UWV.png"
+precedence = "override"
+SPDX-FileCopyrightText = "Uitvoeringsinstituut Werknemersverzekeringen"
+SPDX-License-Identifier = "LicenseRef-Trademark"
+
+# Het DigiD-logo is een merk van de Staat, in beheer bij Logius.
+[[annotations]]
+path = "frontend-poc-*/public/img/digid-logo.svg"
+precedence = "override"
+SPDX-FileCopyrightText = "Staat der Nederlanden (Logius)"
+SPDX-License-Identifier = "LicenseRef-Trademark"

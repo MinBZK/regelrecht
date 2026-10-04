@@ -1,7 +1,7 @@
 ---
 name: check-deployment
 description: "Check if a RIG preview deployment is actually running and healthy. Verifies CI triggered, images exist, pods started, and services respond. Use when a PR deployment seems broken or after pushing code."
-user_invocable: true
+user-invocable: true
 ---
 
 # Check Deployment
@@ -10,7 +10,7 @@ Verify that a RIG preview deployment is actually running and healthy. Takes a PR
 
 ## Context
 
-Deployments happen automatically via CI/CD. This skill is for **checking** if something went wrong, not for creating deployments. Common failure modes:
+A PR is built and deployed only while it carries the `deploy:preview` label (`AGENTS.md`, "Previews"). This skill is for **checking** if something went wrong, not for creating deployments. Common failure modes:
 - CI/Deploy workflow didn't trigger after a push
 - Image doesn't exist or uses wrong tag
 - Pods didn't start (quota exceeded, image pull errors)
@@ -41,7 +41,7 @@ gh run list --repo MinBZK/regelrecht --branch {branch} --workflow deploy.yml --j
 Report:
 - Whether the latest commit has a deploy workflow run
 - Whether it succeeded or is still running
-- If no run exists: **the deploy was never triggered** — suggest re-pushing or closing/reopening the PR
+- If no run exists: check whether the PR carries the `deploy:preview` label. Without it nothing builds or deploys, and that is not a failure.
 
 ### 4. Check pod logs
 
@@ -52,11 +52,9 @@ curl -s -H "X-API-Key: $RIG_API_KEY" \
   "https://operations-manager.rig.prd1.gn2.quattro.rijksapps.nl/api/logs/regel-k4c?deployment={name}&lines=20"
 ```
 
-The API returns logs grouped by component. Note that **not all components are deployed for every PR**:
-- `editor` is always deployed
-- `harvester-admin` and `harvester-worker` are only deployed when the PR contains backend changes (`packages/admin/`, `packages/pipeline/`, `packages/harvester/`, `packages/corpus/`)
+The API returns logs grouped by component. A component is deployed only when its build job ran and succeeded for this PR; the list is in `.github/workflows/deploy.yml`.
 
-For frontend-only PRs, empty logs for backend components are expected — not a failure.
+Empty logs for a component that was not built are expected — not a failure.
 
 For each component in the response:
 - **Has recent logs**: pod is running
@@ -97,7 +95,7 @@ If any check fails, explain:
 ### 7. If asked to fix
 
 If the user asks to fix a broken deployment:
-- **CI didn't trigger**: Suggest re-pushing (`git commit --allow-empty -m "ci: retrigger" && git push`)
+- **CI didn't trigger**: Check the `deploy:preview` label first; suggest re-pushing only when the label is present and no run exists.
 - **Images missing**: Wait for CI to complete, then check again
 - **Pods not starting**: Check quota by listing all active deployments, suggest cleaning up stale ones
 - **Only as last resort**: Create a manual deployment — but **ALWAYS ask the user for confirmation first**. Explain what you're about to do and why, and wait for approval before making any RIG API calls. Manual deploys are not the normal workflow; the CI/CD pipeline should handle this automatically.

@@ -12,16 +12,22 @@ Continuous integration runs on every push to `main` and every pull request via `
 - **Formatting** - `just format` (rustfmt check)
 - **Linting** - `just lint` (clippy)
 - **YAML validation** - yamllint + schema validation on corpus files
-- **Pre-commit hooks** - trailing whitespace, end-of-file, merge conflicts
+- **Pre-commit hooks** - trailing whitespace, end-of-file, merge conflicts,
+  and licence information for every file (`reuse lint`, from `REUSE.toml`)
 
 ### Tests (on Rust changes)
 
-CI runs `just test`, which is `cargo test --workspace` over every crate. A new
-crate is covered without anyone having to add it to a list; the pipeline and
-editor-api suites use testcontainers for PostgreSQL, so the runner needs Docker.
+CI runs the Rust tests as a two-leg matrix, each leg a single cargo
+invocation. The `unit` leg runs `just test-no-docker`: every crate in the
+workspace except `regelrecht-pipeline`, `regelrecht-editor-api` and
+`regelrecht-admin`, which are excluded whole. The `db` leg runs `just test-db`,
+all tests of exactly those three crates, against a PostgreSQL service container that the
+job starts next to itself (`TEST_POSTGRES_URL`). A new crate lands in the `unit`
+leg without anyone having to add it to a list.
 
-`just test-no-docker` is the same coverage minus those container-backed suites,
-for a machine without Docker. `just check` runs the full `test`.
+Locally, `just test` runs both halves in one go and starts its own PostgreSQL
+through testcontainers, so it needs Docker. `just test-no-docker` is the same
+coverage minus those three crates. `just check` runs the full `test`.
 
 The BDD suite (`just bdd`, cucumber-rs with Gherkin scenarios) covers two
 buckets and is **not** part of `just test`; the target carries `test = false` so
@@ -82,16 +88,24 @@ Neither scans for known vulnerabilities. That is `just audit-advisories` (RustSe
 
 ### Schema protection (on PRs)
 
-Released schema versions in `schema/v*.*.*` are immutable. CI fails if a PR tries to modify or delete a released schema. Only `schema/latest/` can be updated freely.
+Released schema versions in `schema/v*.*.*` are immutable. CI fails if a PR tries to modify or delete a released schema. `schema/latest` is a symlink to the highest released version (currently `v0.7.1`), not a directory to edit; a schema change goes into a new version directory.
 
 ### Provenance checks (on corpus/engine changes)
 
-The `provenance-checks` job verifies that every corpus YAML file uses a tag-based `$schema` URL (`refs/tags/schema-vX.Y.Z`) and that the referenced schema version is known. This catches files that still use the old `refs/heads/main` format. See [RFC-013](/rfcs/rfc-013) for context.
+Among other checks, the `provenance-checks` job verifies that every `$schema` URL in `corpus/regulation` names a schema version that exists under `schema/`, that every version directory under `schema/` is registered in `packages/engine/src/schema.rs`, and that `schema/latest` points at the highest version (currently `v0.7.1`). It does not check the form of the URL: a tag-based `refs/tags/schema-vX.Y.Z` reference is the convention, but a branch-based URL that names a known version passes. On a pull request that changes engine source it also compares the version in `packages/engine/Cargo.toml` with `main`; an unchanged version only prints a warning. See [RFC-013](/rfcs/rfc-013) for context.
 
-### Component-specific checks
+### Other jobs behind the `Test` check
 
-- **Admin** - format, lint, cargo check, tests, frontend build
-- **Editor API** - format, lint, cargo check
+The required `Test` check is a gate job that fails when any job it depends on fails. Besides the Rust tests, the BDD jobs, the provenance checks and the docs accessibility gate, it waits for:
+
+- **Cross-law integrity** - `script/cross-law-integriteit.py` over the corpus: misplaced, dangling or plain-param source bindings and broken `implements` declarations
+- **Frontend tests** - unit tests for the editor, lawmaking, demo, arch-explorer and shared packages, bundle builds for the editor, lawmaking and demo, plus a check that the BDD grammar codegen is in sync
+- **Ontwerpsysteem-imports** - checks that the design-system imports match the tags in use
+- **E2E (mocked)** - `just test-e2e`, the Playwright suite against mocked backends
+- **Rust image build** - builds the `pipeline-api` image to catch Dockerfile breakage
+- **Docs source checks** - `npm run check:source` in `docs/`: cited paths, Gherkin steps, prose style, RFC coverage and numbering, the schema version and declared imports, without an Astro build
+
+A skipped job counts as passed; only the `changes` job itself must succeed.
 
 ## Change detection
 
@@ -100,11 +114,11 @@ CI uses path filters to determine which checks to run:
 | Change group | Triggers on changes to |
 |---|---|
 | `ci` | `packages/`, `frontend/`, `corpus/regulation/`, `corpus/demo/`, `bdd/`, `schema/`, `script/`, the PoC trees, and the root build files (`Justfile`, `package.json`, `rust-toolchain.toml`) |
-| `admin` | `packages/admin/` |
-| `editor-api` | `packages/editor-api/`, `packages/corpus/`, `packages/pipeline/`, `packages/harvester/` |
-| `docs` | `docs/` |
+| `docs` | `docs/`, plus the corpus and shared frontend code the landing page reads at build time |
+| `docs-source` | `docs/`, `packages/`, `bdd/`, `schema/`, `corpus/regulation/`, `justfile`, `.claude/skills/docs-writing/`, `.github/workflows/ci.yml` |
+| `rust-image` | `packages/`, `schema/`, `rust-toolchain.toml`, `.github/workflows/ci.yml` |
 
-The `ci` group includes `frontend/`, so frontend changes also trigger the Rust checks (the editor is shipped as one image built from `frontend/` plus the `editor-api` Rust binary that serves it). Docs-only changes skip the Rust checks and run just the docs accessibility gate (`just docs-a11y`).
+The `ci` group includes `frontend/`, so frontend changes also trigger the Rust checks (the editor is shipped as one image built from `frontend/` plus the `editor-api` Rust binary that serves it). Docs-only changes skip the Rust checks and run the docs accessibility gate (`just docs-a11y`), the docs source checks and the design-system import check.
 
 ## Merge gates
 

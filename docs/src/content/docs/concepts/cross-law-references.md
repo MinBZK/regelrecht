@@ -34,7 +34,8 @@ flowchart LR
     ZT[Zorgtoeslagwet] -->|toetsingsinkomen| Awir
     ZT -->|heeft_toeslagpartner| Awir
     ZT -->|is_verzekerde| ZVW[Zorgverzekeringswet]
-    Awir -->|inkomen| WIB[Wet inkomstenbelasting]
+    Awir -->|inkomensgegeven| AWR[Algemene wet inzake rijksbelastingen]
+    AWR -->|verzamelinkomen| WIB[Wet inkomstenbelasting]
     WIB -->|persoonsgegevens| BRP[BRP]
 ```
 
@@ -89,6 +90,8 @@ input:
 ## Circular reference detection
 
 The engine detects circular references (law A needs law B which needs law A) and raises an error. A `MAX_CROSS_LAW_DEPTH` limit of 20 prevents runaway chains.
+
+One loop is not an error: a rule that reads the value it departs from. An override reading the output it replaces, or an implementation reading the law whose open term it fills, gets that value without itself. See [Reading the value an override departs from](./hooks-and-reactive-execution#reading-the-value-an-override-departs-from).
 
 ## Further reading
 

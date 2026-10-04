@@ -179,6 +179,67 @@ export const sidebar: Record<string, SidebarGroup[]> = {
       ],
     },
   ],
+  '/basiswerk/': [
+    // Labels are the short forms the chapters carry in the text ("1.1
+    // Rechtsstaat en democratie"); the page titles are full sentences.
+    {
+      text: 'Inleiding',
+      items: [
+        { text: 'Inleiding', link: '/basiswerk/inleiding' },
+        { text: '0 Het kompas', link: '/basiswerk/kompas' },
+      ],
+    },
+    {
+      text: 'Deel 1: Constitutionele architectuur',
+      items: [
+        { text: '1.1 Rechtsstaat en democratie', link: '/basiswerk/rechtsstaat-democratie' },
+        { text: '1.2 Machtenscheiding', link: '/basiswerk/machtenscheiding' },
+        { text: '1.3 Grondrechten', link: '/basiswerk/grondrechten' },
+      ],
+    },
+    {
+      text: 'Deel 2: Hoe een norm ontstaat',
+      items: [
+        { text: '2.1 Gelaagdheid', link: '/basiswerk/gelaagdheid' },
+        { text: '2.2 Bevoegdheid', link: '/basiswerk/bevoegdheid' },
+        { text: '2.3 Het wetgevingsproces', link: '/basiswerk/wetgevingsproces' },
+        { text: '2.4 Wat voor regel is dit?', link: '/basiswerk/kwalificatie' },
+      ],
+    },
+    {
+      text: 'Deel 3: Van norm naar burger',
+      items: [
+        { text: '3.1 Het besluit', link: '/basiswerk/besluit' },
+        { text: '3.2 Discretie', link: '/basiswerk/discretie' },
+        { text: '3.3 Evenredigheid', link: '/basiswerk/evenredigheid' },
+        { text: '3.4 Handhaving', link: '/basiswerk/handhaving' },
+      ],
+    },
+    {
+      text: 'Deel 4: Van wet naar uitvoering',
+      items: [
+        { text: '4.1 Uitvoerbaarheid', link: '/basiswerk/uitvoerbaarheid' },
+        { text: '4.2 De wet is niet het algoritme', link: '/basiswerk/wet-is-geen-algoritme' },
+        { text: '4.3 Wat RegelRecht verandert', link: '/basiswerk/wat-regelrecht-verandert' },
+      ],
+    },
+    {
+      text: 'Deel 5: Waar het nu beweegt',
+      items: [
+        { text: '5.1 Constitutionele toetsing', link: '/basiswerk/constitutionele-toetsing' },
+        { text: '5.2 Welke rechter waarvoor', link: '/basiswerk/welke-rechter' },
+      ],
+    },
+    {
+      text: 'Bijlagen',
+      items: [
+        { text: 'A Bronnenkaart', link: '/basiswerk/bijlage-bronnen' },
+        { text: 'B Begrippenlijst', link: '/basiswerk/bijlage-begrippen' },
+        { text: 'C Verder lezen', link: '/basiswerk/bijlage-verder-lezen' },
+        { text: 'D Alle schema\'s', link: '/basiswerk/bijlage-schemas' },
+      ],
+    },
+  ],
 };
 
 /*
@@ -216,6 +277,8 @@ export interface DocsCategory {
   summary?: string;
   /** Intro paragraph for the category page, from the matching docsNav item. */
   intro?: string;
+  /** Language of the category page, from the matching docsNav item. */
+  lang?: 'en' | 'nl';
 }
 
 /**
@@ -231,6 +294,7 @@ export const docsCategories: DocsCategory[] = Object.keys(sidebar).map(
       title: nav?.text ?? prefix,
       summary: nav?.summary,
       intro: nav?.intro,
+      lang: nav?.lang,
     };
   },
 );

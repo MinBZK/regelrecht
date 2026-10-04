@@ -385,7 +385,7 @@ impl<'a> ArticleEngine<'a> {
         let actions = self.get_actions();
         let tracing_active = context.has_trace();
 
-        for action in actions {
+        for (index, action) in actions.iter().enumerate() {
             if let (Some(outputs), Some(name)) = (outputs, &action.output) {
                 if !outputs.contains(name) {
                     continue;
@@ -469,6 +469,42 @@ impl<'a> ArticleEngine<'a> {
                 }
                 return Err(err);
             }
+
+            // A replacing override takes effect where the output is set, so
+            // the actions after it read the value the special rule gives, the
+            // same value every other article reads (RFC-007). Only after the
+            // last action writing the output: an output assigned twice is
+            // replaced once, as what the article ends up with.
+            let is_last_write = !actions[index + 1..]
+                .iter()
+                .any(|a| a.output.as_deref() == Some(output_name.as_str()));
+            let replaced = if is_last_write {
+                context.replaced_output(output_name, &value)
+            } else {
+                None
+            };
+            let value = match replaced {
+                None => value,
+                Some(Ok(replaced)) => {
+                    // The action node keeps the value the article computed,
+                    // which is what the override departs from; the override
+                    // node nested under it carries the replaced value.
+                    if tracing_active {
+                        context.trace_set_message(format!(
+                            "Computing {output_name} = {value}, replaced by a lex specialis \
+                             override: {replaced}"
+                        ));
+                    }
+                    replaced
+                }
+                Some(Err(e)) => {
+                    if tracing_active {
+                        context.trace_set_message(format!("Action failed: {}", e));
+                        context.trace_pop();
+                    }
+                    return Err(e);
+                }
+            };
 
             tracing::debug!("Output {} = {}", output_name, value);
             context.set_output(output_name, value.clone());

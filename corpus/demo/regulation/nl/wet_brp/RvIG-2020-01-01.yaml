@@ -113,9 +113,6 @@ articles:
           - name: kinderen_gegevens
             type: array
             source: {}
-          - name: verblijfsadres
-            type: object
-            source: {}
           - name: ouder_adressen
             type: array
             source: {}
@@ -249,28 +246,6 @@ articles:
               juriconnect: jci1.3:c:BWBR0033715&artikel=1.7&z=2024-01-01&g=2024-01-01
               explanation: >-
                 Artikel 1.7 Wet BRP verplicht gebruik authentieke gegevens over huwelijk en partnerschap
-          - output: woonsituatie
-            # Thuiswonend is wie op het adres van een ouder woont: het verblijfsadres is een van de
-            # ouderadressen (IN). De POC vergeleek het adres met de lijst als geheel (EQUALS), wat
-            # nooit waar kon zijn; de typering (RFC-037, T3) wees dat aan.
-            value:
-              operation: IF
-              cases:
-                - when:
-                    operation: IN
-                    subject: $verblijfsadres
-                    value: $ouder_adressen
-                  then: THUIS
-              default: UIT
-            legal_basis:
-              law: Wet basisregistratie personen
-              bwb_id: BWBR0033715
-              article: '2.4'
-              url: >-
-                https://wetten.overheid.nl/BWBR0033715/2024-01-01#Hoofdstuk2_Paragraaf2.1_Artikel2.4
-              juriconnect: jci1.3:c:BWBR0033715&artikel=2.4&z=2024-01-01&g=2024-01-01
-              explanation: >-
-                Artikel 2.4 Wet BRP bepaalt meldingsplicht bij adreswijziging en woonsituatie
           - output: land_van_verblijf
             value: $land_verblijf
             legal_basis:
@@ -359,6 +334,37 @@ articles:
                       - $adres.postcode
                       - ' '
                       - $adres.woonplaats
+          - output: woonsituatie
+            # Thuiswonend is wie op het adres van een ouder woont: het verblijfsadres hierboven is
+            # een van de ouderadressen (IN), in dezelfde vorm (straat huisnummer, postcode
+            # woonplaats). Wie geen adres heeft, woont niet bij een ouder. De POC vergeleek het
+            # adres met de lijst als geheel (EQUALS), wat nooit waar kon zijn; de typering
+            # (RFC-037, T3) wees dat aan.
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $verblijfsadres
+                          value: null
+                      - operation: IN
+                        subject: $verblijfsadres
+                        value: $ouder_adressen
+                  then: THUIS
+              default: UIT
+            legal_basis:
+              law: Wet basisregistratie personen
+              bwb_id: BWBR0033715
+              article: '2.4'
+              url: >-
+                https://wetten.overheid.nl/BWBR0033715/2024-01-01#Hoofdstuk2_Paragraaf2.1_Artikel2.4
+              juriconnect: jci1.3:c:BWBR0033715&artikel=2.4&z=2024-01-01&g=2024-01-01
+              explanation: >-
+                Artikel 2.4 Wet BRP bepaalt meldingsplicht bij adreswijziging en woonsituatie
           - output: huishoudgrootte
         # POC: EXISTS op lijst $medebewoners (uitvoer huishoudgrootte) betekende 'niet leeg'; expliciet als telling (RFC-016)
             value:

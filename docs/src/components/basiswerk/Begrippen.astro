@@ -1,0 +1,28 @@
+---
+/*
+ * Bijlage B: de begrippen, alfabetisch, met het hoofdstuk waar elk begrip
+ * wordt ingevoerd. check-basiswerk.mjs controleert dat het begrip daar ook
+ * echt in de tekst staat.
+ */
+import '~/styles/basiswerk.css';
+import { begrippen } from '~/lib/basiswerk/begrippen.js';
+
+const rijen = [...begrippen].sort((a, b) => a.term.localeCompare(b.term, 'nl'));
+---
+
+<table class="rr-matrix">
+  <thead>
+    <tr><th scope="col">Begrip</th><th scope="col">In één zin</th><th scope="col">Hoofdstuk</th></tr>
+  </thead>
+  <tbody>
+    {
+      rijen.map((b) => (
+        <tr>
+          <th scope="row">{b.term}</th>
+          <td>{b.zin}</td>
+          <td><a href={b.waar}>{b.waar.replace('/basiswerk/', '')}</a></td>
+        </tr>
+      ))
+    }
+  </tbody>
+</table>

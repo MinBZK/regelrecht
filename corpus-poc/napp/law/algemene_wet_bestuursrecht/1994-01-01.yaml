@@ -96,8 +96,15 @@ articles:
         output:
           - name: beslistermijn_einddatum
             type: date
+            description: >-
+              Laatste dag van de redelijke termijn: na deze dag is die in ieder
+              geval verstreken (lid 2), als er geen wettelijke termijn is (lid 1) en geen
+              mededeling als bedoeld in artikel 4:14, derde lid, is gedaan.
         actions:
-          # Redelijke termijn: acht weken na ontvangst van de aanvraag.
+          # Lid 2 geeft geen termijn maar een buitengrens: acht weken na
+          # ontvangst, tenzij het bestuursorgaan binnen die weken een
+          # mededeling doet (art. 4:14 lid 3). Een wettelijke termijn (lid 1)
+          # gaat voor; in deze poc komt die uit Wpp art. 17.
           - output: beslistermijn_einddatum
             value:
               operation: DATE_ADD

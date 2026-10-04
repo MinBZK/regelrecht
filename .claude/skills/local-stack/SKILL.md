@@ -1,7 +1,7 @@
 ---
 name: local-stack
 description: "Run a regelrecht branch locally end-to-end (worktree + Docker stack + DB), with the workarounds needed when developing inside the dev container against Docker Desktop. Accepts a branch name or a PR number. Subcommands: bare arg = start, `stop <arg>` = shut down, `clean <arg>` = shut down and remove worktree."
-user_invocable: true
+user-invocable: true
 ---
 
 # Local Stack
@@ -182,7 +182,7 @@ If the worktree has uncommitted changes, **stop and ask** before removing — th
 ## What this skill does **not** do
 
 - Doesn't enable OIDC locally. If the user wants to test auth-gated behavior, they need real OIDC creds + a Keycloak client whose redirect URI includes `http://localhost:<frontend>/auth/callback`. That's out of scope here.
-- Doesn't run prometheus/grafana. If observability is needed, that's a separate workflow (e.g. `just dev` on a host Docker daemon outside the dev container).
+- Doesn't run prometheus/grafana. If observability is needed, that's a separate workflow (see the Grafana component page).
 - Doesn't run the test suite, lint, or formatters — use `just check` or the relevant `just` recipes for that.
 - Doesn't push, comment, or modify the PR. Read-only locally.
 

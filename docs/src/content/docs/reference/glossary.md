@@ -112,9 +112,9 @@ The values of `decision_type`, saying what kind of decision an output is within 
 | Term | Dutch | Description |
 |------|-------|-------------|
 | **Corpus** | Corpus | The git-versioned collection of machine-readable laws. A [federated corpus](/concepts/federated-corpus) spans more than one repository |
-| **Open term** | Open term | The schema construct (`open_terms`) for a value an article leaves to be filled outside itself: by a lower regulation it delegates to, or per case by the authority `decided_per_case_by` names. See [Inversion of Control](/concepts/inversion-of-control) |
+| **Open term** | Open term | The schema construct (`open_terms`) for a value an article leaves to be filled outside itself: by a regulation, under delegation or in co-government, or per case by the authority `decided_per_case_by` names. See [Inversion of Control](/concepts/inversion-of-control) |
 | **Open norm** | Open norm | A standard the law leaves vague on purpose, such as *redelijkerwijs* or *in bijzondere gevallen*, so that its content is decided case by case. Not the same thing as a delegated value, though the format records it in the same place: as an open term with `decided_per_case_by`. It is not a marking, because the language can express it. See [RFC-031](/rfcs/rfc-031) |
-| **Implements** | Gelet op | A lower regulation declaring which open terms of a higher law it fills. The schema field carries `gelet_op`, the citation the Dutch instrument itself opens with |
+| **Implements** | Gelet op | A regulation declaring which open terms of a law it fills. The schema field carries `gelet_op`, the citation the Dutch instrument opens with in its preamble. The preamble records the basis; the power itself comes from the article of the law |
 | **Cross-law reference** | Verwijzing | A law reading an output of another law through a `source` block. See [Cross-Law References](/concepts/cross-law-references) |
 | **Parameter** | Parameter | A value the caller supplies with the question, such as the `bsn` of the person it is about. See [Law Format](/concepts/law-format#parameters-inputs-and-outputs) |
 | **Input** | Invoer | A value an article needs but does not decide itself. It comes from another law through `source`, or from outside the corpus |
@@ -126,7 +126,7 @@ The values of `decision_type`, saying what kind of decision an output is within 
 | **Marking** | Markering | A construct the format cannot yet express, flagged on the article. Called `untranslatables` before schema v0.7.0. See [Markings](/concepts/markings) |
 | **Void** | Bestaat geen aanspraak | An override stating that an output does not arise at all, rather than being replaced by a value. Not the same as an entitlement of zero, which is still a decision carrying legal remedies. See [Voiding an output](/concepts/hooks-and-reactive-execution#voiding-an-output) |
 | **Hook** | Haak | Logic that fires at a stage of a procedure rather than on a direct request. See [Hooks and Reactive Execution](/concepts/hooks-and-reactive-execution) |
-| **Trace** | Spoor | The tree showing how each value in an execution was computed. See [Traceability](/concepts/traceability) |
+| **Trace** | Spoor | The tree showing how each value in an execution was computed, published as a `{trace_version, root}` document whose nodes carry an address and the provision they came from ([RFC-039](/rfcs/rfc-039)). See [Traceability](/concepts/traceability) |
 | **Execution Receipt** | Uitvoeringsbewijs | The sealed record of one execution: engine, schema, law version and hash, so the result can be reproduced. See [Execution Provenance](/concepts/execution-provenance) |
 | **Traject** | Traject | A working context in the editor, with its own members, roles and branch, optionally backed by its own repository |
 | **Bevoegd gezag** | Bevoegd gezag | The body competent to take a decision under a given article. See [Competent Authority](/concepts/competent-authority) |
