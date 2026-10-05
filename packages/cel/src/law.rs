@@ -612,8 +612,9 @@ fn version<'s>(
 }
 
 /// Every article in the corpus with a chronolex block, by reference, in the
-/// version that applies on `date` (the newest without one). A block that
-/// cannot be read is an error naming the article.
+/// version that applies on `date` (the newest without one). Every block is
+/// validated against `schema/chronolex/v0.3.0/law-extension.json`; a block
+/// that does not validate or cannot be read is an error naming the article.
 pub fn articles(
     service: &LawExecutionService,
     date: Option<NaiveDate>,
@@ -628,6 +629,13 @@ pub fn articles(
         for article in &law.articles {
             let Some(b) = block(article) else { continue };
             let reference = format!("{id}#{}", article.number);
+            if let Err(f) = schema::validate(Kind::LawExtension, b) {
+                errors.extend(
+                    f.into_iter()
+                        .map(|f| format!("{reference}: produces.extensions.{NAMESPACE}: {f}")),
+                );
+                continue;
+            }
             match serde_json::from_value::<Chronolex>(b.clone()) {
                 Ok(chronolex) => {
                     out.insert(
@@ -2563,6 +2571,66 @@ events:
         assert_eq!(e.aliases["vastgesteld_bedrag"], "bedrag_art1");
         // The document of the stream shows the event as it applies.
         assert_eq!(streams[0].document["events"][0]["type"], "decretogram");
+    }
+
+    /// The chronolex block of every article is validated against
+    /// `law-extension.json`; an error names the article and the path.
+    #[test]
+    fn the_extension_is_validated_against_its_schema() {
+        let law = |block: &str| {
+            format!(
+                r#"
+$id: testwet_uitbreiding
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.com/testwet_uitbreiding
+articles:
+  - number: '1'
+    text: De instantie ontvangt de akte.
+    url: https://example.com/testwet_uitbreiding/1
+    machine_readable:
+      execution:
+        produces:
+          extensions:
+            chronolex:
+{block}
+"#
+            )
+        };
+        let ok = "              establishes:\n                - {event: akte_ontvangen, type: submission}\n";
+        let mut s = LawExecutionService::new();
+        s.load_law(&law(ok)).unwrap();
+        assert_eq!(articles(&s, None).map(|a| a.len()).unwrap(), 1);
+        for (block, expect) in [
+            // Neither an event nor an extension.
+            (
+                "              establishes:\n                - {type: submission}\n",
+                "/establishes/0",
+            ),
+            // An unknown key.
+            (
+                "              establishes: []\n              leest: {}\n",
+                "leest",
+            ),
+            // A channel of an unknown kind.
+            (
+                "              channels:\n                c: {kind: loket}\n",
+                "/channels/c/kind",
+            ),
+        ] {
+            let mut s = LawExecutionService::new();
+            s.load_law(&law(block)).unwrap();
+            let e = articles(&s, None).err().unwrap_or_default();
+            assert!(
+                !e.is_empty()
+                    && e.iter()
+                        .all(|f| f
+                            .starts_with("testwet_uitbreiding#1: produces.extensions.chronolex: "))
+                    && e.iter().any(|f| f.contains(expect)),
+                "{block}: {e:?}"
+            );
+        }
     }
 
     /// Each field keeps the legal basis of the establishment or extension that

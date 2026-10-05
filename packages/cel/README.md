@@ -86,6 +86,10 @@ extensions:
       - {authority: <naam>, legal_basis: <regeling>#<artikel>}
 ```
 
+Het lawschema laat `extensions` open; de runtime valideert elk
+`produces.extensions.chronolex`-blok bij het laden tegen
+`schema/chronolex/v0.3.0/law-extension.json`, met artikel en pad in de melding.
+
 Wat de runtime daaruit afleidt:
 
 - het proces-id is de id van de cel die de indiening van het portaal

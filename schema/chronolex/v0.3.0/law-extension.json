@@ -1,0 +1,417 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.3.0/law-extension.json",
+  "title": "The chronolex extension of an article (produces.extensions.chronolex) v0.3.0",
+  "description": "What an article of a law or a policy says for chronolexography, in its own namespace under produces.extensions (RFC-022 sec. 3.2): the facts it brings into being (establishes), how it reads its own parameters from a chronicle (reads), and, in implementing policy only, the channels of the actor, what each supplies to a submission and the authorities it acts for under mandate (RFC-047). The law schema leaves extensions open; the runtime validates this block against this schema when it loads the corpus.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "establishes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/establishment"
+      }
+    },
+    "reads": {
+      "description": "One reading, or one per paragraph that reads differently; each becomes a lexostatus named after the article (<regulation>#<article>, with ' lid <n>' for a paragraph).",
+      "oneOf": [
+        {
+          "$ref": "#/definitions/reading"
+        },
+        {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/reading"
+          }
+        }
+      ]
+    },
+    "channels": {
+      "type": "object",
+      "description": "The channels of the actor, by id; only in implementing policy that names a competent authority. The technique of each is in the deployment (channels.yaml).",
+      "propertyNames": {
+        "$ref": "common.json#/definitions/identifier"
+      },
+      "additionalProperties": {
+        "$ref": "#/definitions/channel"
+      }
+    },
+    "supplies": {
+      "type": "object",
+      "description": "Per channel what it puts into a submission, per field of the gram: a field of the channel, the route it came in by ($channel) or, through a portal only, the day it was submitted ($submitted_on).",
+      "propertyNames": {
+        "$ref": "common.json#/definitions/identifier"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "propertyNames": {
+          "$ref": "#/definitions/path"
+        },
+        "additionalProperties": {
+          "anyOf": [
+            {
+              "$ref": "common.json#/definitions/identifier"
+            },
+            {
+              "enum": ["$channel", "$submitted_on"]
+            }
+          ]
+        }
+      }
+    },
+    "mandates": {
+      "type": "array",
+      "description": "Authorities on whose behalf the actor also acts, under mandate.",
+      "items": {
+        "type": "object",
+        "required": ["authority", "legal_basis"],
+        "additionalProperties": false,
+        "properties": {
+          "authority": {
+            "type": "string",
+            "minLength": 1
+          },
+          "legal_basis": {
+            "$ref": "common.json#/definitions/legal_basis"
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "path": {
+      "type": "string",
+      "description": "A field path under the fields of a gram; a path covers everything below it.",
+      "pattern": "^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)*$"
+    },
+    "establishment": {
+      "type": "object",
+      "description": "A fact the article brings into being, as an event of a chronicle (event), or the extension of a fact that another article establishes (extends).",
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": ["event"],
+          "not": {
+            "required": ["extends"]
+          }
+        },
+        {
+          "required": ["extends"],
+          "not": {
+            "required": ["event"]
+          }
+        }
+      ],
+      "properties": {
+        "event": {
+          "$ref": "common.json#/definitions/identifier",
+          "description": "The event this article establishes, by its name in the chronicle."
+        },
+        "extends": {
+          "description": "The event (by name) that this article extends, or the submission its hook applies to ({submission: <STAGE>}).",
+          "oneOf": [
+            {
+              "$ref": "common.json#/definitions/identifier"
+            },
+            {
+              "type": "object",
+              "required": ["submission"],
+              "additionalProperties": false,
+              "properties": {
+                "submission": {
+                  "$ref": "#/definitions/stage"
+                }
+              }
+            }
+          ]
+        },
+        "type": {
+          "$ref": "common.json#/definitions/identifier",
+          "description": "The type of the gram, open vocabulary (RFC-022 sec. 1)."
+        },
+        "subtype": {
+          "$ref": "common.json#/definitions/identifier"
+        },
+        "stage": {
+          "$ref": "#/definitions/stage"
+        },
+        "refers_to": {
+          "$ref": "common.json#/definitions/refers_to"
+        },
+        "legal_basis": {
+          "type": "array",
+          "description": "The legal basis the gram carries. Without it: the article itself for an event; for an extension the legal basis of the origin of each field it declares.",
+          "items": {
+            "$ref": "common.json#/definitions/legal_basis"
+          }
+        },
+        "effective_at": {
+          "type": "object",
+          "description": "Why the effective_at counts in law, and which piece of data it is: a parameter of this article or a field of the gram; neither means the moment of receipt.",
+          "required": ["legal_basis"],
+          "additionalProperties": false,
+          "properties": {
+            "parameter": {
+              "$ref": "common.json#/definitions/identifier"
+            },
+            "field": {
+              "$ref": "#/definitions/path"
+            },
+            "legal_basis": {
+              "$ref": "common.json#/definitions/legal_bases"
+            },
+            "only": {
+              "description": "Only when a submitted value states the moment (stated), or only when nothing states it and the recording counts (recorded). Without it: always.",
+              "enum": ["stated", "recorded"]
+            }
+          }
+        },
+        "fields": {
+          "description": "The fields of the gram: a keyword (outputs: the outputs of this article; stage: what the stage requires and the outputs of its hooks; parameters: the parameters of this article that a party or the channel supplies), a list of field paths, named parameters, or field paths with their type.",
+          "oneOf": [
+            {
+              "enum": ["outputs", "stage", "parameters"]
+            },
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/path"
+              }
+            },
+            {
+              "type": "object",
+              "required": ["parameters"],
+              "additionalProperties": false,
+              "properties": {
+                "parameters": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "common.json#/definitions/identifier"
+                  }
+                }
+              }
+            },
+            {
+              "type": "object",
+              "not": {
+                "required": ["parameters"]
+              },
+              "propertyNames": {
+                "$ref": "#/definitions/path"
+              },
+              "additionalProperties": {
+                "$ref": "#/definitions/field_type"
+              }
+            }
+          ]
+        },
+        "aliases": {
+          "type": "object",
+          "description": "Name bridge: under which name another article reads a field of this gram (<name at the reader>: <field of the gram>).",
+          "propertyNames": {
+            "$ref": "common.json#/definitions/identifier"
+          },
+          "additionalProperties": {
+            "$ref": "#/definitions/path"
+          }
+        },
+        "prefill": {
+          "type": "object",
+          "description": "Fields a register may fill in beforehand: per field the output of the regulation that knows it (by default the regulation of this article).",
+          "propertyNames": {
+            "$ref": "#/definitions/path"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "required": ["output"],
+            "additionalProperties": false,
+            "properties": {
+              "regulation": {
+                "$ref": "common.json#/definitions/identifier"
+              },
+              "output": {
+                "$ref": "common.json#/definitions/identifier"
+              }
+            }
+          }
+        }
+      }
+    },
+    "stage": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z_]*$",
+      "description": "A stage of the procedure (RFC-008), as the law names it."
+    },
+    "field_type": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "A parameter type of the law schema."
+        },
+        "unit": {
+          "type": "string"
+        },
+        "columns": {
+          "type": "array",
+          "description": "For a table: its columns.",
+          "items": {
+            "$ref": "common.json#/definitions/identifier"
+          }
+        },
+        "origin": {
+          "type": "object",
+          "description": "Who supplies the field, in the shape of an origin in the law schema; without it the field is input."
+        }
+      }
+    },
+    "reading": {
+      "type": "object",
+      "description": "How the article reads its own parameters from the chronicle, in the vocabulary of the reduction (lexostatus.json).",
+      "required": ["parameters"],
+      "additionalProperties": false,
+      "properties": {
+        "paragraph": {
+          "type": ["integer", "string"],
+          "description": "The paragraph that carries this reading, if the article has more readings."
+        },
+        "from": {
+          "type": "object",
+          "description": "Which grams the article reads, if it picks one (with pick)."
+        },
+        "pick": {
+          "enum": ["latest"]
+        },
+        "decision": {
+          "const": "this",
+          "description": "The article reads the grams of the decision it is asked for."
+        },
+        "parameters": {
+          "type": "object",
+          "description": "Per parameter of this article its derivation, optionally with from (which grams) and legal_basis (without: this article). The runtime checks each derivation against the reduction vocabulary.",
+          "propertyNames": {
+            "$ref": "common.json#/definitions/identifier"
+          },
+          "additionalProperties": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "channel": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "description": "What the channel is for; it decides the routes of its role: a portal to apply, the handling of cases, or a counter that enters an application on behalf of the applicant.",
+          "enum": ["portal", "handling", "counter"]
+        },
+        "role": {
+          "$ref": "common.json#/definitions/identifier",
+          "description": "The role that logs in through it; without it: the channel id."
+        },
+        "identifies": {
+          "description": "The fields of the login: names, or per name the legal basis of the rule that knows the value and its form.",
+          "oneOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "common.json#/definitions/identifier"
+              }
+            },
+            {
+              "type": "object",
+              "propertyNames": {
+                "$ref": "common.json#/definitions/identifier"
+              },
+              "additionalProperties": {
+                "type": "array",
+                "items": {
+                  "$ref": "common.json#/definitions/legal_basis"
+                }
+              }
+            }
+          ]
+        },
+        "owner": {
+          "$ref": "#/definitions/path",
+          "description": "The field of the submission that designates who follows a case."
+        },
+        "submits": {
+          "$ref": "common.json#/definitions/legal_basis",
+          "description": "The article whose submission this portal records (<regulation>#<article>)."
+        },
+        "assesses": {
+          "type": "object",
+          "description": "The output of the submitted article that the portal assesses before submitting.",
+          "required": ["output"],
+          "additionalProperties": false,
+          "properties": {
+            "output": {
+              "$ref": "common.json#/definitions/identifier"
+            }
+          }
+        },
+        "offers": {
+          "type": "object",
+          "description": "What the portal offers: an output of a regulation, optionally with the outputs of that regulation for a deadline, the windows on offer, the first day of a window and the first day an application for it can come in.",
+          "required": ["regulation", "output"],
+          "additionalProperties": false,
+          "properties": {
+            "regulation": {
+              "$ref": "common.json#/definitions/identifier"
+            },
+            "output": {
+              "$ref": "common.json#/definitions/identifier"
+            },
+            "deadline": {
+              "$ref": "common.json#/definitions/identifier"
+            },
+            "windows": {
+              "$ref": "common.json#/definitions/identifier"
+            },
+            "start": {
+              "$ref": "common.json#/definitions/identifier"
+            },
+            "opening": {
+              "$ref": "common.json#/definitions/identifier"
+            }
+          }
+        },
+        "form": {
+          "type": "object",
+          "description": "The form document that gives the portal order, groups and labels (form.json); document relative to the corpus root.",
+          "required": ["document", "screen"],
+          "additionalProperties": false,
+          "properties": {
+            "document": {
+              "type": "string",
+              "minLength": 1
+            },
+            "screen": {
+              "$ref": "common.json#/definitions/identifier"
+            }
+          }
+        },
+        "legal_basis": {
+          "description": "One legal basis or more; the first is the basis of the role.",
+          "oneOf": [
+            {
+              "$ref": "common.json#/definitions/legal_basis"
+            },
+            {
+              "type": "array",
+              "items": {
+                "$ref": "common.json#/definitions/legal_basis"
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

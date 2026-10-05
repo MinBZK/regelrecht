@@ -31,11 +31,14 @@ pub enum Kind {
     Examples,
     /// A line of the initial state of a cell (`initial_state.json`).
     InitialState,
+    /// The `produces.extensions.chronolex` block of an article
+    /// (`law-extension.json`).
+    LawExtension,
 }
 
 impl Kind {
     /// Every kind, in the order of the files.
-    pub const ALL: [Kind; 9] = [
+    pub const ALL: [Kind; 10] = [
         Kind::Stream,
         Kind::Lexostatus,
         Kind::Cell,
@@ -45,6 +48,7 @@ impl Kind {
         Kind::Registers,
         Kind::Examples,
         Kind::InitialState,
+        Kind::LawExtension,
     ];
 
     /// The file name of the schema and its embedded text.
@@ -67,6 +71,7 @@ impl Kind {
             Kind::Registers => embed!("registers.json"),
             Kind::Examples => embed!("examples.json"),
             Kind::InitialState => embed!("initial_state.json"),
+            Kind::LawExtension => embed!("law-extension.json"),
         }
     }
 }

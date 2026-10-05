@@ -160,7 +160,7 @@
           "description": "The stage of which this event is a step, in the vocabulary of RFC-008: for a decretogram the stage that the decision is (BESLUIT), for a submission the stage it opens (AANVRAAG), for an act the stage it brings about (BEKENDMAKING: the sending, Awb 3:41). Only on a decretogram, a submission or an act. A decision passes through each stage once: the cell rejects a second gram with the same stage that refers to the same decision, and also a second decision of the same event that refers to the same gram (an amendment refers with amends)."
         },
         "refers_to": {
-          "$ref": "#/definitions/refers_to"
+          "$ref": "common.json#/definitions/refers_to"
         },
         "effective_at": {
           "type": "object",
@@ -273,52 +273,6 @@
           "$ref": "#/definitions/constant"
         }
       ]
-    },
-    "refers_to": {
-      "type": "object",
-      "minProperties": 1,
-      "description": "Which gram a gram of this event refers to, per name from the law text (on_application: Wpp 107 'besluit op de aanvraag'; application: Awb 4:5 'de aanvraag aan te vullen'; decision: Awb 3:41, 4:87; amends: Awb 4:48-4:50; concerns: Awb 4:57). On recording, the process supplies the id per name; the cell checks that the gram exists and matches to. The root of the new gram is that of the gram it refers to. Without a reference, a gram is itself a root.",
-      "propertyNames": {
-        "pattern": "^[a-z][a-z0-9_]*$"
-      },
-      "additionalProperties": {
-        "type": "object",
-        "required": [
-          "to"
-        ],
-        "additionalProperties": false,
-        "properties": {
-          "to": {
-            "description": "What the referenced gram must be: an article that establishes it (<regulation>#<article>), an event name, or {stage: <STAGE>}.",
-            "oneOf": [
-              {
-                "$ref": "#/definitions/legal_basis"
-              },
-              {
-                "$ref": "#/definitions/identifier"
-              },
-              {
-                "type": "object",
-                "required": [
-                  "stage"
-                ],
-                "additionalProperties": false,
-                "properties": {
-                  "stage": {
-                    "type": "string",
-                    "pattern": "^[A-Z][A-Z_]*$"
-                  }
-                }
-              }
-            ]
-          },
-          "required": {
-            "type": "boolean",
-            "default": false,
-            "description": "Whether the process must supply the reference. Without it, the reference is optional: a gram without a reference is a root."
-          }
-        }
-      }
     }
   }
 }
