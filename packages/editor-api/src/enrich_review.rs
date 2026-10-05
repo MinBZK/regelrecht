@@ -327,13 +327,13 @@ pub async fn apply(
     // Een onderdeel zonder artikelnummer is per definitie het énige onderdeel
     // van zijn verrijking (de worker maakt óf één taak per gewijzigd artikel,
     // óf één taak voor het geheel). Een mengeling zou betekenen dat "de hele
-    // wet" en "artikel 3" tegelijk overgenomen worden, en dan is niet te zeggen
+    // versie" en "artikel 3" tegelijk overgenomen worden, en dan is niet te zeggen
     // wat er wint.
     let whole_law = accepted.iter().any(|a| a.article.is_none());
     if whole_law && open.len() > 1 {
         return Err((
             StatusCode::BAD_REQUEST,
-            "Een voorstel voor alle artikelen tegelijk kan niet samen met losse artikelen worden verwerkt"
+            "Een voorstel voor de hele versie kan niet samen met losse artikelen worden verwerkt"
                 .to_string(),
         ));
     }
