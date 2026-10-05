@@ -296,8 +296,11 @@ export async function runSimulation({ engine, corpus, kind, params, overrides = 
         for (const law of applicationLaws) {
           if (!(form.aanvragen ?? []).includes(law.law_path)) continue;
           const callParams = callParamsFor(law, subject, form);
-          const outcome = reduceOutcome(law, null, evaluateLaw(engine, law, callParams, referenceDate));
-          if (outcome.ok && outcome.met === true) granted.push({ law: law.law_path, service: law.service, status: 'DECIDED', approved: true, bsn: subject.bsn ?? null, kvk_nummer: subject.kvk_nummer ?? null, ...callParams });
+          const evaluation = evaluateLaw(engine, law, callParams, referenceDate);
+          const outcome = reduceOutcome(law, null, evaluation);
+          // Zoals op het portaal: wat besloten is (de vergunde oppervlakte),
+          // wat gevraagd is, en de feiten van de zaak zelf erbovenop.
+          if (outcome.ok && outcome.met === true) granted.push({ ...(evaluation.outputs ?? {}), ...callParams, law: law.law_path, service: law.service, status: 'DECIDED', approved: true, bsn: subject.bsn ?? null, kvk_nummer: subject.kvk_nummer ?? null });
         }
       }
       if (granted.length) registerSources(granted);

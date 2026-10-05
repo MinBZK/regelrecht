@@ -425,3 +425,36 @@ describe('een dek per persona', () => {
     expect(p.current.value.title).toBe('Slot');
   });
 });
+
+describe('een lopend dek en nieuwe dia\'s', () => {
+  it('houdt het dek van de start vast, maar neemt vertaalde dia\'s over', async () => {
+    const p = usePresentation();
+    p.setMode('zaal');
+    const demo = { profileKey: { value: 'claudia' }, profile: { value: null }, corpus: { value: null }, setProfile(k) { this.profileKey.value = k; } };
+    const deck = (title) => [{ kind: 'title', title }, { kind: 'demo', title: 'M', route: '/simulatie', decks: ['merijn'] }, { kind: 'closing', title: 'Slot' }];
+    p.init({ router: fakeRouter(), demo, slides: deck('Opening') });
+    await p.start(0);
+    demo.profileKey.value = 'merijn';
+    p.init({ slides: deck('Opening (en)') });
+    expect(p.slides.value.map((s) => s.title)).toEqual(['Opening (en)', 'Slot']);
+    p.stop();
+    p.init({ demo: { profileKey: { value: null }, profile: { value: null }, corpus: { value: null }, setProfile() {} } });
+  });
+});
+
+describe('terugbladeren in een dek', () => {
+  it('geeft dia\'s vóór de eerste persona-dia de persona van het dek terug', async () => {
+    const p = usePresentation();
+    p.setMode('zaal');
+    const demo = { profileKey: { value: 'merijn' }, profile: { value: null }, corpus: { value: null }, setProfile(k) { this.profileKey.value = k; } };
+    const slides = [{ kind: 'title', title: 'Opening' }, { kind: 'demo', title: 'Wet', route: '/wetten' }, { kind: 'demo', title: 'Claudia', route: '/simulatie', profile: 'claudia' }];
+    p.init({ router: fakeRouter(), demo, slides });
+    await p.start(0);
+    await p.goTo(2);
+    expect(demo.profileKey.value).toBe('claudia');
+    await p.goTo(1);
+    expect(demo.profileKey.value).toBe('merijn');
+    p.stop();
+    p.init({ demo: { profileKey: { value: null }, profile: { value: null }, corpus: { value: null }, setProfile() {} } });
+  });
+});

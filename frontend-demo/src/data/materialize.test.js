@@ -340,3 +340,16 @@ describe('tablesFromProfiles / collectKeyValues', () => {
     });
   });
 });
+
+describe('een onbekende uitkomst in een besloten zaak', () => {
+  it('blijft onbekend in plaats van als waarde door te gaan', () => {
+    const shape = { parameters: ['kvk_nummer'], inputTypes: { vergunde_oppervlakte: 'number' } };
+    const bindings = { vergunde_oppervlakte: { kind: 'cases', field: 'vergunde_oppervlakte', select_on: [{ name: 'kvk_nummer', value: '$kvk_nummer' }], service: 'GEMEENTE_ROTTERDAM', absent: 0 } };
+    const cases = [{ kvk_nummer: '1', vergunde_oppervlakte: { __unknown: true, missing: [] } }];
+    const { record } = materialiseRecord(shape, bindings, { kvk_nummer: '1' }, () => [], { cases });
+    expect('vergunde_oppervlakte' in record).toBe(false);
+    // Ter vergelijking: een bekende waarde gaat wel door.
+    const known = materialiseRecord(shape, bindings, { kvk_nummer: '1' }, () => [], { cases: [{ kvk_nummer: '1', vergunde_oppervlakte: 30 }] });
+    expect(known.record.vergunde_oppervlakte).toBe(30);
+  });
+});

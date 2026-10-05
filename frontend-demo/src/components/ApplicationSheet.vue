@@ -286,7 +286,7 @@ const claimedPrimary = computed(() => {
 const caseClaims = computed(() => {
   const c = currentCase.value;
   if (!c) return [];
-  return demo.state.claims.filter((cl) => cl.caseId === c.id || (cl.bsn === c.bsn && cl.tileLawId === c.lawId));
+  return demo.state.claims.filter((cl) => cl.caseId === c.id || (cl.bsn === (c.claimsBsn ?? c.bsn) && cl.tileLawId === c.lawId));
 });
 function claimSpec(cl) {
   return fieldSpec(corpus.value?.lawById(cl.lawId)?.doc, cl.input);

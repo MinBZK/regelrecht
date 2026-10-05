@@ -55,6 +55,8 @@ function profileDefault(page) {
 
 /** Alle dia's uit demo-config.yaml; het dek zelf is de keuze daaruit bij de start. */
 let allSlides = [];
+/** Voor welke persona het lopende dek gekozen is (vast vanaf `start`). */
+let deckKey = null;
 
 /**
  * Het dek van een persona: de dia's zonder `decks` (opening, de wet, de
@@ -141,7 +143,9 @@ function init({ router: r, demo: d, slides }) {
   if (r) router = r;
   if (d) demo = d;
   if (slides) allSlides = slides;
-  if (!active.value) slidesRef.value = deckFor(allSlides, demo?.profileKey?.value);
+  // Loopt de presentatie, dan blijft het dek van die persona, maar in de nieuwe
+  // dia's: een taalwissel levert dezelfde dia's vertaald.
+  slidesRef.value = deckFor(allSlides, active.value ? deckKey : demo?.profileKey?.value);
 }
 
 /**
@@ -182,15 +186,19 @@ async function runSlide(i) {
   if (!s) return;
   applyLayout(s);
   // The persona is a function of the slide index: the most recent `profile`
-  // at or before this slide, so prev/next/goto agree.
+  // at or before this slide, so prev/next/goto agree. Before the first such
+  // slide it is the persona the deck was started for: wie in Merijns dek
+  // terugbladert van de Claudia-dia, hoort weer bij de zorgtoeslag uit te komen.
   if (demo) {
+    let persona = deckKey;
     for (let j = i; j >= 0; j -= 1) {
       const p = slidesRef.value[j]?.profile;
       if (p) {
-        if (demo.profileKey.value !== p) demo.setProfile(p);
+        persona = p;
         break;
       }
     }
+    if (persona && demo.profileKey.value !== persona) demo.setProfile(persona);
   }
   const target = slideTarget(s.route);
   if (target && router && router.currentRoute.value.path !== target) {
@@ -289,7 +297,10 @@ function onKey(e) {
 function start(i = 0) {
   // Het dek ligt vast zodra de presentatie loopt: een dia die van persona
   // wisselt (Merijns dek eindigt bij Claudia) gooit het niet halverwege om.
-  if (!active.value) slidesRef.value = deckFor(allSlides, demo?.profileKey?.value);
+  if (!active.value) {
+    deckKey = demo?.profileKey?.value;
+    slidesRef.value = deckFor(allSlides, deckKey);
+  }
   if (!total.value) return;
   active.value = true;
   document.documentElement.classList.add('rr-presenting');

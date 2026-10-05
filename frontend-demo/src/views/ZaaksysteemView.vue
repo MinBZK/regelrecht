@@ -139,7 +139,7 @@ function outputRows(c) {
   }));
 }
 
-const caseClaims = computed(() => (selected.value ? state.claims.filter((cl) => cl.caseId === selected.value.id || (cl.bsn === selected.value.bsn && cl.tileLawId === selected.value.lawId)) : []));
+const caseClaims = computed(() => (selected.value ? state.claims.filter((cl) => cl.caseId === selected.value.id || (cl.bsn === (selected.value.claimsBsn ?? selected.value.bsn) && cl.tileLawId === selected.value.lawId)) : []));
 const serviceClaims = computed(() => state.claims.filter((cl) => cl.status === 'PENDING' && (corpus.value?.lawById(cl.tileLawId)?.service === service.value || corpus.value?.lawById(cl.lawId)?.service === service.value)));
 
 const reason = ref('');

@@ -59,7 +59,10 @@ function defaultState() {
     // Namens wie er gehandeld wordt: null is voor zichzelf. Bewaard als
     // sleutel (`BUSINESS:85234567`), niet als het hele object, want de
     // machtiging zelf komt uit de wet en wordt bij het laden opnieuw bepaald.
-    delegationKey: undefined, // undefined = startmachtiging van het profiel, null = Mezelf
+    // null = de startmachtiging van het profiel (`start_namens`), 'SELF' =
+    // bewust Mezelf gekozen. Een eigen waarde voor Mezelf, want een opgeslagen
+    // staat van vóór `start_namens` heeft hier null, en die hoort bij de start.
+    delegationKey: null,
     // Vlaggen die de presentator tijdens de demo heeft omgezet. Alleen wat
     // hij écht aanraakte staat hier; de rest volgt het profiel uit
     // demo-config.yaml. Zo blijft "resetten" terug naar de bedoelde opzet.
@@ -134,9 +137,15 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-/** Cases in the shape the materialiser's `kind: cases` bindings expect. */
+/**
+ * Cases in the shape the materialiser's `kind: cases` bindings expect: what
+ * was decided (the outputs, so precario reads the area the APV granted, not
+ * the area applied for), what was asked, and the case's own facts on top.
+ */
 function casesForMaterialiser() {
   return state.cases.map((c) => ({
+    ...(c.verifiedResult ?? c.claimedResult ?? {}),
+    ...(c.parameters ?? {}),
     law: c.lawPath,
     service: c.service,
     status: c.status,
@@ -144,7 +153,6 @@ function casesForMaterialiser() {
     bsn: c.bsn,
     kvk_nummer: c.kvk ?? null,
     year: Number(c.submittedAt?.slice(0, 4)),
-    ...(c.parameters ?? {}),
   }));
 }
 
@@ -346,8 +354,8 @@ const delegations = computed(() => (delegationEnabled.value ? delegationResult.v
  * vervalt stil naar 'voor zichzelf': dat is de veilige kant.
  */
 const activeDelegation = computed(() => {
-  const key = state.delegationKey === undefined ? startDelegationKey(profile.value) : state.delegationKey;
-  if (!key) return null;
+  const key = state.delegationKey ?? startDelegationKey(profile.value);
+  if (!key || key === SELF_KEY) return null;
   const found = delegations.value.find((d) => delegationKey(d) === key) ?? null;
   return found && found.subjectType !== 'SELF' ? found : null;
 });
@@ -364,10 +372,14 @@ function subjectBsn() {
   return d?.subjectType === 'CITIZEN' ? d.subjectId : profile.value?.bsn;
 }
 
+/** De opgeslagen keuze voor Mezelf (zie `delegationKey` in defaultState). */
+const SELF_KEY = 'SELF';
+
 function setDelegation(delegation) {
   const key = delegationKey(delegation);
-  // 'Mezelf' is geen machtiging maar de afwezigheid ervan.
-  state.delegationKey = !delegation || delegation.subjectType === 'SELF' ? null : key;
+  // 'Mezelf' is geen machtiging maar de afwezigheid ervan, en wel een keuze:
+  // die wint van de startmachtiging van het profiel.
+  state.delegationKey = !delegation || delegation.subjectType === 'SELF' ? SELF_KEY : key;
 }
 
 /**
@@ -390,7 +402,7 @@ function setProfile(key) {
   state.profileKey = key;
   // De machtigingen van het vorige profiel gelden niet voor dit profiel; dit
   // profiel begint weer bij zijn eigen startmachtiging.
-  state.delegationKey = undefined;
+  state.delegationKey = null;
 }
 
 function setReferenceDate(date) {
@@ -493,9 +505,15 @@ function actingOn() {
  */
 function submitCase(lawEntry, evaluation, params = personaParams()) {
   const bsn = params.bsn;
+  // Namens een onderneming heeft de aanvraag geen BSN in haar parameters, maar
+  // de correcties van de gemachtigde staan wel op diens BSN (subjectBsn). Zonder
+  // die terugval vond de zaak ze niet en werd ze op ongecontroleerde gegevens
+  // automatisch toegekend. De zaak zelf houdt het BSN van haar onderwerp: wie
+  // daarna voor zichzelf kijkt, ziet de zaak van de BV niet als de zijne.
+  const claimsBsn = bsn ?? subjectBsn();
   const acting = actingOn();
   const pendingClaims = state.claims.filter(
-    (c) => c.bsn === bsn && c.status === 'PENDING' && c.tileLawId === lawEntry.id,
+    (c) => c.bsn === claimsBsn && c.status === 'PENDING' && c.tileLawId === lawEntry.id,
   );
   // An unknown verdict (facts missing, RFC-036) is not a yes: the application
   // goes to a caseworker, who completes it (Awb art. 4:5) or decides.
@@ -507,6 +525,7 @@ function submitCase(lawEntry, evaluation, params = personaParams()) {
   const c = {
     id: newId('zaak'),
     bsn,
+    claimsBsn,
     kvk: params.kvk_nummer ?? null,
     lawId: lawEntry.id,
     lawPath: lawEntry.law_path,
@@ -650,7 +669,7 @@ function resubmitCase(caseId, evaluation, params = personaParams()) {
   const requirementsMet = verdict === null || verdict === true;
   // Per BSN, niet per wet: de wijziging die deze zaak raakt kan bij een
   // andere regeling zijn opgegeven. Dat is precies het geval waar dit voor is.
-  const pendingClaims = state.claims.filter((cl) => cl.bsn === c.bsn && cl.status === 'PENDING');
+  const pendingClaims = state.claims.filter((cl) => cl.bsn === (c.claimsBsn ?? c.bsn) && cl.status === 'PENDING');
   const assessed = reviewedByCaseworker({ service: c.service, law_path: c.lawPath }, corpus.value?.config);
   const needsReview = state.manualReview || assessed || pendingClaims.length > 0 || undecided;
   c.parameters = params;

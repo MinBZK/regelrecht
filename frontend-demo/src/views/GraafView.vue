@@ -86,6 +86,8 @@ const preset = ref('verhaal'); // 'verhaal' | 'portaal' | 'alles' | '' (hand-pic
 
 function applyPreset(name) {
   if (!corpus.value || !profile.value) return;
+  // Bij een profielwissel zet focusProfileLaw hem direct daarna weer aan.
+  focusFromProfile.value = false;
   preset.value = name;
   if (name === 'alles') {
     selected.value = new Set(allLaws.value.map((l) => l.id));
@@ -107,7 +109,10 @@ function applyPreset(name) {
 // daarna rondkijkt, wil zijn beeld terug als hij even weg is geweest.
 let active = false;
 let refitOnActivate = false;
-watch([profile, corpus], () => {
+// Op de profielsleutel en niet op het profielobject: een taalwissel levert
+// een nieuw corpus en dus een nieuw profielobject, en dan hoort de keuze van
+// de presentator (wetten, focus, zoom) te blijven staan.
+watch([() => demo.profileKey.value, () => !!corpus.value], () => {
   applyPreset('verhaal');
   focusProfileLaw();
   if (!active) refitOnActivate = true;
@@ -122,7 +127,10 @@ onDeactivated(() => {
   active = false;
 });
 
+// Wie zelf wetten kiest, neemt het beeld over van de profielfocus: anders zoomt
+// elke herberekening van de graaf terug naar die ene wet (zie refit).
 function toggle(lawId) {
+  focusFromProfile.value = false;
   const next = new Set(selected.value);
   if (next.has(lawId)) next.delete(lawId);
   else next.add(lawId);
@@ -130,6 +138,7 @@ function toggle(lawId) {
   preset.value = '';
 }
 function only(lawId) {
+  focusFromProfile.value = false;
   selected.value = new Set([lawId]);
   preset.value = '';
 }
@@ -173,8 +182,11 @@ const values = computed(() => {
   for (const law of shownLaws.value) {
     for (const input of lawShape(law).inputs) {
       const key = `${input.ref.regulation}#${input.ref.output}`;
+      // Leest de wet dit uit een besloten zaak (caseRefs), dan telt wat zij
+      // daar las: een losse run van de andere wet kent de aanvraag niet.
+      const viaCase = (law.caseRefs ?? []).some((r) => r.name === input.name) ? sources[law.id]?.[input.name] : undefined;
       const fromOutputs = outputs[input.ref.regulation]?.[input.ref.output];
-      const v = fromOutputs ?? (refs.has(key) ? fmt(input.ref.regulation, input.ref.output, refs.get(key)) : undefined);
+      const v = viaCase ?? fromOutputs ?? (refs.has(key) ? fmt(input.ref.regulation, input.ref.output, refs.get(key)) : undefined);
       if (v !== undefined) {
         inputs[law.id] ??= {};
         inputs[law.id][input.name] = v;

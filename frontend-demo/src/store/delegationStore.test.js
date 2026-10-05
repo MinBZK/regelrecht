@@ -14,17 +14,18 @@ import { delegationKey, delegationsFor, maySubmitClaims, startDelegationKey } fr
  * hier bewezen wordt is de regel, niet de bedrading.
  */
 function makeContext({ delegations = [], profile, delegationEnabledFlag = true }) {
-  // undefined: nog niets gekozen, dus de startmachtiging van het profiel.
-  const key = ref(undefined);
+  // null: nog niets gekozen, dus de startmachtiging van het profiel; 'SELF' is
+  // een gekozen Mezelf.
+  const key = ref(null);
   const list = computed(() => (delegationEnabledFlag ? delegations : []));
   const active = computed(() => {
-    const k = key.value === undefined ? startDelegationKey(profile) : key.value;
-    if (!k) return null;
+    const k = key.value ?? startDelegationKey(profile);
+    if (!k || k === 'SELF') return null;
     const found = list.value.find((d) => delegationKey(d) === k) ?? null;
     return found && found.subjectType !== 'SELF' ? found : null;
   });
   const setDelegation = (d) => {
-    key.value = !d || d.subjectType === 'SELF' ? null : delegationKey(d);
+    key.value = !d || d.subjectType === 'SELF' ? 'SELF' : delegationKey(d);
   };
   const personaParams = () => {
     const d = active.value;
@@ -38,6 +39,7 @@ function makeContext({ delegations = [], profile, delegationEnabledFlag = true }
     return d?.subjectType === 'BUSINESS' ? 'BUSINESS' : 'CITIZEN';
   });
   return {
+    key,
     list,
     active,
     setDelegation,
@@ -187,6 +189,13 @@ describe('een ondernemer die namens haar zaak begint', () => {
     expect(c.active.value).toBeNull();
     expect(c.personaParams()).toEqual({ bsn: '999999990' });
     expect(c.wantedDiscoverable.value).toBe('CITIZEN');
+  });
+
+  it('begint ook namens de onderneming met een opgeslagen staat van vóór start_namens', () => {
+    // Zo'n staat heeft delegationKey: null; dat is geen gekozen Mezelf.
+    const c = ctx();
+    c.key.value = null;
+    expect(c.active.value).toEqual(NOON);
   });
 
   it('begint als zichzelf als de wet de startmachtiging niet geeft', () => {
