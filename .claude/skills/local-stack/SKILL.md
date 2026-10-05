@@ -1,7 +1,7 @@
 ---
 name: local-stack
 description: "Run a regelrecht branch locally end-to-end (worktree + Docker stack + DB), with the workarounds needed when developing inside the dev container against Docker Desktop. Accepts a branch name or a PR number. Subcommands: bare arg = start, `stop <arg>` = shut down, `clean <arg>` = shut down and remove worktree."
-user_invocable: true
+user-invocable: true
 ---
 
 # Local Stack

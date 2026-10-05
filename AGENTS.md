@@ -342,8 +342,8 @@ een sleutel die maar in één bestand landt is een bug, geen halve klus.
 
 **All user interface MUST be built with components from the MinBZK design system: https://github.com/MinBZK/storybook** (the NLDD `nldd-*` web components, from `@nldd/design-system`). Do not hand-roll custom UI elements when a design-system component exists. For the required component hierarchy, nesting rules, and layout patterns, use the `storybook-component-hierarchy` skill.
 
-The element prefix is `nldd-`, with two l's. Older prose (including parts of
-the `storybook-component-hierarchy` skill) still writes `ndd-`; that is stale.
+The element prefix is `nldd-`, with two l's. Older prose may still write
+`ndd-`; that is stale.
 Check an attribute against the package's own `.d.ts` before using it — a web
 component with an attribute it does not know renders nothing and reports
 nothing, so a guessed attribute fails silently and only in the browser.
