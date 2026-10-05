@@ -17,8 +17,9 @@ import {
   registerClaims,
   registerPersonaData,
 } from '../engine/useDemoEngine.js';
-import { statusOf } from '../data/lifecycle.js';
-import { delegationKey, delegationTypeLabel, delegationsFor, maySubmitClaims } from '../data/delegation.js';
+import { reviewedByCaseworker, statusOf } from '../data/lifecycle.js';
+import { declaredClaim } from '../data/declarations.js';
+import { delegationKey, delegationTypeLabel, delegationsFor, maySubmitClaims, startDelegationKey } from '../data/delegation.js';
 import { verdictOf } from '../data/format.js';
 import { driftOf } from '../data/caseDrift.js';
 import { isEntrypointFor, subjectOf } from '../data/entrypoints.js';
@@ -58,7 +59,7 @@ function defaultState() {
     // Namens wie er gehandeld wordt: null is voor zichzelf. Bewaard als
     // sleutel (`BUSINESS:85234567`), niet als het hele object, want de
     // machtiging zelf komt uit de wet en wordt bij het laden opnieuw bepaald.
-    delegationKey: null,
+    delegationKey: undefined, // undefined = startmachtiging van het profiel, null = Mezelf
     // Vlaggen die de presentator tijdens de demo heeft omgezet. Alleen wat
     // hij écht aanraakte staat hier; de rest volgt het profiel uit
     // demo-config.yaml. Zo blijft "resetten" terug naar de bedoelde opzet.
@@ -248,9 +249,10 @@ const persona = computed(() => {
  * dus wát er gebeurde; welke woorden daarbij horen is een vraag van het moment
  * van tonen.
  */
-function reviewReasonKey({ pendingClaims, undecided }) {
+function reviewReasonKey({ pendingClaims, undecided, assessed = false }) {
   if (pendingClaims.length) return 'case.review.citizen_changed_data';
   if (undecided) return 'case.review.law_needs_more_facts';
+  if (assessed) return 'case.review.assessed_by_service';
   return 'case.review.sample';
 }
 
@@ -344,8 +346,9 @@ const delegations = computed(() => (delegationEnabled.value ? delegationResult.v
  * vervalt stil naar 'voor zichzelf': dat is de veilige kant.
  */
 const activeDelegation = computed(() => {
-  if (!state.delegationKey) return null;
-  const found = delegations.value.find((d) => delegationKey(d) === state.delegationKey) ?? null;
+  const key = state.delegationKey === undefined ? startDelegationKey(profile.value) : state.delegationKey;
+  if (!key) return null;
+  const found = delegations.value.find((d) => delegationKey(d) === key) ?? null;
   return found && found.subjectType !== 'SELF' ? found : null;
 });
 
@@ -373,22 +376,21 @@ function setDelegation(delegation) {
  * Handelt iemand namens een ander, dan gaan de parameters over die ander: een
  * onderneming wordt op haar KvK-nummer bevraagd, een kind op zijn BSN. Dat is
  * het hele punt van machtigen — de wet rekent over het onderwerp, niet over
- * degene die de knop indrukt.
+ * degene die de knop indrukt. Wie voor zichzelf handelt is een burger, ook als
+ * zij een onderneming heeft: die bereikt ze via de machtiging.
  */
 function personaParams() {
   const d = activeDelegation.value;
   if (d?.subjectType === 'BUSINESS') return { kvk_nummer: d.subjectId };
   if (d?.subjectType === 'CITIZEN') return { bsn: d.subjectId };
-  const p = profile.value;
-  const params = { bsn: p.bsn };
-  if (p.kvk) params.kvk_nummer = p.kvk;
-  return params;
+  return { bsn: profile.value.bsn };
 }
 
 function setProfile(key) {
   state.profileKey = key;
-  // De machtigingen van het vorige profiel gelden niet voor dit profiel.
-  state.delegationKey = null;
+  // De machtigingen van het vorige profiel gelden niet voor dit profiel; dit
+  // profiel begint weer bij zijn eigen startmachtiging.
+  state.delegationKey = undefined;
 }
 
 function setReferenceDate(date) {
@@ -420,15 +422,14 @@ function isLawEnabled(lawEntry) {
  *
  * Namens een onderneming zijn dat de ondernemersregelingen, namens een kind de
  * burgerregelingen: waar de wet over gaat volgt het onderwerp, niet degene die
- * inlogt. Het profiel bepaalt nog wel wat verborgen blijft, want dat is een
- * keuze van de demo en niet van de wet.
+ * inlogt. Voor zichzelf ziet ook een ondernemer de burgerregelingen. Het
+ * profiel bepaalt nog wel wat verborgen blijft, want dat is een keuze van de
+ * demo en niet van de wet.
  */
 const portalLaws = computed(() => {
   if (!corpus.value || !profile.value) return [];
   const d = activeDelegation.value;
-  const wanted = d
-    ? d.subjectType === 'BUSINESS' ? 'BUSINESS' : 'CITIZEN'
-    : profile.value.type === 'ondernemer' ? 'BUSINESS' : 'CITIZEN';
+  const wanted = d?.subjectType === 'BUSINESS' ? 'BUSINESS' : 'CITIZEN';
   return [...corpus.value.latestById.values()].filter(
     (law) => isEntrypointFor(law.doc, wanted) && isLawEnabled(law),
   );
@@ -486,8 +487,9 @@ function actingOn() {
 
 /**
  * Submit an application. Goes to manual review when the citizen changed data
- * for this law or when the demo runs in "alles handmatig beoordelen" mode;
- * otherwise the decision follows the law's outcome directly.
+ * for this law, when the service always assesses it (`review_laws`, such as
+ * Rotterdam's terrasvergunning) or when the demo runs in "alles handmatig
+ * beoordelen" mode; otherwise the decision follows the law's outcome directly.
  */
 function submitCase(lawEntry, evaluation, params = personaParams()) {
   const bsn = params.bsn;
@@ -500,7 +502,8 @@ function submitCase(lawEntry, evaluation, params = personaParams()) {
   const verdict = verdictOf(evaluation.outputs);
   const undecided = verdict === 'unknown';
   const requirementsMet = verdict === null || verdict === true;
-  const needsReview = state.manualReview || pendingClaims.length > 0 || undecided;
+  const assessed = reviewedByCaseworker(lawEntry, corpus.value?.config);
+  const needsReview = state.manualReview || assessed || pendingClaims.length > 0 || undecided;
   const c = {
     id: newId('zaak'),
     bsn,
@@ -536,7 +539,7 @@ function submitCase(lawEntry, evaluation, params = personaParams()) {
           : { key: 'case.event.submitted' }),
       },
       needsReview
-        ? { at: nowIso(), type: 'IN_REVIEW', key: reviewReasonKey({ pendingClaims, undecided }) }
+        ? { at: nowIso(), type: 'IN_REVIEW', key: reviewReasonKey({ pendingClaims, undecided, assessed }) }
         : { at: nowIso(), type: 'DECIDED', key: requirementsMet ? 'case.event.granted_auto' : 'case.event.refused_auto' },
     ],
   };
@@ -648,7 +651,8 @@ function resubmitCase(caseId, evaluation, params = personaParams()) {
   // Per BSN, niet per wet: de wijziging die deze zaak raakt kan bij een
   // andere regeling zijn opgegeven. Dat is precies het geval waar dit voor is.
   const pendingClaims = state.claims.filter((cl) => cl.bsn === c.bsn && cl.status === 'PENDING');
-  const needsReview = state.manualReview || pendingClaims.length > 0 || undecided;
+  const assessed = reviewedByCaseworker({ service: c.service, law_path: c.lawPath }, corpus.value?.config);
+  const needsReview = state.manualReview || assessed || pendingClaims.length > 0 || undecided;
   c.parameters = params;
   c.claimedResult = evaluation.outputs ?? {};
   c.verifiedResult = null;
@@ -658,7 +662,7 @@ function resubmitCase(caseId, evaluation, params = personaParams()) {
   c.events.push({ at: nowIso(), type: 'SUBMITTED', key: 'case.event.amended' });
   c.events.push(
     needsReview
-      ? { at: nowIso(), type: 'IN_REVIEW', key: reviewReasonKey({ pendingClaims, undecided }) }
+      ? { at: nowIso(), type: 'IN_REVIEW', key: reviewReasonKey({ pendingClaims, undecided, assessed }) }
       : { at: nowIso(), type: 'DECIDED', key: requirementsMet ? 'case.event.granted_auto' : 'case.event.refused_auto' },
   );
   // De lijst hierboven is met opzet breder dan deze regeling — een wijziging
@@ -910,7 +914,11 @@ function decideClaim(claimId, approved, reason = '') {
 }
 
 function claimFor(lawId, input, bsn = subjectBsn()) {
-  return state.claims.find((c) => c.lawId === lawId && c.input === input && c.bsn === bsn && c.status !== 'REJECTED') ?? null;
+  return (
+    state.claims.find((c) => c.lawId === lawId && c.input === input && c.bsn === bsn && c.status !== 'REJECTED') ??
+    // Wat het profiel al eerder opgaf, zoals Café Noon in zijn accijnsaangifte.
+    declaredClaim(profile.value, lawId, input)
+  );
 }
 
 function resetState() {

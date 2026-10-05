@@ -26,7 +26,6 @@
  * het moment door de fase beschreven.
  */
 
-/** De fasen van de beschikkingsprocedure, in de volgorde van de Awb. */
 /**
  * Of een burger of bedrijf deze regeling kan aanvragen. Een beschikking wel,
  * een aanslag niet: die legt de overheid op (Claudia's precario, de IB), ook al
@@ -39,6 +38,23 @@ export function canBeApplied(produces) {
   return produces?.legal_character === 'BESCHIKKING' && produces?.decision_type !== 'AANSLAG';
 }
 
+/**
+ * Of een aanvraag onder deze regeling altijd langs een behandelaar gaat.
+ * Een terrasvergunning verleent de gemeente na beoordeling; de demo besluit
+ * dan niet zelf, ook niet als de wet uitkomt op "voldoet". Welke regelingen dat
+ * zijn staat in `review_laws` in demo-config.yaml, per dienst, zoals
+ * `hidden_laws`.
+ *
+ * @param {{service: string, law_path: string}} lawEntry
+ * @param {{review_laws?: Record<string, string[]>}|null} config
+ */
+export function reviewedByCaseworker(lawEntry, config) {
+  return (config?.review_laws?.[lawEntry.service] ?? []).some(
+    (p) => lawEntry.law_path === p || lawEntry.law_path.startsWith(`${p}/`),
+  );
+}
+
+/** De fasen van de beschikkingsprocedure, in de volgorde van de Awb. */
 export const STAGES = ['AANVRAAG', 'BEHANDELING', 'BESLUIT', 'BEKENDMAKING', 'BEZWAAR'];
 
 /**

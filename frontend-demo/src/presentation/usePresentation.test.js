@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { usePresentation } from './usePresentation.js';
+import { deckFor, usePresentation } from './usePresentation.js';
 import { adoptLocale } from '../i18n/index.js';
 
 // De presentatie hangt één keydown-luisteraar aan het venster en houdt die
@@ -316,5 +316,112 @@ describe('usePresentation toetsafvang', () => {
     expect(p.isOnStage()).toBe(true);
     expect(press(' ')).toBe(true);
     expect(p.index.value).toBe(2);
+  });
+});
+
+describe('usePresentation en het profiel', () => {
+  // Een dia zonder wet in zijn pad (`route: /wetten`) opent de wet van wie er
+  // gekozen is: de presentator die Claudia kiest en dan start, hoort bij
+  // precario te landen en niet bij de zorgtoeslag van Merijn.
+  const PROFILES = {
+    merijn: { default_law: { law_path: 'zorgtoeslagwet', service: 'TOESLAGEN' }, default_feature: 'zorgtoeslagwet/scenarios/zt.feature' },
+    claudia: { default_law: { law_path: 'verordening_precariobelasting/gemeenten', service: 'GEMEENTE_ROTTERDAM' }, default_feature: 'verordening_precariobelasting/gemeenten/scenarios/precario.feature' },
+  };
+  const IDS = { zorgtoeslagwet: 'zorgtoeslagwet', 'verordening_precariobelasting/gemeenten': 'precariobelasting_rotterdam' };
+
+  function fakeDemo(key) {
+    const profileKey = { value: key };
+    return {
+      profileKey,
+      get profile() { return { value: PROFILES[profileKey.value] }; },
+      corpus: { value: { lawByPath: (path) => (IDS[path] ? { id: IDS[path] } : null) } },
+      setProfile(k) { profileKey.value = k; },
+    };
+  }
+
+  let p;
+  let router;
+  beforeEach(() => {
+    p = usePresentation();
+    router = fakeRouter();
+    p.setMode('zaal');
+  });
+  afterEach(() => {
+    p.stop();
+    // `init` schrijft alleen wat je meegeeft; een demo zonder profiel laat de
+    // volgende test dus geen standaardwet erven.
+    p.init({ demo: { profileKey: { value: null }, profile: { value: null }, corpus: { value: null }, setProfile() {} } });
+  });
+
+  it('opent de standaardwet van het gekozen profiel', async () => {
+    p.init({ router, demo: fakeDemo('claudia'), slides: SLIDES });
+    await p.start(1);
+    expect(router.currentRoute.value.path).toBe('/wetten/precariobelasting_rotterdam');
+  });
+
+  it('opent na een profielwissel op de dia de wet van het nieuwe profiel', async () => {
+    p.init({ router, demo: fakeDemo('claudia'), slides: [SLIDES[0], { kind: 'demo', route: '/wetten', profile: 'merijn' }] });
+    await p.start(1);
+    expect(router.currentRoute.value.path).toBe('/wetten/zorgtoeslagwet');
+  });
+
+  it('laat een wet in het dia-pad voorgaan', async () => {
+    p.init({ router, demo: fakeDemo('claudia'), slides: [SLIDES[0], { kind: 'demo', route: '/wetten/zvw' }] });
+    await p.start(1);
+    expect(router.currentRoute.value.path).toBe('/wetten/zvw');
+  });
+});
+
+describe('een dek per persona', () => {
+  // Dia's met `decks` horen bij het verhaal van die persona; de rest delen ze.
+  // Het dek ligt vast bij het starten: de dia die in Merijns dek naar Claudia
+  // wisselt, mag zijn dek niet halverwege omgooien.
+  const DECK = [
+    { kind: 'title', title: 'Opening' },
+    { kind: 'demo', title: 'Merijn', route: '/simulatie', profile: 'merijn', decks: ['merijn'] },
+    { kind: 'demo', title: 'Claudia', route: '/zaaksysteem', profile: 'claudia' },
+    { kind: 'demo', title: 'Terras', route: '/simulatie', decks: ['claudia'] },
+    { kind: 'closing', title: 'Slot' },
+  ];
+  const demoAs = (key) => ({
+    profileKey: { value: key },
+    profile: { value: null },
+    corpus: { value: null },
+    setProfile(k) { this.profileKey.value = k; },
+  });
+
+  let p;
+  beforeEach(() => {
+    p = usePresentation();
+    p.setMode('zaal');
+  });
+  afterEach(() => {
+    p.stop();
+    p.init({ demo: demoAs(null) });
+  });
+
+  it('kiest de gedeelde dia\'s plus die van de persona', () => {
+    expect(deckFor(DECK, 'claudia').map((s) => s.title)).toEqual(['Opening', 'Claudia', 'Terras', 'Slot']);
+    expect(deckFor(DECK, 'merijn').map((s) => s.title)).toEqual(['Opening', 'Merijn', 'Claudia', 'Slot']);
+  });
+
+  it('start met Claudia zonder naar Merijn te wisselen', async () => {
+    const demo = demoAs('claudia');
+    p.init({ router: fakeRouter(), demo, slides: DECK });
+    await p.start(0);
+    for (let i = 0; i < 3; i += 1) await p.next();
+    expect(p.current.value.title).toBe('Slot');
+    expect(demo.profileKey.value).toBe('claudia');
+  });
+
+  it('houdt Merijns dek vast als een dia naar Claudia wisselt', async () => {
+    const demo = demoAs('merijn');
+    p.init({ router: fakeRouter(), demo, slides: DECK });
+    await p.start(0);
+    await p.next();
+    await p.next();
+    expect(demo.profileKey.value).toBe('claudia');
+    await p.next();
+    expect(p.current.value.title).toBe('Slot');
   });
 });

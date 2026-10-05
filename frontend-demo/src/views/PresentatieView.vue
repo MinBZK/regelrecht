@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onActivated, onMounted, watch } from 'vue';
-import { usePresentation } from '../presentation/usePresentation.js';
+import { deckFor, usePresentation } from '../presentation/usePresentation.js';
 import { useDemo } from '../store/demoStore.js';
 import { useI18n } from '../i18n/index.js';
 
@@ -11,8 +11,9 @@ import { useI18n } from '../i18n/index.js';
 
 const p = usePresentation();
 const { t } = useI18n();
-const { ready, corpus, state } = useDemo();
-const slides = computed(() => corpus.value?.config?.slides ?? []);
+const { ready, corpus, state, profileKey } = useDemo();
+// Het dek van wie er gekozen is; dat is ook wat `start` straks speelt.
+const slides = computed(() => deckFor(corpus.value?.config?.slides ?? [], profileKey.value));
 
 // De toetsen staan als `{esc}`, `{f}` en `{shiftp}` in de zin en worden hier
 // tot `<kbd>` gevuld. De woordenboeken houden dan hele zinnen in plaats van

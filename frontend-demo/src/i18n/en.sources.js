@@ -72,6 +72,7 @@ export default {
   "case.event.submitted_by_agent": "58a0",
   "case.reason.conditions_not_met": "c157",
   "case.reason.granted_by_law": "2f4e",
+  "case.review.assessed_by_service": "d5e5",
   "case.review.citizen_changed_data": "2fc2",
   "case.review.law_needs_more_facts": "5c1e",
   "case.review.sample": "66b8",

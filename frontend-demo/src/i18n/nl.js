@@ -151,6 +151,7 @@ export default {
   'case.event.objection': 'Bezwaar ingediend: {reason}',
   'case.event.objection_upheld': 'Bezwaar gegrond: {reason}',
   'case.event.objection_dismissed': 'Bezwaar ongegrond: {reason}',
+  'case.review.assessed_by_service': 'Handmatige beoordeling: de uitvoerder beoordeelt deze aanvraag altijd zelf.',
   'case.review.citizen_changed_data': 'Handmatige beoordeling: de burger heeft gegevens gewijzigd.',
   'case.review.law_needs_more_facts': 'Handmatige beoordeling: de wet kan nog geen uitkomst geven, er ontbreken gegevens.',
   'case.review.sample': 'Handmatige beoordeling (steekproef).',

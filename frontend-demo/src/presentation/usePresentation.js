@@ -29,9 +29,40 @@ function slideTarget(path) {
   // opent de dia het tabblad op de wet die er toevallig nog open stond, en
   // landt de presentator na een oefenronde op de verkeerde.
   const root = router.resolve({ name: page }).path;
-  const rest = path.startsWith(root) ? path.slice(root.length) : '';
+  const rest = (path.startsWith(root) ? path.slice(root.length) : '') || profileDefault(page);
   const base = router.resolve({ name: localeRouteName(page, currentLocale()) }).path;
   return rest ? `${base.replace(/\/$/, '')}${rest}` : base;
+}
+
+/**
+ * Noemt een dia geen wet (`route: /wetten`), dan opent hij die van het gekozen
+ * profiel: `default_law` op Wetten, `default_feature` op Scenario's. Wie
+ * Claudia kiest en de presentatie start, landt zo bij precario in plaats van
+ * bij de zorgtoeslag van Merijn. Vast in het pad blijft ook hier de wet die
+ * er toevallig nog open stond buiten de deur.
+ */
+function profileDefault(page) {
+  const profile = demo?.profile?.value;
+  if (!profile) return '';
+  if (page === 'wetten' && profile.default_law) {
+    const d = profile.default_law;
+    const law = demo.corpus?.value?.lawByPath(d.law_path, d.service);
+    return law ? `/${encodeURIComponent(law.id)}` : '';
+  }
+  if (page === 'scenarios' && profile.default_feature) return `/${profile.default_feature}`;
+  return '';
+}
+
+/** Alle dia's uit demo-config.yaml; het dek zelf is de keuze daaruit bij de start. */
+let allSlides = [];
+
+/**
+ * Het dek van een persona: de dia's zonder `decks` (opening, de wet, de
+ * simulatie, het slot) plus die met deze persona in `decks`. Wie Claudia kiest
+ * en start, krijgt haar verhaal en wisselt niet halverwege naar Merijn.
+ */
+export function deckFor(slides, profileKey) {
+  return slides.filter((s) => !s.decks || s.decks.includes(profileKey));
 }
 
 const active = ref(false);
@@ -109,7 +140,8 @@ function isOnStage() {
 function init({ router: r, demo: d, slides }) {
   if (r) router = r;
   if (d) demo = d;
-  if (slides) slidesRef.value = slides;
+  if (slides) allSlides = slides;
+  if (!active.value) slidesRef.value = deckFor(allSlides, demo?.profileKey?.value);
 }
 
 /**
@@ -255,6 +287,9 @@ function onKey(e) {
 }
 
 function start(i = 0) {
+  // Het dek ligt vast zodra de presentatie loopt: een dia die van persona
+  // wisselt (Merijns dek eindigt bij Claudia) gooit het niet halverwege om.
+  if (!active.value) slidesRef.value = deckFor(allSlides, demo?.profileKey?.value);
   if (!total.value) return;
   active.value = true;
   document.documentElement.classList.add('rr-presenting');

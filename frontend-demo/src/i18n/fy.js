@@ -130,6 +130,7 @@ export default {
   "case.event.objection": "Beswier yntsjinne: {reason}",
   "case.event.objection_upheld": "Beswier grûne: {reason}",
   "case.event.objection_dismissed": "Beswier ûngrûne: {reason}",
+  "case.review.assessed_by_service": "Hânmjittige beoardieling: de útfierder beoardielet dizze oanfraach altyd sels.",
   "case.review.citizen_changed_data": "Hânmjittige beoardieling: de boarger hat gegevens wizige.",
   "case.review.law_needs_more_facts": "Hânmjittige beoardieling: de wet kin noch gjin útkomst jaan, der ûntbrekke gegevens.",
   "case.review.sample": "Hânmjittige beoardieling (stekproef).",

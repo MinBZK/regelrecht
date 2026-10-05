@@ -7,7 +7,7 @@
  * besluit, want daar zat het verschil dat de demo eerder niet liet zien.
  */
 import { describe, expect, it } from 'vitest';
-import { awbOutcomes, canBeApplied, objectionOpen, reachedStage, statusOf } from './lifecycle.js';
+import { awbOutcomes, canBeApplied, objectionOpen, reachedStage, reviewedByCaseworker, statusOf } from './lifecycle.js';
 
 describe('canBeApplied', () => {
   it('lets a beschikking be applied for, but not an aanslag or a non-decision', () => {
@@ -16,6 +16,21 @@ describe('canBeApplied', () => {
     expect(canBeApplied({ legal_character: 'BESCHIKKING', decision_type: 'AANSLAG' })).toBe(false);
     expect(canBeApplied({ legal_character: 'BESLUIT_VAN_ALGEMENE_STREKKING' })).toBe(false);
     expect(canBeApplied(null)).toBe(false);
+  });
+});
+
+describe('reviewedByCaseworker', () => {
+  const config = { review_laws: { GEMEENTE_ROTTERDAM: ['algemene_plaatselijke_verordening/terrassen'] } };
+  const terras = { service: 'GEMEENTE_ROTTERDAM', law_path: 'algemene_plaatselijke_verordening/terrassen' };
+
+  it('sends an application under a listed law to a caseworker', () => {
+    expect(reviewedByCaseworker(terras, config)).toBe(true);
+  });
+
+  it('leaves other laws, and the same law at another service, to the law', () => {
+    expect(reviewedByCaseworker({ ...terras, law_path: 'algemene_plaatselijke_verordening/exploitatievergunning' }, config)).toBe(false);
+    expect(reviewedByCaseworker({ ...terras, service: 'GEMEENTE_AMSTERDAM' }, config)).toBe(false);
+    expect(reviewedByCaseworker(terras, {})).toBe(false);
   });
 });
 

@@ -7,18 +7,20 @@
  */
 import { describe, expect, it } from 'vitest';
 import { computed, ref } from 'vue';
-import { delegationKey, delegationsFor, maySubmitClaims } from '../data/delegation.js';
+import { delegationKey, delegationsFor, maySubmitClaims, startDelegationKey } from '../data/delegation.js';
 
 /**
  * Dezelfde afleidingen als in demoStore.js, met de invoer als losse refs. Wat
  * hier bewezen wordt is de regel, niet de bedrading.
  */
 function makeContext({ delegations = [], profile, delegationEnabledFlag = true }) {
-  const key = ref(null);
+  // undefined: nog niets gekozen, dus de startmachtiging van het profiel.
+  const key = ref(undefined);
   const list = computed(() => (delegationEnabledFlag ? delegations : []));
   const active = computed(() => {
-    if (!key.value) return null;
-    const found = list.value.find((d) => delegationKey(d) === key.value) ?? null;
+    const k = key.value === undefined ? startDelegationKey(profile) : key.value;
+    if (!k) return null;
+    const found = list.value.find((d) => delegationKey(d) === k) ?? null;
     return found && found.subjectType !== 'SELF' ? found : null;
   });
   const setDelegation = (d) => {
@@ -28,15 +30,12 @@ function makeContext({ delegations = [], profile, delegationEnabledFlag = true }
     const d = active.value;
     if (d?.subjectType === 'BUSINESS') return { kvk_nummer: d.subjectId };
     if (d?.subjectType === 'CITIZEN') return { bsn: d.subjectId };
-    const params = { bsn: profile.bsn };
-    if (profile.kvk) params.kvk_nummer = profile.kvk;
-    return params;
+    return { bsn: profile.bsn };
   };
   const subjectBsn = () => (active.value?.subjectType === 'CITIZEN' ? active.value.subjectId : profile.bsn);
   const wantedDiscoverable = computed(() => {
     const d = active.value;
-    if (d) return d.subjectType === 'BUSINESS' ? 'BUSINESS' : 'CITIZEN';
-    return profile.type === 'ondernemer' ? 'BUSINESS' : 'CITIZEN';
+    return d?.subjectType === 'BUSINESS' ? 'BUSINESS' : 'CITIZEN';
   });
   return {
     list,
@@ -50,6 +49,7 @@ function makeContext({ delegations = [], profile, delegationEnabledFlag = true }
 }
 
 const MERIJN = { bsn: '999100001', kvk: null, type: 'burger' };
+const CLAUDIA = { bsn: '999999990', kvk: '85234567', type: 'ondernemer', start_namens: '85234567' };
 
 const KIND = {
   subjectId: '999200001',
@@ -163,6 +163,36 @@ describe('handelen namens een ander', () => {
     expect(c.list.value).toEqual([]);
     c.setDelegation(KIND);
     expect(c.active.value).toBeNull();
+  });
+});
+
+describe('een ondernemer die namens haar zaak begint', () => {
+  const NOON = {
+    ...EIGEN_ZAAK,
+    subjectId: '85234567',
+    subjectName: 'Café Noon B.V.',
+  };
+  const ctx = () => makeContext({ delegations: [ZELF, NOON], profile: CLAUDIA });
+
+  it('handelt bij binnenkomst namens de onderneming uit start_namens', () => {
+    const c = ctx();
+    expect(c.active.value).toEqual(NOON);
+    expect(c.personaParams()).toEqual({ kvk_nummer: '85234567' });
+    expect(c.wantedDiscoverable.value).toBe('BUSINESS');
+  });
+
+  it('is als "Mezelf" een burger zoals ieder ander, zonder KvK-nummer', () => {
+    const c = ctx();
+    c.setDelegation(ZELF);
+    expect(c.active.value).toBeNull();
+    expect(c.personaParams()).toEqual({ bsn: '999999990' });
+    expect(c.wantedDiscoverable.value).toBe('CITIZEN');
+  });
+
+  it('begint als zichzelf als de wet de startmachtiging niet geeft', () => {
+    const c = makeContext({ delegations: [ZELF], profile: CLAUDIA });
+    expect(c.active.value).toBeNull();
+    expect(c.personaParams()).toEqual({ bsn: '999999990' });
   });
 });
 
