@@ -3,20 +3,27 @@
 // keyboard (vue-flow's own node only selects on Enter). A folded law opens
 // to its articles; any other node shows its fragment.
 import { Handle, Position } from '@vue-flow/core';
-import { nodeText } from '../map.js';
+import { decidedByCode, nodeText } from '../map.js';
 
 const props = defineProps({ node: { type: Object, required: true } });
 defineEmits(['activate']);
 
-const label = () =>
-  props.node.kind === 'law'
-    ? `Open ${nodeText(props.node)}: toon de artikelen`
-    : `Toon het fragment van ${nodeText(props.node)}`;
+const label = () => {
+  if (props.node.kind === 'law') return `Open ${nodeText(props.node)}: toon de artikelen`;
+  if (decidedByCode(props.node)) return `Toon waar de code ${nodeText(props.node)} bepaalt`;
+  return `Toon het fragment van ${nodeText(props.node)}`;
+};
 </script>
 
 <template>
   <Handle type="target" :position="Position.Left" />
-  <button type="button" class="map-node" :aria-label="label()" @click="$emit('activate', node)">
+  <button
+    type="button"
+    class="map-node"
+    :class="{ 'map-node--code': decidedByCode(node) }"
+    :aria-label="label()"
+    @click="$emit('activate', node)"
+  >
     {{ nodeText(node) }}
   </button>
   <Handle type="source" :position="Position.Right" />
@@ -41,6 +48,14 @@ const label = () =>
   cursor: pointer;
   /* vue-flow turns pointer events off on a node it neither selects nor drags. */
   pointer-events: auto;
+}
+/* Decided by the code with knowledge of the law or the case: the critical
+   colours of the design system, so it stands out on the map. */
+.map-node--code {
+  color: var(--semantics-buttons-critical-tinted-content-color);
+  background: var(--semantics-buttons-critical-tinted-background-color);
+  border-color: var(--semantics-buttons-critical-tinted-highlight-border-color);
+  border-width: 2px;
 }
 .map-node:focus-visible {
   outline: var(--semantics-focus-ring-outline);

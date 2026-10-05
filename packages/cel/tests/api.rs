@@ -5924,8 +5924,9 @@ async fn fixture_maps(app: &Router) -> Vec<(String, Value)> {
 }
 
 /// Every node of the map of every fixture process opens to its fragment,
-/// through the routes the frontend uses; an action opens to its own block,
-/// a channel and a role to the policy article that declares them.
+/// through the routes the frontend uses (a node the code makes on its own
+/// points to the code instead); a channel and a role open to the policy
+/// article that declares them.
 #[tokio::test]
 async fn every_node_of_the_map_has_a_fragment() {
     let data = tempfile::tempdir().unwrap();
@@ -5935,11 +5936,17 @@ async fn every_node_of_the_map_has_a_fragment() {
         for n in nodes(&map) {
             let kind = n["kind"].as_str().unwrap();
             kinds.insert(kind.to_string());
+            // A node the code makes on its own is written nowhere else: it
+            // points to the code (see `the_map_points_to_the_code_that_decides`).
+            if n["source"].as_object().unwrap().is_empty() {
+                assert!(n["code"].is_array(), "{n}");
+                continue;
+            }
             let uri = source_uri(&process, &n["source"]);
             let (status, body, _) = call(&app, "GET", &uri, None, None).await;
             assert_eq!(status, StatusCode::OK, "{n}: {uri}: {body}");
             let name = n["id"].as_str().unwrap().split_once(':').unwrap().1;
-            let first = match kind {
+            match kind {
                 // The policy article that declares the channel; a role is
                 // named by `role:`, or is the channel name by default.
                 "channel" | "role" => {
@@ -5948,7 +5955,6 @@ async fn every_node_of_the_map_has_a_fragment() {
                     let declared = yaml.contains(&format!("{name}:"))
                         || (kind == "role" && yaml.contains(&format!("role: {name}")));
                     assert!(declared, "{n}: {yaml}");
-                    continue;
                 }
                 // A configuration file opens whole, under its own name.
                 "config" => {
@@ -5957,18 +5963,9 @@ async fn every_node_of_the_map_has_a_fragment() {
                     let label = n["label"].as_str().unwrap();
                     let name = label.rsplit('/').next().unwrap();
                     assert!(file.ends_with(name), "{n}: {file}");
-                    continue;
                 }
-                // A shared follow-up opens to its event (`<event>_<decision>`).
-                "action" => {
-                    let event = n["source"]["anchor"].as_str().unwrap();
-                    assert!(name.starts_with(event), "{n}");
-                    format!("- name: {event}")
-                }
-                _ => continue,
-            };
-            let yaml = body["yaml"].as_str().unwrap().trim_start();
-            assert!(yaml.starts_with(&first), "{n}: {yaml}");
+                _ => {}
+            }
         }
     }
     for kind in ["channel", "role", "action", "config"] {
@@ -6047,6 +6044,44 @@ async fn the_map_shows_every_configuration_file_and_the_cells_it_queries() {
         .find(|n| n["id"] == "config:form")
         .expect("the form");
     assert_eq!(form["label"], "formulier-instantie.yaml");
+}
+
+/// What the code decides with knowledge that belongs in the law or the
+/// policy is marked on the map, with the file and line where the code says
+/// it: the worklist, the actions, and which parameters the application holds.
+#[tokio::test]
+async fn the_map_points_to_the_code_that_decides() {
+    let data = tempfile::tempdir().unwrap();
+    let app = app(data.path());
+    let map = toeslag_map(&app).await;
+    let node = |id: &str| nodes(&map).iter().find(|n| n["id"] == id).unwrap().clone();
+    let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let in_code = |n: &Value, needle: &str| {
+        let refs = n["code"]
+            .as_array()
+            .unwrap_or_else(|| panic!("no code: {n}"));
+        refs.iter().all(|r| {
+            let text = std::fs::read_to_string(repo.join(r["file"].as_str().unwrap())).unwrap();
+            let line = r["line"].as_u64().unwrap() as usize;
+            text.lines()
+                .nth(line - 1)
+                .is_some_and(|l| l.contains("code_ref!"))
+                && !r["reason"].as_str().unwrap().is_empty()
+        }) && refs
+            .iter()
+            .any(|r| r["file"].as_str().unwrap().ends_with(needle))
+    };
+    let worklist = node("lexostatus:test_toeslag/worklist");
+    assert_eq!(worklist["source"], json!({}));
+    assert!(in_code(&worklist, "reduction/worklist.rs"), "{worklist}");
+    let action = node("action:voorschot_verleend");
+    assert_eq!(action["source"], json!({}));
+    assert!(in_code(&action, "derive/handling.rs"), "{action}");
+    let submission = node("event:test_toeslag/test_toeslag_aanvragen/aanvraag_ontvangen");
+    assert!(submission["source"]["config"].is_string(), "{submission}");
+    assert!(in_code(&submission, "src/law.rs"), "{submission}");
+    // An event the law and the stream describe on their own is not marked.
+    assert!(node("lexostatus:test_toeslag/aanvraag")["code"].is_null());
 }
 
 #[tokio::test]

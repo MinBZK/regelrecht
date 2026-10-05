@@ -16,6 +16,11 @@ use crate::stream::{Binding, Event, Stream, To};
 /// The stage of a decision (RFC-008).
 const DECISION: &str = crate::stream::DECISION;
 
+/// Which actions there are, decided here and not in the policy.
+pub const ACTIONS_CODE: crate::code_ref::CodeRef = crate::code_ref!(
+    "De handelingen leidt de runtime af: een event in fase BESLUIT is een besluit, een event in een latere fase van de procedure een vervolg daarop. Het beleid noemt de handelingen niet."
+);
+
 /// What the handler does: one action per event of the cell whose intake is a
 /// channel of the policy with `kind: handling`, in the order of the streams
 /// (spec §3, decision 12 of the plan). A decision executes its establishing

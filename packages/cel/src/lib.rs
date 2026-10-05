@@ -30,6 +30,7 @@ pub mod cell_client;
 pub mod channel;
 pub mod check;
 pub mod chronicle;
+pub mod code_ref;
 pub mod config;
 pub mod date;
 pub mod deployment;

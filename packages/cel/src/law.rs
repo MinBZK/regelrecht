@@ -907,6 +907,11 @@ fn push_new(to: &mut Vec<String>, from: &[String]) {
     }
 }
 
+/// Which parameters are the content of an application, decided here.
+pub const APPLICATION_CONTENT_CODE: crate::code_ref::CodeRef = crate::code_ref!(
+    "Een parameter wordt een veld van de aanvraag als zijn origin BELANGHEBBENDE of KANAAL is; die regel staat in de code, niet in de Awb of het beleid."
+);
+
 /// The fields a part declares, and the parameters it passes over (with
 /// `fields: parameters` or `fields: {parameters: [...]}`) with the reason.
 fn part_fields(

@@ -300,6 +300,10 @@ impl Decision {
 
 /// The stage of a decision (RFC-008).
 pub const DECISION: &str = "BESLUIT";
+/// The name of that stage is in the code, not in the procedure of the Awb.
+pub const DECISION_CODE: crate::code_ref::CodeRef = crate::code_ref!(
+    "De fase van een besluit heet hier BESLUIT; die naam staat in de code, niet in de procedure van de Awb-YAML."
+);
 
 /// The name of the reference with which a decision amends another decision.
 pub const AMENDS: &str = "amends";

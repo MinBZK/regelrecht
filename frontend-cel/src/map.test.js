@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { collapse, columnLayout, edgeKey, followEvent, litShown, nodeText } from './map.js';
+import { CODE_BASE, codeLink, collapse, columnLayout, decidedByCode, edgeKey, followEvent, hasSource, litShown, nodeText } from './map.js';
 
 const article = (regulation, label) => ({
   id: `article:${regulation}#${label}`,
@@ -191,5 +191,25 @@ describe('nodeText', () => {
     expect(nodeText(m.nodes.find((n) => n.id === 'stream:a'))).toBe('stroom: a');
     expect(nodeText(m.nodes.find((n) => n.id === 'article:awb#4:2'))).toBe('awb art. 4:2');
     expect(nodeText(m.nodes.find((n) => n.id === 'law:wpp'))).toBe('wet wpp (2)');
+  });
+});
+
+describe('nodes the code decides', () => {
+  const worklist = {
+    id: 'lexostatus:c/worklist',
+    kind: 'lexostatus',
+    label: 'worklist',
+    source: {},
+    code: [{ file: 'packages/cel/src/reduction/worklist.rs', line: 54, reason: 'r' }],
+  };
+  it('marks a node with a code reference and links to its line', () => {
+    expect(decidedByCode(worklist)).toBe(true);
+    expect(hasSource(worklist)).toBe(false);
+    expect(codeLink(worklist.code[0])).toBe(`${CODE_BASE}packages/cel/src/reduction/worklist.rs#L54`);
+  });
+  it('leaves a node the law or the configuration describes alone', () => {
+    const event = { id: 'event:c/s/e', kind: 'event', label: 'e', source: { config: 'cells/c/stream/s', anchor: 'e' } };
+    expect(decidedByCode(event)).toBe(false);
+    expect(hasSource(event)).toBe(true);
   });
 });

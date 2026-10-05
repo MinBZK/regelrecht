@@ -113,7 +113,9 @@ function fold(regulation) {
       <p>
         Welke configuratie, cellen, events, lexostatussen en wetsartikelen de runtime voor dit proces gebruikt, ook
         van de cellen die het proces bevraagt. Een wet staat ingeklapt; kies hem om de artikelen te zien. Kies een
-        andere knoop voor het YAML-fragment dat de cel geladen heeft; een configuratiebestand opent in zijn geheel.
+        andere knoop voor het YAML-fragment dat de cel geladen heeft; een configuratiebestand opent in zijn geheel. Een
+        rode knoop bepaalt de code, met kennis die in de wet of het beleid hoort: die knoop wijst naar de regel in de
+        code.
       </p>
     </nldd-rich-text>
     <nldd-spacer size="16"></nldd-spacer>

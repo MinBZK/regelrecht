@@ -47,7 +47,7 @@ use crate::gram::Gram;
 mod as_of;
 mod case_state;
 mod definition;
-mod worklist;
+pub mod worklist;
 
 pub use as_of::*;
 pub use case_state::*;

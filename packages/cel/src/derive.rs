@@ -16,7 +16,7 @@ use crate::deployment::{ChannelDeployment, Deployment};
 use crate::policy::{ActorPolicy, DeclaredChannel};
 use crate::stream::{Event, Stream};
 
-mod handling;
+pub mod handling;
 use handling::handling;
 
 /// A derived process, with what the derivation saw but is no reason not to start.

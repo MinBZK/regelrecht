@@ -38,6 +38,19 @@ export const EDGE_TEXT = {
   initial_state: 'startstand',
 };
 
+// Where the source code is read: a code reference names a file from the
+// repository root and a line. Overridable per build (VITE_CODE_BASE).
+export const CODE_BASE = import.meta.env?.VITE_CODE_BASE ?? 'https://github.com/MinBZK/regelrecht/blob/poc/chronolex/';
+
+/** Whether the code decides (part of) a node, with knowledge that belongs in the law or the policy. */
+export const decidedByCode = (n) => Boolean(n?.code?.length);
+
+/** The link to the line of code a reference names. */
+export const codeLink = (ref) => `${CODE_BASE}${ref.file}#L${ref.line}`;
+
+/** Whether a node is written somewhere other than in the code. */
+export const hasSource = (n) => Boolean(n?.source?.law || n?.source?.config);
+
 /** The text of a node in the graph: its kind and its name; a law with its count. */
 export function nodeText(n) {
   if (n.kind === 'law') return `wet ${n.label} (${n.count})`;

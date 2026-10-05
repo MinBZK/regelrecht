@@ -4,7 +4,7 @@
 // content next to the map. The open state is mirrored to the imperative API
 // of the sheet, so it animates; @close sets it back through `close`.
 import { computed, nextTick, ref, watch } from 'vue';
-import { KIND_TEXT, nodeText } from '../map.js';
+import { KIND_TEXT, codeLink, decidedByCode, hasSource, nodeText } from '../map.js';
 import FragmentView from './FragmentView.vue';
 
 const props = defineProps({ node: { type: Object, default: null } });
@@ -36,7 +36,22 @@ watch(
           <span slot="overline">{{ KIND_TEXT[shown.kind] ?? shown.kind }}</span>
           <h2>{{ shown.kind === 'article' ? `${shown.regulation} art. ${shown.label}` : shown.label }}</h2>
         </nldd-title>
-        <FragmentView :source="shown.source" />
+        <template v-if="decidedByCode(shown)">
+          <nldd-inline-dialog
+            variant="alert"
+            text="Bepaald door de code"
+            supporting-text="Wat hier staat, bepaalt de runtime zelf, met kennis die in de wet of het beleid hoort."
+          ></nldd-inline-dialog>
+          <nldd-rich-text>
+            <ul>
+              <li v-for="ref in shown.code" :key="`${ref.file}:${ref.line}`">
+                {{ ref.reason }}
+                <a :href="codeLink(ref)" target="_blank" rel="noopener">{{ ref.file }}:{{ ref.line }}</a>
+              </li>
+            </ul>
+          </nldd-rich-text>
+        </template>
+        <FragmentView v-if="hasSource(shown)" :source="shown.source" />
       </nldd-container>
     </nldd-page>
   </nldd-sheet>

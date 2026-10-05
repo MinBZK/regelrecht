@@ -50,9 +50,17 @@ use crate::stream::{Binding, Event, Stream, DECISION};
 
 /// The name of the worklist. Reserved.
 pub const WORKLIST: &str = "worklist";
+/// What the worklist is, decided here and not in the policy.
+pub const WORKLIST_CODE: crate::code_ref::CodeRef = crate::code_ref!(
+    "De werkvoorraad stelt de runtime zelf samen: de zaken van de indiening zonder gram in fase BESLUIT, met als kolommen de owner van het kanaal en het veld met origin-rol TIJDVAK. Geen beleid of YAML definieert hem."
+);
 
 /// The name of the list of all cases. Reserved.
 pub const CASES: &str = "cases";
+/// What the list of all cases is, decided here and not in the policy.
+pub const CASES_CODE: crate::code_ref::CodeRef = crate::code_ref!(
+    "De lijst van alle zaken stelt de runtime zelf samen, met decided_at als datum van het laatste gram in fase BESLUIT. Geen beleid of YAML definieert hem."
+);
 
 /// The column of `cases` with the date of the decision.
 const DECIDED: &str = "decided_at";

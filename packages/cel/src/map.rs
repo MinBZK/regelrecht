@@ -17,6 +17,7 @@ use chrono::NaiveDate;
 use serde::Serialize;
 
 use crate::cell::Cell;
+use crate::code_ref::CodeRef;
 use crate::config::RowsDefinition;
 use crate::law::{SourceRef, StepKind};
 use crate::process::Process;
@@ -88,6 +89,11 @@ pub struct Node {
     /// the frontend reads the label).
     #[serde(skip)]
     pub article: Option<String>,
+    /// Where the code decides what the node is, with knowledge that belongs
+    /// in the law or the policy. A node the code makes on its own has an
+    /// empty `source`: it is written nowhere else.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub code: Vec<CodeRef>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -136,8 +142,20 @@ impl Builder {
             source,
             regulation: None,
             article: None,
+            code: Vec::new(),
         });
         id
+    }
+
+    /// Mark a node as decided (also) by the code.
+    fn code(&mut self, id: &str, refs: &[CodeRef]) {
+        if let Some(n) = self.nodes.get_mut(id) {
+            for r in refs {
+                if !n.code.contains(r) {
+                    n.code.push(*r);
+                }
+            }
+        }
     }
 
     /// The node of an article, from `<regulation>#<article>` (a paragraph is
@@ -154,6 +172,7 @@ impl Builder {
             source,
             regulation: Some(regulation.to_string()),
             article: Some(article.to_string()),
+            code: Vec::new(),
         });
         id
     }
@@ -220,11 +239,9 @@ pub fn build(input: &MapInput) -> Map {
         lexostatus_part(&mut b, cell);
     }
     if let Some(portal) = p.portal() {
-        b.edge(
-            &proc,
-            &event_id(p.cell.id(), &portal.stream, &portal.event),
-            EdgeKind::Portal,
-        );
+        let event = event_id(p.cell.id(), &portal.stream, &portal.event);
+        b.edge(&proc, &event, EdgeKind::Portal);
+        b.code(&event, &[crate::law::APPLICATION_CONTENT_CODE]);
     }
     handling_part(&mut b, input, &proc);
     synthesis_part(&mut b, input, &proc);
@@ -453,22 +470,16 @@ fn read_events(def: &LexostatusDefinition, cell: &Cell) -> BTreeSet<String> {
 /// reads, the reading article.
 fn lexostatus_part(b: &mut Builder, cell: &Cell) {
     for d in &cell.lexostatuses.lexostatus_definitions {
+        // The runtime makes the worklist and the list of all cases itself
+        // (RFC-047): no file defines them, so they point to the code.
+        let code = match d.name.as_str() {
+            crate::reduction::WORKLIST => vec![crate::reduction::worklist::WORKLIST_CODE],
+            crate::reduction::CASES => vec![crate::reduction::worklist::CASES_CODE],
+            _ => Vec::new(),
+        };
         let source = match &d.law {
             Some(law) => SourceRef::law(&law.article),
-            // The runtime offers the worklist and the list of all cases
-            // (RFC-047); no file defines them, so they open to the
-            // submission they list (the filter names the one the portal
-            // submits).
-            None if d.name == crate::reduction::WORKLIST || d.name == crate::reduction::CASES => {
-                crate::check::events_for(d, None, &cell.streams)
-                    .first()
-                    .map(|(s, e)| {
-                        SourceRef::config(&cell_config(cell, &format!("stream/{}", s.id)), &e.name)
-                    })
-                    .unwrap_or_else(|| {
-                        SourceRef::config(&cell_config(cell, "lexostatuses"), &d.name)
-                    })
-            }
+            None if !code.is_empty() => SourceRef::default(),
             None => SourceRef::config(&cell_config(cell, "lexostatuses"), &d.name),
         };
         let l = b.node(
@@ -477,6 +488,10 @@ fn lexostatus_part(b: &mut Builder, cell: &Cell) {
             &d.name,
             source,
         );
+        if !code.is_empty() {
+            b.code(&l, &code);
+            b.code(&l, &[crate::stream::DECISION_CODE]);
+        }
         for event in read_events(d, cell) {
             b.edge(&l, &event, EdgeKind::Reads);
         }
@@ -564,9 +579,16 @@ fn handling_part(b: &mut Builder, input: &MapInput, proc: &str) {
             format!("action:{}", action.name),
             NodeKind::Action,
             action.label(),
-            // The process derives the action from the event it records
-            // (RFC-047).
-            SourceRef::stream(&action.record.stream, &action.record.event),
+            // The runtime derives the action from the stages of the events
+            // (RFC-047): no file names it, so it points to the code.
+            SourceRef::default(),
+        );
+        b.code(
+            &a,
+            &[
+                crate::derive::handling::ACTIONS_CODE,
+                crate::stream::DECISION_CODE,
+            ],
         );
         b.edge(proc, &a, EdgeKind::Action);
         let article = b.article(&action.article);
