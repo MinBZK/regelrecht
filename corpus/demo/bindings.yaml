@@ -1272,7 +1272,9 @@ verordening_precariobelasting:
         value: true
       - name: kvk_nummer
         value: $kvk_nummer
-    field: terras_oppervlakte
+    # De oppervlakte die de APV vergunde (MIN van gevraagd en beschikbaar), niet
+    # wat er in de aanvraag stond.
+    field: vergunde_oppervlakte
     kind: cases
     service: GEMEENTE_ROTTERDAM
     absent: 0

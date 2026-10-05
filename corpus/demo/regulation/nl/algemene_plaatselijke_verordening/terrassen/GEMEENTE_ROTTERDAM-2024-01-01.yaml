@@ -411,10 +411,15 @@ articles:
             value:
               operation: IF
               cases:
+                # Niet "gelijk aan false": ook een vergunning die er niet is
+                # (null) maakt voldoet_aan_voorwaarden onwaar en hoort een grond.
+                # Een onbekende waarde (RFC-036) maakt de uitkomst onbekend.
                 - when:
-                    operation: EQUALS
-                    subject: $heeft_exploitatievergunning
-                    value: false
+                    operation: NOT
+                    value:
+                      operation: EQUALS
+                      subject: $heeft_exploitatievergunning
+                      value: true
                   then: Geen geldige exploitatievergunning
                 - when:
                     operation: NOT
@@ -471,15 +476,19 @@ articles:
                     value: $max_sluitingstijd_weekend
                   then: >-
                     Gevraagde sluitingstijd weekend (vr-za) later dan toegestaan in dit gebied
+                # De omkering van de alcoholvoorwaarde hierboven, zodat ook een
+                # ontbrekende (null) alcoholvergunning een grond heeft.
                 - when:
-                    operation: AND
-                    conditions:
-                      - operation: EQUALS
-                        subject: $schenkt_alcohol
-                        value: true
-                      - operation: EQUALS
-                        subject: $heeft_alcoholvergunning
-                        value: false
+                    operation: NOT
+                    value:
+                      operation: OR
+                      conditions:
+                        - subject: $schenkt_alcohol
+                          operation: EQUALS
+                          value: false
+                        - subject: $heeft_alcoholvergunning
+                          operation: EQUALS
+                          value: true
                   then: Geen alcoholvergunning terwijl alcohol wordt geschonken
               default: ''
             legal_basis:

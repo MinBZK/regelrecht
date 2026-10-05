@@ -722,7 +722,7 @@ slides:
       - Na elk antwoord rekent de APV opnieuw, met de weigeringsgronden erbij.
       - Na het indienen gaat de aanvraag naar de gemeente ter beoordeling.
     route: /portaal
-    highlight: 'nldd-card[accessible-label^="Terrasvergunning"]'
+    highlight: nldd-card[accessible-label^="Terrasvergunning"]
     decks: [claudia]
   - kind: demo
     overline: De gemeente
@@ -743,7 +743,7 @@ slides:
       - De eerste 50 m² zijn vrijgesteld; daarboven € 36,10 per m² per jaar.
       - Elk bedrag is herleidbaar tot het artikel en de vergunning waarop het rust.
     route: /portaal
-    highlight: 'nldd-card[accessible-label^="Verordening Precariobelasting"]'
+    highlight: nldd-card[accessible-label^="Verordening Precariobelasting"]
     decks: [claudia]
   - kind: closing
     overline: Demo RegelRecht
