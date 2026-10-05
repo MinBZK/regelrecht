@@ -36,11 +36,14 @@ pub enum Kind {
     LawExtension,
     /// A form document (`form.json`).
     Form,
+    /// The engine binding of experiment A, `CELL_ENGINE_BINDING`
+    /// (`engine-binding.json`).
+    EngineBinding,
 }
 
 impl Kind {
     /// Every kind, in the order of the files.
-    pub const ALL: [Kind; 11] = [
+    pub const ALL: [Kind; 12] = [
         Kind::Stream,
         Kind::Lexostatus,
         Kind::Cell,
@@ -52,6 +55,7 @@ impl Kind {
         Kind::InitialState,
         Kind::LawExtension,
         Kind::Form,
+        Kind::EngineBinding,
     ];
 
     /// The file name of the schema and its embedded text.
@@ -76,6 +80,7 @@ impl Kind {
             Kind::InitialState => embed!("initial_state.json"),
             Kind::LawExtension => embed!("law-extension.json"),
             Kind::Form => embed!("form.json"),
+            Kind::EngineBinding => embed!("engine-binding.json"),
         }
     }
 }

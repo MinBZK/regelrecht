@@ -43,7 +43,7 @@ just cel          # runtime op :7170, frontend op :7171, op de fixtures
 | `CELL_EXAMPLES` | `examples.yaml` van de deployment: per cel-id de standaardgegevens van een proefopstelling, gevalideerd tegen `schema/chronolex/v0.3.0/examples.json` (alleen de index; de JSON-bestanden zijn vrije invoer). Alleen met `CELL_CHANNELS`. |
 | `CELL_REGISTERS` | Optioneel koppelbestand van de registers (RFC-045 §1): per `<beleid>#<naam van het register>` de cel en kroniek die de input zonder bron (`source: {}`) van dat beleid vullen, en optioneel `name_output`: de uitkomst waarmee het beleid zijn register noemt, die dan de naam in de sleutel moet geven. Gevalideerd tegen `schema/chronolex/v0.3.0/registers.json`. Zonder houdt een beleid dat een register bevraagt de runtime tegen. Zie `src/register.rs`. |
 | `CELL_REDUCTION` | Experiment A: `dsl` (standaard), `engine` (elke lexostatus als engine-run) of `compare` (allebei; elk verschil is een fout). `engine` en `compare` vragen `CELL_ENGINE_BINDING`. |
-| `CELL_ENGINE_BINDING` | Experiment A: het koppelbestand van lexostatus naar regeling (zie `src/lexostatus_engine.rs`). Alleen samen met `engine` of `compare`. |
+| `CELL_ENGINE_BINDING` | Experiment A: het koppelbestand van lexostatus naar regeling (zie `src/lexostatus_engine.rs`), gevalideerd tegen `schema/chronolex/v0.3.0/engine-binding.json`. Alleen samen met `engine` of `compare`. |
 | `REGULATION_PATH` | Map met regelingen, gedeeld door de hele runtime; elk YAML-bestand met `$id` en `articles` wordt geladen. |
 | `DATA_DIR` | Map voor de kronieken: per cel een submap `<id>/`. |
 | `CELL_PORT` | Poort, standaard 7170. De runtime luistert op `0.0.0.0`. |

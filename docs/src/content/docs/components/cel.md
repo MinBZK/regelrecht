@@ -15,7 +15,7 @@ Cells are configuration and processes follow from the law, not from code. The ru
 
 - **Language**: Rust (axum) for the runtime, Vue 3 with Vite and `@nldd/design-system` for the frontend
 - **Location**: `packages/cel/` and `frontend-cel/`
-- **Schemas**: `schema/chronolex/v0.3.0/` (`cell.json`, `stream.json`, `lexostatus.json`, `gram.json`, `synthesis.json`, `channels.json`, `registers.json`, `examples.json`, `initial_state.json` for each line of an initial state, `law-extension.json` for `produces.extensions.chronolex` in the corpus, `form.json` for a form document), with the definitions they share, such as a synthesis source and the synthesis per row, in `common.json`. The runtime embeds them and validates every configuration file at load, with errors that name the file.
+- **Schemas**: `schema/chronolex/v0.3.0/` (`cell.json`, `stream.json`, `lexostatus.json`, `gram.json`, `synthesis.json`, `channels.json`, `registers.json`, `examples.json`, `initial_state.json` for each line of an initial state, `law-extension.json` for `produces.extensions.chronolex` in the corpus, `form.json` for a form document, `engine-binding.json` for the binding file of experiment A), with the definitions they share, such as a synthesis source and the synthesis per row, in `common.json`. The runtime embeds them and validates every configuration file at load, with errors that name the file.
 - **Run locally**: `just cel` starts the runtime on port 7170 with the fixture cells and processes, and the frontend on port 7171
 - **Frontend checks**: `npm test -w cel` (vitest) and `npm run build -w cel` run in CI's frontend job; `frontend-cel/src/nldd-components.js` imports only the design-system components in use and is kept in sync by `script/check-nldd-imports.mjs`
 
@@ -342,7 +342,7 @@ Whether a source is reachable and offers the lexostatus with those parameters an
 | `CELL_EXAMPLES` | The deployment's `examples.yaml`: per cell id the examples of a trial setup, validated against `schema/chronolex/v0.3.0/examples.json` (the index only; the JSON files are free input). Only with `CELL_CHANNELS`. |
 | `CELL_REGISTERS` | Optional binding file of the registers (RFC-045 §1): per `<policy>#<register name>` the cell and chronicle that answer the policy's input without a source (`source: {}`), and optionally `name_output`: the output with which the policy names its register, which must then give the name in the key. Validated against `schema/chronolex/v0.3.0/registers.json`. Without the file a policy that queries a register stops the runtime. See `packages/cel/src/register.rs`. |
 | `CELL_REDUCTION` | Experiment A: `dsl` (default), `engine` (each lexostatus as an engine run) or `compare` (both, and every difference is an error). `engine` and `compare` need `CELL_ENGINE_BINDING`. |
-| `CELL_ENGINE_BINDING` | Experiment A: the file that binds each lexostatus to a regulation (see `packages/cel/src/lexostatus_engine.rs`). Set only together with `engine` or `compare`. |
+| `CELL_ENGINE_BINDING` | Experiment A: the file that binds each lexostatus to a regulation (see `packages/cel/src/lexostatus_engine.rs`), validated against `schema/chronolex/v0.3.0/engine-binding.json`. Set only together with `engine` or `compare`. |
 | `REGULATION_PATH` | Directory with the regulations, shared by the whole runtime. Every YAML file with `$id` and `articles` is loaded; other files are skipped. |
 | `DATA_DIR` | Where the chronicles are written, in a subdirectory per cell. |
 | `CELL_PORT` | Port of the runtime, default 7170. It binds to `0.0.0.0`. |

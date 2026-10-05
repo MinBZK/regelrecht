@@ -284,7 +284,9 @@ pub fn load_binding(
         })
         .collect();
     let source = path.display().to_string();
-    let file: BindingFile = load::load(path, load::yaml)?;
+    let file: BindingFile = load::load(path, |text, source| {
+        load::definition(text, source, crate::schema::Kind::EngineBinding)
+    })?;
     let map = path.parent().map(Path::to_path_buf).unwrap_or_default();
     let mut service = LawExecutionService::new();
     let mut loaded: BTreeMap<PathBuf, String> = BTreeMap::new();
@@ -746,5 +748,31 @@ mod tests {
                 reason: LIST_REASON.into()
             }
         );
+    }
+
+    /// The binding file is validated against `engine-binding.json`: a
+    /// binding that is neither a file nor `{dsl: <reason>}` is an error that
+    /// names the file.
+    #[test]
+    fn the_binding_file_is_validated_against_its_schema() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("koppeling.yaml");
+        for (text, expect) in [
+            ("cells:\n  c:\n    l: {dsl: ''}\n", "/cells/c/l"),
+            ("cells:\n  c:\n    l: {regeling: x.yaml}\n", "/cells/c/l"),
+            ("cel: {}\n", "cel"),
+        ] {
+            std::fs::write(&path, text).unwrap();
+            let e = load_binding(&path, false, &[], &LawExecutionService::new())
+                .err()
+                .unwrap_or_default();
+            let name = path.display().to_string();
+            assert!(
+                !e.is_empty()
+                    && e.iter().all(|f| f.starts_with(&name))
+                    && e.iter().any(|f| f.contains(expect)),
+                "{text}: {e:?}"
+            );
+        }
     }
 }

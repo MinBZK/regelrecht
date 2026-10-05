@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.3.0/engine-binding.json",
+  "title": "Engine binding of the lexostatuses (CELL_ENGINE_BINDING) v0.3.0",
+  "description": "Experiment A, not for production: per cell and per lexostatus the regulation that the engine route reduces it with (a path relative to this file), or deliberately the reduction language, with a reason. A lexostatus without a binding stops the runtime; a lexostatus from the law needs none.",
+  "type": "object",
+  "required": ["cells"],
+  "additionalProperties": false,
+  "properties": {
+    "cells": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "common.json#/definitions/identifier"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "propertyNames": {
+          "$ref": "common.json#/definitions/lexostatus_name"
+        },
+        "additionalProperties": {
+          "oneOf": [
+            {
+              "type": "string",
+              "description": "A regulation file, relative to this file.",
+              "pattern": "\\.ya?ml$"
+            },
+            {
+              "type": "object",
+              "required": ["dsl"],
+              "additionalProperties": false,
+              "properties": {
+                "dsl": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "Why this lexostatus keeps the reduction language."
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
