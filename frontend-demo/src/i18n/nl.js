@@ -38,6 +38,7 @@ export default {
   'app.features.HARMONIZE': 'Harmonisatie',
   'app.features.AUTO_APPROVE_CLAIMS': 'Correcties direct goedkeuren',
   'app.features.manualReview': 'Alle aanvragen handmatig beoordelen',
+  'app.features.autoAnnounce': 'Besluiten direct bekendmaken',
   'app.features.reset': 'Terug naar het profiel',
 
   'app.appearance.label': 'Weergave',
@@ -61,6 +62,19 @@ export default {
   'app.reset.label': 'Demo resetten',
   'app.reset.confirm': 'Resetten',
   'app.reset.cancel': 'Annuleren',
+  'app.why.unlock': 'Waarom-uitleg ontgrendelen…',
+  'app.why.lock': 'Waarom-uitleg vergrendelen',
+  'app.why.dialog.title': 'Waarom-uitleg ontgrendelen',
+  'app.why.dialog.body': 'Met het wachtwoord krijgt elke regeling in het portaal een knop die de uitkomst in gewone taal uitlegt. Die uitleg schrijft een taalmodel. Het wachtwoord blijft bewaard, ook als je de demo reset.',
+  'app.why.dialog.password': 'Wachtwoord',
+  'app.why.dialog.show': 'Toon',
+  'app.why.dialog.hide': 'Verberg',
+  'app.why.dialog.show_label': 'Toon wachtwoord',
+  'app.why.dialog.hide_label': 'Verberg wachtwoord',
+  'app.why.dialog.wrong': 'Dit wachtwoord klopt niet.',
+  'app.why.dialog.unavailable': 'De uitleg is nu niet bereikbaar. Probeer het later opnieuw.',
+  'app.why.dialog.confirm': 'Ontgrendelen',
+  'app.why.dialog.cancel': 'Annuleren',
 
   // ---- waarden opmaken -----------------------------------------------------
   // Twee soorten "niets" (RFC-036): `null` is een afwezigheid die de gegevens
@@ -391,6 +405,17 @@ export default {
   'wet.tile.trace.title': 'Berekening',
   'wet.tile.trace.close': 'Sluiten',
   'wet.tile.trace.intro': 'Dit is de volledige uitvoering van de wet door de RegelRecht-engine voor deze persoon: elke stap, elk opgehaald gegeven en elke tussenuitkomst.',
+  'wet.tile.why.open': 'Waarom deze uitkomst?',
+  'wet.tile.why.title': 'Waarom deze uitkomst?',
+  'wet.tile.why.close': 'Sluiten',
+  'wet.tile.why.caveat.title': 'Geschreven door een taalmodel',
+  'wet.tile.why.caveat.body': 'Deze uitleg is gemaakt uit de berekening. Het is geen besluit, en waar de twee verschillen geldt de berekening.',
+  'wet.tile.why.loading': 'De uitleg wordt geschreven…',
+  'wet.tile.why.error.title': 'Geen uitleg',
+  'wet.tile.why.error.busy': 'Er worden nu te veel uitleggen tegelijk geschreven. Probeer het zo opnieuw.',
+  'wet.tile.why.error.failed': 'Het taalmodel gaf geen antwoord. Probeer het opnieuw.',
+  'wet.tile.why.error.locked': 'Het wachtwoord geldt niet meer. Ontgrendel de uitleg opnieuw via het menu.',
+  'wet.tile.why.retry': 'Opnieuw',
   // ---- sheets: aanvraag, correctie, wijziging doorgeven --------------------
   'sheet.dismiss': 'Sluiten',
   'sheet.cancel': 'Annuleren',
@@ -582,7 +607,6 @@ export default {
   'sheet.change.field.postcode': 'Postcode',
   'sheet.change.field.woonplaats': 'Woonplaats',
   'sheet.change.field.adres': 'Adres',
-  'sheet.change.field.verblijfsadres': 'Verblijfsadres',
   'sheet.change.type.huishouden': 'Mijn huishouden',
   'sheet.change.type.huishouden.description': 'Trouwen, scheiden, samenwonen of een kind',
   'sheet.change.event.scheiden': 'Ik ga scheiden of wij gaan uit elkaar',
@@ -889,4 +913,19 @@ export default {
   'scenario.outputs': 'Uitkomsten',
   'app.toolbar.label': 'Werkruimte',
   'scenario.trace': 'Trace',
+  'scenario.passed': 'Geslaagd',
+  'scenario.summary.pass': '{n} geslaagd',
+  'scenario.summary.fail': '{n} mislukt',
+  // Een lege cel in een datatabel. "niet opgegeven" en "geen" zijn twee
+  // verschillende dingen (RFC-036): een lege cel zegt niets, `null` zegt dat er
+  // niets is.
+  'scenario.value.not_stated': 'niet opgegeven',
+  'trace.nav.label': 'Wetten in deze berekening',
+  'trace.nav.prev': 'Vorige wet',
+  'trace.nav.next': 'Volgende wet',
+  'trace.nav.position': '{n} van {total}',
+  'sim.params.supporting': 'Regelingen waar deze wetten op steunen',
+  'sim.comparison.income': 'Besteedbaar inkomen per maand',
+  'sim.run.label.default': 'Standaard',
+  'sim.run.close': 'Deze simulatie sluiten',
 };

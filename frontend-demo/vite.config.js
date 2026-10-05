@@ -25,7 +25,7 @@ export default defineConfig({
   },
   test: {
     environment: 'happy-dom',
-    include: ['src/**/*.test.js'],
+    include: ['src/**/*.test.js', 'server/**/*.test.js'],
     server: {
       deps: {
         inline: [/@cucumber\//, /@regelrecht\//],
@@ -69,5 +69,12 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    // The "why" backend (server/why.mjs, started by `just demo-why`). Without
+    // it the proxy answers with an error, the probe reads that as "no server"
+    // and the feature stays out of sight, which is what a plain `just demo`
+    // should show.
+    proxy: {
+      '/api/why': { target: process.env.DEMO_WHY_URL ?? 'http://127.0.0.1:7401', changeOrigin: false },
+    },
   },
 });

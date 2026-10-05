@@ -1,0 +1,15 @@
+---
+/*
+ * Een kader "In RegelRecht": waar een hoofdstuk raakt aan wat de positiepaper
+ * Rules as Executed beoogt. Hoort bij de RegelRecht-laag en is alleen
+ * zichtbaar als de schakelaar bovenaan de pagina aanstaat.
+ */
+import '~/styles/basiswerk.css';
+---
+
+<aside class="rr-callout rr-callout--accent bw-laag" aria-label="In RegelRecht">
+  <div>
+    <p class="rr-callout__title">In RegelRecht</p>
+    <div class="rr-prose"><slot /></div>
+  </div>
+</aside>

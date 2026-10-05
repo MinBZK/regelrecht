@@ -1,10 +1,8 @@
 /**
- * What a profile in demo-config.yaml points at has to exist in the corpus.
- *
- * Claudia's `default_feature` named the law (`verordening_precariobelasting`)
- * while the scenario runner matches on its path (`.../gemeenten`). Nothing
- * failed: the runner fell back to the first feature in the list, and a
- * presenter who switched to Claudia saw the Alcoholwet.
+ * What a profile in demo-config.yaml points at has to exist in the corpus: a
+ * name that matches nothing falls back without a sound (a switch to Claudia
+ * once opened the Alcoholwet). `default_feature` has its own test
+ * (`defaultFeature.test.js`); this one covers the law and the graph.
  *
  * Reads the corpus, not `public/data/`, for the reason `profilesOverlay.test.js`
  * gives: CI runs the tests without the build that copies it there.
@@ -37,11 +35,6 @@ describe.each(Object.entries(profiles))('profile %s', (key, profile) => {
     const { law_path: lawPath, service } = profile.default_law;
     const dir = join(lawsDir, lawPath);
     expect(existsSync(dir) && readdirSync(dir).some((f) => f.startsWith(`${service}-`)), `${service}/${lawPath}`).toBe(true);
-  });
-
-  it('opens a default feature that has scenarios', () => {
-    const dir = join(lawsDir, profile.default_feature, 'scenarios');
-    expect(existsSync(dir) && readdirSync(dir).some((f) => f.endsWith('.feature')), profile.default_feature).toBe(true);
   });
 
   it('draws and focuses laws that exist', () => {

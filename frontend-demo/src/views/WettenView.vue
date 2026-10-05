@@ -33,7 +33,7 @@ const trail = reactive([]); // law ids
 const activeId = ref(null);
 const showRaw = ref(false);
 const query = ref('');
-const expandState = reactive({ paths: [], version: 0, all: null });
+const expandState = reactive({ paths: [], folded: [], version: 0, all: null });
 
 const lawIds = computed(() => new Set(corpus.value?.latestById.keys() ?? []));
 
@@ -61,8 +61,8 @@ const groups = computed(() => {
 
 const activeLaw = computed(() => (activeId.value ? corpus.value?.lawById(activeId.value) : null));
 
-function expandedFor(law) {
-  const cfg = corpus.value?.config?.expanded_paths ?? {};
+function configFor(key, law) {
+  const cfg = corpus.value?.config?.[key] ?? {};
   return cfg[law.id] ?? cfg[law.law_path] ?? [];
 }
 
@@ -71,7 +71,9 @@ function openLaw(lawId, { replaceRoute = false } = {}) {
   if (trail.at(-1) !== lawId) trail.push(lawId);
   activeId.value = lawId;
   splitView.value?.hidePrimarySidebarSheet?.();
-  expandState.paths = expandedFor(corpus.value.lawById(lawId));
+  const law = corpus.value.lawById(lawId);
+  expandState.paths = configFor('expanded_paths', law);
+  expandState.folded = configFor('folded_paths', law);
   expandState.all = null;
   expandState.version += 1;
   const target = localePath('wetten', { lawId });
@@ -95,7 +97,8 @@ function collapseAll() {
 }
 function resetExpansion() {
   expandState.all = null;
-  expandState.paths = activeLaw.value ? expandedFor(activeLaw.value) : [];
+  expandState.paths = activeLaw.value ? configFor('expanded_paths', activeLaw.value) : [];
+  expandState.folded = activeLaw.value ? configFor('folded_paths', activeLaw.value) : [];
   expandState.version += 1;
 }
 

@@ -64,6 +64,57 @@ describe('lineageFromTrace', () => {
     expect(leafValues(nodes).map((v) => v.name)).toEqual(['is_verzekerde', 'huishoudtype', 'loon']);
   });
 
+  it('finds what an operation resolved at the point of use (RFC-043)', () => {
+    // The shape a lazy resolution leaves: the operation reads `$inkomen`, and
+    // the cross-law call and the register value hang under that read.
+    const lazy = {
+      node_type: 'article',
+      name: 'zorgtoeslagwet',
+      children: [
+        {
+          node_type: 'action',
+          name: 'voldoet',
+          children: [
+            {
+              node_type: 'operation',
+              name: 'AND',
+              children: [
+                {
+                  node_type: 'resolve',
+                  name: 'leeftijd',
+                  resolve_type: 'RESOLVED_INPUT',
+                  children: [resolve('leeftijd', 17, 'RvIG')],
+                },
+                {
+                  node_type: 'resolve',
+                  name: 'inkomen',
+                  resolve_type: 'RESOLVED_INPUT',
+                  children: [
+                    {
+                      node_type: 'cross_law_reference',
+                      name: 'wet_inkomstenbelasting#inkomen',
+                      result: 100,
+                      children: [
+                        { node_type: 'resolve', name: 'bsn', resolve_type: 'PARAMETER', result: '100000001', children: [] },
+                        resolve('loon', 100, 'BELASTINGDIENST'),
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const found = lineageFromTrace(lazy, 'zorgtoeslagwet', { bsn: '100000001' });
+    expect(found.map((n) => [n.kind, n.name])).toEqual([
+      ['value', 'leeftijd'],
+      ['law', 'inkomen'],
+    ]);
+    expect(found[1].children.map((n) => n.name)).toEqual(['loon']);
+  });
+
   it('handles a trace without children and a call keyed on kvk', () => {
     expect(lineageFromTrace({ children: [] }, 'x', { kvk_nummer: '85234567' })).toEqual([]);
     expect(lineageFromTrace(null, 'x', {})).toEqual([]);

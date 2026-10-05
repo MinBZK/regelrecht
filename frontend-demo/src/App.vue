@@ -8,6 +8,7 @@ import { LOCALES, useI18n } from './i18n/index.js';
 import { localeRouteName } from './router.js';
 import PresentationDeck from './presentation/PresentationDeck.vue';
 import { usePresentation } from './presentation/usePresentation.js';
+import { lockWhy, probeWhy, unlockWhy, whyAvailable, whyUnlocked } from './why/why.js';
 
 // The workspace shell: one bar with the tab bar and the presenter menu, and
 // the active tab below it. Every tab is a route; <keep-alive> keeps the tabs
@@ -51,6 +52,7 @@ function refreshScrollMode(attempt = 0) {
 }
 onMounted(() => {
   demo.boot().catch(() => {});
+  probeWhy();
   refreshScrollMode();
 });
 router.afterEach(refreshScrollMode);
@@ -242,6 +244,29 @@ function toggleFullscreen() {
   else document.documentElement.requestFullscreen?.();
 }
 
+// Unlocking the "why" explanation (why/why.js). The password is checked by the
+// server; the dialog only passes it on and says whether it was accepted.
+const whyDialog = ref(null);
+const whyInput = ref('');
+const whyStatus = ref(null); // null | 'wrong' | 'unavailable'
+const whyBusy = ref(false);
+function askWhyPassword() {
+  whyInput.value = '';
+  whyStatus.value = null;
+  whyDialog.value?.show?.();
+}
+async function confirmWhyPassword() {
+  if (!whyInput.value || whyBusy.value) return;
+  whyBusy.value = true;
+  try {
+    const result = await unlockWhy(whyInput.value);
+    if (result === 'ok') whyDialog.value?.hide?.();
+    else whyStatus.value = result;
+  } finally {
+    whyBusy.value = false;
+  }
+}
+
 const resetDialog = ref(null);
 function askReset() {
   resetDialog.value?.show?.();
@@ -254,6 +279,9 @@ function confirmReset() {
 
 function toggleManualReview() {
   state.manualReview = !state.manualReview;
+}
+function toggleAutoAnnounce() {
+  state.autoAnnounce = !state.autoAnnounce;
 }
 
 const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVIEW').length);
@@ -436,6 +464,13 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
               @select="toggleManualReview"
             ></nldd-menu-item>
             <nldd-menu-item
+              type="checkbox"
+              :text="t('app.features.autoAnnounce')"
+              icon="paper-plane"
+              :selected="state.autoAnnounce || undefined"
+              @select="toggleAutoAnnounce"
+            ></nldd-menu-item>
+            <nldd-menu-item
               v-if="hasFeatureOverrides"
               :text="t('app.features.reset')"
               icon="refresh"
@@ -473,6 +508,10 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
           <nldd-menu-group slot="overflow" :text="t('app.demo.label')">
             <nldd-menu-item :text="t('app.demo.fullscreen')" icon="square-arrow-up" @select="toggleFullscreen"></nldd-menu-item>
             <nldd-menu-item :text="t('app.demo.reset')" icon="refresh" @select="askReset"></nldd-menu-item>
+            <!-- Only when a server answers /api/why; without one the feature
+                 does not exist and the menu does not mention it. -->
+            <nldd-menu-item v-if="whyAvailable && !whyUnlocked" :text="t('app.why.unlock')" icon="unlocked" @select="askWhyPassword"></nldd-menu-item>
+            <nldd-menu-item v-if="whyUnlocked" :text="t('app.why.lock')" icon="locked" @select="lockWhy"></nldd-menu-item>
           </nldd-menu-group>
         </nldd-toolbar>
       </nldd-container>
@@ -495,6 +534,30 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
         </router-view>
       </nldd-split-view-pane>
     </nldd-bar-split-view>
+
+    <nldd-modal-dialog
+      ref="whyDialog"
+      :text="t('app.why.dialog.title')"
+      :supporting-text="t('app.why.dialog.body')"
+      :accessible-label="t('app.why.dialog.title')"
+      horizontal-alignment="left"
+    >
+      <nldd-form-field :label="t('app.why.dialog.password')" @keydown.enter="confirmWhyPassword">
+        <nldd-password-field
+          :value="whyInput"
+          autocomplete="current-password"
+          :invalid="whyStatus === 'wrong' || undefined"
+          :show-button-text="t('app.why.dialog.show')"
+          :hide-button-text="t('app.why.dialog.hide')"
+          :show-button-accessible-label="t('app.why.dialog.show_label')"
+          :hide-button-accessible-label="t('app.why.dialog.hide_label')"
+          @input="whyInput = $event.detail?.value ?? $event.target.value; whyStatus = null"
+        ></nldd-password-field>
+        <nldd-form-field-help-text v-if="whyStatus">{{ t(`app.why.dialog.${whyStatus}`) }}</nldd-form-field-help-text>
+      </nldd-form-field>
+      <nldd-button slot="actions" variant="primary" :text="t('app.why.dialog.confirm')" :disabled="!whyInput || whyBusy || undefined" @click="confirmWhyPassword"></nldd-button>
+      <nldd-button slot="actions" variant="secondary" :text="t('app.why.dialog.cancel')" @click="whyDialog?.hide?.()"></nldd-button>
+    </nldd-modal-dialog>
 
     <nldd-modal-dialog
       ref="resetDialog"

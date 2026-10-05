@@ -92,9 +92,14 @@ fn note_targets_another_law(note: &serde_json::Value, law_id: &str) -> bool {
     }
 }
 
-/// Create a serializer that converts HashMaps to JavaScript objects (not Maps)
+/// Create a serializer that converts HashMaps to JavaScript objects (not Maps),
+/// and an absence (`Value::Null`) to `null`. By default an absence crosses as
+/// `undefined`, which JavaScript reads as "not computed" rather than "there is
+/// none" (RFC-036): a nullable output that is absent has to arrive as `null`.
 fn js_serializer() -> Serializer {
-    Serializer::new().serialize_maps_as_objects(true)
+    Serializer::new()
+        .serialize_maps_as_objects(true)
+        .serialize_missing_as_null(true)
 }
 
 /// Helper to create consistent error JsValues.
@@ -1292,16 +1297,15 @@ articles:
         // Privacy check: only requested outputs are returned
         assert_eq!(result.outputs.len(), 2);
 
-        // Request only one output — but both are from the same article,
-        // so both are returned (no filtering of co-products)
+        // Request only one output: the other one in the same article does not
+        // depend on it, so it is not computed (RFC-043).
         let result = engine
             .service
             .evaluate_law("multi_law", &["doubled"], params, "2025-01-01")
             .unwrap();
 
         assert_eq!(result.outputs.get("doubled"), Some(&Value::Int(20)));
-        assert_eq!(result.outputs.get("tripled"), Some(&Value::Int(30)));
-        assert_eq!(result.outputs.len(), 2);
+        assert_eq!(result.outputs.len(), 1);
     }
 
     #[test]

@@ -31,6 +31,7 @@ pub mod article;
 pub mod config;
 pub mod context;
 pub mod data_source;
+mod demand;
 pub mod engine;
 pub mod error;
 mod load_check;

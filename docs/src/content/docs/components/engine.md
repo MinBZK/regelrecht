@@ -44,8 +44,10 @@ flowchart TD
 | `load_check.rs` | Load-time checks the schema cannot express, such as refusing a law that writes the Unknown sentinel into its own literals |
 | `receipt.rs` | The Execution Receipt envelope (RFC-013) |
 | `annotation/` | Stand-off note resolution: anchors a note to law text by quote, with fuzzy matching (RFC-005, RFC-018) |
-| `telemetry.rs` | OpenTelemetry export of the engine's tracing events; compiled only with the `otel` feature |
 | `config.rs` | Security limits and the list of supported schema versions (see [Security Limits](#security-limits)) |
+| `schema.rs` | Embedded JSON schemas and version detection for the `validate` binary; compiled only with the `validate` feature |
+| `demand.rs` | Dependency closure of a requested output, so an article runs only the actions that output needs (RFC-043) |
+| `types.rs` | Runtime and trace enums, plus re-exports of the document-model types from the Law Model crate |
 
 The types a law file deserializes into are not defined in the engine. They live in the [Law Model](./law-model) crate, which `article.rs` re-exports and loads under the security limits.
 
@@ -55,14 +57,20 @@ The types a law file deserializes into are not defined in the engine. They live 
 flowchart TD
     A[Load Law YAML] --> B[Parse Articles]
     B --> C[Build Output Index]
-    C --> D[Resolve Inputs]
-    D --> E{Cross-Law Reference?}
-    E -->|Yes| F[Load & Execute Referenced Law]
-    F --> D
-    E -->|No| G[Resolve Open Terms via IoC]
-    G --> H[Execute Operations]
-    H --> I[Produce Outputs with Trace]
+    C --> D[Select the actions the requested outputs need]
+    D --> E[Execute Operations]
+    E --> F{Reads an input or open term?}
+    F -->|First read| G[Resolve it: register, other law, or IoC]
+    G --> H[Remember it for this execution]
+    H --> E
+    F -->|No| I[Produce Outputs with Trace]
 ```
+
+An article does not resolve its inputs before it runs. An operation that reads `$inkomen` resolves the input `inkomen` at that moment, from a register or by executing the other law, and the value is kept for the rest of the execution ([RFC-043](/rfcs/rfc-043)). An input no operation reads is never fetched. Because `AND`, `OR` and `IF` stop at the operand that decides, a condition that settles the outcome early also stops the retrieval behind it. For a minor, the demo's zorgtoeslag reads the date of birth and nothing else, because its conditions are one `AND` with the age first.
+
+That saving happens inside one expression. An action the requested output depends on still runs in full: in the main corpus, `heeft_recht_op_zorgtoeslag` reads `hoogte_zorgtoeslag`, so asking for the entitlement computes the amount, income included, whatever the insurance test says. Whether a condition stops the calculation is the law's structure (RFC-043), not something the engine adds.
+
+The order of operands decides what is fetched, never the result. `AND` and `OR` keep evaluating past an unknown operand to look for one that decides ([RFC-036](/rfcs/rfc-036)), so reordering conditions gives the same outcome.
 
 ### Variable Resolution Priority
 
@@ -71,9 +79,10 @@ When the engine resolves a `$variable`, it checks these sources in order:
 1. **Context variables** - `referencedate`, `referencedate.year`, etc.
 2. **Local scope** - loop variables from `FOREACH`
 3. **Outputs** - values calculated by previous actions in the same article
-4. **Resolved inputs** - cached results from cross-law references
-5. **Definitions** - article-level constants
-6. **Parameters** - direct input parameters
+4. **Definitions** - article-level constants
+5. **Inputs and open terms** - resolved on first read and kept for the execution; an open term comes before an input and a parameter of the same name, also where a source's parameters are read
+6. **Parameters** - direct input parameters, and the outputs of a `pre_actions` hook. A value the caller passed replaces the source of an input of the same name. A hook output replaces an input or open term of the same name for the actions and the post-action steps, but not where a source's parameters are read
+7. **Unpassed optional parameters** - a parameter the article declares optional and the caller left out is unknown for lack of it
 
 ## Multi-Output Evaluation
 
@@ -81,7 +90,11 @@ Articles can define multiple outputs (e.g., `heeft_recht_op_zorgtoeslag` and `ho
 
 ### Which outputs come back
 
-Callers name the outputs they need, and there is no "run the whole law" mode: the engine executes only the articles that produce those outputs. It does not filter what those articles produce, though. The result holds every output of each executed article, including outputs the caller did not ask for, plus the outputs that hooks and overrides add to them. A beschikking is legally indivisible (Awb 1:3), so consequences such as the motivering and the bezwaartermijn are never stripped from it. A receipt records which outputs were actually requested in `requested_outputs`, next to the full set that came back.
+Callers name the outputs they need, and there is no "run the whole law" mode: the engine executes only the articles that produce those outputs, and in each article only the actions those outputs depend on ([RFC-043](/rfcs/rfc-043)). The dependency closure follows `$name` references between the article's own outputs. An action outside it does not run, so it cannot fail the call, and its output is not in the result.
+
+What hooks and overrides add stays in. A beschikking is legally indivisible (Awb 1:3), so consequences such as the motivering and the bezwaartermijn are never stripped from it. A hook, or an override that replaces an output, receives only the parameters it declares, so the engine resolves and computes exactly those names for it and leaves the rest of the article demand-driven. An output a `voids` excludes is checked before it would be computed, and is not computed for a request or for a hook that declares it. A receipt records which outputs were requested in `requested_outputs`, next to the set that came back, and the result's `resolved_inputs` lists the inputs and open terms the article consulted.
+
+The same rule makes a missing required parameter, or a null the caller passed for an input that is never absent, an error only for the outputs that read it. Asking for an output that does not need it succeeds.
 
 If a requested output is missing because the law itself excludes it (a `voids` in schema v0.7.0), the call fails with an error that quotes the excluding article, instead of returning success with the output silently absent.
 
@@ -95,7 +108,7 @@ let result = service.evaluate_law(
     params,
     "2025-01-01",
 )?;
-// result.outputs holds every output of the executed articles, plus hook/override outputs
+// result.outputs holds the requested outputs and what they depend on, plus hook/override outputs
 // result.output_provenance tags each output as Direct, Reactive, or Override
 
 // Single-output convenience (equivalent to evaluate_law with one output)
@@ -163,13 +176,13 @@ The engine automatically loads the referenced law, executes it with the specifie
 
 ### Open Term Resolution (IoC)
 
-Higher laws declare `open_terms` that lower regulations fill via `implements`. At execution time, the engine:
+Laws declare `open_terms` that other regulations fill via `implements`, by delegation or in co-government. At execution time, the engine:
 
 1. Indexes all `implements` declarations at law load time
-2. Looks up implementations for each `open_term`
+2. Looks up the implementations of an `open_term` when an operation first reads it
 3. Filters by temporal validity (`calculation_date`) and scope (`gemeente_code`, etc.)
 4. Resolves conflicts via **lex superior** (higher layer wins) then **lex posterior** (newer date wins)
-5. Falls back to the `default` if no implementation found
+5. Falls back to the `default` if no implementation found; a default reads the earlier terms of its article as it reaches them
 
 See [RFC-003](/rfcs/rfc-003) for the full pattern.
 

@@ -494,6 +494,81 @@ fn default_foreach_as() -> String {
 }
 
 impl ActionOperation {
+    /// Every operand of the operation, in the order the fields are written.
+    ///
+    /// Exhaustive over the variants, so a new operation cannot hide an operand
+    /// from the walkers built on this (the load check for literal unknowns,
+    /// the dependency closure of RFC-043).
+    pub fn operands(&self) -> Vec<&ActionValue> {
+        match self {
+            ActionOperation::Equals { subject, value }
+            | ActionOperation::NotEquals { subject, value }
+            | ActionOperation::GreaterThan { subject, value }
+            | ActionOperation::LessThan { subject, value }
+            | ActionOperation::GreaterThanOrEqual { subject, value }
+            | ActionOperation::LessThanOrEqual { subject, value } => vec![subject, value],
+            ActionOperation::Add { values }
+            | ActionOperation::Subtract { values }
+            | ActionOperation::Multiply { values }
+            | ActionOperation::Divide { values }
+            | ActionOperation::Max { values }
+            | ActionOperation::Min { values } => values.iter().collect(),
+            ActionOperation::Round { value, .. }
+            | ActionOperation::Ceil { value, .. }
+            | ActionOperation::Floor { value, .. }
+            | ActionOperation::Not { value } => vec![value],
+            ActionOperation::And { conditions } | ActionOperation::Or { conditions } => {
+                conditions.iter().collect()
+            }
+            ActionOperation::If { cases, default } => cases
+                .iter()
+                .flat_map(|case| [&case.when, &case.then])
+                .chain(default)
+                .collect(),
+            ActionOperation::IsNull { subject } | ActionOperation::NotNull { subject } => {
+                vec![subject]
+            }
+            ActionOperation::In {
+                subject,
+                value,
+                values,
+            }
+            | ActionOperation::NotIn {
+                subject,
+                value,
+                values,
+            } => std::iter::once(subject)
+                .chain(value)
+                .chain(values.iter().flatten())
+                .collect(),
+            ActionOperation::List { items } => items.iter().collect(),
+            ActionOperation::Foreach {
+                collection,
+                body,
+                filter,
+                ..
+            } => [collection, body].into_iter().chain(filter).collect(),
+            ActionOperation::Age {
+                date_of_birth,
+                reference_date,
+            } => vec![date_of_birth, reference_date],
+            ActionOperation::DateAdd {
+                date,
+                years,
+                months,
+                weeks,
+                days,
+            } => std::iter::once(date)
+                .chain([years, months, weeks, days].into_iter().flatten())
+                .collect(),
+            ActionOperation::Date { year, month, day } => vec![year, month, day],
+            ActionOperation::DayOfWeek { date }
+            | ActionOperation::DatePart { date, .. }
+            | ActionOperation::StartOf { date, .. } => vec![date],
+            ActionOperation::DateDiff { from, to, unit } => vec![from, to, unit],
+        }
+    }
+
     /// Get the operation name as a static uppercase string (for tracing).
     pub fn operation_name(&self) -> &'static str {
         match self {
@@ -564,6 +639,18 @@ pub struct Action {
     /// than only the article it was reached through.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub legal_basis: Option<ProvisionReference>,
+}
+
+impl Action {
+    /// The operands written on the action itself: `value`, and for the
+    /// action-level operation shape `subject`, `values` and `conditions`.
+    pub fn operands(&self) -> impl Iterator<Item = &ActionValue> {
+        self.value
+            .iter()
+            .chain(self.subject.iter())
+            .chain(self.values.iter().flatten())
+            .chain(self.conditions.iter().flatten())
+    }
 }
 
 /// Delegation resolution on an action: which implementing regulation supplies

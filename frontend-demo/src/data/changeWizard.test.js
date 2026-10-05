@@ -83,7 +83,7 @@ describe('claimsFromAnswers voor de huur', () => {
 describe('claimsFromAnswers voor een adres', () => {
   const woonadres = changeTypeById('woonadres');
 
-  it('maakt van de losse velden één adres plus de adresregel', () => {
+  it('maakt van de losse velden één adres', () => {
     const claims = claimsFromAnswers(woonadres, {
       straat: 'Kalverstraat',
       huisnummer: '1',
@@ -97,11 +97,10 @@ describe('claimsFromAnswers voor een adres', () => {
         value: { straat: 'Kalverstraat', huisnummer: '1', postcode: '1012 NX', woonplaats: 'Amsterdam', type: 'WOONADRES' },
         label: 'Adres',
       },
-      { law: 'wet_brp', input: 'verblijfsadres', value: 'Kalverstraat 1, 1012 NX Amsterdam', label: 'Verblijfsadres' },
     ]);
   });
 
-  it('laat de adresregel weg als er te weinig is ingevuld om er een te maken', () => {
+  it('dient alleen de ingevulde adresvelden in', () => {
     const claims = claimsFromAnswers(woonadres, { straat: 'Kalverstraat' });
     expect(claims).toHaveLength(1);
     expect(claims[0].input).toBe('adres');
@@ -110,11 +109,6 @@ describe('claimsFromAnswers voor een adres', () => {
 
   it('dient niets in als er geen enkel adresveld is ingevuld', () => {
     expect(claimsFromAnswers(woonadres, { straat: '', woonplaats: '  ' })).toEqual([]);
-  });
-
-  it('gebruikt alleen de woonplaats als de postcode ontbreekt', () => {
-    const claims = claimsFromAnswers(woonadres, { straat: 'Dam', huisnummer: '2', woonplaats: 'Amsterdam' });
-    expect(claims[1].value).toBe('Dam 2, Amsterdam');
   });
 });
 

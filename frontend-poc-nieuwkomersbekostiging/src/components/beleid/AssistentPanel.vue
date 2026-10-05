@@ -66,7 +66,7 @@
       <div v-for="(item, i) in feed" :key="i" class="as-item" :class="`as-${item.type}`">
         <span v-if="item.type === 'tekst'" class="as-md" v-html="eenvoudigeMarkdown(item.tekst)"></span>
         <template v-else-if="item.type === 'tool'">
-          🔧 {{ item.naam }}<span v-if="item.inputText"> {{ item.inputText }}</span>
+          🔧 {{ item.regel }}
         </template>
         <template v-else-if="item.type === 'wijziging'">
           ✏️ <strong>{{ item.document_key }}</strong>: {{ item.toelichting }}
@@ -198,6 +198,7 @@
 </template>
 
 <script setup>
+import { formatToolCall } from '@regelrecht/frontend-shared/formatToolCall.js';
 import { watch, ref, computed, nextTick, onMounted, onUnmounted } from 'vue';
 import { useAssistent } from '../../composables/useAssistent.js';
 import { useHandelingen } from '../../composables/useHandelingen.js';
@@ -544,7 +545,6 @@ async function submit() {
   // dicht.
   voorbeeldenGebruikt.value = true;
   voorbeeldenOpen.value = false;
-  let iteratie = 0;
 
   // De assistent werkt op de werkversie: stuur die documenten mee als beginstand.
   const documenten = (await lawDocsFor(werkversie.value)).map((d) => ({ key: `${d.entry.id}@${d.entry.valid_from ?? ''}`, yaml: d.yaml }));
@@ -601,17 +601,14 @@ function verwerkEvent(ev) {
       if (laatste?.deels) feed.value[feed.value.length - 1] = { type: 'tekst', tekst: ev.tekst };
       else feed.value.push(ev);
     } else if (ev.type === 'tool') {
-      const inputText = ev.input
-        ? Object.entries(ev.input).map(([k, v]) => `${k}=${v}`).join(' ')
-        : '';
-      feed.value.push({ type: 'tool', naam: ev.naam, inputText });
+      feed.value.push({ type: 'tool', regel: formatToolCall(ev.naam, ev.input) });
     } else if (ev.type === 'simulatie') {
       const kort = samenvatting(ev.metrics);
       feed.value.push({ type: 'simulatie', doel: ev.doel, n: ev.n, samenvatting: kort });
       const t = ev.metrics?.totaal;
       if (ev.doel === 'populatie' && t) {
         pad.value.push({
-          iteratie: ++iteratie,
+          iteratie: pad.value.length + 1,
           waarden: {
             regeling_po: t.regeling_po ?? null,
             regeling_vo: t.regeling_vo ?? null,

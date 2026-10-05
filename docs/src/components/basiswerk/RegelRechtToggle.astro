@@ -1,0 +1,50 @@
+---
+/*
+ * De schakelaar voor de RegelRecht-laag in het basiswerk.
+ *
+ * Het basiswerk is eerst een juridische tekst. Wie de schakelaar aanzet, ziet
+ * daarnaast waar RegelRecht volgens de positiepaper Rules as Executed
+ * ingrijpt: de kaders "In RegelRecht" in de tekst en de gemarkeerde stappen in
+ * de schema's. Uit is de standaard.
+ *
+ * Zelfde opzet als de afhankelijkhedenschakelaar op /roadmap: een
+ * nldd-toggle-button die zijn stand naar `selected` reflecteert, en
+ * :has()-regels in basiswerk.css die dat attribuut lezen. Het script onthoudt
+ * alleen de stand tussen pagina's; zonder JavaScript blijft de laag dicht.
+ */
+import '~/styles/basiswerk.css';
+---
+
+<div class="bw-schakelaar" title="Laat zien waar RegelRecht volgens Rules as Executed ingrijpt">
+  <nldd-toggle-button
+    id="bw-regelrecht"
+    type="button"
+    size="sm"
+    variant="text"
+    text="Toon RegelRecht"
+    accessible-label="Toon waar RegelRecht volgens Rules as Executed ingrijpt"
+  ></nldd-toggle-button>
+</div>
+
+<script>
+  const SLEUTEL = 'basiswerk.regelrecht';
+  const knop = document.getElementById('bw-regelrecht');
+  if (knop) {
+    try {
+      if (localStorage.getItem(SLEUTEL) === 'aan') knop.setAttribute('selected', '');
+    } catch {
+      // Geen opslag beschikbaar: de laag begint dicht, dat is de standaard.
+    }
+    // Na de klik lezen: de knop zet zijn eigen stand in dezelfde klik, en
+    // welk event daarna komt is een detail van de component.
+    knop.addEventListener('click', () => {
+      setTimeout(() => {
+        try {
+          localStorage.setItem(SLEUTEL, knop.hasAttribute('selected') ? 'aan' : 'uit');
+        } catch {
+          // Idem: niet onthouden is geen fout.
+        }
+      });
+    });
+  }
+</script>

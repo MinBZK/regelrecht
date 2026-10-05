@@ -256,7 +256,6 @@ export function generateCitizens(userParams, referenceDate, templateRow = () => 
     T('RvIG', 'personen', {
       bsn: p.bsn,
       geboortedatum: p.birthDate,
-      verblijfsadres: 'Amsterdam',
       land_verblijf: 'NEDERLAND',
       nationaliteit: p.dutch ? 'NEDERLANDS' : 'BUITENLANDS',
       age: p.age,
@@ -509,7 +508,7 @@ export function generateBusinesses(userParams, referenceDate, templateRow = () =
     T('SVH', 'registraties', { bsn, is_geregistreerd: svh, naam: `Eigenaar ${i}` });
 
     // The owner as a person.
-    T('RvIG', 'personen', { bsn, geboortedatum: ownerBirth, verblijfsadres: 'Rotterdam', land_verblijf: 'NEDERLAND', nationaliteit: 'NEDERLANDS', age: ownerAge, has_dutch_nationality: true, has_partner: false, residence_address: address, has_fixed_address: true, household_size: 1 });
+    T('RvIG', 'personen', { bsn, geboortedatum: ownerBirth, land_verblijf: 'NEDERLAND', nationaliteit: 'NEDERLANDS', age: ownerAge, has_dutch_nationality: true, has_partner: false, residence_address: address, has_fixed_address: true, household_size: 1 });
     T('RvIG', 'relaties', { bsn, partnerschap_type: 'GEEN', partner_bsn: null, has_partner: false, kinderen: [] });
     T('RvIG', 'verblijfplaats', { bsn, straat: street, huisnummer: houseNumber, postcode, woonplaats: 'Rotterdam', type: 'WOONADRES' });
     T('RvIG', 'personen_vog', { bsn, heeft_geldige_vog: vog });

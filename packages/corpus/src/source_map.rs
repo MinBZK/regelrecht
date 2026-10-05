@@ -447,6 +447,16 @@ impl SourceMap {
         self.laws.values()
     }
 
+    /// Every version of every law, from every source that supplies one.
+    ///
+    /// Unlike [`laws`](Self::laws), which holds one winner per `$id`, this
+    /// includes a version from a lower-priority source when it supplies a date
+    /// the winning source does not have; the engine loads those too (see
+    /// [`get_law_versions`](Self::get_law_versions)).
+    pub fn all_versions(&self) -> impl Iterator<Item = &LoadedLaw> {
+        self.versions.values().flatten()
+    }
+
     /// Get a specific law by ID.
     pub fn get_law(&self, law_id: &str) -> Option<&LoadedLaw> {
         self.laws.get(law_id)

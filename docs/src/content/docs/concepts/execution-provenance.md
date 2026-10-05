@@ -3,7 +3,7 @@ title: "Execution Provenance"
 description: "How a result can be reproduced later by pinning the regulation, schema, and engine version, what an Execution Receipt records today, and what is still planned."
 ---
 
-Government agencies must be able to reproduce a specific decision months or years later, with the exact same result. Dutch administrative law requires this (Awb Art. 3:46, the AERIUS rulings), and the EU AI Act makes it mandatory for high-risk systems from August 2026.
+Government agencies must be able to reproduce a specific decision months or years later, with the exact same result. Dutch administrative law requires this (Awb Art. 3:46, the AERIUS rulings). The EU AI Act makes logging mandatory for high-risk AI systems, for those under Annex III from 2 December 2027 (Regulation (EU) 2026/1744); whether a deterministic engine that executes adopted rules is an AI system under the Act at all is doubtful ([Rules as Executed, section 7.3](/research/rules-as-executed#sec:european)).
 
 Determinism within a single execution is necessary but not sufficient. Reproducibility requires pinning three things: the regulation YAML, the schema version it conforms to, and the engine version that executed it.
 

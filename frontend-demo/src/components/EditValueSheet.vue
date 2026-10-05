@@ -336,7 +336,7 @@ function submit() {
                  kind the law expects. An amount stays a text field: the number
                  field has no empty state and shows the Dutch comma badly. -->
             <nldd-date-field v-else-if="kind === 'date'" :value="newValue" width="full" @change="newValue = $event.detail?.value ?? newValue"></nldd-date-field>
-            <nldd-number-field v-else-if="kind === 'number'" :value="newValue" width="full" hide-spin-buttons :step="step" @change="newValue = String($event.detail?.value ?? newValue)"></nldd-number-field>
+            <nldd-number-field v-else-if="kind === 'number'" :value="newValue" width="full" hide-spin-buttons :step="step" @input="newValue = String($event.detail?.value ?? newValue)" @change="newValue = String($event.detail?.value ?? newValue)"></nldd-number-field>
             <nldd-text-field v-else :value="newValue" @input="newValue = $event.detail?.value ?? $event.target.value"></nldd-text-field>
           </nldd-form-field>
           <nldd-form-field :label="selfDeclared ? t('sheet.edit.reason.self') : t('sheet.edit.reason.correction')" :optional="selfDeclared || undefined">

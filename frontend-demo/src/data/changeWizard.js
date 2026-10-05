@@ -179,9 +179,8 @@ export function eventUnsupported(event) {
  *
  * Leeg betekent ongewijzigd, dus die velden vallen weg. Een bedrag gaat als
  * centen naar de wet, want zo staat het in het register. Het adres is één
- * samengestelde waarde (`adres`, kind: record in bindings.yaml) plus het
- * verblijfsadres als tekst, precies zoals `/edit/update-situation` het
- * samenstelde.
+ * samengestelde waarde (`adres`, kind: record in bindings.yaml); de wet maakt
+ * er zelf de adresregel (`verblijfsadres`) van.
  *
  * `label` is de vertaalde tekst op het moment van indienen: de bevestiging
  * toont haar meteen en verder gaat zij als reden mee naar de correctie.
@@ -210,13 +209,7 @@ export function claimsFromAnswers(type, answers) {
     const parts = fieldsOf(type).filter((f) => filled(f.name));
     if (!parts.length) return [];
     const adres = Object.fromEntries(parts.map((f) => [f.name, String(answers[f.name]).trim()]));
-    const claims = [{ law: type.law, input: 'adres', value: { ...adres, type: 'WOONADRES' }, label: t('sheet.change.field.adres') }];
-    // De wet leest het adres ook als één regel; die blijft anders op het oude staan.
-    const street = adres.straat && adres.huisnummer ? `${adres.straat} ${adres.huisnummer}` : null;
-    const city = adres.postcode && adres.woonplaats ? `${adres.postcode} ${adres.woonplaats}` : adres.woonplaats ?? null;
-    const full = [street, city].filter(Boolean).join(', ');
-    if (full) claims.push({ law: type.law, input: 'verblijfsadres', value: full, label: t('sheet.change.field.verblijfsadres') });
-    return claims;
+    return [{ law: type.law, input: 'adres', value: { ...adres, type: 'WOONADRES' }, label: t('sheet.change.field.adres') }];
   }
 
   return fieldsOf(type)

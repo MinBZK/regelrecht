@@ -102,7 +102,23 @@ fn register_zorgtoeslag_data(service: &mut LawExecutionService) {
                 ("winst_uit_onderneming", Value::Int(0)),
                 ("resultaat_overige_werkzaamheden", Value::Int(0)),
                 ("eigen_woning", Value::Int(0)),
-                ("buitenlands_inkomen", Value::Int(0)),
+            ])],
+        )
+        .unwrap();
+
+    // BELASTINGDIENST inkomensgegevens (AWR art. 21, Awir art. 8 lid 2)
+    service
+        .register_dict_source(
+            "inkomensgegevens",
+            "bsn",
+            vec![make_record(&[
+                ("bsn", bsn.clone()),
+                (
+                    "aanslag_of_navorderingsaanslag_vastgesteld",
+                    Value::Bool(true),
+                ),
+                ("belastbaar_loon", Value::Int(79547)),
+                ("niet_in_nederland_belastbaar_inkomen", Value::Int(0)),
             ])],
         )
         .unwrap();

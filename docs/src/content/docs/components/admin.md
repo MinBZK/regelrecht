@@ -118,7 +118,7 @@ DATABASE_URL=postgres://user:pass@localhost:5433/regelrecht just admin
 The dashboard UI is served by the editor. For the full flow (editor, editor-api proxy, this API and the database) use:
 
 ```bash
-just dev-frontend all
+just dev all
 ```
 
 That runs this API on port 8001, so it does not clash with the editor API on 8000, and points the editor API's `HARVEST_ADMIN_URL` at it. Then open the editor and choose Harvester from the account menu (visible with any `harvester-*` role or `regelrecht-admin`).
