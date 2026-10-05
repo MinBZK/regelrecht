@@ -58,6 +58,10 @@ pub struct ProcessState {
     pub channels_file: Option<Arc<PathBuf>>,
     pub synthesis_file: Option<Arc<PathBuf>>,
     pub examples_file: Option<Arc<PathBuf>>,
+    /// Every cell of the runtime, per id: the map shows the cells the
+    /// process queries ([`crate::map::queried_cells`]), and the fragment
+    /// route serves their files.
+    pub cells: Arc<BTreeMap<String, Arc<crate::cell::Cell>>>,
 }
 
 /// What the runtime prepares per action: the synthesis sources its
@@ -143,6 +147,8 @@ async fn map_route(State(state): State<ProcessState>) -> Json<crate::map::Map> {
     Json(crate::map::build(&crate::map::MapInput {
         process: &state.process,
         register_links: &state.register_links,
+        cells: &state.cells,
+        files: &fragment::process_files(&state),
         date: (state.clock)().date_naive(),
     }))
 }

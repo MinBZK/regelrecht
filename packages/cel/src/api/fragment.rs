@@ -1,7 +1,8 @@
 //! The YAML fragment behind a step of an explanation (spec "waarom in de
 //! aanvraag"): an article of the corpus in the version the cell uses, or a
-//! block of a configuration file this process loaded. Read only, without
-//! login: the corpus is not secret in the demo. Anything not loaded is 404.
+//! block of a configuration file this process loaded, also of a cell it
+//! queries. Read only, without login: the corpus is not secret in the demo.
+//! Anything not loaded is 404.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -11,6 +12,7 @@ use axum::http::StatusCode;
 use axum::Json;
 
 use super::{error, Error, ProcessState};
+use crate::cell::Cell;
 use crate::fragment::{self, Fragment};
 
 fn not_found(what: impl std::fmt::Display) -> Error {
@@ -53,29 +55,60 @@ pub(super) async fn law_file_route(
         .ok_or_else(|| not_found(&regulation))
 }
 
-/// The file of a configuration this process loaded: `form`, `stream/<id>`
-/// (a stream of its cell), `cell` and `lexostatuses` (of its cell),
-/// `registers` (the binding file of the deployment, if there is one) and the
-/// deployment files `channels`, `synthesis` and `examples` (RFC-047).
-fn config_file(state: &ProcessState, config: &str) -> Option<PathBuf> {
-    let p = &state.process;
+/// The file of a configuration of a cell: `cell`, `lexostatuses`,
+/// `initial_state` (if it has one) and `stream/<id>`.
+fn cell_file(cell: &Cell, config: &str) -> Option<PathBuf> {
     match config.split_once('/') {
-        None if config == "cell" => Some(p.cell.dir.join(crate::config::CELL_FILE)),
-        None if config == "lexostatuses" => Some(p.cell.dir.join(&p.cell.definition.lexostatuses)),
-        None if config == "registers" => state.registers_file.as_deref().cloned(),
-        None if config == "form" => p
-            .definition
-            .portal
-            .as_ref()?
-            .form
-            .as_ref()
-            .map(|f| p.dir.join(&f.path)),
-        None if config == "channels" => state.channels_file.as_deref().cloned(),
-        None if config == "synthesis" => state.synthesis_file.as_deref().cloned(),
-        None if config == "examples" => state.examples_file.as_deref().cloned(),
-        Some(("stream", id)) => p.cell.streams.iter().find(|s| s.id == id)?.file.clone(),
+        None if config == "cell" => Some(cell.dir.join(crate::config::CELL_FILE)),
+        None if config == "lexostatuses" => Some(cell.dir.join(&cell.definition.lexostatuses)),
+        None if config == "initial_state" => {
+            Some(cell.dir.join(cell.definition.initial_state.as_ref()?))
+        }
+        Some(("stream", id)) => cell.streams.iter().find(|s| s.id == id)?.file.clone(),
         _ => None,
     }
+}
+
+/// The configuration files of the process and its deployment that are
+/// loaded, under their key: `form` (the form of the portal), `registers`
+/// (the binding file, if there is one) and `channels`, `synthesis` and
+/// `examples` (RFC-047). The map gives each a node.
+pub(super) fn process_files(state: &ProcessState) -> Vec<(&'static str, PathBuf)> {
+    let p = &state.process;
+    let form = p
+        .definition
+        .portal
+        .as_ref()
+        .and_then(|portal| portal.form.as_ref())
+        .map(|f| p.dir.join(&f.path));
+    [
+        ("form", form),
+        ("channels", state.channels_file.as_deref().cloned()),
+        ("synthesis", state.synthesis_file.as_deref().cloned()),
+        ("examples", state.examples_file.as_deref().cloned()),
+        ("registers", state.registers_file.as_deref().cloned()),
+    ]
+    .into_iter()
+    .filter_map(|(key, file)| Some((key, file?)))
+    .collect()
+}
+
+/// The file of a configuration this process loaded: one of
+/// [`process_files`], one of its own cell ([`cell_file`]), or
+/// `cells/<id>/<config>` of a cell the process queries
+/// ([`crate::map::queried_cells`], the cells on its map). Not of any other
+/// cell: an initial state holds grams, which only the cell's readers read.
+fn config_file(state: &ProcessState, config: &str) -> Option<PathBuf> {
+    if let Some(rest) = config.strip_prefix("cells/") {
+        let (id, config) = rest.split_once('/')?;
+        let cells = crate::map::queried_cells(&state.process, &state.register_links, &state.cells);
+        return cell_file(cells.into_iter().find(|c| c.id() == id)?, config);
+    }
+    process_files(state)
+        .into_iter()
+        .find(|(key, _)| *key == config)
+        .map(|(_, file)| file)
+        .or_else(|| cell_file(&state.process.cell, config))
 }
 
 /// `GET /api/config/{*config}?anchor=<key>`: the block of `anchor`, or the

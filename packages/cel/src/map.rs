@@ -4,19 +4,24 @@
 //! an event and the law come from the explanation of the event
 //! ([`crate::law::Explanation`]), so the map and the "why" of the form show
 //! the same chain. Every node names where it is written as a
-//! [`SourceRef`], which the fragment routes resolve.
+//! [`SourceRef`], which the fragment routes resolve. Every configuration
+//! file the process loaded has a node, and so has every cell of this runtime
+//! the process queries, with its streams, events and lexostatuses: all that
+//! the application rests on is on the map.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use chrono::NaiveDate;
 use serde::Serialize;
 
+use crate::cell::Cell;
 use crate::config::RowsDefinition;
 use crate::law::{SourceRef, StepKind};
 use crate::process::Process;
 use crate::reduction::{Filter, LexostatusDefinition};
 use crate::register::RegisterLink;
-use crate::stream::Stream;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -32,6 +37,10 @@ pub enum NodeKind {
     Register,
     SourceCell,
     Article,
+    /// A configuration file: of the process (form, channels, synthesis,
+    /// examples, registers), or of a cell: its initial state, and its
+    /// lexostatuses file when that supplements a lexostatus the law reads.
+    Config,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -57,6 +66,10 @@ pub enum EdgeKind {
     Synthesis,
     Rows,
     Register,
+    /// The process to a configuration file it loaded.
+    Configures,
+    /// A cell to the file with the grams of its empty chronicle.
+    InitialState,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -96,6 +109,11 @@ pub struct MapInput<'a> {
     pub process: &'a Process,
     /// Which policy queries which register.
     pub register_links: &'a [RegisterLink],
+    /// Every cell of the runtime, per id.
+    pub cells: &'a BTreeMap<String, Arc<Cell>>,
+    /// The configuration files of the process, under the key the fragment
+    /// route knows them by.
+    pub files: &'a [(&'static str, PathBuf)],
     /// The day whose version of each regulation the map reads (as the
     /// fragment route of an article does).
     pub date: NaiveDate,
@@ -196,12 +214,15 @@ pub fn build(input: &MapInput) -> Map {
         let a = b.article(&m.legal_basis);
         b.edge(&proc, &a, EdgeKind::LegalBasis);
     }
-    cell_part(&mut b, input);
-    lexostatus_part(&mut b, input);
+    config_part(&mut b, input, &proc);
+    for cell in shown_cells(input) {
+        cell_part(&mut b, input, cell);
+        lexostatus_part(&mut b, cell);
+    }
     if let Some(portal) = p.portal() {
         b.edge(
             &proc,
-            &event_id(&portal.stream, &portal.event),
+            &event_id(p.cell.id(), &portal.stream, &portal.event),
             EdgeKind::Portal,
         );
     }
@@ -214,8 +235,14 @@ pub fn build(input: &MapInput) -> Map {
     b.finish(id)
 }
 
-fn event_id(stream: &str, event: &str) -> String {
-    format!("event:{stream}/{event}")
+/// Stream and event ids carry their cell: two cells may name a stream the
+/// same (the startup check makes them unique per cell only).
+fn stream_id(cell: &str, stream: &str) -> String {
+    format!("stream:{cell}/{stream}")
+}
+
+fn event_id(cell: &str, stream: &str, event: &str) -> String {
+    format!("event:{cell}/{stream}/{event}")
 }
 
 /// The edge of a step of the chain of an event to its article; `None` for a
@@ -240,32 +267,134 @@ fn output_article(p: &Process, regulation: &str, output: &str, date: NaiveDate) 
         .map(|a| format!("{regulation}#{}", a.number))
 }
 
-/// The cell of the process, its streams and events, and per event the
-/// articles of its chain ([`crate::law::Explanation`]), the decisions on it
-/// and the policies that fill in a field beforehand.
-fn cell_part(b: &mut Builder, input: &MapInput) {
+/// A configuration file of a cell as the fragment route names it:
+/// `cells/<id>/<config>`, for the cell of the process as for any other.
+fn cell_config(cell: &Cell, config: &str) -> String {
+    format!("cells/{}/{config}", cell.id())
+}
+
+/// The cell of the process and the cells of this runtime it queries
+/// (synthesis, rows, registers, worklist), in a stable order: the cells on
+/// the map, whose files the fragment route serves. A cell reached along a
+/// url runs elsewhere and is not here: it stays a source cell.
+pub fn queried_cells<'a>(
+    p: &'a Process,
+    register_links: &[RegisterLink],
+    cells: &'a BTreeMap<String, Arc<Cell>>,
+) -> Vec<&'a Cell> {
+    let d = &p.definition;
+    let mut ids: BTreeSet<&str> = BTreeSet::new();
+    ids.extend(
+        d.synthesis
+            .iter()
+            .filter(|s| s.regulation.is_none() && s.url.is_none())
+            .map(|s| s.cell.as_str()),
+    );
+    let rows = p.assessment_rows().iter().chain(
+        d.handling
+            .iter()
+            .flat_map(|h| h.actions.iter().flat_map(|a| &a.rows)),
+    );
+    for r in rows {
+        ids.extend(
+            r.sources
+                .iter()
+                .filter(|s| s.url.is_none())
+                .map(|s| s.cell.as_str()),
+        );
+    }
+    let registers: Vec<&str> = register_links.iter().map(|l| l.cell.as_str()).collect();
+    if let Some(h) = &d.handling {
+        ids.extend([h.worklist.cell.as_str(), h.cases.cell.as_str()]);
+    }
+    ids.remove(p.cell.id());
+    let mut out = vec![&*p.cell];
+    for id in ids.into_iter().chain(registers) {
+        if let Some(c) = cells.get(id).filter(|_| out.iter().all(|o| o.id() != id)) {
+            out.push(c);
+        }
+    }
+    out
+}
+
+fn shown_cells<'a>(input: &MapInput<'a>) -> Vec<&'a Cell> {
+    queried_cells(input.process, input.register_links, input.cells)
+}
+
+/// The cell on the map with this id, unless it is reached along a url.
+fn local<'a>(input: &MapInput<'a>, cell: &str, url: Option<&String>) -> Option<&'a Cell> {
+    url.is_none()
+        .then(|| shown_cells(input).into_iter().find(|c| c.id() == cell))
+        .flatten()
+}
+
+/// The name of a file as the map shows it.
+fn file_name(file: &std::path::Path) -> String {
+    file.file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default()
+}
+
+/// A configuration file node, labelled `label`; returns its id.
+fn config_node(b: &mut Builder, config: &str, label: &str) -> String {
+    b.node(
+        format!("config:{config}"),
+        NodeKind::Config,
+        label,
+        SourceRef::file(config),
+    )
+}
+
+/// The node of a file of a cell, labelled with the directory of the cell,
+/// as every cell has a file of the same name; returns its id.
+fn cell_file_node(b: &mut Builder, cell: &Cell, config: &str, file: &str) -> String {
+    let label = format!(
+        "{}/{}",
+        file_name(&cell.dir),
+        file_name(&cell.dir.join(file))
+    );
+    config_node(b, &cell_config(cell, config), &label)
+}
+
+/// The configuration files of the process: form, channels, synthesis,
+/// examples and registers, each as a whole file.
+fn config_part(b: &mut Builder, input: &MapInput, proc: &str) {
+    for (key, file) in input.files {
+        let c = config_node(b, key, &file_name(file));
+        b.edge(proc, &c, EdgeKind::Configures);
+    }
+}
+
+/// A cell, its streams and events, and per event the articles of its chain
+/// ([`crate::law::Explanation`]), the decisions on it and the policies that
+/// fill in a field beforehand; and the file of its initial state.
+fn cell_part(b: &mut Builder, input: &MapInput, cell: &Cell) {
     let p = input.process;
-    let cell = &p.cell;
     let c = b.node(
         format!("cell:{}", cell.id()),
         NodeKind::Cell,
         cell.id(),
-        SourceRef::config("cell", "id"),
+        SourceRef::config(&cell_config(cell, "cell"), "id"),
     );
+    if let Some(file) = &cell.definition.initial_state {
+        let i = cell_file_node(b, cell, "initial_state", file);
+        b.edge(&c, &i, EdgeKind::InitialState);
+    }
     for stream in &cell.streams {
+        let config = cell_config(cell, &format!("stream/{}", stream.id));
         let s = b.node(
-            format!("stream:{}", stream.id),
+            stream_id(cell.id(), &stream.id),
             NodeKind::Stream,
             &stream.id,
-            SourceRef::config(&format!("stream/{}", stream.id), "events"),
+            SourceRef::config(&config, "events"),
         );
         b.edge(&c, &s, EdgeKind::Records);
         for event in &stream.events {
             let e = b.node(
-                event_id(&stream.id, &event.name),
+                event_id(cell.id(), &stream.id, &event.name),
                 NodeKind::Event,
                 &event.name,
-                SourceRef::stream(&stream.id, &event.name),
+                SourceRef::config(&config, &event.name),
             );
             b.edge(&s, &e, EdgeKind::Records);
             for step in &event.explanation.event {
@@ -304,7 +433,7 @@ fn lexostatus_id(cell: &str, name: &str) -> String {
 /// the filter of the lexostatus and, per derivation over a collection, its
 /// own filter (the same selection as the startup check,
 /// [`crate::check::events_for`]).
-fn read_events(def: &LexostatusDefinition, streams: &[Stream]) -> BTreeSet<String> {
+fn read_events(def: &LexostatusDefinition, cell: &Cell) -> BTreeSet<String> {
     let filters: Vec<Option<&Filter>> = def.all_derivations().map(|(_, d)| d.filter()).collect();
     // A derivation on the chosen gram reads what the lexostatus selects.
     let chosen = filters.is_empty() || filters.iter().any(Option::is_none);
@@ -313,17 +442,16 @@ fn read_events(def: &LexostatusDefinition, streams: &[Stream]) -> BTreeSet<Strin
         .filter(|_| chosen)
         .chain(filters.into_iter().flatten().map(Some))
     {
-        for (s, e) in crate::check::events_for(def, f, streams) {
-            out.insert(event_id(&s.id, &e.name));
+        for (s, e) in crate::check::events_for(def, f, &cell.streams) {
+            out.insert(event_id(cell.id(), &s.id, &e.name));
         }
     }
     out
 }
 
-/// The lexostatuses of the cell, the events they read and, for one the law
+/// The lexostatuses of a cell, the events they read and, for one the law
 /// reads, the reading article.
-fn lexostatus_part(b: &mut Builder, input: &MapInput) {
-    let cell = &input.process.cell;
+fn lexostatus_part(b: &mut Builder, cell: &Cell) {
     for d in &cell.lexostatuses.lexostatus_definitions {
         let source = match &d.law {
             Some(law) => SourceRef::law(&law.article),
@@ -334,10 +462,14 @@ fn lexostatus_part(b: &mut Builder, input: &MapInput) {
             None if d.name == crate::reduction::WORKLIST || d.name == crate::reduction::CASES => {
                 crate::check::events_for(d, None, &cell.streams)
                     .first()
-                    .map(|(s, e)| SourceRef::stream(&s.id, &e.name))
-                    .unwrap_or_else(|| SourceRef::config("lexostatuses", &d.name))
+                    .map(|(s, e)| {
+                        SourceRef::config(&cell_config(cell, &format!("stream/{}", s.id)), &e.name)
+                    })
+                    .unwrap_or_else(|| {
+                        SourceRef::config(&cell_config(cell, "lexostatuses"), &d.name)
+                    })
             }
-            None => SourceRef::config("lexostatuses", &d.name),
+            None => SourceRef::config(&cell_config(cell, "lexostatuses"), &d.name),
         };
         let l = b.node(
             lexostatus_id(cell.id(), &d.name),
@@ -345,19 +477,30 @@ fn lexostatus_part(b: &mut Builder, input: &MapInput) {
             &d.name,
             source,
         );
-        for event in read_events(d, &cell.streams) {
+        for event in read_events(d, cell) {
             b.edge(&l, &event, EdgeKind::Reads);
         }
         if let Some(law) = &d.law {
             let a = b.article(&law.article);
             b.edge(&l, &a, EdgeKind::Executes);
+            // What the cell adds to a lexostatus the law reads: extra fields
+            // in its own file, which no other node opens.
+            if cell
+                .lexostatuses
+                .law
+                .iter()
+                .any(|s| s.article == law.article)
+            {
+                let c = cell_file_node(b, cell, "lexostatuses", &cell.definition.lexostatuses);
+                b.edge(&c, &l, EdgeKind::Extends);
+            }
         }
     }
 }
 
-/// A cell the process queries that is not its own (synthesis, rows): written
+/// A cell the process queries that runs elsewhere (synthesis, rows): written
 /// in the synthesis of the deployment, under the id of the process's cell
-/// (RFC-047).
+/// (RFC-047). A cell of this runtime is on the map with its lexostatuses.
 fn source_cell(b: &mut Builder, input: &MapInput, cell: &str) -> String {
     let p = input.process;
     b.node(
@@ -368,12 +511,36 @@ fn source_cell(b: &mut Builder, input: &MapInput, cell: &str) -> String {
     )
 }
 
-/// The cells a synthesis per row queries, from `from`.
+/// What a query of `cell` points to: its lexostatus if the cell is on the
+/// map and defines it, the cell itself if it is on the map but the runtime
+/// offers the lexostatus (such as the case state), otherwise the source cell.
+fn queried(
+    b: &mut Builder,
+    input: &MapInput,
+    cell: &str,
+    lexostatus: &str,
+    url: Option<&String>,
+) -> String {
+    match local(input, cell, url) {
+        Some(c)
+            if c.lexostatuses
+                .lexostatus_definitions
+                .iter()
+                .any(|d| d.name == lexostatus) =>
+        {
+            lexostatus_id(cell, lexostatus)
+        }
+        Some(c) => format!("cell:{}", c.id()),
+        None => source_cell(b, input, cell),
+    }
+}
+
+/// The lexostatuses (or cells) a synthesis per row queries, from `from`.
 fn rows_part(b: &mut Builder, input: &MapInput, from: &str, rows: &[RowsDefinition]) {
     for r in rows {
         for src in &r.sources {
-            let c = source_cell(b, input, &src.cell);
-            b.edge(from, &c, EdgeKind::Rows);
+            let target = queried(b, input, &src.cell, &src.lexostatus, src.url.as_ref());
+            b.edge(from, &target, EdgeKind::Rows);
         }
     }
 }
@@ -410,7 +577,11 @@ fn handling_part(b: &mut Builder, input: &MapInput, proc: &str) {
         }
         b.edge(
             &a,
-            &event_id(&action.record.stream, &action.record.event),
+            &event_id(
+                input.process.cell.id(),
+                &action.record.stream,
+                &action.record.event,
+            ),
             EdgeKind::Records,
         );
         rows_part(b, input, &a, &action.rows);
@@ -434,11 +605,7 @@ fn synthesis_part(b: &mut Builder, input: &MapInput, proc: &str) {
             }
             continue;
         }
-        let target = if s.cell == p.cell.id() {
-            lexostatus_id(&s.cell, &s.lexostatus)
-        } else {
-            source_cell(b, input, &s.cell)
-        };
+        let target = queried(b, input, &s.cell, &s.lexostatus, s.url.as_ref());
         b.edge(proc, &target, EdgeKind::Synthesis);
     }
     rows_part(b, input, proc, p.assessment_rows());
@@ -502,8 +669,8 @@ fn source_part(b: &mut Builder, input: &MapInput) {
 /// The registers the policies on the map query: per register an edge from
 /// every article on the map that asks its policy's register (an input
 /// without a source), and one to who supplies it: the streams that record
-/// into its chronicle if that is the cell of the process, otherwise the
-/// cell elsewhere.
+/// into its chronicle if that cell is on the map, otherwise the cell
+/// elsewhere.
 fn register_part(b: &mut Builder, input: &MapInput) {
     let resolver = input.process.service.resolver();
     for link in input.register_links {
@@ -536,14 +703,13 @@ fn register_part(b: &mut Builder, input: &MapInput) {
         for a in articles {
             b.edge(&a, &r, EdgeKind::Register);
         }
-        let cell = &input.process.cell;
-        if link.cell == cell.id() {
+        if let Some(cell) = local(input, &link.cell, None) {
             for stream in cell
                 .streams
                 .iter()
                 .filter(|s| s.chronicle == link.chronicle)
             {
-                b.edge(&r, &format!("stream:{}", stream.id), EdgeKind::Register);
+                b.edge(&r, &stream_id(cell.id(), &stream.id), EdgeKind::Register);
             }
         } else {
             let c = b.node(

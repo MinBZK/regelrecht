@@ -498,6 +498,14 @@ impl SourceRef {
         }
     }
 
+    /// A whole configuration file, without an anchor.
+    pub fn file(config: &str) -> Self {
+        Self {
+            config: Some(config.to_string()),
+            ..Self::default()
+        }
+    }
+
     /// An event in the loaded stream file `stream/<id>`.
     pub fn stream(id: &str, event: &str) -> Self {
         Self::config(&format!("stream/{id}"), event)

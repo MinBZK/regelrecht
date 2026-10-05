@@ -5487,13 +5487,17 @@ async fn every_source_resolves(app: &Router, process: &str, form: &Value) {
 /// The fragment route of a source (`{law}` or `{config, anchor}`), as the
 /// frontend builds it.
 fn source_uri(process: &str, source: &Value) -> String {
-    match source["law"].as_str() {
-        Some(law) => format!("{process}/api/law/{}", law.replace('#', "/")),
-        None => format!(
-            "{process}/api/config/{}?anchor={}",
-            source["config"].as_str().unwrap(),
-            source["anchor"].as_str().unwrap().replace('#', "%23")
-        ),
+    let config = || {
+        format!(
+            "{process}/api/config/{}",
+            source["config"].as_str().unwrap()
+        )
+    };
+    match (source["law"].as_str(), source["anchor"].as_str()) {
+        (Some(law), _) => format!("{process}/api/law/{}", law.replace('#', "/")),
+        (None, Some(anchor)) => format!("{}?anchor={}", config(), anchor.replace('#', "%23")),
+        // A whole configuration file.
+        (None, None) => config(),
     }
 }
 
@@ -5792,19 +5796,19 @@ async fn the_map_links_an_event_to_the_articles_of_its_explanation() {
     let data = tempfile::tempdir().unwrap();
     let app = app(data.path());
     let map = toeslag_map(&app).await;
-    let event = "event:test_toeslag_aanvragen/aanvraag_ontvangen";
+    let event = "event:test_toeslag/test_toeslag_aanvragen/aanvraag_ontvangen";
     assert!(has_node(&map, "event", event), "{map}");
     assert!(has_edge(&map, "process:test_toeslag", event, "portal"));
     assert!(has_edge(
         &map,
-        "stream:test_toeslag_aanvragen",
+        "stream:test_toeslag/test_toeslag_aanvragen",
         event,
         "records"
     ));
     assert!(has_edge(
         &map,
         "cell:test_toeslag",
-        "stream:test_toeslag_aanvragen",
+        "stream:test_toeslag/test_toeslag_aanvragen",
         "records"
     ));
     let (_, stream, _) = call(
@@ -5869,7 +5873,7 @@ async fn the_map_shows_the_lexostatuses_and_the_actions() {
     assert!(has_edge(
         &map,
         aanvraag,
-        "event:test_toeslag_aanvragen/aanvraag_ontvangen",
+        "event:test_toeslag/test_toeslag_aanvragen/aanvraag_ontvangen",
         "reads"
     ));
     // Per derivation filter: the decisions read the payment of the advance,
@@ -5878,13 +5882,13 @@ async fn the_map_shows_the_lexostatuses_and_the_actions() {
     assert!(has_edge(
         &map,
         besluiten,
-        "event:test_toeslag_zaakverloop/voorschot_betaald",
+        "event:test_toeslag/test_toeslag_zaakverloop/voorschot_betaald",
         "reads"
     ));
     assert!(!has_edge(
         &map,
         besluiten,
-        "event:test_toeslag_aanvragen/aanvraag_ontvangen",
+        "event:test_toeslag/test_toeslag_aanvragen/aanvraag_ontvangen",
         "reads"
     ));
     for l in [aanvraag, besluiten, "lexostatus:test_toeslag/worklist"] {
@@ -5895,7 +5899,7 @@ async fn the_map_shows_the_lexostatuses_and_the_actions() {
     assert!(has_edge(
         &map,
         action,
-        "event:test_toeslag_zaakverloop/voorschot_verleend",
+        "event:test_toeslag/test_toeslag_zaakverloop/voorschot_verleend",
         "records"
     ));
     assert!(
@@ -5946,6 +5950,15 @@ async fn every_node_of_the_map_has_a_fragment() {
                     assert!(declared, "{n}: {yaml}");
                     continue;
                 }
+                // A configuration file opens whole, under its own name.
+                "config" => {
+                    assert_eq!(body["line"], 1, "{n}");
+                    let file = body["file"].as_str().unwrap();
+                    let label = n["label"].as_str().unwrap();
+                    let name = label.rsplit('/').next().unwrap();
+                    assert!(file.ends_with(name), "{n}: {file}");
+                    continue;
+                }
                 // A shared follow-up opens to its event (`<event>_<decision>`).
                 "action" => {
                     let event = n["source"]["anchor"].as_str().unwrap();
@@ -5958,9 +5971,82 @@ async fn every_node_of_the_map_has_a_fragment() {
             assert!(yaml.starts_with(&first), "{n}: {yaml}");
         }
     }
-    for kind in ["channel", "role", "action", "source_cell"] {
+    for kind in ["channel", "role", "action", "config"] {
         assert!(kinds.contains(kind), "{kind}: {kinds:?}");
     }
+}
+
+/// Everything the application rests on is on the map: every configuration
+/// file the process loaded, and every cell of this runtime it queries with
+/// its streams, lexostatuses and initial state, not a bare source cell.
+#[tokio::test]
+async fn the_map_shows_every_configuration_file_and_the_cells_it_queries() {
+    let data = tempfile::tempdir().unwrap();
+    let app = app(data.path());
+    let (_, map, _) = call(&app, "GET", "/processes/test_afnemer/api/map", None, None).await;
+    let process = "process:test_afnemer";
+    for config in ["channels", "synthesis", "examples"] {
+        let node = format!("config:{config}");
+        assert!(has_node(&map, "config", &node), "{node}: {map}");
+        assert!(has_edge(&map, process, &node, "configures"), "{node}");
+    }
+    let register = "cell:test_register";
+    assert!(has_node(&map, "cell", register), "{map}");
+    assert!(has_edge(
+        &map,
+        process,
+        "lexostatus:test_register/register",
+        "synthesis"
+    ));
+    assert!(has_edge(
+        &map,
+        "action:besluit_genomen",
+        "lexostatus:test_gebieden/tarief",
+        "rows"
+    ));
+    assert!(has_edge(
+        &map,
+        register,
+        "config:cells/test_register/initial_state",
+        "initial_state"
+    ));
+    assert!(
+        edges(&map)
+            .iter()
+            .any(|e| e["from"] == register && e["kind"] == "records"),
+        "{map}"
+    );
+    assert!(
+        !nodes(&map).iter().any(|n| n["kind"] == "source_cell"),
+        "{map}"
+    );
+    // The files of a queried cell open; of a cell the process does not
+    // query, not: an initial state holds grams.
+    let seed = "api/config/cells/test_register/initial_state";
+    let (status, _, _) = call(
+        &app,
+        "GET",
+        &format!("/processes/test_afnemer/{seed}"),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _, _) = call(
+        &app,
+        "GET",
+        &format!("/processes/test_instantie/{seed}"),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (_, map, _) = call(&app, "GET", "/processes/test_instantie/api/map", None, None).await;
+    let form = nodes(&map)
+        .iter()
+        .find(|n| n["id"] == "config:form")
+        .expect("the form");
+    assert_eq!(form["label"], "formulier-instantie.yaml");
 }
 
 #[tokio::test]

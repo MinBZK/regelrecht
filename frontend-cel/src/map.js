@@ -8,6 +8,9 @@
 export const COLUMN = {
   process: 0,
   channel: 1, role: 1, action: 1,
+  // A file of the process or of a cell; the edge from a cell to its initial
+  // state is the one that runs to the left.
+  config: 1,
   cell: 2, stream: 2, register: 2, source_cell: 2,
   event: 3,
   lexostatus: 4,
@@ -21,6 +24,7 @@ export const KIND_TEXT = {
   process: 'proces', channel: 'kanaal', role: 'rol', action: 'handeling',
   cell: 'cel', stream: 'stroom', register: 'register', source_cell: 'broncel',
   event: 'event', lexostatus: 'lexostatus', article: 'artikel', law: 'wet',
+  config: 'configuratie',
 };
 
 // What a kind of edge is called on the page.
@@ -30,7 +34,8 @@ export const EDGE_TEXT = {
   hook: 'haakt in', extends: 'vult aan', origin: 'herkomst',
   decides_on: 'besluit op', prefill: 'vult voor', source: 'bron',
   reads: 'leest', executes: 'voert uit', synthesis: 'synthese',
-  rows: 'rijen', register: 'register',
+  rows: 'rijen', register: 'register', configures: 'configureert',
+  initial_state: 'startstand',
 };
 
 /** The text of a node in the graph: its kind and its name; a law with its count. */

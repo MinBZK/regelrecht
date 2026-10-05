@@ -206,6 +206,7 @@ impl Runtime {
         let lock: Arc<OnceLock<Router>> = Arc::new(OnceLock::new());
         let internal: Arc<dyn Transport> =
             Arc::new(Internal::new(lock.clone(), runtime_token.clone()));
+        let cells_by_id = Arc::new(per_id);
         let mut process_states = Vec::new();
         for process in processes {
             let id = process.id().to_string();
@@ -294,6 +295,7 @@ impl Runtime {
                     .as_ref()
                     .and_then(|d| d.examples_file.clone())
                     .map(Arc::new),
+                cells: cells_by_id.clone(),
             });
         }
         let router = build_router(&cell_states, &process_states);
