@@ -97,6 +97,10 @@ pub struct ArticleResult {
     /// by the service layer, independently of tracing, so the skip reaches the
     /// receipt.
     pub declarations_not_in_force: Vec<DeclarationNotInForce>,
+    /// For an article that establishes a submission, executed through
+    /// [`crate::LawExecutionService::execute_stage`]: the articles that took
+    /// part and what they asked (RFC-046). `None` otherwise.
+    pub submission: Option<Box<crate::service::Submission>>,
 }
 
 /// Executes a single article's machine_readable.execution section.
@@ -289,6 +293,7 @@ impl<'a> ArticleEngine<'a> {
             delegation_refusals: Vec::new(),
             declaration_version_notes: Vec::new(),
             declarations_not_in_force: Vec::new(),
+            submission: None,
         };
 
         tracing::debug!(

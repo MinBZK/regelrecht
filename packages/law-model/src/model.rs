@@ -983,6 +983,16 @@ pub struct HookFilter {
     /// `BESCHIKKING` for afdeling 4.1.1 of the Awb.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub decided_by: Option<String>,
+    /// With `submission`: only the submission that this article establishes
+    /// (`<regulation>#<article>`, without a paragraph), such as the policy of
+    /// one authority that works out the application of one specific law. A
+    /// hook without it applies to every submission of the kind.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "optional_article_reference"
+    )]
+    pub established_by: Option<String>,
 }
 
 /// Declaration that an article fires as a hook on matching lifecycle events (RFC-007)
@@ -1386,6 +1396,25 @@ where
             "'{s}' is not <regulation>#<article> without a paragraph"
         )))
     }
+}
+
+/// Deserialize an optional string that, when present, must be an
+/// [`is_article_reference`].
+fn optional_article_reference<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<String>::deserialize(deserializer)?
+        .map(|s| {
+            if is_article_reference(&s) {
+                Ok(s)
+            } else {
+                Err(serde::de::Error::custom(format!(
+                    "'{s}' is not <regulation>#<article> without a paragraph"
+                )))
+            }
+        })
+        .transpose()
 }
 
 /// Machine-readable section of an article

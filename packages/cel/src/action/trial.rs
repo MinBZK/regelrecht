@@ -659,6 +659,7 @@ fn follow_up(
                 state,
                 outputs,
                 pending_inputs,
+                ..
             }) => {
                 if state.current_stage == stage {
                     p.missing = pending_inputs;

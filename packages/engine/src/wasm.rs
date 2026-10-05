@@ -413,6 +413,7 @@ impl WasmEngine {
                 state,
                 outputs,
                 pending_inputs,
+                ..
             } => WasmStageResult {
                 complete: false,
                 outputs,
