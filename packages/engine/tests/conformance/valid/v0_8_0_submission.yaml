@@ -1,6 +1,7 @@
 ---
 # Tier C: an article that establishes a submission (RFC-046), a decision that
-# is taken on it, and a hook that applies to the submission.
+# is taken on it, a hook that applies to every such submission, and a hook
+# that applies only to the submission of article 1 (`established_by`).
 $schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.8.0/schema/v0.8.0/schema.json
 $id: test_conformance_submission
 regulatory_layer: WET
@@ -53,4 +54,20 @@ articles:
             type: boolean
         actions:
           - output: gedagtekend
+            value: true
+  - number: '4'
+    url: https://example.invalid/submission/4
+    text: Wie de bijdrage aanvraagt, geeft het rekeningnummer op.
+    machine_readable:
+      hooks:
+        - hook_point: pre_actions
+          applies_to:
+            submission: AANVRAAG
+            established_by: test_conformance_submission#1
+      execution:
+        output:
+          - name: rekening_gevraagd
+            type: boolean
+        actions:
+          - output: rekening_gevraagd
             value: true

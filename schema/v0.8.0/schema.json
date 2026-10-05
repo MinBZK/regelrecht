@@ -2005,10 +2005,14 @@
                       "RECHTSPOSITIE"
                     ],
                     "description": "With submission: only a submission on which decisions of this legal character are taken (produces.decides_on of the decision article)."
+                  },
+                  "established_by": {
+                    "$ref": "#/definitions/articleReference",
+                    "description": "With submission: only the submission that this article (`<regulation>#<article>`) establishes with produces.submission, such as the policy of one authority that works out the application of one specific law. Without it the hook applies to every submission of the kind."
                   }
                 },
                 "additionalProperties": false,
-                "description": "Which decisions (legal_character, optionally decision_type and stage) or which submissions (submission, optionally decided_by, RFC-046) of other articles this hook fires on.",
+                "description": "Which decisions (legal_character, optionally decision_type and stage) or which submissions (submission, optionally decided_by and established_by, RFC-046) of other articles this hook fires on.",
                 "oneOf": [
                   {
                     "required": [
@@ -2024,6 +2028,11 @@
                         {
                           "required": [
                             "decided_by"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "established_by"
                           ]
                         }
                       ]

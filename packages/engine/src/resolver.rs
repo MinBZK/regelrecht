@@ -346,14 +346,15 @@ fn declaration_fingerprint(law: &ArticleBasedLaw) -> Vec<String> {
         if let Some(hooks) = article.get_hooks() {
             for decl in hooks {
                 parts.push(format!(
-                    "hook\0{}\0{:?}\0{:?}\0{:?}\0{:?}\0{:?}\0{:?}",
+                    "hook\0{}\0{:?}\0{:?}\0{:?}\0{:?}\0{:?}\0{:?}\0{:?}",
                     article.number,
                     decl.hook_point,
                     decl.applies_to.legal_character,
                     decl.applies_to.decision_type,
                     decl.applies_to.stage,
                     decl.applies_to.submission,
-                    decl.applies_to.decided_by
+                    decl.applies_to.decided_by,
+                    decl.applies_to.established_by
                 ));
             }
         }
@@ -401,7 +402,7 @@ impl HookEntry {
 
 /// A decision taken on a submission (RFC-046): the decision article and the
 /// legal character it produces.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct DecisionOn {
     pub law_id: String,
     pub article_number: String,
@@ -731,11 +732,15 @@ impl RuleResolver {
                         "hook declares both applies_to.legal_character and applies_to.submission; \
                          a hook applies to a decision or to a submission (RFC-046)",
                     ),
-                    (Some(_), None) if f.decided_by.is_some() => {
-                        Some("applies_to.decided_by only narrows a hook on a submission")
+                    (Some(_), None) if f.decided_by.is_some() || f.established_by.is_some() => {
+                        Some(
+                            "applies_to.decided_by and applies_to.established_by only narrow a hook \
+                             on a submission",
+                        )
                     }
                     (None, Some(_)) if f.stage.is_some() || f.decision_type.is_some() => Some(
-                        "a hook on a submission takes no stage or decision_type; decided_by narrows it",
+                        "a hook on a submission takes no stage or decision_type; decided_by and \
+                         established_by narrow it",
                     ),
                     _ => None,
                 };
@@ -1716,9 +1721,12 @@ impl RuleResolver {
     /// `<law_id>#<article>` establishes (RFC-046). A hook with `decided_by`
     /// fires only if decisions are taken on the submission and all of them
     /// have that legal character: the engine does not guess which regime of
-    /// the general law applies. Public so that a runtime can ask which
+    /// the general law applies. A hook with `established_by` fires only on
+    /// the submission of that one article (policy that works out the
+    /// application of one law). Public so that a runtime can ask which
     /// articles take part in a submission by the same rule the engine fires
-    /// them.
+    /// them; [`crate::LawExecutionService::submission`] collects them with
+    /// what they ask.
     pub fn find_submission_hooks(
         &self,
         hook_point: HookPoint,
@@ -1733,6 +1741,7 @@ impl RuleResolver {
             return Vec::new();
         };
         let decisions = self.decisions_on(law_id, article_number);
+        let establishing = format!("{law_id}#{article_number}");
         entries
             .iter()
             .filter(|e| match e.filter.decided_by.as_deref() {
@@ -1740,6 +1749,12 @@ impl RuleResolver {
                 Some(lc) => {
                     !decisions.is_empty() && decisions.iter().all(|d| d.legal_character == lc)
                 }
+            })
+            .filter(|e| {
+                e.filter
+                    .established_by
+                    .as_deref()
+                    .is_none_or(|r| r == establishing)
             })
             .collect()
     }
@@ -1861,11 +1876,7 @@ impl RuleResolver {
 ///
 /// An absent stage means BESLUIT (backward compatibility per RFC-008); an
 /// absent decision type admits every decision type.
-pub fn hook_filter_admits(
-    filter: &HookFilter,
-    decision_type: Option<&str>,
-    stage: &str,
-) -> bool {
+pub fn hook_filter_admits(filter: &HookFilter, decision_type: Option<&str>, stage: &str) -> bool {
     if filter.stage.as_deref().unwrap_or("BESLUIT") != stage {
         return false;
     }
