@@ -10,7 +10,8 @@
 //! establishing article in `decides_on` (`Event::decided_by`), or without
 //! those the articles that establish a decision (stage BESLUIT) in its
 //! chronicle. With exactly one such article a decision gram takes the case
-//! off: `without: {stage: BESLUIT}`. With more than one (for example an
+//! off: `without: {stage: BESLUIT}`, provided the chronicle records decisions
+//! at all (a chronicle that only receives submissions keeps every case). With more than one (for example an
 //! advance and a final determination) the case should leave only when each
 //! has a BESLUIT gram. The reduction DSL cannot
 //! say that (`without` is one filter, and any gram through it takes the case
@@ -177,7 +178,8 @@ fn requested_decisions(chronicle: &str, event: &Event, streams: &[Stream]) -> BT
 
 /// The worklist of the submission `event` in `chronicle`, with `columns`
 /// after the moments. A case leaves at a decision only when the submission
-/// asks for exactly one (see the module).
+/// asks for exactly one (see the module) and the chronicle records it: a
+/// chronicle that only receives submissions keeps every case.
 pub fn worklist_definition(
     chronicle: &str,
     event: &Event,
@@ -185,7 +187,9 @@ pub fn worklist_definition(
     columns: &[Column],
 ) -> Result<LexostatusDefinition, String> {
     let mut reduction = list_reduction(WORKLIST, chronicle, event, columns)?;
-    if requested_decisions(chronicle, event, streams).len() == 1 {
+    if requested_decisions(chronicle, event, streams).len() == 1
+        && records_decisions(chronicle, streams)
+    {
         reduction["without"] = json!({"stage": DECISION});
     }
     list_definition(WORKLIST, reduction)
@@ -202,12 +206,7 @@ pub fn cases_definition(
     columns: &[Column],
 ) -> Result<LexostatusDefinition, String> {
     let mut reduction = list_reduction(CASES, chronicle, event, columns)?;
-    let decides = streams
-        .iter()
-        .filter(|s| s.chronicle == chronicle)
-        .flat_map(|s| &s.events)
-        .any(|e| e.stage.as_deref() == Some(DECISION));
-    if decides {
+    if records_decisions(chronicle, streams) {
         if reduction["derivations"].get(DECIDED).is_some() {
             return Err(collision(CASES, DECIDED));
         }
@@ -219,6 +218,15 @@ pub fn cases_definition(
         });
     }
     list_definition(CASES, reduction)
+}
+
+/// Whether `chronicle` has an event at the stage of a decision.
+fn records_decisions(chronicle: &str, streams: &[Stream]) -> bool {
+    streams
+        .iter()
+        .filter(|s| s.chronicle == chronicle)
+        .flat_map(|s| &s.events)
+        .any(|e| e.stage.as_deref() == Some(DECISION))
 }
 
 fn collision(list: &str, column: &str) -> String {
