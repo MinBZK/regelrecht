@@ -6,14 +6,9 @@ use std::sync::LazyLock;
 use jsonschema::Validator;
 use serde_json::Value;
 
-const STREAM: &str = include_str!("../../../schema/chronolex/v0.3.0/stream.json");
-const LEXOSTATUS: &str = include_str!("../../../schema/chronolex/v0.3.0/lexostatus.json");
-const GRAM: &str = include_str!("../../../schema/chronolex/v0.3.0/gram.json");
-const CELL: &str = include_str!("../../../schema/chronolex/v0.3.0/cell.json");
-const SYNTHESIS: &str = include_str!("../../../schema/chronolex/v0.3.0/synthesis.json");
-/// Not a document of its own since RFC-047: `synthesis.json` reuses its
-/// definitions of a source and of the synthesis per row.
-const PROCESS: &str = include_str!("../../../schema/chronolex/v0.3.0/process.json");
+/// The shared definitions (`common.json`): not a document of its own; every
+/// schema can refer to it as `common.json#/definitions/<name>`.
+const COMMON: &str = include_str!("../../../schema/chronolex/v0.3.0/common.json");
 
 /// Which of the schemas.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,55 +25,80 @@ pub enum Kind {
     Synthesis,
 }
 
-fn compile(source: &str, name: &str) -> Result<Validator, String> {
-    let schema: Value = serde_json::from_str(source)
-        .map_err(|e| format!("embedded schema {name} is not valid JSON: {e}"))?;
-    Validator::new(&schema).map_err(|e| format!("embedded schema {name} does not compile: {e}"))
+impl Kind {
+    /// Every kind, in the order of the files.
+    pub const ALL: [Kind; 5] = [
+        Kind::Stream,
+        Kind::Lexostatus,
+        Kind::Cell,
+        Kind::Gram,
+        Kind::Synthesis,
+    ];
+
+    /// The file name of the schema and its embedded text.
+    fn file(self) -> (&'static str, &'static str) {
+        macro_rules! embed {
+            ($name:literal) => {
+                (
+                    $name,
+                    include_str!(concat!("../../../schema/chronolex/v0.3.0/", $name)),
+                )
+            };
+        }
+        match self {
+            Kind::Stream => embed!("stream.json"),
+            Kind::Lexostatus => embed!("lexostatus.json"),
+            Kind::Cell => embed!("cell.json"),
+            Kind::Gram => embed!("gram.json"),
+            Kind::Synthesis => embed!("synthesis.json"),
+        }
+    }
 }
 
-static STREAM_V: LazyLock<Result<Validator, String>> =
-    LazyLock::new(|| compile(STREAM, "stream.json"));
-static LEXOSTATUS_V: LazyLock<Result<Validator, String>> =
-    LazyLock::new(|| compile(LEXOSTATUS, "lexostatus.json"));
-static GRAM_V: LazyLock<Result<Validator, String>> = LazyLock::new(|| compile(GRAM, "gram.json"));
-static CELL_V: LazyLock<Result<Validator, String>> = LazyLock::new(|| compile(CELL, "cell.json"));
-static SYNTHESIS_V: LazyLock<Result<Validator, String>> = LazyLock::new(compile_synthesis);
+fn parse(source: &str, name: &str) -> Result<Value, String> {
+    serde_json::from_str(source)
+        .map_err(|e| format!("embedded schema {name} is not valid JSON: {e}"))
+}
 
-/// `synthesis.json`, with `process.json` registered under its `$id` so the
-/// references to its definitions resolve without fetching anything.
-fn compile_synthesis() -> Result<Validator, String> {
-    let parse = |source: &str, name: &str| -> Result<Value, String> {
-        serde_json::from_str(source)
-            .map_err(|e| format!("embedded schema {name} is not valid JSON: {e}"))
-    };
-    let process = parse(PROCESS, "process.json")?;
-    let schema = parse(SYNTHESIS, "synthesis.json")?;
-    let id = process["$id"]
+/// Compile the schema of `kind`, with `common.json` registered under its
+/// `$id` so references to its definitions resolve without fetching anything.
+fn compile(kind: Kind) -> Result<Validator, String> {
+    let (name, source) = kind.file();
+    let common = parse(COMMON, "common.json")?;
+    let schema = parse(source, name)?;
+    let id = common["$id"]
         .as_str()
-        .ok_or("embedded schema process.json has no $id")?
+        .ok_or("embedded schema common.json has no $id")?
         .to_string();
     let registry = jsonschema::Registry::new()
-        .add(id, process)
+        .add(id, common)
         .and_then(|r| r.prepare())
-        .map_err(|e| format!("embedded schema process.json does not register: {e}"))?;
+        .map_err(|e| format!("embedded schema common.json does not register: {e}"))?;
     jsonschema::options()
         .with_registry(&registry)
         .build(&schema)
-        .map_err(|e| format!("embedded schema synthesis.json does not compile: {e}"))
+        .map_err(|e| format!("embedded schema {name} does not compile: {e}"))
+}
+
+/// Every schema, compiled once, in the order of [`Kind::ALL`].
+static VALIDATORS: LazyLock<Vec<Result<Validator, String>>> =
+    LazyLock::new(|| Kind::ALL.iter().map(|k| compile(*k)).collect());
+
+fn validator(kind: Kind) -> Result<&'static Validator, String> {
+    let i = Kind::ALL
+        .iter()
+        .position(|k| *k == kind)
+        .ok_or_else(|| format!("no schema for {kind:?}"))?;
+    match &VALIDATORS[i] {
+        Ok(v) => Ok(v),
+        Err(e) => Err(e.clone()),
+    }
 }
 
 /// Validate a document against one of the schemas. On failure: every
 /// violation as `<path>: <message>`.
 pub fn validate(kind: Kind, doc: &Value) -> Result<(), Vec<String>> {
-    let validator = match kind {
-        Kind::Stream => &*STREAM_V,
-        Kind::Lexostatus => &*LEXOSTATUS_V,
-        Kind::Gram => &*GRAM_V,
-        Kind::Cell => &*CELL_V,
-        Kind::Synthesis => &*SYNTHESIS_V,
-    }
-    .as_ref()
-    .map_err(|e| vec![e.clone()])?;
+    let validator = validator(kind).map_err(|e| vec![e])?;
     let errors: Vec<String> = validator
         .iter_errors(doc)
         .map(|e| {
@@ -104,14 +124,9 @@ mod tests {
 
     #[test]
     fn all_schemas_compile() {
-        for (name, v) in [
-            ("stream", &*STREAM_V),
-            ("lexostatus", &*LEXOSTATUS_V),
-            ("gram", &*GRAM_V),
-            ("cell", &*CELL_V),
-            ("synthesis", &*SYNTHESIS_V),
-        ] {
-            assert!(v.is_ok(), "{name}: {:?}", v.as_ref().err());
+        for kind in Kind::ALL {
+            let v = validator(kind);
+            assert!(v.is_ok(), "{kind:?}: {:?}", v.err());
         }
     }
 
