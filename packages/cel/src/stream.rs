@@ -536,14 +536,13 @@ impl Stream {
 /// The type of a gram an interested party submits (RFC-022 par. 1).
 pub const SUBMISSION: &str = "submission";
 
-/// The stage that opens a case (RFC-008, RFC-046).
-pub const SUBMISSION_STAGE: &str = "AANVRAAG";
-
 impl Event {
-    /// Whether a gram of this event is a submission: `type: submission`, or
-    /// the stage that opens a case.
+    /// Whether a gram of this event is a submission: `type: submission`. An
+    /// event the law establishes as an application gets that type from the
+    /// law (RFC-046), and its stage from the procedure in the Awb; the name
+    /// of that stage is not the runtime's to know.
     pub fn is_submission(&self) -> bool {
-        self.type_ == SUBMISSION || self.stage.as_deref() == Some(SUBMISSION_STAGE)
+        self.type_ == SUBMISSION
     }
 
     /// Why a source may supply a field (`$intake.supplied.<name>`): for the
