@@ -1,33 +1,33 @@
 ---
 # Fictief formulierbestand: labels en volgorde voor het scherm `aanvraag`.
 # Velden en kolommen die de stroom niet kent (hier `telefoon` en
-# `opmerking`) slaat de cel over.
-schermen:
+# `opmerking`) slaat de cel over. Schema: schema/chronolex/v0.3.0/form.json.
+screens:
   - id: aanvraag
-    titel: Testaanvraag
-    groepen:
-      - titel: De aanvrager
-        velden:
-          - {id: naam, label: Naam van de aanvrager, type: tekst}
-          - {id: telefoon, label: Telefoonnummer, type: tekst}
-          - {id: aanduiding, label: Aanduiding, type: tekst}
-          - {id: adres, label: Adres, type: tekst}
-      - titel: De aanvraag
-        velden:
-          - {id: aanvraagjaar, label: Aanvraagjaar, type: getal, grondslag: testregeling_aanvraag#1 lid 1}
-          - {id: dagtekening, label: Dagtekening, type: datum}
+    title: Testaanvraag
+    groups:
+      - title: De aanvrager
+        fields:
+          - {id: naam, label: Naam van de aanvrager, type: text}
+          - {id: telefoon, label: Telefoonnummer, type: text}
+          - {id: aanduiding, label: Aanduiding, type: text}
+          - {id: adres, label: Adres, type: text}
+      - title: De aanvraag
+        fields:
+          - {id: aanvraagjaar, label: Aanvraagjaar, type: number, legal_basis: testregeling_aanvraag#1 lid 1}
+          - {id: dagtekening, label: Dagtekening, type: date}
           - id: registratie
             label: Registratie
-            type: keuze
-            opties:
-              - {waarde: a, label: Categorie A}
-              - {waarde: b, label: Categorie B}
+            type: choice
+            options:
+              - {value: a, label: Categorie A}
+              - {value: b, label: Categorie B}
           - id: organen
             label: Organen
-            type: tabel
-            kolommen:
-              - {id: orgaan, label: Orgaan, type: tekst}
-              - {id: zetels, label: Zetels, type: getal, grondslag: [testregeling_aanvraag#1]}
-              - {id: samengevoegd, label: Samengevoegd, type: janee}
-              - {id: aantal_aanduidingen, label: Aantal aanduidingen, type: getal}
-              - {id: opmerking, label: Opmerking, type: tekst}
+            type: table
+            columns:
+              - {id: orgaan, label: Orgaan, type: text}
+              - {id: zetels, label: Zetels, type: number, legal_basis: [testregeling_aanvraag#1]}
+              - {id: samengevoegd, label: Samengevoegd, type: yes_no}
+              - {id: aantal_aanduidingen, label: Aantal aanduidingen, type: number}
+              - {id: opmerking, label: Opmerking, type: text}

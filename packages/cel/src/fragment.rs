@@ -180,7 +180,7 @@ mod tests {
         assert_eq!((line, end), (2, 3));
         let process = "id: p\nportal:\n  cell: c\n  stream: s\nroles: {}\n";
         assert_eq!(block(process, |l| is_anchor(l, "portal")).unwrap().1, 4);
-        let form = "velden:\n  - {id: adres_aanvrager, label: Adres}\n  - {id: naam}\n";
+        let form = "fields:\n  - {id: adres_aanvrager, label: Adres}\n  - {id: naam}\n";
         assert_eq!(
             block(form, |l| is_anchor(l, "adres_aanvrager")).unwrap().0,
             2

@@ -12,16 +12,18 @@
 //! [`explain`] adds the process layer (portal, form, channel) to the
 //! explanation that the law gives of the event.
 //!
-//! The form document deliberately keeps its Dutch vocabulary (it is a dossier
-//! document that other tools read as well); the runtime translates it at the
-//! edge (the serde renames below and `document_type`, `document_options`,
-//! `document_columns`), so that the API speaks English.
+//! Shape (`schema/chronolex/v0.3.0/form.json`, validated at load):
+//! `screens: [{id, title, explanation, fields, groups: [{title, explanation,
+//! fields: [{id, label, type, options, columns, explanation,
+//! legal_basis}]}]}]`, in the vocabulary of the API: a field type is `text`,
+//! `number`, `date`, `choice`, `yes_no`, `checkbox`, `file`, `table` or
+//! `amount`, an option `{value, label}` or a plain value, and a column
+//! `{id, label, type, options, explanation, legal_basis, unit}`. Labels and
+//! explanations are text for the reader, in their own language. What other
+//! tools keep in the same document goes under `extensions` (at the top, or
+//! on a screen, group, field or column), which the runtime does not read.
 //!
-//! Shape: `schermen: [{id, titel, groepen: [{titel, velden: [{id, label,
-//! type, opties, kolommen, uitleg, grondslag}]}]}]` (screens, title, groups,
-//! fields, options, columns, explanation, legal basis).
-//!
-//! `grondslag` (on a field or a column) is a legal basis or a list of legal
+//! `legal_basis` (on a field or a column) is a legal basis or a list of legal
 //! bases in the form `<regulation>#<article>`, optionally with ` lid <n>`, as
 //! on an event. At startup the process checks that every article is loaded
 //! and the paragraph exists (see [`Form::legal_bases`]).
@@ -29,13 +31,14 @@
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 use crate::channel::Routes;
 use crate::config::Portal;
 use crate::law::{with_executes, SourceRef, Step, StepKind};
 use crate::load;
 use crate::process::Process;
+use crate::schema::Kind;
 use crate::stream::{Event, Shape};
 
 /// A screen from a form file.
@@ -292,56 +295,85 @@ pub fn readable(name: &str) -> String {
     }
 }
 
-/// A form file as the runtime reads it (Dutch keys, renamed at the edge).
+/// A form file as the runtime reads it; the schema has checked its shape.
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct File {
-    #[serde(default, rename = "schermen")]
+    #[serde(default)]
     screens: Vec<ScreenDoc>,
+    /// Blocks of other tools; the runtime does not read them.
+    #[serde(default, rename = "extensions")]
+    _extensions: Option<Value>,
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ScreenDoc {
     id: String,
-    #[serde(default, rename = "titel")]
+    #[serde(default)]
     title: Option<String>,
-    #[serde(default, rename = "velden")]
+    #[serde(default, rename = "explanation")]
+    _explanation: Option<String>,
+    #[serde(default)]
     fields: Vec<FieldDoc>,
-    #[serde(default, rename = "groepen")]
+    #[serde(default)]
     groups: Vec<GroupDoc>,
+    #[serde(default, rename = "extensions")]
+    _extensions: Option<Value>,
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct GroupDoc {
-    #[serde(default, rename = "titel")]
+    #[serde(default)]
     title: Option<String>,
-    #[serde(default, rename = "velden")]
+    #[serde(default, rename = "explanation")]
+    _explanation: Option<String>,
+    #[serde(default)]
     fields: Vec<FieldDoc>,
+    #[serde(default, rename = "extensions")]
+    _extensions: Option<Value>,
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct FieldDoc {
     id: String,
     #[serde(default)]
     label: Option<String>,
     #[serde(default, rename = "type")]
     kind: Option<String>,
-    #[serde(default, rename = "opties")]
+    #[serde(default)]
     options: Option<Value>,
-    #[serde(default, rename = "kolommen")]
-    columns: Option<Value>,
-    #[serde(default, rename = "uitleg")]
+    /// The columns of a table, in the shape of the API; each may carry
+    /// `extensions`, which the API does not pass on.
+    #[serde(default)]
+    columns: Option<Vec<Map<String, Value>>>,
+    #[serde(default)]
     explanation: Option<String>,
-    #[serde(default, rename = "grondslag")]
+    #[serde(default)]
     legal_basis: Option<Value>,
+    #[serde(default, rename = "extensions")]
+    _extensions: Option<Value>,
 }
 
 impl FieldDoc {
     fn field(self, group: Option<&String>) -> Field {
         let own_label = self.label.is_some();
+        let columns = self.columns.map(|l| {
+            Value::Array(
+                l.into_iter()
+                    .map(|mut k| {
+                        k.remove("extensions");
+                        Value::Object(k)
+                    })
+                    .collect(),
+            )
+        });
         Field {
-            kind: self.kind.as_deref().map(document_type),
-            options: self.options.map(document_options),
-            columns: self.columns.map(document_columns),
+            kind: self.kind,
+            options: self.options,
+            columns,
             explanation: self.explanation,
             group: group.cloned(),
             legal_basis: legal_basis_from(self.legal_basis.as_ref()),
@@ -351,88 +383,12 @@ impl FieldDoc {
     }
 }
 
-/// The form document is written in Dutch (it is a dossier document that other
-/// tools read as well); the runtime translates its vocabulary at the edge, so
-/// that the API speaks English. Field types:
-fn document_type(t: &str) -> String {
-    match t {
-        "tekst" => "text",
-        "getal" => "number",
-        "datum" => "date",
-        "keuze" => "choice",
-        "janee" => "yes_no",
-        "vink" => "checkbox",
-        "bestand" => "file",
-        "tabel" => "table",
-        "bedrag" => "amount",
-        other => other,
-    }
-    .to_string()
-}
-
-/// The options of a choice: `{waarde, label}` becomes `{value, label}`.
-fn document_options(v: Value) -> Value {
-    match v {
-        Value::Array(l) => Value::Array(
-            l.into_iter()
-                .map(|o| match o {
-                    Value::Object(m) => Value::Object(
-                        m.into_iter()
-                            .map(|(k, w)| {
-                                (
-                                    if k == "waarde" {
-                                        "value".to_string()
-                                    } else {
-                                        k
-                                    },
-                                    w,
-                                )
-                            })
-                            .collect(),
-                    ),
-                    other => other,
-                })
-                .collect(),
-        ),
-        other => other,
-    }
-}
-
-/// The columns of a table field, with the keys and types of the API. The
-/// law names a table's columns but not their types, so the unit of an
-/// amount column comes from the form (`eenheid`, as `unit`).
-fn document_columns(v: Value) -> Value {
-    match v {
-        Value::Array(l) => Value::Array(
-            l.into_iter()
-                .map(|k| match k {
-                    Value::Object(m) => Value::Object(
-                        m.into_iter()
-                            .map(|(k, w)| match k.as_str() {
-                                "type" => {
-                                    (k, w.as_str().map(document_type).map_or(w, Value::String))
-                                }
-                                "opties" => ("options".to_string(), document_options(w)),
-                                "uitleg" => ("explanation".to_string(), w),
-                                "grondslag" => ("legal_basis".to_string(), w),
-                                "eenheid" => ("unit".to_string(), w),
-                                _ => (k, w),
-                            })
-                            .collect(),
-                    ),
-                    other => other,
-                })
-                .collect(),
-        ),
-        other => other,
-    }
-}
-
-/// Read a screen from a form file. A field without an `id`, or a key with a
-/// different shape than here, is an error: the form is not read halfway.
-/// Other keys (a form file can serve more than the runtime) are ignored.
+/// Read a screen from a form file, validated against `form.json`. A field
+/// without an `id`, an unknown key or a key with a different shape is an
+/// error that names the file: the form is not read halfway. What other tools
+/// keep in the document belongs under `extensions`.
 pub fn parse(text: &str, screen: &str, source: &str) -> Result<Form, String> {
-    let file: File = load::yaml(text, source).map_err(|f| f.join("; "))?;
+    let file: File = load::definition(text, source, Kind::Form).map_err(|f| f.join("; "))?;
     let s = file
         .screens
         .into_iter()
@@ -616,9 +572,9 @@ mod tests {
         let s = stream::parse(STREAM, "fixture").unwrap();
         // The form calls `organen` text and `naam` a table.
         let f = parse(
-            &FORM.replace("type: tabel", "type: tekst").replace(
-                "{id: naam, label: Naam van de aanvrager, type: tekst}",
-                "{id: naam, label: Naam van de aanvrager, type: tabel, columns: [{id: x}]}",
+            &FORM.replace("type: table", "type: text").replace(
+                "{id: naam, label: Naam van de aanvrager, type: text}",
+                "{id: naam, label: Naam van de aanvrager, type: table, columns: [{id: x}]}",
             ),
             "aanvraag",
             "fixture",
@@ -702,8 +658,8 @@ mod tests {
         s.events[0].field_defs.push(amount("aanvraagjaar"));
         let own = parse(
             &FORM.replace(
-                "label: Aanvraagjaar, type: getal",
-                "label: Aanvraagjaar, type: bedrag",
+                "label: Aanvraagjaar, type: number",
+                "label: Aanvraagjaar, type: amount",
             ),
             "aanvraag",
             "fixture",
@@ -731,7 +687,7 @@ mod tests {
         assert!(adres.own_label);
         let telefoon = parse(
             &FORM.replace(
-                "{id: telefoon, label: Telefoonnummer, type: tekst}",
+                "{id: telefoon, label: Telefoonnummer, type: text}",
                 "{id: telefoon}",
             ),
             "aanvraag",
@@ -748,13 +704,13 @@ mod tests {
         );
     }
 
-    /// An amount column carries the unit the form names (`eenheid`).
+    /// An amount column carries the unit the form names (`unit`).
     #[test]
     fn an_amount_column_carries_its_unit() {
         let f = parse(
             &FORM.replace(
-                "{id: zetels, label: Zetels, type: getal,",
-                "{id: zetels, label: Zetels, type: bedrag, eenheid: eurocent,",
+                "{id: zetels, label: Zetels, type: number,",
+                "{id: zetels, label: Zetels, type: amount, unit: eurocent,",
             ),
             "aanvraag",
             "fixture",
@@ -766,6 +722,46 @@ mod tests {
         let zetels = &organen.columns.as_ref().unwrap()[1];
         assert_eq!(zetels["type"], "amount");
         assert_eq!(zetels["unit"], "eurocent");
+    }
+
+    /// The form is validated against `form.json`: an unknown key, a type
+    /// outside the vocabulary or a Dutch key is an error naming the file;
+    /// what other tools keep goes under `extensions`, at every level.
+    #[test]
+    fn the_form_is_validated_against_its_schema() {
+        for (from, to, expect) in [
+            (
+                "type: text}",
+                "type: tekst}",
+                "/screens/0/groups/0/fields/0/type",
+            ),
+            ("label: Adres,", "label: Adres, kort: Adres,", "kort"),
+            ("screens:", "schermen:", "schermen"),
+            (
+                "label: Opmerking, type: text}",
+                "label: Opmerking, type: text, per: x}",
+                "/screens/0/groups/1/fields/3/columns/4",
+            ),
+        ] {
+            let e = parse(&FORM.replacen(from, to, 1), "aanvraag", "f.yaml").unwrap_err();
+            assert!(e.starts_with("f.yaml: ") && e.contains(expect), "{to}: {e}");
+        }
+        let with = FORM
+            .replace("screens:", "extensions: {tool: {any: [1]}}\nscreens:")
+            .replace(
+                "label: Adres,",
+                "label: Adres, extensions: {tool: {short: Adres}},",
+            )
+            .replace(
+                "label: Opmerking, type: text}",
+                "label: Opmerking, type: text, extensions: {tool: {x: 1}}}",
+            );
+        let f = parse(&with, "aanvraag", "f.yaml").unwrap();
+        let organen = f.fields.iter().find(|v| v.name == "organen").unwrap();
+        // The extensions of a column do not reach the API.
+        assert!(organen.columns.as_ref().unwrap()[4]
+            .get("extensions")
+            .is_none());
     }
 
     #[test]

@@ -2859,8 +2859,8 @@ fn a_legal_basis_in_the_form_is_checked() {
     ] {
         let adjust = move |t: String| {
             t.replace(
-                "grondslag: testregeling_aanvraag#1 lid 1}",
-                &format!("grondslag: '{legal_basis}'}}"),
+                "legal_basis: testregeling_aanvraag#1 lid 1}",
+                &format!("legal_basis: '{legal_basis}'}}"),
             )
         };
         let setup = own_setup(&[("documents/formulier-instantie.yaml", &adjust)]);
@@ -5600,7 +5600,7 @@ async fn the_form_says_why() {
     let setup = own_setup(&[("regulation/testbeleid_toeslag/2025-01-01.yaml", &with_form)]);
     std::fs::write(
         setup.path().join("documents/formulier-toeslag.yaml"),
-        "schermen:\n  - id: aanvraag\n    groepen:\n      - titel: De aanvrager\n        velden:\n          - {id: naam_aanvrager, label: Uw naam}\n          - {id: adres_aanvrager}\n",
+        "screens:\n  - id: aanvraag\n    groups:\n      - title: De aanvrager\n        fields:\n          - {id: naam_aanvrager, label: Uw naam}\n          - {id: adres_aanvrager}\n",
     )
     .unwrap();
     let data = tempfile::tempdir().unwrap();

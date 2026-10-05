@@ -182,7 +182,22 @@ draait in dezelfde runtime. Een bron met `case: true` is een lexostatus van
 de zaak zelf, met als enige input `root`: het besluit vraagt haar met het id
 van de wortel van de zaak en neemt al haar parameters en extra velden over. Het
 formulierbestand levert alleen labels, soorten en volgorde; het bepaalt nooit
-het gedrag.
+het gedrag. Het wordt gevalideerd tegen `schema/chronolex/v0.3.0/form.json` en
+spreekt de woorden van de API:
+
+```yaml
+screens:
+  - id: <scherm>
+    title: <tekst>
+    groups:
+      - title: <tekst>
+        explanation: <tekst>
+        fields:
+          - {id: <veld>, label: <tekst>, type: text | number | date | choice | yes_no | checkbox | file | table | amount,
+             options: [{value: <w>, label: <tekst>}], explanation: <tekst>, legal_basis: <regeling>#<artikel>}
+          - {id: <tabel>, type: table, columns: [{id: <kolom>, label: <tekst>, type: amount, unit: eurocent}]}
+extensions: {<gereedschap>: {...}}   # ook op scherm, groep, veld en kolom; de runtime leest het niet
+```
 
 ## Routes
 

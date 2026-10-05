@@ -1,0 +1,196 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.3.0/form.json",
+  "title": "Form document v0.3.0",
+  "description": "The presentation of a portal form: per screen the order, groups, titles, labels, explanations and options of the fields a submission passes. The form never determines behaviour: which fields there are, their type in the law, their legal basis and who supplies them follow from the law; a field the form does not know goes last with the label of the law, and a field of the form the submission does not know is skipped. The policy names the document and the screen (channels.<id>.form). Labels and explanations are text for the reader, in their own language. What other tools keep in the same document goes under extensions, at the top or on a screen, group, field or column; the runtime does not read it.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "screens": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/screen"
+      }
+    },
+    "extensions": {
+      "$ref": "#/definitions/extensions"
+    }
+  },
+  "definitions": {
+    "extensions": {
+      "type": "object",
+      "description": "Blocks of other tools, per tool. Not read by the runtime.",
+      "additionalProperties": {
+        "type": "object"
+      }
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1
+    },
+    "legal_bases": {
+      "description": "A legal basis or a list of them (<regulation>#<article>, optionally with ' lid <n>'); the runtime checks at startup that every article is loaded and the paragraph exists.",
+      "oneOf": [
+        {
+          "$ref": "common.json#/definitions/legal_basis"
+        },
+        {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "common.json#/definitions/legal_basis"
+          }
+        }
+      ]
+    },
+    "type": {
+      "description": "How the form asks for the value. The type of the law prevails where it says more: an amount of the law stays an amount, and whether a field is a table follows from the submission.",
+      "enum": ["text", "number", "date", "choice", "yes_no", "checkbox", "file", "table", "amount"]
+    },
+    "options": {
+      "type": "array",
+      "description": "The options of a choice: a value with a label, or a plain value that is its own label.",
+      "items": {
+        "oneOf": [
+          {
+            "type": ["string", "number", "boolean"]
+          },
+          {
+            "type": "object",
+            "required": ["value", "label"],
+            "additionalProperties": false,
+            "properties": {
+              "value": {
+                "type": ["string", "number", "boolean"]
+              },
+              "label": {
+                "$ref": "#/definitions/text"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "screen": {
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "common.json#/definitions/identifier"
+        },
+        "title": {
+          "$ref": "#/definitions/text"
+        },
+        "explanation": {
+          "$ref": "#/definitions/text"
+        },
+        "fields": {
+          "type": "array",
+          "description": "Fields outside a group, before the groups.",
+          "items": {
+            "$ref": "#/definitions/field"
+          }
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/group"
+          }
+        },
+        "extensions": {
+          "$ref": "#/definitions/extensions"
+        }
+      }
+    },
+    "group": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "$ref": "#/definitions/text"
+        },
+        "explanation": {
+          "$ref": "#/definitions/text"
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/field"
+          }
+        },
+        "extensions": {
+          "$ref": "#/definitions/extensions"
+        }
+      }
+    },
+    "field": {
+      "type": "object",
+      "description": "A field by the name under which the submission passes it; without a label it has the label of the law.",
+      "required": ["id"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "common.json#/definitions/identifier"
+        },
+        "label": {
+          "$ref": "#/definitions/text"
+        },
+        "type": {
+          "$ref": "#/definitions/type"
+        },
+        "options": {
+          "$ref": "#/definitions/options"
+        },
+        "columns": {
+          "type": "array",
+          "description": "For a table: label and order of its columns. A column the submission does not know is skipped.",
+          "items": {
+            "$ref": "#/definitions/column"
+          }
+        },
+        "explanation": {
+          "$ref": "#/definitions/text"
+        },
+        "legal_basis": {
+          "$ref": "#/definitions/legal_bases"
+        },
+        "extensions": {
+          "$ref": "#/definitions/extensions"
+        }
+      }
+    },
+    "column": {
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "common.json#/definitions/identifier"
+        },
+        "label": {
+          "$ref": "#/definitions/text"
+        },
+        "type": {
+          "$ref": "#/definitions/type"
+        },
+        "options": {
+          "$ref": "#/definitions/options"
+        },
+        "explanation": {
+          "$ref": "#/definitions/text"
+        },
+        "legal_basis": {
+          "$ref": "#/definitions/legal_bases"
+        },
+        "unit": {
+          "type": "string",
+          "description": "The unit of an amount column, such as eurocent: the law names the columns of a table but not their types."
+        },
+        "extensions": {
+          "$ref": "#/definitions/extensions"
+        }
+      }
+    }
+  }
+}
