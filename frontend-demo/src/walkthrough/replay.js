@@ -26,7 +26,7 @@ import { click, setChecked, setValue, key as pressKey, scrollTo } from './action
 import { installClock, uninstallClock } from './clock.js';
 import { resolve, scrollAnchor, scrollTarget } from './locator.js';
 import { graphView, showView } from './graphBridge.js';
-import { CAPTIONS_BASE, MEDIA_BASE, chapterAt, parseVtt } from './timeline.js';
+import { CAPTIONS_BASE, MEDIA_BASE, chapterAt, parseVtt, pauseDue, pickClip } from './timeline.js';
 import { resetViews } from './viewEpoch.js';
 
 const SOURCE_LOCALE = 'nl';
@@ -52,6 +52,14 @@ export const replay = reactive({
   loose: [],
   /** The media did not load: the page says so instead of spinning. */
   failed: false,
+  /**
+   * Why the player waits for the viewer, with a hint at the play button:
+   * 'pause' at a moment the presenter invites them to look around, 'wait'
+   * when they took over themselves. Null while it plays.
+   */
+  invite: null,
+  /** The pause's own hint, from walkthrough.yaml; else the standard text. */
+  inviteHint: null,
 });
 
 let timeline = null;
@@ -336,8 +344,25 @@ async function pump() {
   }
 }
 
+let lastTick = 0;
 function tick() {
-  if (audio && seeking === null) replay.now = audio.currentTime;
+  if (audio && seeking === null) {
+    const prev = lastTick;
+    replay.now = audio.currentTime;
+    lastTick = replay.now;
+    // A moment the presenter hands the demo to the viewer: stop there.
+    const due = replay.playing && !replay.waiting ? pauseDue(currentTrack()?.pauses, prev, replay.now) : null;
+    if (due) {
+      audio.pause();
+      audio.currentTime = due.t;
+      replay.now = due.t;
+      lastTick = due.t;
+      replay.playing = false;
+      replay.invite = 'pause';
+      replay.inviteHint = due.hint ?? null;
+      savePosition();
+    }
+  }
   pump();
   raf = replay.playing ? requestAnimationFrame(tick) : 0;
 }
@@ -440,6 +465,8 @@ export async function seek(t, { play: playAfter = replay.playing } = {}) {
   audio?.pause();
   // Play or pause pressed during the seek only changes what happens after it.
   replay.playing = playAfter;
+  replay.invite = null;
+  stopBumper();
   replay.waiting = false;
   replay.diverged = false;
   replay.cursor.visible = false;
@@ -478,6 +505,7 @@ export async function seek(t, { play: playAfter = replay.playing } = {}) {
   next = i;
   leadFor = -1;
   replay.now = target;
+  lastTick = target;
   if (audio) audio.currentTime = target;
   if (replay.playing) play();
 }
@@ -494,9 +522,21 @@ export async function play() {
     return;
   }
   if (replay.diverged) {
-    await seek(replay.now, { play: true });
+    // "Oké, we gaan verder" while the demo is put back the way it was.
+    const said = sayBumper('resume');
+    await seek(replay.now, { play: false });
+    const token = seekToken;
+    replay.playing = true;
+    await said;
+    // Paused, jumped or left during the line: that wins.
+    if (token !== seekToken || !replay.active || !replay.playing || replay.diverged) return;
+    replay.playing = false;
+    await play();
     return;
   }
+  replay.invite = null;
+  replay.inviteHint = null;
+  lastTick = replay.now;
   replay.playing = true;
   // During a wait the voice stays where it is; the wait resumes it.
   if (!replay.waiting) {
@@ -510,6 +550,7 @@ export async function play() {
 export function pause() {
   replay.playing = false;
   audio?.pause();
+  stopBumper();
   savePosition();
 }
 
@@ -593,9 +634,66 @@ function onViewerAct(e) {
     if (replay.playing && PLAYER_KEYS.has(e.key)) return;
     if (!(e.composedPath?.() ?? []).some((n) => n?.matches?.('input, textarea, select, [contenteditable]'))) return;
   }
+  takeOver({ say: replay.playing });
+}
+
+/**
+ * The viewer takes the demo over (clicked into it, or "try it yourself"):
+ * pause, and wait for them with a hint at the play button. `say` adds a line
+ * in the presenter's voice ("Ga je gang, kijk maar even rond, ik wacht"),
+ * when the walkthrough has one; only when it was playing, not when it had
+ * already stopped at a pause that said as much.
+ */
+export function takeOver({ say = false } = {}) {
   if (replay.playing) pause();
   replay.diverged = true;
   replay.cursor.visible = false;
+  if (!replay.invite) {
+    replay.invite = 'wait';
+    replay.inviteHint = null;
+  }
+  if (say) sayBumper('wait');
+}
+
+// ---- the presenter's short lines ---------------------------------------------------
+
+let bumperAudio = null;
+let bumperDone = null;
+
+/**
+ * Play one of the walkthrough's short lines of `kind` ('wait', 'resume'),
+ * picked at random; resolves when it has been said, or at once when there
+ * is none. Its own audio element: it must not move the main clock.
+ */
+function sayBumper(kind) {
+  stopBumper();
+  const clip = pickClip(timeline?.bumpers?.[kind]);
+  if (!clip) return Promise.resolve();
+  bumperAudio = bumperAudio ?? new Audio();
+  bumperAudio.src = `${MEDIA_BASE}${clip.src}`;
+  bumperAudio.muted = audio?.muted ?? false;
+  bumperAudio.playbackRate = replay.speed;
+  return new Promise((resolve) => {
+    let timer = 0;
+    const done = () => {
+      clearTimeout(timer);
+      bumperAudio?.removeEventListener('ended', done);
+      bumperAudio?.removeEventListener('error', done);
+      if (bumperDone === done) bumperDone = null;
+      resolve();
+    };
+    bumperDone = done;
+    bumperAudio.addEventListener('ended', done);
+    bumperAudio.addEventListener('error', done);
+    // A line that never ends (a stalled download) does not hold the replay.
+    timer = setTimeout(done, ((clip.duration ?? 3) / replay.speed + 2) * 1000);
+    bumperAudio.play().catch(done);
+  });
+}
+
+function stopBumper() {
+  bumperAudio?.pause();
+  bumperDone?.();
 }
 
 // ---- starting and stopping ---------------------------------------------------------
@@ -668,7 +766,9 @@ export function stopReplay() {
   uninstallClock();
   replay.active = false;
   replay.faq = null;
+  replay.invite = null;
   replay.cursor.visible = false;
+  stopBumper();
   replay.cues = [];
   if (audio) {
     audio.removeAttribute('src');

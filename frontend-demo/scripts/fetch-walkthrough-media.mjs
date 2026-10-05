@@ -30,9 +30,10 @@ const REPO = 'MinBZK/regelrecht';
 /** Every media file the timeline names, with its checksum. */
 export function mediaFiles(timeline, { audioOnly = false } = {}) {
   const tracks = [timeline.main, ...(timeline.faq ?? [])];
-  return tracks
-    .flatMap((t) => (audioOnly ? [t.audio] : [t.audio, t.video, t.cam]).filter(Boolean))
-    .map(({ src, sha256 }) => ({ src, sha256 }));
+  // The short lines the player says when the viewer takes over (bumpers);
+  // the replay check does not play them, so `audioOnly` leaves them out.
+  const bumpers = audioOnly ? [] : Object.values(timeline.bumpers ?? {}).flat();
+  return [...tracks.flatMap((t) => (audioOnly ? [t.audio] : [t.audio, t.video, t.cam]).filter(Boolean)), ...bumpers].map(({ src, sha256 }) => ({ src, sha256 }));
 }
 
 function sha256(buf) {

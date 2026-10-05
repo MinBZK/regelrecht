@@ -116,6 +116,35 @@ niet.
   Dat hoofdstuk moet opnieuw. Opnames van vóór 3 oktober 2026 missen de
   scrolls binnen panelen van het ontwerpsysteem.
 
+## Pauzes en tussenzinnen
+
+- **Pauzes**: zegt de presentator "kijk gerust even zelf rond", "klik zelf
+  even rond", "probeer het zelf" of "ga je gang", dan stopt de speler aan het
+  eind van die zin met een coach mark bij de afspeelknop. Dat vindt `build`
+  vanzelf (`INVITATIONS` in `timeline.py`). Bijsturen in `walkthrough.yaml`:
+  ```yaml
+  pauses:
+    - {take: <take>, at: 330.2, hint: Klik op een wet in de graaf.}  # erbij
+    - {take: <take>, at: 512.0, off: true}                           # weg
+  takes:
+    <take>:
+      auto_pauses: false   # niets automatisch in deze opname
+  ```
+  Controleer na een build of `main.pauses` in `timeline.json` klopt.
+- **Tussenzinnen** (bumpers): korte stukjes uit een opname in de eigen stem,
+  gezegd als de kijker zelf gaat klikken (`wait`) en als hij verder drukt
+  (`resume`). Neem ze op in een losse take ("Ga je gang, kijk maar even rond,
+  ik wacht." en "Oké, we gaan verder.", 2-3 varianten), zoek de tijden op
+  woordniveau en zet ze in:
+  ```yaml
+  bumpers:
+    wait:
+      - {take: <take>, from: 1.2, to: 3.9}
+    resume:
+      - {take: <take>, from: 6.0, to: 7.4}
+  ```
+  Ze gaan mee in `publish`.
+
 ## Transcript en diateksten
 
 - Het transcript wordt bij `prepare` nagekeken door een taalmodel met de

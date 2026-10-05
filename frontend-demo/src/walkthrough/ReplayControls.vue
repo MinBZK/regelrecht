@@ -12,7 +12,7 @@ import { useRouter } from 'vue-router';
 import { DEFAULT_LOCALE, useViewerI18n } from '../i18n/index.js';
 import { intlLocale } from '../data/format.js';
 import { localeRouteName } from '../router.js';
-import { backToMain, currentTrack, pause, replay, seek, setSpeed, stopReplay, togglePlay } from './replay.js';
+import { backToMain, currentTrack, replay, seek, setSpeed, stopReplay, takeOver, togglePlay } from './replay.js';
 import { chapterAt, formatTime, nextChapterStart, previousChapterStart } from './timeline.js';
 import { openTranscript } from './chrome.js';
 
@@ -40,10 +40,19 @@ function nextChapter() {
 function tryIt() {
   // The demo is live; pausing is all it takes. Play brings the recorded
   // moment back.
-  pause();
-  replay.diverged = true;
-  replay.cursor.visible = false;
+  takeOver();
 }
+
+// The hint at the play button while the player waits for the viewer: at a
+// moment the presenter invites them to look around, or when they took over.
+const invite = computed(() =>
+  replay.invite === 'pause'
+    ? { title: t('walkthrough.invite.pause.title'), body: replay.inviteHint ?? t('walkthrough.invite.pause.body') }
+    : replay.invite === 'wait'
+      ? { title: t('walkthrough.invite.wait.title'), body: t('walkthrough.invite.wait.body') }
+      : null,
+);
+const playText = computed(() => (replay.playing ? t('walkthrough.pause') : replay.invite ? t('walkthrough.continue') : t('walkthrough.play')));
 async function leave() {
   // Away from the walkthrough's page first: stopping remounts the tabs, and
   // on that page a fresh mount would start the walkthrough again.
@@ -72,11 +81,16 @@ watch(
     <nldd-text v-if="track?.generatedVoice" size="sm" color="inherit">{{ t('walkthrough.ai_voice') }}</nldd-text>
     <nldd-progress-bar size="sm" color="donkergeel" :value="progress" max="100" value-display="none" :accessible-label="t('walkthrough.progress_at', { time: timeText })"></nldd-progress-bar>
     <div class="control-row">
-      <nldd-button-bar>
-        <nldd-icon-button variant="inherit-tinted" icon="media-backward-end" :text="t('walkthrough.prev_chapter')" @click="prevChapter"></nldd-icon-button>
-        <nldd-icon-button ref="playButton" variant="inherit-filled" :icon="replay.playing ? 'pause' : 'play'" :text="replay.playing ? t('walkthrough.pause') : t('walkthrough.play')" @click="togglePlay"></nldd-icon-button>
-        <nldd-icon-button variant="inherit-tinted" icon="media-forward-end" :text="t('walkthrough.next_chapter')" @click="nextChapter"></nldd-icon-button>
-      </nldd-button-bar>
+      <!-- The coach mark points at the playback buttons while the player
+           waits: the viewer may click around, and this is the way back.
+           Not dismissable: it goes when play is pressed. -->
+      <nldd-just-in-time-education :active="!!invite || undefined" :text="invite?.title" :supporting-text="invite?.body" placement="top">
+        <nldd-button-bar>
+          <nldd-icon-button variant="inherit-tinted" icon="media-backward-end" :text="t('walkthrough.prev_chapter')" @click="prevChapter"></nldd-icon-button>
+          <nldd-icon-button ref="playButton" variant="inherit-filled" :icon="replay.playing ? 'pause' : 'play'" :text="playText" @click="togglePlay"></nldd-icon-button>
+          <nldd-icon-button variant="inherit-tinted" icon="media-forward-end" :text="t('walkthrough.next_chapter')" @click="nextChapter"></nldd-icon-button>
+        </nldd-button-bar>
+      </nldd-just-in-time-education>
       <span class="time" aria-hidden="true">{{ timeText }}</span>
       <nldd-button-bar>
         <nldd-button variant="inherit-tinted" size="sm" :text="t('walkthrough.chapters')" expandable popup-type="menu">

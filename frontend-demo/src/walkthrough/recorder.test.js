@@ -68,4 +68,13 @@ describe('media fetch', () => {
       { src: 'faq-c.mp4', sha256: 'c' },
     ]);
   });
+
+  it('fetches the short lines too, but not for the replay check', () => {
+    const timeline = {
+      main: { audio: { src: 'main-voice.m4a', sha256: 'v' } },
+      bumpers: { wait: [{ src: 'bumper-wait-a.m4a', sha256: 'w' }], resume: [{ src: 'bumper-resume-b.m4a', sha256: 'r' }] },
+    };
+    expect(mediaFiles(timeline).map((f) => f.src)).toEqual(['main-voice.m4a', 'bumper-wait-a.m4a', 'bumper-resume-b.m4a']);
+    expect(mediaFiles(timeline, { audioOnly: true }).map((f) => f.src)).toEqual(['main-voice.m4a']);
+  });
 });

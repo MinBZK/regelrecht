@@ -138,3 +138,28 @@ it('formats a running time', () => {
   expect(formatTime(75.9)).toBe('1:15');
   expect(formatTime(3725)).toBe('1:02:05');
 });
+
+describe('pauses', () => {
+  it('stops at a pause the clock runs into, not at one it jumps past', async () => {
+    const { pauseDue } = await import('./timeline.js');
+    const pauses = [{ t: 10 }, { t: 20, hint: 'Klik op een wet' }];
+    expect(pauseDue(pauses, 9.98, 10.01)).toEqual({ t: 10 });
+    expect(pauseDue(pauses, 19.99, 20.0)).toEqual({ t: 20, hint: 'Klik op een wet' });
+    // Resumed at the pause itself: not again.
+    expect(pauseDue(pauses, 10, 10.02)).toBeNull();
+    // A seek over it.
+    expect(pauseDue(pauses, 5, 15)).toBeNull();
+    // Backwards.
+    expect(pauseDue(pauses, 10.01, 9.98)).toBeNull();
+    expect(pauseDue(undefined, 9, 10)).toBeNull();
+  });
+
+  it('picks one of the lines at random, or none', async () => {
+    const { pickClip } = await import('./timeline.js');
+    const clips = [{ src: 'a' }, { src: 'b' }];
+    expect(pickClip(clips, () => 0)).toEqual({ src: 'a' });
+    expect(pickClip(clips, () => 0.99)).toEqual({ src: 'b' });
+    expect(pickClip([], () => 0)).toBeNull();
+    expect(pickClip(undefined)).toBeNull();
+  });
+});

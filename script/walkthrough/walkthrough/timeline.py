@@ -347,6 +347,69 @@ def vtt_time(t: float) -> str:
     return f"{h:02d}:{m:02d}:{s:02d}.{ms:03d}"
 
 
+# Sentences in which the presenter hands the demo to the viewer. Matched on
+# the bare words of one sentence; a few words may sit in between ("kijk
+# gerust even zelf rond", "klik maar zelf wat rond").
+INVITATIONS = (
+    r"\bkijk\b(?: \w+){0,4} rond\b",
+    r"\bklik\b(?: \w+){0,4} rond\b",
+    r"\bprobeer (?:het|dat|dit)\b(?: \w+){0,2} zelf\b",
+    r"\bga je gang\b",
+    r"\bspeel\b(?: \w+){0,3} zelf\b",
+)
+
+
+def sentences(words: list[dict]) -> list[list[dict]]:
+    """Words grouped into sentences, at a word ending in . ? or !"""
+    out, cur = [], []
+    for w in words:
+        cur.append(w)
+        if re.search(r"[.?!]['\")]*$", w["word"]):
+            out.append(cur)
+            cur = []
+    if cur:
+        out.append(cur)
+    return out
+
+
+def find_invitations(words: list[dict]) -> list[dict]:
+    """Where the presenter invites the viewer to look around: a pause at the
+    end of each such sentence, with the sentence as it was said."""
+    found = []
+    for s in sentences(words):
+        bare = " ".join(_bare(w["word"]) for w in s)
+        if any(re.search(p, bare) for p in INVITATIONS):
+            found.append({"at": s[-1]["end"], "start": s[-1]["start"], "said": " ".join(w["word"] for w in s)})
+    return found
+
+
+def place_pauses(track: Track, pauses_by_take: dict[str, list[dict]]) -> list[dict]:
+    """Pauses at their output time.
+
+    A pause belongs at the end of its sentence. When that end falls in a cut
+    (the silence after it was shortened) the pause moves to the end of the
+    kept stretch the sentence's last word is in; a sentence cut away
+    entirely takes its pause with it.
+    """
+    out = []
+    for take, pauses in pauses_by_take.items():
+        for pause in pauses:
+            t = track.to_output(take, pause["at"])
+            if t is None and pause.get("start") is not None:
+                p = next((p for p in track.pieces if p.take == take and p.start <= pause["start"] < p.end), None)
+                t = round(p.out + p.length, 3) if p else None
+            if t is not None:
+                out.append({"t": t, **({"hint": pause["hint"]} if pause.get("hint") else {})})
+    out.sort(key=lambda x: x["t"])
+    # Two invitations a moment apart are one pause.
+    merged = []
+    for x in out:
+        if merged and x["t"] - merged[-1]["t"] < 1.0:
+            continue
+        merged.append(x)
+    return merged
+
+
 def norm_cue(text: str) -> str:
     """A caption's text as a key: one line, single spaces."""
     return " ".join(text.split())

@@ -148,6 +148,30 @@ def test_an_edited_subtitle_replaces_what_was_said_and_keeps_its_time():
     assert [(c["start"], c["end"], c["text"]) for c in got] == [(1, 4, "Dat is een kluwen."), (4, 6, "Rond de inkomstenbelasting.")]
 
 
+def test_an_invitation_to_look_around_becomes_a_pause_at_the_end_of_its_sentence():
+    from walkthrough.timeline import find_invitations
+
+    w = lambda text, s, e: {"word": text, "start": s, "end": e}
+    words = [
+        w("Dit", 0, 0.2), w("is", 0.2, 0.3), w("de", 0.3, 0.4), w("graaf.", 0.4, 0.8),
+        w("Kijk", 1.0, 1.2), w("gerust", 1.2, 1.5), w("even", 1.5, 1.7), w("zelf", 1.7, 1.9), w("rond.", 1.9, 2.4),
+        w("Ga", 5.0, 5.1), w("je", 5.1, 5.2), w("gang!", 5.2, 5.6),
+        w("Ik", 7.0, 7.1), w("kijk", 7.1, 7.3), w("naar", 7.3, 7.4), w("de", 7.4, 7.5), w("wet.", 7.5, 7.9),
+    ]
+    found = find_invitations(words)
+    assert [(f["at"], f["said"]) for f in found] == [(2.4, "Kijk gerust even zelf rond."), (5.6, "Ga je gang!")]
+
+
+def test_a_pause_follows_its_sentence_through_the_cuts():
+    from walkthrough.timeline import place_pauses
+
+    track = build_track([{"take": "a"}], {"a": [(2, 4), (9, 9.5)]}, {"a": 12})
+    placed = place_pauses(track, {"a": [{"at": 5, "start": 4.6}, {"at": 9.2, "start": 8.5, "hint": "Klik op een wet"}, {"at": 3, "start": 2.5}]})
+    # 5 s lands at 3 s; 9.2 s is in the cut silence after its sentence and moves
+    # to the end of the stretch its last word is in; the one cut away is gone.
+    assert placed == [{"t": 3}, {"t": 7, "hint": "Klik op een wet"}]
+
+
 def test_long_caption_wraps_on_two_lines():
     text = "Elke organisatie vertaalt de wet opnieuw naar haar eigen software"
     assert wrap(text).count("\n") == 1

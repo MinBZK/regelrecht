@@ -42,6 +42,8 @@ from .media import FPS, ffmpeg
 from .timeline import (
     CutError,
     apply_subtitles,
+    find_invitations,
+    place_pauses,
     build_track,
     captions,
     chapters,
@@ -392,6 +394,27 @@ def words_for(cfg: dict, take: str) -> list[dict]:
     return align_text(words, fixed.read_text()) if fixed.exists() else words
 
 
+def pauses_for(cfg: dict, take: str, words: list[dict]) -> list[dict]:
+    """The pauses of a take, in take time.
+
+    Found in the words where the presenter invites the viewer to look around
+    (`find_invitations`), unless the take sets `auto_pauses: false`; plus the
+    ones in `pauses:` in walkthrough.yaml, where `off: true` removes a found
+    one within a second of `at`.
+    """
+    take_cfg = (cfg.get("takes") or {}).get(take) or {}
+    found = find_invitations(words) if take_cfg.get("auto_pauses", True) else []
+    for p in cfg.get("pauses") or []:
+        if p.get("take") != take:
+            continue
+        at = float(p["at"])
+        if p.get("off"):
+            found = [f for f in found if abs(f["at"] - at) > 1.0]
+        else:
+            found.append({"at": at, "start": at, **({"hint": p["hint"]} if p.get("hint") else {})})
+    return sorted(found, key=lambda f: f["at"])
+
+
 def cuts_for(cfg: dict, take: str) -> list[tuple[float, float]]:
     raw = ((cfg.get("takes") or {}).get(take) or {}).get("cuts") or []
     return [(float(c["from"]), float(c["to"])) for c in raw]
@@ -510,6 +533,7 @@ def render_recorded(name: str, segments: list[dict], cfg: dict, overrides: dict,
         "chapters": chapters(track, events, overrides),
         "events": remap_actions(track, events),
         "words": remap_words(track, words),
+        "pauses": place_pauses(track, {t: pauses_for(cfg, t, words[t]) for t in takes}),
         "slides": deck_of(lead, overrides),
         "recordedAt": meta.get("startedAt"),
         "viewport": meta.get("viewport"),
@@ -590,6 +614,8 @@ def render_scripted(name: str, seg: dict, cfg: dict, overrides: dict, workdir: P
         "recordedAt": meta.get("startedAt"),
         "viewport": meta.get("viewport"),
         "pieces": [{"script": seg["script"], "at": 0.0}],
+        # A script says its invitations too; its words are already in output time.
+        "pauses": [{"t": round(f["at"], 3)} for f in find_invitations(plan["words"])],
         "generated": True,
     }
 
@@ -611,8 +637,9 @@ def render_track(name: str, segments: list[dict], cfg: dict, overrides: dict, de
 
     offset = 0.0
     seams = []  # where one part hands over to the next
-    chs, acts, words, pieces = [], [], [], []
+    chs, acts, words, pieces, pauses = [], [], [], [], []
     for part in parts:
+        pauses += [{**x, "t": round(x["t"] + offset, 3)} for x in part.get("pauses") or []]
         for c in part["chapters"]:
             chs.append({**c, "start": round(c["start"] + offset, 3), "end": round(c["end"] + offset, 3)})
         acts += [{**e, "t": round(e["t"] + offset, 3)} for e in part["events"]]
@@ -679,6 +706,8 @@ def render_track(name: str, segments: list[dict], cfg: dict, overrides: dict, de
     entry["generatedVoice"] = any(p.get("generated") for p in parts)
     entry["chapters"] = merged
     entry["events"] = sorted(acts, key=lambda e: e["t"])
+    # Where the player stops by itself and invites the viewer to look around.
+    entry["pauses"] = sorted(pauses, key=lambda x: x["t"])
     # A caption ends at a chapter and at a seam between parts: a sentence cut
     # off at the end of the recorded opening is not continued by the voice.
     cues = captions(sorted(words, key=lambda w: w["start"]), breaks=[c["start"] for c in merged[1:]] + seams[:-1])
@@ -805,6 +834,7 @@ def build(release: str | None = None) -> None:
                         raise SystemExit(f"walkthrough.yaml: vraag '{f['id']}' wijst naar hoofdstuk {idx}, er zijn er {len(main['chapters'])}")
                     at = main["chapters"][idx]["start"] + float(offer.get("after", 0))
                 faqs.append({"id": f["id"], "question": f["question"], "offer": at, **entry})
+            bumpers = render_bumpers(cfg, media_out, work)
         except CutError as e:
             raise SystemExit(f"walkthrough.yaml: {e}")
         # A rebuild replaces everything: stale media under an old hash would be
@@ -823,10 +853,46 @@ def build(release: str | None = None) -> None:
         "presenter": cfg.get("presenter") or {},
         "main": main,
         "faq": faqs,
+        "bumpers": bumpers,
     }
     (CORPUS / "timeline.json").write_text(json.dumps(timeline, ensure_ascii=False, indent=1) + "\n")
     total = sum(sum((t.get(k) or {}).get("bytes") or 0 for k in ("audio", "video", "cam")) for t in [main, *faqs])
     say(f"klaar: {main['duration']:.0f}s rondleiding, {len(faqs)} vragen, {total / 1e6:.0f} MB media in {PUBLIC.relative_to(ROOT)}")
+
+
+def render_bumpers(cfg: dict, dest: Path, workdir: Path) -> dict:
+    """The short lines the player says when the viewer takes over.
+
+    `bumpers: {wait: [...], resume: [...]}` in walkthrough.yaml, each a
+    stretch of a take (`take`, `from`, `to`): "Ga je gang, kijk maar even
+    rond, ik wacht." when the viewer starts clicking, "Oké, we gaan verder."
+    when they press play again. Each becomes its own small audio file, as
+    loud as the walkthrough; the player picks one at random. None configured:
+    the player only shows its hint.
+    """
+    out: dict = {}
+    for kind in ("wait", "resume"):
+        clips = []
+        for i, c in enumerate(((cfg.get("bumpers") or {}).get(kind)) or []):
+            take, lo, hi = c["take"], float(c["from"]), float(c["to"])
+            if hi <= lo:
+                raise SystemExit(f"walkthrough.yaml: bumpers.{kind}[{i}] eindigt voor het begint")
+            src = take_dir(take) / "voice.wav"
+            if not src.exists():
+                clean(take)
+            raw = workdir / f"bumper-{kind}-{i}-raw.wav"
+            fade = min(0.03, (hi - lo) / 4)
+            ffmpeg("-i", src, "-af", f"atrim=start={lo}:end={hi},asetpts=PTS-STARTPTS,afade=t=in:d={fade},afade=t=out:st={hi - lo - fade:.4f}:d={fade}", "-ac", "1", "-ar", "48000", raw)
+            norm = workdir / f"bumper-{kind}-{i}.wav"
+            media.loudnorm(raw, norm)
+            m4a = workdir / f"bumper-{kind}-{i}.m4a"
+            ffmpeg("-i", norm, "-c:a", "aac", "-b:a", "96k", "-ac", "1", "-movflags", "+faststart", m4a)
+            clips.append({**hashed(m4a, f"bumper-{kind}", dest), "duration": round(hi - lo, 3)})
+        if clips:
+            out[kind] = clips
+    if out:
+        say(f"tussenzinnen: {len(out.get('wait', []))} wachten, {len(out.get('resume', []))} verder")
+    return out
 
 
 # ---- reading back ------------------------------------------------------------------
@@ -935,6 +1001,7 @@ def publish(tag: str, yes: bool) -> None:
         raise SystemExit("nog geen timeline.json; draai eerst `just walkthrough build`")
     tracks = [timeline["main"], *(timeline.get("faq") or [])]
     files = [PUBLIC / m["src"] for t in tracks for m in (t.get("audio"), t.get("video"), t.get("cam")) if m]
+    files += [PUBLIC / b["src"] for clips in (timeline.get("bumpers") or {}).values() for b in clips]
     missing = [f.name for f in files if not f.exists()]
     if missing:
         raise SystemExit(f"ontbreken in {PUBLIC.relative_to(ROOT)}: {missing}; draai `just walkthrough build` opnieuw")

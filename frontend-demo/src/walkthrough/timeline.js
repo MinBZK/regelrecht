@@ -180,3 +180,18 @@ export function profileAt(track, i) {
   }
   return null;
 }
+
+/**
+ * The pause the clock just reached, or null: one with `prev < t <= now`.
+ * Only for a clock that ran (a tick of a few frames); a jump (a seek, a
+ * chapter) passes pauses without stopping at them.
+ */
+export function pauseDue(pauses, prev, now, maxStep = 1) {
+  if (!(now > prev) || now - prev > maxStep) return null;
+  return (pauses ?? []).find((p) => p.t > prev && p.t <= now) ?? null;
+}
+
+/** One of `clips` at random, or null. */
+export function pickClip(clips, random = Math.random) {
+  return clips?.length ? clips[Math.floor(random() * clips.length) % clips.length] : null;
+}
