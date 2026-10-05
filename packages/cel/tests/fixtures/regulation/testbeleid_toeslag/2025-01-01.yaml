@@ -97,6 +97,9 @@ articles:
     text: |-
       1. Wie via het portaal een maandtoeslag aanvraagt, ondertekent de aanvraag met het persoonsnummer waarmee hij inlogt.
       2. Het portaal legt bij de aanvraag vast met welk persoonsnummer is ingelogd en langs welke weg de aanvraag binnenkwam.
+    # Een haak op de aanvraag van artikel 1 van de testregeling alleen
+    # (RFC-046, established_by): de engine vuurt hem als die aanvraag wordt
+    # uitgevoerd, en zijn velden horen bij die aanvraag.
     machine_readable:
       executes:
         - {article: testregeling_toeslag#1}
@@ -104,6 +107,9 @@ articles:
         - regulation: testregeling_awb
           parameter: ondertekening
           origin: {waarde: KANAAL, grondslag: testbeleid_toeslag#4 lid 1}
+      hooks:
+        - hook_point: pre_actions
+          applies_to: {submission: AANVRAAG, established_by: testregeling_toeslag#1}
       execution:
         produces:
           legal_character: TOETS
@@ -111,7 +117,7 @@ articles:
           extensions:
             chronolex:
               establishes:
-                - extends: aanvraag_ontvangen
+                - extends: {submission: AANVRAAG}
                   legal_basis: [testbeleid_toeslag#4 lid 2]
                   fields:
                     persoonsnummer: {type: string, origin: {waarde: KANAAL, grondslag: testbeleid_toeslag#4 lid 2}}
@@ -129,7 +135,13 @@ articles:
     # Het personenregister is hier een vaste tabel: de fixture heeft geen
     # register, en het gaat om de vorm (notitie "het gram uit de wet", besluit
     # 3 van 29-09: herkomst per keer).
+    # Ook een haak op de aanvraag van artikel 1: wat hij vraagt en de
+    # aanvraag (nog) niet kent, is niet verplicht, want de engine voert hem
+    # bij elke uitvoering van artikel 1 uit (RFC-036: onbekend, geen fout).
     machine_readable:
+      hooks:
+        - hook_point: pre_actions
+          applies_to: {submission: AANVRAAG, established_by: testregeling_toeslag#1}
       execution:
         produces:
           legal_character: TOETS
@@ -137,10 +149,10 @@ articles:
           extensions:
             chronolex:
               establishes:
-                - extends: aanvraag_ontvangen
+                - extends: {submission: AANVRAAG}
                   prefill: {naam_aanvrager: {output: naam_in_personenregister}}
         parameters:
-          - {name: persoonsnummer, type: string, required: true}
+          - {name: persoonsnummer, type: string, required: false}
         output:
           - {name: naam_in_personenregister, type: string, nullable: true}
         actions:

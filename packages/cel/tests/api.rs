@@ -5090,13 +5090,13 @@ async fn the_application_gram_comes_from_the_law() {
         via.contains(&("maand".into(), "establishes".into())),
         "{via:?}"
     );
-    assert!(
-        via.contains(&("kanaal".into(), "extends".into())),
-        "{via:?}"
-    );
+    // The policy of the service is a hook on the application of art. 1
+    // (`established_by`), not an extension by event name.
+    assert!(via.contains(&("kanaal".into(), "hook".into())), "{via:?}");
     // The combination is an execution (RFC-046): running art. 1, the
     // engine fires the fictitious Awb art. 9 as a hook on the application,
-    // because art. 2 and 3 decide on it and are beschikkingen.
+    // because art. 2 and 3 decide on it and are beschikkingen, and the
+    // policy articles that work out this application.
     let (_, assessed, _) = call(
         &app,
         "POST",
@@ -5109,6 +5109,7 @@ async fn the_application_gram_comes_from_the_law() {
         .as_str()
         .unwrap_or_default();
     assert!(trace.contains("testregeling_awb:9"), "{assessed}");
+    assert!(trace.contains("testbeleid_toeslag:5"), "{assessed}");
 
     let (status, body, _) = call(
         &app,

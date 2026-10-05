@@ -109,7 +109,7 @@
           "description": "The event this article establishes, by its name in the chronicle."
         },
         "extends": {
-          "description": "The event (by name) that this article extends, or the submission its hook applies to ({submission: <STAGE>}).",
+          "description": "The event (by name) that this article extends, or the submission its hook applies to ({submission: <KIND>}): the article takes part when the engine fires its hook on executing the article that establishes the submission.",
           "oneOf": [
             {
               "$ref": "common.json#/definitions/identifier"

@@ -23,9 +23,15 @@
 //! not here. Wpp 102 says that it establishes an application
 //! (`produces.submission`); Wpp 107 says that it decides on it
 //! (`produces.decides_on`); Awb 4:2 hooks onto every application on which a
-//! beschikking is taken. The engine fires those hooks when Wpp 102 runs, and
-//! [`establish`] asks the engine which hooks those are
-//! (`find_submission_hooks`), so the gram and the execution cannot disagree.
+//! beschikking is taken, and the policy of the authority onto the application
+//! of Wpp 102 only (`applies_to.established_by`). [`establish`] executes the
+//! establishing article with what it knows of an application (nothing); the
+//! engine fires the hooks and, missing what they ask, yields with the model
+//! of the application: the articles that take part and every parameter they
+//! ask, with its type, `required` and origin
+//! ([`regelrecht_engine::Submission`]). The cel takes the articles and the
+//! parameters from that answer, so the gram and the execution cannot
+//! disagree.
 //!
 //! A stream names per event the article that establishes it (`establishes:`)
 //! and holds only the registration: which cell records the fact, and through
@@ -44,8 +50,12 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::NaiveDate;
-use regelrecht_engine::{Article, ArticleBasedLaw, DecisionOn, LawExecutionService};
-use regelrecht_law_model::{Declared, Origin, OriginOverride, OriginRole, OriginValue};
+use regelrecht_engine::{
+    Article, ArticleBasedLaw, DecisionOn, ExecutionOutcome, LawExecutionService, Submission,
+};
+use regelrecht_law_model::{
+    Declared, HookFilter, Origin, OriginOverride, OriginRole, OriginValue, Parameter,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -98,8 +108,10 @@ impl Reads {
 
 /// What an extension extends: an event by name, or the submission (such as an
 /// application) that a hook of the article applies to (RFC-046). Which
-/// submission that is, the engine says: the article takes part when its hook
-/// fires on the article that establishes the submission.
+/// submission that is, the engine says: the article takes part when it is
+/// among the hooks the engine fires on executing the establishing article
+/// (the general law on every application for a beschikking, the policy that
+/// works out one law's application with `applies_to.established_by`).
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(untagged)]
 pub enum Extends {
@@ -293,8 +305,8 @@ pub struct FieldType {
 }
 
 /// How a field came into the gram: from the article that establishes the
-/// event, from one that extends it by name, or from one that hooks onto its
-/// stage.
+/// event, from one that extends it by name, or from one the engine fires as a
+/// hook on the submission (RFC-046).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Via {
@@ -771,15 +783,14 @@ fn stage_fields(
 /// character.
 type Decided = (Vec<DecisionOn>, Option<String>, Option<String>);
 
-/// What is taken on a submission decides its stage and the hooks that apply
-/// (RFC-046): the decisions that name the establishing article in
-/// `produces.decides_on`, their legal character, and the first stage of the
-/// procedure for it (RFC-008: AANVRAAG). `None` stage: no decision is taken
-/// on it, or its procedure has no stages (a regulation of general scope, for
-/// which Awb 4:2 does not apply). More than one legal character is an error
-/// until there is a real case for it.
-fn decided(service: &LawExecutionService, law_id: &str, article: &str) -> Result<Decided, String> {
-    let decisions = service.resolver().decisions_on(law_id, article).to_vec();
+/// What is taken on a submission decides its stage (RFC-046): the decisions
+/// the engine names on the executed submission (the articles that name the
+/// establishing article in `produces.decides_on`), their legal character,
+/// and the first stage of the procedure for it (RFC-008: AANVRAAG). `None`
+/// stage: no decision is taken on it, or its procedure has no stages (a
+/// regulation of general scope, for which Awb 4:2 does not apply). More than
+/// one legal character is an error until there is a real case for it.
+fn decided(service: &LawExecutionService, decisions: Vec<DecisionOn>) -> Result<Decided, String> {
     let characters: BTreeSet<&str> = decisions
         .iter()
         .map(|d| d.legal_character.as_str())
@@ -800,6 +811,61 @@ fn decided(service: &LawExecutionService, law_id: &str, article: &str) -> Result
         .and_then(|p| p.stages.first())
         .map(|s| s.name.clone());
     Ok((decisions, stage, Some(lc)))
+}
+
+/// The day the cel executes the law on to read the shape of an event:
+/// `date`, or without one the latest day a loaded regulation takes effect,
+/// on which the newest version of each applies (the version [`articles`]
+/// reads without a date).
+fn execution_day(
+    service: &LawExecutionService,
+    date: Option<NaiveDate>,
+) -> Result<NaiveDate, String> {
+    if let Some(d) = date {
+        return Ok(d);
+    }
+    let resolver = service.resolver();
+    resolver
+        .list_laws()
+        .into_iter()
+        .filter_map(|id| resolver.get_law(id))
+        .filter_map(|l| {
+            let day = l.valid_from.as_deref().unwrap_or(&l.publication_date);
+            NaiveDate::parse_from_str(day, "%Y-%m-%d").ok()
+        })
+        .max()
+        .ok_or_else(|| "no loaded regulation says from when it applies".to_string())
+}
+
+/// Execute the article that establishes a submission (RFC-046) with what the
+/// cel knows of an application: nothing. The engine fires the hooks on it
+/// and yields with the model of the application (the articles that take part
+/// and what they ask); an application whose articles ask nothing required is
+/// computed at once, with the same model on the result.
+fn execute_submission(
+    service: &LawExecutionService,
+    law_id: &str,
+    article: &Article,
+    day: NaiveDate,
+) -> Result<Submission, String> {
+    let output = outputs(article).into_iter().next().ok_or_else(|| {
+        "establishes a submission, but has no output to execute it by".to_string()
+    })?;
+    match service.execute_stage(law_id, &output, None, BTreeMap::new(), &day.to_string()) {
+        Ok(ExecutionOutcome::Yielded {
+            submission: Some(s),
+            ..
+        }) => Ok(*s),
+        Ok(ExecutionOutcome::Complete(r)) => r
+            .submission
+            .map(|s| *s)
+            .ok_or_else(|| "the engine executed it without naming its submission".to_string()),
+        Ok(ExecutionOutcome::Yielded { pending_inputs, .. }) => Err(format!(
+            "the engine waits for {} on a procedure stage, not on the submission",
+            pending_inputs.join(", ")
+        )),
+        Err(e) => Err(format!("executing it as a submission fails: {e}")),
+    }
 }
 
 /// Fill in the events with `establishes` from the law, in the version that
@@ -879,8 +945,11 @@ struct Part<'a, 's> {
     law: &'a LawArticle<'s>,
     establishment: &'a Establishment,
     via: Via,
-    /// For a hook: the `decided_by` of the `applies_to` that fitted.
-    decided_by: Option<String>,
+    /// For a hook: the `applies_to` the engine fired it by.
+    applies_to: Option<HookFilter>,
+    /// The parameters of the article: for a submission as the engine names
+    /// them in its model (what the article asks), otherwise as declared.
+    parameters: Vec<Parameter>,
 }
 
 impl Part<'_, '_> {
@@ -982,8 +1051,8 @@ fn part_fields(
         Some(Fields::Selection(s)) => {
             let mut out = Vec::new();
             for name in &s.parameters {
-                let p = article
-                    .get_parameters()
+                let p = part
+                    .parameters
                     .iter()
                     .find(|p| &p.name == name)
                     .ok_or_else(|| {
@@ -991,8 +1060,8 @@ fn part_fields(
                     })?;
                 out.push(from_parameter(p));
             }
-            for p in article
-                .get_parameters()
+            for p in part
+                .parameters
                 .iter()
                 .filter(|p| !s.parameters.contains(&p.name))
             {
@@ -1010,7 +1079,7 @@ fn part_fields(
         // application; any other parameter is passed over, with the reason.
         Some(Fields::Keyword(t)) if t == "parameters" => {
             let mut out = Vec::new();
-            for p in article.get_parameters() {
+            for p in &part.parameters {
                 match p.origin.as_ref().and_then(Declared::as_valid) {
                     Some(o)
                         if matches!(
@@ -1223,16 +1292,27 @@ fn event_chain(
         if !hooks_seen.insert(&p.law.reference) {
             continue;
         }
+        let narrowed = p
+            .applies_to
+            .iter()
+            .flat_map(|f| {
+                [
+                    f.decided_by
+                        .as_deref()
+                        .map(|d| format!(", decided_by: {d}")),
+                    f.established_by
+                        .as_deref()
+                        .map(|e| format!(", established_by: {e}")),
+                ]
+            })
+            .flatten()
+            .collect::<String>();
         chain.push(Step::new(
             StepKind::Hook,
             SourceRef::law(&p.law.reference),
             format!(
-                "de engine vindt de haak: applies_to: {{submission: {}{}}} past",
+                "de engine vuurt de haak bij het uitvoeren van {reference}: applies_to: {{submission: {}{narrowed}}} past",
                 submission.unwrap_or_default(),
-                p.decided_by
-                    .as_deref()
-                    .map(|d| format!(", decided_by: {d}"))
-                    .unwrap_or_default()
             ),
         ));
     }
@@ -1283,8 +1363,13 @@ fn field_explanation(
                 }) {
                     let mut s = s.clone();
                     if s.kind == StepKind::Hook {
-                        s.reason =
-                            format!("{}; neemt zijn parameters als velden ({how})", s.reason);
+                        s.reason = if how.starts_with("fields: parameters")
+                            || how.starts_with("fields: {parameters")
+                        {
+                            format!("{}; neemt zijn parameters als velden ({how})", s.reason)
+                        } else {
+                            format!("{}; neemt '{}' op ({how})", s.reason, d.name)
+                        };
                     }
                     if !here.contains(&s) {
                         here.push(s);
@@ -1384,7 +1469,8 @@ fn establish_event(
                     law: wa,
                     establishment: v,
                     via: Via::Establishes,
-                    decided_by: None,
+                    applies_to: None,
+                    parameters: wa.article.get_parameters().to_vec(),
                 });
                 found = true;
             } else if v.extends_event() == Some(name.as_str()) {
@@ -1412,22 +1498,45 @@ fn establish_event(
     };
     let bv = parts[basis].establishment;
     let bwa = parts[basis].law;
-    // A submission (RFC-046): the engine says which articles hook onto it,
-    // by the rule it fires them when the establishing article runs, and which
-    // decisions are taken on it. An article that produces a submission may
-    // establish other facts too (Wpp 102 also the verdict on a late
-    // application); the submission is the event it establishes without a
-    // type of its own.
+    // A submission (RFC-046): the cel executes the establishing article and
+    // takes from the engine's answer which articles hook onto it (by the
+    // rule the engine fires them), which decisions are taken on it and what
+    // each article asks. An article that produces a submission may establish
+    // other facts too (Wpp 102 also the verdict on a late application); the
+    // submission is the event it establishes without a type of its own.
     let submission = bwa
         .article
         .get_produces()
         .and_then(|p| p.submission.as_ref())
         .filter(|_| bv.type_.is_none())
         .map(|s| s.kind.clone());
-    let (law_id, number) = (&bwa.regulation.id, &bwa.article.number);
-    let (decided_on, stage, legal_character) = match &submission {
+    let law_id = &bwa.regulation.id;
+    let executed = match &submission {
+        None => None,
+        Some(_) => match execution_day(service, date)
+            .and_then(|day| execute_submission(service, law_id, bwa.article, day))
+        {
+            Ok(m) => Some(m),
+            Err(f) => {
+                errors.push(format!("{}: {f}", bwa.reference));
+                return Err(errors);
+            }
+        },
+    };
+    // What the article asks, as the engine names it in the model.
+    let asked = |m: &Submission, reference: &str| -> Vec<Parameter> {
+        m.inputs
+            .iter()
+            .filter(|i| format!("{}#{}", i.law_id, i.article_number) == reference)
+            .map(|i| i.parameter.clone())
+            .collect()
+    };
+    if let Some(m) = &executed {
+        parts[basis].parameters = asked(m, &bwa.reference);
+    }
+    let (decided_on, stage, legal_character) = match &executed {
         None => (Vec::new(), bv.stage.clone(), None),
-        Some(_) => match decided(service, law_id, number) {
+        Some(m) => match decided(service, m.decisions.clone()) {
             Ok((d, s, lc)) => (d, bv.stage.clone().or(s), lc),
             Err(f) => {
                 errors.push(format!("{}: {f}", bwa.reference));
@@ -1440,36 +1549,33 @@ fn establish_event(
         .map(|d| format!("{}#{}", d.law_id, d.article_number))
         .collect();
 
-    // The articles that hook onto the submission (the general law that
-    // applies itself), then the extensions by name (the specific law and the
-    // policy), each sorted by reference so the order is stable. The legal
-    // basis of the gram follows this order: the establishing article first.
-    if let Some(kind) = &submission {
-        let resolver = service.resolver();
-        let mut hooked: Vec<(String, Option<String>)> = Vec::new();
-        for point in [
-            regelrecht_law_model::HookPoint::PreActions,
-            regelrecht_law_model::HookPoint::PostActions,
-        ] {
-            for h in resolver.find_submission_hooks(point, kind, law_id, number) {
-                let r = format!("{}#{}", h.law_id, h.article_number);
-                if !hooked.iter().any(|(x, _)| *x == r) {
-                    hooked.push((r, h.filter().decided_by.clone()));
-                }
-            }
-        }
-        hooked.sort();
-        for (r, decided_by) in &hooked {
+    // The articles the engine fired as hooks on the submission (the general
+    // law that applies itself, the policy that works it out), then the
+    // extensions by name, each sorted by reference so the order is stable.
+    // The legal basis of the gram follows this order: the establishing
+    // article first.
+    if let (Some(kind), Some(m)) = (&submission, &executed) {
+        let mut hooked: Vec<(String, &HookFilter)> = m
+            .articles
+            .iter()
+            .filter_map(|a| {
+                let h = a.hook.as_ref()?;
+                Some((format!("{}#{}", a.law_id, a.article_number), &h.applies_to))
+            })
+            .collect();
+        hooked.sort_by(|a, b| a.0.cmp(&b.0));
+        for (r, applies_to) in hooked {
             // A hook article without a chronolex block takes part in the
             // execution but adds nothing to the gram.
-            let Some(wa) = law.get(r) else { continue };
+            let Some(wa) = law.get(&r) else { continue };
             for v in &wa.chronolex.establishes {
                 if v.extends_submission() == Some(kind.as_str()) {
                     parts.push(Part {
                         law: wa,
                         establishment: v,
                         via: Via::Hook,
-                        decided_by: decided_by.clone(),
+                        applies_to: Some(applies_to.clone()),
+                        parameters: asked(m, &r),
                     });
                 }
             }
@@ -1482,7 +1588,8 @@ fn establish_event(
                     law: wa,
                     establishment: v,
                     via: Via::Extends,
-                    decided_by: None,
+                    applies_to: None,
+                    parameters: wa.article.get_parameters().to_vec(),
                 });
             }
         }
@@ -3012,6 +3119,8 @@ articles:
                   fields: [in_verzuim]
         parameters:
           - {name: statutaire_naam, type: string, required: false, origin: {waarde: BELANGHEBBENDE, grondslag: 'testwet_bijzonder#1'}}
+        output: [{name: aangevraagd, type: boolean}]
+        actions: [{output: aangevraagd, value: true}]
   - number: '2'
     text: De instantie besluit op de aanvraag.
     url: https://example.com/testwet_bijzonder/2
@@ -3035,6 +3144,8 @@ articles:
                 - event: regeling_verzocht
                   subtype: verzoek
                   fields: [onderwerp]
+        output: [{name: verzocht, type: boolean}]
+        actions: [{output: verzocht, value: true}]
   - number: '4'
     text: De instantie stelt de regeling vast.
     url: https://example.com/testwet_bijzonder/4
@@ -3161,6 +3272,87 @@ articles:
         assert!(via.contains(&("ondertekening", "hook")), "{via:?}");
         assert!(via.contains(&("nummer", "extends")), "{via:?}");
         assert!(via.contains(&("statutaire_naam", "establishes")), "{via:?}");
+    }
+
+    /// Policy that works out the application of one law is a hook on that
+    /// application (`established_by`), not an extension by event name: the
+    /// engine fires it when the establishing article runs, and what it asks
+    /// (even a required input the application lacks) comes back in the
+    /// model instead of failing the execution.
+    #[test]
+    fn policy_on_one_application_takes_part_as_a_hook_the_engine_fires() {
+        let hooked_policy = r#"
+$id: testbeleid_rekening
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.com/testbeleid_rekening
+competent_authority: {name: De instantie}
+articles:
+  - number: '1'
+    text: Wie een bijdrage aanvraagt, geeft het rekeningnummer op.
+    url: https://example.com/testbeleid_rekening/1
+    machine_readable:
+      hooks:
+        - hook_point: pre_actions
+          applies_to: {submission: AANVRAAG, established_by: 'testwet_bijzonder#1'}
+      execution:
+        produces:
+          legal_character: TOETS
+          decision_type: GEEN_BESLUIT
+          extensions:
+            chronolex:
+              establishes:
+                - extends: {submission: AANVRAAG}
+                  fields: {parameters: [iban]}
+        parameters:
+          - {name: iban, type: string, required: true, origin: {waarde: BELANGHEBBENDE, grondslag: 'testbeleid_rekening#1'}}
+          - {name: controle_gedaan, type: boolean, required: true}
+        output: [{name: rekening_bekend, type: boolean}]
+        actions: [{output: rekening_bekend, value: true}]
+"#;
+        let mut s = LawExecutionService::new();
+        for t in [GENERAL, SPECIFIC, POLICY, hooked_policy] {
+            s.load_law(t).unwrap();
+        }
+        let mut streams = vec![crate::stream::parse(
+            "$id: test_bijdragen\nrecording_actor: test_instantie\nchronicle: test_kroniek\nevents:\n  - {name: bijdrage_aangevraagd, establishes: 'testwet_bijzonder#1', intake: portaal}\n  - {name: regeling_verzocht, establishes: 'testwet_bijzonder#3', intake: portaal}\n",
+            "test",
+        )
+        .unwrap()];
+        assert_eq!(establish(&mut streams, &s, None), Vec::<String>::new());
+        let e = &streams[0].events[0];
+        assert!(e.establishes.contains(&"testbeleid_rekening#1".to_string()));
+        let iban = e.field_defs.iter().find(|d| d.name == "iban").unwrap();
+        assert_eq!(iban.via, Via::Hook);
+        assert_eq!(iban.declared_by, "testbeleid_rekening#1");
+        assert!(!iban.optional);
+        // The parameter without origin is asked, but no content of the
+        // application.
+        assert!(e
+            .explanation
+            .excluded
+            .iter()
+            .any(|x| x.parameter == "controle_gedaan"));
+        let hook = e
+            .explanation
+            .event
+            .iter()
+            .find(|st| st.source.law.as_deref() == Some("testbeleid_rekening#1"))
+            .unwrap();
+        assert_eq!(hook.kind, StepKind::Hook);
+        assert!(
+            hook.reason
+                .contains("de engine vuurt de haak bij het uitvoeren van testwet_bijzonder#1")
+                && hook.reason.contains("established_by: testwet_bijzonder#1"),
+            "{hook:?}"
+        );
+        // The other application of the same law is not what the policy is
+        // about.
+        let other = &streams[0].events[1];
+        assert!(!other
+            .establishes
+            .contains(&"testbeleid_rekening#1".to_string()));
     }
 
     /// Awb 4:2 applies to an application for a decision (beschikking), not
