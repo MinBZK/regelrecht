@@ -34,10 +34,8 @@ toelichting: |-
   dit werkpakket over gaat. Het andere is de machine-uitvoerbare interpretatie
   van één regeling, het ding dat een jurist vaststelt. Dat tweede heet nu een
   regelwerk: de wettekst met de uitvoerbare interpretatie ernaast, met een
-  versie voor elke datum waarop de tekst is gaan gelden. De taal heet
-  Regelrechts, zoals de taal van Nederland Nederlands heet. Een regelwerk is
-  geschreven in het Regelrechts en voldoet aan het schema; de taal en het
-  schema zijn zelf geen regelwerk. De
+  versie voor elke datum waarop de tekst is gaan gelden. Een regelwerk voldoet
+  aan het schema; de taal en het schema zijn zelf geen regelwerk. De
   werkpakketten "Vaststelling van regelwerken" en "Juridische status van een
   regelwerk" gaan over het tweede. Hun adres draagt nog het oude woord, omdat
   een adres een verwijzing is die niet meebeweegt met de titel.

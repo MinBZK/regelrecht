@@ -3,7 +3,7 @@ title: "Law Format"
 description: "How a rulework is put together, walked through on one real article of the Wet op de zorgtoeslag."
 ---
 
-Laws in RegelRecht are stored as YAML files that conform to the [law schema](/reference/schema). Each file holds one regulation as it reads at one point in time: the published text, article by article, and next to an article's text the logic that executes it. The files of one regulation together are its rulework (Dutch: *regelwerk*), and each file is a version of it. The language they are written in is called Regelrechts.
+Laws in RegelRecht are stored as YAML files that conform to the [law schema](/reference/schema). Each file holds one regulation as it reads at one point in time: the published text, article by article, and next to an article's text the logic that executes it. The files of one regulation together are its rulework (Dutch: *regelwerk*), and each file is a version of it.
 
 This page explains how such a file is put together and why it looks the way it does, using one real article as the thread. It does not list fields. The [Schema Reference](/reference/schema) does that, generated from the released schema, so what you read there cannot fall behind the contract. Where this page mentions a field, it links to the entry that defines it.
 

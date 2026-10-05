@@ -54,17 +54,14 @@ from `packages/engine/build.rs`): change `grammar.yaml` and run
 `just bdd-codegen`. A failing law-validation scenario (bucket A, next to a law)
 means a law changed or the scenario is stale, and a human decides which.
 
-## Vocabulary: Regelrechts and regelwerk
+## Vocabulary: regelwerk
 
-The definitions are in the glossary (`docs/src/content/docs/reference/glossary.md`,
+The definition is in the glossary (`docs/src/content/docs/reference/glossary.md`,
 under "RegelRecht-Specific Terms") and the reasoning in RFC-044. What follows is
-how to apply them when you write.
+how to apply it when you write.
 
-- **Regelrechts** is the name of the language. It is a proper name and stays
-  untranslated. "The law format" and *wetformaat* remain as descriptions of the
-  notation; do not replace them wholesale.
 - **A regelwerk** (English: rulework, Frisian: regelwurk) is one regulation as
-  recorded in Regelrechts, identified by its `$id`. Each dated YAML file is a
+  recorded in the law format, identified by its `$id`. Each dated YAML file is a
   **version** of it. Count versions when you mean files, and regelwerken when
   you mean `$id`s.
 
@@ -78,8 +75,8 @@ Which word a sentence needs:
   screen a citizen reads keeps those words too; regelwerk is a word for the
   people who make and review them.
 - **The schema and the language are not a regelwerk**, and the word never
-  becomes a prefix for them. A regelwerk is written in Regelrechts and conforms
-  to the schema. The prose linter in `.claude/skills/docs-writing/` rejects such
+  becomes a prefix for them. A regelwerk is written in the law format and
+  conforms to the schema. The prose linter in `.claude/skills/docs-writing/` rejects such
   compounds.
 
 Replacing an older word is a judgement per occurrence, never a search and

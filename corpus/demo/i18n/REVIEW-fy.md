@@ -89,7 +89,7 @@ is: in tekst dêr't men rjochten oan ûntliene kin`.
 - **`regelingen`** als meervoud: de `-ing`-meervouden lopen tussen Fries en
   Nederlands soms uiteen.
 - **`regelwurk`, meervoud `regelwurken`**, voor het Nederlandse "regelwerk":
-  één regeling zoals die in Regelrechts is vastgelegd, met een versie per datum. Het
+  één regeling zoals die in YAML is vastgelegd, met een versie per datum. Het
   Nederlandse woord is zelf
   een nieuwe vakterm (RFC-044), en het Friese is er letter voor letter van
   afgeleid; geen vertaler heeft het gezien. Wat vaststaat: `wurk` is het Friese
