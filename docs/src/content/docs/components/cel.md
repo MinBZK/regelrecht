@@ -15,7 +15,7 @@ Cells are configuration and processes follow from the law, not from code. The ru
 
 - **Language**: Rust (axum) for the runtime, Vue 3 with Vite and `@nldd/design-system` for the frontend
 - **Location**: `packages/cel/` and `frontend-cel/`
-- **Schemas**: `schema/chronolex/v0.3.0/` (`cell.json`, `stream.json`, `lexostatus.json`, `gram.json`, `synthesis.json`, `channels.json`, `registers.json`, `examples.json`), with the definitions they share, such as a synthesis source and the synthesis per row, in `common.json`. The runtime embeds them and validates every configuration file at load, with errors that name the file.
+- **Schemas**: `schema/chronolex/v0.3.0/` (`cell.json`, `stream.json`, `lexostatus.json`, `gram.json`, `synthesis.json`, `channels.json`, `registers.json`, `examples.json`, `initial_state.json` for each line of an initial state), with the definitions they share, such as a synthesis source and the synthesis per row, in `common.json`. The runtime embeds them and validates every configuration file at load, with errors that name the file.
 - **Run locally**: `just cel` starts the runtime on port 7170 with the fixture cells and processes, and the frontend on port 7171
 - **Frontend checks**: `npm test -w cel` (vitest) and `npm run build -w cel` run in CI's frontend job; `frontend-cel/src/nldd-components.js` imports only the design-system components in use and is kept in sync by `script/check-nldd-imports.mjs`
 

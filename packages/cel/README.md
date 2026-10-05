@@ -56,7 +56,7 @@ id: <cel-id>                      # routes onder /cells/<id>/api/
 recording_actor: <actor>          # elke stroom van de cel heeft deze actor
 streams: [<pad>, ...]             # stroombestanden of mappen, relatief aan deze map
 lexostatuses: <pad>               # lexostatus-definities
-initial_state: <pad>              # optioneel: grammen voor een lege kroniek
+initial_state: <pad>              # optioneel: grammen voor een lege kroniek (JSONL, elke regel tegen initial_state.json)
 ```
 
 ## Het proces uit beleid

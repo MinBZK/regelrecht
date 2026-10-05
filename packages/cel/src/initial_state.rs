@@ -10,6 +10,8 @@
 //! stream, so an initial state does not go stale when the stream changes. The
 //! fields must be exactly those of the event.
 //!
+//! Every line is validated against `schema/chronolex/v0.3.0/initial_state.json`.
+//!
 //! An initial-state gram is placed, not computed: there is no engine trace
 //! with it. That is why it carries `provenance: initial_state`.
 //!
@@ -133,7 +135,9 @@ pub fn parse(
 }
 
 fn build(text: &str, streams: &[Stream]) -> Result<Gram, String> {
-    let row: Row = serde_json::from_str(text).map_err(|e| e.to_string())?;
+    let value: Value = serde_json::from_str(text).map_err(|e| e.to_string())?;
+    crate::schema::validate(crate::schema::Kind::InitialState, &value).map_err(|f| f.join("; "))?;
+    let row: Row = serde_json::from_value(value).map_err(|e| e.to_string())?;
     if row.provenance != PROVENANCE {
         return Err(format!(
             "provenance is '{}', an initial state has provenance '{PROVENANCE}'",
@@ -331,11 +335,22 @@ mod tests {
     #[test]
     fn line_without_initial_state_provenance() {
         let r = r#"{"stream": "test_registers", "name": "aanduiding_geschrapt", "effective_at": "2024-01-10T09:00:00+01:00", "provenance": "engine", "fields": {"aanduiding": "X", "orgaan": "raad"}}"#;
+        // The schema refuses it, and the message names the line and the key.
         assert!(
-            error(r).contains("provenance 'initial_state'"),
+            error(r).starts_with("s line 1: /provenance"),
             "{}",
             error(r)
         );
+    }
+
+    /// Every line is validated against `initial_state.json`: an unknown key
+    /// or an id that is not a uuid is refused, with the line.
+    #[test]
+    fn a_line_is_validated_against_the_schema() {
+        let r = r#"{"stream": "test_registers", "name": "aanduiding_geschrapt", "effective_at": "2024-01-10T09:00:00+01:00", "provenance": "initial_state", "id": "g-1", "fields": {"aanduiding": "X", "orgaan": "raad"}}"#;
+        assert!(error(r).starts_with("s line 1: /id"), "{}", error(r));
+        let r = r#"{"stream": "test_registers", "event": "aanduiding_geschrapt", "effective_at": "2024-01-10T09:00:00+01:00", "provenance": "initial_state", "fields": {}}"#;
+        assert!(error(r).contains("event"), "{}", error(r));
     }
 
     #[test]

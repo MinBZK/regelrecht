@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.3.0/initial_state.json",
+  "title": "A line of an initial state (initial_state.jsonl) v0.3.0",
+  "description": "One line of the JSONL file that a cell puts into an empty chronicle at startup. The rest of the gram (type, subtype, legal basis, chronicle, actor and the hash of the stream) follows from the stream; recorded_at is the load time. The fields must be exactly those of the event, which the runtime checks against the stream.",
+  "type": "object",
+  "required": ["stream", "name", "effective_at", "provenance", "fields"],
+  "additionalProperties": false,
+  "properties": {
+    "stream": {
+      "$ref": "common.json#/definitions/identifier",
+      "description": "The id of a stream of the cell."
+    },
+    "name": {
+      "$ref": "common.json#/definitions/identifier",
+      "description": "The event of that stream."
+    },
+    "effective_at": {
+      "$ref": "common.json#/definitions/moment",
+      "description": "When the fact legally holds or took place, set by hand; not after the load time."
+    },
+    "provenance": {
+      "const": "initial_state",
+      "description": "An initial-state gram is placed, not computed."
+    },
+    "id": {
+      "$ref": "common.json#/definitions/uuid",
+      "description": "Without it the gram gets a fixed id derived from the line itself."
+    },
+    "refers_to": {
+      "type": "object",
+      "description": "Per name of the event's references: the id of an earlier gram of the initial state.",
+      "propertyNames": {
+        "$ref": "common.json#/definitions/identifier"
+      },
+      "additionalProperties": {
+        "$ref": "common.json#/definitions/uuid"
+      }
+    },
+    "fields": {
+      "type": "object",
+      "description": "The fields of the gram, as the event declares them."
+    }
+  }
+}
