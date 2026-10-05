@@ -126,10 +126,6 @@ pub struct Deployment {
     pub examples_file: Option<PathBuf>,
 }
 
-fn read<T: serde::de::DeserializeOwned>(file: &Path) -> Result<T, Vec<String>> {
-    load::load(file, load::yaml)
-}
-
 /// `synthesis.yaml`, validated against its schema: a source names a cell or
 /// a regulation, a source of the case (`case: true`) names no input,
 /// parameters, extra fields or url, and a synthesis per row has columns.
@@ -147,11 +143,14 @@ pub fn load_channels(file: &Path) -> Result<Channels, Vec<String>> {
     })
 }
 
-/// `examples.yaml`, with every path made absolute against its directory.
+/// `examples.yaml`, validated against its schema, with every path made
+/// absolute against its directory.
 pub fn load_examples(file: &Path) -> Result<BTreeMap<String, ExamplesDefinition>, Vec<String>> {
     let dir = file.parent().unwrap_or(Path::new("."));
     let abs = |p: &String| dir.join(p).display().to_string();
-    let mut out: BTreeMap<String, ExamplesDefinition> = read(file)?;
+    let mut out: BTreeMap<String, ExamplesDefinition> = load::load(file, |text, source| {
+        load::definition(text, source, Kind::Examples)
+    })?;
     for v in out.values_mut() {
         v.logins = v.logins.iter().map(abs).collect();
         v.application = v.application.as_ref().map(abs);
@@ -350,6 +349,36 @@ mod tests {
             assert!(
                 e.contains(&format!("'{k}'")) && e.contains("test_afnemer"),
                 "{e}"
+            );
+        }
+    }
+
+    /// `examples.yaml` is validated against its schema; the message names
+    /// the file. The fixture validates.
+    #[test]
+    fn the_examples_are_validated_against_their_schema() {
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/deployment/examples.yaml");
+        assert!(!load_examples(&fixture).unwrap().is_empty());
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("examples.yaml");
+        for (text, expect) in [
+            ("test_afnemer:\n  login: [a.json]\n", "/test_afnemer"),
+            (
+                "test_afnemer:\n  logins: [a.yaml]\n",
+                "/test_afnemer/logins/0",
+            ),
+            (
+                "test_afnemer:\n  actions: {besluit: [a.json]}\n",
+                "/test_afnemer/actions/besluit",
+            ),
+        ] {
+            std::fs::write(&file, text).unwrap();
+            let e = load_examples(&file).unwrap_err();
+            let name = file.display().to_string();
+            assert!(
+                e.iter().all(|f| f.starts_with(&name)) && e.iter().any(|f| f.contains(expect)),
+                "{text}: {e:?}"
             );
         }
     }

@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.3.0/examples.json",
+  "title": "Examples of the deployment (examples.yaml) v0.3.0",
+  "description": "Per actor, under the id of its cell: default data for a trial setup, each a JSON file relative to this file. The frontend offers them to prefill a login, an application or the form of an act; the runtime does not record them and checks them like any other input. Only the structure of this index is described here: the JSON files are free data in the shape of the input they stand for.",
+  "type": "object",
+  "propertyNames": {
+    "$ref": "common.json#/definitions/identifier"
+  },
+  "additionalProperties": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "logins": {
+        "type": "array",
+        "description": "Logins, each a JSON object with the fields of a channel and optionally channel and role. The file name without extension is the label.",
+        "uniqueItems": true,
+        "items": {
+          "$ref": "#/definitions/path"
+        }
+      },
+      "application": {
+        "$ref": "#/definitions/path",
+        "description": "An application: a JSON object {external: {...}}."
+      },
+      "actions": {
+        "type": "object",
+        "description": "Per act, by the name of its event: a JSON object {form: {...}}.",
+        "propertyNames": {
+          "$ref": "common.json#/definitions/identifier"
+        },
+        "additionalProperties": {
+          "$ref": "#/definitions/path"
+        }
+      }
+    }
+  },
+  "definitions": {
+    "path": {
+      "type": "string",
+      "description": "A JSON file, relative to the directory of this file.",
+      "pattern": "\\.json$"
+    }
+  }
+}
