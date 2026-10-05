@@ -25,17 +25,20 @@ pub enum Kind {
     Synthesis,
     /// The channels of the deployment, `channels.yaml` (`channels.json`).
     Channels,
+    /// The registers of the deployment, `registers.yaml` (`registers.json`).
+    Registers,
 }
 
 impl Kind {
     /// Every kind, in the order of the files.
-    pub const ALL: [Kind; 6] = [
+    pub const ALL: [Kind; 7] = [
         Kind::Stream,
         Kind::Lexostatus,
         Kind::Cell,
         Kind::Gram,
         Kind::Synthesis,
         Kind::Channels,
+        Kind::Registers,
     ];
 
     /// The file name of the schema and its embedded text.
@@ -55,6 +58,7 @@ impl Kind {
             Kind::Gram => embed!("gram.json"),
             Kind::Synthesis => embed!("synthesis.json"),
             Kind::Channels => embed!("channels.json"),
+            Kind::Registers => embed!("registers.json"),
         }
     }
 }

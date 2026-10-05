@@ -12,15 +12,17 @@
 //!
 //! ```yaml
 //! registers:
-//!   <policy>#<name of the register>: {cell: <cell-id>, chronicle: <chronicle>}
+//!   <policy>#<name of the register>: {cell: <cell-id>, chronicle: <chronicle>, name_output: <output>}
 //! ```
 //!
 //! The runtime registers a [`RegisterSource`] per line: a data source with
 //! the policy as `law_scope`, which fills that policy's source-less input
 //! with the grams of the chronicle, as they are recorded now. Startup check:
 //! every policy with such an input has a source, every source a policy with
-//! such an input, a cell and a chronicle of that cell; if the policy names
-//! the register (output `naam_register`), that is the name in the binding.
+//! such an input, a cell and a chronicle of that cell; if the binding names
+//! the output with which the policy names its register (`name_output`), that
+//! output gives the name in the binding. The file is validated against
+//! `schema/chronolex/v0.3.0/registers.json`.
 //!
 //! A trial (an action that is not yet recorded) counts as in a trial
 //! reduction: [`with_trial`] adds the gram of the draft, for the duration of
@@ -39,9 +41,7 @@ use crate::chronicle::Chronicle;
 use crate::gram::Gram;
 use crate::lexostatus_engine;
 use crate::load;
-
-/// The output with which a policy names its register.
-pub const NAME_REGISTER: &str = "naam_register";
+use crate::schema::Kind;
 
 thread_local! {
     /// The grams of a trial, with the cell that would record them, for the
@@ -76,6 +76,10 @@ pub fn with_trial<T>(cell: &str, grams: Vec<Gram>, f: impl FnOnce() -> T) -> T {
 pub struct Binding {
     pub cell: String,
     pub chronicle: String,
+    /// The output with which the policy names its register; its value must
+    /// be the name in the key. Without it the name is not checked.
+    #[serde(default)]
+    pub name_output: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -337,7 +341,9 @@ pub fn load(
     date: &str,
 ) -> Result<Registers, Vec<String>> {
     let file = match path {
-        Some(p) => load::load(p, load::yaml::<File>)?,
+        Some(p) => load::load(p, |text, source| {
+            load::definition::<File>(text, source, Kind::Registers)
+        })?,
         None => File {
             registers: BTreeMap::new(),
         },
@@ -374,19 +380,26 @@ pub fn load(
                 continue;
             }
         };
-        // If the policy names the register, that is the name here.
-        if service
-            .get_law_info(policy)
-            .is_some_and(|i| i.outputs.iter().any(|o| o == NAME_REGISTER))
-        {
+        // If the binding names the output that names the register, the
+        // policy gives that name here.
+        if let Some(output) = &k.name_output {
+            if !service
+                .get_law_info(policy)
+                .is_some_and(|i| i.outputs.iter().any(|o| o == output))
+            {
+                errors.push(format!(
+                    "{source}: register '{key}': '{policy}' has no output '{output}' (name_output)"
+                ));
+                continue;
+            }
             let e = crate::assessment::evaluate(
                 service,
                 policy,
-                &[NAME_REGISTER],
+                &[output.as_str()],
                 &BTreeMap::new(),
                 date,
             );
-            match e.values.get(NAME_REGISTER).and_then(serde_json::Value::as_str) {
+            match e.values.get(output).and_then(serde_json::Value::as_str) {
                 Some(n) if n == name => {}
                 Some(n) => errors.push(format!(
                     "{source}: register '{key}': the policy names the register '{n}', not '{name}'"
@@ -598,6 +611,45 @@ mod tests {
             ),
             None
         );
+    }
+
+    /// The binding file is validated against its schema, and `name_output`
+    /// must be an output of the policy. Every message names the file.
+    #[test]
+    fn the_binding_file_is_validated() {
+        let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+        let law = std::fs::read_to_string(fixtures.join("beleid/testbeleid_registerhouder.yaml"))
+            .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("registers.yaml");
+        for (text, expect) in [
+            (
+                "registers:\n  testbeleid_registerhouder#register: {cell: test_register}\n",
+                "/registers/testbeleid_registerhouder#register",
+            ),
+            (
+                "registers:\n  testbeleid_registerhouder: {cell: test_register, chronicle: test_register}\n",
+                "/registers",
+            ),
+            (
+                "registers:\n  testbeleid_registerhouder#register: {cell: test_register, chronicle: test_register, name_output: naam}\n",
+                "has no output 'naam'",
+            ),
+        ] {
+            let mut service = LawExecutionService::new();
+            service.load_law(&law).unwrap();
+            std::fs::write(&file, text).unwrap();
+            let e = load(Some(&file), &mut service, "2025-03-12")
+                .err()
+                .unwrap_or_default();
+            let name = file.display().to_string();
+            assert!(
+                !e.is_empty()
+                    && e.iter().all(|f| f.starts_with(&name))
+                    && e.iter().any(|f| f.contains(expect)),
+                "{text}: {e:?}"
+            );
+        }
     }
 
     #[test]

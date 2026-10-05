@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.3.0/registers.json",
+  "title": "Registers of the deployment (registers.yaml) v0.3.0",
+  "description": "Which system supplies the register that a policy queries through its input without a source (source: {}). The law and the policy name no system; only this file binds a register to the chronicle of a cell (CELL_REGISTERS).",
+  "type": "object",
+  "required": ["registers"],
+  "additionalProperties": false,
+  "properties": {
+    "registers": {
+      "type": "object",
+      "description": "Per register, as <policy>#<name of the register>: the cell and chronicle that supply it.",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*#[a-z][a-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["cell", "chronicle"],
+        "additionalProperties": false,
+        "properties": {
+          "cell": {
+            "$ref": "common.json#/definitions/identifier"
+          },
+          "chronicle": {
+            "$ref": "common.json#/definitions/identifier"
+          },
+          "name_output": {
+            "$ref": "common.json#/definitions/identifier",
+            "description": "The output with which the policy names its register. The runtime computes it at startup and requires it to be the name in the key. Without it the name is not checked."
+          }
+        }
+      }
+    }
+  }
+}
