@@ -11,31 +11,33 @@
  */
 import { computed, nextTick, ref } from 'vue';
 import { currentLocale } from '../i18n/index.js';
-import { localeRouteName, pageForConfigPath } from '../router.js';
+import { localeRouteName, pageForConfigPath, splitConfigPath } from '../router.js';
 
 /**
  * The slide's target, in the language that is on.
  *
- * `route:` in demo-config.yaml is a Dutch path (`/wetten`), because a file
+ * `route:` in demo-config.yaml is a Dutch path (`/regelwerken`), because a file
  * about slides should not have to know the routing table of every language.
  * It is read back to its page here and resolved against the active locale, so
  * a deck presented in English opens the English tabs.
  */
 function slideTarget(path) {
   if (!path || !router) return null;
-  const page = pageForConfigPath(path);
-  if (!page) return path;
-  // Wat na het tabblad komt (`/wetten/zorgtoeslagwet`: de wet) gaat mee. Anders
-  // opent de dia het tabblad op de wet die er toevallig nog open stond, en
-  // landt de presentator na een oefenronde op de verkeerde.
-  const root = router.resolve({ name: page }).path;
-  const rest = (path.startsWith(root) ? path.slice(root.length) : '') || profileDefault(page);
+  const parts = splitConfigPath(path);
+  if (!parts) return path;
+  // What follows the tab (`/regelwerken/zorgtoeslagwet`: the law) comes along.
+  // Without it the slide opens the tab on whatever law was left open, and after
+  // a rehearsal the presenter lands on the wrong one. The rest comes from
+  // `splitConfigPath`, so a slide that still carries a former path keeps its law.
+  // A slide that names no law gets the chosen persona's own (profileDefault).
+  const { page } = parts;
+  const rest = parts.rest || profileDefault(page);
   const base = router.resolve({ name: localeRouteName(page, currentLocale()) }).path;
   return rest ? `${base.replace(/\/$/, '')}${rest}` : base;
 }
 
 /**
- * Noemt een dia geen wet (`route: /wetten`), dan opent hij die van het gekozen
+ * Noemt een dia geen wet (`route: /regelwerken`), dan opent hij die van het gekozen
  * profiel: `default_law` op Wetten, `default_feature` op Scenario's. Wie
  * Claudia kiest en de presentatie start, landt zo bij precario in plaats van
  * bij de zorgtoeslag van Merijn. Vast in het pad blijft ook hier de wet die
@@ -122,7 +124,7 @@ function isOnStage() {
   // waar we zijn, en houdt het dek de toetsen niet vast. Dat is de veilige
   // kant: onzichtbaar bladeren is precies wat hier misging.
   if (!slideRoute || !router) return false;
-  // Op het tabblad vergelijken en niet op het pad. `/wetten/:lawId?`,
+  // Op het tabblad vergelijken en niet op het pad. `/regelwerken/:lawId?`,
   // `/scenarios/:featurePath(.*)?` en `/zaaksysteem/:caseId?` verdiepen hun
   // eigen pad: WettenView en ScenariosView doen bij binnenkomst meteen een
   // `router.replace` naar de standaardwet of -feature van het profiel, nog

@@ -150,7 +150,7 @@ async function run(index) {
   lap('engine', startedAt);
   const refused = selectedLoadFailure.value;
   if (refused) {
-    state.error = `Wet ${refused.id} (${refused.path}) is niet geladen; de engine weigerde: ${refused.message}`;
+    state.error = t('scenario.law_refused', { id: refused.id, path: refused.path, message: refused.message });
     state.status = 'fail';
     open[index] = true;
     return;
@@ -360,8 +360,8 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
         <nldd-simple-section v-if="loadFailures.length" width="full">
           <nldd-banner
             variant="critical"
-            :text="selectedLoadFailure ? t('scenario.law_not_loaded', { id: selectedLoadFailure.id }) : t.plural(loadFailures.length, 'scenario.laws_not_loaded')"
-            :supporting-text="`De engine weigerde: ${loadFailures.map((f) => `${f.id} (${f.path}): ${f.message}`).join(' — ')}`"
+            :text="selectedLoadFailure ? t('scenario.law_not_loaded', { id: selectedLoadFailure.id }) : t.plural(new Set(loadFailures.map((f) => f.id)).size, 'scenario.laws_not_loaded')"
+            :supporting-text="t('scenario.engine_refused', { details: loadFailures.map((f) => `${f.id} (${f.path}): ${f.message}`).join('; ') })"
           ></nldd-banner>
         </nldd-simple-section>
         <nldd-simple-section v-if="loadError" width="full">

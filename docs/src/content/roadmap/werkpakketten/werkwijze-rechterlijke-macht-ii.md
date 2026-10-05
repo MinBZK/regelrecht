@@ -18,16 +18,16 @@ toelichting: |-
 volgorde: 2000
 onderzoeksvragen:
   - Welke kennis en vaardigheden hebben rechters en gerechtsjuristen nodig om
-    met machine-uitvoerbare specificaties te kunnen werken, en hoe wordt dit
+    met regelwerken te kunnen werken, en hoe wordt dit
     onderdeel van opleiding?
   - Hoe moet de rechterlijke organisatie zich verhouden tot de partijen die
-    machine-uitvoerbare specificaties opstellen en publiceren, om
+    regelwerken opstellen en publiceren, om
     onafhankelijkheid te waarborgen?
   - Welke werkprocessen binnen de rechtspraak moeten worden aangepast om hier
     structureel mee te kunnen werken?
   - vraag: >-
       Heeft de rechterlijke macht een eigen, georganiseerde leescapaciteit
-      nodig om specificaties te kunnen lezen en doorrekenen — vergelijkbaar
+      nodig om regelwerken te kunnen lezen en doorrekenen — vergelijkbaar
       met wat voor de Kamer wordt bepleit — of kan zij leunen op leescapaciteit
       die elders in de keten wordt opgebouwd?
     paper: sec:readers

@@ -73,8 +73,8 @@ onderzoeksvragen:
       juist leunt op productieve ambiguïteit en compromissen?
     paper: sec:agenda-polsci
   - vraag: >-
-      Wie is verantwoordelijk voor het produceren en coördineren van de digitale
-      specificaties over verschillende overheidslagen heen, en wanneer weegt het
+      Wie is verantwoordelijk voor het produceren en coördineren van de
+      regelwerken over verschillende overheidslagen heen, en wanneer weegt het
       principe van gelijkheid voor de wet (uniforme encoding) zwaarder dan de
       lokale autonomie van bijvoorbeeld gemeenten (variatie in encoding)?
     paper: sec:ownership

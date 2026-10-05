@@ -57,7 +57,7 @@ These came in with the proof-of-concepts behind the [PoC Portal](./poc-portal). 
 
 | Module | Purpose |
 |--------|---------|
-| `useBewaardeStand.js` | Keeps choices and settings across a page reload in `localStorage`, under a prefix per case. Two PoCs share one origin behind the portal, and without the prefix they would read each other's state. Edited law YAML is deliberately not stored here |
+| `useBewaardeStand.js` | Keeps choices and settings across a page reload in `localStorage`, under a prefix per case. Two PoCs share one origin behind the portal, and without the prefix they would read each other's state. An edited rulework is deliberately not stored here |
 | `browserVarianten.js` | Variants a user saves in their own browser, in the same shape as the variants checked into the case. Each file keeps a fingerprint of the law text it started from, so the app can say when the corpus has changed underneath it |
 | `reloadOnStaleBundle.js` | Reloads the page when a lazily loaded view no longer exists after a deploy, at most once per ten seconds |
 | `formatToolCall.js` | Renders a tool call in the policy assistant's feed as one readable line, whatever shape the model's arguments take. Used by `AssistentPanel.vue` in both static PoCs |

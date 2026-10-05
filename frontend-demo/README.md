@@ -43,7 +43,7 @@ scenario-runner, simulatie, burger-/ondernemersportaal en zaaksysteem. Opvolger 
   de persona uit een evaluatie plus de trace. Alle wetten worden gelegd, alleen de
   selectie (profiel: `graph_laws`) met haar directe buren is zichtbaar, zodat "Alles"
   niets verschuift. Een profiel met `graph_focus` zet die wet bij de wissel in focus
-  en zoomt erop in; Wetten en Scenario's openen dan `default_law` en `default_feature`. `LawGroupTree.vue` is de wettenlijst per organisatie die Wetten en
+  en zoomt erop in; Regelwerken en Scenario's openen dan `default_law` en `default_feature`. `LawGroupTree.vue` is de lijst per organisatie die Regelwerken en
   Graaf delen; de lijsten zijn zijpanelen (`primary-sidebar-as-sheet`), standaard dicht.
 - **Scenario's** draaien met de gedeelde Gherkin-runner uit
   `@regelrecht/frontend-shared/gherkin` (canonieke grammar); `src/data/gherkinNl.js`

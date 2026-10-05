@@ -493,8 +493,8 @@ pub async fn chain_enrich_and_complete(
         // Rollback (impliciet) en laat de aanroeper dit als terminale fout met
         // job_failed-taak afhandelen.
         return Err(PipelineError::Enrich(format!(
-            "{ENRICH_IN_PROGRESS_MARKER} voor wet '{}' in dit traject; \
-             de nieuwe wet is niet aangemaakt",
+            "{ENRICH_IN_PROGRESS_MARKER} voor regelwerk '{}' in dit traject; \
+             het nieuwe regelwerk is niet aangemaakt",
             law.meta.law_id
         )));
     };

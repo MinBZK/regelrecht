@@ -238,7 +238,7 @@ impl ArticleId {
 
 This is a **breaking change** that affects:
 - Schema definition
-- All existing YAML law files
+- All existing ruleworks
 - Harvester output format
 - Engine article resolution
 

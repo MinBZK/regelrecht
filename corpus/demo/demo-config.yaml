@@ -491,7 +491,7 @@ simulation:
       kind: benefit
       label: WW
 
-# What the Wetten tab shows unfolded per law, prepared for the story (the
+# What the Regelwerken tab shows unfolded per law, prepared for the story (the
 # POC's DEMO_COLLAPSE_CONFIG). A path opens the way down to itself and itself;
 # what hangs below it stays folded, and so do its siblings. The article is the
 # one node the presenter opens by hand, so a single click reveals the right
@@ -610,16 +610,16 @@ slides:
       - Compleet verhaal, geen eindproduct
       - We maken beleid door te doen
   - kind: demo
-    overline: De wet
-    title: De wet, machine-leesbaar
+    overline: Het regelwerk
+    title: De wet als regelwerk
     lead: De wettekst en de uitvoerbare regel staan naast elkaar, per artikel.
     bullets:
       - 'Elk artikel heeft een **machine_readable**-deel: welke gegevens erin gaan, wat eruit komt en hoe.'
       - Een verwijzing naar een andere wet is expliciet, geen kopie van een bedrag.
-      - Dezelfde YAML draait in de editor, in dit portaal en in de simulatie.
+      - Hetzelfde regelwerk draait in de editor, in dit portaal en in de simulatie.
     # without a law in the path the deck opens the chosen persona's default_law
     # (zorgtoeslag for Merijn, precario for Claudia), not whatever was left open
-    route: /wetten
+    route: /regelwerken
     highlight: .yaml-tree
   - kind: demo
     overline: Samenhang

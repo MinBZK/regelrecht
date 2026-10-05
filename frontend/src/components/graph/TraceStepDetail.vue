@@ -47,7 +47,7 @@ const expectationEntries = computed(() => Object.entries(props.expectations || {
       </div>
       <dl class="step-detail__dl">
         <div class="step-detail__row">
-          <dt>Wet:</dt>
+          <dt>Regelwerk:</dt>
           <dd class="mono">{{ step.lawId }}</dd>
         </div>
         <div v-if="step.resolveType" class="step-detail__row">

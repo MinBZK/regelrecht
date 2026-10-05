@@ -7,16 +7,18 @@
  * survive a switch), and that a wrong path keeps the language it was typed in.
  */
 import { describe, expect, it } from 'vitest';
-import router, { localeFromPath, localeRouteName, pageForConfigPath } from './router.js';
+import router, { localeFromPath, localeRouteName, pageForConfigPath, splitConfigPath } from './router.js';
 
 const PAGE_NAMES = ['home', 'presentatie', 'wetten', 'graaf', 'scenarios', 'simulatie', 'portaal', 'zaaksysteem'];
 
 describe('localeFromPath', () => {
   it.each([
     ['/', 'nl'],
+    ['/regelwerken', 'nl'],
     ['/wetten', 'nl'],
     ['/en', 'en'],
     ['/en/', 'en'],
+    ['/en/ruleworks', 'en'],
     ['/en/laws', 'en'],
     // Not every path that begins with the letters "en": only the segment.
     ['/energie', 'nl'],
@@ -34,8 +36,8 @@ describe('the route table', () => {
   });
 
   it('resolves a page name to the path of its language', () => {
-    expect(router.resolve({ name: 'wetten' }).path).toBe('/wetten');
-    expect(router.resolve({ name: 'wetten:en' }).path).toBe('/en/laws');
+    expect(router.resolve({ name: 'wetten' }).path).toBe('/regelwerken');
+    expect(router.resolve({ name: 'wetten:en' }).path).toBe('/en/ruleworks');
     expect(router.resolve({ name: 'home' }).path).toBe('/');
     expect(router.resolve({ name: 'home:en' }).path).toBe('/en');
   });
@@ -82,8 +84,8 @@ describe('the route table', () => {
   it('keeps route params across languages', () => {
     const nl = router.resolve({ name: 'wetten', params: { lawId: 'zorgtoeslagwet' } });
     const en = router.resolve({ name: 'wetten:en', params: { lawId: 'zorgtoeslagwet' } });
-    expect(nl.path).toBe('/wetten/zorgtoeslagwet');
-    expect(en.path).toBe('/en/laws/zorgtoeslagwet');
+    expect(nl.path).toBe('/regelwerken/zorgtoeslagwet');
+    expect(en.path).toBe('/en/ruleworks/zorgtoeslagwet');
   });
 
   it('points both languages of a page at the same component', () => {
@@ -92,8 +94,8 @@ describe('the route table', () => {
     // keys on the resolved component rather than on the path, so as long as
     // both languages resolve to the very same lazy import the mounted view is
     // reused across a switch. Measured in the browser: a marker set on the
-    // pane's DOM node before switching from /en/laws/zorgtoeslagwet is still
-    // there afterwards, on /wetten/zorgtoeslagwet.
+    // pane's DOM node before switching from /en/ruleworks/zorgtoeslagwet is still
+    // there afterwards, on /regelwerken/zorgtoeslagwet.
     //
     // Two separate `() => import(…)` arrows would be two distinct functions
     // and would remount, which is why PAGES holds one `component` per page.
@@ -176,6 +178,9 @@ describe('localeRouteName', () => {
 
 describe('pageForConfigPath', () => {
   it.each([
+    ['/regelwerken', 'wetten'],
+    ['/regelwerken/zorgtoeslagwet', 'wetten'],
+    // A slide written before the tab moved still carries the old path.
     ['/wetten', 'wetten'],
     ['/wetten/zorgtoeslagwet', 'wetten'],
     ['/graaf', 'graaf'],
@@ -195,5 +200,55 @@ describe('pageForConfigPath', () => {
   it('is null for a path no page owns', () => {
     expect(pageForConfigPath('/nergens')).toBe(null);
     expect(pageForConfigPath('')).toBe(null);
+  });
+});
+
+describe('splitConfigPath', () => {
+  it.each([
+    ['/regelwerken', 'wetten', ''],
+    ['/regelwerken/zorgtoeslagwet', 'wetten', '/zorgtoeslagwet'],
+    // The old path keeps its law. Cut against the page's current root the rest
+    // would come out empty, and the slide would open on whatever law was left
+    // open: the tab right, the law wrong, and nothing to show for it.
+    ['/wetten', 'wetten', ''],
+    ['/wetten/zorgtoeslagwet', 'wetten', '/zorgtoeslagwet'],
+    // A hash is part of what follows, not of the page's own path.
+    ['/regelwerken/zorgtoeslagwet#tekst', 'wetten', '/zorgtoeslagwet#tekst'],
+    ['/regelwerken#tekst', 'wetten', '#tekst'],
+    ['/regelwerken/zorgtoeslagwet?artikel=2', 'wetten', '/zorgtoeslagwet?artikel=2'],
+    ['/scenarios/nl/wet/x.feature', 'scenarios', '/nl/wet/x.feature'],
+    ['/', 'home', ''],
+  ])('%s is the %s page with %j after it', (path, page, rest) => {
+    expect(splitConfigPath(path)).toEqual({ page, rest });
+  });
+
+  it('is null for a path no page owns', () => {
+    expect(splitConfigPath('/nergens')).toBe(null);
+  });
+});
+
+describe('a former address', () => {
+  // The rulework tab lived at /wetten, /en/laws and /fy/wetten. Those addresses
+  // are in slides, bookmarks and forwarded links, so each one has to land on
+  // the page it used to be, in the language it was typed in, with the law that
+  // was open still open.
+  it.each([
+    ['/wetten', '/regelwerken', 'nl'],
+    ['/wetten/zorgtoeslagwet', '/regelwerken/zorgtoeslagwet', 'nl'],
+    ['/en/laws', '/en/ruleworks', 'en'],
+    ['/en/laws/zorgtoeslagwet', '/en/ruleworks/zorgtoeslagwet', 'en'],
+    ['/fy/wetten', '/fy/regelwurken', 'fy'],
+    ['/fy/wetten/zorgtoeslagwet', '/fy/regelwurken/zorgtoeslagwet', 'fy'],
+  ])('%s redirects to %s', async (from, to, locale) => {
+    await router.push(from);
+    const route = router.currentRoute.value;
+    expect(route.path).toBe(to);
+    expect(route.meta.page).toBe('wetten');
+    expect(route.meta.locale).toBe(locale);
+  });
+
+  it('keeps the query and the hash', async () => {
+    await router.push('/wetten/zorgtoeslagwet?artikel=2#tekst');
+    expect(router.currentRoute.value.fullPath).toBe('/regelwerken/zorgtoeslagwet?artikel=2#tekst');
   });
 });

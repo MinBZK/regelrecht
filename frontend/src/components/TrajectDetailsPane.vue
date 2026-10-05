@@ -208,7 +208,7 @@ async function confirmLeave() {
             <p>
               Werk je buiten de editor om in de repo, dan kunnen map- en
               bestandsnamen uit de pas raken met wat erin staat. Deze controle
-              zoekt die verschillen, plus dubbele wet-id's en verwijzingen die
+              zoekt die verschillen, plus dubbele id's en verwijzingen die
               nergens uitkomen.
             </p>
           </nldd-rich-text>
