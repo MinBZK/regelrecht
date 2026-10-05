@@ -592,8 +592,8 @@ async fn processes_are_listed_with_their_cell() {
     assert_eq!(agency["authority"], "Test instantie");
     // The channels with their fields: the frontend builds the login screen from them.
     assert_eq!(
-        agency["channels"]["burger"]["fields"][0]["check"],
-        "elfproef"
+        agency["channels"]["burger"]["fields"][0]["checksum"]["modulus"],
+        11
     );
     assert_eq!(agency["channels"]["burger"]["owner"], "nummer");
     assert_eq!(consumer["authority"], "Test afnemer");
@@ -3046,11 +3046,11 @@ async fn an_old_chronicle_does_not_start() {
 // --- Channels and roles as configuration ---
 
 /// A second channel of the same portal: a citizen logs in with a nine-digit
-/// number that passes the elfproef. Their number goes into the gram under the
+/// number that passes the weighted checksum of its field. Their number goes into the gram under the
 /// intake path of their channel; what the other channel delivers stays
 /// empty.
 #[tokio::test]
-async fn a_second_channel_with_the_elfproef() {
+async fn a_second_channel_with_a_checksum() {
     let dir = tempfile::tempdir().unwrap();
     let app = app(dir.path());
     let login = format!("{AGENCY}/api/channels/burger/login");

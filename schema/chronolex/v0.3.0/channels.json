@@ -1,0 +1,106 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.3.0/channels.json",
+  "title": "Channels of the deployment (channels.yaml) v0.3.0",
+  "description": "Per actor, under the id of its cell, and per channel that the actor's policy declares: the technique of the channel (RFC-047). Which channels there are, who logs in through them and what they supply is policy; this file only says how the login looks.",
+  "type": "object",
+  "propertyNames": {
+    "$ref": "common.json#/definitions/identifier"
+  },
+  "additionalProperties": {
+    "type": "object",
+    "description": "The channels of one actor, by the id the policy gives them.",
+    "propertyNames": {
+      "$ref": "common.json#/definitions/identifier"
+    },
+    "additionalProperties": {
+      "$ref": "#/definitions/channel"
+    }
+  },
+  "definitions": {
+    "channel": {
+      "type": "object",
+      "required": ["adapter", "label"],
+      "additionalProperties": false,
+      "properties": {
+        "adapter": {
+          "description": "The technique of the login. Only a simulated login: no register and no certified means of login.",
+          "enum": ["simulated"]
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "description": "How the login screen names the channel."
+        },
+        "explanation": {
+          "type": "string",
+          "description": "Explanation under the label on the login screen."
+        },
+        "intake": {
+          "type": "string",
+          "pattern": "^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)*$",
+          "description": "The path under $intake under which the fields arrive at the cell; without it: the channel id."
+        },
+        "role_label": {
+          "type": "string",
+          "description": "How the frontend names the role of this channel; without it: the role id."
+        },
+        "fields": {
+          "type": "object",
+          "description": "The identification fields, in the order of the login screen, by name. Their legal basis is policy (identifies), not deployment.",
+          "propertyNames": {
+            "$ref": "common.json#/definitions/identifier"
+          },
+          "additionalProperties": {
+            "$ref": "#/definitions/field"
+          }
+        }
+      }
+    },
+    "field": {
+      "type": "object",
+      "required": ["label"],
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pattern": {
+          "type": "string",
+          "description": "A regular expression that the whole trimmed value must match; without it: not empty."
+        },
+        "checksum": {
+          "$ref": "#/definitions/checksum"
+        },
+        "message": {
+          "type": "string",
+          "description": "The message for a value that does not comply; without it a generic one."
+        },
+        "numeric": {
+          "type": "boolean",
+          "description": "Digits only: the frontend shows a numeric keyboard."
+        }
+      }
+    },
+    "checksum": {
+      "type": "object",
+      "description": "A weighted check digit test on top of the pattern: the value has exactly one digit per weight, and the sum of each digit times its weight is divisible by the modulus.",
+      "required": ["weights", "modulus"],
+      "additionalProperties": false,
+      "properties": {
+        "weights": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "integer"
+          }
+        },
+        "modulus": {
+          "type": "integer",
+          "minimum": 2
+        }
+      }
+    }
+  }
+}

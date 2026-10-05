@@ -7,7 +7,10 @@
       "explanation": "Vul een burgernummer van negen cijfers in.",
       "fields": [
         {
-          "check": "elfproef",
+          "checksum": {
+            "modulus": 11,
+            "weights": [9, 8, 7, 6, 5, 4, 3, 2, -1]
+          },
           "label": "Burgernummer",
           "message": "dit is geen geldig burgernummer",
           "name": "nummer",

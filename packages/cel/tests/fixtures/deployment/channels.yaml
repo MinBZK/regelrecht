@@ -35,7 +35,7 @@ test_instantie:
       nummer:
         label: Burgernummer
         pattern: '[0-9]{9}'
-        check: elfproef
+        checksum: {weights: [9, 8, 7, 6, 5, 4, 3, 2, -1], modulus: 11}
         message: dit is geen geldig burgernummer
         numeric: true
   medewerker:

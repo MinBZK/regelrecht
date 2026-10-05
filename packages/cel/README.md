@@ -38,7 +38,7 @@ just cel          # runtime op :7170, frontend op :7171, op de fixtures
 | Variabele | Betekenis |
 |---|---|
 | `CELLS_PATH` | Map met een submap per cel, elk met een `cell.yaml`. |
-| `CELL_CHANNELS` | `channels.yaml` van de deployment: per cel-id de techniek van elk kanaal dat het beleid noemt. Optioneel: zonder draaien alleen de cellen; met volgen de processen uit het beleid (RFC-047). |
+| `CELL_CHANNELS` | `channels.yaml` van de deployment: per cel-id de techniek van elk kanaal dat het beleid noemt, gevalideerd tegen `schema/chronolex/v0.3.0/channels.json`. Optioneel: zonder draaien alleen de cellen; met volgen de processen uit het beleid (RFC-047). |
 | `CELL_SYNTHESIS` | `synthesis.yaml` van de deployment: per cel-id `synthesis`, `assessment_rows` en `action_rows`, tot RFC-045, gevalideerd tegen `schema/chronolex/v0.3.0/synthesis.json`. Alleen met `CELL_CHANNELS`. |
 | `CELL_EXAMPLES` | `examples.yaml` van de deployment: per cel-id de standaardgegevens van een proefopstelling. Alleen met `CELL_CHANNELS`. |
 | `CELL_REGISTERS` | Optioneel koppelbestand van de registers (RFC-045 §1): per `<beleid>#<naam van het register>` de cel en kroniek die de input zonder bron (`source: {}`) van dat beleid vullen. Zonder houdt een beleid dat een register bevraagt de runtime tegen. Zie `src/register.rs`. |
@@ -129,7 +129,8 @@ De deployment houdt alleen de techniek, per cel-id gegroepeerd:
     intake: <pad>                 # optioneel: onder $intake.<pad>.<veld>; zonder: de kanaalnaam
     role_label: <tekst>           # optioneel; zonder: de rolnaam
     fields:                       # in loginvolgorde; de grondslag geeft identifies in het beleid
-      <veld>: {label: <tekst>, pattern: <regex>, check: elfproef, message: <tekst>, numeric: true}
+      <veld>: {label: <tekst>, pattern: <regex>, checksum: {weights: [<geheel getal>, ...], modulus: <n>}, message: <tekst>, numeric: true}
+      # checksum: precies één cijfer per gewicht, en de som van cijfer maal gewicht deelbaar door modulus
 
 # CELL_SYNTHESIS: synthesis.yaml (tot RFC-045)
 <cel-id>:

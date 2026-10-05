@@ -3,8 +3,8 @@
 //! channel its technique (RFC-047, see [`crate::derive`]).
 //!
 //! A channel is a simulated login: a few identification fields, each
-//! with a label and a shape check (a pattern, and optionally the
-//! elfproef). The channel also says under which path of `$intake` its fields
+//! with a label and a shape check (a pattern, and optionally a weighted
+//! checksum over its digits). The channel also says under which path of `$intake` its fields
 //! arrive at the cell and which field designates the owner of a case. There is
 //! no register and no certified login: whoever enters a valid number
 //! is logged in for this PoC. Who may act on behalf of an organization is said by
@@ -81,9 +81,9 @@ pub struct IdentificationField {
     /// without it: not empty.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pattern: Option<String>,
-    /// A check on top of the pattern.
+    /// A checksum on top of the pattern.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub check: Option<Check>,
+    pub checksum: Option<Checksum>,
     /// The message for a value that does not comply; without it a generic one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
@@ -100,14 +100,32 @@ pub struct IdentificationField {
     regex: OnceLock<Regex>,
 }
 
-/// A check on an identification field that a pattern cannot express.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Check {
-    /// The elfproef as for a burgerservicenummer: nine digits, the
-    /// first eight weighted 9 through 2, the last with -1, and the sum
-    /// divisible by 11.
-    Elfproef,
+/// A check digit test that a pattern cannot express, declared as data: the
+/// value has exactly one digit per weight, and the sum of each digit times
+/// its weight is divisible by `modulus`. Which number uses which weights is
+/// the deployment's to say, not the runtime's.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Checksum {
+    pub weights: Vec<i64>,
+    pub modulus: i64,
+}
+
+impl Checksum {
+    /// Whether `value` passes: only digits, one per weight, and the weighted
+    /// sum divisible by the modulus.
+    pub fn holds(&self, value: &str) -> bool {
+        let digits: Option<Vec<i64>> = value
+            .chars()
+            .map(|c| c.to_digit(10).map(i64::from))
+            .collect();
+        let Some(digits) = digits else { return false };
+        if digits.len() != self.weights.len() || self.modulus < 2 {
+            return false;
+        }
+        let sum: i64 = digits.iter().zip(&self.weights).map(|(d, w)| d * w).sum();
+        sum.rem_euclid(self.modulus) == 0
+    }
 }
 
 /// The route groups of a process. A role names the groups it may
@@ -326,31 +344,8 @@ impl IdentificationField {
             Some(r) => r.is_ok_and(|r| r.is_match(value)),
             None => true,
         };
-        pattern
-            && match self.check {
-                Some(Check::Elfproef) => elfproef(value),
-                None => true,
-            }
+        pattern && self.checksum.as_ref().is_none_or(|c| c.holds(value))
     }
-}
-
-/// The elfproef of a burgerservicenummer: nine digits, weighted 9, 8, ...,
-/// 2 and -1, and the sum divisible by 11.
-pub fn elfproef(number: &str) -> bool {
-    let digits: Vec<i64> = number
-        .chars()
-        .filter_map(|c| c.to_digit(10).map(i64::from))
-        .collect();
-    if digits.len() != 9 || number.len() != 9 {
-        return false;
-    }
-    let sum: i64 = digits[..8]
-        .iter()
-        .zip((2..=9).rev())
-        .map(|(c, w)| c * w)
-        .sum::<i64>()
-        - digits[8];
-    sum % 11 == 0
 }
 
 /// The key under `$intake` that names the channel of the submission.
@@ -749,7 +744,7 @@ pub(crate) mod tests {
     fn citizen() -> ChannelDefinition {
         channel(
             "Burger",
-            "- {name: nummer, label: Burgernummer, pattern: '[0-9]{9}', check: elfproef}\n",
+            "- {name: nummer, label: Burgernummer, pattern: '[0-9]{9}', checksum: {weights: [9, 8, 7, 6, 5, 4, 3, 2, -1], modulus: 11}}\n",
             Some("nummer"),
             Some("burger"),
         )
@@ -784,12 +779,16 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn the_elfproef() {
-        assert!(elfproef("111222333"));
-        assert!(elfproef("123456782"));
-        assert!(!elfproef("123456789"));
-        assert!(!elfproef("12345678"));
-        assert!(!elfproef("12345678a"));
+    fn a_weighted_checksum() {
+        let c = Checksum {
+            weights: vec![9, 8, 7, 6, 5, 4, 3, 2, -1],
+            modulus: 11,
+        };
+        assert!(c.holds("111222333"));
+        assert!(c.holds("123456782"));
+        assert!(!c.holds("123456789"));
+        assert!(!c.holds("12345678"));
+        assert!(!c.holds("12345678a"));
         let k = citizen();
         assert!(k.validate(&input(json!({"nummer": "111222333"}))).is_ok());
         assert_eq!(

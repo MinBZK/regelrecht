@@ -139,6 +139,14 @@ pub fn load_synthesis(file: &Path) -> Result<BTreeMap<String, SynthesisDeploymen
     })
 }
 
+/// `channels.yaml`, validated against its schema, with the fields of each
+/// channel in the order of the file.
+pub fn load_channels(file: &Path) -> Result<Channels, Vec<String>> {
+    load::load(file, |text, source| {
+        load::ordered_definition(text, source, Kind::Channels)
+    })
+}
+
 /// `examples.yaml`, with every path made absolute against its directory.
 pub fn load_examples(file: &Path) -> Result<BTreeMap<String, ExamplesDefinition>, Vec<String>> {
     let dir = file.parent().unwrap_or(Path::new("."));
@@ -160,7 +168,7 @@ pub fn load(config: &Config) -> Result<Option<Deployment>, Vec<String>> {
         return Ok(None);
     };
     let mut errors = Vec::new();
-    let channels = read(&channels_file)
+    let channels = load_channels(&channels_file)
         .map_err(|e| errors.extend(e))
         .unwrap_or_default();
     let synthesis = match &config.synthesis {
@@ -272,6 +280,51 @@ mod tests {
                 ),
             }
         }
+    }
+
+    /// `channels.yaml` is validated against its schema, every message names
+    /// the file, and the fields keep their order.
+    #[test]
+    fn the_channels_are_validated_against_their_schema() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("channels.yaml");
+        std::fs::write(&file, CHANNELS).unwrap();
+        let c = load_channels(&file).unwrap();
+        assert_eq!(
+            c["test_afnemer"]["eherkenning"].field_names(),
+            ["kvk", "persoon"]
+        );
+        for (bad, expect) in [
+            // A checksum without a modulus.
+            (
+                CHANNELS.replace("numeric: true}", "numeric: true, checksum: {weights: [1]}}"),
+                "/test_afnemer/eherkenning/fields/kvk/checksum",
+            ),
+            (
+                CHANNELS.replace("simulated", "echt"),
+                "/test_afnemer/eherkenning/adapter",
+            ),
+            (
+                CHANNELS.replace("label: Uw naam", "lable: Uw naam"),
+                "/test_afnemer/eherkenning/fields/persoon",
+            ),
+        ] {
+            std::fs::write(&file, &bad).unwrap();
+            let e = load_channels(&file).unwrap_err();
+            let name = file.display().to_string();
+            assert!(
+                e.iter().all(|f| f.starts_with(&name)) && e.iter().any(|f| f.contains(expect)),
+                "{bad}: {e:?}"
+            );
+        }
+    }
+
+    /// The channels of the fixtures validate.
+    #[test]
+    fn the_fixture_channels_validate() {
+        let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/deployment/channels.yaml");
+        assert!(!load_channels(&file).unwrap().is_empty());
     }
 
     /// The synthesis of the fixtures validates.

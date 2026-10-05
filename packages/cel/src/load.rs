@@ -62,6 +62,17 @@ pub fn definition<T: DeserializeOwned>(
     serde_json::from_value(document).map_err(|e| vec![format!("{source}: {e}")])
 }
 
+/// Like [`definition`], but converted from the YAML tree, so a mapping keeps
+/// the order of the document (such as the fields of a login screen).
+pub fn ordered_definition<T: DeserializeOwned>(
+    text: &str,
+    source: &str,
+    kind: Kind,
+) -> Result<T, Vec<String>> {
+    let (yaml, _) = yaml_document(text, source, kind)?;
+    serde_yaml_ng::from_value(yaml).map_err(|e| vec![format!("{source}: {e}")])
+}
+
 /// The paths in a directory, sorted. An entry that cannot be read is an
 /// error.
 fn content(map: &Path) -> Result<Vec<PathBuf>, String> {
