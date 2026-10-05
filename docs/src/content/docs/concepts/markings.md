@@ -85,7 +85,7 @@ This channel was called `untranslatables` through schema v0.5.x, alongside a sep
 
 ## Further reading
 
-- [Law Format](./law-format) - structure of YAML law files
+- [Law Format](./law-format) - structure of a rulework
 - [Schema Reference](../reference/schema) - the generated field reference for `markings`
 - [RFC-031: Markeringen en open normen](/rfcs/rfc-031) - the specification this page describes
 - [RFC-012: Untranslatables](/rfcs/rfc-012) - the original specification, under the former name

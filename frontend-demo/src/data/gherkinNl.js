@@ -47,7 +47,7 @@ const KEYWORDS = {
 const TEMPLATES = {
   nl: {
     set_calculation_date: (a) => `de peildatum is ${q(a[0])}`,
-    load_law: (a) => `de wet ${q(a[0])} is geladen`,
+    load_law: (a) => `het regelwerk ${q(a[0])} is geladen`,
     set_parameter_string: (a) => `parameter ${q(a[0])} is ${q(a[1])}`,
     set_parameter_number: (a) => `parameter ${q(a[0])} is ${a[1]}`,
     set_parameters_table: () => 'de volgende parameters:',

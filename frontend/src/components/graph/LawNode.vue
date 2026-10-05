@@ -8,7 +8,7 @@ defineProps({
   <button
     type="button"
     class="close"
-    aria-label="Verberg wet"
+    aria-label="Verberg regelwerk"
   >
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
       <path

@@ -21,7 +21,7 @@ The editor is a Vue 3 single-page app in `frontend/`. It browses the corpus, hol
 
 `AppShell.vue` holds the chrome that survives a switch between sections: the Home/Editor tab bar, the search field (a button below the `lg` breakpoint), the "+" menu, the traject menu and the account menu. Switching tabs swaps only the nested `<router-view>`, so the chrome is not rebuilt. In the editor the shell also renders the document tab bar of open articles, and a "PR #N" link to the pull request that the last save in the traject wrote to.
 
-- **"+" menu**: inside a traject it offers *Wet toevoegen*, *Werkdocument toevoegen* (new or upload) and *Leden uitnodigen*. Logged out, the same button opens a prompt to log in or request an account.
+- **"+" menu**: inside a traject it offers *Regelwerk toevoegen*, *Werkdocument toevoegen* (new or upload) and *Leden uitnodigen*. Logged out, the same button opens a prompt to log in or request an account.
 - **Traject menu** (`TrajectMenu.vue`, `MobileTrajectSheet.vue` on small screens): switch traject or go to the traject chooser.
 - **Account menu**: log in or out, *Account aanvragen*, the color scheme (*Weergave*), *Instellingen*, *Harvester* for users with a harvester role, *Over RegelRecht* and *Help*.
 

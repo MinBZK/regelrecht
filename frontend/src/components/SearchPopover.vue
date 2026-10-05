@@ -440,7 +440,7 @@ defineExpose({ show });
         <!-- Interne corpus-treffers: platte lijst, eigen repo eerst (op
              bron-prioriteit), met de bron als ondertitel per rij. Rijen
              navigeren alleen naar de wet; promoten naar het traject kan
-             uitsluitend via de "Wet toevoegen"-flow (AddLawSheet). -->
+             uitsluitend via de "Regelwerk toevoegen"-flow (AddLawSheet). -->
         <nldd-list-item
           v-for="law in sortedLaws"
           :key="law.law_id"
@@ -484,13 +484,13 @@ defineExpose({ show });
         <div slot="empty">
           <nldd-inline-dialog
             v-if="searching"
-            text="Zoeken in de wetten…"
+            text="Zoeken in de regelwerken…"
           ></nldd-inline-dialog>
           <nldd-inline-dialog
             v-else-if="searchFailed"
             variant="alert"
             text="Zoeken is mislukt"
-            supporting-text="De wetten konden niet worden doorzocht. Probeer het opnieuw."
+            supporting-text="De regelwerken konden niet worden doorzocht. Probeer het opnieuw."
           ></nldd-inline-dialog>
           <nldd-inline-dialog
             v-else-if="needsLogin && searchTerm.length >= MIN_QUERY_LENGTH"

@@ -53,11 +53,11 @@ onderzoeksvragen:
     optioneel raakvlakken met andere systemen.
   - >-
     Frontend: Kan een herbruikbare frontend worden vormgegeven op basis van
-    machine-uitvoerbare regelgeving (YAML's), en welke generieke componenten
+    regelwerken, en welke generieke componenten
     zijn daarvoor nodig?
   - >-
     Methode: Wat zijn patronen en tooling in het analyseren en valideren van de
-    regelgevings-YAML's die herbruikbaar zijn voor volgende casussen, en waar
+    regelwerken die herbruikbaar zijn voor volgende casussen, en waar
     houdt gereedschap op en begint menselijk oordeel?
   - >-
     Generiek: Welke verbeteringen aan bestaande onderdelen van het ecosysteem,

@@ -10,7 +10,7 @@ capability: analyseren
 capaciteit: ''
 toelichting: >-
   Verschillende manieren van analyseren die mogelijk worden gemaakt door het
-  omzetten van wetgeving naar een uitvoerbare specificatie (executable
+  omzetten van wetgeving naar een regelwerk (in het paper: executable
   specification). Deze analyses vallen uiteen in vier hoofdcategorieën:
 
 
@@ -72,7 +72,7 @@ toelichting: >-
   juridische basis onjuist?
 
   - Drift check: Is de vertaalde tekst exact de versie die van kracht was op de
-  geldigheidsdatum van de specificatie?
+  geldigheidsdatum van die versie van het regelwerk?
 
 
   **4. Analyse van 'Gaten' (Gap Analysis/Annotation)**\
@@ -106,7 +106,7 @@ onderzoeksvragen:
     paper: sec:depgraphs
   - vraag: >-
       Welke van de vier structurele defecten (gaten, tegenstrijdigheden, dode
-      takken, volgorde-gevoeligheid) zijn binnen één specificatie beslisbaar, en
+      takken, volgorde-gevoeligheid) zijn binnen één regelwerk beslisbaar, en
       welke worden onhaalbaar zodra regelingen elkaar op datum oplossen?
     paper: sec:structuralanalysis
   - vraag: >-

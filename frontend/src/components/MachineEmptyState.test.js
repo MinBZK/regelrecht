@@ -24,15 +24,15 @@ function enrichLabel(wrapper) {
 }
 
 describe('MachineEmptyState', () => {
-  it('noemt de wet en niet het artikel waar de knop de actie hier uitvoert', () => {
+  it('noemt het regelwerk en niet het artikel waar de knop de actie hier uitvoert', () => {
     const label = enrichLabel(mountEmpty(''));
-    expect(label).toBe('Verrijk deze wet');
+    expect(label).toBe('Verrijk dit regelwerk');
     expect(label).not.toMatch(/artikel/i);
   });
 
   it.each(['login', 'traject'])('gebruikt het hele werkwoord waar de knop routeert (%s)', (needs) => {
     const label = enrichLabel(mountEmpty(needs));
-    expect(label).toBe('Deze wet verrijken');
+    expect(label).toBe('Dit regelwerk verrijken');
     expect(label).not.toMatch(/artikel/i);
   });
 
@@ -40,6 +40,6 @@ describe('MachineEmptyState', () => {
     const supporting = mountEmpty('')
       .find('[data-testid="no-machine-readable"]')
       .attributes('supporting-text');
-    expect(supporting).toContain('de hele wet');
+    expect(supporting).toContain('alle artikelen van deze versie');
   });
 });
