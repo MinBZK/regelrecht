@@ -147,7 +147,7 @@
         },
         "without": {
           "$ref": "#/definitions/filter",
-          "description": "Only with group_by: a root stays in the list only if none of its grams passes this filter, for example without a gram of stage BESLUIT."
+          "description": "Only with group_by: a root stays in the list only if none of its grams passes this filter, for example without a gram of a given stage."
         },
         "pick": {
           "enum": [
@@ -428,7 +428,7 @@
           }
         },
         {
-          "description": "Over the grams that pass the filter: one row per gram with these fields, in chronicle order. A field a gram lacks is null. No gram is an empty list. For a table, such as the rows of an election result; use it as an extra field, not as a parameter.",
+          "description": "Over the grams that pass the filter: one row per gram with these fields, in chronicle order. A field a gram lacks is null. No gram is an empty list. For a table, such as the rows a register keeps; use it as an extra field, not as a parameter.",
           "type": "object",
           "required": [
             "collect"

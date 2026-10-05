@@ -32,12 +32,12 @@
     },
     "subtype": {
       "$ref": "#/definitions/identifier",
-      "description": "The subtype within the type, for example aanvraag for a submission."
+      "description": "The subtype within the type, an open vocabulary that the establishing article or the stream names."
     },
     "stage": {
       "type": "string",
       "pattern": "^[A-Z][A-Z_]*$",
-      "description": "From the law or the stream: the stage (RFC-008), for a stage decretogram, a submission (AANVRAAG) or an act (BEKENDMAKING)."
+      "description": "From the law or the stream: the stage of the procedure (RFC-008) that a stage decretogram is, that a submission opens or that an act brings about."
     },
     "name": {
       "$ref": "#/definitions/identifier"
@@ -59,12 +59,12 @@
     "legal_character": {
       "type": "string",
       "pattern": "^[A-Z][A-Z_]*$",
-      "description": "Only for a decision the cell itself made: the legal character from the article's produces (RFC-008), for example BESCHIKKING."
+      "description": "Only for a decision the cell itself made: the legal character from the article's produces (RFC-008), in the vocabulary of the law schema."
     },
     "decision_type": {
       "type": "string",
       "pattern": "^[A-Z][A-Z_]*$",
-      "description": "Only for a decision: the kind of decision from produces, for example TOEKENNING."
+      "description": "Only for a decision: the kind of decision from produces, in the vocabulary of the law schema."
     },
     "regulation": {
       "$ref": "#/definitions/identifier",
@@ -117,7 +117,7 @@
         "mandate": {
           "type": "string",
           "minLength": 1,
-          "description": "The legal basis of the mandate (Awb 10:1), if that authority is not the process's own authority."
+          "description": "The legal basis of the mandate, if that authority is not the process's own authority."
         }
       }
     },
@@ -128,7 +128,7 @@
     "effective_at_legal_basis": {
       "type": "array",
       "minItems": 1,
-      "description": "If the event bound effective_at to a submitted value and that value was present: why that moment legally counts, from the law. For example the day of receipt of an application that arrived by another route (Awb 4:13, with the policy for paper applications). Since v0.3.0 also without a submitted value, if the law says why the moment of recording counts (a portal application is received when the portal records it).",
+      "description": "If the event bound effective_at to a submitted value and that value was present: why that moment legally counts, from the law. For example the day of receipt of a submission that arrived by another route, with the rule that makes that day count. Since v0.3.0 also without a submitted value, if the law says why the moment of recording counts (a portal application is received when the portal records it).",
       "items": {
         "type": "string",
         "pattern": "^[a-z][a-z0-9_]*#[A-Za-z0-9]([A-Za-z0-9:._ -]*[A-Za-z0-9])?( lid [0-9]+[a-z]?)?$"
@@ -177,7 +177,7 @@
     },
     "field_provenance": {
       "type": "object",
-      "description": "Since v0.3.0: per field that the receiving channel could supply ($supplied in the stream), where its value came from this time. The same field can come from a register one time (the portal filled it in beforehand, from a register the policy names) and from the applicant another time (the register does not know it). The law decides that the field is in the gram (such as Wpp 102 lid 3: the statutory name); the provenance says only where the value came from.",
+      "description": "Since v0.3.0: per field that the receiving channel could supply ($supplied in the stream), where its value came from this time. The same field can come from a register one time (the portal filled it in beforehand, from a register the policy names) and from the applicant another time (the register does not know it). The law decides that the field is in the gram; the provenance says only where the value came from.",
       "propertyNames": {
         "pattern": "^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)*$"
       },

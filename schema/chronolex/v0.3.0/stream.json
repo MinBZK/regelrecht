@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/chronolex/v0.3.0/stream.json",
   "title": "Stream definition (chronicle-stream) v0.3.0",
-  "description": "Which facts a cell records, by which actor, in which chronicle. v0.3.0 (note 'het gram uit de wet', 29-09-2026): an event that names the article that establishes it (establishes) carries only the registration: which cell records the fact and through which intake. Type, subtype, stage, references, legal basis, the fields and their bindings follow from the law: the establishing article, the articles that extend the event (extends, by event name) and the articles that hook onto its stage (hooks on the legal character of the decision requested, RFC-007/008). A field is input by default ($external); only an origin in the law or the policy makes it otherwise (a constant for the decision requested, $supplied for what the channel or a register supplies). An event without establishes names everything itself, as in v0.2.0. The fixed core of an application (Awb 4:2 lid 1) is no longer in this schema: it comes from the law.",
+  "description": "Which facts a cell records, by which actor, in which chronicle. v0.3.0 (the note on the gram from the law, 29-09-2026): an event that names the article that establishes it (establishes) carries only the registration: which cell records the fact and through which intake. Type, subtype, stage, references, legal basis, the fields and their bindings follow from the law: the establishing article, the articles that extend the event (extends, by event name) and the articles that hook onto its stage (hooks on the legal character of the decision requested, RFC-007/008). A field is input by default ($external); only an origin in the law or the policy makes it otherwise (a constant for the decision requested, $supplied for what the channel or a register supplies). An event without establishes names everything itself, as in v0.2.0. No fixed core of a submission is in this schema: it comes from the law.",
   "type": "object",
   "required": [
     "$id",
@@ -44,7 +44,7 @@
     },
     "legal_basis": {
       "type": "string",
-      "description": "<regulation-$id>#<article-number>, optionally with ' lid <n>': for example een_wet#12, een_wet#4:2, een_wet#A 1 (an article number may contain a space) or een_wet#102 lid 1. An article can contain more than one application or action; the paragraph (lid) points to the right one. The check on parameters stays per article.",
+      "description": "<regulation-$id>#<article-number>, optionally with ' lid <n>': for example some_law#12, some_law#4:2, some_law#A 1 (an article number may contain a space) or some_law#102 lid 1. An article can contain more than one application or action; the paragraph (lid) points to the right one. The check on parameters stays per article.",
       "pattern": "^[a-z][a-z0-9_]*#[A-Za-z0-9]([A-Za-z0-9:._ -]*[A-Za-z0-9])?( lid [0-9]+[a-z]?)?$"
     },
     "field_path": {
@@ -152,19 +152,19 @@
         },
         "subtype": {
           "$ref": "#/definitions/identifier",
-          "description": "The subtype within the type, for example aanvraag, aangifte or melding for a submission."
+          "description": "The subtype within the type, an open vocabulary, such as the kind of a submission."
         },
         "stage": {
           "type": "string",
           "pattern": "^[A-Z][A-Z_]*$",
-          "description": "The stage of which this event is a step, in the vocabulary of RFC-008: for a decretogram the stage that the decision is (BESLUIT), for a submission the stage it opens (AANVRAAG), for an act the stage it brings about (BEKENDMAKING: the sending, Awb 3:41). Only on a decretogram, a submission or an act. A decision passes through each stage once: the cell rejects a second gram with the same stage that refers to the same decision, and also a second decision of the same event that refers to the same gram (an amendment refers with amends)."
+          "description": "The stage of which this event is a step, in the vocabulary of RFC-008: for a decretogram the stage that the decision is, for a submission the stage it opens, for an act the stage it brings about (such as the sending of a decision). Only on a decretogram, a submission or an act. A decision passes through each stage once: the cell rejects a second gram with the same stage that refers to the same decision, and also a second decision of the same event that refers to the same gram (an amendment refers with amends)."
         },
         "refers_to": {
           "$ref": "common.json#/definitions/refers_to"
         },
         "effective_at": {
           "type": "object",
-          "description": "Binds the gram's effective_at (when the fact legally applies or took place) to a submitted value: a date (YYYY-MM-DD, the start of that day) or a moment with a time zone. This way the stream says, per event, who supplies the legal moment. To $external: the acting actor, as part of the act (the date of a decision, the day of notification under Awb 3:41, the day of payment). To $intake: the intake channel, when the submitter may not choose the moment themselves (the counter sets a date stamp, not the aanvrager). Without establishes always with a source and a legal_basis; with establishes the law gives them. Within limits: not later than the recording, and not on a day before the effective_at of a gram it refers to; otherwise the cell rejects it. If the value is absent, effective_at is the moment of recording (recorded_at). Without this binding that is always the case. With establishes the law says which moment counts and the runtime derives the binding: a parameter or a field of the event binds to itself, a moment without either (the receipt, Awb 4:13) to $intake.received_at, which the counter supplies and the portal does not (then it is the moment of recording).",
+          "description": "Binds the gram's effective_at (when the fact legally applies or took place) to a submitted value: a date (YYYY-MM-DD, the start of that day) or a moment with a time zone. This way the stream says, per event, who supplies the legal moment. To $external: the acting actor, as part of the act (the date of a decision, the day of notification, the day of payment). To $intake: the intake channel, when the submitter may not choose the moment themselves (the counter sets a date stamp, not the submitter). Without establishes always with a source and a legal_basis; with establishes the law gives them. Within limits: not later than the recording, and not on a day before the effective_at of a gram it refers to; otherwise the cell rejects it. If the value is absent, effective_at is the moment of recording (recorded_at). Without this binding that is always the case. With establishes the law says which moment counts and the runtime derives the binding: a parameter or a field of the event binds to itself, a moment without either (such as the receipt of a submission) to $intake.received_at, which the counter supplies and the portal does not (then it is the moment of recording).",
           "required": [],
           "additionalProperties": false,
           "properties": {
@@ -175,7 +175,7 @@
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
-              "description": "Why this moment legally counts, for example the receipt of the application (Awb 4:13). The gram carries it as effective_at_legal_basis.",
+              "description": "Why this moment legally counts, for example the rule that makes the day of receipt count. The gram carries it as effective_at_legal_basis.",
               "items": {
                 "$ref": "#/definitions/legal_basis"
               }
