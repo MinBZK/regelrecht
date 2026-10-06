@@ -12,7 +12,7 @@ De Awir in de tekst die in 2025 gold. Waar 2026 anders is, staat dat erbij.
 |---|---|---|---|
 | Aanvraag | Awir 15 | indiening | tot 1 september (2026: 31 december) van het jaar na het berekeningsjaar; geldt ook voor volgende jaren (lid 5) |
 | Voorschot | Awir 16 | beschikking, "tot het bedrag waarop de tegemoetkoming vermoedelijk zal worden vastgesteld" | binnen 13 weken na de aanvraag; vóór het jaar bij een doorlopende aanvraag (lid 2) |
-| Betaling voorschot | Awir 22 | termijnen | ritme volgt uit de dagtekening van het voorschot: 12 termijnen vanaf december als het vóór het jaar verleend is, anders de resterende maanden plus een inhaalbedrag, of ineens na 31 oktober |
+| Betaling voorschot | Awir 22 | termijnen | per maand een termijn, volgend uit de dagtekening van het voorschot: 12 vanaf december als het vóór het jaar verleend is, anders de resterende maanden plus een bedrag ineens voor de verstreken maanden, of ineens na 31 oktober |
 | Wijziging | Awir 17, 16 lid 5 | melding, dan herziening voorschot | tijdens het jaar |
 | Toekenning | Awir 19 jo. 14, Zorgtoeslagwet 2 | beschikking op het inkomensgegeven (Awir 8, AWR 21) | binnen zes maanden na de aanslag IB; anders uiterlijk 31 december van het jaar erna |
 | Uitbetaling, verrekening | Awir 24 | nabetaling binnen vier weken; voorschotten verrekend (lid 2), of terugvordering (lid 3) | na de toekenning |
@@ -36,7 +36,7 @@ Zorgtoeslagwet art. 2 lid 5: de aanspraak wordt **per kalendermaand** bepaald. H
 | Gram | Vestigend artikel | Type | Verwijst naar | Velden |
 |---|---|---|---|---|
 | aanvraag | Awir 15 | submission | — | wat de wet vraagt (bestaat al) |
-| voorschot verleend | Awir 16 | decretogram | `on_application` | het voorschotbedrag, de termijnen (§4) |
+| voorschot verleend | Awir 16 | decretogram | `on_application` | het voorschotbedrag; de dagtekening is het moment dat telt (§4) |
 | voorschottermijn betaald | Awir 22 | executogram | `decision` → voorschot | bedrag, maand |
 | toekenning | Awir 19 jo. Zorgtoeslagwet 2 | decretogram | `on_application` | het vastgestelde bedrag, het inkomensgegeven waarop het rust |
 | verrekening | Awir 24 | decretogram | `decision` → toekenning | nog te betalen, onverschuldigd betaald |
@@ -52,9 +52,14 @@ Wat de cel vastlegt, blijft wat de wet zegt (`produces.extensions.chronolex.esta
 
 **Bron:** Awir 22 en de oude PoC (#1466, #1469, #1482). Die zette verplichtingen in het besluitartikel (`extensions.chronolex.verplichtingen` met bedrag, ritme en grondslag) en benaderde het ritme van art. 22 met `ritme: $betalingsritme`.
 
-**Voorstel (eigen keuze):** art. 22 **letterlijk** modelleren als uitkomst van het voorschotbesluit: een lijst termijnen `{maand, bedrag}`, afgeleid van de dagtekening en het voorschotbedrag. Lid 1, 2, 4 en 5 zijn rekenregels over maanden. Lukt dat niet met de huidige operaties, dan is dat een bevinding voor de engine (een lijst maken met FOREACH of LIST), geen reden om het ritme in de cel te zetten.
+**Wat art. 22 zegt** (tekst van 2026-01-01): het voorschot wordt "uitbetaald in 12 termijnen", de eerste in december vóór het berekeningsjaar "en elke volgende termijn telkens een maand later" (lid 1). Wie in de loop van het jaar een voorschot krijgt, krijgt "zoveel termijnen als er na de maand van dagtekening nog kalendermaanden van dat jaar overblijven" (lid 2). Bij een aanspraak voor een deel van het jaar is het aantal termijnen het aantal kalendermaanden met aanspraak (lid 3). Over al verstreken maanden volgt een bedrag ineens in de maand van dagtekening (lid 4). Na 31 oktober is het één bedrag in de maand van dagtekening (lid 5). Over de hoogte van een termijn zegt het artikel niets: het noemt geen "gelijke termijnen" meer.
 
-- **Een termijn die nog moet komen is geen feit** (RFC-044: "wat nog moet gebeuren is geen feit"). De termijnen staan als *uitkomst* in het voorschotgram. Een betaling wordt pas een gram als de maand er is.
+Art. 22 spreekt dus niet van een lijst of van betalingsopdrachten. Het zegt per maand of er een termijn valt, en dat volgt uit de dagtekening van het voorschotbesluit.
+
+**Voorstel (eigen keuze):** art. 22 wordt een **regel per maand**, geen lijst. Het artikel krijgt als invoer het voorschotbedrag, de dagtekening van het voorschot, de maanden met aanspraak en een maand. Het antwoordt: valt er in deze maand een termijn, en zo ja welk bedrag. Elke keer dat de tijd een maand verder gaat, vraagt de cel dat aan de wet; pas een betaalde termijn wordt een gram (§5).
+
+- **Een termijn die nog moet komen is geen feit** (RFC-044: "wat nog moet gebeuren is geen feit"). Het voorschotgram legt geen toekomstige betalingen vast, alleen het bedrag en het moment van het besluit. Dat volgt de tekst ("elke volgende termijn telkens een maand later") en sluit aan bij het vooruitspoelen (§8).
+- **De hoogte van een termijn** regelt de wet niet. Voorstel: het voorschotbedrag gedeeld door het aantal termijnen, met het restant in de laatste termijn (zoals de oude PoC, #1466). Dat is een uitvoeringskeuze en hoort in het uitvoeringsbeleid van Toeslagen, niet in de Awir. Zolang er geen beleid is, staat het als gemarkeerde keuze in het model.
 - **Wie betaalt, zegt de wet niet**, maar het uitvoeringsbeleid of de cel (oude PoC: "betaler uit het wereldbestand"). Voor deze stap blijft het bij één cel: Toeslagen legt zelf vast dat de termijn betaald is. Een aparte betaalcel is een latere stap.
 
 ## 5. Verrekening: een reductie over de eigen kroniek
@@ -90,7 +95,7 @@ Dit is nu het grootste gat. Het staat in `Cell::decide` en in de review van #168
 **Vooruit, niet terug.** Een gram mag niet in de toekomst liggen (RFC-044). Terugzetten zou de kroniek ongeldig maken. Terug kan dus alleen via "opnieuw beginnen" (de bestaande reset).
 
 **"Naar het volgende moment".** In de Kroniek van een zaak toont de demo onder de feiten wat de wet als volgende moment geeft, als verwachting en niet als gram:
-- de volgende voorschottermijn (uitkomst van het voorschot);
+- de volgende voorschottermijn (art. 22, gevraagd voor de volgende maand);
 - het einde van het berekeningsjaar;
 - de aanslag IB en daarmee de termijn van Awir 19;
 - de betaaldatum van een nabetaling (Awir 24, vier weken) of een terugvordering (Awir 28, zes weken).
@@ -115,7 +120,7 @@ Eén knop zet de peildatum op het eerstvolgende moment. De cel legt vast wat dan
 |---|---|---|
 | 0 | Awir opnieuw harvesten (2025, 2026), eigen PR | een halve dag, plus het nalopen van bestaande modellering |
 | 1 | Berekeningsjaar uit de aanvraag (§6), rekendatum per besluit in de cel | een dag |
-| 2 | Awir 16 voorschot met termijnen (art. 22 letterlijk), demo: voorschot op geschat inkomen | een à twee dagen |
+| 2 | Awir 16 voorschot en art. 22 als regel per maand, demo: voorschot op geschat inkomen | een à twee dagen |
 | 3 | Lexostatus met peilmoment en `sum`; betaalde termijnen als grammen | een dag |
 | 4 | Awir 19 toekenning en 24 verrekening, terugvordering met 26a | een à twee dagen |
 | 5 | Demo: één klok, "naar het volgende moment", inkomen per jaar | een à twee dagen |
@@ -123,6 +128,6 @@ Eén knop zet de peildatum op het eerstvolgende moment. De cel legt vast wat dan
 ## 11. Vragen voor jou
 
 1. Mag Zorgtoeslagwet art. 2 zijn `decides_on` kwijt aan Awir 16 en 19 (§3)? Dan is het patroon toeslag-onafhankelijk.
-2. Art. 22 letterlijk modelleren (§4), ook als dat een engine-uitbreiding voor lijsten vraagt?
+2. De hoogte van een termijn (§4): gelijke delen met het restant in de laatste termijn, als gemarkeerde uitvoeringskeuze tot er beleid van Toeslagen is?
 3. Het geschatte inkomen als veld van de aanvraag (§7)?
 4. Eerst de Awir opnieuw harvesten (stap 0)?
