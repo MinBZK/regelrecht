@@ -16,7 +16,7 @@
           size="sm"
           text="Herstel het model"
           start-icon="undo"
-          variant="neutral-transparent"
+          appearance="neutral-transparent"
           @click="herstelHandelingen"
         ></nldd-button>
       </div>

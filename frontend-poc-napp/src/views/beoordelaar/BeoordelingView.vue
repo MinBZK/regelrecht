@@ -211,7 +211,7 @@ onMounted(laad);
     <template v-if="item">
       <nldd-simple-section>
         <nldd-button
-          variant="neutral-transparent"
+          appearance="neutral-transparent"
           size="sm"
           text="Terug naar de werkvoorraad"
           start-icon="chevron-left"
@@ -229,7 +229,7 @@ onMounted(laad);
           <div slot="left">
             <nldd-title size="4"><h3>Eigen opgaven</h3></nldd-title>
             <nldd-spacer size="12"></nldd-spacer>
-            <nldd-list variant="box">
+            <nldd-list appearance="box">
               <nldd-list-item size="sm">
                 <nldd-text-cell text="Onderdelen in deze aanvraag" color="secondary"></nldd-text-cell>
                 <nldd-text-cell :text="String(item.aanvraag.componenten.length)" horizontal-alignment="right"></nldd-text-cell>
@@ -251,7 +251,7 @@ onMounted(laad);
 
             <nldd-title size="4"><h3>Transparantieverklaringen (art. 5)</h3></nldd-title>
             <nldd-spacer size="12"></nldd-spacer>
-            <nldd-list variant="box">
+            <nldd-list appearance="box">
               <nldd-list-item v-for="v in verklaringen" :key="v.label" size="sm">
                 <nldd-icon-cell
                   :icon="v.ok ? 'check-mark-circle' : 'dismiss-circle'"
@@ -271,7 +271,7 @@ onMounted(laad);
               <nldd-spacer size="16"></nldd-spacer>
               <nldd-button
                 v-if="item.aanvraag.status === 'BESLUIT'"
-                variant="primary"
+                appearance="primary"
                 text="Besluit bekendmaken"
                 start-icon="paper-plane"
                 :disabled="bezig || undefined"
@@ -298,7 +298,7 @@ onMounted(laad);
                 </div>
               </nldd-title>
               <nldd-spacer size="12"></nldd-spacer>
-              <nldd-list variant="box">
+              <nldd-list appearance="box">
                 <nldd-list-item size="sm">
                   <nldd-text-cell text="Bedrag (80% van rechtswege)" color="secondary"></nldd-text-cell>
                   <nldd-text-cell :text="euro(item.betaalopdracht.bedrag)" horizontal-alignment="right"></nldd-text-cell>
@@ -325,7 +325,7 @@ onMounted(laad);
               <template v-if="item.betaalopdracht.status === 'AANGEMAAKT'">
                 <nldd-spacer size="12"></nldd-spacer>
                 <nldd-button
-                  variant="secondary"
+                  appearance="secondary"
                   text="Uitbetalen (gesimuleerd betaalsysteem)"
                   start-icon="euro-sign"
                   :disabled="bezig || undefined"
@@ -346,7 +346,7 @@ onMounted(laad);
                 </div>
               </nldd-title>
               <nldd-spacer size="12"></nldd-spacer>
-              <nldd-list variant="box">
+              <nldd-list appearance="box">
                 <nldd-list-item size="sm">
                   <nldd-text-cell text="Indiener" color="secondary"></nldd-text-cell>
                   <nldd-text-cell :text="item.bezwaar.naam_indiener" horizontal-alignment="right"></nldd-text-cell>
@@ -390,7 +390,7 @@ onMounted(laad);
                 <template v-if="item.bezwaar.gehoord === null">
                   <nldd-spacer size="12"></nldd-spacer>
                   <nldd-button
-                    variant="secondary"
+                    appearance="secondary"
                     text="Indiener gehoord"
                     :disabled="bezig || undefined"
                     @click="registreerHoren(true)"
@@ -405,7 +405,7 @@ onMounted(laad);
                   </nldd-form-field>
                   <nldd-spacer size="8"></nldd-spacer>
                   <nldd-button
-                    variant="neutral"
+                    appearance="neutral"
                     text="Afzien van horen"
                     :disabled="bezig || undefined"
                     @click="registreerHoren(false)"
@@ -438,7 +438,7 @@ onMounted(laad);
                   </template>
                   <nldd-spacer size="8"></nldd-spacer>
                   <nldd-button
-                    variant="primary"
+                    appearance="primary"
                     text="Beslissing op bezwaar vaststellen"
                     :disabled="bezig || undefined"
                     @click="beslisBezwaar"
@@ -472,7 +472,7 @@ onMounted(laad);
               />
               <nldd-spacer size="16"></nldd-spacer>
 
-              <nldd-list variant="box">
+              <nldd-list appearance="box">
                 <nldd-list-item v-for="g in samenvattingPerGroep" :key="g.naam" size="sm">
                   <nldd-text-cell
                     :text="g.naam"
@@ -492,7 +492,7 @@ onMounted(laad);
 
               <nldd-button
                 v-if="item.aanvraag.status === 'BEHANDELING' && uitkomst"
-                variant="primary"
+                appearance="primary"
                 :text="uitkomst.subsidie_toegekend
                   ? `Besluit vaststellen: toekennen (${euro(uitkomst.subsidiebedrag)})`
                   : 'Besluit vaststellen: afwijzen'"
@@ -534,7 +534,7 @@ onMounted(laad);
                 <nldd-spacer size="16"></nldd-spacer>
                 <nldd-title size="5"><h4>Landelijke subsidie in delen (art. 14)</h4></nldd-title>
                 <nldd-spacer size="8"></nldd-spacer>
-                <nldd-list variant="box">
+                <nldd-list appearance="box">
                   <nldd-list-item v-for="d in landelijkeDelen" :key="d.label" size="sm">
                     <nldd-text-cell :text="d.label" color="secondary"></nldd-text-cell>
                     <nldd-text-cell :text="euro(d.bedrag)" horizontal-alignment="right"></nldd-text-cell>

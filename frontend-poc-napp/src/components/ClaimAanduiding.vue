@@ -106,7 +106,7 @@ onMounted(async () => {
       <nldd-spacer size="16"></nldd-spacer>
       <template v-if="!opnieuw">
         <nldd-button
-          variant="secondary"
+          appearance="secondary"
           text="Opnieuw claimen"
           start-icon="refresh"
           @click="claimOpnieuw"
@@ -143,7 +143,7 @@ onMounted(async () => {
         @input="onZoek"
       ></nldd-search-field>
       <nldd-spacer size="8"></nldd-spacer>
-      <nldd-list v-if="aanduidingen.length" variant="box">
+      <nldd-list v-if="aanduidingen.length" appearance="box">
         <nldd-list-item v-for="a in aanduidingen" :key="a.doel_kvk" size="md">
           <nldd-title-cell
             :text="a.aanduiding"
@@ -152,7 +152,7 @@ onMounted(async () => {
           <nldd-spacer-cell size="12"></nldd-spacer-cell>
           <nldd-cell width="fit-content">
             <nldd-button
-              variant="secondary"
+              appearance="secondary"
               size="sm"
               text="Aanduiding claimen"
               :disabled="bezig || undefined"

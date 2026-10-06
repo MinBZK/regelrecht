@@ -37,7 +37,7 @@ const rows = computed(() => {
 </script>
 
 <template>
-  <nldd-list variant="simple">
+  <nldd-list appearance="simple">
     <template v-for="row in rows" :key="row.key">
       <!-- Conversion job: running rows open a loading main pane; failed rows show the error. -->
       <nldd-list-item
@@ -51,7 +51,7 @@ const rows = computed(() => {
           <nldd-activity-indicator size="20" timing="instant"></nldd-activity-indicator>
         </nldd-cell>
         <nldd-icon-cell v-else size="20">
-          <nldd-icon name="alert"></nldd-icon>
+          <nldd-icon icon="alert"></nldd-icon>
         </nldd-icon-cell>
         <nldd-spacer-cell size="8"></nldd-spacer-cell>
         <nldd-text-cell
@@ -59,7 +59,7 @@ const rows = computed(() => {
           :supporting-text="row.job.status === 'failed' ? 'Conversie mislukt' : undefined"
         ></nldd-text-cell>
         <nldd-spacer-cell size="8"></nldd-spacer-cell>
-        <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
+        <nldd-icon-cell size="20"><nldd-icon icon="chevron-right"></nldd-icon></nldd-icon-cell>
       </nldd-list-item>
 
       <!-- Document -->
@@ -70,11 +70,11 @@ const rows = computed(() => {
         :current="row.doc.path === selectedPath || undefined"
         @click="$emit('select', row.doc.path)"
       >
-        <nldd-icon-cell size="20"><nldd-icon name="text-document"></nldd-icon></nldd-icon-cell>
+        <nldd-icon-cell size="20"><nldd-icon icon="text-document"></nldd-icon></nldd-icon-cell>
         <nldd-spacer-cell size="8"></nldd-spacer-cell>
         <nldd-text-cell :text="title(row.doc.path)"></nldd-text-cell>
         <nldd-spacer-cell size="8"></nldd-spacer-cell>
-        <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
+        <nldd-icon-cell size="20"><nldd-icon icon="chevron-right"></nldd-icon></nldd-icon-cell>
       </nldd-list-item>
     </template>
   </nldd-list>

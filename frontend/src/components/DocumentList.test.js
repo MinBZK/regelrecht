@@ -43,7 +43,7 @@ describe('DocumentList', () => {
 
   it('shows a chevron trailing icon (in-place select)', () => {
     const wrapper = mountList();
-    const icons = wrapper.findAll('nldd-icon').map((i) => i.attributes('name'));
+    const icons = wrapper.findAll('nldd-icon').map((i) => i.attributes('icon'));
     expect(icons).toContain('chevron-right');
   });
 });

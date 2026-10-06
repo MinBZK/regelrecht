@@ -4,7 +4,7 @@
       <nldd-title :size="2">
         <span slot="overline">Voor beleidsmakers</span>
         <span>Scenario's: wie gaat erop vooruit, wie achteruit</span>
-        <span slot="subtitle">
+        <span slot="supporting-text">
           Bij terugbetalen hangt de uitkomst af van wie je bent: regime, schuld, inkomen en of je een partner hebt.
           Het gemiddelde verbergt dat. Hier staat elk scenario onder huidig recht naast de varianten die je kiest. Je kunt er zelf een toevoegen.
         </span>
@@ -19,7 +19,7 @@
         <nldd-button
           text="Scenario toevoegen"
           start-icon="add"
-          variant="secondary"
+          appearance="secondary"
           size="sm"
           @click="nieuwScenario"
         ></nldd-button>

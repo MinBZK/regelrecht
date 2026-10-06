@@ -59,15 +59,15 @@ function formatSize(bytes) {
       <!-- Twee losse labels naast elkaar: zonder tussenruimte lezen ze als een. -->
       <nldd-spacer-cell v-if="cl.hardship?.clause && cl.evidence" size="8"></nldd-spacer-cell>
       <nldd-cell v-if="cl.evidence">
-        <nldd-button v-if="cl.evidence.dataUrl" size="sm" variant="neutral-transparent" start-icon="file" :text="cl.evidence.name" :href="cl.evidence.dataUrl" target="_blank" rel="noopener"></nldd-button>
+        <nldd-button v-if="cl.evidence.dataUrl" size="sm" appearance="neutral-transparent" start-icon="file" :text="cl.evidence.name" :href="cl.evidence.dataUrl" target="_blank" rel="noopener"></nldd-button>
         <nldd-tag v-else size="sm" color="neutral" icon="file" :text="cl.evidence.name"></nldd-tag>
       </nldd-cell>
     </nldd-list-item>
     <nldd-list-item v-if="awaitsDecision(cl)" size="sm">
       <nldd-cell width="full">
         <nldd-button-group orientation="horizontal" size="sm">
-          <nldd-button size="sm" variant="primary" :text="t('sheet.corrections.approve')" @click="demo.decideClaim(cl.id, true)"></nldd-button>
-          <nldd-button size="sm" variant="secondary" :text="t('sheet.corrections.reject')" @click="demo.decideClaim(cl.id, false)"></nldd-button>
+          <nldd-button size="sm" appearance="primary" :text="t('sheet.corrections.approve')" @click="demo.decideClaim(cl.id, true)"></nldd-button>
+          <nldd-button size="sm" appearance="secondary" :text="t('sheet.corrections.reject')" @click="demo.decideClaim(cl.id, false)"></nldd-button>
         </nldd-button-group>
       </nldd-cell>
     </nldd-list-item>

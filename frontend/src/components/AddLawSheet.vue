@@ -321,7 +321,7 @@ defineExpose({ show });
           </template>
 
           <!-- Resultaatrijen: promoten (centraal corpus) of ophalen (BWB). -->
-          <nldd-list v-if="hasRows" variant="box-tinted">
+          <nldd-list v-if="hasRows" appearance="box-tinted">
             <!-- Centrale-corpus-treffers: promoten naar het traject. -->
             <nldd-list-item
               v-for="law in sortedLaws"
@@ -337,7 +337,7 @@ defineExpose({ show });
               <nldd-cell>
                 <nldd-button
                   size="sm"
-                  variant="primary"
+                  appearance="primary"
                   text="Toevoegen aan traject"
                   :disabled="isInTraject(law) || undefined"
                   :loading="promoteState[law.law_id] === 'busy' || undefined"
@@ -348,7 +348,7 @@ defineExpose({ show });
 
             <!-- Direct getypt BWB-id: traject-harvest zonder externe zoeker. -->
             <nldd-list-item v-if="showDirectBwbRow" size="md" :data-bwb-id="bwbIdQuery">
-              <nldd-icon-cell size="20"><nldd-icon name="harvest"></nldd-icon></nldd-icon-cell>
+              <nldd-icon-cell size="20"><nldd-icon icon="harvest"></nldd-icon></nldd-icon-cell>
               <nldd-spacer-cell size="8"></nldd-spacer-cell>
               <nldd-text-cell
                 :text="bwbIdQuery"
@@ -358,7 +358,7 @@ defineExpose({ show });
               <nldd-cell>
                 <nldd-button
                   size="sm"
-                  variant="primary"
+                  appearance="primary"
                   text="Ophalen naar traject"
                   :disabled="['busy', 'requested'].includes(harvestState[bwbIdQuery]) || undefined"
                   @click="requestTrajectHarvest(bwbIdQuery)"
@@ -373,7 +373,7 @@ defineExpose({ show });
               size="md"
               :data-bwb-id="result.bwb_id"
             >
-              <nldd-icon-cell size="20"><nldd-icon name="harvest"></nldd-icon></nldd-icon-cell>
+              <nldd-icon-cell size="20"><nldd-icon icon="harvest"></nldd-icon></nldd-icon-cell>
               <nldd-spacer-cell size="8"></nldd-spacer-cell>
               <nldd-text-cell
                 :text="result.title"
@@ -383,7 +383,7 @@ defineExpose({ show });
               <nldd-cell>
                 <nldd-button
                   size="sm"
-                  variant="primary"
+                  appearance="primary"
                   text="Ophalen naar traject"
                   :disabled="['busy', 'requested'].includes(harvestState[result.bwb_id]) || undefined"
                   @click="requestTrajectHarvest(result.bwb_id, result.title)"
@@ -427,7 +427,7 @@ defineExpose({ show });
             >
               <nldd-button
                 size="md"
-                variant="secondary"
+                appearance="secondary"
                 start-icon="upload-to-cloud"
                 text="Bestand kiezen…"
                 data-testid="add-law-upload"

@@ -597,7 +597,7 @@ defineExpose({ save: onSave });
               <template v-if="scenarioExpectations(i).length">
                 <nldd-title size="6"><h4>Verwachte uitkomsten</h4></nldd-title>
                 <nldd-spacer size="4"></nldd-spacer>
-                <nldd-list variant="simple">
+                <nldd-list appearance="simple">
                   <nldd-list-item v-for="(exp, j) in scenarioExpectations(i)" :key="j" size="sm">
                     <nldd-text-cell size="sm" :text="exp.name"></nldd-text-cell>
                     <nldd-text-cell size="sm" horizontal-alignment="right" :text="exp.value"></nldd-text-cell>
@@ -621,7 +621,7 @@ defineExpose({ save: onSave });
                   @click="onShowDetails(i, 'trace')"
                 ></nldd-button>
                 <nldd-button
-                  variant="secondary"
+                  appearance="secondary"
                   text="Graaf"
                   @click="onShowDetails(i, 'graph')"
                 ></nldd-button>
@@ -715,7 +715,7 @@ defineExpose({ save: onSave });
         <nldd-container v-if="isDirty" slot="footer" padding="16">
           <nldd-button-group orientation="vertical">
             <nldd-button
-              variant="primary"
+              appearance="primary"
               size="md"
               data-testid="save-scenarios-btn"
               :disabled="saving || undefined"

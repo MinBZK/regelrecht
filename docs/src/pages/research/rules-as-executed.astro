@@ -53,21 +53,21 @@ const discussionUrl =
   >
     <nldd-title slot="header" size="1">
       <h1>{meta.title}</h1>
-      <p slot="subtitle">{meta.subtitle}</p>
+      <p slot="supporting-text">{meta.subtitle}</p>
     </nldd-title>
     {/*
       The sidebar carries what belongs to the paper as a whole: where to get it,
       where to discuss it, and where you are in it.
     */}
     <nldd-container slot="sidebar" padding="16">
-      <nldd-button-group>
+      <nldd-button-group orientation="vertical">
         <nldd-button
           href={doiUrl}
           text="PDF on Zenodo"
           end-icon="external-link"
           target="_blank"
           rel="noopener"
-          variant="secondary"
+          appearance="secondary"
         ></nldd-button>
         <nldd-button
           href={discussionUrl}
@@ -75,7 +75,7 @@ const discussionUrl =
           start-icon="comment"
           target="_blank"
           rel="noopener"
-          variant="secondary"
+          appearance="secondary"
         ></nldd-button>
       </nldd-button-group>
       <nldd-spacer size="8" />

@@ -131,7 +131,7 @@ watch(() => session.aanvrager, laadAlles);
         >
           <nldd-button
             slot="actions"
-            variant="primary"
+            appearance="primary"
             text="Naar inloggen"
             @click="router.push('/')"
           ></nldd-button>
@@ -158,7 +158,7 @@ watch(() => session.aanvrager, laadAlles);
           </p>
         </nldd-rich-text>
         <nldd-spacer size="12"></nldd-spacer>
-        <nldd-list v-if="registratie?.partij" variant="box">
+        <nldd-list v-if="registratie?.partij" appearance="box">
           <nldd-list-item size="sm">
             <nldd-text-cell text="Geregistreerde aanduiding" color="secondary"></nldd-text-cell>
             <nldd-text-cell :text="registratie.partij.naam" horizontal-alignment="right"></nldd-text-cell>
@@ -202,7 +202,7 @@ watch(() => session.aanvrager, laadAlles);
             slot="actions"
           >
             <nldd-button
-              variant="secondary"
+              appearance="secondary"
               :text="rekening?.iban ? 'Rekening wijzigen' : 'Rekening opgeven'"
               start-icon="pencil"
               @click="openRekening"
@@ -224,7 +224,7 @@ watch(() => session.aanvrager, laadAlles);
           <nldd-spacer size="12"></nldd-spacer>
         </template>
 
-        <nldd-list variant="box">
+        <nldd-list appearance="box">
           <nldd-list-item size="md">
             <nldd-title-cell
               :text="rekening?.iban ?? 'Nog niet opgegeven'"
@@ -312,13 +312,13 @@ watch(() => session.aanvrager, laadAlles);
             <nldd-form-actions>
               <nldd-button-group orientation="horizontal">
                 <nldd-button
-                  variant="primary"
+                  appearance="primary"
                   type="submit"
                   text="Opslaan"
                   :disabled="rekeningBezig || undefined"
                 ></nldd-button>
                 <nldd-button
-                  variant="secondary"
+                  appearance="secondary"
                   text="Annuleren"
                   @click="rekeningOpen = false"
                 ></nldd-button>

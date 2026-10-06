@@ -97,7 +97,7 @@ function findAddButton(wrapper, section) {
 // delete event. There's one per pendingDelete (the modal renders only
 // when something is staged) so a single global lookup is fine.
 function findConfirmDeleteButton(wrapper) {
-  return wrapper.find('nldd-button[variant="destructive"][text="Verwijder"]');
+  return wrapper.find('nldd-button[appearance="destructive"][text="Verwijder"]');
 }
 
 describe('MachineReadable', () => {
