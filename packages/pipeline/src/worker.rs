@@ -2634,18 +2634,15 @@ pub async fn complete_enrich_success_tx(
     Ok(continuation)
 }
 
-/// Process the next available enrich job.
-///
-/// Returns the [`JobOutcome`]: `Processed` when a job was handled, `Idle` when
-/// none was available, or `ResourceExhausted` when the job failed because the
 /// Shrink the per-call LLM timeouts so a whole run fits the job budget.
 ///
-/// A run is not one agent call. Translation, a feedback round per gate, the
-/// closing pass and the final gates together make up to
-/// [`MAX_AGENT_CALLS_PER_RUN`] of them, and the job timeout covers all of
-/// them at once, so each call gets a share of the budget (minus a reserve for
-/// commit and cleanup). Lowering a ceiling is right here: a call that would
-/// overrun the job is a call whose result is thrown away.
+/// A run is not one agent call. Translation, the feedback rounds of every
+/// gate, the closing pass and the final gates all count, as many as
+/// `ENRICH_FEEDBACK_ROUNDS` allows ([`FeedbackRounds::max_calls`]), and the
+/// job timeout covers all of them at once, so each call gets a share of the
+/// budget (minus a reserve for commit and cleanup). Lowering a ceiling is
+/// right here: a call that would overrun the job is a call whose result is
+/// thrown away.
 ///
 /// The shares are not equal. The translation reads the window and writes
 /// every `machine_readable` in it; a feedback round answers a list of
@@ -2654,38 +2651,32 @@ pub async fn complete_enrich_success_tx(
 /// The translation weighs [`TRANSLATE_SHARE_WEIGHT`] shares, each other call
 /// one.
 ///
-/// [`MAX_AGENT_CALLS_PER_RUN`]: crate::enrich::MAX_AGENT_CALLS_PER_RUN
+/// [`FeedbackRounds::max_calls`]: crate::enrich::FeedbackRounds::max_calls
 fn bound_llm_timeout(config: &mut crate::enrich::EnrichConfig, job_timeout: Duration) {
     let reserve = Duration::from_secs(30);
     let budget = job_timeout.saturating_sub(reserve);
-    let feedback_calls = crate::enrich::MAX_AGENT_CALLS_PER_RUN - 1;
-    let unit = budget / (TRANSLATE_SHARE_WEIGHT + feedback_calls);
+    let feedback_calls = config.feedback_rounds.max_calls();
+    let unit = budget / TRANSLATE_SHARE_WEIGHT.saturating_add(feedback_calls);
     let translate_share = unit * TRANSLATE_SHARE_WEIGHT;
-    if config.timeout > translate_share {
-        tracing::warn!(
-            llm_timeout = ?config.timeout,
-            job_timeout = ?job_timeout,
-            adjusted_to = ?translate_share,
-            "LLM timeout leaves no room for a full chain, reducing the translation call to its share"
-        );
-        config.timeout = translate_share;
-    }
-    if config.feedback_timeout > unit {
-        tracing::warn!(
-            llm_timeout = ?config.feedback_timeout,
-            job_timeout = ?job_timeout,
-            calls = feedback_calls,
-            adjusted_to = ?unit,
-            "LLM timeout leaves no room for a full chain, reducing each feedback round to its share"
-        );
-        config.feedback_timeout = unit;
-    }
+    config.timeout = config.timeout.min(translate_share);
+    config.feedback_timeout = config.feedback_timeout.min(unit);
+    tracing::info!(
+        job_timeout = ?job_timeout,
+        feedback_calls,
+        translate_timeout = ?config.timeout,
+        feedback_timeout = ?config.feedback_timeout,
+        "LLM ceilings sized to fit a full chain in the job budget"
+    );
 }
 
 /// How many per-call shares of the job budget the translation call gets; every
 /// other call of a run gets one. See [`bound_llm_timeout`].
 const TRANSLATE_SHARE_WEIGHT: u32 = 3;
 
+/// Process the next available enrich job.
+///
+/// Returns the [`JobOutcome`]: `Processed` when a job was handled, `Idle` when
+/// none was available, or `ResourceExhausted` when the job failed because the
 /// container could not spawn processes/threads (fork()/EAGAIN).
 ///
 /// Each enrichment creates a separate branch (`enrich/{provider}`)
@@ -3960,7 +3951,11 @@ articles:
     }
 
     fn config_with_timeouts(secs: u64) -> crate::enrich::EnrichConfig {
-        let mut config = crate::enrich::EnrichConfig::from_env();
+        let mut config =
+            crate::enrich::EnrichConfig::for_test(crate::enrich::LlmProvider::Claude {
+                path: "claude".into(),
+                model: None,
+            });
         config.timeout = Duration::from_secs(secs);
         config.feedback_timeout = Duration::from_secs(secs);
         config
@@ -3968,7 +3963,7 @@ articles:
 
     #[test]
     fn bound_llm_timeout_gives_the_translation_a_larger_share() {
-        // Productie: LLM_TIMEOUT_SECS=3600, WORKER_JOB_TIMEOUT_SECS=3900.
+        // Production: LLM_TIMEOUT_SECS=3600, WORKER_JOB_TIMEOUT_SECS=3900.
         let mut config = config_with_timeouts(3600);
         bound_llm_timeout(&mut config, Duration::from_secs(3900));
         // (3900 - 30) / (3 + 6) = 430 per share.
@@ -3976,8 +3971,18 @@ articles:
         assert_eq!(config.timeout, Duration::from_secs(1290));
         // A run that uses every call still fits the job.
         let all_calls =
-            config.timeout + config.feedback_timeout * (crate::enrich::MAX_AGENT_CALLS_PER_RUN - 1);
+            config.timeout + config.feedback_timeout * config.feedback_rounds.max_calls();
         assert!(all_calls <= Duration::from_secs(3900 - 30));
+    }
+
+    #[test]
+    fn bound_llm_timeout_counts_the_configured_feedback_rounds() {
+        let mut config = config_with_timeouts(3600);
+        config.feedback_rounds = crate::enrich::FeedbackRounds::uniform(2);
+        bound_llm_timeout(&mut config, Duration::from_secs(3900));
+        // (3900 - 30) / (3 + 12) = 258 per share.
+        assert_eq!(config.feedback_timeout, Duration::from_secs(258));
+        assert_eq!(config.timeout, Duration::from_secs(774));
     }
 
     #[test]

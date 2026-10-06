@@ -290,10 +290,12 @@ so raising `LLM_TIMEOUT_SECS` without raising `WORKER_JOB_TIMEOUT_SECS` buys
 nothing.
 
 The shares are not equal. The translation pass writes every
-`machine_readable` in its window and gets three shares of the job budget; each
-feedback round gets one. With `WORKER_JOB_TIMEOUT_SECS=3900` that is 1290 s
-for the translation and 430 s per round, where an even split gave each call
-about 550 s.
+`machine_readable` in its window and is capped at three shares of the job
+budget, less a 30 s reserve; each feedback round the run may make is capped at
+one, counted from `ENRICH_FEEDBACK_ROUNDS`. A lower `LLM_TIMEOUT_SECS` stays as
+it is. With `WORKER_JOB_TIMEOUT_SECS=3900` and one round per gate the caps are
+1290 s for the translation and 430 s per round, where an even split gave each
+call about 550 s. More rounds per gate make every share smaller.
 
 ## Database Schema
 
