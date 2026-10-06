@@ -775,7 +775,11 @@ impl LlmRunner for ProcessLlmRunner {
                 &prompt,
                 Some(yaml_abs),
                 repo_path,
-                config,
+                // A feedback round has its own, smaller ceiling.
+                &EnrichConfig {
+                    timeout: config.feedback_timeout,
+                    ..config.clone()
+                },
                 ToolPolicy {
                     allow_bash: false,
                     deny: &deny,
@@ -1985,7 +1989,13 @@ impl RunSteps {
 #[derive(Debug, Clone)]
 pub struct EnrichConfig {
     pub provider: LlmProvider,
+    /// Ceiling for one translation call: the pass that reads the window and
+    /// writes `machine_readable`, by far the heaviest call of a run.
     pub timeout: Duration,
+    /// Ceiling for one feedback round (a gate, the closing pass). Starts equal
+    /// to [`Self::timeout`]; the worker lowers the two separately to fit the
+    /// job budget, see `bound_llm_timeout`.
+    pub feedback_timeout: Duration,
     pub code_commit: String,
     /// RSS ceiling (MB) for the LLM subprocess. When it is exceeded the worker
     /// kills the process and fails the job instead of letting the agent OOM the
@@ -2065,6 +2075,7 @@ impl EnrichConfig {
         EnrichConfig {
             provider,
             timeout: Duration::from_secs(600),
+            feedback_timeout: Duration::from_secs(600),
             code_commit: "abc123".to_string(),
             max_rss_mb: 3500,
             // Chunking off by default in tests; chunk tests opt in explicitly.
@@ -2102,6 +2113,7 @@ impl EnrichConfig {
         Self {
             provider,
             timeout,
+            feedback_timeout: timeout,
             code_commit: String::new(),
             max_rss_mb: 0,
             max_articles_per_run: max_articles,
@@ -2214,6 +2226,7 @@ impl EnrichConfig {
         Self {
             provider,
             timeout: Duration::from_secs(timeout),
+            feedback_timeout: Duration::from_secs(timeout),
             code_commit,
             max_rss_mb,
             max_articles_per_run,
@@ -2257,6 +2270,7 @@ impl EnrichConfig {
         Self {
             provider,
             timeout: self.timeout,
+            feedback_timeout: self.feedback_timeout,
             code_commit: self.code_commit.clone(),
             max_rss_mb: self.max_rss_mb,
             max_articles_per_run: self.max_articles_per_run,
