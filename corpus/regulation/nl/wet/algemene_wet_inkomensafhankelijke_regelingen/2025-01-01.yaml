@@ -1,5 +1,5 @@
 ---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.8.0/schema/v0.8.0/schema.json
 $id: algemene_wet_inkomensafhankelijke_regelingen
 regulatory_layer: WET
 publication_date: '2022-12-27'
@@ -492,6 +492,77 @@ articles:
       volzin vast te stellen algemene maatregel van bestuur wordt niet eerder gedaan dan vier weken nadat het ontwerp aan
       beide kamers der Staten-Generaal is overgelegd.
     url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel15
+    machine_readable:
+      execution:
+        produces:
+          # Lid 1: de belanghebbende vraagt een tegemoetkoming aan bij de
+          # Belastingdienst/Toeslagen, dus dit artikel vestigt de aanvraag
+          # (RFC-046). Op die aanvraag wordt een beschikking genomen (de
+          # zorgtoeslag, Zorgtoeslagwet art. 2), zodat Awb 4:2 en 4:13 erop
+          # haken. Wat de aanvrager hier invult, wordt een veld van de aanvraag
+          # (chronolex).
+          submission:
+            kind: AANVRAAG
+          legal_character: TOETS
+          decision_type: GEEN_BESLUIT
+          extensions:
+            chronolex:
+              establishes:
+                - event: aanvraag_ontvangen
+                  fields: parameters
+        parameters:
+          - name: bsn
+            type: string
+            nullable: true
+            required: true
+            description: Het burgerservicenummer van de aanvrager (art. 13).
+            origin:
+              waarde: BELANGHEBBENDE
+              grondslag: algemene_wet_inkomensafhankelijke_regelingen#15 lid 1
+          - name: aangevraagd_berekeningsjaar
+            type: number
+            required: true
+            description: Het berekeningsjaar waarop de aanvraag betrekking heeft (lid 1).
+            origin:
+              waarde: BELANGHEBBENDE
+              grondslag: algemene_wet_inkomensafhankelijke_regelingen#15 lid 1
+          - name: ondertekening_partner
+            type: string
+            nullable: true
+            required: false
+            description: Wie als partner de aanvraag mede ondertekende (lid 2).
+            origin:
+              waarde: BELANGHEBBENDE
+              grondslag: algemene_wet_inkomensafhankelijke_regelingen#15 lid 2
+          - name: datum_ontvangst
+            type: date
+            required: true
+            description: >-
+              De dag waarop de Belastingdienst/Toeslagen de aanvraag ontving
+              (Awb 4:13 lid 1).
+            origin:
+              waarde: DOSSIER
+              grondslag: algemene_wet_bestuursrecht#4:13 lid 1
+        output:
+          - name: aanvraag_binnen_termijn
+            type: boolean
+            description: >-
+              Lid 1: de aanvraag is ingediend vóór 1 april van het jaar volgend
+              op het berekeningsjaar.
+        actions:
+          - output: aanvraag_binnen_termijn
+            value:
+              operation: LESS_THAN
+              subject: $datum_ontvangst
+              value:
+                operation: DATE
+                year:
+                  operation: ADD
+                  values:
+                    - $aangevraagd_berekeningsjaar
+                    - 1
+                month: 4
+                day: 1
   - number: '16'
     text: >-
       Artikel 16. Voorschot op tegemoetkoming 1. Indien de tegemoetkoming naar verwachting niet binnen acht weken na
