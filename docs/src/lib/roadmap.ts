@@ -12,7 +12,7 @@
  * render, so a value can never render as a tag the schema would have rejected.
  */
 import { z } from 'astro:content';
-import { normaliseerZoekterm } from '~/lib/roadmap-zoek';
+import { normaliseerZoekterm, GEEN_TREFFER } from '~/lib/roadmap-zoek';
 import configJson from '~/data/roadmap-config.json';
 import paperHeadings from '~/research/rules-as-executed.headings.json';
 import { getRfcs } from '~/lib/rfcs';
@@ -283,7 +283,12 @@ export interface FilterGroep {
   /** De klasse op elk vinkje; het script telt en leest erop. */
   optieKlasse: string;
   opties: { id: string; label: string }[];
-  /** Het data-attribuut op het item dat het script vergelijkt. Afwezig bij een CSS-filter. */
+  /**
+   * De dataset-sleutel op het item die het script vergelijkt: `belegging` voor
+   * `data-belegging`. Eén woord, want het script leest `item.dataset[attribuut]`
+   * en een naam met een koppelteken zou daar als camelCase moeten staan.
+   * Afwezig bij een CSS-filter.
+   */
   attribuut?: string;
   /** De klasse die het script zet op een item dat niet matcht. Afwezig bij een CSS-filter. */
   verbergKlasse?: string;
@@ -319,8 +324,12 @@ export const FILTERGROEPEN: Record<FilterGroepId, FilterGroep> = {
   },
 };
 
-/** De klasse waarmee het zoekfilter een item verbergt dat niet matcht. */
-export const GEEN_TREFFER = 'rr-geen-treffer';
+/*
+ * De verbergklasse van het zoekfilter staat in lib/roadmap-zoek.ts, omdat het
+ * script dat hem zet alleen die module kan importeren; hier opnieuw
+ * geëxporteerd zodat de pagina's en assertFilterRules() één bron hebben.
+ */
+export { GEEN_TREFFER };
 
 /**
  * De weergaven van de roadmap, in de volgorde van de tab-bar in de kop. Elke
@@ -382,8 +391,8 @@ export function assertFilterRules(css: string): void {
     if (!css.includes(`.${klasse}`)) {
       throw new Error(
         `roadmap.css mist de verberg-regel \`.${klasse}\`. Voeg hem toe aan de ` +
-          '`display: none !important`-regel van het zoekfilter, anders doet ' +
-          'dat filter niets.',
+          '`display: none !important`-regel naast `.rr-geen-treffer`, anders ' +
+          'doet het filter dat deze klasse zet niets.',
       );
     }
   }

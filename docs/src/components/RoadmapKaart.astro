@@ -120,14 +120,24 @@ const accessibleLabel = [
   {/* nldd-card leaves padding to a nested container by design;
       without one the content sits flush against the border. */}
   <nldd-container padding="12" gap="8">
-    <nldd-container gap="2">
-      <nldd-text size="sm" weight="medium">
-        {wp.data.titel}
-      </nldd-text>
-      {ondertitel && (
-        <nldd-text size="xs" color="secondary">{ondertitel}</nldd-text>
-      )}
-    </nldd-container>
+    {/* De wrapper alleen als er een ondertitel is, zodat een kaart zonder
+        ondertitel precies de markup houdt die hij op de matrix altijd had. */}
+    {
+      ondertitel ? (
+        <nldd-container gap="2">
+          <nldd-text size="sm" weight="medium">
+            {wp.data.titel}
+          </nldd-text>
+          <nldd-text size="xs" color="secondary">
+            {ondertitel}
+          </nldd-text>
+        </nldd-container>
+      ) : (
+        <nldd-text size="sm" weight="medium">
+          {wp.data.titel}
+        </nldd-text>
+      )
+    }
     {(tags.length > 0 || rfcTekst) && (
       <nldd-container layout="wrap" gap="4" vertical-alignment="center">
         {tags.map((tag) => (

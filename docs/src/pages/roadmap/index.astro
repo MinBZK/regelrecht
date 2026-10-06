@@ -45,7 +45,9 @@ const werkpakketten = await getCollection('werkpakketten');
 // check-links.mjs cannot see these: they end up on NLDD component attributes,
 // not on <a href>.
 assertReferencesResolve(werkpakketten);
-// Fails the build when a filter option has no rule to show its cards again.
+// Fails the build when roadmap.css and the filters drift apart: a categorie
+// without a show-rule, a verbergklasse without a hide-rule, or the
+// afhankelijkheden switch read on the wrong attribute.
 assertFilterRules(roadmapCss);
 
 /*
@@ -132,124 +134,126 @@ const pathname = '/roadmap';
       weergave
     />
 
-      {/* tabindex + role make the horizontally scrolling matrix reachable by
-          keyboard; without it axe flags scrollable-region-focusable. */}
-      <div
-        class="rr-matrix-scroll"
-        tabindex="0"
-        role="region"
-        aria-label="Roadmapmatrix, horizontaal scrollbaar"
-      >
-        {/*
-          The dependency overlay sits in its own positioned wrapper so the SVG
-          can be placed against the table's own box rather than the scroll
-          container's: the container scrolls, the table does not move inside
-          it, and anchoring to the scroller would slide every arrow out of
-          place the moment you pan sideways.
+    {/* tabindex + role make the horizontally scrolling matrix reachable by
+        keyboard; without it axe flags scrollable-region-focusable. */}
+    <div
+      class="rr-matrix-scroll"
+      tabindex="0"
+      role="region"
+      aria-label="Roadmapmatrix, horizontaal scrollbaar"
+    >
+      {/*
+        The dependency overlay sits in its own positioned wrapper so the SVG
+        can be placed against the table's own box rather than the scroll
+        container's: the container scrolls, the table does not move inside
+        it, and anchoring to the scroller would slide every arrow out of
+        place the moment you pan sideways.
 
-          aria-hidden: every werkpakket page lists the same dependencies under
-          "Afhankelijkheden", as links. Reading the curves to a screen reader
-          adds nothing that is not already there in text.
-        */}
-        <div class="rr-matrix-canvas">
-          <svg class="rr-afhankelijk" aria-hidden="true" focusable="false"></svg>
-          <table class="rr-matrix" style={`--rr-fase-count: ${fases.length}`}>
-          <caption class="rr-matrix__caption">
-            Werkpakketten per fase (kolommen) en discipline (rijen). De vijf
-            fases zijn Wat (in twee stappen), Hoe, Waar en Garantie. De
-            disciplines zijn gegroepeerd in vier swimlanes: Scope RegelRecht,
-            Onderzoek, Samenwerking met andere initiatieven, en
-            Transitie-ondersteuning.
-          </caption>
-          <thead>
-            {/* Corner spans both the swimlane-bar column and the row-header
-                column, so the fase headers start at the same column as the
-                cards below them. */}
-            <tr>
-              <td
-                class="rr-matrix__corner"
-                colspan={2}
-                style="grid-column: span 2"
-              ></td>
-              {
-                fases.map((fase) => (
+        aria-hidden: every werkpakket page lists the same dependencies under
+        "Afhankelijkheden", as links. Reading the curves to a screen reader
+        adds nothing that is not already there in text.
+      */}
+      <div class="rr-matrix-canvas">
+        <svg class="rr-afhankelijk" aria-hidden="true" focusable="false"></svg>
+        <table class="rr-matrix" style={`--rr-fase-count: ${fases.length}`}>
+        <caption class="rr-matrix__caption">
+          Werkpakketten per fase (kolommen) en discipline (rijen). De vijf
+          fases zijn Wat (in twee stappen), Hoe, Waar en Garantie. De
+          disciplines zijn gegroepeerd in vier swimlanes: Scope RegelRecht,
+          Onderzoek, Samenwerking met andere initiatieven, en
+          Transitie-ondersteuning.
+        </caption>
+        <thead>
+          {/* Corner spans both the swimlane-bar column and the row-header
+              column, so the fase headers start at the same column as the
+              cards below them. */}
+          <tr>
+            <td
+              class="rr-matrix__corner"
+              colspan={2}
+              style="grid-column: span 2"
+            ></td>
+            {
+              fases.map((fase) => (
+                <th
+                  scope="col"
+                  id={faseHeaderId(fase.id)}
+                  class="rr-matrix__header rr-matrix__header--fase"
+                >
+                  <nldd-container gap="4" horizontal-alignment="center">
+                    <nldd-text size="md" weight="bold">{fase.naam}</nldd-text>
+                    {fase.ondertitel && (
+                      <nldd-text size="xs" color="secondary">
+                        {fase.ondertitel}
+                      </nldd-text>
+                    )}
+                  </nldd-container>
+                </th>
+              ))
+            }
+          </tr>
+        </thead>
+        <tbody>
+          {
+            matrixRijen.map((rij) => (
+                <tr>
+                  {rij.bar && (
+                    <th
+                      scope="rowgroup"
+                      id={swimlaneHeaderId(rij.laneId)}
+                      rowspan={rij.bar.rowspan}
+                      style={`grid-row: span ${rij.bar.rowspan}`}
+                      class="rr-matrix__header rr-matrix__header--swimlanebalk"
+                    >
+                      <nldd-text
+                        size="sm"
+                        weight="bold"
+                        class={rij.bar.zichtbaar ? undefined : 'rr-sr-only'}
+                      >
+                        {rij.bar.naam}
+                      </nldd-text>
+                    </th>
+                  )}
                   <th
-                    scope="col"
-                    id={faseHeaderId(fase.id)}
-                    class="rr-matrix__header rr-matrix__header--fase"
+                    scope="row"
+                    id={disciplineHeaderId(rij.discipline.id)}
+                    class="rr-matrix__header rr-matrix__header--discipline"
                   >
-                    <nldd-container gap="4" horizontal-alignment="center">
-                      <nldd-text size="md" weight="bold">{fase.naam}</nldd-text>
-                      {fase.ondertitel && (
+                    <nldd-container gap="4">
+                      <nldd-text size="md" weight="bold">{rij.label}</nldd-text>
+                      {rij.discipline.ondertitel && (
                         <nldd-text size="xs" color="secondary">
-                          {fase.ondertitel}
+                          {rij.discipline.ondertitel}
                         </nldd-text>
                       )}
                     </nldd-container>
                   </th>
-                ))
-              }
-            </tr>
-          </thead>
-          <tbody>
-            {
-              matrixRijen.map((rij) => (
-                  <tr>
-                    {rij.bar && (
-                      <th
-                        scope="rowgroup"
-                        id={swimlaneHeaderId(rij.laneId)}
-                        rowspan={rij.bar.rowspan}
-                        style={`grid-row: span ${rij.bar.rowspan}`}
-                        class="rr-matrix__header rr-matrix__header--swimlanebalk"
-                      >
-                        <nldd-text
-                          size="sm"
-                          weight="bold"
-                          class={rij.bar.zichtbaar ? undefined : 'rr-sr-only'}
-                        >
-                          {rij.bar.naam}
-                        </nldd-text>
-                      </th>
-                    )}
-                    <th
-                      scope="row"
-                      id={disciplineHeaderId(rij.discipline.id)}
-                      class="rr-matrix__header rr-matrix__header--discipline"
-                    >
-                      <nldd-container gap="4">
-                        <nldd-text size="md" weight="bold">{rij.label}</nldd-text>
-                        {rij.discipline.ondertitel && (
-                          <nldd-text size="xs" color="secondary">
-                            {rij.discipline.ondertitel}
-                          </nldd-text>
+                  {
+                    fases.map((fase, index) => (
+                      <RoadmapMatrixCel
+                        class={index > 0 ? 'rr-matrix__cell--kolom-start' : undefined}
+                        headers={`${swimlaneHeaderId(rij.laneId)} ${disciplineHeaderId(rij.discipline.id)} ${faseHeaderId(fase.id)}`}
+                        cel={werkpakkettenInCel(
+                          werkpakketten,
+                          fase.id,
+                          rij.discipline.id,
                         )}
-                      </nldd-container>
-                    </th>
-                    {
-                      fases.map((fase, index) => (
-                        <RoadmapMatrixCel
-                          class={index > 0 ? 'rr-matrix__cell--kolom-start' : undefined}
-                          headers={`${swimlaneHeaderId(rij.laneId)} ${disciplineHeaderId(rij.discipline.id)} ${faseHeaderId(fase.id)}`}
-                          cel={werkpakkettenInCel(
-                            werkpakketten,
-                            fase.id,
-                            rij.discipline.id,
-                          )}
-                        />
-                      ))
-                    }
-                  </tr>
-              ))
-            }
-          </tbody>
-          </table>
-        </div>
+                      />
+                    ))
+                  }
+                </tr>
+            ))
+          }
+        </tbody>
+        </table>
       </div>
+    </div>
   </RoadmapSectie>
 </Base>
 
 <script>
+  import { GEEN_TREFFER } from '~/lib/roadmap-zoek';
+
   /*
    * De afhankelijkhedenweergave: waar een kaart komt te staan, en de pijlen
    * ertussen.
@@ -585,7 +589,7 @@ const pathname = '/roadmap';
      * nog alleen een property is en Lit hem een microtask later naar het
      * attribuut spiegelt, en het is dat attribuut dat de :has()-regels lezen.
      * Meteen meten geeft dus de opmaak van vóór de klik. Dezelfde reden als bij
-     * de zoekteller hierboven.
+     * hertelStraks in RoadmapKop.astro.
      */
     let gepland = 0;
     const indeelStraks = () => {
@@ -602,15 +606,26 @@ const pathname = '/roadmap';
      * RoadmapKop.astro) dat kaarten een klasse geeft; hier kijken we naar het
      * gevolg in plaats van naar de invoer, zodat ze niet aan elkaar vastzitten.
      *
-     * Alleen naar de twee klassen die een kaart verbergen, en niet naar elke
-     * klasse die er langskomt. `accent()` zet bij hover `--in-keten` op de
+     * Alleen naar de klassen die een kaart verbergen, en niet naar elke
+     * klasse die er langskomt. Welke dat zijn staat niet hier maar op de
+     * filtergroepen in de kop (data-verberg-klasse) en in lib/roadmap-zoek.ts
+     * (GEEN_TREFFER), zodat een hernoeming daar niet stil dit script breekt.
+     *
+     * `accent()` zet bij hover `--in-keten` op de
      * kaarten van de keten, en die kaarten staan in deze tabel: een observer
      * op alles hertekent dan de SVG één frame na de hover, met
      * `replaceChildren()`, en wist zo precies de `--actief` die er net op
      * gezet was. De kaarten bleven wel oplichten, want die klassen raakt
      * indeel() niet aan — de pijl ertussen viel als enige weg.
      */
-    const VERBERGERS = ['rr-geen-treffer', 'rr-wp-card--geen-belegging'];
+    const VERBERGERS = [
+      GEEN_TREFFER,
+      ...Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '.rr-filtergroep[data-verberg-klasse]',
+        ),
+      ).map((el) => el.dataset.verbergKlasse!),
+    ];
     new MutationObserver((mutaties) => {
       for (const mutatie of mutaties) {
         const el = mutatie.target as HTMLElement;
@@ -634,9 +649,10 @@ const pathname = '/roadmap';
 
   /*
    * Gebonden op astro:page-load en niet op het topniveau, om dezelfde reden als
-   * het zoekveld hierboven: bij een ClientRouter-navigatie terug naar /roadmap
-   * is de DOM vers omgewisseld en zou een binding op het topniveau niet meer
-   * draaien.
+   * het zoekscript in RoadmapKop.astro: bij een ClientRouter-navigatie terug
+   * naar /roadmap is de DOM vers omgewisseld en zou een binding op het
+   * topniveau niet meer draaien. Komt iemand van het bord of het overzicht,
+   * dan vindt dit script geen matrix en stopt het op zijn guard.
    */
   document.addEventListener('astro:page-load', wireAfhankelijkheden);
 </script>

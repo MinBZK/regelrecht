@@ -139,6 +139,9 @@ const groepen = filters.map((id) => FILTERGROEPEN[id]);
             data-attribuut={groep.attribuut}
             data-verberg-klasse={groep.verbergKlasse}
           >
+            {/* `data-attribuut` is de dataset-sleutel (één woord) waarop het
+                script `item.dataset[...]` leest; zie FilterGroep in
+                lib/roadmap.ts. */}
             {/*
               De popover zit in de `popup`-slot van de knop, niet aan een
               `popovertarget` met een id. Dat is niet één van twee smaken:
@@ -293,20 +296,17 @@ const groepen = filters.map((id) => FILTERGROEPEN[id]);
   bedieningen naast elkaar verwacht.
 */}
 <script>
-  import { normaliseerZoekterm } from '~/lib/roadmap-zoek';
+  import { normaliseerZoekterm, GEEN_TREFFER } from '~/lib/roadmap-zoek';
 
   /** Een filtergroep zoals de kop hem op zijn data-attributen zet. */
   interface Groep {
     id: string;
     optieKlasse: string;
-    /** Alleen bij een JS-filter: het dataset-veld op het item. */
+    /** Alleen bij een JS-filter: de dataset-sleutel op het item (één woord). */
     attribuut?: string;
     /** Alleen bij een JS-filter: de klasse die een niet-match verbergt. */
     verbergKlasse?: string;
   }
-
-  /** De klasse waarmee het zoeken verbergt; GEEN_TREFFER in lib/roadmap.ts. */
-  const GEEN_TREFFER = 'rr-geen-treffer';
 
   function wireZoek() {
     const field = document.getElementById('rr-zoek-veld');
@@ -316,7 +316,8 @@ const groepen = filters.map((id) => FILTERGROEPEN[id]);
     );
     if (!field || !count || !items.length) return;
 
-    const noun = count.dataset.noun ?? 'werkpakketten';
+    // Het woord in de teller; de kop zet het altijd, zie `zoek.noun`.
+    const noun = count.dataset.noun;
 
     // The field is hidden in the markup so it never shows without this script
     // behind it. `hidden` sits on the wrapper, which also holds the counter.
@@ -454,7 +455,7 @@ const groepen = filters.map((id) => FILTERGROEPEN[id]);
         optie.addEventListener('change', () => {
           requestAnimationFrame(() => {
             if (groep.attribuut) filterJs();
-            hertel(fieldValue(field));
+            hertelStraks(fieldValue(field));
           });
         });
       }
