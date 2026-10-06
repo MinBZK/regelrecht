@@ -3,14 +3,16 @@
 //! both as grams in its chronicle. The shape of each gram comes from the law:
 //! the application from executing art. 102 (Awb 4:2 and 4:13 hook onto it),
 //! the decision from the outputs of art. 107. For the decision, the engine
-//! executes art. 107 with what the cell reads back from its chronicle (the
-//! lexostatus `aanvraag`) and with what other authorities and the Autoriteit
-//! itself supply.
+//! executes art. 107 with what the Autoriteit reads back from its chronicle
+//! and with what other authorities and the Autoriteit itself supply. The
+//! reading back is an article of her own policy (`kroniek_autoriteit`), run
+//! by the engine over the register the deployment binds to her chronicle
+//! (RFC-045 §1): the law asks with `origin`, the policy answers.
 //!
-//! Only cells, regulation and a data directory: no channels, forms, processes,
-//! synthesis or registers. That corpus is not in this repository, so the test
-//! runs only when `CEL_WPP_CORPUS` points at its root (with `cells/` and
-//! `regulation/`):
+//! Only cells, regulation, the register binding and a data directory: no
+//! channels, forms, processes or synthesis. That corpus is not in this
+//! repository, so the test runs only when `CEL_WPP_CORPUS` points at its root
+//! (with `cells/`, `regulation/` and `deployment/registers.yaml`):
 //!
 //! ```text
 //! CEL_WPP_CORPUS=<root> cargo test -p regelrecht-cel --test wpp_kroniek
@@ -38,12 +40,21 @@ use tower::ServiceExt;
 const CELL: &str = "/cells/autoriteit_politieke_partijen";
 const AUTHORITY: &str = "nederlandse_autoriteit_politieke_partijen";
 const WPP: &str = "wet_op_de_politieke_partijen";
+/// The policy of the Autoriteit that reads an application back from her
+/// chronicle, and the name of that register in the deployment.
+const POLICY: &str = "kroniek_autoriteit";
+/// The lexostatus that policy yields, named after the register in the
+/// deployment (`<policy>#<register>`): the cell's provenance vocabulary
+/// still says `lexostatus` for what RFC-045 calls a register query.
+const LEXOSTATUS: &str = "kroniek_autoriteit#aanvragen";
 
 fn corpus() -> Option<PathBuf> {
     let root = PathBuf::from(std::env::var_os("CEL_WPP_CORPUS")?);
     assert!(
-        root.join("cells").is_dir() && root.join("regulation").is_dir(),
-        "CEL_WPP_CORPUS={} has no cells/ and regulation/",
+        root.join("cells").is_dir()
+            && root.join("regulation").is_dir()
+            && root.join("deployment/registers.yaml").is_file(),
+        "CEL_WPP_CORPUS={} has no cells/, regulation/ and deployment/registers.yaml",
         root.display()
     );
     Some(root)
@@ -59,7 +70,7 @@ fn runtime(root: &Path, data: &Path, now: &Arc<Mutex<String>>) -> Runtime {
         read_token: None,
         read_token_sources: Vec::new(),
         reduction: Default::default(),
-        registers: None,
+        registers: Some(root.join("deployment/registers.yaml")),
         channels: None,
         synthesis: None,
         examples: None,
@@ -330,17 +341,35 @@ async fn the_authority_decides_on_the_application_and_records_the_decision() {
     // The decision is taken on 29 June 2027 (before 1 July: art. 107 lid 1).
     *now.lock().unwrap() = "2027-06-29T14:00:00+02:00".to_string();
 
-    // 1. The cell reads the application back from its chronicle, as the
-    //    parameters of Wpp 102 that art. 107 reads.
-    let (status, read) = as_runtime(
-        &rt,
-        "GET",
-        &format!("{CELL}/api/lexostatus/aanvraag?root={id}"),
-        None,
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK, "{read:#}");
-    let from_chronicle = read["parameters"].as_object().unwrap().clone();
+    // 1. The Autoriteit reads the application back from her chronicle, as
+    //    the parameters of Wpp 102 that art. 107 reads: an article of her
+    //    own policy, run by the engine over the register the deployment binds
+    //    to her chronicle. The service of the cell carries that binding.
+    let service = &rt.cells[0].cell.service;
+    let asked = [
+        "laatste",
+        "subsidiejaar",
+        "aanvraagdatum",
+        "bevat_statutaire_naam",
+        "bevat_geregistreerde_aanduiding",
+        "bevat_naam_vertegenwoordigend_orgaan",
+        "bevat_aantal_zetels",
+        "zeteltabel",
+    ];
+    let read = assessment::evaluate(
+        service,
+        POLICY,
+        &asked,
+        &BTreeMap::from([("root".to_string(), json!(id))]),
+        "2027-06-29",
+    );
+    assert!(read.error.is_none(), "{read:#?}");
+    assert!(read.missing.is_empty(), "{read:#?}");
+    let mut from_chronicle: Map<String, Value> = read.values.into_iter().collect();
+    // Where the gram stands in the chronicle is the policy's own bookkeeping
+    // (art. 1 lid 2), not a parameter of Wpp 102.
+    assert_eq!(from_chronicle.remove("laatste"), Some(json!(0)));
+    assert_eq!(from_chronicle.len(), asked.len() - 1, "{from_chronicle:#?}");
     assert_eq!(from_chronicle["subsidiejaar"], 2027);
     assert_eq!(from_chronicle["aanvraagdatum"], "2027-03-05");
     assert_eq!(from_chronicle["bevat_statutaire_naam"], true);
@@ -358,13 +387,15 @@ async fn the_authority_decides_on_the_application_and_records_the_decision() {
     };
     let mut own = from_chronicle.clone();
     let mut table = own.remove("zeteltabel").unwrap();
-    put(&own, json!({"source": "own", "lexostatus": "aanvraag"}));
+    // From the own chronicle (`own`), read through the policy over the
+    // register the deployment binds it to.
+    put(&own, json!({"source": "own", "lexostatus": LEXOSTATUS}));
     for row in table.as_array_mut().unwrap() {
         complete_row(row);
     }
     put(
         &Map::from_iter([("zeteltabel".to_string(), table)]),
-        json!({"source": "per_row", "lexostatus": "aanvraag", "field": "zeteltabel"}),
+        json!({"source": "per_row", "lexostatus": LEXOSTATUS, "field": "zeteltabel"}),
     );
     put(
         &kiesraad(),
