@@ -1,0 +1,174 @@
+---
+/*
+ * Eén onderzoeksvraag als lijstregel, op de werkpakketpagina en op het
+ * overzicht dezelfde. Voor de deelvragen roept hij zichzelf aan (Astro.self),
+ * één niveau diep, want dieper gaat het schema niet.
+ *
+ * Wat er bij de vraag staat, en waarom in deze volgorde:
+ *
+ * - De vraag zelf, als lopende tekst in het <li>; de rest is er een
+ *   bijschrift bij en staat eronder, zodat de vraag de regel blijft.
+ * - Een metaregel met de status (alleen de eigen status van de vraag; op het
+ *   overzicht anders een gedempte "werkpakket: loopt", want daar staat het
+ *   werkpakket niet in de zijbalk), het werkpakket met zijn belegging (alleen
+ *   op het overzicht, om dezelfde reden), de papersectie, en hoeveel
+ *   deelvragen beantwoord zijn.
+ * - Het doel, als stille regel.
+ * - De verwante vragen, beide kanten gelezen (verwantIndex in lib/roadmap.ts).
+ * - De deelvragen, als geneste lijst.
+ *
+ * De metaregel is een nldd-container met layout="wrap": een nldd-tag in een
+ * <li> is inline en breekt anders midden in de regel. Het enige eigen CSS
+ * hier is de papersectielink, overgenomen uit de werkpakketpagina waar hij
+ * eerst stond; de reden staat erbij.
+ */
+import {
+  getOnderzoek,
+  getBelegging,
+  telDeelvragen,
+  vraagStatusWaarde,
+  type Onderzoeksvraag,
+  type VraagVerwijzing,
+} from '~/lib/roadmap';
+
+interface Props {
+  vraag: Onderzoeksvraag;
+  /** Per vraag-id de verwante vragen, uit verwantIndex(); geldt ook voor de deelvragen. */
+  verwanten?: Map<string, VraagVerwijzing[]>;
+  /** Regelbereik in het bronbestand, voor de bewerkknop; alleen op de werkpakketpagina. */
+  regels?: [number, number];
+  /** De zoektekst voor het zoekfilter; alleen op het overzicht, alleen op een bovenliggende vraag. */
+  zoek?: string;
+  /** Het werkpakket, alleen op het overzicht: daar staat de vraag niet op zijn eigen pagina. */
+  werkpakket?: { id: string; titel: string; belegging: string; onderzoek: string };
+  niveau: 1 | 2;
+}
+
+const { vraag, verwanten, regels, zoek, werkpakket, niveau } = Astro.props;
+
+const status = getOnderzoek(vraag.status);
+// De stand van het werkpakket als de vraag er zelf geen heeft, alleen op het
+// overzicht. Gedempt en met het woord "werkpakket" ervoor, want het is niet
+// de status van deze vraag; het statusfilter telt hem dan ook als "niet
+// bepaald".
+const werkpakketStand =
+  !status && werkpakket ? getOnderzoek(werkpakket.onderzoek) : undefined;
+const belegging = werkpakket ? getBelegging(werkpakket.belegging) : undefined;
+const verwant = vraag.id ? (verwanten?.get(vraag.id) ?? []) : [];
+const deel = telDeelvragen(vraag);
+const heeftMeta =
+  status || werkpakketStand || werkpakket || vraag.paper || deel.totaal > 0;
+---
+
+<li
+  id={vraag.anker}
+  data-line={regels?.[0]}
+  data-line-end={regels?.[1]}
+  data-zoek={zoek}
+  data-status={vraagStatusWaarde(vraag.status)}
+>
+  {vraag.vraag}
+  {
+    heeftMeta && (
+      <nldd-container layout="wrap" gap="8" vertical-alignment="center">
+        {status && (
+          <nldd-tag size="sm" color={status.tagColor} text={status.label} />
+        )}
+        {werkpakketStand && (
+          <nldd-text size="xs" color="secondary">
+            werkpakket: {werkpakketStand.label.toLowerCase()}
+          </nldd-text>
+        )}
+        {werkpakket && (
+          <nldd-link
+            size="xs"
+            href={`/roadmap/werkpakket/${werkpakket.id}`}
+            text={werkpakket.titel}
+          />
+        )}
+        {/* Alleen opgepakt en klaar, net als op de kaart: vrij is de
+            stilzwijgende meerderheid en verdient geen tag per vraag. */}
+        {belegging && belegging.id !== 'vrij' && (
+          <nldd-tag
+            size="sm"
+            color={belegging.tagColor}
+            text={belegging.label}
+            icon={belegging.id === 'klaar' ? 'done' : 'user'}
+          />
+        )}
+        {/* Kort: de verwijzing is een wijzer, geen deel van de zin. De
+            sectietitel zou een tweede Engelse bijzin na elke Nederlandse
+            vraag zijn; de volledige titel staat op de pagina waar de link
+            heen gaat. */}
+        {vraag.paper && (
+          <a class="rr-papersectie" href={vraag.paper.href}>
+            Rules as Executed §&nbsp;{vraag.paper.nummer}
+          </a>
+        )}
+        {deel.totaal > 0 && (
+          <nldd-text size="xs" color="secondary">
+            {deel.beantwoord} van {deel.totaal}{' '}
+            {deel.totaal === 1 ? 'deelvraag' : 'deelvragen'} beantwoord
+          </nldd-text>
+        )}
+      </nldd-container>
+    )
+  }
+  {
+    vraag.doel && (
+      <nldd-text size="sm" color="secondary">
+        Doel: {vraag.doel}
+      </nldd-text>
+    )
+  }
+  {
+    verwant.length > 0 && (
+      <nldd-text size="sm" color="secondary">
+        Verwant:{' '}
+        {verwant.map((v, i) => (
+          <>
+            {i > 0 && '; '}
+            <nldd-link size="inherit" href={v.href} text={v.vraag} />
+            {` (${v.werkpakketTitel})`}
+          </>
+        ))}
+      </nldd-text>
+    )
+  }
+  {
+    vraag.deelvragen.length > 0 && (
+      <ol>
+        {vraag.deelvragen.map((d) => (
+          <Astro.self
+            vraag={d}
+            verwanten={verwanten}
+            werkpakket={werkpakket}
+            niveau={2}
+          />
+        ))}
+      </ol>
+    )
+  }
+</li>
+
+<style>
+  /*
+   * De papersectielink onder een vraag. Eigen CSS, omdat het ontwerpsysteem
+   * geen stille verwijzing in een lijstregel kent: nldd-link is een gewone
+   * link in de accentkleur, en die zou van elke vraag een blauwe tweede regel
+   * maken. Dit is een wijzer, visueel rustiger dan de vraag; bij hover en
+   * focus komt de accentkleur alsnog.
+   */
+  .rr-papersectie {
+    width: fit-content;
+    font: var(--primitives-font-body-xs-regular-snug, inherit);
+    color: var(--semantics-content-secondary-color);
+    text-decoration-color: var(--semantics-surfaces-tinted-border-color);
+  }
+
+  .rr-papersectie:hover,
+  .rr-papersectie:focus-visible {
+    color: var(--semantics-content-accent-color);
+    text-decoration-color: currentColor;
+  }
+</style>

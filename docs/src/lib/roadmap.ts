@@ -43,6 +43,25 @@ export interface Swimlane {
   disciplineIds: string[];
 }
 
+/**
+ * De velden van een onderzoeksvraag in objectvorm, zoals het zod-schema in
+ * content.config.ts ze oplevert; de betekenis staat daar bij `vraagVelden`.
+ */
+export interface VraagVelden {
+  vraag: string;
+  id?: string;
+  paper?: string;
+  status: string;
+  doel: string;
+  verwant: string[];
+}
+
+/** Een deelvraag: een string of de objectvorm, zonder eigen deelvragen. */
+export type DeelvraagData = string | VraagVelden;
+
+/** Een onderzoeksvraag zoals hij in de frontmatter staat. */
+export type VraagData = string | (VraagVelden & { deelvragen: DeelvraagData[] });
+
 /** A werkpakket's frontmatter, mirroring the zod schema in content.config.ts. */
 export interface WerkpakketData {
   id: string;
@@ -56,7 +75,7 @@ export interface WerkpakketData {
   capaciteit: string;
   toelichting: string;
   volgorde: number;
-  onderzoeksvragen: (string | { vraag: string; paper: string })[];
+  onderzoeksvragen: VraagData[];
   samenhangIds: string[];
   afhankelijkVan: string[];
   onderzoek: string;
@@ -576,9 +595,14 @@ export const BORD_LANES = BELEGGING_STANDEN.map((stand) => ({
  * for "verifieren" matches the capability "Verifiëren en simuleren".
  */
 export function zoektekst(data: WerkpakketData): string {
-  const vragen = data.onderzoeksvragen.map((v) =>
-    typeof v === 'string' ? v : v.vraag,
-  );
+  // De vraag, zijn doel en zijn deelvragen: alles wat op de detailpagina bij
+  // de vraag staat, zodat een woord uit een deelvraag het werkpakket vindt.
+  const vraagTekst = (v: Onderzoeksvraag): string[] => [
+    v.vraag,
+    v.doel,
+    ...v.deelvragen.flatMap(vraagTekst),
+  ];
+  const vragen = onderzoeksvraagLijst(data.onderzoeksvragen).flatMap(vraagTekst);
 
   return normaliseerZoekterm(
     [
@@ -613,14 +637,38 @@ export function zoektekst(data: WerkpakketData): string {
 }
 
 /**
- * A research question as the pages render it: the text, plus the paper section
- * it belongs to when there is one.
+ * A research question as the pages render it: the text, the paper section it
+ * belongs to when there is one, and the structure around it (status, doel,
+ * verwant, deelvragen) as the frontmatter wrote it.
  */
 export interface Onderzoeksvraag {
   vraag: string;
+  /** The slug from the frontmatter; absent on a question nothing points at. */
+  id?: string;
+  /** `vraag-<id>`: het anker op de pagina's. Alleen met een id. */
+  anker?: string;
   /** The paper section, resolved from its anchor. Absent when unlinked. */
   paper?: PaperSectie;
+  /** open, loopt, beantwoord, of '' voor niet bepaald; zie ONDERZOEK_STANDEN. */
+  status: string;
+  doel: string;
+  /** De ids uit de frontmatter, één kant op; verwantIndex() leest beide. */
+  verwant: string[];
+  deelvragen: Onderzoeksvraag[];
 }
+
+/** Het anker van een vraag op de werkpakketpagina en het overzicht. */
+export const vraagAnker = (id: string) => `vraag-${id}`;
+
+/**
+ * De waarde van `data-status` op een vraag, met een leeg veld als 'geen' —
+ * dezelfde afbeelding als GEEN_CATEGORIE maakt voor een kaart zonder
+ * categorie, en om dezelfde reden: het statusfilter heeft een vakje "Niet
+ * bepaald" nodig om die vragen terug te halen, en dat vakje moet een waarde
+ * hebben om op te matchen.
+ */
+export const GEEN_STATUS = 'geen';
+export const vraagStatusWaarde = (status: string) => status || GEEN_STATUS;
 
 /** A section of the position paper, addressable by its anchor. */
 export interface PaperSectie {
@@ -661,18 +709,194 @@ const paperSecties = new Map<string, PaperSectie>(
 
 export const getPaperSectie = (slug: string) => paperSecties.get(slug);
 
+function normaliseerVraag(v: VraagData | DeelvraagData): Onderzoeksvraag {
+  if (typeof v === 'string') {
+    return { vraag: v, status: '', doel: '', verwant: [], deelvragen: [] };
+  }
+  return {
+    vraag: v.vraag,
+    id: v.id,
+    anker: v.id ? vraagAnker(v.id) : undefined,
+    paper: v.paper ? getPaperSectie(v.paper) : undefined,
+    status: v.status,
+    doel: v.doel,
+    verwant: v.verwant,
+    deelvragen: ('deelvragen' in v ? v.deelvragen : []).map(normaliseerVraag),
+  };
+}
+
 /**
- * One shape for the page: both the plain-string and the linked form of a
- * research question come out as an Onderzoeksvraag.
+ * One shape for the page: both the plain-string and the object form of a
+ * research question come out as an Onderzoeksvraag, deelvragen included.
  */
 export function onderzoeksvraagLijst(
   vragen: WerkpakketData['onderzoeksvragen'],
 ): Onderzoeksvraag[] {
-  return vragen.map((v) =>
-    typeof v === 'string'
-      ? { vraag: v }
-      : { vraag: v.vraag, paper: getPaperSectie(v.paper) },
+  return vragen.map(normaliseerVraag);
+}
+
+/** Een (deel)vraag met het werkpakket waar hij in staat. */
+export interface VraagInWerkpakket {
+  vraag: Onderzoeksvraag;
+  /** De bovenliggende vraag, bij een deelvraag. */
+  ouder?: Onderzoeksvraag;
+  werkpakket: WerkpakketData;
+  /** "vraag 3" of "vraag 3, deelvraag 2": de plek in het bestand, voor meldingen. */
+  plek: string;
+}
+
+/**
+ * Alle onderzoeksvragen van de roadmap op één rij, deelvragen achter hun
+ * ouder, elk met zijn werkpakket. De bron voor het overzicht, voor
+ * verwantIndex() en voor assertOnderzoeksvragen().
+ */
+export function alleOnderzoeksvragen(
+  werkpakketten: { data: WerkpakketData }[],
+): VraagInWerkpakket[] {
+  const uit: VraagInWerkpakket[] = [];
+  for (const { data } of werkpakketten) {
+    onderzoeksvraagLijst(data.onderzoeksvragen).forEach((vraag, i) => {
+      uit.push({ vraag, werkpakket: data, plek: `vraag ${i + 1}` });
+      vraag.deelvragen.forEach((deel, j) => {
+        uit.push({
+          vraag: deel,
+          ouder: vraag,
+          werkpakket: data,
+          plek: `vraag ${i + 1}, deelvraag ${j + 1}`,
+        });
+      });
+    });
+  }
+  return uit;
+}
+
+/** Een verwante vraag zoals de pagina hem linkt. */
+export interface VraagVerwijzing {
+  id: string;
+  vraag: string;
+  werkpakketId: string;
+  werkpakketTitel: string;
+  /** De werkpakketpagina, op het anker van de vraag. */
+  href: string;
+}
+
+/**
+ * Per vraag-id de verwante vragen, beide kanten gelezen.
+ *
+ * `verwant` staat in de frontmatter aan één kant, zoals afhankelijkVan: wie A
+ * aan B koppelt hoeft B niet ook aan A te koppelen, en mag dat ook niet, want
+ * dan staat dezelfde relatie twee keer en raakt hij bij een wijziging aan één
+ * kant uit de pas. Deze index leest de geschreven kant en leidt de andere af,
+ * ontdubbeld, in de volgorde van de roadmap.
+ *
+ * Een verwijzing naar een id dat niet bestaat valt hier stil weg;
+ * assertOnderzoeksvragen() heeft hem bij de build al gemeld.
+ */
+export function verwantIndex(
+  werkpakketten: { data: WerkpakketData }[],
+): Map<string, VraagVerwijzing[]> {
+  const alle = alleOnderzoeksvragen(werkpakketten);
+  const opId = new Map(
+    alle.filter((v) => v.vraag.id).map((v) => [v.vraag.id!, v]),
   );
+  const verwijzing = (v: VraagInWerkpakket): VraagVerwijzing => ({
+    id: v.vraag.id!,
+    vraag: v.vraag.vraag,
+    werkpakketId: v.werkpakket.id,
+    werkpakketTitel: v.werkpakket.titel,
+    href: `/roadmap/werkpakket/${v.werkpakket.id}#${v.vraag.anker}`,
+  });
+  const index = new Map<string, VraagVerwijzing[]>();
+  const voeg = (van: string, naar: VraagInWerkpakket) => {
+    const lijst = index.get(van) ?? [];
+    if (!lijst.some((x) => x.id === naar.vraag.id)) lijst.push(verwijzing(naar));
+    index.set(van, lijst);
+  };
+  for (const v of alle) {
+    if (!v.vraag.id) continue;
+    for (const doel of v.vraag.verwant) {
+      const ander = opId.get(doel);
+      if (!ander || doel === v.vraag.id) continue;
+      voeg(v.vraag.id, ander);
+      voeg(doel, v);
+    }
+  }
+  return index;
+}
+
+/** Hoeveel deelvragen beantwoord zijn, voor "2 van 3 deelvragen beantwoord". */
+export function telDeelvragen(vraag: Onderzoeksvraag): {
+  beantwoord: number;
+  totaal: number;
+} {
+  return {
+    beantwoord: vraag.deelvragen.filter((d) => d.status === 'beantwoord').length,
+    totaal: vraag.deelvragen.length,
+  };
+}
+
+/**
+ * Fail the build on an onderzoeksvraag whose structure points nowhere.
+ *
+ * Three things, all about ids, because an id is the one thing another vraag
+ * can hold on to: a duplicate id (the anchor `vraag-<id>` would then be two
+ * elements on the overzicht, and a verwant would point at whichever came
+ * first), a verwant to an id no (deel)vraag has, and a verwant on a vraag
+ * without an id of its own (the other side could never point back, so the
+ * relation would render one way round and read as if it were written that
+ * way).
+ *
+ * Not checked, on purpose: an empty status, a missing doel, a vraag without
+ * an id. That is the state of the work, not a defect; see the skill.
+ */
+export function assertOnderzoeksvragen(
+  werkpakketten: { data: WerkpakketData }[],
+): void {
+  const alle = alleOnderzoeksvragen(werkpakketten);
+  const problems: string[] = [];
+  const waar = (v: VraagInWerkpakket) =>
+    `werkpakket ${v.werkpakket.id} (${v.werkpakket.titel}): ${v.plek}`;
+  const kort = (v: VraagInWerkpakket) => `"${v.vraag.vraag.slice(0, 60)}…"`;
+
+  const gezien = new Map<string, VraagInWerkpakket>();
+  for (const v of alle) {
+    const id = v.vraag.id;
+    if (!id) {
+      if (v.vraag.verwant.length) {
+        problems.push(
+          `${waar(v)} ${kort(v)} heeft verwant maar geen eigen id; zonder id ` +
+            'kan de andere kant niet terugwijzen',
+        );
+      }
+      continue;
+    }
+    const eerder = gezien.get(id);
+    if (eerder) {
+      problems.push(
+        `${waar(v)} heeft id "${id}", maar ${waar(eerder)} ook; een id moet ` +
+          'uniek zijn over de hele roadmap, deelvragen meegerekend',
+      );
+    } else {
+      gezien.set(id, v);
+    }
+  }
+
+  for (const v of alle) {
+    for (const doel of v.vraag.verwant) {
+      if (doel === v.vraag.id) {
+        problems.push(`${waar(v)} ${kort(v)} noemt zichzelf in verwant`);
+      } else if (!gezien.has(doel)) {
+        problems.push(
+          `${waar(v)} ${kort(v)} verwijst via verwant naar "${doel}", maar ` +
+            'geen enkele (deel)vraag heeft dat id',
+        );
+      }
+    }
+  }
+
+  if (problems.length) {
+    throw new Error(`Onderzoeksvragen kloppen niet:\n  ${problems.join('\n  ')}`);
+  }
 }
 
 /** An RFC a werkpakket points at, with the RFC's own implementation state. */
@@ -866,10 +1090,12 @@ export function ongekoppeldeRfcs(
  * not exist.
  *
  * check-links.mjs does catch a dead anchor once the link is in the HTML, but
- * it reports the route and the anchor, not which werkpakket wrote it — with 53
- * questions that is a search. This names the file and the question instead,
- * and it is what keeps the mapping honest when the paper is revised: drop a
- * section and the build says which werkpakket pointed at it.
+ * it reports the route and the anchor, not which werkpakket wrote it — with
+ * some 150 questions that is a search. This names the file and the question
+ * instead, and it is what keeps the mapping honest when the paper is revised:
+ * drop a section and the build says which werkpakket pointed at it.
+ *
+ * Deelvragen count too: a deelvraag may carry its own `paper`.
  */
 export function assertPaperSections(
   werkpakketten: { data: WerkpakketData; id?: string }[],
@@ -877,14 +1103,26 @@ export function assertPaperSections(
   const problems: string[] = [];
 
   for (const { data } of werkpakketten) {
-    for (const vraag of data.onderzoeksvragen) {
-      if (typeof vraag === 'string') continue;
-      if (paperSecties.has(vraag.paper)) continue;
-      problems.push(
-        `werkpakket ${data.id} (${data.titel}): onbekende papersectie ` +
-          `"${vraag.paper}" bij de vraag "${vraag.vraag.slice(0, 60)}…"`,
-      );
-    }
+    data.onderzoeksvragen.forEach((vraag, i) => {
+      const items: { v: DeelvraagData; plek: string }[] = [
+        { v: vraag, plek: `vraag ${i + 1}` },
+        ...(typeof vraag === 'string'
+          ? []
+          : vraag.deelvragen.map((d, j) => ({
+              v: d,
+              plek: `vraag ${i + 1}, deelvraag ${j + 1}`,
+            }))),
+      ];
+      for (const { v, plek } of items) {
+        if (typeof v === 'string' || !v.paper || paperSecties.has(v.paper)) {
+          continue;
+        }
+        problems.push(
+          `werkpakket ${data.id} (${data.titel}): onbekende papersectie ` +
+            `"${v.paper}" bij ${plek} "${v.vraag.slice(0, 60)}…"`,
+        );
+      }
+    });
   }
 
   if (problems.length) {
