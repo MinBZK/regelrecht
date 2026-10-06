@@ -48,7 +48,7 @@ flowchart LR
 | `enrich_v2/` | The model-free parts of enrichment: checks, capability plan, reference graph, closing pass |
 | `document_convert.rs` | Uploaded document (docx, PDF and others) to a markdown werkdocument |
 | `law_convert.rs` | Uploaded PDF or Word document to a base rulework, followed by a task-flow enrich |
-| `law_migrate.rs` | Lift a version of a rulework to schema v0.7.1, the current release (structurally v0.7.0) |
+| `law_migrate.rs` | Lift a version of a rulework to schema v0.7.1 (structurally v0.7.0) |
 | `markings.rs`, `untranslatables.rs` | Persist the markings and untranslatables the enrichment agent reports |
 | `tasks.rs` | Personal review tasks that tie a finished job to the account that requested it |
 | `feature_flags.rs` | Read and write the shared `feature_flags` table |
