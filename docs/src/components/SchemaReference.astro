@@ -348,7 +348,7 @@ const others = otherSubStructures();
       </nldd-container>
       {op.description && <p set:html={op.description} />}
       {op.examples.map((ex) => (
-        <nldd-code-viewer language="yaml" variant="box-tinted">{ex}</nldd-code-viewer>
+        <nldd-code-viewer language="yaml" appearance="box-tinted">{ex}</nldd-code-viewer>
       ))}
       {op.fields.length > 0 && <SchemaFieldTable fields={op.fields} label={`Operands of the ${op.title} operation`} />}
       {(others[op.slug] ?? []).map((sub) => (

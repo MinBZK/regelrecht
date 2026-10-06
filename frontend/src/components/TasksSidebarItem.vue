@@ -34,7 +34,7 @@ const prioriteitCount = computed(() => tasks.value.filter(isPrioriteit).length);
 
 <template>
   <nldd-list-item size="md" button :current="current || undefined">
-    <nldd-icon-cell size="20"><nldd-icon name="tasks"></nldd-icon></nldd-icon-cell>
+    <nldd-icon-cell size="20"><nldd-icon icon="tasks"></nldd-icon></nldd-icon-cell>
     <nldd-spacer-cell size="8"></nldd-spacer-cell>
     <nldd-text-cell text="Taken"></nldd-text-cell>
     <template v-if="prioriteitCount > 0">
@@ -44,6 +44,6 @@ const prioriteitCount = computed(() => tasks.value.filter(isPrioriteit).length);
       </nldd-cell>
       <nldd-spacer-cell size="2"></nldd-spacer-cell>
     </template>
-    <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
+    <nldd-icon-cell size="20"><nldd-icon icon="chevron-right"></nldd-icon></nldd-icon-cell>
   </nldd-list-item>
 </template>

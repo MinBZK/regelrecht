@@ -83,7 +83,7 @@ const emptyText = computed(() => {
   >
     <nldd-button
       slot="actions"
-      variant="secondary"
+      appearance="secondary"
       size="md"
       data-testid="review-btn"
       text="Beoordeel voorstel"
@@ -100,7 +100,7 @@ const emptyText = computed(() => {
   >
     <nldd-button
       slot="actions"
-      variant="secondary"
+      appearance="secondary"
       size="md"
       data-testid="view-tasks-btn"
       text="Bekijk taken"
@@ -118,7 +118,7 @@ const emptyText = computed(() => {
     <nldd-button
       v-if="canEnrich"
       slot="actions"
-      variant="secondary"
+      appearance="secondary"
       size="md"
       start-icon="ai"
       data-testid="enrich-btn"
@@ -129,7 +129,7 @@ const emptyText = computed(() => {
     <nldd-button
       v-if="canWriteHere"
       slot="actions"
-      variant="secondary"
+      appearance="secondary"
       size="md"
       start-icon="write"
       data-testid="init-mr-btn"
@@ -139,7 +139,7 @@ const emptyText = computed(() => {
     <nldd-button
       v-else-if="canCreate"
       slot="actions"
-      variant="secondary"
+      appearance="secondary"
       size="md"
       start-icon="write"
       data-testid="create-mr-btn"

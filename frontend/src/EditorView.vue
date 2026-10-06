@@ -2565,7 +2565,7 @@ async function handleActionSave() {
         <nldd-page v-else-if="!activeTab && !loading && !selectedArticle && !error">
           <nldd-simple-section width="full">
             <nldd-inline-dialog text="Open een artikel vanuit de tabbalk of Home om te bewerken.">
-              <nldd-button slot="actions" variant="secondary" text="Naar Home" :href="libraryTabHref" @click.prevent="router.push(libraryTabTarget)"></nldd-button>
+              <nldd-button slot="actions" appearance="secondary" text="Naar Home" :href="libraryTabHref" @click.prevent="router.push(libraryTabTarget)"></nldd-button>
             </nldd-inline-dialog>
           </nldd-simple-section>
         </nldd-page>
@@ -2585,8 +2585,8 @@ async function handleActionSave() {
               :text="`${failedLawName} is niet beschikbaar in dit traject`"
               supporting-text="Wissel van traject via het menu rechtsboven of ga terug naar het overzicht."
             >
-              <nldd-button slot="actions" variant="primary" text="Naar Home" :href="libraryTabHref" @click.prevent="router.push(libraryTabTarget)"></nldd-button>
-              <nldd-button slot="actions" variant="secondary" text="Probeer opnieuw" @click="retryLoadLaw"></nldd-button>
+              <nldd-button slot="actions" appearance="primary" text="Naar Home" :href="libraryTabHref" @click.prevent="router.push(libraryTabTarget)"></nldd-button>
+              <nldd-button slot="actions" appearance="secondary" text="Probeer opnieuw" @click="retryLoadLaw"></nldd-button>
             </nldd-inline-dialog>
             <nldd-inline-dialog
               v-else
@@ -2594,8 +2594,8 @@ async function handleActionSave() {
               :text="`${failedLawName} is niet geladen`"
               supporting-text="De gegevens konden niet worden opgehaald."
             >
-              <nldd-button slot="actions" variant="primary" text="Probeer opnieuw" @click="retryLoadLaw"></nldd-button>
-              <nldd-button slot="actions" variant="secondary" text="Neem contact op via e-mail" :href="`mailto:${SUPPORT_EMAIL}`"></nldd-button>
+              <nldd-button slot="actions" appearance="primary" text="Probeer opnieuw" @click="retryLoadLaw"></nldd-button>
+              <nldd-button slot="actions" appearance="secondary" text="Neem contact op via e-mail" :href="`mailto:${SUPPORT_EMAIL}`"></nldd-button>
             </nldd-inline-dialog>
           </nldd-simple-section>
         </nldd-page>
@@ -2665,8 +2665,11 @@ async function handleActionSave() {
             :slot="`pane-${idx + 1}`"
             :data-testid="`pane-${view}`"
           >
+            <!-- A page in a pane renders no main landmark of its own; the
+                 first pane holds the primary content, so it carries it. -->
             <nldd-page
               sticky-header
+              :landmarks="idx === 0 ? 'page' : 'auto'"
               :background="view === 'scenario' ? 'base' : undefined"
             >
               <nldd-container slot="header" padding="8" padding-bottom="0">
@@ -2893,7 +2896,7 @@ async function handleActionSave() {
                     <nldd-icon-button
                       icon="comment"
                       text="Notitie toevoegen"
-                      variant="secondary"
+                      appearance="secondary"
                       size="md"
                       :disabled="textEditorRefs[idx].selectionEmpty || undefined"
                       @mousedown.prevent
@@ -2921,7 +2924,7 @@ async function handleActionSave() {
                     <nldd-icon-button
                       icon="download"
                       text="Notities downloaden"
-                      variant="secondary"
+                      appearance="secondary"
                       size="md"
                       expandable
                     >
@@ -3040,7 +3043,7 @@ async function handleActionSave() {
                         <template v-if="canCreateNotes && activeGroup && activeGroup.quote">
                           <nldd-spacer size="12"></nldd-spacer>
                           <nldd-button
-                            variant="secondary"
+                            appearance="secondary"
                             size="md"
                             width="full"
                             start-icon="add"
@@ -3101,7 +3104,7 @@ async function handleActionSave() {
                     </template>
                     <nldd-spacer size="16"></nldd-spacer>
                     <nldd-button
-                      variant="secondary"
+                      appearance="secondary"
                       width="full"
                       text="Bijdragen of bewerken"
                       @click="openSheetFromAnnotation"
@@ -3259,7 +3262,7 @@ async function handleActionSave() {
                     <template v-if="canCreateNotes && group.quote">
                       <nldd-spacer size="12"></nldd-spacer>
                       <nldd-button
-                        variant="secondary"
+                        appearance="secondary"
                         size="md"
                         width="full"
                         start-icon="add"
@@ -3296,8 +3299,8 @@ async function handleActionSave() {
     data-testid="publish-confirm"
     @close="cancelPublish"
   >
-    <nldd-button slot="actions" variant="primary" text="Houd privé" @click="cancelPublish"></nldd-button>
-    <nldd-button slot="actions" variant="secondary" text="Deel binnen traject" data-testid="publish-confirm-btn" @click="confirmPublish"></nldd-button>
+    <nldd-button slot="actions" appearance="primary" text="Houd privé" @click="cancelPublish"></nldd-button>
+    <nldd-button slot="actions" appearance="secondary" text="Deel binnen traject" data-testid="publish-confirm-btn" @click="confirmPublish"></nldd-button>
   </nldd-modal-dialog>
 
   <!-- Deleting a draft is irreversible (it is the only copy), so confirm. The
@@ -3310,8 +3313,8 @@ async function handleActionSave() {
     data-testid="delete-confirm"
     @close="cancelDelete"
   >
-    <nldd-button slot="actions" variant="primary" text="Behoud notitie" @click="cancelDelete"></nldd-button>
-    <nldd-button slot="actions" variant="destructive" text="Verwijder" data-testid="delete-confirm-btn" @click="confirmDelete"></nldd-button>
+    <nldd-button slot="actions" appearance="primary" text="Behoud notitie" @click="cancelDelete"></nldd-button>
+    <nldd-button slot="actions" appearance="destructive" text="Verwijder" data-testid="delete-confirm-btn" @click="confirmDelete"></nldd-button>
   </nldd-modal-dialog>
 
   <!-- Whole-law save failure, shown over the whole editor rather than inline in
@@ -3324,7 +3327,7 @@ async function handleActionSave() {
     data-testid="save-error-modal"
     @close="dismissSaveError"
   >
-    <nldd-button slot="actions" variant="primary" text="Sluiten" @click="dismissSaveError"></nldd-button>
+    <nldd-button slot="actions" appearance="primary" text="Sluiten" @click="dismissSaveError"></nldd-button>
   </nldd-modal-dialog>
 
   <!-- Trace sheet - execution trace + expected outcomes for the most

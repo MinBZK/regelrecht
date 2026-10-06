@@ -80,7 +80,7 @@ function select(categorie, lawId = null) {
   <!-- Alleen gevulde categorieën: een categorie zonder taken is geen keuze,
        dus verdwijnt hij. Zo is elke ingang die je ziet ook echt ergens goed
        voor - inclusief Prioriteit, dat wegvalt zodra er niets vastzit. -->
-  <nldd-list v-if="counts[ALLE] > 0" variant="simple">
+  <nldd-list v-if="counts[ALLE] > 0" appearance="simple">
     <nldd-list-item
       v-if="counts[PRIORITEIT] > 0"
       size="md"
@@ -88,7 +88,7 @@ function select(categorie, lawId = null) {
       :current="isSelected(PRIORITEIT) || undefined"
       @click="select(PRIORITEIT)"
     >
-      <nldd-icon-cell size="20"><nldd-icon name="exclamation-circle"></nldd-icon></nldd-icon-cell>
+      <nldd-icon-cell size="20"><nldd-icon icon="exclamation-circle"></nldd-icon></nldd-icon-cell>
       <nldd-spacer-cell size="8"></nldd-spacer-cell>
       <nldd-text-cell text="Prioriteit"></nldd-text-cell>
       <nldd-spacer-cell size="8"></nldd-spacer-cell>
@@ -99,7 +99,7 @@ function select(categorie, lawId = null) {
         horizontal-alignment="right"
       ></nldd-text-cell>
       <nldd-spacer-cell size="2"></nldd-spacer-cell>
-      <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
+      <nldd-icon-cell size="20"><nldd-icon icon="chevron-right"></nldd-icon></nldd-icon-cell>
     </nldd-list-item>
 
     <nldd-list-item
@@ -109,7 +109,7 @@ function select(categorie, lawId = null) {
       :current="isSelected(WACHTEN) || undefined"
       @click="select(WACHTEN)"
     >
-      <nldd-icon-cell size="20"><nldd-icon name="clock"></nldd-icon></nldd-icon-cell>
+      <nldd-icon-cell size="20"><nldd-icon icon="clock"></nldd-icon></nldd-icon-cell>
       <nldd-spacer-cell size="8"></nldd-spacer-cell>
       <nldd-text-cell text="Wachten op"></nldd-text-cell>
       <nldd-spacer-cell size="8"></nldd-spacer-cell>
@@ -120,7 +120,7 @@ function select(categorie, lawId = null) {
         horizontal-alignment="right"
       ></nldd-text-cell>
       <nldd-spacer-cell size="2"></nldd-spacer-cell>
-      <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
+      <nldd-icon-cell size="20"><nldd-icon icon="chevron-right"></nldd-icon></nldd-icon-cell>
     </nldd-list-item>
 
     <nldd-list-item
@@ -129,7 +129,7 @@ function select(categorie, lawId = null) {
       :current="isSelected(ALLE) || undefined"
       @click="select(ALLE)"
     >
-      <nldd-icon-cell size="20"><nldd-icon name="circle-grid-2x2-top-left-check-mark"></nldd-icon></nldd-icon-cell>
+      <nldd-icon-cell size="20"><nldd-icon icon="circle-grid-2x2-top-left-check-mark"></nldd-icon></nldd-icon-cell>
       <nldd-spacer-cell size="8"></nldd-spacer-cell>
       <nldd-text-cell text="Alle taken"></nldd-text-cell>
       <nldd-spacer-cell size="8"></nldd-spacer-cell>
@@ -140,7 +140,7 @@ function select(categorie, lawId = null) {
         horizontal-alignment="right"
       ></nldd-text-cell>
       <nldd-spacer-cell size="2"></nldd-spacer-cell>
-      <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
+      <nldd-icon-cell size="20"><nldd-icon icon="chevron-right"></nldd-icon></nldd-icon-cell>
     </nldd-list-item>
   </nldd-list>
 
@@ -155,7 +155,7 @@ function select(categorie, lawId = null) {
     <nldd-title size="5"><h3>Contexten</h3></nldd-title>
     <nldd-spacer size="8"></nldd-spacer>
 
-    <nldd-list variant="simple">
+    <nldd-list appearance="simple">
       <nldd-list-item
         v-if="hasWerkdocumenten"
         size="md"
@@ -163,7 +163,7 @@ function select(categorie, lawId = null) {
         :current="isSelected(WERKDOCUMENTEN) || undefined"
         @click="select(WERKDOCUMENTEN)"
       >
-        <nldd-icon-cell size="20"><nldd-icon name="label"></nldd-icon></nldd-icon-cell>
+        <nldd-icon-cell size="20"><nldd-icon icon="label"></nldd-icon></nldd-icon-cell>
         <nldd-spacer-cell size="8"></nldd-spacer-cell>
         <nldd-text-cell text="Werkdocumenten"></nldd-text-cell>
         <nldd-spacer-cell size="8"></nldd-spacer-cell>
@@ -174,7 +174,7 @@ function select(categorie, lawId = null) {
           horizontal-alignment="right"
         ></nldd-text-cell>
         <nldd-spacer-cell size="2"></nldd-spacer-cell>
-        <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
+        <nldd-icon-cell size="20"><nldd-icon icon="chevron-right"></nldd-icon></nldd-icon-cell>
       </nldd-list-item>
 
       <!-- Elke wet met open taken is zelf een context, plat naast Werkdocumenten. -->
@@ -186,7 +186,7 @@ function select(categorie, lawId = null) {
         :current="isSelected(WET, law.lawId) || undefined"
         @click="select(WET, law.lawId)"
       >
-        <nldd-icon-cell size="20"><nldd-icon name="label"></nldd-icon></nldd-icon-cell>
+        <nldd-icon-cell size="20"><nldd-icon icon="label"></nldd-icon></nldd-icon-cell>
         <nldd-spacer-cell size="8"></nldd-spacer-cell>
         <nldd-text-cell :text="law.name"></nldd-text-cell>
         <nldd-spacer-cell size="8"></nldd-spacer-cell>
@@ -197,7 +197,7 @@ function select(categorie, lawId = null) {
           horizontal-alignment="right"
         ></nldd-text-cell>
         <nldd-spacer-cell size="2"></nldd-spacer-cell>
-        <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
+        <nldd-icon-cell size="20"><nldd-icon icon="chevron-right"></nldd-icon></nldd-icon-cell>
       </nldd-list-item>
     </nldd-list>
   </template>

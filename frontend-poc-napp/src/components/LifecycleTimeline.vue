@@ -120,7 +120,7 @@ const stappen = computed(() => {
 </script>
 
 <template>
-  <nldd-list variant="simple" no-dividers>
+  <nldd-list appearance="simple" no-dividers>
     <nldd-list-item v-for="(stap, i) in stappen" :key="stap.key" size="md">
       <nldd-timeline-track-cell
         :status="stap.bereikt ? 'past' : 'future'"

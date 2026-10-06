@@ -73,7 +73,7 @@ const errorText = computed(() => (error.value ? t(`wet.tile.why.error.${error.va
         <nldd-container padding="16" gap="16">
           <nldd-banner variant="accent" icon="info" :text="t('wet.tile.why.caveat.title')" :supporting-text="t('wet.tile.why.caveat.body')"></nldd-banner>
           <nldd-inline-dialog v-if="error" variant="alert" :text="t('wet.tile.why.error.title')" :supporting-text="errorText">
-            <nldd-button v-if="error !== 'locked'" slot="actions" variant="secondary" size="sm" :text="t('wet.tile.why.retry')" @click="run"></nldd-button>
+            <nldd-button v-if="error !== 'locked'" slot="actions" appearance="secondary" size="sm" :text="t('wet.tile.why.retry')" @click="run"></nldd-button>
           </nldd-inline-dialog>
           <nldd-activity-indicator v-else-if="loading && !text" show-text :text="t('wet.tile.why.loading')" timing="instant" size="24"></nldd-activity-indicator>
           <!-- aria-live so a screen reader reads the explanation as it arrives,

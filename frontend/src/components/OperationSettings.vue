@@ -569,7 +569,7 @@ function addValue() {
       </nldd-title>
       <nldd-spacer size="12"></nldd-spacer>
     </template>
-    <nldd-list variant="box-tinted" class="settings-list">
+    <nldd-list appearance="box-tinted" class="settings-list">
       <!-- Optional lead row, rendered as the first item of THIS list so
            the action sheet's Output field sits in the same box as Type /
            conditions on the root of an action. -->
@@ -676,7 +676,7 @@ function addValue() {
               icon="edit"
               text="Bewerken"
               tooltip-timing="never"
-              variant="neutral-tinted"
+              appearance="neutral-tinted"
               @click="emit('select-operation', val._value)"
             ></nldd-icon-button>
           </template>
@@ -686,7 +686,7 @@ function addValue() {
                  exact button instead of to whichever element happens to own a
                  matching id — two panes showing the same operation used to
                  collide. -->
-            <nldd-icon-button icon="more" text="Acties" tooltip-timing="never" variant="neutral-tinted">
+            <nldd-icon-button icon="more" text="Acties" tooltip-timing="never" appearance="neutral-tinted">
               <nldd-menu slot="popup">
                 <nldd-menu-group v-if="canChangeValueKind(val)" text="Type">
                   <nldd-menu-item
@@ -719,7 +719,7 @@ function addValue() {
           <template v-if="isNestedOperation(val._value)">
             <nldd-spacer-cell size="12"></nldd-spacer-cell>
             <nldd-icon-cell size="20">
-              <nldd-icon name="chevron-right"></nldd-icon>
+              <nldd-icon icon="chevron-right"></nldd-icon>
             </nldd-icon-cell>
           </template>
         </template>

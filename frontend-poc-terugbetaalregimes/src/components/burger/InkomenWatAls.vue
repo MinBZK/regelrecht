@@ -38,7 +38,7 @@
         v-if="gewijzigd"
         text="Terug naar je eigen gegevens"
         start-icon="undo"
-        variant="neutral-transparent"
+        appearance="neutral-transparent"
         size="sm"
         @click="herstel"
       ></nldd-button>

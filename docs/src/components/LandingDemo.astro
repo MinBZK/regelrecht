@@ -173,7 +173,7 @@ const labels = JSON.stringify({
             its own keyboard-reachable scroll region and the theme handling.
             `wrap` matters here: without it the YAML scrolls sideways under the
             wipe, and a line that is half-covered must not reflow. */}
-        <nldd-code-viewer slot="under" language="yaml" variant="simple" wrap>{demo.yaml}</nldd-code-viewer>
+        <nldd-code-viewer slot="under" language="yaml" appearance="simple" wrap>{demo.yaml}</nldd-code-viewer>
         <nldd-blockquote slot="over" cite={demo.lawUrl}>
           <p>{demo.prose}</p>
           <span slot="attribution">
@@ -207,7 +207,7 @@ const labels = JSON.stringify({
         {/* Gherkin is one of the languages the viewer highlights. No `wrap`:
             the data tables are aligned on their pipes and reflowing them would
             destroy the alignment, so this one scrolls sideways instead. */}
-        <nldd-code-viewer slot="under" language="gherkin" variant="simple">{demo.gherkin}</nldd-code-viewer>
+        <nldd-code-viewer slot="under" language="gherkin" appearance="simple">{demo.gherkin}</nldd-code-viewer>
         {/* The citation links to the published document, like the statute
             quotation above does. It is a quotation from the parliamentary
             papers, so it has to be checkable; and both the citation and the
@@ -264,7 +264,7 @@ const labels = JSON.stringify({
           {/* `text` rather than slotted content: the default slot is not the
               label slot, so plain text between the tags renders nothing. */}
           <nldd-button
-            variant="secondary"
+            appearance="secondary"
             size="sm"
             text={t.replay}
             data-replay

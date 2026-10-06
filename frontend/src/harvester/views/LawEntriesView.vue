@@ -37,7 +37,7 @@ watch(lastJobCreated, () => refresh());
     <template #empty-action>
       <nldd-button
         slot="actions"
-        variant="primary"
+        appearance="primary"
         text="New harvest job"
         @click="open"
       />

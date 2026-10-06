@@ -54,7 +54,7 @@ function goBack() {
         </nldd-rich-text>
 
         <nldd-spacer size="24"></nldd-spacer>
-        <nldd-button variant="primary" text="E-mail RegelRecht" start-icon="mail" :href="mailtoHref"></nldd-button>
+        <nldd-button appearance="primary" text="E-mail RegelRecht" start-icon="mail" :href="mailtoHref"></nldd-button>
       </nldd-simple-section>
 
       <nldd-page-footer slot="footer"></nldd-page-footer>

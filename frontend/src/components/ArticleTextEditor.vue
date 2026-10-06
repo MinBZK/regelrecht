@@ -143,7 +143,7 @@ defineExpose({
   <div v-else class="article-text-editor" data-testid="article-text-editor">
     <nldd-text-editor
       ref="editorRef"
-      variant="simple"
+      appearance="simple"
       :rows="8"
       resize="auto"
       annotatable

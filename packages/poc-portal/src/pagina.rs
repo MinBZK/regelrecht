@@ -77,7 +77,7 @@ fn omhulsel(titel: &str, inhoud: &str) -> String {
 /// regelrecht onder `rr-theme` bewaart.
 fn thema_knop() -> &'static str {
     r#"  <nldd-container layout="row" horizontal-alignment="right" padding="12" padding-bottom="0">
-    <nldd-button id="thema-knop" variant="neutral-transparent" size="sm"
+    <nldd-button id="thema-knop" appearance="neutral-transparent" size="sm"
       start-icon="light-mode" text="Weergave" expandable
       popup-type="menu" accessible-label="Kies licht of donker"></nldd-button>
     <nldd-menu anchor="thema-knop" data-thema-menu>
@@ -104,7 +104,7 @@ fn kaart(poc: &Poc) -> String {
             <nldd-rich-text><p>{samenvatting}</p></nldd-rich-text>
           </nldd-container>
           <nldd-container slot="footer" padding="20" padding-top="0">
-            <nldd-button variant="secondary" width="full" href="/{slug}/"
+            <nldd-button appearance="secondary" width="full" href="/{slug}/"
               start-icon="lock" text="Openen"
               accessible-label="Open {titel}"></nldd-button>
           </nldd-container>
@@ -138,7 +138,7 @@ fn demo_kaart() -> &'static str {
             zonder wachtwoord.</p></nldd-rich-text>
           </nldd-container>
           <nldd-container slot="footer" padding="20" padding-top="0">
-            <nldd-button variant="secondary" width="full"
+            <nldd-button appearance="secondary" width="full"
               href="https://demo.regelrecht.rijks.app" target="_blank"
               end-icon="external-link" text="Openen"
               accessible-label="Open de demo"></nldd-button>
@@ -171,7 +171,7 @@ pub fn index(registry: &Registry) -> String {
     <nldd-title size="1" color="inherit">
       <span slot="overline">regelrecht</span>
       <h1>Proof-of-concepts</h1>
-      <span slot="subtitle">Wat wetgeving doet als je haar uitvoert</span>
+      <span slot="supporting-text">Wat wetgeving doet als je haar uitvoert</span>
     </nldd-title>
     <nldd-spacer size="16"></nldd-spacer>
     <nldd-rich-text color="inherit">
@@ -199,7 +199,7 @@ pub fn index(registry: &Registry) -> String {
     <nldd-collection layout="grid" item-width="240px">
       <nldd-card href="https://regelrecht.rijks.app" target="_blank" accessible-label="regelrecht.rijks.app">
         <nldd-container padding="16" gap="8">
-          <nldd-icon name="home" size="24"></nldd-icon>
+          <nldd-icon icon="home" size="24"></nldd-icon>
           <nldd-title size="5"><h3>regelrecht.rijks.app</h3></nldd-title>
           <nldd-rich-text size="sm" spacing="tight">
             <p>Wat regelrecht is, voor wie, en hoe je meedoet.</p>
@@ -208,7 +208,7 @@ pub fn index(registry: &Registry) -> String {
       </nldd-card>
       <nldd-card href="https://docs.regelrecht.rijks.app/docs/" target="_blank" accessible-label="Documentatie">
         <nldd-container padding="16" gap="8">
-          <nldd-icon name="document" size="24"></nldd-icon>
+          <nldd-icon icon="document" size="24"></nldd-icon>
           <nldd-title size="5"><h3>Documentatie</h3></nldd-title>
           <nldd-rich-text size="sm" spacing="tight">
             <p>Het wetformaat, de engine, de RFC&#39;s en hoe je zelf een wet
@@ -218,7 +218,7 @@ pub fn index(registry: &Registry) -> String {
       </nldd-card>
       <nldd-card href="https://regelrecht.rijks.app/research/" target="_blank" accessible-label="Onderzoek">
         <nldd-container padding="16" gap="8">
-          <nldd-icon name="library" size="24"></nldd-icon>
+          <nldd-icon icon="library" size="24"></nldd-icon>
           <nldd-title size="5"><h3>Onderzoek</h3></nldd-title>
           <nldd-rich-text size="sm" spacing="tight">
             <p>Het position paper Rules as Executed en het onderzoek eromheen.</p>
@@ -335,7 +335,7 @@ pub fn inloggen(poc: &Poc, pad: &str, mislukt: bool) -> String {
                 required></nldd-password-field>
             </nldd-form-field>
             <nldd-spacer size="16"></nldd-spacer>
-            <nldd-button type="submit" variant="primary" text="Toegang"></nldd-button>
+            <nldd-button type="submit" appearance="primary" text="Toegang"></nldd-button>
           </form>
         </nldd-container>
       </nldd-card>

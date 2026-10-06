@@ -87,7 +87,7 @@ function onViewChange(event) {
     <template #empty-action>
       <nldd-button
         slot="actions"
-        variant="primary"
+        appearance="primary"
         text="New harvest job"
         @click="openNewHarvestJob"
       />
@@ -122,7 +122,7 @@ function onViewChange(event) {
     <template #empty-action>
       <nldd-button
         slot="actions"
-        variant="primary"
+        appearance="primary"
         text="New harvest job"
         @click="openNewHarvestJob"
       />

@@ -45,7 +45,7 @@
       <nldd-simple-section>
         <nldd-title :size="4">
           <span>Wat er uit het bestand volgt</span>
-          <span slot="subtitle">Drempel, formulieren, deadline en het geld voor deze peildatum.</span>
+          <span slot="supporting-text">Drempel, formulieren, deadline en het geld voor deze peildatum.</span>
         </nldd-title>
         <!-- Deze melding stond bovenaan de pagina, buiten beeld tegen de tijd
              dat je bij de kolommen bent. Twee identieke kolommen lezen dan als
@@ -63,7 +63,7 @@
         <div class="school-kop">
           <nldd-title :size="3">
             <span>{{ schoolId }}</span>
-            <span slot="subtitle">{{ sectorLabel(sector) }} · {{ pupils.length }} nieuwkomers in de periode · {{ ist.entry.in_bestand }} in het bestand op {{ datumLabel(peildatum) }} (klaar op de {{ bestandDatum(peildatum).slice(8) }}e in Mijn DUO)</span>
+            <span slot="supporting-text">{{ sectorLabel(sector) }} · {{ pupils.length }} nieuwkomers in de periode · {{ ist.entry.in_bestand }} in het bestand op {{ datumLabel(peildatum) }} (klaar op de {{ bestandDatum(peildatum).slice(8) }}e in Mijn DUO)</span>
           </nldd-title>
           <nldd-segmented-control v-if="variant" size="sm" :value="bestandKolom" @change="bestandKolom = $event.detail?.value ?? bestandKolom">
             <nldd-segmented-control-item value="ist" :text="istTitel"></nldd-segmented-control-item>
@@ -77,7 +77,7 @@
       <nldd-simple-section>
         <nldd-title :size="4">
           <span>Handelingen voor deze school op deze peildatum</span>
-          <span slot="subtitle">Welke stappen, hoeveel minuten, en wat dat kost tegen het uurtarief.</span>
+          <span slot="supporting-text">Welke stappen, hoeveel minuten, en wat dat kost tegen het uurtarief.</span>
         </nldd-title>
         <div class="kolommen">
           <div class="kolom">

@@ -151,7 +151,7 @@ const codeSections = computed(() => {
             v-else-if="jobs.length === 0"
             text="No jobs"
           />
-          <nldd-list v-else variant="simple">
+          <nldd-list v-else appearance="simple">
             <nldd-list-item
               v-for="job in jobs"
               :key="job.id"
@@ -182,7 +182,7 @@ const codeSections = computed(() => {
           <nldd-title><h2>Job details</h2></nldd-title>
           <nldd-spacer size="8" />
 
-          <nldd-list variant="simple">
+          <nldd-list appearance="simple">
             <nldd-list-item v-for="[label, value] in infoFields" :key="label">
               <nldd-text-cell :text="label" color="secondary" width="fit-content" />
               <nldd-spacer-cell size="12" />

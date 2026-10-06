@@ -49,8 +49,8 @@ onMounted(() => {
           text="Je bent uitgelogd omdat je sessie is verlopen."
           supporting-text="Log opnieuw in om verder te gaan waar je gebleven was of ga naar de publieke omgeving."
         >
-          <nldd-button slot="actions" variant="primary" text="Opnieuw inloggen" @click="relogin"></nldd-button>
-          <nldd-button slot="actions" variant="secondary" text="Naar de publieke omgeving" @click="goPublic"></nldd-button>
+          <nldd-button slot="actions" appearance="primary" text="Opnieuw inloggen" @click="relogin"></nldd-button>
+          <nldd-button slot="actions" appearance="secondary" text="Naar de publieke omgeving" @click="goPublic"></nldd-button>
         </nldd-inline-dialog>
       </nldd-simple-section>
     </nldd-page>

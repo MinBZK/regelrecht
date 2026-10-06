@@ -127,7 +127,7 @@ describe('TasksCategoriesPane', () => {
     const wrapper = await mountPane([OTHER_LAW_TASK], [
       { job_id: 'j1', job_type: 'enrich', law_id: 'kieswet' },
     ]);
-    const icons = wrapper.findAll('nldd-icon').map((i) => i.attributes('name'));
+    const icons = wrapper.findAll('nldd-icon').map((i) => i.attributes('icon'));
     expect(icons.filter((n) => n !== 'chevron-right').slice(0, 3)).toEqual([
       'exclamation-circle',
       'clock',
@@ -164,7 +164,7 @@ describe('TasksCategoriesPane', () => {
   it('geeft elke context hetzelfde label-icoon (het is een filter, geen onderwerp-type)', async () => {
     // Werkdocumenten én de wet-context dragen 'label', niet documents/book.
     const wrapper = await mountPane([LAW_TASK, DOC_TASK]);
-    const icons = wrapper.findAll('nldd-icon').map((i) => i.attributes('name'));
+    const icons = wrapper.findAll('nldd-icon').map((i) => i.attributes('icon'));
     expect(icons).toContain('label');
     expect(icons).not.toContain('book');
     expect(icons).not.toContain('documents');

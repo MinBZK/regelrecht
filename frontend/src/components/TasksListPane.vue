@@ -220,7 +220,7 @@ function viewLaw(job) {
 </script>
 
 <template>
-  <nldd-list v-if="!isEmpty" variant="simple">
+  <nldd-list v-if="!isEmpty" appearance="simple">
     <nldd-list-item v-for="task in shownTasks" :key="task.id" size="md">
       <nldd-icon-cell
         size="20"

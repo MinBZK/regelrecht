@@ -268,13 +268,13 @@ async function submitCreate() {
         >
           <nldd-button
             slot="actions"
-            variant="primary"
+            appearance="primary"
             text="Inloggen"
             @click="loginToChooser"
           ></nldd-button>
           <nldd-button
             slot="actions"
-            variant="secondary"
+            appearance="secondary"
             text="Account aanvragen"
             :href="accountRequestHref"
             @click.prevent="goToAccountRequest"

@@ -74,7 +74,7 @@ const overallStatus = computed(() => {
 
   <template v-else>
     <template v-if="result && Object.keys(expectations).length">
-      <nldd-list variant="simple">
+      <nldd-list appearance="simple">
         <nldd-list-item size="md">
           <nldd-text-cell size="md" color="secondary" text=""></nldd-text-cell>
           <nldd-text-cell

@@ -374,8 +374,8 @@ function onTabDismiss(e) {
                       text="Log in om iets toe te voegen"
                       supporting-text="Zodra je bent ingelogd kun je regelwerken, werkdocumenten en leden aan een traject toevoegen."
                     >
-                      <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login()"></nldd-button>
-                      <nldd-button slot="actions" variant="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
+                      <nldd-button slot="actions" appearance="primary" text="Inloggen" @click="login()"></nldd-button>
+                      <nldd-button slot="actions" appearance="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
                     </nldd-inline-dialog>
                   </nldd-container>
                 </nldd-popover>
@@ -482,8 +482,8 @@ function onTabDismiss(e) {
                       text="Log in om iets toe te voegen"
                       supporting-text="Zodra je bent ingelogd kun je regelwerken, werkdocumenten en leden aan een traject toevoegen."
                     >
-                      <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login()"></nldd-button>
-                      <nldd-button slot="actions" variant="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
+                      <nldd-button slot="actions" appearance="primary" text="Inloggen" @click="login()"></nldd-button>
+                      <nldd-button slot="actions" appearance="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
                     </nldd-inline-dialog>
                   </nldd-container>
                 </nldd-popover>
@@ -684,7 +684,7 @@ function onTabDismiss(e) {
                  overloopmenu. -->
             <nldd-toolbar-item v-if="inReview" slot="end" label="Verwerp voorstel" :priority="2">
               <nldd-button
-                variant="destructive"
+                appearance="destructive"
                 size="md"
                 start-icon="dismiss-circle"
                 text="Verwerp voorstel"
@@ -711,7 +711,7 @@ function onTabDismiss(e) {
               :priority="3"
             >
               <nldd-button
-                variant="primary"
+                appearance="primary"
                 size="md"
                 :start-icon="inReview ? 'check-mark-circle' : undefined"
                 :width="inReview ? undefined : 'full'"
@@ -782,8 +782,8 @@ function onTabDismiss(e) {
                       text="Log in om iets toe te voegen"
                       supporting-text="Zodra je bent ingelogd kun je regelwerken, werkdocumenten en leden aan een traject toevoegen."
                     >
-                      <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login()"></nldd-button>
-                      <nldd-button slot="actions" variant="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
+                      <nldd-button slot="actions" appearance="primary" text="Inloggen" @click="login()"></nldd-button>
+                      <nldd-button slot="actions" appearance="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
                     </nldd-inline-dialog>
                   </nldd-container>
                 </nldd-popover>
@@ -849,8 +849,8 @@ function onTabDismiss(e) {
         text="Log in om de editor te gebruiken"
         supporting-text="Zodra je bent ingelogd kies je een traject en kun je aan de slag."
       >
-        <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login(loginRedirect || editorTabHref)"></nldd-button>
-        <nldd-button slot="actions" variant="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
+        <nldd-button slot="actions" appearance="primary" text="Inloggen" @click="login(loginRedirect || editorTabHref)"></nldd-button>
+        <nldd-button slot="actions" appearance="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
       </nldd-inline-dialog>
     </nldd-container>
   </nldd-popover>
@@ -864,13 +864,13 @@ function onTabDismiss(e) {
   >
     <nldd-button
       slot="actions"
-      variant="primary"
+      appearance="primary"
       text="Behoud voorstel"
       @click="rejectConfirm?.hide()"
     ></nldd-button>
     <nldd-button
       slot="actions"
-      variant="destructive"
+      appearance="destructive"
       text="Verwerp voorstel"
       @click="confirmReject"
     ></nldd-button>
@@ -885,13 +885,13 @@ function onTabDismiss(e) {
   >
     <nldd-button
       slot="actions"
-      variant="primary"
+      appearance="primary"
       text="Verder beoordelen"
       @click="rejectRestConfirm?.hide()"
     ></nldd-button>
     <nldd-button
       slot="actions"
-      variant="destructive"
+      appearance="destructive"
       text="Rond af"
       @click="confirmRejectRest"
     ></nldd-button>

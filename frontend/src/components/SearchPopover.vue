@@ -411,7 +411,7 @@ defineExpose({ show });
       -->
       <nldd-list
         type="listbox"
-        variant="simple"
+        appearance="simple"
         height="min(70vh, 560px)"
         :accessible-label="SEARCH_ACCESSIBLE_LABEL"
         :translations="listTranslations"
@@ -473,7 +473,7 @@ defineExpose({ show });
           ></nldd-text-cell>
           <nldd-spacer-cell size="8"></nldd-spacer-cell>
           <nldd-icon-cell size="20">
-            <nldd-icon :name="statusIcon(result.bwb_id)"></nldd-icon>
+            <nldd-icon :icon="statusIcon(result.bwb_id)"></nldd-icon>
           </nldd-icon-cell>
         </nldd-list-item>
 
@@ -498,7 +498,7 @@ defineExpose({ show });
             text="Log in om externe bronnen te doorzoeken"
             supporting-text="Inloggen is vereist om wetten op te halen van wetten.overheid.nl"
           >
-            <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login()"></nldd-button>
+            <nldd-button slot="actions" appearance="primary" text="Inloggen" @click="login()"></nldd-button>
           </nldd-inline-dialog>
           <nldd-inline-dialog
             v-else-if="bwbLoading"
