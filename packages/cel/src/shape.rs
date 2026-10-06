@@ -17,7 +17,9 @@ use regelrecht_law_model::{Origin, OriginRole, OriginValue, Parameter, Parameter
 use serde::Serialize;
 
 use crate::error::{setup, Result};
-use crate::extension::{self, EffectiveAt, Establishment, Extends, Fields, Reference};
+use crate::extension::{
+    self, EffectiveAt, Establishment, Extends, Fields, PeriodParameter, Reference,
+};
 
 /// One field of a gram, as the law declares it.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -49,6 +51,9 @@ pub struct Shape {
     pub fields: Vec<FieldDef>,
     pub effective_at: Option<EffectiveAt>,
     pub refers_to: BTreeMap<String, Reference>,
+    /// The period a gram of the event concerns, and the parameter that
+    /// gives it.
+    pub period: Option<PeriodParameter>,
     pub legal_character: Option<String>,
     pub decision_type: Option<String>,
     /// The outputs of the establishing article.
@@ -166,6 +171,7 @@ pub fn derive(
         fields: Vec::new(),
         effective_at: entry.effective_at.clone(),
         refers_to: entry.refers_to.clone(),
+        period: entry.period.clone(),
         legal_character: produces.and_then(|p| p.legal_character.clone()),
         decision_type: produces.and_then(|p| p.decision_type.clone()),
         outputs: outputs(article),

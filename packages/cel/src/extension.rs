@@ -7,6 +7,8 @@
 //!     establishes:
 //!       - event: aanvraag_ontvangen      # this article establishes the event
 //!         fields: parameters
+//!       - event: toegekend               # a decision on a calendar year
+//!         period: {parameter: berekeningsjaar, unit: year}
 //!       - extends: {submission: AANVRAAG} # a hook on every application
 //!         effective_at:
 //!           legal_basis: [algemene_wet_bestuursrecht#4:13 lid 1]
@@ -57,6 +59,27 @@ pub struct Establishment {
     pub effective_at: Option<EffectiveAt>,
     #[serde(default)]
     pub fields: Option<Fields>,
+    /// The period the fact concerns, if the law says it concerns one: the
+    /// cell applies the law of that period, not of the day it records.
+    #[serde(default)]
+    pub period: Option<PeriodParameter>,
+}
+
+/// The period a fact concerns: the one the parameter `parameter` gives, in
+/// `unit`.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PeriodParameter {
+    pub parameter: String,
+    pub unit: PeriodUnit,
+}
+
+/// The unit of a period.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PeriodUnit {
+    /// A calendar year; the law of a year is the law on its first day.
+    Year,
 }
 
 /// A reference to another gram: the article that establishes it.

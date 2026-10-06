@@ -28,5 +28,5 @@ pub mod shape;
 pub mod wasm;
 
 pub use cell::{Cell, Input};
-pub use chronicle::Gram;
+pub use chronicle::{Gram, Period};
 pub use error::{Error, Result};

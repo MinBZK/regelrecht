@@ -15,7 +15,8 @@ use std::path::{Path, PathBuf};
 use chrono::{DateTime, FixedOffset};
 use regelrecht_cel::cell::load_regulations;
 use regelrecht_cel::config::CellConfig;
-use regelrecht_cel::{Cell, Error, Gram, Input};
+use regelrecht_cel::extension::PeriodUnit;
+use regelrecht_cel::{Cell, Error, Gram, Input, Period};
 use regelrecht_engine::{LawExecutionService, Value};
 use serde_json::{json, Map};
 
@@ -42,6 +43,13 @@ fn at(moment: &str) -> DateTime<FixedOffset> {
 /// The cell of Toeslagen over its chronicles in `data`, on the day of `now`.
 fn cell(service: &LawExecutionService, data: &Path, now: DateTime<FixedOffset>) -> Cell {
     Cell::open(&cell_yaml(), service, data, now.date_naive()).unwrap_or_else(|e| panic!("{e}"))
+}
+
+fn year(value: i32) -> Period {
+    Period {
+        unit: PeriodUnit::Year,
+        value,
+    }
 }
 
 fn object(v: serde_json::Value) -> Map<String, serde_json::Value> {
@@ -263,8 +271,9 @@ fn toeslagen_decides_on_the_application_and_records_the_decision() {
     let mut service = service;
     register_sources(&mut service);
     // The decision reads its parameters from the lexostatus its event
-    // `reads`, kept to what art. 2 declares: the bsn, not the year or the
-    // day of receipt. `decision_inputs` shows what `decide` will read.
+    // `reads`, kept to what art. 2 declares (the bsn, not the day of
+    // receipt) and the berekeningsjaar it concerns. `decision_inputs` shows
+    // what `decide` will read.
     let inputs = cell
         .decision_inputs(
             &service,
@@ -273,15 +282,18 @@ fn toeslagen_decides_on_the_application_and_records_the_decision() {
             decided.date_naive(),
         )
         .unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(
-        inputs,
-        BTreeMap::from([(
-            "bsn".to_string(),
+    let from_case = |name: &str| {
+        (
+            name.to_string(),
             Input {
-                value: read["bsn"].clone(),
+                value: read[name].clone(),
                 provenance: json!({"source": "lexostatus", "lexostatus": "aanvraag"}),
             },
-        )])
+        )
+    };
+    assert_eq!(
+        inputs,
+        BTreeMap::from([from_case("bsn"), from_case("aangevraagd_berekeningsjaar")])
     );
     let refers_to = BTreeMap::from([("on_application".to_string(), application.id.clone())]);
 
@@ -332,6 +344,7 @@ fn toeslagen_decides_on_the_application_and_records_the_decision() {
             .collect::<BTreeMap<_, _>>()
     );
     assert_eq!(decision.inputs["bsn"]["provenance"]["source"], "lexostatus");
+    assert_eq!(decision.period, Some(year(2025)));
 
     // The fields are the outputs of art. 2, and they are what the engine
     // computes for this citizen without any cell: the existing calculation.
@@ -387,6 +400,107 @@ fn toeslagen_decides_on_the_application_and_records_the_decision() {
         .read("aanvraag", &object(json!({"root": application.id})))
         .unwrap();
     assert_eq!(read_again, read);
+}
+
+/// An application for 2025 decided in 2026 (Awir 15 lid 1 allows it until
+/// 1 September 2026) is computed with the law of 2025: the decision concerns
+/// the berekeningsjaar, not the day it is taken.
+#[test]
+fn a_decision_applies_the_law_of_the_berekeningsjaar() {
+    // The corpus has no standaardpremie for 2026 yet; a fictional one makes
+    // the law of 2026 differ from that of 2025.
+    let regulations = || {
+        let mut service = regulations();
+        let premium_2025 = std::fs::read_to_string(root().join(
+            "corpus/regulation/nl/ministeriele_regeling/regeling_standaardpremie/2025-01-01.yaml",
+        ))
+        .unwrap();
+        assert!(premium_2025.contains("value: 211200"));
+        let premium_2026 = premium_2025
+            .replace("valid_from: '2025-01-01'", "valid_from: '2026-01-01'")
+            .replace("value: 211200", "value: 231200");
+        service.load_law(&premium_2026).unwrap();
+        service
+    };
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    let received = at("2026-03-02T10:15:00+01:00");
+    let mut cell = cell(&service, data.path(), received);
+    let application = cell
+        .record_submission(&service, "aanvraag_ontvangen", &application(), received)
+        .unwrap();
+    assert_eq!(application.fields["aangevraagd_berekeningsjaar"], 2025);
+
+    register_sources(&mut service);
+    let decided = at("2026-04-13T09:00:00+02:00");
+    let decision = cell
+        .decide(
+            &service,
+            "zorgtoeslag_toegekend",
+            BTreeMap::from([("on_application".to_string(), application.id.clone())]),
+            BTreeMap::new(),
+            decided,
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+    // Taken and recorded in 2026, on the law of 2025.
+    assert_eq!(decision.effective_at, "2026-04-13T09:00:00+02:00");
+    assert_eq!(decision.recorded_at, "2026-04-13T09:00:00+02:00");
+    assert_eq!(decision.period, Some(year(2025)));
+    assert_eq!(
+        decision.regulation_valid_from.as_deref(),
+        Some("2025-01-01")
+    );
+    // The year took part in the decision, from the case.
+    assert_eq!(
+        decision.inputs["aangevraagd_berekeningsjaar"],
+        json!({
+            "value": 2025,
+            "provenance": {"source": "lexostatus", "lexostatus": "aanvraag"},
+        })
+    );
+
+    let direct = |day: &str| {
+        let mut direct = regulations();
+        register_sources(&mut direct);
+        let result = direct
+            .evaluate_law_output(
+                ZORGTOESLAG,
+                "hoogte_zorgtoeslag",
+                BTreeMap::from([("bsn".to_string(), Value::String(BSN.into()))]),
+                day,
+            )
+            .unwrap();
+        serde_json::to_value(&result.outputs["hoogte_zorgtoeslag"]).unwrap()
+    };
+    assert_eq!(decision.fields["hoogte_zorgtoeslag"], direct("2025-01-01"));
+    assert_ne!(decision.fields["hoogte_zorgtoeslag"], direct("2026-04-13"));
+}
+
+/// A decision on a period the case does not give is refused, not computed
+/// with the law of the day it is taken.
+#[test]
+fn a_decision_without_its_period_is_refused() {
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    let received = at("2025-03-04T10:15:00+01:00");
+    let mut cell = cell(&service, data.path(), received);
+    let mut submitted = application();
+    submitted.remove("aangevraagd_berekeningsjaar");
+    let application = cell
+        .record_submission(&service, "aanvraag_ontvangen", &submitted, received)
+        .unwrap();
+    register_sources(&mut service);
+    let e = cell
+        .decide(
+            &service,
+            "zorgtoeslag_toegekend",
+            BTreeMap::from([("on_application".to_string(), application.id)]),
+            BTreeMap::new(),
+            at("2025-04-15T09:00:00+02:00"),
+        )
+        .unwrap_err();
+    assert!(matches!(e, Error::Refused(_)), "{e}");
+    assert!(e.to_string().contains("aangevraagd_berekeningsjaar"), "{e}");
 }
 
 /// A lexostatus that reads a field no gram has is refused when the cell

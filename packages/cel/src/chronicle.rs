@@ -12,10 +12,28 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::PathBuf;
 
+use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::error::{setup, Result};
+use crate::extension::PeriodUnit;
+
+/// The period a fact concerns (a calendar year: `{unit: year, value: 2025}`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Period {
+    pub unit: PeriodUnit,
+    pub value: i32,
+}
+
+impl Period {
+    /// The day the law of the period is the law on: its first day.
+    pub fn first_day(&self) -> Option<NaiveDate> {
+        match self.unit {
+            PeriodUnit::Year => NaiveDate::from_ymd_opt(self.value, 1, 1),
+        }
+    }
+}
 
 /// A recorded fact.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -48,6 +66,10 @@ pub struct Gram {
     pub regulation: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub regulation_valid_from: Option<String>,
+    /// The period the fact concerns, if the law says it concerns one: the
+    /// regulation applied is the one of that period.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub period: Option<Period>,
     /// When the fact legally holds: the receipt of an application (Awb 4:13),
     /// or the moment the law binds it to.
     pub effective_at: String,

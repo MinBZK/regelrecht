@@ -9,7 +9,7 @@ use regelrecht_engine::{LawExecutionService, Value};
 use serde::{Deserialize, Serialize};
 use serde_json::Map;
 
-use crate::chronicle::{Chronicle, Gram};
+use crate::chronicle::{Chronicle, Gram, Period};
 use crate::config::{CellConfig, Derivation};
 use crate::error::{refused, setup, Result};
 use crate::lexostatus;
@@ -196,6 +196,7 @@ impl Cell {
             decision_type: shape.decision_type.clone(),
             regulation: None,
             regulation_valid_from: None,
+            period: None,
             effective_at: now.to_rfc3339(),
             effective_at_legal_basis: shape
                 .effective_at
@@ -292,9 +293,11 @@ impl Cell {
 
     /// The parameters of the decision `event` on the gram `root`: the
     /// lexostatus the event `reads`, read with `{root}`, kept to the
-    /// parameters the establishing article declares on `day`, each with
-    /// where it came from. What [`Cell::decide`] reads; read-only, to look
-    /// before deciding.
+    /// parameters the establishing article declares, each with where it came
+    /// from. The article is the version in force on `day`, or, if the law
+    /// says the decision concerns a period, on the first day of the period
+    /// read; the parameter that gives the period is kept too. What
+    /// [`Cell::decide`] reads; read-only, to look before deciding.
     pub fn decision_inputs(
         &self,
         service: &LawExecutionService,
@@ -316,10 +319,18 @@ impl Cell {
         let mut inputs = Map::new();
         inputs.insert("root".into(), serde_json::Value::String(root.into()));
         let read = self.read(lexostatus, &inputs)?;
+        let (shape, _) = self.shape(service, event, day)?;
+        let period_parameter = shape.period.as_ref().map(|p| p.parameter.as_str());
+        // A period the case does not give leaves the day as it is: `decide`
+        // refuses to take the decision without one.
+        let day = match period_parameter.and_then(|p| read.get(p)) {
+            Some(value) => period(&shape, Some(value))?.map_or(day, |(_, d)| d),
+            None => day,
+        };
         let asked = shape::parameter_names(service, &e.establishes, day)?;
         Ok(read
             .into_iter()
-            .filter(|(name, _)| asked.contains(name))
+            .filter(|(name, _)| asked.contains(name) || Some(name.as_str()) == period_parameter)
             .map(|(name, value)| {
                 let input = Input {
                     value,
@@ -371,12 +382,17 @@ impl Cell {
         Ok(grams.root_of(gram).to_string())
     }
 
-    /// Take a decision and record it: execute the establishing article on the
-    /// day it is taken, and record its outputs as the fields, referring to
-    /// the grams in `refers_to`. The cell reads the parameters itself from
-    /// the case `refers_to` names (the lexostatus the event `reads`);
-    /// `extra_inputs` may only add parameters that lexostatus does not
-    /// supply.
+    /// Take a decision and record it: execute the establishing article and
+    /// record its outputs as the fields, referring to the grams in
+    /// `refers_to`. The cell reads the parameters itself from the case
+    /// `refers_to` names (the lexostatus the event `reads`); `extra_inputs`
+    /// may only add parameters that lexostatus does not supply.
+    ///
+    /// The decision is taken at `now`: that is when it holds and is
+    /// recorded. The law it applies is the law of what it concerns: if the
+    /// law says the decision concerns a period, the version in force on the
+    /// first day of that period, otherwise the version in force on the day
+    /// it is taken.
     pub fn decide(
         &mut self,
         service: &LawExecutionService,
@@ -385,19 +401,15 @@ impl Cell {
         extra_inputs: BTreeMap<String, Input>,
         now: DateTime<FixedOffset>,
     ) -> Result<Gram> {
-        // The decision is taken, and the law applied, on the day it is
-        // recorded. Not yet: the law of the berekeningsjaar applied for
-        // (Awir 15 lid 1 lets a 2025 application be decided in 2026), and
-        // refusing an application out of time.
-        let day = now.date_naive();
-        let (shape, chronicle) = self.shape(service, event, day)?;
-        self.check_references(&shape, &chronicle, &refers_to)?;
+        // Not yet: refusing an application out of time.
+        let today = now.date_naive();
+        let (shape, chronicle) = self.shape(service, event, today)?;
 
         let reads = self.config.event(event).and_then(|(_, e)| e.reads.clone());
         let mut inputs = match reads {
             Some(_) => {
                 let root = self.case_root(&shape, &chronicle, &refers_to)?;
-                self.decision_inputs(service, event, &root, day)?
+                self.decision_inputs(service, event, &root, today)?
             }
             None => BTreeMap::new(),
         };
@@ -410,8 +422,28 @@ impl Cell {
             inputs.insert(name, input);
         }
 
+        let period_parameter = shape.period.as_ref().map(|p| p.parameter.clone());
+        let period = period(
+            &shape,
+            period_parameter
+                .as_ref()
+                .and_then(|p| inputs.get(p))
+                .map(|i| &i.value),
+        )?;
+        let day = period.map_or(today, |(_, d)| d);
+        let shape = if day == today {
+            shape
+        } else {
+            self.shape(service, event, day)?.0
+        };
+        self.check_references(&shape, &chronicle, &refers_to)?;
+
+        // The parameter that gives the period takes part in the decision,
+        // but goes to the article only if the article declares it.
+        let declared = shape::parameter_names(service, &shape.establishes, day)?;
         let parameters: BTreeMap<String, Value> = inputs
             .iter()
+            .filter(|(k, _)| declared.contains(k) || Some(*k) != period_parameter.as_ref())
             .map(|(k, i)| (k.clone(), Value::from(&i.value)))
             .collect();
         let names: Vec<&str> = shape.fields.iter().map(|f| f.name.as_str()).collect();
@@ -420,6 +452,7 @@ impl Cell {
         let mut gram = self.gram(&shape, &chronicle, now);
         gram.regulation = Some(shape.law_id.clone());
         gram.regulation_valid_from = result.regulation_valid_from.clone();
+        gram.period = period.map(|(p, _)| p);
         gram.refers_to = refers_to;
         for f in &shape.fields {
             let value = result
@@ -481,4 +514,34 @@ impl Cell {
         }
         Ok(())
     }
+}
+
+/// The period a decision of `shape` concerns, from `value` (the value of the
+/// parameter that gives it), with the day the law of that period is the law
+/// on; `None` if the law names no period.
+fn period(shape: &Shape, value: Option<&serde_json::Value>) -> Result<Option<(Period, NaiveDate)>> {
+    let Some(declared) = &shape.period else {
+        return Ok(None);
+    };
+    let value = value.ok_or_else(|| {
+        refused(format!(
+            "'{}' concerns the period '{}' gives ({}), and nothing gives it",
+            shape.event, declared.parameter, shape.establishes
+        ))
+    })?;
+    value
+        .as_i64()
+        .and_then(|v| i32::try_from(v).ok())
+        .map(|value| Period {
+            unit: declared.unit,
+            value,
+        })
+        .and_then(|p| Some((p, p.first_day()?)))
+        .map(Some)
+        .ok_or_else(|| {
+            refused(format!(
+                "'{}' gives the period '{}' concerns as {value}, not as a {:?}",
+                declared.parameter, shape.event, declared.unit
+            ))
+        })
 }

@@ -147,6 +147,12 @@ articles:
                       to: algemene_wet_inkomensafhankelijke_regelingen#15
                       required: true
                   fields: outputs
+                  # Awir art. 14 jo. 15: "een tegemoetkoming met betrekking
+                  # tot een berekeningsjaar". Het besluit rekent met de wet
+                  # van dat jaar, niet van de dag waarop het wordt genomen.
+                  period:
+                    parameter: aangevraagd_berekeningsjaar
+                    unit: year
         parameters:
           - name: bsn
             type: string

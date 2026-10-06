@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use chrono::DateTime;
 use regelrecht_cel::cell::load_regulations;
+use regelrecht_cel::extension::{PeriodParameter, PeriodUnit};
 use regelrecht_cel::Cell;
 use serde_json::json;
 
@@ -57,4 +58,16 @@ fn the_demo_cell_records_an_application_for_zorgtoeslag() {
         )
         .unwrap();
     assert_eq!(gram.fields["gevraagde_beschikking"], "zorgtoeslagwet#2");
+
+    // The decision concerns the berekeningsjaar applied for.
+    let (decision, _) = cell
+        .shape(&service, "zorgtoeslag_toegekend", received.date_naive())
+        .unwrap();
+    assert_eq!(
+        decision.period,
+        Some(PeriodParameter {
+            parameter: "aangevraagd_berekeningsjaar".into(),
+            unit: PeriodUnit::Year,
+        })
+    );
 }
