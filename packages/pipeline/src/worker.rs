@@ -2000,13 +2000,21 @@ pub(crate) fn changed_articles(source_yaml: &str, proposal_yaml: &str) -> Option
 /// Taak-flow succes: schrijf de door de enrichment aangeraakte bestanden als
 /// result-blobs, verwijder de input-blobs, complete de job en maak de
 /// review-taak aan — alles in één transactie.
+///
+/// Is de wet na dit venster nog niet af (`law_complete == false`), dan komt er
+/// in dezelfde transactie een vervolgjob bij. Zijn input is het resultaat van
+/// deze job: het voorstel, zodat het volgende venster voortbouwt op wat hier
+/// verrijkt is, en de `.enrichment.yaml` met de cursor, zodat het weet waar het
+/// verder moet. Elk venster wordt zo een eigen verrijking met eigen
+/// review-taken; de diff tegen zijn input bevat alleen wat dát venster deed.
 pub async fn finish_enrich_task_job(
     pool: &PgPool,
     job: &crate::models::Job,
     workdir: &Path,
     written_files: &[std::path::PathBuf],
+    law_complete: bool,
     result_json: Option<serde_json::Value>,
-) -> Result<()> {
+) -> Result<Option<crate::models::Job>> {
     let payload: EnrichPayload = serde_json::from_value(job.payload.clone().unwrap_or_default())
         .map_err(|e| PipelineError::Enrich(format!("invalid enrich payload: {e}")))?;
 
@@ -2021,6 +2029,7 @@ pub async fn finish_enrich_task_job(
     let mut tx = pool.begin().await?;
     crate::tasks::delete_blobs_for_job(&mut *tx, job.id).await?;
     let mut proposal_yaml: Option<String> = None;
+    let mut result_blobs: Vec<(String, String)> = Vec::new();
     for abs in written_files {
         let rel = abs
             .strip_prefix(workdir)
@@ -2044,6 +2053,7 @@ pub async fn finish_enrich_task_job(
             &content,
         )
         .await?;
+        result_blobs.push((rel, content));
     }
     job_queue::complete_job(&mut *tx, job.id, result_json).await?;
     // Een nieuwe wet (geketend vanuit law_convert) krijgt een eigen titel en
@@ -2078,17 +2088,58 @@ pub async fn finish_enrich_task_job(
         }
     };
 
-    match per_article {
-        Some(articles) if !articles.is_empty() => {
-            tracing::info!(
-                job_id = %job.id,
-                law_id = %payload.law_id,
-                articles = articles.len(),
-                "review-taken per artikel aangemaakt"
-            );
-            for number in articles {
-                let mut article_payload = task_payload.clone();
-                article_payload["article"] = serde_json::json!(number);
+    // Een nieuwe wet wordt als geheel aangemaakt: de tussenvensters leveren
+    // nog geen taak op, het laatste venster de hele wet als één voorstel.
+    if new_law && !law_complete {
+        tracing::info!(
+            job_id = %job.id,
+            law_id = %payload.law_id,
+            "nieuwe wet nog niet af; de review-taak volgt na het laatste venster"
+        );
+    } else {
+        match per_article {
+            Some(articles) if !articles.is_empty() => {
+                tracing::info!(
+                    job_id = %job.id,
+                    law_id = %payload.law_id,
+                    articles = articles.len(),
+                    "review-taken per artikel aangemaakt"
+                );
+                for number in articles {
+                    let mut article_payload = task_payload.clone();
+                    article_payload["article"] = serde_json::json!(number);
+                    crate::tasks::create_task(
+                        &mut *tx,
+                        crate::tasks::NewTask {
+                            task_type: crate::tasks::TaskType::JobReview,
+                            assignee_account_id: payload.requested_by,
+                            traject_id: payload.traject_id,
+                            job_id: Some(job.id),
+                            title: format!(
+                                "Verrijking beoordelen: {} artikel {}",
+                                payload.law_id, number
+                            ),
+                            payload: Some(article_payload),
+                        },
+                    )
+                    .await?;
+                }
+            }
+            // Leeg betekent: de proposal verschilt nergens van de bron. Dan valt er
+            // niets te beoordelen en hoort er geen taak te komen; de job is klaar.
+            Some(_) => {
+                tracing::info!(
+                    job_id = %job.id,
+                    law_id = %payload.law_id,
+                    "verrijking leverde geen wijziging op, geen review-taak"
+                );
+            }
+            None => {
+                let title = if new_law {
+                    format!("Nieuw regelwerk beoordelen: {}", payload.law_id)
+                } else {
+                    format!("Verrijking beoordelen: {}", payload.law_id)
+                };
                 crate::tasks::create_task(
                     &mut *tx,
                     crate::tasks::NewTask {
@@ -2096,47 +2147,71 @@ pub async fn finish_enrich_task_job(
                         assignee_account_id: payload.requested_by,
                         traject_id: payload.traject_id,
                         job_id: Some(job.id),
-                        title: format!(
-                            "Verrijking beoordelen: {} artikel {}",
-                            payload.law_id, number
-                        ),
-                        payload: Some(article_payload),
+                        title,
+                        payload: Some(task_payload),
                     },
                 )
                 .await?;
             }
         }
-        // Leeg betekent: de proposal verschilt nergens van de bron. Dan valt er
-        // niets te beoordelen en hoort er geen taak te komen; de job is klaar.
-        Some(_) => {
-            tracing::info!(
+    }
+
+    let continuation = if law_complete {
+        None
+    } else {
+        // Na `complete_job` in dezelfde transactie, zodat
+        // `idx_unique_active_enrich_job` deze job niet meer als actief ziet
+        // (zelfde patroon als `complete_enrich_success_tx`).
+        let mut next_payload = payload.clone();
+        next_payload.session = None;
+        let next_json = serde_json::to_value(&next_payload).map_err(|e| {
+            PipelineError::Enrich(format!("serialize continuation enrich payload: {e}"))
+        })?;
+        let mut req = CreateJobRequest::new(JobType::Enrich, &job.law_id)
+            .with_priority(Priority::new(job.priority))
+            .with_payload(next_json)
+            .with_max_attempts(job.max_attempts);
+        if let Some(ref traject_ref) = payload.traject_ref {
+            req = req.with_traject_ref(traject_ref.clone());
+        }
+        let created = job_queue::create_enrich_job_if_not_exists(&mut *tx, req).await?;
+        match &created {
+            Some(next) => {
+                // Alleen de wet en zijn sidecars (de cursor): wat de agent
+                // verder schreef, zoals `features/*.feature` met een vrij
+                // gekozen naam, kan bij het materialiseren stranden.
+                let carried = result_blobs.iter().filter(|(rel, _)| {
+                    rel == &payload.yaml_path
+                        || Path::new(rel)
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .is_some_and(|n| n.starts_with('.'))
+                });
+                for (rel, content) in carried {
+                    crate::tasks::insert_blob(
+                        &mut *tx,
+                        next.id,
+                        crate::tasks::BlobKind::Input,
+                        rel,
+                        content,
+                    )
+                    .await?;
+                }
+            }
+            // Een andere actieve verrijking van deze wet in dit traject (een
+            // nieuwe aanvraag): die begint met een eigen snapshot, dus deze
+            // reeks stopt hier. De vensters tot nu toe staan als review-taken.
+            None => tracing::warn!(
                 job_id = %job.id,
                 law_id = %payload.law_id,
-                "verrijking leverde geen wijziging op, geen review-taak"
-            );
+                "vervolgjob niet aangemaakt: er loopt al een verrijking voor deze wet"
+            ),
         }
-        None => {
-            let title = if new_law {
-                format!("Nieuw regelwerk beoordelen: {}", payload.law_id)
-            } else {
-                format!("Verrijking beoordelen: {}", payload.law_id)
-            };
-            crate::tasks::create_task(
-                &mut *tx,
-                crate::tasks::NewTask {
-                    task_type: crate::tasks::TaskType::JobReview,
-                    assignee_account_id: payload.requested_by,
-                    traject_id: payload.traject_id,
-                    job_id: Some(job.id),
-                    title,
-                    payload: Some(task_payload),
-                },
-            )
-            .await?;
-        }
-    }
+        created
+    };
+
     tx.commit().await?;
-    Ok(())
+    Ok(continuation)
 }
 
 /// Taak-flow succes voor document-convert: sla de gegenereerde markdown op
@@ -2336,10 +2411,10 @@ async fn process_enrich_task_job(
 
     let mut bounded_config = effective_config.clone();
     bound_llm_timeout(&mut bounded_config, job_timeout);
-    // Taak-flow verrijkt altijd de hele wet in één sessie: het resultaat wordt
-    // een review-taak (blobs), niet een push naar de enrich-branch, dus er is
-    // geen cursor-persistentie of continuation-lus om op te bouwen.
-    bounded_config.max_articles_per_run = 0;
+    // De taak-flow loopt in vensters, net als het corpus-pad: een grote wet in
+    // één sessie haalt de timeout per agent-call niet (de Kieswet, 593
+    // artikelen). De cursor reist mee in de `.enrichment.yaml` die
+    // `finish_enrich_task_job` als input-blob aan de vervolgjob doorgeeft.
 
     let outcome = tokio::time::timeout(
         job_timeout,
@@ -2393,12 +2468,35 @@ async fn process_enrich_task_job(
                     None
                 }
             };
-            if let Err(e) =
-                finish_enrich_task_job(pool, job, workdir.path(), &written_files, result_json).await
+            // Zonder vertaalstap (`ENRICH_STEPS` zonder `window`) schuift de
+            // cursor niet op; een vervolgjob zou hetzelfde venster eindeloos
+            // herhalen.
+            let law_complete = result.law_complete || !bounded_config.steps.window;
+            match finish_enrich_task_job(
+                pool,
+                job,
+                workdir.path(),
+                &written_files,
+                law_complete,
+                result_json,
+            )
+            .await
             {
-                // Persist-fout is retryable (DB-hik).
-                tracing::error!(job_id = %job.id, error = %e, "taak-resultaat wegschrijven mislukt");
-                fail_enrich_task_job_with_retry(pool, job, &e.to_string()).await?;
+                Ok(Some(continuation)) => {
+                    tracing::info!(
+                        job_id = %job.id,
+                        continuation_job_id = %continuation.id,
+                        law_id = %job.law_id,
+                        enrich_cursor = result.enrich_cursor,
+                        "wet nog niet af na dit venster; vervolgjob aangemaakt"
+                    );
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    // Persist-fout is retryable (DB-hik).
+                    tracing::error!(job_id = %job.id, error = %e, "taak-resultaat wegschrijven mislukt");
+                    fail_enrich_task_job_with_retry(pool, job, &e.to_string()).await?;
+                }
             }
             Ok(JobOutcome::Processed)
         }
