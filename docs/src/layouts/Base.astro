@@ -46,8 +46,10 @@ const isNotFound = kind === 'notfound';
 const t = content[lang];
 // Landing is bilingual (path-driven); docs are English-only.
 const home = isLanding ? (lang === 'en' ? '/en/' : '/') : '/en/';
-// The logo carries the ministry, not the product: that is what the wordmark
-// next to the rijkslogo stands for. RegelRecht itself is the website title.
+// The logo carries the sender, not the product: the wordmark next to the
+// rijkslogo names the organization, with its ministry on the line below, the
+// same as digitaledienst.overheid.nl. RegelRecht itself is the website title.
+const brandTitle = t.nav.brandTitle;
 const brandMinistry = t.nav.brandMinistry;
 // The signup variant of the landing has no in-page anchor nav.
 const showSignup = isLanding && /\/aanmelden|\/en\/signup/.test(pathname);
@@ -243,7 +245,6 @@ if (
 }
 
 const legalLabel = lang === 'en' ? 'Legal links' : 'Juridische links';
-const copyrightText = t.footer.copyright;
 const legalLinks = [
   {
     text: lang === 'en' ? 'Accessibility' : 'Toegankelijkheid',
@@ -401,7 +402,8 @@ const legalLinks = [
           id needed, so there is no separate skip target div. */}
       <nldd-skip-link slot="header" text={skipText}>
       <nldd-top-navigation-bar
-          logo-title={brandMinistry}
+          logo-title={brandTitle}
+          logo-subtitle={brandMinistry}
           website-title="RegelRecht"
           logo-href={home}
           website-href={home}
@@ -585,7 +587,11 @@ const legalLinks = [
             </nldd-container>
           )}
           <nldd-page-footer-legal-bar slot="legal-bar" accessible-label={legalLabel}>
-            <nldd-page-footer-legal-bar-item slot="start" text={copyrightText} />
+            <nldd-page-footer-legal-bar-item
+              slot="start"
+              text={brandTitle}
+              href="https://digitaledienst.overheid.nl/"
+            />
             {legalLinks.map((link) => (
               <nldd-page-footer-legal-bar-item
                 slot="end"

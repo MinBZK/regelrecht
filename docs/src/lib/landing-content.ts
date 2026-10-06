@@ -29,6 +29,7 @@ export interface NavLink {
 export interface LandingContent {
   meta: { title: string; description: string }
   nav: {
+    brandTitle: string
     brandMinistry: string
     home: string
     what: string
@@ -133,7 +134,6 @@ export interface LandingContent {
     linksTitle: string
     contactTitle: string
     partOfTitle: string
-    copyright: string
     links: NavLink[]
     partOf: { label: string; href?: string }[]
   }
@@ -179,6 +179,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         'Een project van de Nederlandse Digitale Dienst dat verkent of wetgeving als uitvoerbare code geschreven kan worden.',
     },
     nav: {
+      brandTitle: 'Nederlandse Digitale Dienst',
       brandMinistry: 'Ministerie van Economische Zaken en Klimaat',
       home: 'Home',
       what: 'Wat',
@@ -615,8 +616,6 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       linksTitle: 'Links',
       contactTitle: 'Contact',
       partOfTitle: 'Onderdeel van',
-      copyright:
-        '© 2026 Ministerie van Economische Zaken en Klimaat. Alle rechten voorbehouden.',
       links: [
         { label: 'GitHub-repository', href: GITHUB },
         { label: 'Hoe het werkt', href: '/#how-it-works' },
@@ -672,6 +671,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         'A project of the Nederlandse Digitale Dienst exploring whether legislation can be written as executable code.',
     },
     nav: {
+      brandTitle: 'Nederlandse Digitale Dienst',
       brandMinistry: 'Ministry of Economic Affairs and Climate Policy',
       home: 'Home',
       what: 'What',
@@ -1104,8 +1104,6 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       linksTitle: 'Links',
       contactTitle: 'Contact',
       partOfTitle: 'Part of',
-      copyright:
-        '© 2026 Ministry of Economic Affairs and Climate Policy. All rights reserved.',
       links: [
         { label: 'GitHub repository', href: GITHUB },
         { label: 'How it works', href: '/en/#how-it-works' },
