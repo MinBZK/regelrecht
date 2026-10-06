@@ -4,14 +4,14 @@ $schema: >-
 $id: algemene_wet_inkomensafhankelijke_regelingen
 regulatory_layer: WET
 publication_date: '2022-12-27'
-valid_from: '2025-01-01'
+valid_from: '2026-01-01'
 name: Algemene wet inkomensafhankelijke regelingen
 bwb_id: BWBR0018472
-url: https://wetten.overheid.nl/BWBR0018472/2025-01-01
+url: https://wetten.overheid.nl/BWBR0018472/2026-01-01
 articles:
   - number: '15'
     text: |-
-      1 Een aanvraag om een tegemoetkoming met betrekking tot een berekeningsjaar kan tot 1 september van het jaar
+      1 Een aanvraag om een tegemoetkoming met betrekking tot een berekeningsjaar kan tot en met 31 december van het jaar
       volgend op het berekeningsjaar worden ingediend bij de Dienst Toeslagen. Indien de belanghebbende of diens partner
       voor de in de eerste volzin genoemde datum is uitgenodigd om over het berekeningsjaar aangifte inkomstenbelasting
       te doen binnen een termijn die na die datum verloopt, wordt de in die volzin bedoelde termijn verlengd tot de
@@ -68,7 +68,7 @@ articles:
       [ref1]: https://wetten.overheid.nl/BWBR0002320
       [ref2]: https://wetten.overheid.nl/BWBR0002320#HoofdstukVIIIA
       [ref3]: https://wetten.overheid.nl/BWBR0002320#Artikel6
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel15
+    url: https://wetten.overheid.nl/BWBR0018472/2026-01-01#Artikel15
     references:
       - id: ref1
         bwb_id: BWBR0002320
@@ -135,12 +135,12 @@ articles:
           - name: aanvraag_binnen_termijn
             type: boolean
             description: >-
-              Lid 1: de aanvraag is ingediend vóór 1 september van het jaar
-              volgend op het berekeningsjaar.
+              Lid 1: de aanvraag is ingediend tot en met 31 december van het
+              jaar volgend op het berekeningsjaar.
         actions:
           - output: aanvraag_binnen_termijn
             value:
-              operation: LESS_THAN
+              operation: LESS_THAN_OR_EQUAL
               subject: $datum_ontvangst
               value:
                 operation: DATE
@@ -149,5 +149,5 @@ articles:
                   values:
                     - $aangevraagd_berekeningsjaar
                     - 1
-                month: 9
-                day: 1
+                month: 12
+                day: 31
