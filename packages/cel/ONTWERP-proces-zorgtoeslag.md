@@ -125,9 +125,15 @@ Eén knop zet de peildatum op het eerstvolgende moment. De cel legt vast wat dan
 | 4 | Awir 19 toekenning en 24 verrekening, terugvordering met 26a | een à twee dagen |
 | 5 | Demo: één klok, "naar het volgende moment", inkomen per jaar | een à twee dagen |
 
-## 11. Vragen voor jou
+## 11. Besluiten en open vragen
 
-1. Mag Zorgtoeslagwet art. 2 zijn `decides_on` kwijt aan Awir 16 en 19 (§3)? Dan is het patroon toeslag-onafhankelijk.
-2. De hoogte van een termijn (§4): gelijke delen met het restant in de laatste termijn, als gemarkeerde uitvoeringskeuze tot er beleid van Toeslagen is?
-3. Het geschatte inkomen als veld van de aanvraag (§7)?
-4. Eerst de Awir opnieuw harvesten (stap 0)?
+Besloten (6 oktober 2026):
+
+1. Zorgtoeslagwet art. 2 draagt `decides_on` over aan Awir 16 en 19 (§3). Zorgtoeslagwet 2 levert het bedrag; zo werkt het patroon voor elke toeslag.
+2. Art. 22 wordt een regel per maand, geen lijst (§4).
+3. Het geschatte inkomen wordt een veld van de aanvraag (§7).
+4. Eerst de Awir opnieuw harvesten, voor 2025 en 2026 (stap 0).
+
+Open:
+
+- De hoogte van een termijn (§4): gelijke delen met het restant in de laatste termijn, als gemarkeerde uitvoeringskeuze tot er beleid van Toeslagen is?
