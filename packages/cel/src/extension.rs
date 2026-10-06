@@ -27,13 +27,12 @@ pub struct Chronolex {
     pub establishes: Vec<Establishment>,
 }
 
-/// What an extension extends: an event by name, or the submission (such as
-/// an application) that a hook of the article applies to (RFC-046).
+/// What an extension extends: the submission (such as an application) that
+/// a hook of the article applies to (RFC-046).
 #[derive(Debug, Clone, PartialEq, Deserialize)]
-#[serde(untagged)]
-pub enum Extends {
-    Event(String),
-    Submission { submission: String },
+#[serde(deny_unknown_fields)]
+pub struct Extends {
+    pub submission: String,
 }
 
 /// A fact that an article establishes, or the extension of one.
@@ -58,9 +57,6 @@ pub struct Establishment {
     pub effective_at: Option<EffectiveAt>,
     #[serde(default)]
     pub fields: Option<Fields>,
-    /// `<name at the reader>: <field of the gram>`: two names for one field.
-    #[serde(default)]
-    pub aliases: BTreeMap<String, String>,
 }
 
 /// A reference to another gram: the article that establishes it.
@@ -72,44 +68,23 @@ pub struct Reference {
     pub required: bool,
 }
 
-/// The moment that counts, with the provision that says so. Without a
-/// parameter: the moment of recording (Awb 4:13, the receipt).
+/// The provision that makes the moment of recording the moment that counts
+/// (Awb 4:13, the receipt).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EffectiveAt {
-    #[serde(default)]
-    pub parameter: Option<String>,
     pub legal_basis: Vec<String>,
 }
 
 /// The fields a part contributes.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(untagged)]
-pub enum Fields {
-    /// `parameters`: what the applicant or the channel supplies (origin
-    /// BELANGHEBBENDE or KANAAL). `outputs`: the outputs of the article.
-    Keyword(Keyword),
-    /// Named parameters of the article: `{parameters: [a, b]}`.
-    Selection { parameters: Vec<String> },
-    /// Fields with their type, which the article names but does not ask as a
-    /// parameter.
-    Typed(BTreeMap<String, FieldType>),
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum Keyword {
+pub enum Fields {
+    /// What the applicant or the channel supplies (origin BELANGHEBBENDE or
+    /// KANAAL).
     Parameters,
+    /// The outputs of the article.
     Outputs,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct FieldType {
-    #[serde(rename = "type")]
-    pub type_: regelrecht_law_model::ParameterType,
-    #[serde(default)]
-    pub columns: Option<Vec<String>>,
 }
 
 /// The chronolex block of an article, if it has one. A block this crate

@@ -67,17 +67,10 @@ pub struct LexostatusFile {
 #[serde(deny_unknown_fields)]
 pub struct LexostatusDefinition {
     pub name: String,
+    /// The names of its inputs, such as `root`.
     #[serde(default)]
-    pub inputs: Vec<InputDefinition>,
+    pub inputs: Vec<String>,
     pub reduction: Reduction,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct InputDefinition {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub type_: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -129,6 +122,17 @@ pub enum Derivation {
         #[serde(default)]
         legal_basis: Vec<String>,
     },
+}
+
+impl Derivation {
+    /// The field of the gram it reads, if any.
+    pub fn field(&self) -> Option<&str> {
+        match self {
+            Derivation::Field { field, .. } => Some(field),
+            Derivation::Filled { filled, .. } => Some(filled),
+            Derivation::Moment { .. } => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]

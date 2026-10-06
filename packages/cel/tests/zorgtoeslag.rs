@@ -323,3 +323,36 @@ fn toeslagen_decides_on_the_application_and_records_the_decision() {
         .unwrap();
     assert_eq!(read_again, read);
 }
+
+/// A lexostatus that reads a field no gram has is refused when the cell
+/// starts: a typo would otherwise read as a fact nobody has.
+#[test]
+fn a_lexostatus_reading_an_unknown_field_is_refused() {
+    let config = tempfile::tempdir().unwrap();
+    let fixture = cell_yaml().parent().unwrap().to_path_buf();
+    std::fs::create_dir_all(config.path().join("streams")).unwrap();
+    for f in [
+        "cell.yaml",
+        "streams/zorgtoeslag_aanvragen.yaml",
+        "streams/zorgtoeslag_besluiten.yaml",
+    ] {
+        std::fs::copy(fixture.join(f), config.path().join(f)).unwrap();
+    }
+    let lexostatuses = std::fs::read_to_string(fixture.join("lexostatuses.yaml"))
+        .unwrap()
+        .replace("field: bsn", "field: bsnn");
+    std::fs::write(config.path().join("lexostatuses.yaml"), lexostatuses).unwrap();
+
+    let data = tempfile::tempdir().unwrap();
+    let clock = Box::new(|| DateTime::parse_from_rfc3339("2025-03-04T10:15:00+01:00").unwrap());
+    let Err(e) = Cell::new(
+        &config.path().join("cell.yaml"),
+        regulations(),
+        data.path(),
+        clock,
+    ) else {
+        panic!("a lexostatus reading 'bsnn' must be refused");
+    };
+    assert!(matches!(e, Error::Setup(_)), "{e}");
+    assert!(e.to_string().contains("'bsnn'"), "{e}");
+}

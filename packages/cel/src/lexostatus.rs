@@ -26,11 +26,11 @@ pub fn read(
     inputs: &Map<String, Value>,
     chronicle: &Chronicle,
 ) -> Result<Map<String, Value>> {
-    for i in &definition.inputs {
-        if !inputs.contains_key(&i.name) {
+    for name in &definition.inputs {
+        if !inputs.contains_key(name) {
             return Err(refused(format!(
-                "lexostatus '{}' needs input '{}'",
-                definition.name, i.name
+                "lexostatus '{}' needs input '{name}'",
+                definition.name
             )));
         }
     }
@@ -67,12 +67,15 @@ pub fn read(
                 definition.name, definition.reduction.chronicle
             ))
         })?;
+    // A field the gram does not have is left out: a fact nobody has, not a
+    // null the applicant stated.
     let mut out = Map::new();
     for (name, derivation) in &definition.reduction.derivations {
         let value = match derivation {
-            Derivation::Field { field, .. } => {
-                gram.fields.get(field).cloned().unwrap_or(Value::Null)
-            }
+            Derivation::Field { field, .. } => match gram.fields.get(field) {
+                Some(v) => v.clone(),
+                None => continue,
+            },
             Derivation::Moment {
                 moment: Moment::EffectiveAt,
                 ..

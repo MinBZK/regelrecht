@@ -2455,7 +2455,7 @@ impl LawExecutionService {
 
     /// The hooks at `hook_point` that fire on `article` at this stage, as
     /// [`Self::fire_hooks`] runs them and [`Self::hook_parameter_names`] reads
-    /// them, with the legal character they attach to. A hook not in force on
+    /// them, with what they fire on as the trace names it. A hook not in force on
     /// the date comes back as the record of why; one already executing is
     /// left out. `None` when the article produces nothing a hook attaches to.
     #[allow(clippy::type_complexity)]
@@ -2494,6 +2494,8 @@ impl LawExecutionService {
         };
         let matching_hooks = self.hooks_firing_on(hook_point, article, law, stage);
         let subject = format!("hook point {} on {on}", hook_point.as_str());
+        // Below, `law` and `article` are those of each hook.
+        let (establishing_law, establishing_article) = (law.id.as_str(), article.number.as_str());
         let ref_date = res_ctx.reference_date();
         let hooks = matching_hooks
             .iter()
@@ -2562,15 +2564,13 @@ impl LawExecutionService {
                                                     }
                                                     (None, Some(k)) => {
                                                         kind == Some(k.as_str())
-                                                            && d.applies_to
-                                                                .established_by
-                                                                .as_deref()
-                                                                .is_none_or(|r| {
-                                                                    r == format!(
-                                                                        "{}#{}",
-                                                                        law.id, article.number
-                                                                    )
-                                                                })
+                                                            && self
+                                                                .resolver
+                                                                .submission_filter_admits(
+                                                                    &d.applies_to,
+                                                                    establishing_law,
+                                                                    establishing_article,
+                                                                )
                                                     }
                                                     (None, None) => false,
                                                 }
@@ -11573,9 +11573,6 @@ articles:
         );
     }
 
-    /// The motiveringsplicht commences next year. Today the beschikking comes
-    /// out without a motivering, and the engine used to log "Hook law not
-    /// found" — untrue, the law is loaded — and say nothing anywhere else.
     /// RFC-046: the general law hooks onto an application, not onto the
     /// decision. A specific law establishes the application (`submission`),
     /// a decision article says it decides on it (`decides_on`), and a hook
@@ -11989,6 +11986,7 @@ articles:
         };
         assert!(r.submission.is_none());
     }
+
     #[test]
     fn test_a_hook_applies_to_a_decision_or_to_a_submission_not_both() {
         let both = GENERAL_LAW.replace(
@@ -12011,6 +12009,9 @@ articles:
         assert!(e.contains("decided_by"), "{e}");
     }
 
+    /// The motiveringsplicht commences next year. Today the beschikking comes
+    /// out without a motivering, and the engine used to log "Hook law not
+    /// found" — untrue, the law is loaded — and say nothing anywhere else.
     #[test]
     fn test_a_hook_not_in_force_is_recorded_instead_of_silently_skipped() {
         let besluit = r#"

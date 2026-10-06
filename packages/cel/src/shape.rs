@@ -13,10 +13,10 @@ use std::collections::BTreeMap;
 
 use chrono::NaiveDate;
 use regelrecht_engine::{Article, ExecutionOutcome, LawExecutionService, Submission, Value};
-use regelrecht_law_model::{OriginRole, OriginValue, Parameter, ParameterType};
+use regelrecht_law_model::{Origin, OriginRole, OriginValue, Parameter, ParameterType};
 
 use crate::error::{setup, Result};
-use crate::extension::{self, EffectiveAt, Establishment, Extends, Fields, Keyword, Reference};
+use crate::extension::{self, EffectiveAt, Establishment, Extends, Fields, Reference};
 
 /// One field of a gram, as the law declares it.
 #[derive(Debug, Clone, PartialEq)]
@@ -215,8 +215,7 @@ fn execute_submission(
 }
 
 /// The fields of a submission: per article of the model, what its chronolex
-/// entries contribute; then the decision requested filled in, and aliases
-/// merged.
+/// entries contribute; then the decision requested filled in.
 fn submission_fields(
     service: &LawExecutionService,
     shape: &mut Shape,
@@ -252,7 +251,6 @@ fn submission_fields(
             .map(|s| s.name.clone());
     }
 
-    let mut aliases: BTreeMap<String, String> = BTreeMap::new();
     for part in &model.articles {
         let reference = format!("{}#{}", part.law_id, part.article_number);
         let (_, article) = article_on(service, &reference, day)?;
@@ -263,12 +261,10 @@ fn submission_fields(
             .establishes
             .iter()
             .filter(|e| match (&part.hook, &e.extends) {
-                // The establishing article: its own event, and what extends
-                // it by name.
+                // The establishing article: its own event.
                 (None, None) => e.event.as_deref() == Some(shape.event.as_str()),
-                (None, Some(Extends::Event(name))) => name == &shape.event,
                 // A hook: what extends every submission of this kind.
-                (Some(_), Some(Extends::Submission { submission })) => {
+                (Some(_), Some(Extends { submission })) => {
                     Some(submission.to_lowercase()) == shape.subtype
                 }
                 _ => false,
@@ -285,28 +281,20 @@ fn submission_fields(
                 merge_field(&mut shape.fields, field);
             }
             if let Some(e) = &entry.effective_at {
-                match &shape.effective_at {
-                    Some(other) if other.parameter != e.parameter => {
-                        return Err(setup(format!(
-                        "{reference}: binds the moment of '{}' differently than another article",
-                        shape.event
-                    )))
-                    }
-                    _ => shape.effective_at = Some(e.clone()),
-                }
+                let basis = &mut shape
+                    .effective_at
+                    .get_or_insert_with(|| EffectiveAt {
+                        legal_basis: Vec::new(),
+                    })
+                    .legal_basis;
+                push_new(basis, &e.legal_basis);
             }
-            aliases.extend(entry.aliases.clone());
         }
     }
 
     // The decision requested is the decision taken on the application.
     for input in &model.inputs {
-        let role = input
-            .parameter
-            .origin
-            .as_ref()
-            .and_then(|o| o.as_valid())
-            .and_then(|o| o.rol);
+        let role = origin(&input.parameter, &shape.establishes)?.and_then(|o| o.rol);
         if role != Some(OriginRole::GevraagdBesluit) {
             continue;
         }
@@ -319,25 +307,6 @@ fn submission_fields(
         }
     }
 
-    // Two names for one field: the one at the reader goes, its legal basis
-    // stays.
-    for (alias, target) in aliases {
-        let Some(i) = shape.fields.iter().position(|f| f.name == alias) else {
-            continue;
-        };
-        let removed = shape.fields.remove(i);
-        let target_field = shape
-            .fields
-            .iter_mut()
-            .find(|f| f.name == target)
-            .ok_or_else(|| {
-                setup(format!(
-                    "{}: alias '{alias}' names field '{target}', which the event does not have",
-                    removed.declared_by
-                ))
-            })?;
-        push_new(&mut target_field.legal_basis, &removed.legal_basis);
-    }
     Ok(())
 }
 
@@ -364,50 +333,39 @@ fn part_fields(
         declared_by: reference.to_string(),
         fixed: None,
     };
-    let from_parameter = |p: &Parameter| {
-        let legal_basis = match p.origin.as_ref().and_then(|o| o.as_valid()) {
-            Some(o) => vec![o.grondslag.clone()],
-            None => vec![reference.to_string()],
-        };
-        def(&p.name, Some(p.param_type), legal_basis)
-    };
-    Ok(match &entry.fields {
+    Ok(match entry.fields {
         None => Vec::new(),
         // Only what the applicant or the channel supplies is content of the
         // application.
-        Some(Fields::Keyword(Keyword::Parameters)) => parameters
-            .iter()
-            .filter(|p| {
-                matches!(
-                    p.origin.as_ref().and_then(|o| o.as_valid()).map(|o| o.waarde),
-                    Some(OriginValue::Belanghebbende | OriginValue::Kanaal)
-                )
-            })
-            .map(from_parameter)
-            .collect(),
-        Some(Fields::Keyword(Keyword::Outputs)) => outputs
+        Some(Fields::Parameters) => {
+            let mut out = Vec::new();
+            for p in parameters {
+                let Some(o) = origin(p, reference)? else {
+                    continue;
+                };
+                if matches!(o.waarde, OriginValue::Belanghebbende | OriginValue::Kanaal) {
+                    out.push(def(&p.name, Some(p.param_type), vec![o.grondslag.clone()]));
+                }
+            }
+            out
+        }
+        Some(Fields::Outputs) => outputs
             .iter()
             .map(|o| def(o, None, vec![reference.to_string()]))
             .collect(),
-        Some(Fields::Selection { parameters: names }) => names
-            .iter()
-            .map(|name| {
-                parameters
-                    .iter()
-                    .find(|p| &p.name == name)
-                    .map(from_parameter)
-                    .ok_or_else(|| {
-                        setup(format!(
-                            "{reference}: fields names parameter '{name}', which the article does not have"
-                        ))
-                    })
-            })
-            .collect::<Result<Vec<_>>>()?,
-        Some(Fields::Typed(typed)) => typed
-            .iter()
-            .map(|(name, t)| def(name, Some(t.type_), vec![reference.to_string()]))
-            .collect(),
     })
+}
+
+/// The origin of a parameter. One the law-model kept as invalid is an error
+/// here: dropping it would make a field silently disappear from the gram.
+fn origin<'p>(p: &'p Parameter, reference: &str) -> Result<Option<&'p Origin>> {
+    p.origin
+        .as_ref()
+        .map(|o| {
+            o.valid()
+                .map_err(|e| setup(format!("{reference}: origin of '{}': {e}", p.name)))
+        })
+        .transpose()
 }
 
 /// Whether a submitted value fits the type the law declares. `null` fits

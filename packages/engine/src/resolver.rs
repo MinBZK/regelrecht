@@ -1740,23 +1740,34 @@ impl RuleResolver {
         else {
             return Vec::new();
         };
-        let decisions = self.decisions_on(law_id, article_number);
-        let establishing = format!("{law_id}#{article_number}");
         entries
             .iter()
-            .filter(|e| match e.filter.decided_by.as_deref() {
-                None => true,
-                Some(lc) => {
-                    !decisions.is_empty() && decisions.iter().all(|d| d.legal_character == lc)
-                }
-            })
-            .filter(|e| {
-                e.filter
-                    .established_by
-                    .as_deref()
-                    .is_none_or(|r| r == establishing)
-            })
+            .filter(|e| self.submission_filter_admits(&e.filter, law_id, article_number))
             .collect()
+    }
+
+    /// Whether a hook on a submission narrows itself away from the submission
+    /// `law_id#article_number` establishes: `decided_by` (every decision taken
+    /// on it has that legal character) and `established_by` (only this
+    /// establishing article). The kind is matched by the caller.
+    pub(crate) fn submission_filter_admits(
+        &self,
+        filter: &HookFilter,
+        law_id: &str,
+        article_number: &str,
+    ) -> bool {
+        let decided = match filter.decided_by.as_deref() {
+            None => true,
+            Some(lc) => {
+                let decisions = self.decisions_on(law_id, article_number);
+                !decisions.is_empty() && decisions.iter().all(|d| d.legal_character == lc)
+            }
+        };
+        decided
+            && filter
+                .established_by
+                .as_deref()
+                .is_none_or(|r| r == format!("{law_id}#{article_number}"))
     }
 
     /// Find overrides for a specific article output.

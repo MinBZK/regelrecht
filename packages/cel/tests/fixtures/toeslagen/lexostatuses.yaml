@@ -7,7 +7,7 @@ lexostatus_definitions:
   # De aanvraag, zoals Toeslagen haar ontving. `root` is het id van het gram
   # van de aanvraag.
   - name: aanvraag
-    inputs: [{name: root, type: string}]
+    inputs: [root]
     reduction:
       chronicle: toeslagen
       filter: {type: submission, subtype: aanvraag, root: $root}

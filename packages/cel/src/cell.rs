@@ -2,7 +2,7 @@
 //! chronicle back.
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use chrono::{DateTime, FixedOffset, NaiveDate};
 use regelrecht_engine::{LawExecutionService, Value};
@@ -10,12 +10,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::Map;
 
 use crate::chronicle::{Chronicle, Gram};
-use crate::config::CellConfig;
+use crate::config::{CellConfig, Derivation};
 use crate::error::{refused, setup, Result};
 use crate::lexostatus;
 use crate::shape::{self, Shape};
 
-/// The cell's clock: the moment of recording.
+/// The cell's clock: the moment of recording, in Dutch time. A lexostatus
+/// reads the day of receipt from it, so a UTC clock would move a receipt
+/// just after midnight to the day before.
 pub type Clock = Box<dyn Fn() -> DateTime<FixedOffset> + Send + Sync>;
 
 /// A parameter of a decision: its value, and where it came from.
@@ -28,7 +30,6 @@ pub struct Input {
 pub struct Cell {
     config: CellConfig,
     service: LawExecutionService,
-    data_dir: PathBuf,
     chronicles: BTreeMap<String, Chronicle>,
     clock: Clock,
 }
@@ -83,30 +84,46 @@ impl Cell {
         let cell = Self {
             config,
             service,
-            data_dir: data_dir.to_path_buf(),
             chronicles,
             clock,
         };
         // Every event must take its shape from the law now, not at the first
-        // application.
+        // application; and every field a lexostatus reads must be a field of
+        // a gram in its chronicle, or a typo reads as a fact nobody has.
         let today = cell.now().date_naive();
+        let mut fields: BTreeMap<&str, Vec<String>> = BTreeMap::new();
         for stream in &cell.config.streams {
             for event in &stream.events {
-                shape::derive(&cell.service, &event.name, &event.establishes, today).map_err(
-                    |e| {
+                let shape = shape::derive(&cell.service, &event.name, &event.establishes, today)
+                    .map_err(|e| {
                         setup(format!(
                             "stream '{}', event '{}': {e}",
                             stream.id, event.name
                         ))
-                    },
-                )?;
+                    })?;
+                fields
+                    .entry(stream.chronicle.as_str())
+                    .or_default()
+                    .extend(shape.fields.into_iter().map(|f| f.name));
+            }
+        }
+        for l in &cell.config.lexostatuses {
+            let known = fields.get(l.reduction.chronicle.as_str());
+            for read in l
+                .reduction
+                .derivations
+                .values()
+                .filter_map(Derivation::field)
+            {
+                if !known.is_some_and(|k| k.iter().any(|f| f == read)) {
+                    return Err(setup(format!(
+                        "lexostatus '{}' reads field '{read}', which no event of chronicle '{}' has",
+                        l.name, l.reduction.chronicle
+                    )));
+                }
             }
         }
         Ok(cell)
-    }
-
-    pub fn config(&self) -> &CellConfig {
-        &self.config
     }
 
     pub fn service(&self) -> &LawExecutionService {
@@ -118,16 +135,8 @@ impl Cell {
         &mut self.service
     }
 
-    pub fn data_dir(&self) -> &Path {
-        &self.data_dir
-    }
-
     fn now(&self) -> DateTime<FixedOffset> {
         (self.clock)()
-    }
-
-    pub fn chronicle(&self, name: &str) -> Option<&Chronicle> {
-        self.chronicles.get(name)
     }
 
     /// The shape of an event on `day`, with the chronicle it goes to.
@@ -212,17 +221,8 @@ impl Cell {
                 )));
             }
         }
-        // The moment that counts: a submitted value the law binds it to, or
-        // the receipt (Awb 4:13 lid 1).
-        let effective_at = shape
-            .effective_at
-            .as_ref()
-            .and_then(|e| e.parameter.as_ref())
-            .and_then(|p| submitted.get(p))
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_string)
-            .unwrap_or_else(|| now.to_rfc3339());
-        let mut gram = self.gram(&shape, &chronicle, effective_at);
+        // The moment that counts is the receipt (Awb 4:13 lid 1).
+        let mut gram = self.gram(&shape, &chronicle, now.to_rfc3339());
         for f in &shape.fields {
             match (&f.fixed, submitted.get(&f.name)) {
                 (Some(v), _) | (None, Some(v)) => {
@@ -267,37 +267,13 @@ impl Cell {
         refers_to: BTreeMap<String, String>,
         inputs: BTreeMap<String, Input>,
     ) -> Result<Gram> {
+        // The decision is taken, and the law applied, on the day it is
+        // recorded. Not yet: the law of the berekeningsjaar applied for
+        // (Awir 15 lid 1 lets a 2025 application be decided in 2026), and
+        // refusing an application out of time.
         let now = self.now();
-        let (shape, chronicle) = self.shape(event, now.date_naive())?;
-        // The moment that counts: the parameter the law binds it to (the
-        // decision date), or the moment of recording.
-        let effective_at = match shape
-            .effective_at
-            .as_ref()
-            .and_then(|e| e.parameter.as_ref())
-        {
-            Some(p) => inputs
-                .get(p)
-                .and_then(|i| i.value.as_str())
-                .map(str::to_string)
-                .ok_or_else(|| {
-                    refused(format!(
-                        "the moment of '{event}' is '{p}', which is missing"
-                    ))
-                })?,
-            None => now.to_rfc3339(),
-        };
-        let day = NaiveDate::parse_from_str(
-            &effective_at.chars().take(10).collect::<String>(),
-            "%Y-%m-%d",
-        )
-        .map_err(|e| refused(format!("'{effective_at}' is not a date: {e}")))?;
-        // The law as it applies on the day the decision is taken.
-        let shape = if day == now.date_naive() {
-            shape
-        } else {
-            self.shape(event, day)?.0
-        };
+        let day = now.date_naive();
+        let (shape, chronicle) = self.shape(event, day)?;
         self.check_references(&shape, &chronicle, &refers_to)?;
 
         let parameters: BTreeMap<String, Value> = inputs
@@ -309,7 +285,7 @@ impl Cell {
             self.service
                 .evaluate_law(&shape.law_id, &names, parameters, &day.to_string())?;
 
-        let mut gram = self.gram(&shape, &chronicle, effective_at);
+        let mut gram = self.gram(&shape, &chronicle, now.to_rfc3339());
         gram.regulation = Some(shape.law_id.clone());
         gram.regulation_valid_from = result.regulation_valid_from.clone();
         gram.refers_to = refers_to;
