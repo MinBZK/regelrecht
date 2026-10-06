@@ -833,7 +833,6 @@ export function alleOnderzoeksvragen(
 export interface VraagVerwijzing {
   id: string;
   vraag: string;
-  werkpakketId: string;
   werkpakketTitel: string;
   /** De werkpakketpagina, op het anker van de vraag. */
   href: string;
@@ -846,7 +845,7 @@ export interface VraagVerwijzing {
  * aan B koppelt hoeft B niet ook aan A te koppelen, en mag dat ook niet, want
  * dan staat dezelfde relatie twee keer en raakt hij bij een wijziging aan één
  * kant uit de pas. Deze index leest de geschreven kant en leidt de andere af,
- * ontdubbeld, in de volgorde van de roadmap.
+ * ontdubbeld, in de volgorde waarin de collectie de werkpakketten aanlevert.
  *
  * Een verwijzing naar een id dat niet bestaat valt hier stil weg;
  * assertOnderzoeksvragen() heeft hem bij de build al gemeld.
@@ -861,7 +860,6 @@ export function verwantIndex(
   const verwijzing = (v: VraagInWerkpakket): VraagVerwijzing => ({
     id: v.vraag.id!,
     vraag: v.vraag.vraag,
-    werkpakketId: v.werkpakket.id,
     werkpakketTitel: v.werkpakket.titel,
     href: `/roadmap/werkpakket/${v.werkpakket.id}#${v.vraag.anker}`,
   });
@@ -951,17 +949,26 @@ export function vragenPerSectie(
 }
 
 /**
- * De tellingen boven het overzicht: hoeveel (deel)vragen er zijn en hoeveel
- * er per eigen status staan, en daarnaast hoeveel werkpakketten er per
- * `onderzoek`-stand staan. Twee regels en niet één, omdat het twee dingen
- * zijn: een vraag zonder eigen status telt als "niet bepaald", ook als zijn
- * werkpakket op "loopt" staat.
+ * De tellingen boven het overzicht: hoeveel vragen er zijn en hoeveel er per
+ * eigen status staan, hoeveel deelvragen daaronder hangen en hoeveel daarvan
+ * beantwoord zijn, en daarnaast hoeveel werkpakketten er per `onderzoek`-stand
+ * staan. Twee regels en niet één, omdat het twee dingen zijn: een vraag zonder
+ * eigen status telt als "niet bepaald", ook als zijn werkpakket op "loopt"
+ * staat.
+ *
+ * `perStatus` telt alleen de bovenliggende vragen, want dat is wat het
+ * statusfilter op de pagina filtert: een deelvraag gaat met zijn ouder mee en
+ * is niet los te tonen. Telden de deelvragen hier mee, dan zei de samenvatting
+ * "3 beantwoord" terwijl het filter er nul liet zien.
  */
 export function telStatussen(werkpakketten: { data: WerkpakketData }[]): {
-  vragen: { totaal: number; deelvragen: number; perStatus: Record<string, number> };
+  vragen: { totaal: number; perStatus: Record<string, number> };
+  deelvragen: { totaal: number; beantwoord: number };
   werkpakketten: { totaal: number; perStatus: Record<string, number> };
 } {
   const alle = alleOnderzoeksvragen(werkpakketten);
+  const hoofd = alle.filter((v) => !v.ouder);
+  const deel = alle.filter((v) => v.ouder);
   const tel = (waarden: string[]) => {
     const per: Record<string, number> = {};
     for (const w of waarden) per[w] = (per[w] ?? 0) + 1;
@@ -969,15 +976,19 @@ export function telStatussen(werkpakketten: { data: WerkpakketData }[]): {
   };
   return {
     vragen: {
-      totaal: alle.length,
-      deelvragen: alle.filter((v) => v.ouder).length,
-      perStatus: tel(alle.map((v) => vraagStatusWaarde(v.vraag.status))),
+      totaal: hoofd.length,
+      perStatus: tel(hoofd.map((v) => vraagStatusWaarde(v.vraag.status))),
+    },
+    deelvragen: {
+      totaal: deel.length,
+      beantwoord: deel.filter((v) => v.vraag.status === 'beantwoord').length,
     },
     werkpakketten: {
       totaal: werkpakketten.length,
-      perStatus: tel(
-        werkpakketten.map((w) => vraagStatusWaarde(w.data.onderzoek)),
-      ),
+      // Hetzelfde vocabulaire als een vraagstatus, dus dezelfde afbeelding
+      // van '' naar 'geen'; geschreven zonder de vraag-helper, want dit is
+      // de stand van een werkpakket.
+      perStatus: tel(werkpakketten.map((w) => w.data.onderzoek || GEEN_STATUS)),
     },
   };
 }
@@ -987,8 +998,8 @@ export function telStatussen(werkpakketten: { data: WerkpakketData }[]): {
  *
  * Three things, all about ids, because an id is the one thing another vraag
  * can hold on to: a duplicate id (the anchor `vraag-<id>` would then be two
- * elements on the overzicht, and a verwant would point at whichever came
- * first), a verwant to an id no (deel)vraag has, and a verwant on a vraag
+ * elements on the overzicht, and a verwant would silently land on one of
+ * them), a verwant to an id no (deel)vraag has, and a verwant on a vraag
  * without an id of its own (the other side could never point back, so the
  * relation would render one way round and read as if it were written that
  * way).

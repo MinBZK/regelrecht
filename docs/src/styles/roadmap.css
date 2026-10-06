@@ -1,5 +1,6 @@
 /*
- * Roadmap pages (/roadmap/…). Imported by the matrix page only.
+ * Roadmap pages (/roadmap/…). Imported by the three weergaven: the matrix,
+ * the bord and the vragenoverzicht; the werkpakket page does not use it.
  *
  * Almost everything the roadmap renders is a design-system component:
  * nldd-sidebar-section for the werkpakket layout, nldd-container for spacing
@@ -250,8 +251,9 @@
  * checkboxes had hidden.
  *
  * `rr-geen-treffer` zit niet aan de kaart vast: op het vragenoverzicht staat
- * hij op een lijstregel. De klasse is GEEN_TREFFER in lib/roadmap.ts, en
- * assertFilterRules() leest dit bestand om te controleren dat hij hier staat.
+ * hij op een lijstregel. De klasse is GEEN_TREFFER in lib/roadmap-zoek.ts, en
+ * assertFilterRules() (lib/roadmap.ts) leest dit bestand om te controleren
+ * dat hij hier staat.
  */
 .rr-roadmap .rr-geen-treffer,
 .rr-roadmap .rr-wp-card--geen-belegging,

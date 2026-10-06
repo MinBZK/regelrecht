@@ -104,9 +104,10 @@ const pathname = '/roadmap/onderzoeksvragen';
     */}
     <nldd-container gap="4">
       <nldd-text size="sm">
-        {meervoud(telling.vragen.totaal, 'vraag', 'vragen')}, waarvan{' '}
-        {meervoud(telling.vragen.deelvragen, 'deelvraag', 'deelvragen')}.
-        Eigen status: {standenTekst(telling.vragen.perStatus)}.
+        {meervoud(telling.vragen.totaal, 'vraag', 'vragen')}, eigen status:{' '}
+        {standenTekst(telling.vragen.perStatus)}.
+        {telling.deelvragen.totaal > 0 &&
+          ` Daaronder ${meervoud(telling.deelvragen.totaal, 'deelvraag', 'deelvragen')}, ${telling.deelvragen.beantwoord} beantwoord.`}
       </nldd-text>
       <nldd-text size="sm" color="secondary">
         Onderzoek per werkpakket ({telling.werkpakketten.totaal} werkpakketten):{' '}
@@ -118,9 +119,11 @@ const pathname = '/roadmap/onderzoeksvragen';
       secties.map(({ sectie, items }) => (
         <nldd-container class="rr-vragen__groep" gap="12">
           <nldd-title size="4">
+            {/* De sectietitel is Engels op een Nederlandse pagina; `lang`
+                laat een schermlezer de juiste stem kiezen. */}
             <h2>
               <a href={sectie.href}>
-                § {sectie.nummer} {sectie.titel}
+                § {sectie.nummer} <span lang="en">{sectie.titel}</span>
               </a>
             </h2>
             <p slot="supporting-text">{meervoud(items.length, 'vraag', 'vragen')}</p>

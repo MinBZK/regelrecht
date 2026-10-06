@@ -42,7 +42,8 @@ interface Props {
   /**
    * Het werkpakket, alleen op het overzicht: daar staat de vraag niet op zijn
    * eigen pagina. `link: false` laat de link weg waar de kop erboven het
-   * werkpakket al noemt; de stand en de belegging blijven.
+   * werkpakket al noemt; de stand en de belegging blijven. Op een deelvraag
+   * (niveau 2) rendert er niets van: de ouder erboven draagt het al.
    */
   werkpakket?: {
     id: string;
@@ -51,31 +52,51 @@ interface Props {
     onderzoek: string;
     link?: boolean;
   };
+  /** 1 voor een vraag, 2 voor een deelvraag; bepaalt wat de regel herhaalt. */
   niveau: 1 | 2;
 }
 
 const { vraag, verwanten, regels, zoek, werkpakket, niveau } = Astro.props;
 
 const status = getOnderzoek(vraag.status);
+// Het werkpakket hoort bij de bovenliggende vraag: een deelvraag staat er
+// direct onder, en de link, de stand en de belegging nog eens herhalen zegt
+// niets nieuws.
+const bijWerkpakket = niveau === 1 ? werkpakket : undefined;
 // De stand van het werkpakket als de vraag er zelf geen heeft, alleen op het
 // overzicht. Gedempt en met het woord "werkpakket" ervoor, want het is niet
 // de status van deze vraag; het statusfilter telt hem dan ook als "niet
 // bepaald".
 const werkpakketStand =
-  !status && werkpakket ? getOnderzoek(werkpakket.onderzoek) : undefined;
-const belegging = werkpakket ? getBelegging(werkpakket.belegging) : undefined;
+  !status && bijWerkpakket ? getOnderzoek(bijWerkpakket.onderzoek) : undefined;
+const werkpakketLink = bijWerkpakket && bijWerkpakket.link !== false;
+// Alleen opgepakt en klaar, net als op de kaart: vrij is de stilzwijgende
+// meerderheid en verdient geen tag per vraag.
+const beleggingTag = (() => {
+  const b = bijWerkpakket ? getBelegging(bijWerkpakket.belegging) : undefined;
+  return b && b.id !== 'vrij' ? b : undefined;
+})();
 const verwant = vraag.id ? (verwanten?.get(vraag.id) ?? []) : [];
 const deel = telDeelvragen(vraag);
+// Alleen een metaregel als er iets in komt: een lege container krijgt van
+// rich-text toch zijn ritme-marge, en dan hangt het doel eronder in de lucht.
 const heeftMeta =
-  status || werkpakketStand || werkpakket || vraag.paper || deel.totaal > 0;
+  status ||
+  werkpakketStand ||
+  werkpakketLink ||
+  beleggingTag ||
+  vraag.paper ||
+  deel.totaal > 0;
 ---
 
+{/* `data-status` alleen op een bovenliggende vraag: het statusfilter werkt
+    op de items met `data-zoek`, en een deelvraag gaat met zijn ouder mee. */}
 <li
   id={vraag.anker}
   data-line={regels?.[0]}
   data-line-end={regels?.[1]}
   data-zoek={zoek}
-  data-status={vraagStatusWaarde(vraag.status)}
+  data-status={niveau === 1 ? vraagStatusWaarde(vraag.status) : undefined}
 >
   {vraag.vraag}
   {
@@ -89,21 +110,19 @@ const heeftMeta =
             werkpakket: {werkpakketStand.label.toLowerCase()}
           </nldd-text>
         )}
-        {werkpakket && werkpakket.link !== false && (
+        {werkpakketLink && (
           <nldd-link
             size="xs"
-            href={`/roadmap/werkpakket/${werkpakket.id}`}
-            text={werkpakket.titel}
+            href={`/roadmap/werkpakket/${bijWerkpakket!.id}`}
+            text={bijWerkpakket!.titel}
           />
         )}
-        {/* Alleen opgepakt en klaar, net als op de kaart: vrij is de
-            stilzwijgende meerderheid en verdient geen tag per vraag. */}
-        {belegging && belegging.id !== 'vrij' && (
+        {beleggingTag && (
           <nldd-tag
             size="sm"
-            color={belegging.tagColor}
-            text={belegging.label}
-            icon={belegging.id === 'klaar' ? 'done' : 'user'}
+            color={beleggingTag.tagColor}
+            text={beleggingTag.label}
+            icon={beleggingTag.id === 'klaar' ? 'done' : 'user'}
           />
         )}
         {/* Kort: de verwijzing is een wijzer, geen deel van de zin. De
