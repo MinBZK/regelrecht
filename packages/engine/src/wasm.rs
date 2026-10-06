@@ -1000,6 +1000,17 @@ articles:
         assert_eq!(engine.list_laws(), vec!["test_law".to_string()]);
     }
 
+    /// Wat in dezelfde module meedraait (de chronolex-cel) voert de wet uit met
+    /// de service van deze engine: die moet de wetten zien die de pagina laadde,
+    /// niet een lege.
+    #[test]
+    fn test_wasm_engine_service_is_the_loaded_service() {
+        let mut engine = WasmEngine::new();
+        load_law(&mut engine, MINIMAL_LAW_YAML);
+
+        assert!(engine.service().resolver().get_law("test_law").is_some());
+    }
+
     /// `loadLaw()` is de enige weg waarlangs JavaScript een wet de engine in
     /// krijgt, en het is het contract dat de aanroeper het `$id` terugkrijgt om
     /// mee verder te werken (`execute(lawId, ...)`). De andere tests laden via
