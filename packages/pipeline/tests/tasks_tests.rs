@@ -714,6 +714,7 @@ async fn test_finish_enrich_task_job_mid_law_chains_next_window() {
     // De vervolgjob is dezelfde taak-flow-aanvraag, voor dezelfde aanvrager.
     let next = job_queue::get_job(&db.pool, next.id).await.unwrap();
     assert_eq!(next.max_attempts, 3);
+    assert_eq!(next.priority, job.priority);
     let payload = next.payload.unwrap();
     assert_eq!(payload["deliver"], "task");
     assert_eq!(payload["requested_by"], json!(account_id));
@@ -761,6 +762,127 @@ async fn test_finish_enrich_task_job_mid_law_chains_next_window() {
         second[0].payload.as_ref().unwrap().get("article").unwrap(),
         "2"
     );
+}
+
+#[tokio::test]
+async fn test_finish_enrich_task_job_mid_law_unreadable_proposal_fails_the_window() {
+    let db = TestDb::new().await;
+    let (account_id, traject_id) = seed_account_and_traject(&db).await;
+    let _created = job_queue::create_job(
+        &db.pool,
+        CreateJobRequest::new(JobType::Enrich, "test_wet").with_payload(json!({
+            "law_id": "test_wet",
+            "yaml_path": "laws/test_wet/law.yaml",
+            "requested_by": account_id,
+            "deliver": "task",
+            "traject_id": traject_id,
+            "traject_ref": "testtraject-abcd1234"
+        })),
+    )
+    .await
+    .unwrap();
+    let job = job_queue::claim_job(&db.pool, Some(JobType::Enrich))
+        .await
+        .unwrap()
+        .unwrap();
+    let source = "articles:\n  - number: '1'\n    text: een\n";
+    tasks::insert_blob(
+        &db.pool,
+        job.id,
+        BlobKind::Input,
+        "laws/test_wet/law.yaml",
+        source,
+    )
+    .await
+    .unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let law_abs = dir.path().join("laws/test_wet/law.yaml");
+    tokio::fs::create_dir_all(law_abs.parent().unwrap())
+        .await
+        .unwrap();
+    tokio::fs::write(&law_abs, "articles: [kapot")
+        .await
+        .unwrap();
+
+    // Halverwege de wet geen terugval op één taak voor het geheel: dat
+    // voorstel zou de eerdere vensters ongezien terugzetten.
+    let result = finish_enrich_task_job(&db.pool, &job, dir.path(), &[law_abs], false, None).await;
+    assert!(result.is_err());
+
+    // Alles rolde terug: geen taak, geen vervolgjob, de input staat er nog
+    // voor de herhaling.
+    let open = tasks::list_open_tasks_for_account(&db.pool, account_id)
+        .await
+        .unwrap();
+    assert!(open.is_empty());
+    let inputs = tasks::load_blobs(&db.pool, job.id, BlobKind::Input)
+        .await
+        .unwrap();
+    assert_eq!(inputs.len(), 1);
+    assert!(job_queue::claim_job(&db.pool, Some(JobType::Enrich))
+        .await
+        .unwrap()
+        .is_none());
+}
+
+#[tokio::test]
+async fn test_finish_enrich_task_job_last_window_unreadable_proposal_fails_too() {
+    let db = TestDb::new().await;
+    let (account_id, traject_id) = seed_account_and_traject(&db).await;
+    let _created = job_queue::create_job(
+        &db.pool,
+        CreateJobRequest::new(JobType::Enrich, "test_wet").with_payload(json!({
+            "law_id": "test_wet",
+            "yaml_path": "laws/test_wet/law.yaml",
+            "requested_by": account_id,
+            "deliver": "task",
+            "traject_id": traject_id,
+            "traject_ref": "testtraject-abcd1234"
+        })),
+    )
+    .await
+    .unwrap();
+    let job = job_queue::claim_job(&db.pool, Some(JobType::Enrich))
+        .await
+        .unwrap()
+        .unwrap();
+    // Een vervolgjob: het voorstel van het vorige venster plus de cursor.
+    let previous = "articles:\n  - number: '1'\n    text: een bis\n";
+    tasks::insert_blob(
+        &db.pool,
+        job.id,
+        BlobKind::Input,
+        "laws/test_wet/law.yaml",
+        previous,
+    )
+    .await
+    .unwrap();
+    tasks::insert_blob(
+        &db.pool,
+        job.id,
+        BlobKind::Input,
+        "laws/test_wet/.enrichment.yaml",
+        "enrich_cursor: 1\n",
+    )
+    .await
+    .unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let law_abs = dir.path().join("laws/test_wet/law.yaml");
+    tokio::fs::create_dir_all(law_abs.parent().unwrap())
+        .await
+        .unwrap();
+    tokio::fs::write(&law_abs, "articles: [kapot")
+        .await
+        .unwrap();
+
+    // Ook het laatste venster van een reeks valt niet terug op één taak voor
+    // de hele wet: die zou artikel 1 uit het vorige venster meenemen.
+    let result = finish_enrich_task_job(&db.pool, &job, dir.path(), &[law_abs], true, None).await;
+    assert!(result.is_err());
+    let open = tasks::list_open_tasks_for_account(&db.pool, account_id)
+        .await
+        .unwrap();
+    assert!(open.is_empty());
 }
 
 #[tokio::test]

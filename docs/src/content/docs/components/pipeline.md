@@ -197,7 +197,15 @@ whole law, so it can also carry tasks for articles from earlier windows.
 
 A new law (`new_law`, from an upload or a harvest into a traject) is created as
 a whole, so its windows produce no review task along the way. Only the last
-window does, with the complete law as one proposal.
+window does, with the complete law as one proposal. If a window fails for good,
+the requester gets a failure task and the earlier windows' work is lost; the
+law has to be uploaded or harvested again.
+
+When an existing law takes more than one window, a window whose proposal cannot
+be compared article by article fails and is retried, the last window included.
+It does not fall back to one task for the whole law, because that proposal also
+contains the earlier windows' articles, and approving it would silently restore
+changes a reviewer had rejected.
 
 Within one window, `ENRICH_SESSION_REUSE` decides how the translation pass and
 the feedback rounds of the gates share an agent session: all of them (`window`,

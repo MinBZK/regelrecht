@@ -2020,8 +2020,13 @@ pub async fn finish_enrich_task_job(
 
     // Vóór de transactie, want delete_blobs_for_job hieronder gooit de
     // input-blobs weg: dit is de bronsnapshot waartegen we de proposal diffen.
-    let source_yaml = crate::tasks::load_blobs(pool, job.id, crate::tasks::BlobKind::Input)
-        .await?
+    let inputs = crate::tasks::load_blobs(pool, job.id, crate::tasks::BlobKind::Input).await?;
+    // Alleen een vervolgjob krijgt de cursor-sidecar mee; de eerste job van
+    // een reeks heeft enkel de wet-YAML uit de editor als input.
+    let continuation_input = inputs
+        .iter()
+        .any(|b| Path::new(&b.path).file_name() == Some(std::ffi::OsStr::new(".enrichment.yaml")));
+    let source_yaml = inputs
         .into_iter()
         .find(|b| b.path == payload.yaml_path)
         .map(|b| b.content);
@@ -2088,6 +2093,18 @@ pub async fn finish_enrich_task_job(
         }
     };
 
+    // Binnen een reeks vensters van een bestaande wet is die terugval er niet,
+    // ook niet in het laatste venster: het voorstel bevat dan ook de nog niet
+    // beoordeelde (of afgewezen) artikelen van eerdere vensters, en één taak
+    // voor het geheel zou die ongezien terugzetten. Alleen een wet die in één
+    // venster past, diffte tegen de echte traject-snapshot. De transactie rolt
+    // terug en de aanroeper probeert het venster opnieuw.
+    if per_article.is_none() && !new_law && (!law_complete || continuation_input) {
+        return Err(PipelineError::Enrich(
+            "voorstel van dit venster is niet per artikel te vergelijken met de bron".into(),
+        ));
+    }
+
     // Een nieuwe wet wordt als geheel aangemaakt: de tussenvensters leveren
     // nog geen taak op, het laatste venster de hele wet als één voorstel.
     if new_law && !law_complete {
@@ -2106,7 +2123,7 @@ pub async fn finish_enrich_task_job(
                     job_id = %job.id,
                     law_id = %payload.law_id,
                     articles = articles.len(),
-                    "review-taken per artikel aangemaakt"
+                    "review-taken per gewijzigd artikel (0 = geen wijziging, geen taak)"
                 );
                 for number in articles {
                     let mut article_payload = task_payload.clone();
@@ -2156,9 +2173,7 @@ pub async fn finish_enrich_task_job(
         // Na `complete_job` in dezelfde transactie, zodat
         // `idx_unique_active_enrich_job` deze job niet meer als actief ziet
         // (zelfde patroon als `complete_enrich_success_tx`).
-        let mut next_payload = payload.clone();
-        next_payload.session = None;
-        let next_json = serde_json::to_value(&next_payload).map_err(|e| {
+        let next_json = serde_json::to_value(&payload).map_err(|e| {
             PipelineError::Enrich(format!("serialize continuation enrich payload: {e}"))
         })?;
         let mut req = CreateJobRequest::new(JobType::Enrich, &job.law_id)
@@ -2192,9 +2207,10 @@ pub async fn finish_enrich_task_job(
                     .await?;
                 }
             }
-            // Een andere actieve verrijking van deze wet in dit traject (een
-            // nieuwe aanvraag): die begint met een eigen snapshot, dus deze
-            // reeks stopt hier. De vensters tot nu toe staan als review-taken.
+            // In de praktijk onbereikbaar: zolang deze job `processing` was,
+            // weigerde de index elke tweede actieve verrijking van deze wet in
+            // dit traject, dus na `complete_job` staat er niets om mee te
+            // botsen. Mocht het toch gebeuren, dan stopt de reeks hier.
             None => tracing::warn!(
                 job_id = %job.id,
                 law_id = %payload.law_id,
@@ -2493,8 +2509,10 @@ async fn process_enrich_task_job(
                 }
                 Ok(None) => {}
                 Err(e) => {
-                    // Persist-fout is retryable (DB-hik).
-                    tracing::error!(job_id = %job.id, error = %e, "taak-resultaat wegschrijven mislukt");
+                    // Een DB-hik bij het wegschrijven, of een voorstel dat niet per
+                    // artikel te vergelijken is; de fout noemt de oorzaak. Retry
+                    // zolang er pogingen over zijn.
+                    tracing::error!(job_id = %job.id, error = %e, "taak-resultaat afronden mislukt");
                     fail_enrich_task_job_with_retry(pool, job, &e.to_string()).await?;
                 }
             }
