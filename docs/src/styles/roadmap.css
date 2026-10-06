@@ -254,8 +254,27 @@
  * assertFilterRules() leest dit bestand om te controleren dat hij hier staat.
  */
 .rr-roadmap .rr-geen-treffer,
-.rr-roadmap .rr-wp-card--geen-belegging {
+.rr-roadmap .rr-wp-card--geen-belegging,
+.rr-roadmap .rr-vraag--geen-status {
   display: none !important;
+}
+
+/*
+ * Een groep op het vragenoverzicht (een papersectie, of een werkpakket onder
+ * "Zonder sectie") verdwijnt mee als al zijn vragen weggefilterd zijn.
+ * Zonder deze regel bleven bij een smal filter tientallen kopjes staan met
+ * niets eronder, en las de pagina als een inhoudsopgave van wat er niet is.
+ *
+ * Alleen de bovenliggende vragen tellen (die dragen `data-zoek`); een
+ * deelvraag zit in de regel van zijn ouder en verdwijnt daarmee. Het
+ * buitenste blok van "Zonder sectie" draagt dezelfde klasse, zodat ook die
+ * kop meegaat als elk werkpakket eronder leeg is.
+ */
+.rr-roadmap
+  .rr-vragen__groep:not(
+    :has(li[data-zoek]:not(.rr-geen-treffer, .rr-vraag--geen-status))
+  ) {
+  display: none;
 }
 
 /*

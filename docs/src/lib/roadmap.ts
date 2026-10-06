@@ -209,6 +209,28 @@ type NonEmpty = [string, ...string[]];
 export const GEEN_CATEGORIE = 'geen';
 
 /**
+ * De waarde van `data-status` op een onderzoeksvraag, met een leeg veld als
+ * 'geen' — dezelfde afbeelding als GEEN_CATEGORIE maakt voor een kaart
+ * zonder categorie, en om dezelfde reden: het statusfilter op het overzicht
+ * heeft een vakje "Niet bepaald" nodig om die vragen terug te halen, en dat
+ * vakje moet een waarde hebben om op te matchen.
+ */
+export const GEEN_STATUS = 'geen';
+export const vraagStatusWaarde = (status: string) => status || GEEN_STATUS;
+
+/**
+ * De vinkjes van het statusfilter op /roadmap/onderzoeksvragen: de drie
+ * standen van een vraag plus "Niet bepaald", want vandaag heeft bijna geen
+ * vraag een eigen status en zonder dat vakje zijn die niet terug te halen.
+ * Het filter leest de eigen status van de vraag, niet die van zijn
+ * werkpakket; zie RoadmapVraag.astro.
+ */
+export const STATUS_FILTER_OPTIES = [
+  ...ONDERZOEK_STANDEN.map((s) => ({ id: s.id, label: s.label })),
+  { id: GEEN_STATUS, label: 'Niet bepaald' },
+];
+
+/**
  * De beleggingsstand zoals hij op `data-belegging` komt te staan, met een leeg
  * veld als 'vrij' — dezelfde afbeelding die getBelegging() maakt.
  *
@@ -267,7 +289,7 @@ export interface FilterGroep {
   verbergKlasse?: string;
 }
 
-export type FilterGroepId = 'categorie' | 'belegging';
+export type FilterGroepId = 'categorie' | 'belegging' | 'status';
 
 export const FILTERGROEPEN: Record<FilterGroepId, FilterGroep> = {
   categorie: {
@@ -286,6 +308,15 @@ export const FILTERGROEPEN: Record<FilterGroepId, FilterGroep> = {
     attribuut: 'belegging',
     verbergKlasse: 'rr-wp-card--geen-belegging',
   },
+  status: {
+    id: 'status',
+    knop: 'Status',
+    titel: 'Filter op eigen status van de vraag',
+    optieKlasse: 'rr-filter__status-option',
+    opties: STATUS_FILTER_OPTIES,
+    attribuut: 'status',
+    verbergKlasse: 'rr-vraag--geen-status',
+  },
 };
 
 /** De klasse waarmee het zoekfilter een item verbergt dat niet matcht. */
@@ -300,6 +331,11 @@ export const GEEN_TREFFER = 'rr-geen-treffer';
 export const WEERGAVEN = [
   { id: 'matrix', label: 'Matrix', href: '/roadmap' },
   { id: 'bord', label: 'Bord', href: '/roadmap/bord' },
+  {
+    id: 'onderzoeksvragen',
+    label: 'Onderzoeksvragen',
+    href: '/roadmap/onderzoeksvragen',
+  },
 ] as const;
 
 export type WeergaveId = (typeof WEERGAVEN)[number]['id'];
@@ -597,11 +633,6 @@ export const BORD_LANES = BELEGGING_STANDEN.map((stand) => ({
 export function zoektekst(data: WerkpakketData): string {
   // De vraag, zijn doel en zijn deelvragen: alles wat op de detailpagina bij
   // de vraag staat, zodat een woord uit een deelvraag het werkpakket vindt.
-  const vraagTekst = (v: Onderzoeksvraag): string[] => [
-    v.vraag,
-    v.doel,
-    ...v.deelvragen.flatMap(vraagTekst),
-  ];
   const vragen = onderzoeksvraagLijst(data.onderzoeksvragen).flatMap(vraagTekst);
 
   return normaliseerZoekterm(
@@ -660,15 +691,35 @@ export interface Onderzoeksvraag {
 /** Het anker van een vraag op de werkpakketpagina en het overzicht. */
 export const vraagAnker = (id: string) => `vraag-${id}`;
 
+/** De tekst van een vraag met zijn doel en deelvragen, voor het zoeken. */
+function vraagTekst(v: Onderzoeksvraag): string[] {
+  return [v.vraag, v.doel, ...v.deelvragen.flatMap(vraagTekst)];
+}
+
 /**
- * De waarde van `data-status` op een vraag, met een leeg veld als 'geen' —
- * dezelfde afbeelding als GEEN_CATEGORIE maakt voor een kaart zonder
- * categorie, en om dezelfde reden: het statusfilter heeft een vakje "Niet
- * bepaald" nodig om die vragen terug te halen, en dat vakje moet een waarde
- * hebben om op te matchen.
+ * Wat het zoekfilter op /roadmap/onderzoeksvragen over een vraag doorzoekt:
+ * de vraag met zijn doel en deelvragen, de titel van het werkpakket (wie op
+ * een werkpakket zoekt vindt zijn vragen), de status zoals de tag hem
+ * schrijft, en de papersectie op nummer en titel. Genormaliseerd zoals
+ * zoektekst() voor de kaarten.
  */
-export const GEEN_STATUS = 'geen';
-export const vraagStatusWaarde = (status: string) => status || GEEN_STATUS;
+export function vraagZoektekst(
+  vraag: Onderzoeksvraag,
+  werkpakket: WerkpakketData,
+): string {
+  return normaliseerZoekterm(
+    [
+      ...vraagTekst(vraag),
+      werkpakket.titel,
+      getOnderzoek(vraag.status)?.label,
+      vraag.paper && `§ ${vraag.paper.nummer}`,
+      vraag.paper?.titel,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+}
+
 
 /** A section of the position paper, addressable by its anchor. */
 export interface PaperSectie {
@@ -692,20 +743,19 @@ export const PAPER_PAD = '/research/rules-as-executed';
  * words. The heading text is "4.5 The Recipient's Check", number and title in
  * one string, which is why they are split here.
  */
-const paperSecties = new Map<string, PaperSectie>(
-  (paperHeadings as { slug: string; text: string }[]).map((h) => {
-    const m = /^([\d.]+)\s+(.*)$/.exec(h.text);
-    return [
-      h.slug,
-      {
-        slug: h.slug,
-        nummer: m ? m[1] : '',
-        titel: m ? m[2] : h.text,
-        href: `${PAPER_PAD}#${h.slug}`,
-      },
-    ];
-  }),
-);
+export const paperSectieLijst: PaperSectie[] = (
+  paperHeadings as { slug: string; text: string }[]
+).map((h) => {
+  const m = /^([\d.]+)\s+(.*)$/.exec(h.text);
+  return {
+    slug: h.slug,
+    nummer: m ? m[1] : '',
+    titel: m ? m[2] : h.text,
+    href: `${PAPER_PAD}#${h.slug}`,
+  };
+});
+
+const paperSecties = new Map(paperSectieLijst.map((s) => [s.slug, s]));
 
 export const getPaperSectie = (slug: string) => paperSecties.get(slug);
 
@@ -832,6 +882,94 @@ export function telDeelvragen(vraag: Onderzoeksvraag): {
   return {
     beantwoord: vraag.deelvragen.filter((d) => d.status === 'beantwoord').length,
     totaal: vraag.deelvragen.length,
+  };
+}
+
+/** Een bovenliggende vraag met het werkpakket waar hij in staat. */
+export interface VraagMetWerkpakket {
+  vraag: Onderzoeksvraag;
+  werkpakket: WerkpakketData;
+}
+
+export interface VragenPerSectie {
+  /** Alleen de secties waar een vraag naar wijst, in de volgorde van het paper. */
+  secties: { sectie: PaperSectie; items: VraagMetWerkpakket[] }[];
+  /** De vragen zonder sectie, per werkpakket, in de leesvolgorde van de matrix. */
+  zonderSectie: { werkpakket: WerkpakketData; items: Onderzoeksvraag[] }[];
+}
+
+/**
+ * De onderzoeksvragen van de roadmap per sectie van het position paper, voor
+ * /roadmap/onderzoeksvragen.
+ *
+ * De sectie is de groepering en niet het werkpakket, omdat het paper de
+ * onderzoeksagenda is die de roadmap zegt te beantwoorden: twee vragen onder
+ * dezelfde sectie zijn verwant zonder dat iemand dat opgeschreven heeft. Wat
+ * naar geen sectie wijst komt achteraan, per werkpakket; dat is de lijst van
+ * vragen die nog niet aan de agenda hangen, en die lijst is zelf informatie.
+ *
+ * Alleen bovenliggende vragen worden ingedeeld. Een deelvraag staat onder
+ * zijn ouder, ook als hij een eigen `paper` heeft; hem apart onder zijn
+ * sectie herhalen zou dezelfde vraag twee keer op de pagina zetten.
+ */
+export function vragenPerSectie(
+  werkpakketten: { data: WerkpakketData }[],
+): VragenPerSectie {
+  const gesorteerd = [...werkpakketten].sort((a, b) =>
+    werkpakketVolgorde(a.data, b.data),
+  );
+  const perSectie = new Map<string, VraagMetWerkpakket[]>();
+  const zonderSectie: VragenPerSectie['zonderSectie'] = [];
+  for (const { data } of gesorteerd) {
+    const los: Onderzoeksvraag[] = [];
+    for (const vraag of onderzoeksvraagLijst(data.onderzoeksvragen)) {
+      if (!vraag.paper) {
+        los.push(vraag);
+        continue;
+      }
+      const lijst = perSectie.get(vraag.paper.slug) ?? [];
+      lijst.push({ vraag, werkpakket: data });
+      perSectie.set(vraag.paper.slug, lijst);
+    }
+    if (los.length) zonderSectie.push({ werkpakket: data, items: los });
+  }
+  return {
+    secties: paperSectieLijst
+      .filter((s) => perSectie.has(s.slug))
+      .map((s) => ({ sectie: s, items: perSectie.get(s.slug)! })),
+    zonderSectie,
+  };
+}
+
+/**
+ * De tellingen boven het overzicht: hoeveel (deel)vragen er zijn en hoeveel
+ * er per eigen status staan, en daarnaast hoeveel werkpakketten er per
+ * `onderzoek`-stand staan. Twee regels en niet één, omdat het twee dingen
+ * zijn: een vraag zonder eigen status telt als "niet bepaald", ook als zijn
+ * werkpakket op "loopt" staat.
+ */
+export function telStatussen(werkpakketten: { data: WerkpakketData }[]): {
+  vragen: { totaal: number; deelvragen: number; perStatus: Record<string, number> };
+  werkpakketten: { totaal: number; perStatus: Record<string, number> };
+} {
+  const alle = alleOnderzoeksvragen(werkpakketten);
+  const tel = (waarden: string[]) => {
+    const per: Record<string, number> = {};
+    for (const w of waarden) per[w] = (per[w] ?? 0) + 1;
+    return per;
+  };
+  return {
+    vragen: {
+      totaal: alle.length,
+      deelvragen: alle.filter((v) => v.ouder).length,
+      perStatus: tel(alle.map((v) => vraagStatusWaarde(v.vraag.status))),
+    },
+    werkpakketten: {
+      totaal: werkpakketten.length,
+      perStatus: tel(
+        werkpakketten.map((w) => vraagStatusWaarde(w.data.onderzoek)),
+      ),
+    },
   };
 }
 

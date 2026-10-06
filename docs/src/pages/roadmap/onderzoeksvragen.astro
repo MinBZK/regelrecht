@@ -1,0 +1,186 @@
+---
+/*
+ * /roadmap/onderzoeksvragen — alle onderzoeksvragen van de roadmap op één
+ * pagina, per sectie van het position paper Rules as Executed.
+ *
+ * De werkpakketpagina toont de vragen van één werkpakket; dit is de andere
+ * lezing: welke vragen stelt de roadmap als geheel, welke worden beantwoord,
+ * bij welk werkpakket, en hoe hangen ze samen. Drie soorten samenhang staan
+ * erin, en geen van drieën is hier bedacht: de papersectie (twee vragen onder
+ * dezelfde sectie gaan over hetzelfde), het werkpakket (met zijn belegging,
+ * want dat is het publieke antwoord op "zit er iemand op"), en `verwant`,
+ * waar iemand het expliciet opgeschreven heeft.
+ *
+ * Gegroepeerd op papersectie en niet op werkpakket of status, omdat het paper
+ * de onderzoeksagenda is die de roadmap zegt te beantwoorden. Wat naar geen
+ * sectie wijst staat achteraan, per werkpakket: die lijst is zelf informatie,
+ * namelijk wat nog niet aan de agenda hangt. Zie vragenPerSectie() in
+ * lib/roadmap.ts.
+ *
+ * De status in het filter en in de tellingen is de eigen status van de
+ * vraag. Een vraag zonder eigen status toont gedempt de stand van zijn
+ * werkpakket, maar telt als "niet bepaald": de stand van het werkpakket zegt
+ * dat er aan het pakket gewerkt wordt, niet dat déze vraag beantwoord wordt.
+ */
+import { getCollection } from 'astro:content';
+import Base from '~/layouts/Base.astro';
+import RoadmapSectie from '~/components/RoadmapSectie.astro';
+import RoadmapKop from '~/components/RoadmapKop.astro';
+import RoadmapVraag from '~/components/RoadmapVraag.astro';
+import {
+  vragenPerSectie,
+  vraagZoektekst,
+  telStatussen,
+  verwantIndex,
+  ONDERZOEK_STANDEN,
+  GEEN_STATUS,
+  assertReferencesResolve,
+  assertPaperSections,
+  assertOnderzoeksvragen,
+  assertFilterRules,
+  type WerkpakketData,
+} from '~/lib/roadmap';
+import '~/styles/roadmap.css';
+// De tekst van de stylesheet, voor assertFilterRules(); zie index.astro.
+import roadmapCss from '~/styles/roadmap.css?raw';
+
+const werkpakketten = await getCollection('werkpakketten');
+assertReferencesResolve(werkpakketten);
+assertPaperSections(werkpakketten);
+// Elke vraag met id krijgt hier een anker; een dubbel id zou twee elementen
+// met dezelfde id op deze pagina zetten.
+assertOnderzoeksvragen(werkpakketten);
+assertFilterRules(roadmapCss);
+
+const { secties, zonderSectie } = vragenPerSectie(werkpakketten);
+const verwanten = verwantIndex(werkpakketten);
+const telling = telStatussen(werkpakketten);
+
+// Wat RoadmapVraag van een werkpakket nodig heeft om de vraag buiten zijn
+// eigen pagina te plaatsen.
+const werkpakketProps = (data: WerkpakketData, link = true) => ({
+  id: data.id,
+  titel: data.titel,
+  belegging: data.belegging.stand,
+  onderzoek: data.onderzoek,
+  link,
+});
+
+// "14 open, 10 loopt, 0 beantwoord, 25 niet bepaald", in de volgorde van de
+// standen; een stand zonder treffers staat er als 0, zodat de rij altijd
+// dezelfde vorm heeft.
+const standenTekst = (per: Record<string, number>) =>
+  [
+    ...ONDERZOEK_STANDEN.map((s) => `${per[s.id] ?? 0} ${s.label.toLowerCase()}`),
+    `${per[GEEN_STATUS] ?? 0} niet bepaald`,
+  ].join(', ');
+
+const meervoud = (n: number, een: string, meer: string) =>
+  `${n} ${n === 1 ? een : meer}`;
+
+const pathname = '/roadmap/onderzoeksvragen';
+---
+
+<Base
+  lang="nl"
+  kind="docs"
+  pathname={pathname}
+  noSearchIndex
+  title="Onderzoeksvragen · Roadmap · RegelRecht"
+  description="Alle onderzoeksvragen van de RegelRecht-roadmap, per sectie van het position paper Rules as Executed."
+>
+  <RoadmapSectie>
+    <RoadmapKop
+      huidig="onderzoeksvragen"
+      ondertitel="Alle onderzoeksvragen van de werkpakketten, per sectie van het position paper: welke worden beantwoord, bij welk werkpakket, en hoe ze samenhangen."
+      zoek={{ placeholder: 'Zoek in onderzoeksvragen', noun: 'vragen' }}
+      filters={['status']}
+    />
+
+    {/*
+      Twee regels tellingen, niet één: de eerste gaat over de vragen zelf
+      (eigen status), de tweede over hun werkpakketten. Ze lopen uiteen, en
+      dat is precies wat deze pagina zichtbaar wil maken.
+    */}
+    <nldd-container gap="4">
+      <nldd-text size="sm">
+        {meervoud(telling.vragen.totaal, 'vraag', 'vragen')}, waarvan{' '}
+        {meervoud(telling.vragen.deelvragen, 'deelvraag', 'deelvragen')}.
+        Eigen status: {standenTekst(telling.vragen.perStatus)}.
+      </nldd-text>
+      <nldd-text size="sm" color="secondary">
+        Onderzoek per werkpakket ({telling.werkpakketten.totaal} werkpakketten):{' '}
+        {standenTekst(telling.werkpakketten.perStatus)}.
+      </nldd-text>
+    </nldd-container>
+
+    {
+      secties.map(({ sectie, items }) => (
+        <nldd-container class="rr-vragen__groep" gap="12">
+          <nldd-title size="4">
+            <h2>
+              <a href={sectie.href}>
+                § {sectie.nummer} {sectie.titel}
+              </a>
+            </h2>
+            <p slot="supporting-text">{meervoud(items.length, 'vraag', 'vragen')}</p>
+          </nldd-title>
+          {/* Een <ul> en geen <ol>: de nummers op de werkpakketpagina zijn de
+              volgorde in dat ene bestand, en die betekent hier niets. */}
+          <nldd-rich-text>
+            <ul>
+              {items.map(({ vraag, werkpakket }) => (
+                <RoadmapVraag
+                  vraag={vraag}
+                  verwanten={verwanten}
+                  zoek={vraagZoektekst(vraag, werkpakket)}
+                  werkpakket={werkpakketProps(werkpakket)}
+                  niveau={1}
+                />
+              ))}
+            </ul>
+          </nldd-rich-text>
+        </nldd-container>
+      ))
+    }
+
+    {
+      zonderSectie.length > 0 && (
+        <nldd-container class="rr-vragen__groep" gap="16">
+          <nldd-title size="4">
+            <h2>Zonder sectie in het paper</h2>
+            <p slot="supporting-text">
+              Vragen die nog aan geen sectie van het paper hangen, per
+              werkpakket. Een vraag krijgt een sectie als het paper hem stelt
+              of uitwerkt, en anders bewust niet; zie de roadmap-skill.
+            </p>
+          </nldd-title>
+          {zonderSectie.map(({ werkpakket, items }) => (
+            <nldd-container class="rr-vragen__groep" gap="8">
+              <nldd-title size="5">
+                <h3>
+                  <a href={`/roadmap/werkpakket/${werkpakket.id}`}>
+                    {werkpakket.titel}
+                  </a>
+                </h3>
+              </nldd-title>
+              <nldd-rich-text>
+                <ul>
+                  {items.map((vraag) => (
+                    <RoadmapVraag
+                      vraag={vraag}
+                      verwanten={verwanten}
+                      zoek={vraagZoektekst(vraag, werkpakket)}
+                      werkpakket={werkpakketProps(werkpakket, false)}
+                      niveau={1}
+                    />
+                  ))}
+                </ul>
+              </nldd-rich-text>
+            </nldd-container>
+          ))}
+        </nldd-container>
+      )
+    }
+  </RoadmapSectie>
+</Base>

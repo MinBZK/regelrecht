@@ -39,8 +39,18 @@ interface Props {
   regels?: [number, number];
   /** De zoektekst voor het zoekfilter; alleen op het overzicht, alleen op een bovenliggende vraag. */
   zoek?: string;
-  /** Het werkpakket, alleen op het overzicht: daar staat de vraag niet op zijn eigen pagina. */
-  werkpakket?: { id: string; titel: string; belegging: string; onderzoek: string };
+  /**
+   * Het werkpakket, alleen op het overzicht: daar staat de vraag niet op zijn
+   * eigen pagina. `link: false` laat de link weg waar de kop erboven het
+   * werkpakket al noemt; de stand en de belegging blijven.
+   */
+  werkpakket?: {
+    id: string;
+    titel: string;
+    belegging: string;
+    onderzoek: string;
+    link?: boolean;
+  };
   niveau: 1 | 2;
 }
 
@@ -79,7 +89,7 @@ const heeftMeta =
             werkpakket: {werkpakketStand.label.toLowerCase()}
           </nldd-text>
         )}
-        {werkpakket && (
+        {werkpakket && werkpakket.link !== false && (
           <nldd-link
             size="xs"
             href={`/roadmap/werkpakket/${werkpakket.id}`}
