@@ -24,7 +24,9 @@ pub mod error;
 pub mod extension;
 pub mod lexostatus;
 pub mod shape;
+#[cfg(feature = "wasm")]
+pub mod wasm;
 
-pub use cell::{Cell, Clock, Input};
+pub use cell::{Cell, Input};
 pub use chronicle::Gram;
 pub use error::{Error, Result};

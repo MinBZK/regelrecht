@@ -65,7 +65,8 @@ pub struct Gram {
 /// The grams of one chronicle of a cell.
 #[derive(Debug)]
 pub struct Chronicle {
-    path: PathBuf,
+    /// The file it is kept in; `None` for a chronicle in memory.
+    path: Option<PathBuf>,
     grams: Vec<Gram>,
 }
 
@@ -85,7 +86,15 @@ impl Chronicle {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
             Err(e) => return Err(e.into()),
         };
-        Ok(Self { path, grams })
+        Ok(Self {
+            path: Some(path),
+            grams,
+        })
+    }
+
+    /// A chronicle in memory, holding `grams`.
+    pub fn in_memory(grams: Vec<Gram>) -> Self {
+        Self { path: None, grams }
     }
 
     pub fn grams(&self) -> &[Gram] {
@@ -116,17 +125,22 @@ impl Chronicle {
         &current.id
     }
 
-    /// Append a gram: to the file first, then to memory.
+    /// Append a gram: to the file first (if there is one), then to memory.
     pub fn append(&mut self, gram: Gram) -> Result<&Gram> {
-        if let Some(dir) = self.path.parent() {
-            std::fs::create_dir_all(dir)?;
+        if self.grams.iter().any(|g| g.id == gram.id) {
+            return Err(setup(format!(
+                "gram '{}' is already in the chronicle",
+                gram.id
+            )));
         }
-        let line = serde_json::to_string(&gram).map_err(|e| setup(e.to_string()))?;
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.path)?;
-        writeln!(file, "{line}")?;
+        if let Some(path) = &self.path {
+            if let Some(dir) = path.parent() {
+                std::fs::create_dir_all(dir)?;
+            }
+            let line = serde_json::to_string(&gram).map_err(|e| setup(e.to_string()))?;
+            let mut file = OpenOptions::new().create(true).append(true).open(path)?;
+            writeln!(file, "{line}")?;
+        }
         self.grams.push(gram);
         Ok(&self.grams[self.grams.len() - 1])
     }

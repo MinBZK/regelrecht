@@ -150,21 +150,44 @@ pub struct CellConfig {
     pub lexostatuses: Vec<LexostatusDefinition>,
 }
 
-fn read_yaml<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T> {
-    let text =
-        std::fs::read_to_string(path).map_err(|e| setup(format!("{}: {e}", path.display())))?;
-    serde_yaml_ng::from_str(&text).map_err(|e| setup(format!("{}: {e}", path.display())))
+fn read_text(path: &Path) -> Result<String> {
+    std::fs::read_to_string(path).map_err(|e| setup(format!("{}: {e}", path.display())))
+}
+
+fn parse_yaml<T: serde::de::DeserializeOwned>(what: &str, text: &str) -> Result<T> {
+    serde_yaml_ng::from_str(text).map_err(|e| setup(format!("{what}: {e}")))
 }
 
 impl CellConfig {
     /// Read `cell.yaml` and the files it names.
     pub fn load(cell_yaml: &Path) -> Result<Self> {
-        let file: CellFile = read_yaml(cell_yaml)?;
+        let cell_text = read_text(cell_yaml)?;
+        let file: CellFile = parse_yaml(&cell_yaml.display().to_string(), &cell_text)?;
         let dir = cell_yaml.parent().unwrap_or(Path::new("."));
         let streams = file
             .streams
             .iter()
-            .map(|p| read_yaml::<Stream>(&dir.join(p)))
+            .map(|p| read_text(&dir.join(p)))
+            .collect::<Result<Vec<_>>>()?;
+        let lexostatuses = file
+            .lexostatuses
+            .as_ref()
+            .map(|p| read_text(&dir.join(p)))
+            .transpose()?;
+        Self::from_yaml(
+            &cell_text,
+            &streams.iter().map(String::as_str).collect::<Vec<_>>(),
+            lexostatuses.as_deref(),
+        )
+    }
+
+    /// A configuration from its texts: `cell.yaml`, each stream it names
+    /// (the paths in `cell.yaml` are not followed), and the lexostatuses.
+    pub fn from_yaml(cell: &str, streams: &[&str], lexostatuses: Option<&str>) -> Result<Self> {
+        let file: CellFile = parse_yaml("cell", cell)?;
+        let streams = streams
+            .iter()
+            .map(|s| parse_yaml::<Stream>("stream", s))
             .collect::<Result<Vec<_>>>()?;
         for s in &streams {
             if s.recording_actor != file.recording_actor {
@@ -174,10 +197,10 @@ impl CellConfig {
                 )));
             }
         }
-        let lexostatuses = match &file.lexostatuses {
+        let lexostatuses = match lexostatuses {
             None => Vec::new(),
-            Some(p) => {
-                let l: LexostatusFile = read_yaml(&dir.join(p))?;
+            Some(text) => {
+                let l: LexostatusFile = parse_yaml("lexostatuses", text)?;
                 if l.cell != file.id {
                     return Err(setup(format!(
                         "lexostatuses of cell '{}' in the configuration of cell '{}'",

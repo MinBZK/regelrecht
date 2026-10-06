@@ -3971,12 +3971,14 @@ dependencies = [
  "regelrecht-engine",
  "regelrecht-law-model",
  "serde",
+ "serde-wasm-bindgen",
  "serde_json",
  "serde_yaml_ng",
  "tempfile",
  "thiserror 2.0.21",
  "uuid",
  "walkdir",
+ "wasm-bindgen",
 ]
 
 [[package]]

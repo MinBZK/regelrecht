@@ -11,11 +11,11 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
 
-use chrono::DateTime;
+use chrono::{DateTime, FixedOffset};
 use regelrecht_cel::cell::load_regulations;
-use regelrecht_cel::{Cell, Error, Input};
+use regelrecht_cel::config::CellConfig;
+use regelrecht_cel::{Cell, Error, Gram, Input};
 use regelrecht_engine::{LawExecutionService, Value};
 use serde_json::{json, Map};
 
@@ -35,10 +35,13 @@ fn regulations() -> LawExecutionService {
     load_regulations(&root().join("corpus/regulation")).unwrap_or_else(|e| panic!("{e}"))
 }
 
-fn cell(data: &Path, now: &Arc<Mutex<String>>) -> Cell {
-    let now = now.clone();
-    let clock = Box::new(move || DateTime::parse_from_rfc3339(&now.lock().unwrap()).unwrap());
-    Cell::new(&cell_yaml(), regulations(), data, clock).unwrap_or_else(|e| panic!("{e}"))
+fn at(moment: &str) -> DateTime<FixedOffset> {
+    DateTime::parse_from_rfc3339(moment).unwrap()
+}
+
+/// The cell of Toeslagen over its chronicles in `data`, on the day of `now`.
+fn cell(service: &LawExecutionService, data: &Path, now: DateTime<FixedOffset>) -> Cell {
+    Cell::open(&cell_yaml(), service, data, now.date_naive()).unwrap_or_else(|e| panic!("{e}"))
 }
 
 fn object(v: serde_json::Value) -> Map<String, serde_json::Value> {
@@ -155,11 +158,12 @@ fn register_sources(service: &mut LawExecutionService) {
 #[test]
 fn a_citizen_applies_and_toeslagen_records_the_application() {
     let data = tempfile::tempdir().unwrap();
-    let now = Arc::new(Mutex::new("2025-03-04T10:15:00+01:00".to_string()));
-    let mut cell = cell(data.path(), &now);
+    let service = regulations();
+    let received = at("2025-03-04T10:15:00+01:00");
+    let mut cell = cell(&service, data.path(), received);
 
     let gram = cell
-        .record_submission("aanvraag_ontvangen", &application())
+        .record_submission(&service, "aanvraag_ontvangen", &application(), received)
         .unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(gram.type_, "submission");
     assert_eq!(gram.subtype.as_deref(), Some("aanvraag"));
@@ -200,7 +204,7 @@ fn a_citizen_applies_and_toeslagen_records_the_application() {
         let mut wrong = application();
         wrong.insert(field.into(), value);
         let e = cell
-            .record_submission("aanvraag_ontvangen", &wrong)
+            .record_submission(&service, "aanvraag_ontvangen", &wrong, received)
             .unwrap_err();
         assert!(matches!(e, Error::Refused(_)), "{field}: {e}");
     }
@@ -208,7 +212,7 @@ fn a_citizen_applies_and_toeslagen_records_the_application() {
     let mut partial = application();
     partial.remove("adres_aanvrager");
     let gram = cell
-        .record_submission("aanvraag_ontvangen", &partial)
+        .record_submission(&service, "aanvraag_ontvangen", &partial, received)
         .unwrap();
     assert!(!gram.fields.contains_key("adres_aanvrager"));
 }
@@ -216,10 +220,11 @@ fn a_citizen_applies_and_toeslagen_records_the_application() {
 #[test]
 fn toeslagen_decides_on_the_application_and_records_the_decision() {
     let data = tempfile::tempdir().unwrap();
-    let now = Arc::new(Mutex::new("2025-03-04T10:15:00+01:00".to_string()));
-    let mut cell = cell(data.path(), &now);
+    let service = regulations();
+    let received = at("2025-03-04T10:15:00+01:00");
+    let mut cell = cell(&service, data.path(), received);
     let application = cell
-        .record_submission("aanvraag_ontvangen", &application())
+        .record_submission(&service, "aanvraag_ontvangen", &application(), received)
         .unwrap();
 
     // 1. The cell reads the application back from its chronicle.
@@ -237,8 +242,7 @@ fn toeslagen_decides_on_the_application_and_records_the_decision() {
     );
 
     // 2. Awir 15 lid 1 on what the cell read back: in time.
-    let timely = cell
-        .service()
+    let timely = service
         .evaluate_law_output(
             AWIR,
             "aanvraag_binnen_termijn",
@@ -255,8 +259,9 @@ fn toeslagen_decides_on_the_application_and_records_the_decision() {
 
     // 3. Six weeks later Toeslagen decides: Zorgtoeslagwet art. 2 on the
     //    application, with what the registers know of the citizen.
-    *now.lock().unwrap() = "2025-04-15T09:00:00+02:00".to_string();
-    register_sources(cell.service_mut());
+    let decided = at("2025-04-15T09:00:00+02:00");
+    let mut service = service;
+    register_sources(&mut service);
     let inputs = BTreeMap::from([(
         "bsn".to_string(),
         Input {
@@ -266,7 +271,13 @@ fn toeslagen_decides_on_the_application_and_records_the_decision() {
     )]);
     let refers_to = BTreeMap::from([("on_application".to_string(), application.id.clone())]);
     let decision = cell
-        .decide("zorgtoeslag_toegekend", refers_to, inputs)
+        .decide(
+            &service,
+            "zorgtoeslag_toegekend",
+            refers_to,
+            inputs,
+            decided,
+        )
         .unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(decision.type_, "decretogram");
     assert_eq!(decision.stage.as_deref(), Some("BESLUIT"));
@@ -306,18 +317,30 @@ fn toeslagen_decides_on_the_application_and_records_the_decision() {
 
     // A decision without its application, or on another decision, is refused.
     let e = cell
-        .decide("zorgtoeslag_toegekend", BTreeMap::new(), BTreeMap::new())
+        .decide(
+            &service,
+            "zorgtoeslag_toegekend",
+            BTreeMap::new(),
+            BTreeMap::new(),
+            decided,
+        )
         .unwrap_err();
     assert!(matches!(e, Error::Refused(_)), "{e}");
     let on_a_decision = BTreeMap::from([("on_application".to_string(), decision.id.clone())]);
     let e = cell
-        .decide("zorgtoeslag_toegekend", on_a_decision, BTreeMap::new())
+        .decide(
+            &service,
+            "zorgtoeslag_toegekend",
+            on_a_decision,
+            BTreeMap::new(),
+            decided,
+        )
         .unwrap_err();
     assert!(matches!(e, Error::Refused(_)), "{e}");
 
     // The chronicle survives the cell: a new cell reads it back.
     drop(cell);
-    let cell = self::cell(data.path(), &now);
+    let cell = self::cell(&service, data.path(), decided);
     let read_again = cell
         .read("aanvraag", &object(json!({"root": application.id})))
         .unwrap();
@@ -344,15 +367,46 @@ fn a_lexostatus_reading_an_unknown_field_is_refused() {
     std::fs::write(config.path().join("lexostatuses.yaml"), lexostatuses).unwrap();
 
     let data = tempfile::tempdir().unwrap();
-    let clock = Box::new(|| DateTime::parse_from_rfc3339("2025-03-04T10:15:00+01:00").unwrap());
-    let Err(e) = Cell::new(
+    let Err(e) = Cell::open(
         &config.path().join("cell.yaml"),
-        regulations(),
+        &regulations(),
         data.path(),
-        clock,
+        at("2025-03-04T10:15:00+01:00").date_naive(),
     ) else {
         panic!("a lexostatus reading 'bsnn' must be refused");
     };
     assert!(matches!(e, Error::Setup(_)), "{e}");
     assert!(e.to_string().contains("'bsnn'"), "{e}");
+}
+
+/// In the browser the chronicle lives in memory: what the page kept of an
+/// earlier session comes back in, and the cell reads it as its own.
+#[test]
+fn a_chronicle_in_memory_reads_back_what_it_was_given() {
+    let service = regulations();
+    let config = CellConfig::load(&cell_yaml()).unwrap();
+    let received = at("2025-03-04T10:15:00+01:00");
+    let mut cell =
+        Cell::in_memory(config.clone(), Vec::new(), &service, received.date_naive()).unwrap();
+    let gram = cell
+        .record_submission(&service, "aanvraag_ontvangen", &application(), received)
+        .unwrap();
+    let kept: Vec<Gram> = cell.grams().cloned().collect();
+    assert_eq!(kept, std::slice::from_ref(&gram));
+
+    let again = Cell::in_memory(
+        config.clone(),
+        kept.clone(),
+        &service,
+        received.date_naive(),
+    )
+    .unwrap();
+    let read = again
+        .read("aanvraag", &object(json!({"root": gram.id})))
+        .unwrap();
+    assert_eq!(read["bsn"], BSN);
+
+    // A gram given twice is refused, not silently kept twice.
+    let twice = [kept.clone(), kept].concat();
+    assert!(Cell::in_memory(config, twice, &service, received.date_naive()).is_err());
 }

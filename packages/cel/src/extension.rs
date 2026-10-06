@@ -15,7 +15,7 @@
 use std::collections::BTreeMap;
 
 use regelrecht_engine::Article;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// The namespace in `produces.extensions`.
 pub const NAMESPACE: &str = "chronolex";
@@ -60,7 +60,7 @@ pub struct Establishment {
 }
 
 /// A reference to another gram: the article that establishes it.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Reference {
     pub to: String,
@@ -70,7 +70,7 @@ pub struct Reference {
 
 /// The provision that makes the moment of recording the moment that counts
 /// (Awb 4:13, the receipt).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct EffectiveAt {
     pub legal_basis: Vec<String>,

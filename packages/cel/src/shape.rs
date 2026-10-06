@@ -14,14 +14,16 @@ use std::collections::BTreeMap;
 use chrono::NaiveDate;
 use regelrecht_engine::{Article, ExecutionOutcome, LawExecutionService, Submission, Value};
 use regelrecht_law_model::{Origin, OriginRole, OriginValue, Parameter, ParameterType};
+use serde::Serialize;
 
 use crate::error::{setup, Result};
 use crate::extension::{self, EffectiveAt, Establishment, Extends, Fields, Reference};
 
 /// One field of a gram, as the law declares it.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct FieldDef {
     pub name: String,
+    #[serde(rename = "type")]
     pub type_: Option<ParameterType>,
     /// The provisions the field rests on.
     pub legal_basis: Vec<String>,
@@ -34,12 +36,13 @@ pub struct FieldDef {
 }
 
 /// The shape of the grams of one event.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Shape {
     pub event: String,
     /// The establishing article, `<regulation>#<article>`.
     pub establishes: String,
     pub law_id: String,
+    #[serde(rename = "type")]
     pub type_: String,
     pub subtype: Option<String>,
     pub stage: Option<String>,
