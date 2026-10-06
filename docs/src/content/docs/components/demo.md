@@ -46,6 +46,12 @@ Everything the demo computes happens in the browser; the one exception is the op
 
 An application for a *beschikking* passes through the phases the Awb gives it (RFC-007, RFC-008). In each phase the engine fires the hooks that belong to it and reports which piece of data it still lacks; the demo supplies it at the moment it exists, and stores the state with the case. That is how the objection period arrives as a date from the law, and how a special law that departs from article 6:7 is taken into account without extra code.
 
+### The application as a fact in a chronicle
+
+For zorgtoeslag the application and the decision on it are also recorded as facts in a chronicle (chronolex, [RFC-022](/rfcs/rfc-022)). The cell of the Belastingdienst/Toeslagen (`corpus/demo/cells/toeslagen`) runs in the browser next to the engine: the demo loads one WASM module, `regelrecht-cel` built with its `wasm` feature, which exports both the engine (`WasmEngine`) and the cell (`WasmCell`).
+
+What the application contains is not configured but follows from executing the law. Awir article 15 establishes the application; because Zorgtoeslagwet article 2 takes a *beschikking* on it, Awb 4:2 (the core of every application) and 4:13 (the receipt is the moment that counts) hook onto it. The portal shows these fields under "What the law asks", each with the article that asks it, and on submission the cell records the application. When the case is decided, the cell reads the application back from its chronicle and records the decision with the outputs of article 2. The case system shows both under "Chronicle" on the case. The grams are kept in `localStorage` with the rest of the demo state.
+
 ### The "why" explanation
 
 A portal tile can explain its outcome in plain language, as the "waarom?" link in `poc-machine-law` did. A language model writes the explanation from the engine's trace and the outcome as the tile shows it, in the language the demo is set to. The sheet that shows it says it was written by a language model and that the calculation stands where the two differ.

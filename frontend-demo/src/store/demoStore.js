@@ -11,6 +11,7 @@
 import { computed, markRaw, reactive, ref, shallowRef, watch } from 'vue';
 import { loadCorpus } from '../data/loadCorpus.js';
 import {
+  createCell,
   evaluateLaw as engineEvaluate,
   executeStage as engineExecuteStage,
   prepareEngine,
@@ -23,6 +24,7 @@ import { verdictOf } from '../data/format.js';
 import { driftOf } from '../data/caseDrift.js';
 import { isEntrypointFor, subjectOf } from '../data/entrypoints.js';
 import { assignClaimOwnership } from '../data/claimOwnership.js';
+import { addressOf, applicationValues, eventsForLaw, gramsOfCase as gramsFor, momentOn } from '../data/chronolex.js';
 import { activeLocale, t } from '../i18n/index.js';
 
 const STORAGE_KEY = 'rr-demo-state-v1';
@@ -48,6 +50,10 @@ function defaultState() {
     autoAnnounce: true,
     cases: [],
     claims: [],
+    // De grammen van de kronieken van de cellen (chronolex, RFC-022): de
+    // aanvraag zoals de wet haar vraagt, en het besluit erop. De cel leeft in
+    // het geheugen van de WASM-module; dit is wat ervan bewaard blijft.
+    grams: [],
     presenterName: '',
     // 'zaal' of 'zelfstandig'. Zaal is de standaard: daar staat een presentator
     // voor een publiek en is het scherm van de demo. De dia's met een route
@@ -94,6 +100,10 @@ watch(
 // break the engine's private pointer access.
 const loadedCorpus = shallowRef(null);
 const engine = shallowRef(null);
+/** Per cel van het corpus haar WasmCell; leeg als de cel niet kon starten. */
+const cells = shallowRef({});
+/** Waarom een cel niet startte, per cel-id. */
+const cellErrors = ref({});
 
 /**
  * Het corpus zoals elk scherm het leest, met de configuratie in de taal die
@@ -213,6 +223,7 @@ async function boot() {
       pruneStaleRecords(corpus.value);
       engine.value = markRaw(await prepareEngine(corpus.value));
       reregister();
+      startCells();
       ready.value = true;
     } catch (e) {
       loadError.value = e;
@@ -220,6 +231,122 @@ async function boot() {
     }
   })();
   return bootPromise;
+}
+
+/**
+ * De cellen starten met de grammen van de vorige sessie. Een cel die niet
+ * start (de wet geeft een gebeurtenis geen vorm) staat in `cellErrors`; de
+ * rest van de demo werkt dan gewoon, zonder kroniek.
+ */
+function startCells() {
+  const started = {};
+  const errors = {};
+  for (const cell of corpus.value?.cells ?? []) {
+    const own = state.grams.filter((g) => cell.events.some((e) => e.chronicle === g.chronicle));
+    try {
+      started[cell.id] = markRaw(createCell(engine.value, cell, own, state.referenceDate));
+    } catch (e) {
+      errors[cell.id] = String(e?.message ?? e);
+      console.warn(`Cel ${cell.id} kon niet starten:`, e);
+    }
+  }
+  cells.value = started;
+  cellErrors.value = errors;
+}
+
+function syncGrams() {
+  state.grams = Object.values(cells.value).flatMap((c) => c.grams());
+}
+
+/** De gebeurtenissen van een wet in een kroniek, met de cel die ze vastlegt. */
+function chronolexFor(lawEntry) {
+  const found = eventsForLaw(corpus.value?.cells, lawEntry?.doc);
+  if (!found || !cells.value[found.cell.id]) return null;
+  return { ...found, wasmCell: cells.value[found.cell.id] };
+}
+
+/** Wat de aanvraag om deze wet bevat volgens de wet, of null. */
+function applicationShape(lawEntry) {
+  const c = chronolexFor(lawEntry);
+  if (!c) return null;
+  try {
+    return c.wasmCell.shape(engine.value, c.application.name, state.referenceDate);
+  } catch (e) {
+    console.warn('Vorm van de aanvraag niet af te leiden:', e);
+    return null;
+  }
+}
+
+/** Wat de persona op de aanvraag om deze wet invult. */
+function applicationValuesFor(lawEntry, shape, params = personaParams()) {
+  return applicationValues(shape, {
+    bsn: params.bsn,
+    name: persona.value?.name,
+    address: addressOf(persona.value),
+    date: state.referenceDate,
+  });
+}
+
+/**
+ * Leg de aanvraag van een zaak vast in de kroniek van de cel. Een weigering
+ * van de cel (een veld dat de wet niet vraagt) staat op de zaak; de zaak zelf
+ * gaat gewoon door.
+ */
+function recordApplication(c, lawEntry, params) {
+  const chrono = chronolexFor(lawEntry);
+  if (!chrono) return;
+  try {
+    const shape = chrono.wasmCell.shape(engine.value, chrono.application.name, state.referenceDate);
+    const gram = chrono.wasmCell.recordSubmission(
+      engine.value,
+      chrono.application.name,
+      applicationValuesFor(lawEntry, shape, params),
+      momentOn(state.referenceDate),
+    );
+    c.applicationGramId = gram.id;
+    syncGrams();
+  } catch (e) {
+    c.chronicleError = String(e?.message ?? e);
+  }
+}
+
+/**
+ * Leg het besluit op de aanvraag vast: de cel leest de aanvraag terug uit haar
+ * kroniek (de lexostatus `aanvraag`) en voert het besluitartikel uit met wat
+ * dat artikel als parameter vraagt.
+ */
+function recordDecision(c) {
+  if (!c.applicationGramId || c.decisionGramId) return;
+  const lawEntry = corpus.value?.lawById(c.lawId);
+  const chrono = chronolexFor(lawEntry);
+  if (!chrono) return;
+  try {
+    const read = chrono.wasmCell.read('aanvraag', { root: c.applicationGramId });
+    const number = chrono.decision.establishes.split('#')[1];
+    const article = lawEntry.doc.articles.find((a) => String(a.number) === number);
+    const asked = (article?.machine_readable?.execution?.parameters ?? []).map((p) => p.name);
+    const inputs = Object.fromEntries(
+      asked
+        .filter((name) => name in read)
+        .map((name) => [name, { value: read[name], provenance: { source: 'own', lexostatus: 'aanvraag' } }]),
+    );
+    const gram = chrono.wasmCell.decide(
+      engine.value,
+      chrono.decision.name,
+      { on_application: c.applicationGramId },
+      inputs,
+      momentOn(state.referenceDate),
+    );
+    c.decisionGramId = gram.id;
+    syncGrams();
+  } catch (e) {
+    c.chronicleError = String(e?.message ?? e);
+  }
+}
+
+/** De grammen van een zaak, in de volgorde van de kroniek. */
+function gramsOfCase(c) {
+  return gramsFor(state.grams, c?.applicationGramId);
 }
 
 const profileKey = computed(() => state.profileKey ?? corpus.value?.config?.default_profile ?? 'merijn');
@@ -542,6 +669,7 @@ function submitCase(lawEntry, evaluation, params = personaParams()) {
   };
   for (const claim of pendingClaims) claim.caseId = c.id;
   state.cases.unshift(c);
+  recordApplication(c, lawEntry, params);
   // De levensloop begint. De aanvraag is er, dus AANVRAAG en BEHANDELING
   // hebben hun datums; daarna wacht de engine op de besluitdatum, die er pas
   // is als er besloten wordt. Bij een aanvraag die meteen wordt toegekend,
@@ -550,6 +678,7 @@ function submitCase(lawEntry, evaluation, params = personaParams()) {
   advanceLifecycle(c, { aanvraag_datum: vandaag, beslistermijn_start: vandaag });
   if (!needsReview) {
     advanceLifecycle(c, { besluit_datum: vandaag });
+    recordDecision(c);
   }
   c.status = statusOf(c);
   announceIfAutomatic(c);
@@ -698,6 +827,7 @@ function decideCase(caseId, approved, reason, verifiedResult = null) {
   });
   // Het besluit is genomen: dat is de datum waar de fase BESLUIT op wachtte.
   advanceLifecycle(c, { besluit_datum: isoDate(c.decidedAt) });
+  recordDecision(c);
   c.status = statusOf(c);
   announceIfAutomatic(c);
   reregister();
@@ -916,6 +1046,7 @@ function claimFor(lawId, input, bsn = subjectBsn()) {
 function resetState() {
   Object.assign(state, defaultState());
   reregister();
+  if (engine.value) startCells();
 }
 
 export function useDemo() {
@@ -960,5 +1091,10 @@ export function useDemo() {
     decideClaim,
     claimFor,
     resetState,
+    cellErrors,
+    chronolexFor,
+    applicationShape,
+    applicationValuesFor,
+    gramsOfCase,
   };
 }

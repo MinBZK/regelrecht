@@ -272,6 +272,17 @@ export default {
   'zaak.term.until': 'Objection possible up to and including',
   'zaak.published.note': 'Announced. The citizen can lodge an objection in the portal; it then appears here.',
   'zaak.events': 'Events',
+  'sheet.application.law_asks.title': 'What the law asks',
+  'sheet.application.law_asks.subtitle': 'Every field of the application comes from an article; this is how the administrative body records it.',
+  'sheet.application.law_asks.empty': 'Not filled in',
+  'sheet.application.law_asks.by_cell': 'Filled in by the administrative body',
+  'zaak.view.case': 'Case',
+  'zaak.view.chronicle': 'Chronicle',
+  'zaak.chronicle.hint': 'The facts of this case as the administrative body records them: each fact names the article that establishes it and the moment that counts in law.',
+  'zaak.chronicle.failed': 'The chronicle could not record this',
+  'zaak.chronicle.application': 'Application, established by {law}',
+  'zaak.chronicle.decision': 'Decision, established by {law}',
+  'zaak.chronicle.effective_at': 'Moment that counts',
 
   // ---- portal: heading and context ----------------------------------------
   'zaak.portaal.heading.business': 'Which schemes apply to {name}?',

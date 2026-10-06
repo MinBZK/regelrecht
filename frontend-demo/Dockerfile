@@ -40,16 +40,19 @@ RUN set -eu; \
       echo "  https://github.com/wasm-bindgen/wasm-bindgen/releases/tag/${locked}" >&2; \
       exit 1; \
     fi
-# Trim workspace members to engine + law-model + shared. When adding a new
-# workspace member that this image does NOT build, add it here as well.
+# Trim workspace members to cel + engine + law-model + shared. When adding a
+# new workspace member that this image does NOT build, add it here as well.
 RUN grep -qE '^members = \[$' Cargo.toml && \
-    sed -i '/"admin"/d; /"arch-extract"/d; /"cel"/d; /"auth"/d; /"corpus"/d; /"editor-api"/d; /"github"/d; /"harvester"/d; /"pipeline"/d; /"poc-napp"/d; /"poc-portal"/d; /"tui"/d' Cargo.toml
+    sed -i '/"admin"/d; /"arch-extract"/d; /"auth"/d; /"corpus"/d; /"editor-api"/d; /"github"/d; /"harvester"/d; /"pipeline"/d; /"poc-napp"/d; /"poc-portal"/d; /"tui"/d' Cargo.toml
+COPY packages/cel/ cel/
 COPY packages/engine/ engine/
 COPY packages/law-model/ law-model/
 COPY packages/shared/ shared/
-RUN cargo build --target wasm32-unknown-unknown --release --features wasm -p regelrecht-engine && \
+# The demo runs regelrecht-cel's module: the engine (WasmEngine) and the
+# chronolex cell (WasmCell) in one.
+RUN cargo build --target wasm32-unknown-unknown --release --features wasm -p regelrecht-cel && \
     wasm-bindgen --target web --out-dir /wasm-pkg \
-      target/wasm32-unknown-unknown/release/regelrecht_engine.wasm
+      target/wasm32-unknown-unknown/release/regelrecht_cel.wasm
 
 # Stage 1b: the Vue bundle (npm workspace root builds the frontend-demo workspace)
 FROM node:24-alpine@sha256:01743339035a5c3c11a373cd7c83aeab6ed1457b55da6a69e014a95ac4e4700b AS builder
