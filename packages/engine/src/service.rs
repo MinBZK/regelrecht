@@ -11963,6 +11963,180 @@ articles:
         assert_eq!(supplied, ["naam", "rekeningnummer", "naam"]);
     }
 
+    /// A hook law whose current version adds a hook on the application as
+    /// article 8, while the version in force has it as article 7: the note
+    /// names article 7, and not article 6, which hooks onto an application
+    /// on which no beschikking is taken.
+    #[test]
+    fn test_a_missing_submission_hook_names_the_one_in_force() {
+        let old = r#"
+$id: wet_algemeen
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+articles:
+  - number: '6'
+    text: Een verzoek om een regeling bevat een motivering.
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to: {submission: AANVRAAG, decided_by: BESLUIT_VAN_ALGEMENE_STREKKING}
+      execution:
+        output: [{name: verzoek_gemotiveerd, type: boolean}]
+        actions: [{output: verzoek_gemotiveerd, value: true}]
+  - number: '7'
+    text: De aanvraag om een beschikking bevat de naam.
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to: {submission: AANVRAAG, decided_by: BESCHIKKING}
+      execution:
+        output: [{name: kern_gegeven, type: boolean}]
+        actions: [{output: kern_gegeven, value: true}]
+"#;
+        let new = old
+            .replace(
+                "publication_date: '2024-01-01'",
+                "publication_date: '2026-06-01'",
+            )
+            .replace("valid_from: '2024-01-01'", "valid_from: '2027-01-01'")
+            .replace("number: '7'", "number: '8'");
+        let mut service = LawExecutionService::new();
+        service.load_law(SUBMISSION_LAW).unwrap();
+        service.load_law(old).unwrap();
+        service.load_law(&new).unwrap();
+        let r = service
+            .evaluate_law_output(
+                "wet_bijdrage",
+                "naam_gegeven",
+                BTreeMap::new(),
+                "2025-06-01",
+            )
+            .unwrap();
+        assert_eq!(
+            r.declarations_not_in_force,
+            vec![DeclarationNotInForce {
+                kind: DeclarationKind::Hook,
+                law_id: "wet_algemeen".to_string(),
+                article: "8".to_string(),
+                subject: "hook point post_actions on TOETS at stage BESLUIT, submission AANVRAAG"
+                    .to_string(),
+                reason:
+                    "the version of wet_algemeen in force on this date (valid_from 2024-01-01) \
+                         has no article 8; article 7 of that version declares a hook that fires \
+                         at the same point on this decision"
+                        .to_string(),
+            }]
+        );
+    }
+
+    /// A hook on a submission takes no stage and no decision type.
+    #[test]
+    fn test_a_submission_hook_with_a_stage_or_decision_type_is_refused() {
+        for narrowing in ["stage: BESLUIT", "decision_type: TOEKENNING"] {
+            let law = GENERAL_LAW.replace(
+                "applies_to: {submission: AANVRAAG, decided_by: BESCHIKKING}",
+                &format!("applies_to: {{submission: AANVRAAG, {narrowing}}}"),
+            );
+            let e = LawExecutionService::new()
+                .load_law(&law)
+                .unwrap_err()
+                .to_string();
+            assert!(
+                e.contains("takes no stage or decision_type"),
+                "{narrowing}: {e}"
+            );
+        }
+    }
+
+    /// Unloading a law takes its submission hooks and its decisions out of
+    /// the indexes, and leaves those of every other law.
+    #[test]
+    fn test_unloading_a_law_leaves_the_submission_indexes_of_others() {
+        let second_hook = GENERAL_LAW
+            .replace("$id: wet_algemeen", "$id: wet_tweede")
+            .replace("number: '9'", "number: '1'");
+        let second_decision = r#"
+$id: wet_ander_besluit
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: Een andere instantie besluit ook op de aanvraag.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decides_on: ['wet_bijdrage#1']
+        output: [{name: ook_besloten, type: boolean}]
+        actions: [{output: ook_besloten, value: true}]
+"#;
+        let mut service = LawExecutionService::new();
+        for law in [SUBMISSION_LAW, GENERAL_LAW, &second_hook, second_decision] {
+            service.load_law(law).unwrap();
+        }
+        let hooks = |s: &LawExecutionService| -> Vec<String> {
+            s.resolver()
+                .find_submission_hooks(HookPoint::PostActions, "AANVRAAG", "wet_bijdrage", "1")
+                .iter()
+                .map(|h| h.law_id.clone())
+                .collect()
+        };
+        let decisions = |s: &LawExecutionService| -> Vec<String> {
+            s.resolver()
+                .decisions_on("wet_bijdrage", "1")
+                .iter()
+                .map(|d| d.law_id.clone())
+                .collect()
+        };
+        assert_eq!(hooks(&service).len(), 2);
+        assert_eq!(decisions(&service).len(), 2);
+
+        assert!(service.unload_law("wet_tweede"));
+        assert_eq!(hooks(&service), ["wet_algemeen"]);
+        assert!(service.unload_law("wet_ander_besluit"));
+        assert_eq!(decisions(&service), ["wet_bijdrage"]);
+        assert_eq!(hooks(&service), ["wet_algemeen"]);
+    }
+
+    /// Two hooks of one law on the application are two articles of its
+    /// model, each once.
+    #[test]
+    fn test_two_hooks_of_one_law_are_both_in_the_model() {
+        let general = GENERAL_LAW.to_string()
+            + r#"  - number: '10'
+    text: De aanvraag is ondertekend.
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to: {submission: AANVRAAG, decided_by: BESCHIKKING}
+      execution:
+        parameters:
+          - {name: ondertekening, type: string, nullable: true, required: false}
+        output: [{name: ondertekend, type: boolean}]
+        actions:
+          - output: ondertekend
+            value: {operation: NOT, value: {operation: EQUALS, subject: $ondertekening, value: null}}
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(SUBMISSION_LAW).unwrap();
+        service.load_law(&general).unwrap();
+        let model = service
+            .submission("wet_bijdrage", "1", &BTreeMap::new(), "2025-06-01")
+            .unwrap()
+            .expect("article 1 establishes an application");
+        let articles: Vec<String> = model
+            .articles
+            .iter()
+            .map(|a| format!("{}#{}", a.law_id, a.article_number))
+            .collect();
+        assert_eq!(
+            articles,
+            ["wet_bijdrage#1", "wet_algemeen#9", "wet_algemeen#10"]
+        );
+    }
+
     /// An article that establishes no submission is untouched: no model.
     #[test]
     fn test_only_a_submission_has_a_model() {
