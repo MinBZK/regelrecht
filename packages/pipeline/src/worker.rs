@@ -2000,20 +2000,33 @@ pub(crate) fn changed_articles(source_yaml: &str, proposal_yaml: &str) -> Option
 /// Taak-flow succes: schrijf de door de enrichment aangeraakte bestanden als
 /// result-blobs, verwijder de input-blobs, complete de job en maak de
 /// review-taak aan — alles in één transactie.
+///
+/// Is de wet na dit venster nog niet af (`law_complete == false`), dan komt er
+/// in dezelfde transactie een vervolgjob bij. Zijn input is het resultaat van
+/// deze job: het voorstel, zodat het volgende venster voortbouwt op wat hier
+/// verrijkt is, en de `.enrichment.yaml` met de cursor, zodat het weet waar het
+/// verder moet. Elk venster wordt zo een eigen verrijking met eigen
+/// review-taken; de diff tegen zijn input bevat alleen wat dát venster deed.
 pub async fn finish_enrich_task_job(
     pool: &PgPool,
     job: &crate::models::Job,
     workdir: &Path,
     written_files: &[std::path::PathBuf],
+    law_complete: bool,
     result_json: Option<serde_json::Value>,
-) -> Result<()> {
+) -> Result<Option<crate::models::Job>> {
     let payload: EnrichPayload = serde_json::from_value(job.payload.clone().unwrap_or_default())
         .map_err(|e| PipelineError::Enrich(format!("invalid enrich payload: {e}")))?;
 
     // Vóór de transactie, want delete_blobs_for_job hieronder gooit de
     // input-blobs weg: dit is de bronsnapshot waartegen we de proposal diffen.
-    let source_yaml = crate::tasks::load_blobs(pool, job.id, crate::tasks::BlobKind::Input)
-        .await?
+    let inputs = crate::tasks::load_blobs(pool, job.id, crate::tasks::BlobKind::Input).await?;
+    // Alleen een vervolgjob krijgt de cursor-sidecar mee; de eerste job van
+    // een reeks heeft enkel de wet-YAML uit de editor als input.
+    let continuation_input = inputs
+        .iter()
+        .any(|b| Path::new(&b.path).file_name() == Some(std::ffi::OsStr::new(".enrichment.yaml")));
+    let source_yaml = inputs
         .into_iter()
         .find(|b| b.path == payload.yaml_path)
         .map(|b| b.content);
@@ -2021,6 +2034,7 @@ pub async fn finish_enrich_task_job(
     let mut tx = pool.begin().await?;
     crate::tasks::delete_blobs_for_job(&mut *tx, job.id).await?;
     let mut proposal_yaml: Option<String> = None;
+    let mut result_blobs: Vec<(String, String)> = Vec::new();
     for abs in written_files {
         let rel = abs
             .strip_prefix(workdir)
@@ -2044,6 +2058,7 @@ pub async fn finish_enrich_task_job(
             &content,
         )
         .await?;
+        result_blobs.push((rel, content));
     }
     job_queue::complete_job(&mut *tx, job.id, result_json).await?;
     // Een nieuwe wet (geketend vanuit law_convert) krijgt een eigen titel en
@@ -2078,17 +2093,64 @@ pub async fn finish_enrich_task_job(
         }
     };
 
-    match per_article {
-        Some(articles) if !articles.is_empty() => {
-            tracing::info!(
-                job_id = %job.id,
-                law_id = %payload.law_id,
-                articles = articles.len(),
-                "review-taken per artikel aangemaakt"
-            );
-            for number in articles {
-                let mut article_payload = task_payload.clone();
-                article_payload["article"] = serde_json::json!(number);
+    // Binnen een reeks vensters van een bestaande wet is die terugval er niet,
+    // ook niet in het laatste venster: het voorstel bevat dan ook de nog niet
+    // beoordeelde (of afgewezen) artikelen van eerdere vensters, en één taak
+    // voor het geheel zou die ongezien terugzetten. Alleen een wet die in één
+    // venster past, diffte tegen de echte traject-snapshot. De transactie rolt
+    // terug en de aanroeper probeert het venster opnieuw.
+    if per_article.is_none() && !new_law && (!law_complete || continuation_input) {
+        return Err(PipelineError::Enrich(
+            "voorstel van dit venster is niet per artikel te vergelijken met de bron".into(),
+        ));
+    }
+
+    // Een nieuwe wet wordt als geheel aangemaakt: de tussenvensters leveren
+    // nog geen taak op, het laatste venster de hele wet als één voorstel.
+    if new_law && !law_complete {
+        tracing::info!(
+            job_id = %job.id,
+            law_id = %payload.law_id,
+            "nieuwe wet nog niet af; de review-taak volgt na het laatste venster"
+        );
+    } else {
+        match per_article {
+            // Een lege lijst betekent: de proposal verschilt nergens van de
+            // bron. Dan valt er niets te beoordelen en komt er geen taak; de
+            // job is klaar (bij een venster: het volgende venster volgt).
+            Some(articles) => {
+                tracing::info!(
+                    job_id = %job.id,
+                    law_id = %payload.law_id,
+                    articles = articles.len(),
+                    "review-taken per gewijzigd artikel (0 = geen wijziging, geen taak)"
+                );
+                for number in articles {
+                    let mut article_payload = task_payload.clone();
+                    article_payload["article"] = serde_json::json!(number);
+                    crate::tasks::create_task(
+                        &mut *tx,
+                        crate::tasks::NewTask {
+                            task_type: crate::tasks::TaskType::JobReview,
+                            assignee_account_id: payload.requested_by,
+                            traject_id: payload.traject_id,
+                            job_id: Some(job.id),
+                            title: format!(
+                                "Verrijking beoordelen: {} artikel {}",
+                                payload.law_id, number
+                            ),
+                            payload: Some(article_payload),
+                        },
+                    )
+                    .await?;
+                }
+            }
+            None => {
+                let title = if new_law {
+                    format!("Nieuw regelwerk beoordelen: {}", payload.law_id)
+                } else {
+                    format!("Verrijking beoordelen: {}", payload.law_id)
+                };
                 crate::tasks::create_task(
                     &mut *tx,
                     crate::tasks::NewTask {
@@ -2096,47 +2158,70 @@ pub async fn finish_enrich_task_job(
                         assignee_account_id: payload.requested_by,
                         traject_id: payload.traject_id,
                         job_id: Some(job.id),
-                        title: format!(
-                            "Verrijking beoordelen: {} artikel {}",
-                            payload.law_id, number
-                        ),
-                        payload: Some(article_payload),
+                        title,
+                        payload: Some(task_payload),
                     },
                 )
                 .await?;
             }
         }
-        // Leeg betekent: de proposal verschilt nergens van de bron. Dan valt er
-        // niets te beoordelen en hoort er geen taak te komen; de job is klaar.
-        Some(_) => {
-            tracing::info!(
+    }
+
+    let continuation = if law_complete {
+        None
+    } else {
+        // Na `complete_job` in dezelfde transactie, zodat
+        // `idx_unique_active_enrich_job` deze job niet meer als actief ziet
+        // (zelfde patroon als `complete_enrich_success_tx`).
+        let next_json = serde_json::to_value(&payload).map_err(|e| {
+            PipelineError::Enrich(format!("serialize continuation enrich payload: {e}"))
+        })?;
+        let mut req = CreateJobRequest::new(JobType::Enrich, &job.law_id)
+            .with_priority(Priority::new(job.priority))
+            .with_payload(next_json)
+            .with_max_attempts(job.max_attempts);
+        if let Some(ref traject_ref) = payload.traject_ref {
+            req = req.with_traject_ref(traject_ref.clone());
+        }
+        let created = job_queue::create_enrich_job_if_not_exists(&mut *tx, req).await?;
+        match &created {
+            Some(next) => {
+                // Alleen de wet en zijn sidecars (de cursor): wat de agent
+                // verder schreef, zoals `features/*.feature` met een vrij
+                // gekozen naam, kan bij het materialiseren stranden.
+                let carried = result_blobs.iter().filter(|(rel, _)| {
+                    rel == &payload.yaml_path
+                        || Path::new(rel)
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .is_some_and(|n| n.starts_with('.'))
+                });
+                for (rel, content) in carried {
+                    crate::tasks::insert_blob(
+                        &mut *tx,
+                        next.id,
+                        crate::tasks::BlobKind::Input,
+                        rel,
+                        content,
+                    )
+                    .await?;
+                }
+            }
+            // In de praktijk onbereikbaar: zolang deze job `processing` was,
+            // weigerde de index elke tweede actieve verrijking van deze wet in
+            // dit traject, dus na `complete_job` staat er niets om mee te
+            // botsen. Mocht het toch gebeuren, dan stopt de reeks hier.
+            None => tracing::warn!(
                 job_id = %job.id,
                 law_id = %payload.law_id,
-                "verrijking leverde geen wijziging op, geen review-taak"
-            );
+                "vervolgjob niet aangemaakt: er loopt al een verrijking voor deze wet"
+            ),
         }
-        None => {
-            let title = if new_law {
-                format!("Nieuw regelwerk beoordelen: {}", payload.law_id)
-            } else {
-                format!("Verrijking beoordelen: {}", payload.law_id)
-            };
-            crate::tasks::create_task(
-                &mut *tx,
-                crate::tasks::NewTask {
-                    task_type: crate::tasks::TaskType::JobReview,
-                    assignee_account_id: payload.requested_by,
-                    traject_id: payload.traject_id,
-                    job_id: Some(job.id),
-                    title,
-                    payload: Some(task_payload),
-                },
-            )
-            .await?;
-        }
-    }
+        created
+    };
+
     tx.commit().await?;
-    Ok(())
+    Ok(continuation)
 }
 
 /// Taak-flow succes voor document-convert: sla de gegenereerde markdown op
@@ -2288,6 +2373,15 @@ pub async fn fail_enrich_task_job_with_retry(
     Ok(())
 }
 
+/// Of de taak-flow na deze run klaar is met de wet, of er een vervolgjob moet
+/// komen.
+///
+/// Zonder vertaalstap (`ENRICH_STEPS` zonder `window`) schuift de cursor niet
+/// op; een vervolgjob zou hetzelfde venster dan eindeloos herhalen.
+fn task_walk_complete(law_complete: bool, steps: crate::enrich::RunSteps) -> bool {
+    law_complete || !steps.window
+}
+
 /// Taak-flow-verwerking van een enrich-job: werkdirectory uit input-blobs,
 /// enrichment draaien, resultaat als blobs + taak terugschrijven. Raakt
 /// bewust geen law_entries, untranslatables of vervolg-harvests aan: dit is
@@ -2336,10 +2430,10 @@ async fn process_enrich_task_job(
 
     let mut bounded_config = effective_config.clone();
     bound_llm_timeout(&mut bounded_config, job_timeout);
-    // Taak-flow verrijkt altijd de hele wet in één sessie: het resultaat wordt
-    // een review-taak (blobs), niet een push naar de enrich-branch, dus er is
-    // geen cursor-persistentie of continuation-lus om op te bouwen.
-    bounded_config.max_articles_per_run = 0;
+    // De taak-flow loopt in vensters, net als het corpus-pad: een grote wet in
+    // één sessie haalt de timeout per agent-call niet (de Kieswet, 593
+    // artikelen). De cursor reist mee in de `.enrichment.yaml` die
+    // `finish_enrich_task_job` als input-blob aan de vervolgjob doorgeeft.
 
     let outcome = tokio::time::timeout(
         job_timeout,
@@ -2393,12 +2487,34 @@ async fn process_enrich_task_job(
                     None
                 }
             };
-            if let Err(e) =
-                finish_enrich_task_job(pool, job, workdir.path(), &written_files, result_json).await
+            let law_complete = task_walk_complete(result.law_complete, bounded_config.steps);
+            match finish_enrich_task_job(
+                pool,
+                job,
+                workdir.path(),
+                &written_files,
+                law_complete,
+                result_json,
+            )
+            .await
             {
-                // Persist-fout is retryable (DB-hik).
-                tracing::error!(job_id = %job.id, error = %e, "taak-resultaat wegschrijven mislukt");
-                fail_enrich_task_job_with_retry(pool, job, &e.to_string()).await?;
+                Ok(Some(continuation)) => {
+                    tracing::info!(
+                        job_id = %job.id,
+                        continuation_job_id = %continuation.id,
+                        law_id = %job.law_id,
+                        enrich_cursor = result.enrich_cursor,
+                        "wet nog niet af na dit venster; vervolgjob aangemaakt"
+                    );
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    // Een DB-hik bij het wegschrijven, of een voorstel dat niet per
+                    // artikel te vergelijken is; de fout noemt de oorzaak. Retry
+                    // zolang er pogingen over zijn.
+                    tracing::error!(job_id = %job.id, error = %e, "taak-resultaat afronden mislukt");
+                    fail_enrich_task_job_with_retry(pool, job, &e.to_string()).await?;
+                }
             }
             Ok(JobOutcome::Processed)
         }
@@ -3808,6 +3924,20 @@ articles:
         let root = HarvestPayload::for_law("BWBR0018451", None);
         let root_json = serde_json::to_string(&root).unwrap();
         assert!(!root_json.contains("depth"));
+    }
+
+    #[test]
+    fn task_walk_stops_only_when_the_law_is_done_or_nothing_walks() {
+        use crate::enrich::RunSteps;
+        let walking = RunSteps::all();
+        let reconcile_only = RunSteps {
+            window: false,
+            reconcile: true,
+        };
+        assert!(!task_walk_complete(false, walking));
+        assert!(task_walk_complete(true, walking));
+        assert!(task_walk_complete(false, reconcile_only));
+        assert!(task_walk_complete(true, reconcile_only));
     }
 }
 
