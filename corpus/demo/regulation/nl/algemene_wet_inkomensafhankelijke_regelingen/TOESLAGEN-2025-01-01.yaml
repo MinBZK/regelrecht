@@ -49,12 +49,14 @@ articles:
         parameters:
           - name: bsn
             type: string
-            nullable: true
             required: true
-            description: Het burgerservicenummer van de aanvrager (art. 13).
+            description: >-
+              Het burgerservicenummer van de aanvrager. Modelkeuze: de aanvraag
+              identificeert de aanvrager met zijn BSN; Toeslagen gebruikt
+              daarvoor het sociaal-fiscaalnummer (art. 13).
             origin:
               waarde: BELANGHEBBENDE
-              grondslag: algemene_wet_inkomensafhankelijke_regelingen#15 lid 1
+              grondslag: algemene_wet_inkomensafhankelijke_regelingen#13
           - name: aangevraagd_berekeningsjaar
             type: number
             required: true
@@ -83,8 +85,8 @@ articles:
           - name: aanvraag_binnen_termijn
             type: boolean
             description: >-
-              Lid 1: de aanvraag is ingediend vóór 1 april van het jaar volgend
-              op het berekeningsjaar.
+              Lid 1: de aanvraag is ingediend vóór 1 september van het jaar
+              volgend op het berekeningsjaar.
         actions:
           - output: aanvraag_binnen_termijn
             value:
@@ -97,5 +99,5 @@ articles:
                   values:
                     - $aangevraagd_berekeningsjaar
                     - 1
-                month: 4
+                month: 9
                 day: 1

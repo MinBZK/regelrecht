@@ -124,6 +124,20 @@ fn declared_parameters(article: &Article) -> Vec<Parameter> {
         .unwrap_or_default()
 }
 
+/// The names of the parameters the article `reference` declares, in the
+/// version that applies on `day`.
+pub fn parameter_names(
+    service: &LawExecutionService,
+    reference: &str,
+    day: NaiveDate,
+) -> Result<Vec<String>> {
+    let (_, article) = article_on(service, reference, day)?;
+    Ok(declared_parameters(article)
+        .into_iter()
+        .map(|p| p.name)
+        .collect())
+}
+
 /// Derive the shape of `event`, which `establishes` establishes, from the
 /// law as it applies on `day`.
 pub fn derive(

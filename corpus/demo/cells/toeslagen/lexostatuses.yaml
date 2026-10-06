@@ -15,7 +15,7 @@ lexostatus_definitions:
       derivations:
         bsn:
           field: bsn
-          legal_basis: [algemene_wet_inkomensafhankelijke_regelingen#15 lid 1]
+          legal_basis: [algemene_wet_inkomensafhankelijke_regelingen#13]
         aangevraagd_berekeningsjaar:
           field: aangevraagd_berekeningsjaar
           legal_basis: [algemene_wet_inkomensafhankelijke_regelingen#15 lid 1]
@@ -23,6 +23,3 @@ lexostatus_definitions:
         datum_ontvangst:
           moment: effective_at
           legal_basis: [algemene_wet_bestuursrecht#4:13 lid 1]
-        mede_ondertekend_door_partner:
-          filled: ondertekening_partner
-          legal_basis: [algemene_wet_inkomensafhankelijke_regelingen#15 lid 2]

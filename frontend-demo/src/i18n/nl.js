@@ -285,6 +285,9 @@ export default {
   'zaak.chronicle.application': 'Aanvraag, gevestigd door {law}',
   'zaak.chronicle.decision': 'Besluit, gevestigd door {law}',
   'zaak.chronicle.effective_at': 'Moment dat telt',
+  'zaak.chronicle.deviates': 'Het besluit wijkt af van wat de wet berekent. De kroniek legt alleen vast wat de wet vestigt, dus dit besluit staat er niet in.',
+  'zaak.chronicle.undecided': 'De wet kon nog niet beslissen, want er ontbreken gegevens. Dit besluit staat daarom niet in de kroniek.',
+  'zaak.chronicle.refusal': 'Het artikel vestigt een toekenning, geen weigering. Deze weigering staat daarom niet in de kroniek.',
 
   // ---- portaal: kop en context --------------------------------------------
   'zaak.portaal.heading.business': 'Welke regelingen gelden voor {name}?',

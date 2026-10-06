@@ -176,6 +176,7 @@ fn a_citizen_applies_and_toeslagen_records_the_application() {
         gram.effective_at_legal_basis,
         ["algemene_wet_bestuursrecht#4:13 lid 1"]
     );
+    assert_eq!(gram.establishes, format!("{AWIR}#15"));
     assert_eq!(gram.legal_basis[0], format!("{AWIR}#15"));
     // The fields are what the executed law asks of the applicant: Awir 15
     // and Awb 4:2 lid 1. The decision requested (4:2 lid 1 onder c) is the
@@ -237,7 +238,6 @@ fn toeslagen_decides_on_the_application_and_records_the_decision() {
             "bsn": BSN,
             "aangevraagd_berekeningsjaar": 2025,
             "datum_ontvangst": "2025-03-04",
-            "mede_ondertekend_door_partner": false,
         })
     );
 
@@ -262,20 +262,54 @@ fn toeslagen_decides_on_the_application_and_records_the_decision() {
     let decided = at("2025-04-15T09:00:00+02:00");
     let mut service = service;
     register_sources(&mut service);
-    let inputs = BTreeMap::from([(
-        "bsn".to_string(),
-        Input {
-            value: read["bsn"].clone(),
-            provenance: json!({"source": "own", "lexostatus": "aanvraag"}),
-        },
-    )]);
+    // The decision reads its parameters from the lexostatus its event
+    // `reads`, kept to what art. 2 declares: the bsn, not the year or the
+    // day of receipt. `decision_inputs` shows what `decide` will read.
+    let inputs = cell
+        .decision_inputs(
+            &service,
+            "zorgtoeslag_toegekend",
+            &application.id,
+            decided.date_naive(),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(
+        inputs,
+        BTreeMap::from([(
+            "bsn".to_string(),
+            Input {
+                value: read["bsn"].clone(),
+                provenance: json!({"source": "lexostatus", "lexostatus": "aanvraag"}),
+            },
+        )])
+    );
     let refers_to = BTreeMap::from([("on_application".to_string(), application.id.clone())]);
+
+    // What the cell reads from the case cannot be given as well.
+    let e = cell
+        .decide(
+            &service,
+            "zorgtoeslag_toegekend",
+            refers_to.clone(),
+            BTreeMap::from([(
+                "bsn".to_string(),
+                Input {
+                    value: json!("999990019"),
+                    provenance: json!({"source": "caller"}),
+                },
+            )]),
+            decided,
+        )
+        .unwrap_err();
+    assert!(matches!(e, Error::Refused(_)), "{e}");
+
+    // The cell reads the application `refers_to` names itself.
     let decision = cell
         .decide(
             &service,
             "zorgtoeslag_toegekend",
             refers_to,
-            inputs,
+            BTreeMap::new(),
             decided,
         )
         .unwrap_or_else(|e| panic!("{e}"));
@@ -289,7 +323,15 @@ fn toeslagen_decides_on_the_application_and_records_the_decision() {
         Some("2025-01-01")
     );
     assert_eq!(decision.refers_to["on_application"], application.id);
-    assert_eq!(decision.inputs["bsn"]["provenance"]["source"], "own");
+    assert_eq!(decision.establishes, format!("{ZORGTOESLAG}#2"));
+    assert_eq!(
+        decision.inputs,
+        inputs
+            .into_iter()
+            .map(|(k, i)| (k, serde_json::to_value(i).unwrap()))
+            .collect::<BTreeMap<_, _>>()
+    );
+    assert_eq!(decision.inputs["bsn"]["provenance"]["source"], "lexostatus");
 
     // The fields are the outputs of art. 2, and they are what the engine
     // computes for this citizen without any cell: the existing calculation.
@@ -377,6 +419,80 @@ fn a_lexostatus_reading_an_unknown_field_is_refused() {
     };
     assert!(matches!(e, Error::Setup(_)), "{e}");
     assert!(e.to_string().contains("'bsnn'"), "{e}");
+}
+
+/// An event that reads a lexostatus the cell does not define is refused
+/// when the configuration is read.
+#[test]
+fn an_event_reading_an_unknown_lexostatus_is_refused() {
+    let fixture = cell_yaml().parent().unwrap().to_path_buf();
+    let read = |f: &str| std::fs::read_to_string(fixture.join(f)).unwrap();
+    let decisions =
+        read("streams/zorgtoeslag_besluiten.yaml").replace("reads: aanvraag", "reads: aanvragen");
+    let e = CellConfig::from_yaml(
+        &read("cell.yaml"),
+        &[&read("streams/zorgtoeslag_aanvragen.yaml"), &decisions],
+        Some(&read("lexostatuses.yaml")),
+    )
+    .unwrap_err();
+    assert!(matches!(e, Error::Setup(_)), "{e}");
+    assert!(e.to_string().contains("'aanvragen'"), "{e}");
+}
+
+/// Awir 15 lid 1: an application for 2025 can be made until 1 September
+/// 2026.
+#[test]
+fn an_application_is_in_time_until_the_first_of_september() {
+    let service = regulations();
+    for (received, in_time) in [("2026-08-31", true), ("2026-09-01", false)] {
+        let result = service
+            .evaluate_law_output(
+                AWIR,
+                "aanvraag_binnen_termijn",
+                BTreeMap::from([
+                    ("bsn".to_string(), Value::String(BSN.into())),
+                    ("aangevraagd_berekeningsjaar".to_string(), Value::Int(2025)),
+                    (
+                        "datum_ontvangst".to_string(),
+                        Value::String(received.into()),
+                    ),
+                ]),
+                "2025-03-04",
+            )
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("aanvraag_binnen_termijn"),
+            Some(&Value::Bool(in_time)),
+            "received {received}"
+        );
+    }
+}
+
+/// The lexostatus a decision reads takes the case's root and nothing else:
+/// the cell passes only that.
+#[test]
+fn an_event_reading_a_lexostatus_without_root_is_refused() {
+    let fixture = cell_yaml().parent().unwrap().to_path_buf();
+    let read = |f: &str| std::fs::read_to_string(fixture.join(f)).unwrap();
+    let streams = [
+        read("streams/zorgtoeslag_aanvragen.yaml"),
+        read("streams/zorgtoeslag_besluiten.yaml"),
+    ];
+    let streams = [streams[0].as_str(), streams[1].as_str()];
+    for (from, to) in [
+        ("inputs: [root]", "inputs: [root, jaar]"),
+        ("root: $root}", "root: $jaar}"),
+    ] {
+        let lexostatuses = read("lexostatuses.yaml");
+        assert!(lexostatuses.contains(from), "{from}");
+        let e = CellConfig::from_yaml(
+            &read("cell.yaml"),
+            &streams,
+            Some(&lexostatuses.replace(from, to)),
+        )
+        .unwrap_err();
+        assert!(matches!(e, Error::Setup(_)), "{to}: {e}");
+    }
 }
 
 /// In the browser the chronicle lives in memory: what the page kept of an

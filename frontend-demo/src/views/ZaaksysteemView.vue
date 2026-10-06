@@ -69,12 +69,21 @@ const sheetView = ref('zaak');
 watch(() => selected.value?.id, () => { sheetView.value = 'zaak'; });
 const caseGrams = computed(() => {
   void dataVersion.value;
-  return demo.gramsOfCase(selected.value).map((g) => ({
-    ...g,
-    rows: Object.entries(g.fields ?? {}),
-    basis: (g.effective_at_legal_basis ?? []).map((ref) => provisionLabel(corpus.value, ref)).join(' · '),
-    establishedBy: g.legal_basis?.[0] ? provisionLabel(corpus.value, g.legal_basis[0]) : '',
-  }));
+  return demo.gramsOfCase(selected.value).map((g) => {
+    // Hoe een waarde te lezen, zegt de wet: het veld uit de vorm van de
+    // gebeurtenis, en voor een besluit de declaratie in het besluitartikel.
+    const fields = demo.gramFields(g);
+    const decisionDoc = g.regulation ? corpus.value.lawById(g.regulation)?.doc : null;
+    return {
+      ...g,
+      rows: Object.entries(g.fields ?? {}).map(([name, value]) => ({
+        name,
+        text: fieldText(value, fields[name], decisionDoc ? fieldSpec(decisionDoc, name) : null, corpus.value),
+      })),
+      basis: (g.effective_at_legal_basis ?? []).map((ref) => provisionLabel(corpus.value, ref)).join(' · '),
+      establishedBy: g.establishes ? provisionLabel(corpus.value, g.establishes) : '',
+    };
+  });
 });
 
 // The case opens in a sheet over the board, not in an inspector column beside
@@ -304,6 +313,7 @@ function claimLawName(cl) {
           <template v-if="sheetView === 'kroniek'">
             <nldd-rich-text spacing="tight"><p><small>{{ t('zaak.chronicle.hint') }}</small></p></nldd-rich-text>
             <nldd-banner v-if="selected.chronicleError" variant="warning" :text="t('zaak.chronicle.failed')" :supporting-text="selected.chronicleError"></nldd-banner>
+            <nldd-banner v-if="selected.chronicleNoteKey" variant="neutral" :text="t(selected.chronicleNoteKey)"></nldd-banner>
             <nldd-container v-for="g in caseGrams" :key="g.id" gap="4">
               <nldd-title size="5">
                 <h3>{{ humanize(g.name) }}</h3>
@@ -314,9 +324,9 @@ function claimLawName(cl) {
                   <nldd-text-cell size="sm" color="secondary" :text="t('zaak.chronicle.effective_at')" :supporting-text="g.basis"></nldd-text-cell>
                   <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="formatDateTime(g.effective_at)"></nldd-text-cell>
                 </nldd-list-item>
-                <nldd-list-item v-for="[name, value] in g.rows" :key="name" size="sm">
-                  <nldd-text-cell size="sm" :text="humanize(name)"></nldd-text-cell>
-                  <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="fieldText(name, value, fieldSpec(corpus.lawById(g.regulation)?.doc, name), corpus)"></nldd-text-cell>
+                <nldd-list-item v-for="row in g.rows" :key="row.name" size="sm">
+                  <nldd-text-cell size="sm" :text="humanize(row.name)"></nldd-text-cell>
+                  <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="row.text"></nldd-text-cell>
                 </nldd-list-item>
               </nldd-list>
             </nldd-container>

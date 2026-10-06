@@ -34,6 +34,8 @@ pub struct Gram {
     pub name: String,
     pub chronicle: String,
     pub recording_actor: String,
+    /// The article that establishes the fact (`<regulation>#<article>`).
+    pub establishes: String,
     /// The article that establishes the fact first, then the provisions the
     /// fields rest on.
     pub legal_basis: Vec<String>,

@@ -506,29 +506,6 @@ articles:
             origin:
               waarde: BELANGHEBBENDE
               grondslag: algemene_wet_bestuursrecht#4:2 lid 1
-          - name: nodig_voor_de_beslissing
-            type: boolean
-            required: false
-          - name: redelijkerwijs_te_verkrijgen_door_aanvrager
-            type: boolean
-            required: false
-        output:
-          - name: aanvullende_gegevens_vereist
-            type: boolean
-            description: >-
-              Lid 2: de aanvrager verschaft ook wat voor de beslissing nodig is en
-              wat hij redelijkerwijs kan krijgen.
-        actions:
-          - output: aanvullende_gegevens_vereist
-            value:
-              operation: AND
-              conditions:
-                - operation: EQUALS
-                  subject: $nodig_voor_de_beslissing
-                  value: true
-                - operation: EQUALS
-                  subject: $redelijkerwijs_te_verkrijgen_door_aanvrager
-                  value: true
 
   - number: '4:13'
     text: |-

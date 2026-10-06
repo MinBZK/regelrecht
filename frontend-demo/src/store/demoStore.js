@@ -24,7 +24,7 @@ import { verdictOf } from '../data/format.js';
 import { driftOf } from '../data/caseDrift.js';
 import { isEntrypointFor, subjectOf } from '../data/entrypoints.js';
 import { assignClaimOwnership } from '../data/claimOwnership.js';
-import { addressOf, applicationValues, eventsForLaw, gramsOfCase as gramsFor, momentOn } from '../data/chronolex.js';
+import { applicationValues, eventsForLaw, gramsOfCase as gramsFor, momentOn } from '../data/chronolex.js';
 import { activeLocale, t } from '../i18n/index.js';
 
 const STORAGE_KEY = 'rr-demo-state-v1';
@@ -277,13 +277,16 @@ function applicationShape(lawEntry) {
   }
 }
 
-/** Wat de persona op de aanvraag om deze wet invult. */
+/**
+ * Wat de persona op de aanvraag om deze wet invult: de waarden uit het
+ * profiel (`application` in demo-config.yaml), met de BSN van het onderwerp
+ * en de peildatum ingevuld.
+ */
 function applicationValuesFor(lawEntry, shape, params = personaParams()) {
-  return applicationValues(shape, {
+  return applicationValues(shape, profile.value?.application, {
     bsn: params.bsn,
-    name: persona.value?.name,
-    address: addressOf(persona.value),
-    date: state.referenceDate,
+    reference_date: state.referenceDate,
+    reference_year: Number(state.referenceDate.slice(0, 4)),
   });
 }
 
@@ -311,36 +314,74 @@ function recordApplication(c, lawEntry, params) {
 }
 
 /**
- * Leg het besluit op de aanvraag vast: de cel leest de aanvraag terug uit haar
- * kroniek (de lexostatus `aanvraag`) en voert het besluitartikel uit met wat
- * dat artikel als parameter vraagt.
+ * Leg het besluit op de aanvraag vast: de cel leest wat het besluitartikel
+ * vraagt terug uit haar kroniek (`inputsFor`, de lexostatus die de
+ * gebeurtenis leest) en voert dat artikel uit.
+ *
+ * De kroniek zegt niets anders dan het besluit. Kan de wet nog niet
+ * beslissen, wijkt de behandelaar af van wat de wet berekent, of is het
+ * besluit een weigering waar de wet een toekenning vestigt, dan komt er geen
+ * gram; de zaak zegt waarom.
  */
 function recordDecision(c) {
   if (!c.applicationGramId || c.decisionGramId) return;
   const lawEntry = corpus.value?.lawById(c.lawId);
   const chrono = chronolexFor(lawEntry);
   if (!chrono) return;
+  c.chronicleError = null;
+  c.chronicleNoteKey = null;
   try {
-    const read = chrono.wasmCell.read('aanvraag', { root: c.applicationGramId });
-    const number = chrono.decision.establishes.split('#')[1];
-    const article = lawEntry.doc.articles.find((a) => String(a.number) === number);
-    const asked = (article?.machine_readable?.execution?.parameters ?? []).map((p) => p.name);
-    const inputs = Object.fromEntries(
-      asked
-        .filter((name) => name in read)
-        .map((name) => [name, { value: read[name], provenance: { source: 'own', lexostatus: 'aanvraag' } }]),
-    );
+    // Wat de cel bij het besluit zal teruglezen (alleen kijken), en wat de
+    // wet daarop beslist, vóór de cel het vastlegt.
+    const inputs = chrono.wasmCell.inputsFor(engine.value, chrono.decision.name, c.applicationGramId, state.referenceDate);
+    const computed = evaluate(lawEntry, Object.fromEntries(Object.entries(inputs).map(([k, i]) => [k, i.value])));
+    if (!computed.ok) throw new Error(computed.error);
+    const verdict = verdictOf(computed.outputs);
+    const lawGrants = verdict === null || verdict === true;
+    if (verdict === 'unknown') {
+      c.chronicleNoteKey = 'zaak.chronicle.undecided';
+      return;
+    }
+    if (c.approved !== lawGrants) {
+      c.chronicleNoteKey = 'zaak.chronicle.deviates';
+      return;
+    }
+    const shape = chrono.wasmCell.shape(engine.value, chrono.decision.name, state.referenceDate);
+    if (!c.approved && shape.decision_type === 'TOEKENNING') {
+      c.chronicleNoteKey = 'zaak.chronicle.refusal';
+      return;
+    }
+    // De cel leest de aanvraag waarnaar het besluit verwijst zelf terug. Hoe
+    // die verwijzing heet, zegt de wet (de vorm van het besluit).
+    const required = Object.entries(shape.refers_to ?? {}).filter(([, r]) => r.required);
+    if (required.length !== 1) throw new Error(`${chrono.decision.name}: geen eenduidige verwijzing naar de aanvraag`);
     const gram = chrono.wasmCell.decide(
       engine.value,
       chrono.decision.name,
-      { on_application: c.applicationGramId },
-      inputs,
+      { [required[0][0]]: c.applicationGramId },
       momentOn(state.referenceDate),
     );
     c.decisionGramId = gram.id;
     syncGrams();
   } catch (e) {
     c.chronicleError = String(e?.message ?? e);
+  }
+}
+
+/**
+ * De velden van de gebeurtenis van een gram zoals de wet ze geeft op de dag
+ * dat het gram telt, per naam (`type`, `fixed`, ...). Leeg als geen cel de
+ * gebeurtenis vastlegt.
+ */
+function gramFields(gram) {
+  const cell = (corpus.value?.cells ?? []).find((x) => x.events.some((e) => e.name === gram?.name));
+  const wasmCell = cell && cells.value[cell.id];
+  if (!wasmCell) return {};
+  try {
+    const shape = wasmCell.shape(engine.value, gram.name, gram.effective_at.slice(0, 10));
+    return Object.fromEntries(shape.fields.map((f) => [f.name, f]));
+  } catch {
+    return {};
   }
 }
 
@@ -802,9 +843,20 @@ function resubmitCase(caseId, evaluation, params = personaParams()) {
   c.stageState = null;
   c.lifecycleInputs = {};
   c.publishedAt = null;
+  // In de kroniek is dit een nieuwe aanvraag, met straks een eigen besluit
+  // erop; de grammen van de vorige blijven in de kroniek staan.
+  c.applicationGramId = null;
+  c.decisionGramId = null;
+  c.chronicleNoteKey = null;
+  c.chronicleError = null;
+  const lawEntry = corpus.value?.lawById(c.lawId);
+  if (lawEntry) recordApplication(c, lawEntry, params);
   const opnieuw = isoDate(nowIso());
   advanceLifecycle(c, { aanvraag_datum: opnieuw, beslistermijn_start: opnieuw });
-  if (!needsReview) advanceLifecycle(c, { besluit_datum: opnieuw });
+  if (!needsReview) {
+    advanceLifecycle(c, { besluit_datum: opnieuw });
+    recordDecision(c);
+  }
   c.status = statusOf(c);
   announceIfAutomatic(c);
   reregister();
@@ -1095,6 +1147,7 @@ export function useDemo() {
     chronolexFor,
     applicationShape,
     applicationValuesFor,
+    gramFields,
     gramsOfCase,
   };
 }

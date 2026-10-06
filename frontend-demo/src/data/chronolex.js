@@ -32,35 +32,22 @@ export function eventsForLaw(cells, lawDoc) {
 }
 
 /**
- * Wat de persona op de aanvraag invult, per veld dat de wet vraagt. Alleen
- * wat de demo weet: een veld zonder waarde blijft weg (een onvolledige
- * aanvraag is nog steeds een aanvraag, Awb 4:5). Wat de cel zelf invult (de
- * gevraagde beschikking) vult de persona niet in.
+ * Wat de persona op de aanvraag invult, per veld dat de wet vraagt. Welke
+ * waarde bij welk veld hoort, staat in de configuratie van het profiel
+ * (`application` in demo-config.yaml); een waarde `$<naam>` vult de demo in
+ * uit `tokens` (`$bsn`, `$reference_date`, `$reference_year`). Een veld zonder
+ * waarde blijft weg (een onvolledige aanvraag is nog steeds een aanvraag, Awb
+ * 4:5). Wat de cel zelf invult (een veld met `fixed`) vult de persona niet in.
  */
-export function applicationValues(shape, { bsn, name, address, date }) {
-  const known = {
-    bsn,
-    aangevraagd_berekeningsjaar: date ? Number(date.slice(0, 4)) : undefined,
-    naam_aanvrager: name,
-    adres_aanvrager: address,
-    dagtekening: date,
-    ondertekening: name,
-  };
+export function applicationValues(shape, configured, tokens = {}) {
+  const resolve = (v) => (typeof v === 'string' && v.startsWith('$') ? tokens[v.slice(1)] : v);
   const values = {};
-  for (const field of shape.fields) {
+  for (const field of shape?.fields ?? []) {
     if (field.fixed != null) continue;
-    const value = known[field.name];
+    const value = resolve(configured?.[field.name]);
     if (value !== undefined && value !== null && value !== '') values[field.name] = value;
   }
   return values;
-}
-
-/** Het woonadres van een persona uit de BRP-gegevens, als één regel. */
-export function addressOf(persona) {
-  const rows = persona?.sources?.RvIG?.verblijfplaats ?? [];
-  const home = rows.find((r) => r.type === 'WOONADRES') ?? rows[0];
-  if (!home) return undefined;
-  return `${home.straat} ${home.huisnummer}, ${home.postcode} ${home.woonplaats}`;
 }
 
 /**
@@ -96,12 +83,15 @@ export function provisionLabel(corpus, reference) {
 }
 
 /**
- * De waarde van een veld van een gram zoals een mens haar leest. Een jaartal
- * (een veld dat op `jaar` eindigt) blijft een jaartal: "2026", niet "2.026".
+ * De waarde van een veld van een gram zoals een mens haar leest, naar wat de
+ * wet over het veld zegt. `field` is het veld uit de vorm van de gebeurtenis
+ * (WasmCell.shape: `type`, `fixed`), `spec` de declaratie in de wet die het
+ * besluit neemt. Een veld dat de cel vastzet (de gevraagde beschikking) is
+ * een bepaling: bij naam. Een geheel getal zonder eenheid blijft een getal
+ * zonder groepering ("2026", niet "2.026").
  */
-export function fieldText(name, value, spec = null, corpus = null) {
-  if (Number.isInteger(value) && /jaar$/.test(name)) return String(value);
-  // Een bepaling (de gevraagde beschikking) bij naam: "Zorgtoeslag, art. 2".
-  if (typeof value === 'string' && /^[a-z][a-z0-9_]*#\S/.test(value)) return provisionLabel(corpus, value);
+export function fieldText(value, field = null, spec = null, corpus = null) {
+  if (field?.fixed != null) return provisionLabel(corpus, value);
+  if (field?.type === 'number' && !spec?.type_spec?.unit && Number.isInteger(value)) return String(value);
   return formatValue(value, spec);
 }

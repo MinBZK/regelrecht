@@ -283,6 +283,9 @@ export default {
   'zaak.chronicle.application': 'Application, established by {law}',
   'zaak.chronicle.decision': 'Decision, established by {law}',
   'zaak.chronicle.effective_at': 'Moment that counts',
+  'zaak.chronicle.deviates': 'The decision departs from what the law computes. The chronicle only records what the law establishes, so this decision is not in it.',
+  'zaak.chronicle.undecided': 'The law could not decide yet, because facts are missing. This decision is therefore not in the chronicle.',
+  'zaak.chronicle.refusal': 'The article establishes a grant, not a refusal. This refusal is therefore not in the chronicle.',
 
   // ---- portal: heading and context ----------------------------------------
   'zaak.portaal.heading.business': 'Which schemes apply to {name}?',

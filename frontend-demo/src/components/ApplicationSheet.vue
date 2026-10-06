@@ -63,6 +63,7 @@ const lawApplication = computed(() => {
   const values = demo.applicationValuesFor(props.law, shape);
   return shape.fields.map((f) => ({
     name: f.name,
+    field: f,
     value: f.fixed ?? values[f.name],
     byCell: f.fixed != null,
     basis: f.legal_basis.map((ref) => provisionLabel(corpus.value, ref)).join(' · '),
@@ -406,7 +407,7 @@ function claimStatus(cl) {
                 <nldd-list appearance="box-tinted" :accessible-label="t('sheet.application.law_asks.title')">
                   <nldd-list-item v-for="row in lawApplication" :key="row.name" size="sm">
                     <nldd-text-cell size="sm" :text="humanize(row.name)" :supporting-text="row.basis"></nldd-text-cell>
-                    <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :color="row.value == null ? 'secondary' : 'content'" :text="row.value == null ? t('sheet.application.law_asks.empty') : fieldText(row.name, row.value, null, corpus)" :supporting-text="row.byCell ? t('sheet.application.law_asks.by_cell') : ''"></nldd-text-cell>
+                    <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :color="row.value == null ? 'secondary' : 'content'" :text="row.value == null ? t('sheet.application.law_asks.empty') : fieldText(row.value, row.field, null, corpus)" :supporting-text="row.byCell ? t('sheet.application.law_asks.by_cell') : ''"></nldd-text-cell>
                   </nldd-list-item>
                 </nldd-list>
               </template>

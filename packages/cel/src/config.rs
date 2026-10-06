@@ -5,7 +5,7 @@
 //! # cells/<cell>/cell.yaml
 //! id: toeslagen
 //! recording_actor: belastingdienst_toeslagen
-//! streams: [../../chronicles/zorgtoeslag_aanvragen.yaml]
+//! streams: [streams/zorgtoeslag_aanvragen.yaml]
 //! lexostatuses: lexostatuses.yaml
 //! ```
 //!
@@ -51,6 +51,10 @@ pub struct Stream {
 pub struct Event {
     pub name: String,
     pub establishes: String,
+    /// For a decision: the lexostatus the cell reads the parameters of the
+    /// establishing article from (see [`crate::Cell::decision_inputs`]).
+    #[serde(default)]
+    pub reads: Option<String>,
 }
 
 /// A lexostatus file: how the cell reads its own chronicle back.
@@ -210,6 +214,25 @@ impl CellConfig {
                 l.lexostatus_definitions
             }
         };
+        for s in &streams {
+            for e in &s.events {
+                let Some(name) = &e.reads else { continue };
+                let Some(l) = lexostatuses.iter().find(|l| &l.name == name) else {
+                    return Err(setup(format!(
+                        "stream '{}', event '{}' reads lexostatus '{name}', which the cell does not define",
+                        s.id, e.name
+                    )));
+                };
+                // A decision reads the case it is taken on: the cell passes
+                // the root of the gram it refers to, and nothing else.
+                if l.inputs != ["root"] || l.reduction.filter.root.as_deref() != Some("$root") {
+                    return Err(setup(format!(
+                        "stream '{}', event '{}' reads lexostatus '{name}', which must have `inputs: [root]` and filter on `root: $root`",
+                        s.id, e.name
+                    )));
+                }
+            }
+        }
         Ok(Self {
             id: file.id,
             recording_actor: file.recording_actor,

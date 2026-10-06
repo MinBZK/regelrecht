@@ -190,6 +190,7 @@ impl Cell {
             name: shape.event.clone(),
             chronicle: chronicle.to_string(),
             recording_actor: self.config.recording_actor.clone(),
+            establishes: shape.establishes.clone(),
             legal_basis: shape.legal_basis(),
             legal_character: shape.legal_character.clone(),
             decision_type: shape.decision_type.clone(),
@@ -250,7 +251,9 @@ impl Cell {
                 )));
             }
         }
-        // The moment that counts is the receipt (Awb 4:13 lid 1).
+        // The moment of recording is the moment that counts; the provisions
+        // it rests on are the law's `effective_at` entries (none if the law
+        // names none).
         let mut gram = self.gram(&shape, &chronicle, now);
         for f in &shape.fields {
             match (&f.fixed, submitted.get(&f.name)) {
@@ -287,15 +290,99 @@ impl Cell {
         lexostatus::read(definition, inputs, chronicle)
     }
 
-    /// Take a decision and record it: execute the establishing article with
-    /// `inputs` on the day it is taken, and record its outputs as the fields,
-    /// referring to the grams in `refers_to`.
+    /// The parameters of the decision `event` on the gram `root`: the
+    /// lexostatus the event `reads`, read with `{root}`, kept to the
+    /// parameters the establishing article declares on `day`, each with
+    /// where it came from. What [`Cell::decide`] reads; read-only, to look
+    /// before deciding.
+    pub fn decision_inputs(
+        &self,
+        service: &LawExecutionService,
+        event: &str,
+        root: &str,
+        day: NaiveDate,
+    ) -> Result<BTreeMap<String, Input>> {
+        let (_, e) = self.config.event(event).ok_or_else(|| {
+            refused(format!(
+                "cell '{}' records no event '{event}'",
+                self.config.id
+            ))
+        })?;
+        let lexostatus = e.reads.as_deref().ok_or_else(|| {
+            refused(format!(
+                "event '{event}' reads no lexostatus (`reads` in its stream)"
+            ))
+        })?;
+        let mut inputs = Map::new();
+        inputs.insert("root".into(), serde_json::Value::String(root.into()));
+        let read = self.read(lexostatus, &inputs)?;
+        let asked = shape::parameter_names(service, &e.establishes, day)?;
+        Ok(read
+            .into_iter()
+            .filter(|(name, _)| asked.contains(name))
+            .map(|(name, value)| {
+                let input = Input {
+                    value,
+                    provenance: serde_json::json!({
+                        "source": "lexostatus",
+                        "lexostatus": lexostatus,
+                    }),
+                };
+                (name, input)
+            })
+            .collect())
+    }
+
+    /// The root of the case a decision is taken on: the root of the gram
+    /// its one required reference names.
+    fn case_root(
+        &self,
+        shape: &Shape,
+        chronicle: &str,
+        refers_to: &BTreeMap<String, String>,
+    ) -> Result<String> {
+        let required: Vec<&String> = shape
+            .refers_to
+            .iter()
+            .filter(|(_, r)| r.required)
+            .map(|(name, _)| name)
+            .collect();
+        let [name] = required.as_slice() else {
+            return Err(setup(format!(
+                "{}: '{}' reads its case, but has {} required references, not one",
+                shape.establishes,
+                shape.event,
+                required.len()
+            )));
+        };
+        let id = refers_to.get(*name).ok_or_else(|| {
+            refused(format!(
+                "'{}' must refer to a gram as '{name}'",
+                shape.event
+            ))
+        })?;
+        let grams = self
+            .chronicles
+            .get(chronicle)
+            .ok_or_else(|| setup(format!("no chronicle '{chronicle}'")))?;
+        let gram = grams
+            .find(id)
+            .ok_or_else(|| refused(format!("no gram '{id}' in chronicle '{chronicle}'")))?;
+        Ok(grams.root_of(gram).to_string())
+    }
+
+    /// Take a decision and record it: execute the establishing article on the
+    /// day it is taken, and record its outputs as the fields, referring to
+    /// the grams in `refers_to`. The cell reads the parameters itself from
+    /// the case `refers_to` names (the lexostatus the event `reads`);
+    /// `extra_inputs` may only add parameters that lexostatus does not
+    /// supply.
     pub fn decide(
         &mut self,
         service: &LawExecutionService,
         event: &str,
         refers_to: BTreeMap<String, String>,
-        inputs: BTreeMap<String, Input>,
+        extra_inputs: BTreeMap<String, Input>,
         now: DateTime<FixedOffset>,
     ) -> Result<Gram> {
         // The decision is taken, and the law applied, on the day it is
@@ -305,6 +392,23 @@ impl Cell {
         let day = now.date_naive();
         let (shape, chronicle) = self.shape(service, event, day)?;
         self.check_references(&shape, &chronicle, &refers_to)?;
+
+        let reads = self.config.event(event).and_then(|(_, e)| e.reads.clone());
+        let mut inputs = match reads {
+            Some(_) => {
+                let root = self.case_root(&shape, &chronicle, &refers_to)?;
+                self.decision_inputs(service, event, &root, day)?
+            }
+            None => BTreeMap::new(),
+        };
+        for (name, input) in extra_inputs {
+            if inputs.contains_key(&name) {
+                return Err(refused(format!(
+                    "'{name}' is read from the case; it cannot be given as well"
+                )));
+            }
+            inputs.insert(name, input);
+        }
 
         let parameters: BTreeMap<String, Value> = inputs
             .iter()
@@ -368,11 +472,10 @@ impl Cell {
             let gram = grams
                 .find(id)
                 .ok_or_else(|| refused(format!("no gram '{id}' in chronicle '{chronicle}'")))?;
-            if gram.legal_basis.first() != Some(&reference.to) {
+            if gram.establishes != reference.to {
                 return Err(refused(format!(
                     "'{name}' must be a gram of {}, '{id}' is one of {}",
-                    reference.to,
-                    gram.legal_basis.first().map_or("nothing", String::as_str)
+                    reference.to, gram.establishes
                 )));
             }
         }

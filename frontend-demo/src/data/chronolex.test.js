@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addressOf, applicationValues, eventsForLaw, gramsOfCase, momentOn, provisionLabel, fieldText } from './chronolex.js';
+import { applicationValues, eventsForLaw, gramsOfCase, momentOn, provisionLabel, fieldText } from './chronolex.js';
 
 const cell = {
   id: 'toeslagen',
@@ -31,33 +31,32 @@ describe('applicationValues', () => {
     fields: [
       { name: 'bsn' },
       { name: 'aangevraagd_berekeningsjaar' },
+      { name: 'naam_aanvrager' },
       { name: 'adres_aanvrager' },
       { name: 'gevraagde_beschikking', fixed: 'zorgtoeslagwet#2' },
       { name: 'onbekend_veld' },
     ],
   };
+  const configured = {
+    bsn: '$bsn',
+    aangevraagd_berekeningsjaar: '$reference_year',
+    naam_aanvrager: 'M. de Vries',
+    gevraagde_beschikking: 'iets anders',
+    niet_gevraagd: 'x',
+  };
+  const tokens = { bsn: '999100001', reference_year: 2025, reference_date: '2025-03-04' };
 
-  it('vult in wat de demo weet en laat de rest weg', () => {
-    expect(applicationValues(shape, { bsn: '999100001', name: 'M', date: '2025-03-04' })).toEqual({
+  it('vult per veld van de wet de geconfigureerde waarde in, met de tokens opgelost', () => {
+    expect(applicationValues(shape, configured, tokens)).toEqual({
       bsn: '999100001',
       aangevraagd_berekeningsjaar: 2025,
+      naam_aanvrager: 'M. de Vries',
     });
   });
-});
 
-describe('addressOf', () => {
-  it('maakt één regel van het woonadres', () => {
-    const persona = {
-      sources: {
-        RvIG: {
-          verblijfplaats: [
-            { type: 'WOONADRES', straat: 'Meeuwenlaan', huisnummer: '28', postcode: '1021HS', woonplaats: 'Amsterdam' },
-          ],
-        },
-      },
-    };
-    expect(addressOf(persona)).toBe('Meeuwenlaan 28, 1021HS Amsterdam');
-    expect(addressOf({})).toBeUndefined();
+  it('laat een veld weg zonder waarde, en een onbekend token ook', () => {
+    expect(applicationValues(shape, { bsn: '$onbekend' }, tokens)).toEqual({});
+    expect(applicationValues(shape, undefined, tokens)).toEqual({});
   });
 });
 
@@ -89,12 +88,21 @@ describe('provisionLabel', () => {
 });
 
 describe('fieldText', () => {
-  it('laat een jaartal een jaartal', () => {
-    expect(fieldText('aangevraagd_berekeningsjaar', 2026)).toBe('2026');
+  const corpus = { lawById: () => ({ name: 'Zorgtoeslag' }) };
+
+  it('laat een geheel getal zonder eenheid een getal, zonder groepering', () => {
+    expect(fieldText(2026, { type: 'number' })).toBe('2026');
   });
 
-  it('noemt een bepaling bij naam', () => {
-    const corpus = { lawById: () => ({ name: 'Zorgtoeslag' }) };
-    expect(fieldText('gevraagde_beschikking', 'zorgtoeslagwet#2', null, corpus)).toBe('Zorgtoeslag, art. 2');
+  it('noemt een vastgezet veld bij naam van de bepaling', () => {
+    expect(fieldText('zorgtoeslagwet#2', { type: 'string', fixed: 'zorgtoeslagwet#2' }, null, corpus)).toBe('Zorgtoeslag, art. 2');
+  });
+
+  it('kijkt niet naar de naam van het veld', () => {
+    expect(fieldText('zorgtoeslagwet#2', { type: 'string' })).toBe(fieldText('zorgtoeslagwet#2'));
+  });
+
+  it('volgt de eenheid uit de declaratie van de wet', () => {
+    expect(fieldText(157731, { type: 'number' }, { type: 'amount', type_spec: { unit: 'eurocent' } })).toBe('€\u00a01.577,31');
   });
 });

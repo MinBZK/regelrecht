@@ -103,22 +103,52 @@ impl WasmCell {
         to_js(&self.cell.read(lexostatus, &inputs).map_err(error)?)
     }
 
+    /// The parameters of the decision `event` on the application `root`, as
+    /// the cell reads them from its chronicle on `on` (`YYYY-MM-DD`):
+    /// `{name: {value, provenance}}`, ready for `decide`.
+    #[wasm_bindgen(js_name = inputsFor)]
+    pub fn inputs_for(
+        &self,
+        engine: &WasmEngine,
+        event: &str,
+        root: &str,
+        on: &str,
+    ) -> Result<JsValue, JsValue> {
+        let inputs = self
+            .cell
+            .decision_inputs(engine.service(), event, root, day(on)?)
+            .map_err(error)?;
+        to_js(&inputs)
+    }
+
     /// Take a decision at `now` and record it, referring to `refersTo`
-    /// (`{on_application: <id>}`), with `inputs` (`{name: {value,
-    /// provenance}}`).
+    /// (`{on_application: <id>}`). The cell reads the parameters from that
+    /// case itself; `extraInputs` (`{name: {value, provenance}}`, optional)
+    /// may only add what it does not read.
     pub fn decide(
         &mut self,
         engine: &WasmEngine,
         event: &str,
         refers_to: JsValue,
-        inputs: JsValue,
         now: &str,
+        extra_inputs: JsValue,
     ) -> Result<JsValue, JsValue> {
         let refers_to: BTreeMap<String, String> = from_js(refers_to)?;
-        let inputs: BTreeMap<String, Input> = from_js(inputs)?;
+        let extra_inputs: BTreeMap<String, Input> =
+            if extra_inputs.is_null() || extra_inputs.is_undefined() {
+                BTreeMap::new()
+            } else {
+                from_js(extra_inputs)?
+            };
         let gram = self
             .cell
-            .decide(engine.service(), event, refers_to, inputs, moment(now)?)
+            .decide(
+                engine.service(),
+                event,
+                refers_to,
+                extra_inputs,
+                moment(now)?,
+            )
             .map_err(error)?;
         to_js(&gram)
     }

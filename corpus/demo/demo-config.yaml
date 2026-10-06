@@ -20,6 +20,18 @@ profiles:
     # Graaf: the laws that tell this persona's story (detentie -> verzekerd -> zorgtoeslag)
     graph_laws: [penitentiaire_beginselenwet, zvw, zorgtoeslagwet]
     zaaksysteem_service: TOESLAGEN
+    # Wat Merijn invult op een aanvraag die in een kroniek komt (chronolex):
+    # per veld dat de wet vraagt de waarde. Welke velden er zijn, zegt de wet;
+    # een veld zonder waarde hier blijft leeg. De demo vult `$bsn` (de BSN
+    # van de persona), `$reference_date` (de peildatum) en `$reference_year`
+    # (het jaar daarvan) zelf in.
+    application:
+      bsn: $bsn
+      aangevraagd_berekeningsjaar: $reference_year
+      naam_aanvrager: Merijn van der Meer
+      adres_aanvrager: Meeuwenlaan 28, 1021HS Amsterdam
+      dagtekening: $reference_date
+      ondertekening: Merijn van der Meer
     portal_tab_label: Mijn overheid
     portal_heading: Waar heb ik recht op? Wat zijn mijn plichten?
     portal_subtitle: >-
