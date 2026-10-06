@@ -1,0 +1,28 @@
+---
+# Wat de cel uit haar eigen kroniek terugleest. De reductie hoort bij de bron:
+# de wet vraagt een gegeven (het burgerservicenummer, de dag van ontvangst);
+# dat Toeslagen het in een kroniek bewaart, is haar zaak.
+cell: toeslagen
+lexostatus_definitions:
+  # De aanvraag, zoals Toeslagen haar ontving. `root` is het id van het gram
+  # van de aanvraag.
+  - name: aanvraag
+    inputs: [{name: root, type: string}]
+    reduction:
+      chronicle: toeslagen
+      filter: {type: submission, subtype: aanvraag, root: $root}
+      pick: latest
+      derivations:
+        bsn:
+          field: bsn
+          legal_basis: [algemene_wet_inkomensafhankelijke_regelingen#15 lid 1]
+        aangevraagd_berekeningsjaar:
+          field: aangevraagd_berekeningsjaar
+          legal_basis: [algemene_wet_inkomensafhankelijke_regelingen#15 lid 1]
+        # Awb 4:13 lid 1: de aanvraag telt vanaf de ontvangst.
+        datum_ontvangst:
+          moment: effective_at
+          legal_basis: [algemene_wet_bestuursrecht#4:13 lid 1]
+        mede_ondertekend_door_partner:
+          filled: ondertekening_partner
+          legal_basis: [algemene_wet_inkomensafhankelijke_regelingen#15 lid 2]

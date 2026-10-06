@@ -4,6 +4,7 @@ members = [
     "admin",
     "arch-extract",
     "auth",
+    "cel",
     "corpus",
     "editor-api",
     "engine",

@@ -91,6 +91,7 @@ regelrecht/
 │   ├── poc-napp/         # Backend of the napp PoC
 │   ├── poc-assistent/    # Policy assistant for the PoCs (Node package)
 │   ├── arch-extract/     # Architecture explorer (developer tool)
+│   ├── cel/              # Chronolex cell: records an application and its decision (PoC)
 │   └── grafana/          # Provisioned dashboards
 ├── frontend/             # Law editor (Vue 3 + Vite)
 ├── frontend-lawmaking/   # Law-making process visualization

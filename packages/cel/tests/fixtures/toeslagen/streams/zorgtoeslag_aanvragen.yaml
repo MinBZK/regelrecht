@@ -1,0 +1,11 @@
+---
+# De cel legt de ontvangst van een aanvraag om een tegemoetkoming vast. Wat de
+# aanvraag bevat, zegt de wet door haar uit te voeren: Awir 15 vestigt de
+# aanvraag, en omdat Zorgtoeslagwet art. 2 erop een beschikking neemt, haken
+# Awb 4:2 (de kern van de aanvraag) en 4:13 (de ontvangst telt) erop.
+$id: zorgtoeslag_aanvragen
+recording_actor: belastingdienst_toeslagen
+chronicle: toeslagen
+events:
+  - name: aanvraag_ontvangen
+    establishes: algemene_wet_inkomensafhankelijke_regelingen#15
