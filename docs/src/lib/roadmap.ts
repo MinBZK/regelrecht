@@ -220,6 +220,71 @@ export const FILTER_OPTIES = [
 ];
 
 /**
+ * Een filtergroep in de kopbalk: de knop, de vinkjes erachter, en hoe het
+ * filter werkt.
+ *
+ * Twee soorten. Een CSS-filter (geen `attribuut`) werkt via de
+ * `:has(#rr-<id>-<optie>[checked])`-regels in roadmap.css en heeft geen
+ * script nodig. Een JS-filter vergelijkt `data-<attribuut>` op elk item met de
+ * aangevinkte opties en zet `verbergKlasse` op wat niet matcht; roadmap.css
+ * verbergt die klasse. Waarom het tweede filter niet óók CSS kon zijn staat
+ * bij de verbergregel in roadmap.css.
+ *
+ * RoadmapKop.astro rendert de groep en zet de velden als data-attributen op de
+ * DOM, zodat het script niets van belegging of status hoeft te weten: de
+ * pagina zegt wat er staat.
+ */
+export interface FilterGroep {
+  /** Het korte id in de element-ids: `rr-<id>-knop`, `rr-<id>-<optie>`. */
+  id: string;
+  knop: string;
+  titel: string;
+  /** De klasse op elk vinkje; het script telt en leest erop. */
+  optieKlasse: string;
+  opties: { id: string; label: string }[];
+  /** Het data-attribuut op het item dat het script vergelijkt. Afwezig bij een CSS-filter. */
+  attribuut?: string;
+  /** De klasse die het script zet op een item dat niet matcht. Afwezig bij een CSS-filter. */
+  verbergKlasse?: string;
+}
+
+export type FilterGroepId = 'categorie' | 'belegging';
+
+export const FILTERGROEPEN: Record<FilterGroepId, FilterGroep> = {
+  categorie: {
+    id: 'cat',
+    knop: 'Categorie',
+    titel: 'Filter op categorie',
+    optieKlasse: 'rr-filter__option',
+    opties: FILTER_OPTIES,
+  },
+  belegging: {
+    id: 'bel',
+    knop: 'Belegging',
+    titel: 'Filter op belegging',
+    optieKlasse: 'rr-filter__belegging-option',
+    opties: BELEGGING_FILTER_OPTIES,
+    attribuut: 'belegging',
+    verbergKlasse: 'rr-wp-card--geen-belegging',
+  },
+};
+
+/** De klasse waarmee het zoekfilter een item verbergt dat niet matcht. */
+export const GEEN_TREFFER = 'rr-geen-treffer';
+
+/**
+ * De weergaven van de roadmap, in de volgorde van de tab-bar in de kop. Elke
+ * weergave is een eigen route met dezelfde kop (RoadmapKop.astro); de
+ * tab-bar verschijnt pas zodra er meer dan één is, want één weergave is geen
+ * keuze.
+ */
+export const WEERGAVEN = [
+  { id: 'matrix', label: 'Matrix', href: '/roadmap' },
+] as const;
+
+export type WeergaveId = (typeof WEERGAVEN)[number]['id'];
+
+/**
  * Fail the build when the filter's stylesheet has no show-rule for an option
  * the page renders.
  *
@@ -245,17 +310,26 @@ export function assertFilterRules(css: string): void {
   }
 
   /*
-   * The belegging filter hides through the script, so it needs one rule
-   * rather than one per option — but its absence fails the same silent way:
-   * every checkbox would toggle a class that styles nothing, and the filter
-   * would look wired up while changing nothing on screen.
+   * Het zoekfilter en elke JS-filtergroep verbergen via een klasse die het
+   * script zet, dus elk heeft één regel nodig in plaats van één per optie.
+   * Ontbreekt die, dan faalt het even stil: de vinkjes toggelen een klasse
+   * die niets opmaakt, en het filter lijkt aangesloten terwijl er niets op
+   * het scherm verandert.
    */
-  if (!css.includes('.rr-wp-card--geen-belegging')) {
-    throw new Error(
-      'roadmap.css mist de verberg-regel voor het beleggingsfilter. Voeg ' +
-        '`.rr-wp-card--geen-belegging` toe aan de `display: none !important`-' +
-        'regel naast `.rr-wp-card--geen-treffer`, anders doen die vinkjes niets.',
-    );
+  const verbergKlassen = [
+    GEEN_TREFFER,
+    ...Object.values(FILTERGROEPEN).flatMap((g) =>
+      g.verbergKlasse ? [g.verbergKlasse] : [],
+    ),
+  ];
+  for (const klasse of verbergKlassen) {
+    if (!css.includes(`.${klasse}`)) {
+      throw new Error(
+        `roadmap.css mist de verberg-regel \`.${klasse}\`. Voeg hem toe aan de ` +
+          '`display: none !important`-regel van het zoekfilter, anders doet ' +
+          'dat filter niets.',
+      );
+    }
   }
 
   /*

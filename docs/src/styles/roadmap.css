@@ -234,10 +234,10 @@
 /* --- Zoekfilter --------------------------------------------------------- */
 
 /*
- * The zoekfilter's own hide-rule, and the one place on this page where
+ * The zoekfilter's own hide-rule, and the one place on these pages where
  * !important is the right tool rather than a shortcut.
  *
- * The two filters have to compose: a card shows only when the categorie filter
+ * The filters have to compose: a card shows only when the categorie filter
  * allows it *and* the search matches. The show-rules above are (1,3,0) — the
  * id inside :has() is what lifts them, deliberately, so they beat the blanket
  * hide-rule. A class selector cannot outrank that, and matching their
@@ -248,15 +248,20 @@
  * The alternative is a script that writes element.style, and that is worse: it
  * would beat the categorie filter too, stranding cards visible that the
  * checkboxes had hidden.
+ *
+ * `rr-geen-treffer` zit niet aan de kaart vast: op het vragenoverzicht staat
+ * hij op een lijstregel. De klasse is GEEN_TREFFER in lib/roadmap.ts, en
+ * assertFilterRules() leest dit bestand om te controleren dat hij hier staat.
  */
-.rr-roadmap .rr-wp-card--geen-treffer,
+.rr-roadmap .rr-geen-treffer,
 .rr-roadmap .rr-wp-card--geen-belegging {
   display: none !important;
 }
 
 /*
- * Het beleggingsfilter deelt de bovenstaande regel, en dat is de hele reden
- * dat het in JavaScript zit en niet in CSS.
+ * Elke JS-filtergroep (het beleggingsfilter voorop) deelt de bovenstaande
+ * regel, en dat is de hele reden dat zo'n groep in JavaScript zit en niet in
+ * CSS.
  *
  * Het categoriefilter verbergt alles en toont daarna terug met een
  * `:has(#id)`-regel die op specificiteit wint. Een tweede groep kan die truc
@@ -266,9 +271,11 @@
  * binnen een groep — met 'bar' en 'pivot' allebei aangevinkt verbergt elke
  * regel wat de andere toont en blijft er niets over.
  *
- * Door hier dezelfde `!important`-regel te delen als het zoekfilter staan
- * beide buiten de specificiteitswedstrijd, en overleeft een kaart alleen als
- * geen van de drie filters hem verbergt.
+ * Door hier dezelfde `!important`-regel te delen als het zoekfilter staan ze
+ * allemaal buiten de specificiteitswedstrijd, en overleeft een item alleen als
+ * geen van de filters het verbergt. Komt er een JS-groep bij (FILTERGROEPEN in
+ * lib/roadmap.ts), dan hoort zijn verbergklasse in de regel hierboven;
+ * assertFilterRules() valt de build als hij ontbreekt.
  */
 
 /*

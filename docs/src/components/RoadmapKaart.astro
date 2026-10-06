@@ -1,0 +1,153 @@
+---
+/*
+ * Eén werkpakket als kaart, op de matrix en op het bord dezelfde.
+ *
+ * Elke kaart draagt attributen die alleen de scripts van de roadmappagina's
+ * lezen: `data-categorie` voor het categoriefilter (puur CSS), `data-zoek`
+ * voor het zoekfilter — de volledige tekst van het werkpakket, bij de build
+ * samengesteld zodat het script niet meer doet dan een indexOf per kaart; daar
+ * zit ook tekst in die alleen op de detailpagina staat (toelichting,
+ * onderzoeksvragen), zie zoektekst() in lib/roadmap.ts — `data-belegging`
+ * voor het beleggingsfilter, en `data-wp-id`, `data-afhankelijk-van` en
+ * `data-fase` voor de afhankelijkhedenweergave.
+ *
+ * Waar de kaart staat bepaalt de kaart niet. Op de matrix plaatst de
+ * afhankelijkhedenweergave hem in de browser, over de kaarten die op dat
+ * moment op het scherm staan (zie het script in pages/roadmap/index.astro);
+ * op het bord bepaalt de lane het. Vandaar twee optionele regels:
+ * `ondertitel` zegt in welke cel van de matrix het werkpakket thuishoort, voor
+ * een weergave waar die cel niet te zien is, en `onder` is een stille regel
+ * na de tags, voor wat een lane erbij wil zeggen. Zonder die twee is de kaart
+ * precies wat hij op de matrix altijd was.
+ */
+import {
+  GEEN_CATEGORIE,
+  beleggingStand,
+  getPrioriteit,
+  getCategorie,
+  getCapability,
+  getBelegging,
+  zoektekst,
+  type WerkpakketData,
+} from '~/lib/roadmap';
+
+interface Props {
+  wp: { data: WerkpakketData };
+  /** Bijvoorbeeld "Fase I · Techniek & Architectuur", onder de titel. */
+  ondertitel?: string;
+  /** Een stille regel na de tags, bijvoorbeeld "sinds 3 maanden". */
+  onder?: string;
+}
+
+const { wp, ondertitel, onder } = Astro.props;
+
+const prioriteit = getPrioriteit(wp.data.prioriteit);
+const categorie = getCategorie(wp.data.categorie);
+const capability = getCapability(wp.data.capability);
+const belegging = getBelegging(wp.data.belegging.stand);
+
+interface Tag {
+  color: string;
+  text: string;
+  label: string;
+  icon?: string;
+}
+
+const tags: Tag[] = [
+  /* Alleen 'opgepakt' en 'klaar' krijgen een tag, 'vrij' niet. Vrij is de
+     stilzwijgende meerderheid — een leeg veld telt daarin mee, zie
+     getBelegging() — en zesenveertig kaarten met een tag die zegt dat er
+     niets aan de hand is, is ruis.
+
+     Dit maakt van vier tags er vijf op de kaarten die alle vier de andere
+     velden ingevuld hebben — vandaag precies één
+     (`aansluiten-op-bronnen-chronolexografie`). Dat is bewust: het plafond
+     waar de RFC-teller hieronder over spreekt gaat over metadata die met de
+     titel concurreert, en deze tag staat vóór de andere omdat hij zegt of er
+     iemand op zit. Loopt dit op, dan is de vraag welke van de vijf weg mag,
+     niet deze. */
+  belegging && belegging.id !== 'vrij'
+    ? {
+        color: belegging.tagColor,
+        text: belegging.label,
+        icon: belegging.id === 'klaar' ? 'done' : 'user',
+        label: belegging.label,
+      }
+    : undefined,
+  prioriteit
+    ? { color: prioriteit.tagColor, text: prioriteit.label, label: prioriteit.label }
+    : undefined,
+  wp.data.omvang
+    ? { color: 'neutral', text: wp.data.omvang, label: `Omvang ${wp.data.omvang}` }
+    : undefined,
+  categorie
+    ? { color: 'neutral', text: categorie.label, label: categorie.label }
+    : undefined,
+  capability
+    ? { color: 'accent', text: capability.label.split(' ')[0], label: capability.label }
+    : undefined,
+].filter((t): t is Tag => t !== undefined);
+
+const rfcTekst = wp.data.rfcs.length
+  ? `${wp.data.rfcs.length} RFC${wp.data.rfcs.length > 1 ? "'s" : ''}`
+  : undefined;
+
+// De ondertitel en de stille regel horen in de toegankelijke naam: wie de
+// kaart niet ziet, mist anders juist de plek en de ouderdom die ze toevoegen.
+const accessibleLabel = [
+  wp.data.titel,
+  ondertitel,
+  ...tags.map((t) => t.label),
+  rfcTekst,
+  onder,
+]
+  .filter(Boolean)
+  .join(', ');
+---
+
+<nldd-card
+  class="rr-wp-card"
+  href={`/roadmap/werkpakket/${wp.data.id}`}
+  background={belegging?.id === 'opgepakt' ? 'tinted' : undefined}
+  accessible-label={accessibleLabel}
+  data-categorie={wp.data.categorie || GEEN_CATEGORIE}
+  data-belegging={beleggingStand(wp.data.belegging.stand)}
+  data-zoek={zoektekst(wp.data)}
+  data-wp-id={wp.data.id}
+  data-fase={wp.data.faseId}
+  data-afhankelijk-van={wp.data.afhankelijkVan.join(' ') || undefined}
+>
+  {/* nldd-card leaves padding to a nested container by design;
+      without one the content sits flush against the border. */}
+  <nldd-container padding="12" gap="8">
+    <nldd-container gap="2">
+      <nldd-text size="sm" weight="medium">
+        {wp.data.titel}
+      </nldd-text>
+      {ondertitel && (
+        <nldd-text size="xs" color="secondary">{ondertitel}</nldd-text>
+      )}
+    </nldd-container>
+    {(tags.length > 0 || rfcTekst) && (
+      <nldd-container layout="wrap" gap="4" vertical-alignment="center">
+        {tags.map((tag) => (
+          <nldd-tag
+            color={tag.color}
+            text={tag.text}
+            icon={tag.icon}
+            accessible-label={tag.label}
+            size="sm"
+          />
+        ))}
+        {/* Not a tag: the card already carries up to five, and one more
+            would make the title compete with its own metadata. This is a
+            quiet count of the design behind the werkpakket — the detail
+            page names them. */}
+        {rfcTekst && (
+          <nldd-text size="xs" color="secondary">{rfcTekst}</nldd-text>
+        )}
+      </nldd-container>
+    )}
+    {onder && <nldd-text size="xs" color="secondary">{onder}</nldd-text>}
+  </nldd-container>
+</nldd-card>
