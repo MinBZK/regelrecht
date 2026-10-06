@@ -246,22 +246,96 @@ het zoekveld en het categoriefilter op dat moment laten staan. Filter je een
 kaart weg, dan schuift de rest aan in plaats van een gat te laten, en een keten
 loopt niet door over een kaart die niet op het scherm staat.
 
+### De drie weergaven
+
+De roadmap heeft drie weergaven, elk met een eigen adres en een tab-bar onder
+de titel om ertussen te wisselen:
+
+- `/roadmap`, de **matrix**: fase × discipline, met zoeken, het categorie- en
+  beleggingsfilter en de afhankelijkhedenschakelaar hierboven.
+- `/roadmap/bord`, het **bord**: dezelfde werkpakketten in drie lanes op
+  belegging (vrij, opgepakt, klaar), in de leesvolgorde van de matrix. Zoeken
+  en het categoriefilter werken; het beleggingsfilter niet, want de lanes zíjn
+  de belegging, en de afhankelijkheden niet, want die ordenen binnen een cel.
+- `/roadmap/onderzoeksvragen`, het **overzicht**: alle onderzoeksvragen per
+  sectie van het paper, met per vraag de eigen status (of gedempt de
+  `onderzoek`-stand van het werkpakket), het werkpakket met zijn belegging, het
+  doel, de deelvragen en de verwante vragen. Wat naar geen sectie wijst staat
+  achteraan, per werkpakket. Het statusfilter leest de eigen status van de
+  vraag: een vraag zonder eigen status telt als "niet bepaald", ook als zijn
+  werkpakket op `loopt` staat.
+
+De weergaven delen één kop (`RoadmapKop.astro`) en één kaart
+(`RoadmapKaart.astro`). Een nieuwe weergave is een regel in `WEERGAVEN` in
+`docs/src/lib/roadmap.ts` plus een pagina onder `pages/roadmap/`.
+
 ## Onderzoeksvragen
 
-Een vraag is een gewone string, óf een mapping met een verwijzing naar het
-position paper *Rules as Executed*:
+Een vraag is een gewone string, óf een mapping met velden eromheen. De
+stringvorm blijft: een vraag waar niets over te zeggen valt dan de vraag zelf
+hoort geen vijf lege velden te dragen, en zo zijn de meeste vragen begonnen.
 
 ```yaml
 onderzoeksvragen:
   - >-
-    Een vraag waar het paper niets over zegt blijft een gewone string.
+    Een vraag waar niets bij hoort blijft een gewone string.
   - vraag: >-
       Heeft een burger recht op de technische logbestanden van hoe een besluit
       tot stand is gekomen?
+    id: recht-op-trace
     paper: sec:traceaccess
+    status: loopt
+    doel: >-
+      Een notitie die de grondslag benoemt, of vaststelt dat die er niet is.
+    verwant:
+      - trace-bij-ontvangst
+    deelvragen:
+      - vraag: Valt de trace onder de motiveringsplicht (Awb)?
+        id: trace-awb
+        status: open
+      - Of onder het inzagerecht (AVG)?
 ```
 
-Beide vormen mogen door elkaar in één lijst staan.
+Beide vormen mogen door elkaar in één lijst staan. Alleen `vraag` is
+verplicht; elk ander veld mag weg.
+
+`id` — een slug (dezelfde regels als het id van een werkpakket), uniek over de
+hele roadmap, deelvragen meegerekend. Het is waar `verwant` naar wijst en het
+anker op de pagina's (`/roadmap/werkpakket/<slug>#vraag-<id>`), dus kies hem
+één keer en laat hem staan als de vraag geherformuleerd wordt. Een vraag
+zonder verwijzingen heeft geen id nodig.
+
+`status` — `open`, `loopt`, `beantwoord`, of `''`. Hetzelfde vocabulaire als
+`onderzoek` op het werkpakket, maar het is de status van déze vraag. Hij wordt
+niet afgeleid uit de deelvragen, om dezelfde reden als `klaar` bij de
+belegging: een vraag kan beantwoord zijn terwijl een deelvraag open staat (het
+antwoord maakte hem onbelangrijk), en of de hoofdvraag af is, is een oordeel
+over het geheel. De pagina telt wel "2 van 3 deelvragen beantwoord". Leeg is
+"niet bepaald", en dat is wat bijna alle vragen vandaag zijn; vul geen status
+in om het vakje te vullen.
+
+`doel` — vrije tekst: wat beantwoorden moet opleveren, een notitie, een
+prototype, een besluit. Mag leeg.
+
+`verwant` — ids van andere (deel)vragen, ook uit andere werkpakketten. Schrijf
+het één kant op; de pagina's lezen beide kanten, zoals bij `afhankelijkVan`.
+Zet de omgekeerde verwijzing dus niet ook in het andere bestand, want dan
+staat dezelfde relatie twee keer en raakt hij bij een wijziging aan één kant
+uit de pas. Een vraag met `verwant` heeft een eigen `id` nodig, anders kan de
+andere kant niet terugwijzen.
+
+`deelvragen` — een lijst in dezelfde vorm (string of mapping), één niveau
+diep: een deelvraag heeft geen deelvragen. Een deelvraag in stringvorm blijft
+onder `deelvragen:` ingesprongen (zes spaties), niet op het niveau van de
+hoofdvragen, anders is het een hoofdvraag.
+
+`paper` — een sectie van het position paper, zie hieronder.
+
+De build valt op een dubbel id, een `verwant` naar een id dat nergens bestaat,
+een `verwant` naar zichzelf, en een `verwant` op een vraag zonder eigen id,
+met het werkpakket en de plek erbij (`werkpakket X (Titel): vraag 3, deelvraag
+2 heeft id "…", maar …`). Een verschreven sleutel (`deelvraag:`) valt de build
+ook: de objecten zijn strikt, zodat zo'n fout niet stil verdwijnt.
 
 ### De juiste sectie vinden
 
@@ -278,10 +352,13 @@ de vraag daar zelf, wijs dan daarheen. Werkt een inhoudelijk hoofdstuk hem uit,
 wijs dan naar dat hoofdstuk. Bij twijfel: het hoofdstuk, want daar staat een
 antwoord in plaats van dezelfde vraag.
 
-**Koppel niet wat niet past.** Drie van de drieënvijftig vragen hebben geen
-sectie omdat ze te algemeen zijn ("Hoe navolgbaar is het?"). Een gedwongen
-verwijzing kost de lezer een klik en levert niets op. Een verzonnen anker laat
-de build vallen met het werkpakket en de vraag erbij.
+**Koppel niet wat niet past.** Tweeënzestig van de honderdnegenenveertig
+vragen hebben geen sectie, deels omdat ze te algemeen zijn ("Hoe navolgbaar is
+het?"), deels omdat niemand er nog naar gekeken heeft. Het overzicht op
+`/roadmap/onderzoeksvragen` zet ze achteraan, per werkpakket, zodat die lijst
+te zien is. Een gedwongen verwijzing kost de lezer een klik en levert niets
+op. Een verzonnen anker laat de build vallen met het werkpakket en de vraag
+erbij, ook bij een deelvraag.
 
 ## RFC's koppelen
 
@@ -455,7 +532,9 @@ aan zodra je `/roadmap` echt opvraagt. Vertrouw op `docs-build`.
 - een `afhankelijkVan` dat nergens heen wijst, naar zichzelf wijst, of in een
   kring loopt
 - twee bestanden met hetzelfde `id`, of een bestandsnaam die niet het `id` is
-- een `paper:`-anker dat niet in het paper staat
+- een `paper:`-anker dat niet in het paper staat, ook op een deelvraag
+- een onderzoeksvraag met een dubbel `id`, een `verwant` dat nergens heen
+  wijst of naar zichzelf, of een `verwant` op een vraag zonder eigen `id`
 - een RFC-nummer in `rfcs` dat niet bestaat
 - een `belegging` die niet klopt: `opgepakt` of `klaar` zonder `sinds`, een
   `sinds` bij een stand die hem nergens toont, een datum in de toekomst, of
@@ -464,7 +543,8 @@ aan zodra je `/roadmap` echt opvraagt. Vertrouw op `docs-build`.
 - een ontbrekende of foute waarde volgens het zod-schema
 
 Raak je ook de pagina's aan, draai dan `just docs-a11y` (duurt ~10 minuten en
-draait ook in CI).
+draait ook in CI); die loopt over alle drie de weergaven en elke
+werkpakketpagina.
 
 ### Wat de build níét controleert, met opzet
 
