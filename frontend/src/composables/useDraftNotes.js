@@ -5,8 +5,9 @@
  * until they are written back. Two ways out: `exportYaml` produces a YAML
  * document for a manual commit (the original RFC-018 §10 MVP, still here for
  * the offline case), and `saveToRepo` PUTs that same document to editor-api,
- * which validates it and opens a PR against the chosen source - the same
- * traject branch+PR path law and scenario edits already use.
+ * which validates it and commits it to the traject branch - the same path
+ * law and scenario edits use. No pull request is opened; the `pr` field in
+ * the save response stays empty for traject saves.
  *
  * Draft notes are merged into the resolved-notes list by the caller so they
  * highlight live, exactly like committed notes; they just carry an extra
@@ -170,8 +171,8 @@ export function useDraftNotes(lawId, trajectRef) {
    * Append the local drafts to the law's sidecar via editor-api. The save
    * is routed through the session's active traject (same model as law and
    * scenario edits since #632): the notes land in that traject's writable
-   * branch, so a note and a law edit made in the same session ride the
-   * same PR. No source is chosen here - the traject's own corpus config
+   * branch, so a note and a law edit made in the same session land on the
+   * same branch. No source is chosen here - the traject's own corpus config
    * decides the target. With no active traject the backend returns 403.
    *
    * The request body is **only the new drafts**, not the merged file: the

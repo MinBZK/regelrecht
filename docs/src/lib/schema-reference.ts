@@ -151,11 +151,11 @@ export function schemaUrl(): string {
 const CONCEPTS: Record<string, ConceptLink> = {
   source: { href: '/concepts/cross-law-references#how-it-works', label: 'Cross-Law References' },
   open_terms: {
-    href: '/concepts/inversion-of-control#the-higher-law-declares-an-open-term',
+    href: '/concepts/inversion-of-control#the-law-declares-an-open-term',
     label: 'Inversion of Control',
   },
   implements: {
-    href: '/concepts/inversion-of-control#the-lower-regulation-implements-it',
+    href: '/concepts/inversion-of-control#the-implementing-regulation-fills-it',
     label: 'Inversion of Control',
   },
   hooks: { href: '/concepts/hooks-and-reactive-execution#how-hooks-work', label: 'Hooks' },
@@ -175,9 +175,15 @@ const CONCEPTS: Record<string, ConceptLink> = {
     href: '/concepts/competent-authority#the-two-forms',
     label: 'Competent Authority',
   },
+  markings: {
+    href: '/concepts/markings#how-they-are-flagged',
+    label: 'Markings',
+  },
+  // Schema v0.5.x called this channel `untranslatables`. Kept so a law file on
+  // an older schema version still links to the concept page.
   untranslatables: {
-    href: '/concepts/untranslatables#how-they-are-flagged',
-    label: 'Untranslatables',
+    href: '/concepts/markings#a-note-on-the-name',
+    label: 'Markings (formerly untranslatables)',
   },
   valid_to: {
     href: '/concepts/temporal-and-dates#which-version-is-in-force',
@@ -239,12 +245,12 @@ const GLOSSARY: Record<string, ConceptLink> = {
     label: 'Glossary: Legal Hierarchy',
   },
   legal_character: {
-    href: '/reference/glossary#administrative-law-bestuursrecht',
-    label: 'Glossary: Administrative Law',
+    href: '/reference/glossary#legal-character',
+    label: 'Glossary: Legal Character',
   },
   decision_type: {
-    href: '/reference/glossary#administrative-law-bestuursrecht',
-    label: 'Glossary: Administrative Law',
+    href: '/reference/glossary#decision-type',
+    label: 'Glossary: Decision Type',
   },
 };
 
@@ -1016,7 +1022,7 @@ export function referenceHeadings(): { depth: number; slug: string; text: string
   const out: { depth: number; slug: string; text: string }[] = [];
   const h = (depth: number, slug: string, text: string) => out.push({ depth, slug, text });
 
-  h(2, 'law-file', 'The law file');
+  h(2, 'law-file', 'The rulework');
   h(3, 'identifiers-per-layer', 'Identifiers per regulatory layer');
   h(4, 'top-legal-basis', 'legal_basis');
   h(3, 'articles', 'Articles');

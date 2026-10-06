@@ -173,7 +173,7 @@ Feature: AWB Article 1:1 - Bestuursorgaan Definition
     And the following "AWB" data with key "organisatie_id" for law "algemene_wet_bestuursrecht":
       | organisatie_id | is_orgaan_van_rechtspersoon | publiekrechtelijke_rechtspersoon_type | heeft_publiekrechtelijke_bevoegdheid | bevoegdheid_bij_of_krachtens_wet | overheidsfinanciering_percentage | criteria_door_overheid_bepaald | is_uitsluitend_financiele_uitkering | is_volksvertegenwoordigend_orgaan | is_rechterlijk_orgaan | is_ombudsman | is_algemene_rekenkamer | is_wetgevende_macht | is_raad_van_state | is_functionaris_uitgezonderd_orgaan | is_ctivd | is_tib | is_ambtenarenrechtelijk_besluit_eigen_personeel | is_voor_het_leven_benoemde_ambtenaar_rvs_of_rekenkamer |
       | ORG060         | true                        | RIJK                                  | null                                 | null                             | 0                                | null                           | null                                | null                              | null                  | null         | null | true | null | null | null | null | null | null |
-    When I evaluate outputs "is_bestuursorgaan" of "algemene_wet_bestuursrecht"
+    When I evaluate outputs "is_bestuursorgaan, exclusion_reason" of "algemene_wet_bestuursrecht"
     Then output "is_bestuursorgaan" is false
     And output "exclusion_reason" equals "WETGEVENDE_MACHT"
 
@@ -182,7 +182,7 @@ Feature: AWB Article 1:1 - Bestuursorgaan Definition
     And the following "AWB" data with key "organisatie_id" for law "algemene_wet_bestuursrecht":
       | organisatie_id | is_orgaan_van_rechtspersoon | publiekrechtelijke_rechtspersoon_type | heeft_publiekrechtelijke_bevoegdheid | bevoegdheid_bij_of_krachtens_wet | overheidsfinanciering_percentage | criteria_door_overheid_bepaald | is_uitsluitend_financiele_uitkering | is_volksvertegenwoordigend_orgaan | is_rechterlijk_orgaan | is_ombudsman | is_algemene_rekenkamer | is_wetgevende_macht | is_raad_van_state | is_functionaris_uitgezonderd_orgaan | is_ctivd | is_tib | is_ambtenarenrechtelijk_besluit_eigen_personeel | is_voor_het_leven_benoemde_ambtenaar_rvs_of_rekenkamer |
       | ORG061         | true                        | RIJK                                  | null                                 | null                             | 0                                | null                           | null                                | null                              | null                  | null         | null | null | true | null | null | null | null | null |
-    When I evaluate outputs "is_bestuursorgaan" of "algemene_wet_bestuursrecht"
+    When I evaluate outputs "is_bestuursorgaan, exclusion_reason" of "algemene_wet_bestuursrecht"
     Then output "is_bestuursorgaan" is false
     And output "exclusion_reason" equals "RAAD_VAN_STATE"
 
@@ -191,7 +191,7 @@ Feature: AWB Article 1:1 - Bestuursorgaan Definition
     And the following "AWB" data with key "organisatie_id" for law "algemene_wet_bestuursrecht":
       | organisatie_id | is_orgaan_van_rechtspersoon | publiekrechtelijke_rechtspersoon_type | heeft_publiekrechtelijke_bevoegdheid | bevoegdheid_bij_of_krachtens_wet | overheidsfinanciering_percentage | criteria_door_overheid_bepaald | is_uitsluitend_financiele_uitkering | is_volksvertegenwoordigend_orgaan | is_rechterlijk_orgaan | is_ombudsman | is_algemene_rekenkamer | is_wetgevende_macht | is_raad_van_state | is_functionaris_uitgezonderd_orgaan | is_ctivd | is_tib | is_ambtenarenrechtelijk_besluit_eigen_personeel | is_voor_het_leven_benoemde_ambtenaar_rvs_of_rekenkamer |
       | ORG062         | true                        | RIJK                                  | null                                 | null                             | 0                                | null                           | null                                | null                              | null                  | null         | null | null | null | true | null | null | null | null |
-    When I evaluate outputs "is_bestuursorgaan" of "algemene_wet_bestuursrecht"
+    When I evaluate outputs "is_bestuursorgaan, exclusion_reason" of "algemene_wet_bestuursrecht"
     Then output "is_bestuursorgaan" is false
     And output "exclusion_reason" equals "FUNCTIONARIS_UITGEZONDERD_ORGAAN"
 
@@ -200,7 +200,7 @@ Feature: AWB Article 1:1 - Bestuursorgaan Definition
     And the following "AWB" data with key "organisatie_id" for law "algemene_wet_bestuursrecht":
       | organisatie_id | is_orgaan_van_rechtspersoon | publiekrechtelijke_rechtspersoon_type | heeft_publiekrechtelijke_bevoegdheid | bevoegdheid_bij_of_krachtens_wet | overheidsfinanciering_percentage | criteria_door_overheid_bepaald | is_uitsluitend_financiele_uitkering | is_volksvertegenwoordigend_orgaan | is_rechterlijk_orgaan | is_ombudsman | is_algemene_rekenkamer | is_wetgevende_macht | is_raad_van_state | is_functionaris_uitgezonderd_orgaan | is_ctivd | is_tib | is_ambtenarenrechtelijk_besluit_eigen_personeel | is_voor_het_leven_benoemde_ambtenaar_rvs_of_rekenkamer |
       | ORG063         | true                        | RIJK                                  | null                                 | null                             | 0                                | null                           | null                                | null                              | null                  | null         | null | null | null | null | true | null | null | null |
-    When I evaluate outputs "is_bestuursorgaan" of "algemene_wet_bestuursrecht"
+    When I evaluate outputs "is_bestuursorgaan, exclusion_reason" of "algemene_wet_bestuursrecht"
     Then output "is_bestuursorgaan" is false
     And output "exclusion_reason" equals "CTIVD"
 
@@ -209,7 +209,7 @@ Feature: AWB Article 1:1 - Bestuursorgaan Definition
     And the following "AWB" data with key "organisatie_id" for law "algemene_wet_bestuursrecht":
       | organisatie_id | is_orgaan_van_rechtspersoon | publiekrechtelijke_rechtspersoon_type | heeft_publiekrechtelijke_bevoegdheid | bevoegdheid_bij_of_krachtens_wet | overheidsfinanciering_percentage | criteria_door_overheid_bepaald | is_uitsluitend_financiele_uitkering | is_volksvertegenwoordigend_orgaan | is_rechterlijk_orgaan | is_ombudsman | is_algemene_rekenkamer | is_wetgevende_macht | is_raad_van_state | is_functionaris_uitgezonderd_orgaan | is_ctivd | is_tib | is_ambtenarenrechtelijk_besluit_eigen_personeel | is_voor_het_leven_benoemde_ambtenaar_rvs_of_rekenkamer |
       | ORG064         | true                        | RIJK                                  | null                                 | null                             | 0                                | null                           | null                                | null                              | null                  | null         | null | null | null | null | null | true | null | null |
-    When I evaluate outputs "is_bestuursorgaan" of "algemene_wet_bestuursrecht"
+    When I evaluate outputs "is_bestuursorgaan, exclusion_reason" of "algemene_wet_bestuursrecht"
     Then output "is_bestuursorgaan" is false
     And output "exclusion_reason" equals "TIB"
 

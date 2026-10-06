@@ -911,7 +911,7 @@ mod tests {
             Some("test")
         );
         assert_eq!(value_to_key(&Value::Int(42)).as_deref(), Some("42"));
-        assert_eq!(value_to_key(&Value::from(3.14)).as_deref(), Some("3.14"));
+        assert_eq!(value_to_key(&Value::from(2.75)).as_deref(), Some("2.75"));
         assert_eq!(value_to_key(&Value::Bool(true)).as_deref(), Some("true"));
         // Nobody: no key (RFC-036).
         assert_eq!(value_to_key(&Value::Null), None);

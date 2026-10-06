@@ -1,5 +1,5 @@
 ---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.0/schema/v0.5.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
 $id: wet_op_de_zorgtoeslag
 regulatory_layer: WET
 publication_date: '2023-12-20'
@@ -94,9 +94,6 @@ articles:
               output: heeft_toeslagpartner
               parameters:
                 bsn: $bsn
-          # TODO: Art. 2 lid 2 vereist het gezamenlijk toetsingsinkomen van verzekerde en
-          # toeslagpartner. Huidige implementatie gebruikt alleen het inkomen van de aanvrager.
-          # Zie 2025 versie voor details over de engine-beperking.
           - name: toetsingsinkomen
             type: amount
             source:
@@ -104,6 +101,30 @@ articles:
               output: toetsingsinkomen
               parameters:
                 bsn: $bsn
+            type_spec:
+              unit: eurocent
+          # Lid 2, tweede zin: "Ingeval de verzekerde een toeslagpartner heeft,
+          # wordt het gezamenlijk toetsingsinkomen van de verzekerde en de
+          # toeslagpartner in aanmerking genomen." De partner volgt uit
+          # artikel 3 Awir, zijn toetsingsinkomen uit artikel 8 Awir. Zonder
+          # partner is het burgerservicenummer null en slaat de engine de
+          # aanroep over (RFC-036).
+          - name: bsn_toeslagpartner
+            type: string
+            nullable: true
+            source:
+              regulation: algemene_wet_inkomensafhankelijke_regelingen
+              output: bsn_toeslagpartner
+              parameters:
+                bsn: $bsn
+          - name: toetsingsinkomen_toeslagpartner
+            type: amount
+            nullable: true
+            source:
+              regulation: algemene_wet_inkomensafhankelijke_regelingen
+              output: toetsingsinkomen
+              parameters:
+                bsn: $bsn_toeslagpartner
             type_spec:
               unit: eurocent
           - name: standaardpremie
@@ -124,7 +145,32 @@ articles:
             type: amount
             type_spec:
               unit: eurocent
+          - name: in_aanmerking_genomen_toetsingsinkomen
+            type: amount
+            type_spec:
+              unit: eurocent
         actions:
+          - output: in_aanmerking_genomen_toetsingsinkomen
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: EQUALS
+                        subject: $heeft_toeslagpartner
+                        value: true
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $toetsingsinkomen_toeslagpartner
+                          value: null
+                  then:
+                    operation: ADD
+                    values:
+                      - $toetsingsinkomen
+                      - $toetsingsinkomen_toeslagpartner
+              default: $toetsingsinkomen
           - output: hoogte_zorgtoeslag
             value:
               operation: MAX
@@ -158,7 +204,7 @@ articles:
                               default: $percentage_drempelinkomen_alleenstaande
                             - operation: MIN
                               values:
-                                - $toetsingsinkomen
+                                - $in_aanmerking_genomen_toetsingsinkomen
                                 - operation: IF
                                   cases:
                                     - when:
@@ -171,7 +217,7 @@ articles:
                           cases:
                             - when:
                                 operation: GREATER_THAN
-                                subject: $toetsingsinkomen
+                                subject: $in_aanmerking_genomen_toetsingsinkomen
                                 value:
                                   operation: IF
                                   cases:
@@ -186,7 +232,7 @@ articles:
                                 values:
                                   - operation: SUBTRACT
                                     values:
-                                      - $toetsingsinkomen
+                                      - $in_aanmerking_genomen_toetsingsinkomen
                                       - operation: IF
                                         cases:
                                           - when:
@@ -248,23 +294,69 @@ articles:
               output: heeft_toeslagpartner
               parameters:
                 bsn: $bsn
+          # "de gezamenlijke rendementsgrondslag van de verzekerde en de
+          # toeslagpartner": die van de partner uit dezelfde bepaling van de
+          # Wet IB 2001, met het burgerservicenummer uit artikel 3 Awir.
+          - name: bsn_toeslagpartner
+            type: string
+            nullable: true
+            source:
+              regulation: algemene_wet_inkomensafhankelijke_regelingen
+              output: bsn_toeslagpartner
+              parameters:
+                bsn: $bsn
+          - name: vermogen_toeslagpartner
+            type: amount
+            nullable: true
+            source:
+              regulation: wet_inkomstenbelasting_2001
+              output: rendementsgrondslag
+              parameters:
+                bsn: $bsn_toeslagpartner
+            type_spec:
+              unit: eurocent
         output:
           - name: vermogen_onder_grens
             type: boolean
         actions:
+          # De tekst hierboven is die van dit bestand, en die wijkt af van de
+          # geldende tekst per 1 januari 2024 op wetten.overheid.nl: daar staat
+          # de vermogenstoets in artikel 2a, met grenzen van 140.213 en 177.301
+          # euro en de voorwaarde "indien de verzekerde het gehele
+          # berekeningsjaar dezelfde partner heeft", zoals in de versie van
+          # 2025 (#1564). Dit model volgt de tekst van dit bestand: bij een
+          # toeslagpartner de gezamenlijke grondslag tegen de partnergrens,
+          # anders de eigen grondslag tegen de grens zonder partner
+          # ("onderscheidenlijk"). Een partner zonder burgerservicenummer valt
+          # stil terug op de eigen grondslag (#1563), net als het
+          # toetsingsinkomen in artikel 2.
           - output: vermogen_onder_grens
             value:
-              operation: LESS_THAN_OR_EQUAL
-              subject: $vermogen
-              value:
-                operation: IF
-                cases:
-                  - when:
-                      operation: EQUALS
-                      subject: $heeft_toeslagpartner
-                      value: true
-                    then: $vermogensgrens_aanvrager_met_toeslagpartner
-                default: $vermogensgrens_alleenstaand
+              operation: IF
+              cases:
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: EQUALS
+                        subject: $heeft_toeslagpartner
+                        value: true
+                      - operation: NOT
+                        value:
+                          operation: EQUALS
+                          subject: $vermogen_toeslagpartner
+                          value: null
+                  then:
+                    operation: LESS_THAN_OR_EQUAL
+                    subject:
+                      operation: ADD
+                      values:
+                        - $vermogen
+                        - $vermogen_toeslagpartner
+                    value: $vermogensgrens_aanvrager_met_toeslagpartner
+              default:
+                operation: LESS_THAN_OR_EQUAL
+                subject: $vermogen
+                value: $vermogensgrens_alleenstaand
   - number: '4'
     text: >-
       Onze Minister stelt uiterlijk 22 dagen voorafgaande aan het berekeningsjaar bij regeling de standaardpremie voor

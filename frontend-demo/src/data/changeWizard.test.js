@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CHANGE_TYPES, changeTypeById, claimsFromAnswers, fieldsOf } from './changeWizard.js';
+import { CHANGE_TYPES, changeTypeById, claimsFromAnswers, eventUnsupported, fieldsOf, typeLabel } from './changeWizard.js';
 
 describe('CHANGE_TYPES', () => {
   it('wijst elke soort wijziging aan de wet die het gegeven bezit', () => {
@@ -12,7 +12,7 @@ describe('CHANGE_TYPES', () => {
   });
 
   it('vindt een soort op id en geeft niets terug voor een onbekende', () => {
-    expect(changeTypeById('inkomen')?.label).toBe('Mijn inkomen of vermogen');
+    expect(typeLabel(changeTypeById('inkomen'))).toBe('Mijn inkomen of vermogen');
     expect(changeTypeById('bestaat-niet')).toBeNull();
   });
 });
@@ -83,7 +83,7 @@ describe('claimsFromAnswers voor de huur', () => {
 describe('claimsFromAnswers voor een adres', () => {
   const woonadres = changeTypeById('woonadres');
 
-  it('maakt van de losse velden één adres plus de adresregel', () => {
+  it('maakt van de losse velden één adres', () => {
     const claims = claimsFromAnswers(woonadres, {
       straat: 'Kalverstraat',
       huisnummer: '1',
@@ -97,11 +97,10 @@ describe('claimsFromAnswers voor een adres', () => {
         value: { straat: 'Kalverstraat', huisnummer: '1', postcode: '1012 NX', woonplaats: 'Amsterdam', type: 'WOONADRES' },
         label: 'Adres',
       },
-      { law: 'wet_brp', input: 'verblijfsadres', value: 'Kalverstraat 1, 1012 NX Amsterdam', label: 'Verblijfsadres' },
     ]);
   });
 
-  it('laat de adresregel weg als er te weinig is ingevuld om er een te maken', () => {
+  it('dient alleen de ingevulde adresvelden in', () => {
     const claims = claimsFromAnswers(woonadres, { straat: 'Kalverstraat' });
     expect(claims).toHaveLength(1);
     expect(claims[0].input).toBe('adres');
@@ -110,11 +109,6 @@ describe('claimsFromAnswers voor een adres', () => {
 
   it('dient niets in als er geen enkel adresveld is ingevuld', () => {
     expect(claimsFromAnswers(woonadres, { straat: '', woonplaats: '  ' })).toEqual([]);
-  });
-
-  it('gebruikt alleen de woonplaats als de postcode ontbreekt', () => {
-    const claims = claimsFromAnswers(woonadres, { straat: 'Dam', huisnummer: '2', woonplaats: 'Amsterdam' });
-    expect(claims[1].value).toBe('Dam 2, Amsterdam');
   });
 });
 
@@ -143,14 +137,14 @@ describe('claimsFromAnswers voor het huishouden', () => {
     // stilletjes correcties indienen.
     const halfaf = {
       ...huishouden,
-      events: [{ value: 'halfaf', label: 'Half afgebouwd', unsupported: 'Kan nog niet.', changes: { partnerschap_type: 'GEEN' } }],
+      events: [{ value: 'halfaf', labelKey: 'sheet.change.event.kind', unsupportedKey: 'sheet.change.event.kind.unsupported', changes: { partnerschap_type: 'GEEN' } }],
     };
     expect(claimsFromAnswers(halfaf, { event: 'halfaf' })).toEqual([]);
   });
 
   it('zegt per niet-ondersteunde gebeurtenis waaróm het niet kan', () => {
     for (const e of huishouden.events.filter((e) => !e.changes)) {
-      expect(e.unsupported).toMatch(/kan in deze demo nog niet|demo nog niet/);
+      expect(eventUnsupported(e)).toMatch(/kan in deze demo nog niet|demo nog niet/);
     }
   });
 

@@ -1195,8 +1195,29 @@ enum RelatedResolution {
     Resolved(String),
     /// SRU search matched more than one law — a human must pick; skip for now.
     NeedsConfirmation,
-    /// No candidate (unknown slug, zero SRU hits, or a lookup error). Skip.
+    /// No candidate: unknown slug or zero SRU hits. Skip.
     Unresolved,
+    /// The source could not be asked — a throttle or an outage at
+    /// wetten.overheid.nl. Distinct from `Unresolved` on purpose: the law may
+    /// well exist, so counting this as "not found" hides an incomplete
+    /// enrichment behind a normal-looking number.
+    LookupFailed,
+}
+
+/// Map an SRU search outcome onto a resolution. Only an unambiguous single hit
+/// with a well-formed BWB id resolves; a malformed id must not slip into a
+/// harvest payload.
+fn classify_sru_result(
+    results: std::result::Result<Vec<crate::api::bwb_search::BwbSearchResult>, String>,
+) -> RelatedResolution {
+    match results {
+        Ok(results) if results.len() == 1 && is_valid_bwb_id(&results[0].bwb_id) => {
+            RelatedResolution::Resolved(results[0].bwb_id.clone())
+        }
+        Ok(results) if results.len() > 1 => RelatedResolution::NeedsConfirmation,
+        Ok(_) => RelatedResolution::Unresolved,
+        Err(_) => RelatedResolution::LookupFailed,
+    }
 }
 
 /// Resolve a related-legislation entry to a BWB id via the hybrid order:
@@ -1240,17 +1261,11 @@ async fn resolve_related_bwb_id(
     // (c) SRU search by name — accept only an unambiguous single hit, and only
     // if it is a well-formed BWB id (paths a/b validate too; don't let a
     // malformed SRU id slip into a harvest payload).
-    match crate::api::bwb_search::search_bwb_by_name(http_client, &entry.name).await {
-        Ok(results) if results.len() == 1 && is_valid_bwb_id(&results[0].bwb_id) => {
-            RelatedResolution::Resolved(results[0].bwb_id.clone())
-        }
-        Ok(results) if results.len() > 1 => RelatedResolution::NeedsConfirmation,
-        Ok(_) => RelatedResolution::Unresolved,
-        Err(e) => {
-            tracing::warn!(name = %entry.name, error = %e, "SRU search failed for related legislation");
-            RelatedResolution::Unresolved
-        }
+    let results = crate::api::bwb_search::search_bwb_by_name(http_client, &entry.name).await;
+    if let Err(e) = &results {
+        tracing::warn!(name = %entry.name, error = %e, "SRU search failed for related legislation");
     }
+    classify_sru_result(results)
 }
 
 /// Resolve every related-legislation entry declared by an enrichment and enqueue
@@ -1278,6 +1293,7 @@ async fn harvest_related_legislation(
     let mut exhausted = 0u32;
     let mut needs_confirmation = 0u32;
     let mut unresolved = 0u32;
+    let mut lookup_failed = 0u32;
 
     for entry in related {
         let bwb_id = match resolve_related_bwb_id(pool, http_client, entry).await {
@@ -1293,6 +1309,15 @@ async fn harvest_related_legislation(
             }
             RelatedResolution::Unresolved => {
                 unresolved += 1;
+                continue;
+            }
+            RelatedResolution::LookupFailed => {
+                lookup_failed += 1;
+                tracing::warn!(
+                    parent_law_id = %parent_law_id,
+                    name = %entry.name,
+                    "related legislation could not be looked up: enrichment is incomplete for this entry"
+                );
                 continue;
             }
         };
@@ -1346,6 +1371,7 @@ async fn harvest_related_legislation(
         exhausted,
         needs_confirmation,
         unresolved,
+        lookup_failed,
         "related-legislation harvest summary"
     );
 }
@@ -1678,7 +1704,10 @@ async fn process_next_law_convert_job(
                             assignee_account_id: Some(account_id),
                             traject_id: Some(payload.traject_id),
                             job_id: Some(job.id),
-                            title: format!("Conversie naar wet mislukt: {}", payload.filename),
+                            title: format!(
+                                "Conversie naar regelwerk mislukt: {}",
+                                payload.filename
+                            ),
                             payload: Some(serde_json::json!({
                                 "traject_ref": payload.traject_ref,
                                 "filename": payload.filename,
@@ -1880,7 +1909,7 @@ pub async fn materialize_task_workdir(
 /// gewoon worden aangemaakt en zou de gebruiker een taak openen die per
 /// definitie niet af te maken is.
 pub(crate) const NO_REVIEWABLE_LAW: &str =
-    "de verrijking leverde geen wet-YAML op om te beoordelen";
+    "de verrijking leverde geen regelwerk op om te beoordelen";
 
 /// Whether an enrich run wrote something the review UI can actually open.
 ///
@@ -2088,7 +2117,7 @@ pub async fn finish_enrich_task_job(
         }
         None => {
             let title = if new_law {
-                format!("Nieuwe wet beoordelen: {}", payload.law_id)
+                format!("Nieuw regelwerk beoordelen: {}", payload.law_id)
             } else {
                 format!("Verrijking beoordelen: {}", payload.law_id)
             };
@@ -2187,7 +2216,7 @@ async fn finalize_failed_task_job_tx(
         // De geketende enrich van een geüploade wet: de gebruiker kent geen
         // "verrijking", alleen de wet die er niet kwam. De input-blob (de
         // basis-YAML) gaat hier mee weg; opnieuw uploaden is het herstel.
-        format!("Wet aanmaken mislukt: {}", payload.law_id)
+        format!("Regelwerk aanmaken mislukt: {}", payload.law_id)
     } else {
         format!("Verrijking mislukt: {}", payload.law_id)
     };
@@ -2407,15 +2436,31 @@ pub async fn complete_enrich_success_tx(
 ) -> Result<Option<crate::models::Job>> {
     let mut tx = pool.begin().await?;
     job_queue::complete_job(&mut *tx, job.id, result_json).await?;
-    // Mirror the captured untranslatables into their table so they
-    // surface in the harvester UI. Atomic with the completion:
-    // delete-and-replace per (law_id, provider).
+    // Mirror the captured flags into their tables so they surface in the
+    // harvester UI. Atomic with the completion: delete-and-replace per
+    // (law_id, provider).
+    //
+    // Both channels are written on every run, and which one carries anything
+    // follows from the law's schema version: a law on v0.5.x yields
+    // untranslatables and no markings, one on v0.7.0 the reverse. Writing both
+    // unconditionally is what makes a migration safe in either direction,
+    // because each call clears its own table for this (law, provider) before
+    // inserting. Skipping the empty one would leave the other channel's stale
+    // rows standing after a law changed schema version.
     crate::untranslatables::replace_untranslatables(
         &mut tx,
         &result.law_id,
         &result.provider,
         job.id,
         &result.untranslatables,
+    )
+    .await?;
+    crate::markings::replace_markings(
+        &mut tx,
+        &result.law_id,
+        &result.provider,
+        job.id,
+        &result.markings,
     )
     .await?;
 
@@ -3283,6 +3328,58 @@ async fn handle_enrich_exhausted_or_retry(
 
 #[cfg(test)]
 mod tests {
+    use crate::api::bwb_search::BwbSearchResult;
+
+    fn hit(bwb_id: &str) -> BwbSearchResult {
+        BwbSearchResult {
+            bwb_id: bwb_id.to_string(),
+            title: "Een wet".to_string(),
+            law_type: "wet".to_string(),
+        }
+    }
+
+    #[test]
+    fn a_throttled_sru_lookup_is_not_a_law_that_does_not_exist() {
+        assert!(matches!(
+            classify_sru_result(Err(
+                "BWB search returned HTTP 429 Too Many Requests".to_string()
+            )),
+            RelatedResolution::LookupFailed
+        ));
+    }
+
+    #[test]
+    fn zero_hits_stays_unresolved() {
+        assert!(matches!(
+            classify_sru_result(Ok(vec![])),
+            RelatedResolution::Unresolved
+        ));
+    }
+
+    #[test]
+    fn one_well_formed_hit_resolves() {
+        assert!(matches!(
+            classify_sru_result(Ok(vec![hit("BWBR0018451")])),
+            RelatedResolution::Resolved(id) if id == "BWBR0018451"
+        ));
+    }
+
+    #[test]
+    fn one_malformed_hit_does_not_resolve() {
+        assert!(matches!(
+            classify_sru_result(Ok(vec![hit("CVDR123456")])),
+            RelatedResolution::Unresolved
+        ));
+    }
+
+    #[test]
+    fn several_hits_need_a_human() {
+        assert!(matches!(
+            classify_sru_result(Ok(vec![hit("BWBR0018451"), hit("BWBR0000001")])),
+            RelatedResolution::NeedsConfirmation
+        ));
+    }
+
     use super::*;
     use std::path::PathBuf;
 
@@ -3720,7 +3817,8 @@ articles:
 /// vóór de conversie, zonder taak, zonder blob, en (structureel: het push-pad
 /// bestaat niet meer in `document_convert`) zonder ook maar een git-backend
 /// aan te raken.
-#[cfg(all(test, feature = "test-utils"))]
+#[cfg(test)]
+#[cfg(feature = "test-utils")]
 mod contract_tests {
     use super::*;
     use crate::enrich::LlmProvider;
@@ -3923,5 +4021,44 @@ mod contract_tests {
 
         process_one(&db).await;
         assert_rejected_without_delivery(&db, job_id).await;
+    }
+
+    #[tokio::test]
+    async fn related_legislation_with_a_bwb_id_enqueues_a_follow_up_harvest() {
+        // Path (a): an explicit, valid bwb_id resolves without the slug table
+        // or the SRU search, so no network is involved. The follow-up harvest
+        // must land one level deeper, at the related-harvest priority.
+        let db = TestDb::new().await;
+        let related = vec![crate::enrich::RelatedLegislation {
+            name: "Wet op de zorgtoeslag".to_string(),
+            relation: "legal_basis".to_string(),
+            bwb_id: Some("BWBR0018451".to_string()),
+            slug: None,
+            open_term: None,
+        }];
+
+        harvest_related_legislation(&db.pool, &Client::new(), "parent_law", &related, 0).await;
+
+        let rows: Vec<(String, i32, Option<serde_json::Value>)> =
+            sqlx::query_as("SELECT law_id, priority, payload FROM jobs WHERE job_type = 'harvest'")
+                .fetch_all(&db.pool)
+                .await
+                .expect("query jobs");
+        assert_eq!(rows.len(), 1, "exactly one follow-up harvest");
+        let (law_id, priority, payload) = &rows[0];
+        assert_eq!(law_id, "BWBR0018451");
+        assert_eq!(*priority, related_harvest_priority(0).value());
+        let payload = payload.as_ref().expect("harvest payload");
+        assert_eq!(payload["bwb_id"], "BWBR0018451");
+        assert_eq!(payload["depth"], 1);
+
+        // Running it again finds the pending job and does not duplicate it.
+        harvest_related_legislation(&db.pool, &Client::new(), "parent_law", &related, 0).await;
+        let (count,): (i64,) =
+            sqlx::query_as("SELECT count(*) FROM jobs WHERE job_type = 'harvest'")
+                .fetch_one(&db.pool)
+                .await
+                .expect("count jobs");
+        assert_eq!(count, 1);
     }
 }

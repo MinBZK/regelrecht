@@ -8,10 +8,14 @@ omvang: ''
 categorie: ''
 capability: ''
 capaciteit: ''
-toelichting: ''
+toelichting: |-
+  **Stand**: de demo rekent de wetten door over een synthetische populatie, met
+  wetsparameters die je kunt aanpassen (`frontend-demo/src/simulation/`). Dat is
+  een eerste prototype, nog geen verkenning van wat simulatie in het
+  wetgevingsproces moet kunnen.
 volgorde: 3000
 onderzoek: ''
-bouw: ''
+bouw: deels
 rfcs: []
 onderzoeksvragen: []
 samenhangIds: []

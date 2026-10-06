@@ -211,7 +211,7 @@ const showBody = computed(() => props.drilledIn || expanded.value);
            flex-gap container) separate the stacked lists. -->
       <template v-for="(row, ri) in rows" :key="row._id ?? ri">
         <nldd-spacer v-if="ri > 0" size="12"></nldd-spacer>
-        <nldd-list variant="box-tinted">
+        <nldd-list appearance="box-tinted">
           <nldd-list-item v-for="col in allColumns" :key="col.name" size="md">
             <nldd-text-cell :text="col.name" min-width="120px" max-width="200px"></nldd-text-cell>
             <nldd-spacer-cell v-if="!readonly" size="8"></nldd-spacer-cell>
@@ -277,7 +277,7 @@ const showBody = computed(() => props.drilledIn || expanded.value);
 
           <nldd-list-item v-if="!readonly" size="md">
             <nldd-cell width="full">
-              <nldd-button variant="destructive" size="md" width="full" start-icon="delete" @click="removeRow(ri)" text="Verwijder"></nldd-button>
+              <nldd-button appearance="destructive" size="md" width="full" start-icon="delete" @click="removeRow(ri)" text="Verwijder"></nldd-button>
             </nldd-cell>
           </nldd-list-item>
         </nldd-list>
@@ -286,7 +286,7 @@ const showBody = computed(() => props.drilledIn || expanded.value);
       <!-- Empty state offers "Voeg toe" inside the inline-dialog instead. -->
       <template v-if="!readonly && rows.length > 0">
         <nldd-spacer size="12"></nldd-spacer>
-        <nldd-list variant="box-tinted">
+        <nldd-list appearance="box-tinted">
           <nldd-list-item size="md">
             <nldd-cell width="full">
               <nldd-button size="md" width="full" start-icon="plus-small" @click="addRow" text="Voeg toe"></nldd-button>

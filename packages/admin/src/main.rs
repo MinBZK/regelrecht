@@ -160,6 +160,11 @@ async fn main() {
         .route("/api/dashboard-stats", get(handlers::dashboard_stats))
         .route("/api/jobs/{job_id}", get(handlers::get_job))
         .route("/api/untranslatables", get(handlers::list_untranslatables))
+        .route("/api/markings", get(handlers::list_markings))
+        .route(
+            "/api/markings/clusters",
+            get(handlers::list_marking_clusters),
+        )
         .route("/api/sources", get(corpus_handlers::list_sources))
         .route("/api/corpus/laws", get(corpus_handlers::list_corpus_laws))
         .route("/api/info", get(handlers::platform_info))

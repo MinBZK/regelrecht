@@ -40,7 +40,7 @@ const Heading = `h${headingLevel}`;
   <nldd-container padding="20" padding-bottom="12">
     <nldd-title size="3">
       <Heading>{title}</Heading>
-      <p slot="subtitle">{meta}</p>
+      <p slot="supporting-text">{meta}</p>
     </nldd-title>
     <nldd-spacer size="12" />
     <nldd-rich-text>
@@ -49,7 +49,7 @@ const Heading = `h${headingLevel}`;
   </nldd-container>
   <nldd-container slot="footer" padding="20" padding-top="0">
     <nldd-button
-      variant="secondary"
+      appearance="secondary"
       width="full"
       href={href}
       text={`${read} ${linkLabel}`}

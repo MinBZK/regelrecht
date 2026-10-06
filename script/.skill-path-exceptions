@@ -1,0 +1,13 @@
+# Paden die een skill noemt en die met opzet niet in deze repo bestaan.
+# Eén pad per regel, met de reden erachter. script/check-skill-references.sh
+# leest dit bestand en faalt ook op een verouderde regel: bestaat het pad
+# inmiddels wél, of noemt geen enkele skill het nog, dan moet de regel weg.
+
+# law-generate beschrijft hiermee een fout uit een eerdere verrijkingsronde. Het
+# bestand kwam uit die ronde en staat niet in het corpus van deze repo; de skill
+# noemt het als voorbeeld, niet als iets om te openen.
+corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2026-01-01.yaml
+
+# Ligt in de corpus-repo, niet hier. De skill noemt het pad relatief aan
+# <corpus-root>.
+docs/drift-ijkpunten.md

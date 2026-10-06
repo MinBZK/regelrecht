@@ -10,6 +10,29 @@
  * Same pattern as the Begane Grond deck, reduced to what this demo needs.
  */
 import { computed, nextTick, ref } from 'vue';
+import { currentLocale } from '../i18n/index.js';
+import { localeRouteName, pageForConfigPath, splitConfigPath } from '../router.js';
+
+/**
+ * The slide's target, in the language that is on.
+ *
+ * `route:` in demo-config.yaml is a Dutch path (`/regelwerken`), because a file
+ * about slides should not have to know the routing table of every language.
+ * It is read back to its page here and resolved against the active locale, so
+ * a deck presented in English opens the English tabs.
+ */
+function slideTarget(path) {
+  if (!path || !router) return null;
+  const parts = splitConfigPath(path);
+  if (!parts) return path;
+  // What follows the tab (`/regelwerken/zorgtoeslagwet`: the law) comes along.
+  // Without it the slide opens the tab on whatever law was left open, and after
+  // a rehearsal the presenter lands on the wrong one. The rest comes from
+  // `splitConfigPath`, so a slide that still carries a former path keeps its law.
+  const { page, rest } = parts;
+  const base = router.resolve({ name: localeRouteName(page, currentLocale()) }).path;
+  return rest ? `${base.replace(/\/$/, '')}${rest}` : base;
+}
 
 const active = ref(false);
 const index = ref(0);
@@ -66,14 +89,19 @@ function isOnStage() {
   // waar we zijn, en houdt het dek de toetsen niet vast. Dat is de veilige
   // kant: onzichtbaar bladeren is precies wat hier misging.
   if (!slideRoute || !router) return false;
-  // Op het tabblad vergelijken en niet op het pad. `/wetten/:lawId?`,
+  // Op het tabblad vergelijken en niet op het pad. `/regelwerken/:lawId?`,
   // `/scenarios/:featurePath(.*)?` en `/zaaksysteem/:caseId?` verdiepen hun
   // eigen pad: WettenView en ScenariosView doen bij binnenkomst meteen een
   // `router.replace` naar de standaardwet of -feature van het profiel, nog
   // voordat de presentator iets aanraakt. Op het pad vergelijken zou het dek
   // dus doof maken op precies de dia die dat tabblad zojuist opende.
   const here = router.currentRoute?.value;
-  const target = router.resolve?.(slideRoute);
+  // Op de pagina vergelijken en niet op de routenaam: dezelfde pagina heeft
+  // per taal een eigen naam (`wetten` en `wetten:en`), en `meta.page` is wat
+  // die twee delen.
+  const page = pageForConfigPath(slideRoute);
+  if (page && here?.meta?.page) return here.meta.page === page;
+  const target = router.resolve?.(slideTarget(slideRoute) ?? slideRoute);
   if (target?.name && here?.name) return here.name === target.name;
   return here?.path === slideRoute;
 }
@@ -132,9 +160,10 @@ async function runSlide(i) {
       }
     }
   }
-  if (s.route && router && router.currentRoute.value.path !== s.route) {
+  const target = slideTarget(s.route);
+  if (target && router && router.currentRoute.value.path !== target) {
     try {
-      await router.push(s.route);
+      await router.push(target);
     } catch {
       /* redundant navigation */
     }

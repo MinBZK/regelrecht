@@ -18,15 +18,20 @@
 import {
   parseFeature,
   dispatch,
-  quotedValue,
-  bareValue,
+  matchStep,
+  typedArgs,
   traceRoot,
-  GRAMMAR,
   ExecutionContext,
   // Copied into this project rather than imported from the workspace; see
   // script/landing-laws.sh for why. The copy is remade on every build (npm
   // `prebuild`), so what ships is always current with the shared package.
 } from '~/lib/gherkin/index.js';
+// The engine and the laws are loaded once per page and shared with the
+// scenario runner on /concepts/scenarios; see ~/scripts/engine.ts.
+import { prepare, corpusScenario } from './engine';
+// Re-exported: the panel warms the engine through this module before it asks
+// for a run, and the two belong to the same import for it.
+export { prepare };
 
 /** The output the panel puts on screen; the scenario asserts it too. */
 const AMOUNT_OUTPUT = 'hoogte_zorgtoeslag';
@@ -50,11 +55,6 @@ export interface RunResult {
   durationMs: number;
 }
 
-interface Manifest {
-  calculationDate: string;
-  scenario: string;
-  laws: string[];
-}
 
 /**
  * The box-drawing prefixes, one per row.
@@ -118,80 +118,6 @@ function flatten(node: any, depth: number, out: Beat[]): void {
 }
 
 /**
- * Match a step against the canonical grammar.
- *
- * The same walk the demo does (frontend-demo/src/data/gherkinNl.js); the
- * grammar itself is generated from bdd/grammar.yaml, so both read the one
- * source of truth for what a step means.
- */
-function matchStep(text: string): { entry: any; args: string[] } | null {
-  for (const entry of GRAMMAR as any[]) {
-    const m = entry.pattern.exec(text);
-    if (m) return { entry, args: m.slice(1) };
-  }
-  return null;
-}
-
-let enginePromise: Promise<{ engine: any; manifest: Manifest; feature: string }> | null = null;
-
-/**
- * Fetch the engine and the laws, once.
- *
- * Separate from running so the page can start the download while the visitor is
- * still reading the panel above: by the time the run panel scrolls into view,
- * the animation can usually begin immediately instead of waiting on a network.
- */
-export function prepare(base = '/'): Promise<{ engine: any; manifest: Manifest; feature: string }> {
-  if (!enginePromise) {
-    enginePromise = prepareEngine(base).catch((err) => {
-      // Never cache a failure: a flaky network should not leave the panel
-      // permanently unable to run.
-      enginePromise = null;
-      throw err;
-    });
-  }
-  return enginePromise;
-}
-
-/**
- * Load the WASM engine and every law the scenario names.
- *
- * All versions of each law are loaded, not one picked here: the engine holds
- * them side by side and selects on the calculation date, which is what makes
- * the result the same as the one CI produces. See script/landing-laws.sh.
- */
-async function prepareEngine(base: string): Promise<{ engine: any; manifest: Manifest; feature: string }> {
-  const manifest: Manifest = await fetch(`${base}laws/manifest.json`).then((r) => {
-    if (!r.ok) throw new Error(`manifest: ${r.status}`);
-    return r.json();
-  });
-
-  const wasm = await import(/* @vite-ignore */ `${base}wasm/pkg/regelrecht_engine.js`);
-  await wasm.default(`${base}wasm/pkg/regelrecht_engine_bg.wasm`);
-
-  const engine = new wasm.WasmEngine();
-
-  const [laws, feature] = await Promise.all([
-    Promise.all(
-      manifest.laws.map((p) =>
-        fetch(`${base}${p}`).then((r) => {
-          if (!r.ok) throw new Error(`${p}: ${r.status}`);
-          return r.text();
-        }),
-      ),
-    ),
-    fetch(`${base}laws/${manifest.scenario}`).then((r) => {
-      if (!r.ok) throw new Error(`scenario: ${r.status}`);
-      return r.text();
-    }),
-  ]);
-
-  for (const yaml of laws) engine.loadLaw(yaml);
-
-  return { engine, manifest, feature };
-}
-
-/**
  * Run the scenario and return its trace as rows.
  *
  * The scenario is the file that sits beside the law in the repository, not a
@@ -200,7 +126,10 @@ async function prepareEngine(base: string): Promise<{ engine: any; manifest: Man
  * engine ran it" means the same thing here as it does there.
  */
 export async function runScenario(base = '/'): Promise<RunResult> {
-  const { engine, feature } = await prepare(base);
+  // Together rather than one after the other: the scenario file is a separate
+  // fetch now (only this panel needs it), and it should still land beside the
+  // laws instead of after them.
+  const [{ engine }, feature] = await Promise.all([prepare(base), corpusScenario(base)]);
 
   const parsed = parseFeature(feature);
   // The scenario the panel above shows: an income above the threshold, where
@@ -223,9 +152,7 @@ export async function runScenario(base = '/'): Promise<RunResult> {
     const match = matchStep(step.text);
     if (!match) throw new Error(`unknown step: ${step.text}`);
     const { entry, args } = match;
-    const typed = args.map((raw: string, i: number) =>
-      entry.argTypes[i] === 'number' ? bareValue(raw) : quotedValue(raw),
-    );
+    const typed = typedArgs(entry, args);
     const table = step.dataTable ?? null;
 
     if (entry.action === 'evaluate' || entry.action === 'evaluate_outputs') {

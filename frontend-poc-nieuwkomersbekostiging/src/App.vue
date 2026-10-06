@@ -39,6 +39,15 @@
       </nldd-top-navigation-bar>
       <werkversie-balk />
       </nldd-skip-link>
+      <!-- Meldingen van de assistent: hier en niet in het paneel, want op de
+           andere pagina's is dat paneel niet gemonteerd. -->
+      <assistent-meldingen
+        :meldingen="meldingen"
+        :op-assistent-pagina="route.name === 'beleid'"
+        naar-label="Naar de assistent"
+        @wis="wisMelding"
+        @ga="router.push('/beleid')"
+      />
       <main id="hoofdinhoud" class="app-main" tabindex="-1">
         <router-view />
       </main>
@@ -52,10 +61,13 @@ import { useRoute, useRouter } from 'vue-router';
 import { useThema } from './composables/useThema.js';
 import { b } from './basePad.js';
 import WerkversieBalk from './components/WerkversieBalk.vue';
+import AssistentMeldingen from '@regelrecht/frontend-shared/components/AssistentMeldingen.vue';
+import { useAssistent } from './composables/useAssistent.js';
 
 const route = useRoute();
 const router = useRouter();
 const { thema, volgende } = useThema();
+const { meldingen, wisMelding } = useAssistent();
 
 // Het icoon toont wat je krijgt als je klikt, niet waar je nu staat: een
 // knop die zijn eigen huidige stand afbeeldt, leest als een statuslampje.

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { usePresentation } from './usePresentation.js';
+import { adoptLocale } from '../i18n/index.js';
 
 // De presentatie hangt één keydown-luisteraar aan het venster en houdt die
 // vast zolang ze actief is. Dat is wat deze tests bewaken: zodra het scherm
@@ -13,12 +14,12 @@ import { usePresentation } from './usePresentation.js';
 /**
  * Een router-dubbel met alleen wat de presentatie ervan leest en gebruikt.
  * De tabbladen dragen een naam en sommige een optionele parameter, net als in
- * router.js: `/wetten/:lawId?` houdt dezelfde naam als de presentator een wet
+ * router.js: `/regelwerken/:lawId?` houdt dezelfde naam als de presentator een wet
  * opent.
  */
 const ROUTES = [
   { name: 'home', path: '/' },
-  { name: 'wetten', path: '/wetten' },
+  { name: 'wetten', path: '/regelwerken' },
   { name: 'simulatie', path: '/simulatie' },
   { name: 'zaaksysteem', path: '/zaaksysteem' },
 ];
@@ -32,27 +33,57 @@ function nameFor(path) {
   return ROUTES.find((r) => r.path === head)?.name;
 }
 
+/**
+ * Een route zoals de echte router hem teruggeeft, inclusief `meta.page`: het
+ * dek vergelijkt daarop, omdat dezelfde pagina per taal een eigen routenaam
+ * heeft (`wetten` en `wetten:en`) en `meta.page` is wat die twee delen.
+ */
+/** De Engelse slugs van de paden die deze tests aanraken. */
+const EN_PATHS = { wetten: '/ruleworks', simulatie: '/simulation', zaaksysteem: '/cases' };
+
+function routeFor(path) {
+  // Een Engels pad hoort bij dezelfde pagina als zijn Nederlandse tegenhanger:
+  // dat is precies wat `meta.page` uitdrukt, en waar het dek op vergelijkt.
+  const enPage = Object.keys(EN_PATHS).find((page) => path === `/en${EN_PATHS[page]}`);
+  if (enPage) return { path, name: `${enPage}:en`, meta: { page: enPage, locale: 'en' } };
+  if (path === '/en') return { path, name: 'home:en', meta: { page: 'home', locale: 'en' } };
+  const name = nameFor(path);
+  return { path, name, meta: name ? { page: name, locale: 'nl' } : {} };
+}
+
 function fakeRouter(path = '/') {
-  const currentRoute = { value: { path, name: nameFor(path) } };
+  const currentRoute = { value: routeFor(path) };
   return {
     currentRoute,
+    /**
+     * De echte router wordt zowel met een pad als met `{ name }` aangeroepen;
+     * het dek doet dat laatste om een dia-pad naar de actieve taal te brengen.
+     */
     resolve(to) {
-      return { path: to, name: nameFor(to) };
+      if (to && typeof to === 'object') {
+        const en = String(to.name).endsWith(':en');
+        const hit = ROUTES.find((r) => r.name === String(to.name).replace(/:en$/, ''));
+        if (!hit) return { path: '/', name: undefined, meta: {} };
+        if (!en) return routeFor(hit.path);
+        const path = hit.path === '/' ? '/en' : `/en${EN_PATHS[hit.name] ?? hit.path}`;
+        return { path, name: `${hit.name}:en`, meta: { page: hit.name, locale: 'en' } };
+      }
+      return routeFor(to);
     },
     push(to) {
-      currentRoute.value = { path: to, name: nameFor(to) };
+      currentRoute.value = routeFor(to);
       return Promise.resolve();
     },
     /** Wat de presentator zelf doet: klikken en navigeren buiten de dia's om. */
     goTo(to) {
-      currentRoute.value = { path: to, name: nameFor(to) };
+      currentRoute.value = routeFor(to);
     },
   };
 }
 
 const SLIDES = [
   { kind: 'title', title: 'Opening' },
-  { kind: 'demo', title: 'De wetten', route: '/wetten' },
+  { kind: 'demo', title: 'De wetten', route: '/regelwerken' },
   { kind: 'closing', title: 'Slot' },
 ];
 
@@ -85,6 +116,58 @@ function pressFromShadowInput(key) {
   return event.defaultPrevented;
 }
 
+describe('usePresentation in het Engels', () => {
+  let p;
+  let router;
+
+  beforeEach(() => {
+    p = usePresentation();
+    router = fakeRouter();
+    p.init({ router, slides: SLIDES });
+    p.setMode('zaal');
+    adoptLocale('en');
+  });
+
+  afterEach(() => {
+    p.stop();
+    adoptLocale('nl');
+  });
+
+  it('opent het Engelse tabblad voor een dia met een Nederlands pad', async () => {
+    // `route: /regelwerken` staat zo in demo-config.yaml, want dat bestand gaat over
+    // dia's en hoort de routetabel van elke taal niet te kennen. Wie het dek in
+    // het Engels draait hoort wel op /en/ruleworks te landen.
+    await p.start(1);
+    expect(router.currentRoute.value.path).toBe('/en/ruleworks');
+  });
+
+  it('neemt de wet uit het dia-pad mee naar het Engelse tabblad', async () => {
+    p.init({ slides: [SLIDES[0], { kind: 'demo', title: 'De wet', route: '/regelwerken/zorgtoeslagwet' }] });
+    await p.start(1);
+    expect(router.currentRoute.value.path).toBe('/en/ruleworks/zorgtoeslagwet');
+  });
+
+  it('houdt de wet vast voor een dia die nog het oude pad draagt', async () => {
+    // Het tabblad stond op `/wetten`. Een dia die dat pad nog heeft moet op
+    // dezelfde wet uitkomen: tegen het nieuwe pad afgemeten valt de rest weg,
+    // en opent het tabblad de wet die er toevallig nog open stond.
+    p.init({ slides: [SLIDES[0], { kind: 'demo', title: 'De wet', route: '/wetten/zorgtoeslagwet' }] });
+    await p.start(1);
+    expect(router.currentRoute.value.path).toBe('/en/ruleworks/zorgtoeslagwet');
+  });
+
+  it('houdt de toetsen vast op het Engelse tabblad dat de dia opende', async () => {
+    // Het dek vergelijkt op de pagina en niet op de routenaam; zou het dat wel
+    // doen, dan was het doof op precies de dia die dit tabblad zojuist opende.
+    await p.start(1);
+    // Zaalmodus, dia met een route: het dek staat niet in beeld, maar het
+    // scherm is nog van deze dia.
+    expect(p.visible.value).toBe(false);
+    expect(press(' ')).toBe(true);
+    expect(p.index.value).toBe(2);
+  });
+});
+
 describe('usePresentation toetsafvang', () => {
   let p;
   let router;
@@ -112,9 +195,16 @@ describe('usePresentation toetsafvang', () => {
     // Zaalmodus, dia met een route: het dek staat niet in beeld, maar het
     // scherm is nog van deze dia.
     expect(p.visible.value).toBe(false);
-    expect(router.currentRoute.value.path).toBe('/wetten');
+    expect(router.currentRoute.value.path).toBe('/regelwerken');
     expect(press('ArrowRight')).toBe(true);
     expect(p.index.value).toBe(2);
+  });
+
+  it('landt op de wet uit het dia-pad, ook als er een andere open stond', async () => {
+    router.goTo('/regelwerken/zvw');
+    p.init({ slides: [SLIDES[0], { kind: 'demo', title: 'De wet', route: '/regelwerken/zorgtoeslagwet' }] });
+    await p.start(1);
+    expect(router.currentRoute.value.path).toBe('/regelwerken/zorgtoeslagwet');
   });
 
   it('laat de toetsen los zodra de presentator zelf een ander tabblad opent', async () => {
@@ -133,7 +223,7 @@ describe('usePresentation toetsafvang', () => {
     router.goTo('/simulatie');
     expect(press(' ')).toBe(false);
 
-    router.goTo('/wetten');
+    router.goTo('/regelwerken');
     expect(press(' ')).toBe(true);
     expect(p.index.value).toBe(2);
   });
@@ -141,11 +231,11 @@ describe('usePresentation toetsafvang', () => {
   it('blijft bladeren als het tabblad zichzelf verdiept', async () => {
     await p.start(1);
     // WettenView opent bij binnenkomst meteen de standaardwet van het profiel
-    // en doet `router.replace('/wetten/<lawId>')` (een watch met
+    // en doet `router.replace('/regelwerken/<lawId>')` (een watch met
     // `immediate: true`), zonder dat de presentator iets aanraakt. Hetzelfde
     // geldt voor ScenariosView. Vergelijken op pad zou het dek dus doof maken
     // op de dia die zojuist zelf dit tabblad opende.
-    router.goTo('/wetten/zorgtoeslagwet');
+    router.goTo('/regelwerken/zorgtoeslagwet');
 
     expect(p.isOnStage()).toBe(true);
     expect(press('ArrowRight')).toBe(true);
@@ -215,7 +305,7 @@ describe('usePresentation toetsafvang', () => {
     const redirecting = fakeRouter();
     redirecting.push = (to) => {
       const landed = nameFor(to) ? to : '/';
-      redirecting.currentRoute.value = { path: landed, name: nameFor(landed) };
+      redirecting.currentRoute.value = routeFor(landed);
       return Promise.resolve();
     };
     p.init({ router: redirecting, slides: [{ kind: 'title' }, { kind: 'demo', route: '/tikfout' }] });

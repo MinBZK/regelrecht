@@ -4,7 +4,7 @@
       <nldd-button
         :text="anyRunning ? 'Bezig met rekenen…' : 'Doorrekenen'"
         start-icon="analytics"
-        variant="primary"
+        appearance="primary"
         size="sm"
         :disabled="anyRunning ? true : undefined"
         @click="run"

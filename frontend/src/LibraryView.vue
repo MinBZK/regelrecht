@@ -478,7 +478,7 @@ const TAKEN_TITELS = {
   werkdocumenten: 'Werkdocumenten',
   // Alleen bereikbaar via een handmatig getypte /taken/wet zonder id; het panel
   // linkt altijd naar één wet.
-  wet: 'Wetten',
+  wet: 'Regelwerken',
 };
 const takenTitle = computed(() => {
   if (!takenCategorie.value) return undefined;
@@ -2098,10 +2098,10 @@ watch(activeTrajectRef, () => {
           v-if="indexError && !isLibraryMode"
           variant="warning"
           duration="0"
-          text="Wetten en regels van dit traject zijn niet geladen"
+          text="De regelwerken van dit traject zijn niet geladen"
           :supporting-text="indexErrorSupportingText"
         >
-          <nldd-button slot="actions" variant="secondary" text="Probeer opnieuw" @click="retryLoadCorpus"></nldd-button>
+          <nldd-button slot="actions" appearance="secondary" text="Probeer opnieuw" @click="retryLoadCorpus"></nldd-button>
         </nldd-notification>
 
         <!-- Full-page "no usable content" states (matching EditorView): shown
@@ -2114,11 +2114,11 @@ watch(activeTrajectRef, () => {
           <nldd-simple-section width="full">
             <nldd-inline-dialog
               variant="alert"
-              text="Wetten en regels zijn niet geladen"
+              text="De regelwerken zijn niet geladen"
               :supporting-text="indexErrorSupportingText"
             >
-              <nldd-button slot="actions" variant="primary" text="Probeer opnieuw" @click="retryLoadCorpus"></nldd-button>
-              <nldd-button slot="actions" variant="secondary" text="Neem contact op via e-mail" :href="`mailto:${SUPPORT_EMAIL}`"></nldd-button>
+              <nldd-button slot="actions" appearance="primary" text="Probeer opnieuw" @click="retryLoadCorpus"></nldd-button>
+              <nldd-button slot="actions" appearance="secondary" text="Neem contact op via e-mail" :href="`mailto:${SUPPORT_EMAIL}`"></nldd-button>
             </nldd-inline-dialog>
           </nldd-simple-section>
         </nldd-page>
@@ -2149,20 +2149,20 @@ watch(activeTrajectRef, () => {
                        the document list in the secondary sidebar + editor in
                        main, mirroring how a law drills into its articles. -->
                   <template v-if="activeTrajectRef">
-                    <nldd-list variant="simple">
+                    <nldd-list appearance="simple">
                       <nldd-list-item size="md" button :current="isInstellingenMode || undefined" @click="goToInstellingen()">
-                        <nldd-icon-cell size="20"><nldd-icon name="gear"></nldd-icon></nldd-icon-cell>
+                        <nldd-icon-cell size="20"><nldd-icon icon="gear"></nldd-icon></nldd-icon-cell>
                         <nldd-spacer-cell size="8"></nldd-spacer-cell>
                         <nldd-text-cell text="Instellingen"></nldd-text-cell>
                         <nldd-spacer-cell size="8"></nldd-spacer-cell>
-                        <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
+                        <nldd-icon-cell size="20"><nldd-icon icon="chevron-right"></nldd-icon></nldd-icon-cell>
                       </nldd-list-item>
                       <nldd-list-item size="md" button :current="isWerkdocMode || undefined" @click="goToWerkdocumenten">
-                        <nldd-icon-cell size="20"><nldd-icon name="documents"></nldd-icon></nldd-icon-cell>
+                        <nldd-icon-cell size="20"><nldd-icon icon="documents"></nldd-icon></nldd-icon-cell>
                         <nldd-spacer-cell size="8"></nldd-spacer-cell>
                         <nldd-text-cell text="Werkdocumenten"></nldd-text-cell>
                         <nldd-spacer-cell size="8"></nldd-spacer-cell>
-                        <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
+                        <nldd-icon-cell size="20"><nldd-icon icon="chevron-right"></nldd-icon></nldd-icon-cell>
                       </nldd-list-item>
                       <TasksSidebarItem :current="isTakenMode" @click="goToTaken" />
                     </nldd-list>
@@ -2182,7 +2182,7 @@ watch(activeTrajectRef, () => {
                           v-if="section.key === 'recent'"
                           slot="end"
                           size="xs"
-                          variant="accent-transparent"
+                          appearance="accent-transparent"
                           text="Wis"
                           @click="clearRecent"
                         ></nldd-button>
@@ -2196,7 +2196,7 @@ watch(activeTrajectRef, () => {
                     <nldd-rich-text v-if="section.empty" data-testid="traject-no-laws">
                       <p>Nog niets bewerkt.</p>
                     </nldd-rich-text>
-                    <nldd-list v-else variant="simple">
+                    <nldd-list v-else appearance="simple">
                       <nldd-list-item
                         v-for="law in section.laws"
                         :key="`${section.key}-${law.law_id}`"
@@ -2211,7 +2211,7 @@ watch(activeTrajectRef, () => {
                         </nldd-text-cell>
                         <nldd-spacer-cell size="8"></nldd-spacer-cell>
                         <nldd-icon-cell size="20">
-                          <nldd-icon name="chevron-right"></nldd-icon>
+                          <nldd-icon icon="chevron-right"></nldd-icon>
                         </nldd-icon-cell>
                       </nldd-list-item>
                     </nldd-list>
@@ -2222,13 +2222,13 @@ watch(activeTrajectRef, () => {
                       <nldd-button
                         data-testid="traject-laws-expander"
                         size="xs"
-                        variant="accent-transparent"
+                        appearance="accent-transparent"
                         :text="trajectExpanderText"
                         @click="trajectLawsExpanded = !trajectLawsExpanded"
                       ></nldd-button>
                     </template>
                   </template>
-                  <!-- "Wet toevoegen" is verhuisd naar de universele "+" in de
+                  <!-- "Regelwerk toevoegen" is verhuisd naar de universele "+" in de
                        header (AppShell); die opent de AddLawSheet via
                        useAddActions. De file-picker voor de upload-route blijft
                        hier, want de upload zelf (onLawFileChange) leeft in deze
@@ -2240,7 +2240,7 @@ watch(activeTrajectRef, () => {
                       <nldd-banner
                         variant="success"
                         text="Conversie gestart"
-                        supporting-text="Je krijgt een taak zodra de wet klaarstaat voor beoordeling."
+                        supporting-text="Je krijgt een taak zodra het regelwerk klaarstaat voor beoordeling."
                         dismissible
                         @dismiss="dismissLawUploadStarted"
                       ></nldd-banner>
@@ -2250,7 +2250,7 @@ watch(activeTrajectRef, () => {
                       <nldd-banner
                         variant="success"
                         text="Ophalen gestart"
-                        supporting-text="De aanvraag staat bij Taken; je krijgt een taak zodra de wet klaarstaat voor beoordeling."
+                        supporting-text="De aanvraag staat bij Taken; je krijgt een taak zodra het regelwerk klaarstaat voor beoordeling."
                         dismissible
                         @dismiss="dismissLawHarvestStarted"
                       ></nldd-banner>
@@ -2268,23 +2268,23 @@ watch(activeTrajectRef, () => {
               <nldd-simple-section width="full">
                 <nldd-title id="instellingen-titel" size="3"><h3>Instellingen</h3></nldd-title>
                 <nldd-spacer size="16"></nldd-spacer>
-                <nldd-list variant="simple">
+                <nldd-list appearance="simple">
                   <!-- Zelfde iconen als in TrajectMenu/MobileTrajectSheet: deze
                        twee openen dezelfde bestemmingen, dus ze horen er niet
                        anders uit te zien afhankelijk van waar je ze aanklikt. -->
                   <nldd-list-item size="md" button :current="instellingenTab === 'details' || undefined" @click="goToInstellingen('details')">
-                    <nldd-icon-cell size="20"><nldd-icon name="traject"></nldd-icon></nldd-icon-cell>
+                    <nldd-icon-cell size="20"><nldd-icon icon="traject"></nldd-icon></nldd-icon-cell>
                     <nldd-spacer-cell size="8"></nldd-spacer-cell>
                     <nldd-text-cell text="Algemeen"></nldd-text-cell>
                     <nldd-spacer-cell size="8"></nldd-spacer-cell>
-                    <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
+                    <nldd-icon-cell size="20"><nldd-icon icon="chevron-right"></nldd-icon></nldd-icon-cell>
                   </nldd-list-item>
                   <nldd-list-item size="md" button :current="instellingenTab === 'leden' || undefined" @click="goToInstellingen('leden')">
-                    <nldd-icon-cell size="20"><nldd-icon name="person-2"></nldd-icon></nldd-icon-cell>
+                    <nldd-icon-cell size="20"><nldd-icon icon="person-2"></nldd-icon></nldd-icon-cell>
                     <nldd-spacer-cell size="8"></nldd-spacer-cell>
                     <nldd-text-cell text="Leden"></nldd-text-cell>
                     <nldd-spacer-cell size="8"></nldd-spacer-cell>
-                    <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
+                    <nldd-icon-cell size="20"><nldd-icon icon="chevron-right"></nldd-icon></nldd-icon-cell>
                   </nldd-list-item>
                 </nldd-list>
               </nldd-simple-section>
@@ -2360,7 +2360,7 @@ watch(activeTrajectRef, () => {
                      favourite button runs entirely off `selectedLawId` (route)
                      + `favorites`, never the loaded law, so waiting for
                      `selectedLaw` only hid the toolbar during the load. -->
-                <nldd-toolbar v-if="paneChromeVisible(selectedLawLoading)" label="Wetacties">
+                <nldd-toolbar v-if="paneChromeVisible(selectedLawLoading)" label="Regelwerkacties">
                   <!-- priority: hoger blijft langer staan, lager verdwijnt als
                        eerste in het overflow-menu. -->
                   <nldd-toolbar-item slot="start" :priority="2">
@@ -2381,11 +2381,11 @@ watch(activeTrajectRef, () => {
                         <nldd-container padding="16">
                           <nldd-inline-dialog
                             icon="login"
-                            text="Log in om wetten als favoriet te markeren"
-                            supporting-text="Zodra je bent ingelogd kun je wetten bewaren en snel terugvinden."
+                            text="Log in om regelwerken als favoriet te markeren"
+                            supporting-text="Zodra je bent ingelogd kun je regelwerken bewaren en snel terugvinden."
                           >
-                            <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login()"></nldd-button>
-                            <nldd-button slot="actions" variant="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
+                            <nldd-button slot="actions" appearance="primary" text="Inloggen" @click="login()"></nldd-button>
+                            <nldd-button slot="actions" appearance="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
                           </nldd-inline-dialog>
                         </nldd-container>
                       </nldd-popover>
@@ -2428,19 +2428,19 @@ watch(activeTrajectRef, () => {
                   ></nldd-search-field>
                   <nldd-spacer size="16"></nldd-spacer>
                 </template>
-                <nldd-activity-indicator v-if="selectedLawLoading" text="Wet laden" show-text></nldd-activity-indicator>
-                <nldd-inline-dialog v-else-if="!selectedLaw" text="Selecteer een wet"></nldd-inline-dialog>
+                <nldd-activity-indicator v-if="selectedLawLoading" text="Regelwerk laden" show-text></nldd-activity-indicator>
+                <nldd-inline-dialog v-else-if="!selectedLaw" text="Selecteer een regelwerk"></nldd-inline-dialog>
                 <template v-else>
-                <nldd-list variant="simple">
+                <nldd-list appearance="simple">
                   <nldd-list-item size="md" button :current="isAlgemeen || undefined" @click="selectAlgemeen()">
                     <nldd-icon-cell size="20">
-                      <nldd-icon name="information"></nldd-icon>
+                      <nldd-icon icon="information"></nldd-icon>
                     </nldd-icon-cell>
                     <nldd-spacer-cell size="8"></nldd-spacer-cell>
                     <nldd-text-cell text="Algemeen"></nldd-text-cell>
                     <nldd-spacer-cell size="8"></nldd-spacer-cell>
                     <nldd-icon-cell size="20">
-                      <nldd-icon name="chevron-right"></nldd-icon>
+                      <nldd-icon icon="chevron-right"></nldd-icon>
                     </nldd-icon-cell>
                   </nldd-list-item>
                 </nldd-list>
@@ -2469,7 +2469,7 @@ watch(activeTrajectRef, () => {
                     @click="resetArticleFilters"
                   ></nldd-button>
                 </nldd-inline-dialog>
-                <nldd-list v-else variant="simple">
+                <nldd-list v-else appearance="simple">
                   <nldd-list-item
                     v-for="article in filteredArticles"
                     :key="article.number"
@@ -2484,7 +2484,7 @@ watch(activeTrajectRef, () => {
                     </nldd-text-cell>
                     <nldd-spacer-cell size="8"></nldd-spacer-cell>
                     <nldd-icon-cell size="20">
-                      <nldd-icon name="chevron-right"></nldd-icon>
+                      <nldd-icon icon="chevron-right"></nldd-icon>
                     </nldd-icon-cell>
                   </nldd-list-item>
                 </nldd-list>
@@ -2495,7 +2495,7 @@ watch(activeTrajectRef, () => {
 
           <!-- Main (instellingen mode): the selected settings pane. -->
           <nldd-split-view-pane v-if="isInstellingenMode" slot="main" :has-content="instellingenTab || undefined">
-            <nldd-page sticky-header>
+            <nldd-page landmarks="page" sticky-header>
               <nldd-top-title-bar
                 slot="header"
                 :text="instellingenTab === 'leden' ? 'Leden' : (instellingenTab === 'details' ? 'Algemeen' : undefined)"
@@ -2522,7 +2522,7 @@ watch(activeTrajectRef, () => {
                taak zelf opent nog steeds niet hier - "Beoordelen" navigeert naar
                de editor of het werkdocument. -->
           <nldd-split-view-pane v-else-if="isTakenMode" slot="main" :has-content="takenCategorie || undefined">
-            <nldd-page sticky-header>
+            <nldd-page landmarks="page" sticky-header>
               <nldd-top-title-bar
                 slot="header"
                 :text="takenTitle"
@@ -2549,7 +2549,7 @@ watch(activeTrajectRef, () => {
 
           <!-- Main (werkdoc mode): the document editor, or a placeholder. -->
           <nldd-split-view-pane v-else-if="isWerkdocMode" slot="main" :has-content="hasOpenDoc || !!viewingJobPath || undefined">
-            <nldd-page v-if="viewingJobPath">
+            <nldd-page landmarks="page" v-if="viewingJobPath">
               <!-- Back to the document list, shown only while the sidebar is
                    stacked away - the job view is the whole screen then, with no
                    other way out. Mirrors DocumentEditor's own back item: the
@@ -2569,10 +2569,10 @@ watch(activeTrajectRef, () => {
               </nldd-container>
               <nldd-simple-section width="full">
                 <nldd-inline-dialog v-if="viewedJobFailed" variant="alert" text="Conversie mislukt" supporting-text="Het bestand kon niet worden omgezet naar tekst. Mogelijk is het beschadigd of geen leesbaar documenttype.">
-                  <nldd-button slot="actions" variant="secondary" text="Probeer opnieuw" @click="onRetryViewingJob"></nldd-button>
+                  <nldd-button slot="actions" appearance="secondary" text="Probeer opnieuw" @click="onRetryViewingJob"></nldd-button>
                 </nldd-inline-dialog>
                 <nldd-inline-dialog v-else variant="loading" text="Aan het converteren…" supporting-text="Dit gebeurt op de achtergrond. Je kunt gerust wegnavigeren en later terugkomen. Duurt het te lang, dan kun je de conversie annuleren.">
-                  <nldd-button slot="actions" variant="secondary" text="Annuleer conversie" @click="onCancelViewingJob"></nldd-button>
+                  <nldd-button slot="actions" appearance="secondary" text="Annuleer conversie" @click="onCancelViewingJob"></nldd-button>
                 </nldd-inline-dialog>
               </nldd-simple-section>
             </nldd-page>
@@ -2581,18 +2581,18 @@ watch(activeTrajectRef, () => {
                  hasOpenDoc is true) - zonder deze voorrang zou de editor met een
                  lege body renderen. Een echte centrale melding met een uitweg,
                  in de stijl van de artikel-404 verderop. -->
-            <nldd-page v-else-if="docNotFoundActive">
+            <nldd-page landmarks="page" v-else-if="docNotFoundActive">
               <nldd-simple-section width="full">
                 <nldd-inline-dialog
                   variant="alert"
                   :text="`Werkdocument ${docsMgr.displayTitle(openDocPath)} bestaat niet`"
                   supporting-text="Mogelijk is het verwijderd of klopt de link niet. Ga terug naar de lijst om een ander document te openen of een nieuw document te maken."
                 >
-                  <nldd-button slot="actions" variant="primary" text="Terug naar werkdocumenten" @click="onDocBack"></nldd-button>
+                  <nldd-button slot="actions" appearance="primary" text="Terug naar werkdocumenten" @click="onDocBack"></nldd-button>
                 </nldd-inline-dialog>
               </nldd-simple-section>
             </nldd-page>
-            <nldd-page v-else-if="hasOpenDoc" sticky-header sticky-footer>
+            <nldd-page landmarks="page" v-else-if="hasOpenDoc" sticky-header sticky-footer>
               <!-- Review-modus (job_review-taak, payload.kind === 'document'):
                    a full-width, low bar above the document editor, same
                    pattern/variants as EditorView's law-review banner (PR
@@ -2609,7 +2609,7 @@ watch(activeTrajectRef, () => {
                   <nldd-button
                     v-if="docReviewActive"
                     slot="actions"
-                    variant="secondary"
+                    appearance="secondary"
                     text="Verwerpen"
                     @click="rejectDocReview"
                   ></nldd-button>
@@ -2617,7 +2617,7 @@ watch(activeTrajectRef, () => {
               </nldd-container>
               <DocumentEditor ref="docEditorEl" :manager="docsMgr" @back="onDocBack" @saved="onDocSaved"></DocumentEditor>
             </nldd-page>
-            <nldd-page v-else>
+            <nldd-page landmarks="page" v-else>
               <nldd-simple-section width="full">
                 <nldd-inline-dialog text="Geen document open"></nldd-inline-dialog>
               </nldd-simple-section>
@@ -2626,7 +2626,7 @@ watch(activeTrajectRef, () => {
 
           <!-- Main: Artikel Detail -->
           <nldd-split-view-pane v-else slot="main" :has-content="selectedArticle || isAlgemeen || lawError || articleNotFound ? true : undefined">
-            <nldd-page sticky-header>
+            <nldd-page landmarks="page" sticky-header>
               <nldd-top-title-bar
                 slot="header"
                 :text="isAlgemeen ? 'Algemeen' : (selectedArticle ? `Artikel ${selectedArticle.number}` : undefined)"
@@ -2651,8 +2651,8 @@ watch(activeTrajectRef, () => {
                   :text="`${indexedLawName} is niet beschikbaar in dit traject`"
                   supporting-text="Wissel van traject via het menu rechtsboven of ga terug naar het overzicht."
                 >
-                  <nldd-button slot="actions" variant="primary" text="Naar overzicht" @click="goToLibraryRoot"></nldd-button>
-                  <nldd-button slot="actions" variant="secondary" text="Probeer opnieuw" @click="retryLoadLaw"></nldd-button>
+                  <nldd-button slot="actions" appearance="primary" text="Naar overzicht" @click="goToLibraryRoot"></nldd-button>
+                  <nldd-button slot="actions" appearance="secondary" text="Probeer opnieuw" @click="retryLoadLaw"></nldd-button>
                 </nldd-inline-dialog>
                 <nldd-inline-dialog
                   v-else
@@ -2660,8 +2660,8 @@ watch(activeTrajectRef, () => {
                   :text="`${indexedLawName} is niet geladen`"
                   supporting-text="De gegevens konden niet worden opgehaald."
                 >
-                  <nldd-button slot="actions" variant="primary" text="Probeer opnieuw" @click="retryLoadLaw"></nldd-button>
-                  <nldd-button slot="actions" variant="secondary" text="Neem contact op via e-mail" :href="`mailto:${SUPPORT_EMAIL}`"></nldd-button>
+                  <nldd-button slot="actions" appearance="primary" text="Probeer opnieuw" @click="retryLoadLaw"></nldd-button>
+                  <nldd-button slot="actions" appearance="secondary" text="Neem contact op via e-mail" :href="`mailto:${SUPPORT_EMAIL}`"></nldd-button>
                 </nldd-inline-dialog>
               </nldd-simple-section>
               <nldd-simple-section width="full" v-else-if="articleNotFound">
@@ -2670,17 +2670,17 @@ watch(activeTrajectRef, () => {
                   :text="`Artikel ${selectedArticleNumber} van ${lawName || indexedLawName} bestaat niet`"
                   supporting-text="Mogelijk klopt de URL niet. Neem contact op als je verwacht dat dit artikel wel bestaat."
                 >
-                  <nldd-button slot="actions" class="article-not-found__back-button" variant="primary" text="Bekijk artikelen" @click="goToLawRoot"></nldd-button>
-                  <nldd-button slot="actions" variant="secondary" text="Neem contact op via e-mail" :href="`mailto:${SUPPORT_EMAIL}`"></nldd-button>
+                  <nldd-button slot="actions" class="article-not-found__back-button" appearance="primary" text="Bekijk artikelen" @click="goToLawRoot"></nldd-button>
+                  <nldd-button slot="actions" appearance="secondary" text="Neem contact op via e-mail" :href="`mailto:${SUPPORT_EMAIL}`"></nldd-button>
                 </nldd-inline-dialog>
               </nldd-simple-section>
               <nldd-simple-section width="full" v-else-if="isAlgemeen">
                 <nldd-title id="algemeen-titel" size="3">
                   <h3>Algemeen</h3>
-                  <span slot="subtitle">{{ lawName }}</span>
+                  <span slot="supporting-text">{{ lawName }}</span>
                 </nldd-title>
                 <nldd-spacer size="16"></nldd-spacer>
-                <nldd-list variant="box-tinted" accessible-label="Algemene informatie">
+                <nldd-list appearance="box-tinted" accessible-label="Algemene informatie">
                   <nldd-list-item v-for="row in algemeenRows" :key="row.label">
                     <nldd-text-cell :text="row.label" width="200px"></nldd-text-cell>
                     <nldd-spacer-cell size="16"></nldd-spacer-cell>
@@ -2693,7 +2693,7 @@ watch(activeTrajectRef, () => {
                     <h4>Grondslag</h4>
                   </nldd-title>
                   <nldd-spacer size="8"></nldd-spacer>
-                  <nldd-list variant="simple">
+                  <nldd-list appearance="simple">
                     <nldd-list-item
                       v-for="basis in algemeenLegalBasis"
                       :key="`${basis.law_id}-${basis.article}`"
@@ -2707,7 +2707,7 @@ watch(activeTrajectRef, () => {
                       ></nldd-text-cell>
                       <nldd-spacer-cell size="8"></nldd-spacer-cell>
                       <nldd-icon-cell size="20">
-                        <nldd-icon name="chevron-right"></nldd-icon>
+                        <nldd-icon icon="chevron-right"></nldd-icon>
                       </nldd-icon-cell>
                     </nldd-list-item>
                   </nldd-list>
@@ -2720,7 +2720,7 @@ watch(activeTrajectRef, () => {
                 <nldd-simple-section width="full">
                   <nldd-title id="article-titel" size="3">
                     <h3>Artikel {{ selectedArticle.number }}</h3>
-                    <span slot="subtitle">{{ lawName }}</span>
+                    <span slot="supporting-text">{{ lawName }}</span>
                   </nldd-title>
                   <nldd-spacer size="16"></nldd-spacer>
                   <nldd-toolbar>
@@ -2732,7 +2732,7 @@ watch(activeTrajectRef, () => {
                       </nldd-tab-bar>
                     </nldd-toolbar-item>
                     <nldd-toolbar-item slot="end">
-                      <nldd-button ref="editButton" v-if="selectedLawId" variant="secondary" text="Bewerken" :href="authenticated ? editLawHref : undefined" @click.prevent="onEditClick" @pointerdown.capture="onLoginTriggerPointerdown"></nldd-button>
+                      <nldd-button ref="editButton" v-if="selectedLawId" appearance="secondary" text="Bewerken" :href="authenticated ? editLawHref : undefined" @click.prevent="onEditClick" @pointerdown.capture="onLoginTriggerPointerdown"></nldd-button>
                     </nldd-toolbar-item>
                   </nldd-toolbar>
                   <nldd-spacer size="24"></nldd-spacer>
@@ -2782,9 +2782,9 @@ watch(activeTrajectRef, () => {
       :supporting-text="docNavGuardText"
       @close="cancelDocLeave"
     >
-      <nldd-button slot="actions" variant="primary" text="Blijf document bewerken" @click="cancelDocLeave"></nldd-button>
-      <nldd-button slot="actions" variant="secondary" text="Sla wijzigingen op en sluit" :loading="docSaving || undefined" @click="saveDocAndLeave"></nldd-button>
-      <nldd-button slot="actions" variant="destructive" text="Negeer wijzigingen en sluit" @click="confirmDocLeave"></nldd-button>
+      <nldd-button slot="actions" appearance="primary" text="Blijf document bewerken" @click="cancelDocLeave"></nldd-button>
+      <nldd-button slot="actions" appearance="secondary" text="Sla wijzigingen op en sluit" :loading="docSaving || undefined" @click="saveDocAndLeave"></nldd-button>
+      <nldd-button slot="actions" appearance="destructive" text="Negeer wijzigingen en sluit" @click="confirmDocLeave"></nldd-button>
     </nldd-modal-dialog>
   </Teleport>
 
@@ -2804,8 +2804,8 @@ watch(activeTrajectRef, () => {
       :supporting-text="docUploadError || ''"
       @close="dismissUploadError"
     >
-      <nldd-button slot="actions" variant="primary" text="Sluit" @click="dismissUploadError"></nldd-button>
-      <nldd-button v-if="docUploadRetryable" slot="actions" variant="secondary" text="Probeer opnieuw" @click="retryUpload"></nldd-button>
+      <nldd-button slot="actions" appearance="primary" text="Sluit" @click="dismissUploadError"></nldd-button>
+      <nldd-button v-if="docUploadRetryable" slot="actions" appearance="secondary" text="Probeer opnieuw" @click="retryUpload"></nldd-button>
     </nldd-modal-dialog>
   </Teleport>
 
@@ -2817,8 +2817,8 @@ watch(activeTrajectRef, () => {
       :supporting-text="lawUploadError || ''"
       @close="dismissLawUploadError"
     >
-      <nldd-button slot="actions" variant="primary" text="Sluit" @click="dismissLawUploadError"></nldd-button>
-      <nldd-button v-if="lawUploadRetryable" slot="actions" variant="secondary" text="Probeer opnieuw" @click="retryLawUpload"></nldd-button>
+      <nldd-button slot="actions" appearance="primary" text="Sluit" @click="dismissLawUploadError"></nldd-button>
+      <nldd-button v-if="lawUploadRetryable" slot="actions" appearance="secondary" text="Probeer opnieuw" @click="retryLawUpload"></nldd-button>
     </nldd-modal-dialog>
   </Teleport>
 
@@ -2830,7 +2830,7 @@ watch(activeTrajectRef, () => {
       :supporting-text="`De conversie loopt door op de achtergrond. ${jobCancelError || ''}`"
       @close="dismissJobCancelError"
     >
-      <nldd-button slot="actions" variant="primary" text="Sluit" @click="dismissJobCancelError"></nldd-button>
+      <nldd-button slot="actions" appearance="primary" text="Sluit" @click="dismissJobCancelError"></nldd-button>
     </nldd-modal-dialog>
   </Teleport>
 </template>

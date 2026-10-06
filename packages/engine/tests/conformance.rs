@@ -15,6 +15,11 @@
 //!   - Tier B — synthetic fixtures exercising constructs the corpus may not hit.
 //!   - Tier C — coverage gate deciding which fixtures must exist, read off the
 //!     schema rather than off what someone thought to write down.
+
+// Allowed crate-wide: test helpers outside a `#[test]` fn may unwrap, expect and
+// panic too, because that is how a failing fixture reports itself.
+// `allow-*-in-tests` in clippy.toml only reaches `#[test]` fns.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #![cfg(feature = "validate")]
 
 use std::path::{Path, PathBuf};

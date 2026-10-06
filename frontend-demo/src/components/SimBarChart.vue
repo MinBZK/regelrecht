@@ -11,13 +11,14 @@ import { CanvasRenderer } from 'echarts/renderers';
 import { BarChart } from 'echarts/charts';
 import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components';
 import VChart from 'vue-echarts';
-import { resolveChartColors, SERIES_KEYS } from '../simulation/chartColors.js';
+import { resolveChartColors, resolveCssColor, SERIES_KEYS } from '../simulation/chartColors.js';
+import { intlLocale } from '../data/format.js';
 
 use([CanvasRenderer, BarChart, GridComponent, LegendComponent, TooltipComponent]);
 
 const props = defineProps({
   categories: { type: Array, required: true },
-  /** [{ name, values: number[] }] */
+  /** [{ name, values: number[], color?: string }]; `color` is a CSS expression, such as a design token. */
   series: { type: Array, required: true },
   /** 'percent' | 'euro' | 'number' */
   unit: { type: String, default: 'number' },
@@ -51,12 +52,14 @@ onUnmounted(() => {
   if (retry) cancelAnimationFrame(retry);
 });
 
-const euro = new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+// Per aanroep opgebouwd en niet eenmalig op moduleniveau: een `Intl`-formatter
+// legt zijn taal vast bij het maken, en de grafiek hoort na een taalwissel mee
+// te veranderen.
 function fmt(v) {
   if (v === null || v === undefined) return '–';
   if (props.unit === 'percent') return `${Math.round(v)}%`;
-  if (props.unit === 'euro') return euro.format(v);
-  return new Intl.NumberFormat('nl-NL', { maximumFractionDigits: 1 }).format(v);
+  if (props.unit === 'euro') return new Intl.NumberFormat(intlLocale(), { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(v);
+  return new Intl.NumberFormat(intlLocale(), { maximumFractionDigits: 1 }).format(v);
 }
 
 const option = computed(() => {
@@ -87,7 +90,7 @@ const option = computed(() => {
       name: s.name,
       type: 'bar',
       data: s.values.map((v) => (v === null || v === undefined ? null : Math.round(v * 100) / 100)),
-      itemStyle: { color: c[SERIES_KEYS[i % SERIES_KEYS.length]], borderRadius: 3 },
+      itemStyle: { color: (s.color && resolveCssColor(s.color)) || c[SERIES_KEYS[i % SERIES_KEYS.length]], borderRadius: 3 },
       barMaxWidth: 28,
       label: props.series.length === 1 ? { show: true, position: props.horizontal ? 'right' : 'top', color: c.textSecondary, formatter: (p) => fmt(p.value) } : undefined,
     })),

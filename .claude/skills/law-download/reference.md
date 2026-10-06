@@ -161,7 +161,7 @@ GEMEENTELIJKE_VERORDENING, PROVINCIALE_VERORDENING, WATERSCHAPS_VERORDENING.
 
 **Schema URL:**
 ```
-https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.1/schema/v0.7.1/schema.json
 ```
 
 **Required Fields (always):**

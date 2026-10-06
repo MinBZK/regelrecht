@@ -38,7 +38,7 @@ There are two applications today:
 | Role | Grants |
 |---|---|
 | `editor-reader` | Editor: read user-scoped data (favorites, settings) and harvest search. |
-| `editor-writer` | Editor: edit laws & scenarios, manage favorites/settings, enqueue harvests. Inherits `editor-reader`. |
+| `editor-writer` | Editor: edit laws & scenarios inside a traject (see [Traject membership](#traject-membership)), manage favorites/settings, enqueue harvests. Inherits `editor-reader`. |
 | `editor-admin` | Editor: corpus reload, feature-flag changes. Inherits `editor-writer`. |
 | `harvester-reader` | Harvester admin: read jobs, sources, law entries, platform info. |
 | `harvester-writer` | Harvester admin: enqueue harvest and enrich jobs. Inherits `harvester-reader`. |
@@ -70,6 +70,28 @@ To add a new specific right:
    protected route.
 
 No changes are needed to existing routes; the pattern is composable.
+
+## Traject membership
+
+Realm roles decide which tier of routes a user reaches. Within the editor, a
+second layer decides which trajects (shared editing sessions) they can see and
+change. Corpus edits have no route of their own outside a traject: they go
+through `/api/trajects/{id}/corpus/...`, so every write names its traject in
+the URL.
+
+Each member of a traject has one of two roles, stored per traject in the
+editor database rather than in Keycloak:
+
+| Traject role | Grants |
+|---|---|
+| `owner` | Everything a contributor can do, plus renaming or deleting the traject, adding, changing and removing members, and withdrawing invites. |
+| `contributor` | Read the traject and edit the laws, scenarios and notes on its branch. |
+
+The realm role is still the outer gate: reading a traject needs
+`editor-reader`, changing anything in it needs `editor-writer`. The handlers
+then look up the caller's membership on every request and answer `403` to a
+non-member. An `editor-reader` who has been invited can therefore read a
+traject's in-progress edits but not change them.
 
 ## JWT shape
 
@@ -121,10 +143,9 @@ Each service is gated on a **minimum role** at login time, configured via
 | `harvester-admin` | `harvester-reader` |
 
 If `OIDC_REQUIRED_ROLE` is unset or empty, the service falls back to
-`allowed-user` and logs a warning on startup. This default keeps the
-pre-RBAC migration path working out of the box; **always set the value
-explicitly in production** so the login gate matches the per-app reader
-role (`editor-reader` / `harvester-reader`) once the migration completes.
+`allowed-user`, a realm role from before the per-app roles existed, and logs a
+warning on startup. Always set the value explicitly, so the login gate matches
+the per-app reader role (`editor-reader` / `harvester-reader`).
 
 ### Setting the env var on ZAD
 
@@ -141,39 +162,6 @@ zad component edit editor --deployment regelrecht \
 zad component edit harvester-admin --deployment regelrecht \
     --env OIDC_REQUIRED_ROLE=harvester-reader
 ```
-
-### Pre-existing sessions at deploy time
-
-Sessions created before this code shipped carry `authenticated = true` but no
-`SESSION_KEY_ROLES` key. The per-route role check distinguishes "key absent"
-(pre-RBAC session) from "key present but empty list" (a legitimately
-mis-configured Keycloak): the former returns 401, which triggers the OIDC
-re-login redirect, the callback then populates `SESSION_KEY_ROLES` from the
-JWT and the session self-heals. **No session flush is required at deploy.**
-
-## Migration from the legacy `allowed-user` role
-
-Earlier deployments used a single `allowed-user` realm role checked at login,
-with no per-route gating. To migrate without locking anyone out:
-
-1. **Keycloak (hard prerequisite)**: create the seven new roles, set up
-   composites, attach the ID-token mapper, and grant every existing user an
-   appropriate new role (most editor users → `editor-writer`). This must be
-   fully rolled out before Step 2, any user without one of the new roles
-   will get **403 on every API request** once the new code is live, because
-   the per-route middleware checks for `editor-reader` / `harvester-reader`
-   etc., not `allowed-user`.
-2. **Deploy the new code**. If `OIDC_REQUIRED_ROLE` is unset on the existing
-   deployment, the new code falls back to `allowed-user` and logs a warning,
-   so the login redirect keeps working during the rolling deploy (provided
-   step 1 is complete). Per-route checks gate on the new roles immediately,
-   so users without one of the new roles will see 403 on every protected
-   request until step 1 is rolled out for them. Setting the env var
-   explicitly to `allowed-user` is still recommended for clarity. Keep the
-   `allowed-user` role granted to all migrated users.
-3. **Switch `OIDC_REQUIRED_ROLE`** on each component to its new value
-   (`editor-reader` / `harvester-reader`).
-4. **Remove the `allowed-user` role** from the realm.
 
 ## Operational notes
 
@@ -209,6 +197,11 @@ TRUNCATE tower_sessions.session;
 
 After deleting the session row(s), the affected user is forced through the
 OIDC login again, which re-reads roles from Keycloak.
+
+A session that carries no role list at all (the `person_roles` key is absent,
+as opposed to present and empty) gets a 401 on role-gated routes. That
+triggers the OIDC re-login redirect, and the callback writes the role list
+from the JWT, so such a session repairs itself without a flush.
 
 ### Auth-disabled mode (dev/local only)
 
@@ -285,11 +278,11 @@ URI per app port:
 **Run it**
 
 Copy `.env.sso-local.example` to `.env.sso-local`, fill in the Keycloak
-values, then:
+values, then run `just dev editor`. It does the three steps below in one go;
+run them by hand when you need to see each process in its own shell:
 
 ```bash
-# 1. Postgres only. (Don't use `just dev` here — it also starts the admin API
-#    on :8000, which collides with editor-api below.)
+# 1. Postgres only:
 docker compose -f docker-compose.dev.yml -f dev/compose.native.yaml up -d postgres
 # 2. editor-api on :8000 with .env.sso-local loaded:
 just editor-sso
@@ -327,11 +320,11 @@ Keycloak.
 
 The harvester-admin service accepts a bearer API key on **GET**, **POST** and
 **DELETE** requests (`ADMIN_API_KEY` env var). This is an out-of-band trust path,
-the holder is treated as a `regelrecht-admin`-equivalent on those methods — so
+the holder is treated as a `regelrecht-admin`-equivalent on those methods, so
 scripts and services can enqueue harvest/enrich jobs (`POST /api/harvest-jobs`,
 `POST /api/enrich-jobs`) without driving an interactive OIDC/SSO session. Because
 the trust is method-based (not route-based), the key also reaches the admin-tier
-POST routes (`reset-exhausted`, source `sync`) — consistent with it already
+POST routes (`reset-exhausted`, source `sync`). That is consistent with it already
 permitting the destructive `DELETE /api/jobs`. A user session with the matching
 role still works too. The editor service has no API key path.
 
@@ -339,7 +332,12 @@ role still works too. The editor service has no API key path.
 
 - Shared crate: `packages/auth/`, `require_role(role)` middleware factory.
 - Editor routes: `packages/editor-api/src/main.rs`, router split into
-  public / reader / writer / admin groups.
+  public / reader / writer / admin groups, plus separate reader and writer
+  groups for trajects, personal notes (`/api/user/notes/...`) and review
+  tasks (`/api/tasks/...`). Those three also run `account_middleware`,
+  because their handlers need the account record.
+- Traject membership: `require_membership` and `require_owner` in
+  `packages/editor-api/src/trajects.rs`.
 - Harvester-admin routes: `packages/admin/src/main.rs`, router split into
   reader / writer / admin groups; `require_auth(role)` in
   `packages/admin/src/middleware.rs` keeps the API-key bypass.

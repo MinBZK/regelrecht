@@ -73,6 +73,19 @@ body {
   padding-left: 1.25em;
 }
 
+/* Op een telefoon liet de zaalmaat met de volle inspringing tien niveaus diep
+ * een kolom van een paar tekens over, en brak daarin elk woord letter voor
+ * letter af. Kleiner en minder diep past een berekening wel. */
+@media (max-width: 640px) {
+  .yaml-tree {
+    font-size: 0.875rem;
+  }
+
+  .yaml-tree .yaml-node {
+    padding-left: 0.5em;
+  }
+}
+
 .yaml-tree .yaml-key {
   color: var(--primitives-color-donkerblauw-700);
 }
@@ -124,44 +137,6 @@ body {
 .yaml-tree .yaml-highlight {
   background: var(--primitives-color-geel-100);
   border-radius: 3px;
-}
-
-.gherkin {
-  font-family: var(--primitives-font-family-monospace, monospace);
-  font-size: 0.875rem;
-  line-height: 1.6;
-}
-
-.gherkin .kw {
-  color: var(--primitives-color-donkerblauw-700);
-  font-weight: 600;
-}
-
-/* Engine errors keep their line breaks. pre-wrap stays off the block itself:
- * it inherits into the shadow DOM of the nldd-table under a step and would turn
- * the template whitespace there into blank lines. */
-.gherkin .str {
-  color: var(--primitives-color-groen-700);
-  white-space: pre-wrap;
-}
-
-.gherkin .num {
-  color: var(--primitives-color-oranje-700);
-}
-
-.gherkin .step {
-  padding-left: 2rem;
-}
-
-/* `groen`/`rood`, niet `green`/`red`: de palet-namen zijn Nederlands. Met de
- * Engelse naam bestond het token niet en won stilletjes de hex-fallback, die
- * naast het palet lag en niet met het thema meebewoog. */
-.gherkin .step.pass {
-  border-left: 3px solid var(--primitives-color-groen-600);
-}
-
-.gherkin .step.fail {
-  border-left: 3px solid var(--primitives-color-rood-600);
 }
 
 .trace {
@@ -429,4 +404,57 @@ body {
 
 .graph-canvas .vue-flow__node.graph-dim {
   opacity: 0.25;
+}
+
+/* De trace (TraceView.vue): de tekst van de engine, met per wet een kleur.
+ * Een presentator loopt hem wet voor wet door op een zaalscherm; de streep
+ * links en het label waar een andere wet het overneemt maken die overgang
+ * vindbaar. nldd-code-viewer kleurt alleen zijn eigen grammatica's, niet een
+ * regel naar de wet waarin hij draait. */
+.trace-view__nav {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--semantics-surfaces-base-background-color, Canvas);
+}
+
+/* `inherit-tinted` takes its tint from currentColor: so the button carries
+ * the colour of its law, the same one as the label in the lines below. */
+.trace-view__law,
+.trace-view__badge {
+  color: var(--law-ink);
+}
+
+.trace-view__lines {
+  font-family: var(--primitives-font-family-monospace, monospace);
+  font-size: 1rem;
+  line-height: 1.45;
+  white-space: pre;
+  overflow-x: auto;
+  padding-block: 8px;
+}
+
+.trace-view__line {
+  border-left: 4px solid var(--law-color, transparent);
+  padding-left: 8px;
+}
+
+.trace-view__line--start {
+  background: color-mix(in srgb, var(--law-color) 18%, transparent);
+  font-weight: 600;
+}
+
+.trace-view__line--current {
+  outline: 2px solid var(--law-color);
+  outline-offset: -2px;
+}
+
+.trace-view__badge {
+  margin-left: 12px;
+  padding: 0 8px;
+  border-radius: 999px;
+  /* Dezelfde zachte tint als de knop bovenin (nldd-button inherit-tinted). */
+  background: color-mix(in srgb, var(--law-color) 22%, transparent);
+  font-family: var(--primitives-font-family-sans, sans-serif);
+  font-weight: 600;
 }

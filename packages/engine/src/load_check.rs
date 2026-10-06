@@ -39,12 +39,7 @@ pub(crate) fn reject_unknown_literals(law: &ArticleBasedLaw) -> Result<()> {
                 Some(output) => format!("action for output '{output}'"),
                 None => format!("action {}", index + 1),
             };
-            let operands = action
-                .value
-                .iter()
-                .chain(action.subject.iter())
-                .chain(action.values.iter().flatten())
-                .chain(action.conditions.iter().flatten());
+            let operands = action.operands();
             for operand in operands {
                 if action_value_contains_unknown(operand) {
                     return Err(unknown_literal(law, &article.number, where_));
@@ -72,79 +67,11 @@ fn action_value_contains_unknown(value: &ActionValue) -> bool {
     }
 }
 
-/// Exhaustive over the operation variants, so a new operation cannot carry a
-/// literal past this check unnoticed.
+/// Through [`ActionOperation::operands`], which is exhaustive over the
+/// operation variants, so a new operation cannot carry a literal past this
+/// check unnoticed.
 fn operation_contains_unknown(op: &ActionOperation) -> bool {
-    let any = |values: &[&ActionValue]| values.iter().any(|v| action_value_contains_unknown(v));
-    let all = |values: &[ActionValue]| values.iter().any(action_value_contains_unknown);
-    match op {
-        ActionOperation::Equals { subject, value }
-        | ActionOperation::NotEquals { subject, value }
-        | ActionOperation::GreaterThan { subject, value }
-        | ActionOperation::LessThan { subject, value }
-        | ActionOperation::GreaterThanOrEqual { subject, value }
-        | ActionOperation::LessThanOrEqual { subject, value } => any(&[subject, value]),
-        ActionOperation::Add { values }
-        | ActionOperation::Subtract { values }
-        | ActionOperation::Multiply { values }
-        | ActionOperation::Divide { values }
-        | ActionOperation::Max { values }
-        | ActionOperation::Min { values } => all(values),
-        ActionOperation::Round { value, .. }
-        | ActionOperation::Ceil { value, .. }
-        | ActionOperation::Floor { value, .. }
-        | ActionOperation::Not { value } => any(&[value]),
-        ActionOperation::And { conditions } | ActionOperation::Or { conditions } => all(conditions),
-        ActionOperation::If { cases, default } => {
-            cases.iter().any(|case| any(&[&case.when, &case.then]))
-                || default.as_ref().is_some_and(action_value_contains_unknown)
-        }
-        ActionOperation::IsNull { subject } | ActionOperation::NotNull { subject } => {
-            any(&[subject])
-        }
-        ActionOperation::In {
-            subject,
-            value,
-            values,
-        }
-        | ActionOperation::NotIn {
-            subject,
-            value,
-            values,
-        } => {
-            any(&[subject])
-                || value.as_ref().is_some_and(action_value_contains_unknown)
-                || values.as_deref().is_some_and(all)
-        }
-        ActionOperation::List { items } => all(items),
-        ActionOperation::Foreach {
-            collection,
-            body,
-            filter,
-            ..
-        } => any(&[collection, body]) || filter.as_ref().is_some_and(action_value_contains_unknown),
-        ActionOperation::Age {
-            date_of_birth,
-            reference_date,
-        } => any(&[date_of_birth, reference_date]),
-        ActionOperation::DateAdd {
-            date,
-            years,
-            months,
-            weeks,
-            days,
-        } => {
-            any(&[date])
-                || [years, months, weeks, days]
-                    .iter()
-                    .any(|part| part.as_ref().is_some_and(action_value_contains_unknown))
-        }
-        ActionOperation::Date { year, month, day } => any(&[year, month, day]),
-        ActionOperation::DayOfWeek { date }
-        | ActionOperation::DatePart { date, .. }
-        | ActionOperation::StartOf { date, .. } => any(&[date]),
-        ActionOperation::DateDiff { from, to, unit } => any(&[from, to, unit]),
-    }
+    op.operands().into_iter().any(action_value_contains_unknown)
 }
 
 #[cfg(test)]

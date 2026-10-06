@@ -48,6 +48,8 @@ const tabs = [
   { key: 'overview', label: 'Overzicht', route: '/harvesting/overview' },
   { key: 'law-entries', label: 'Wetten', route: '/harvesting/law-entries' },
   { key: 'jobs', label: 'Taken', route: '/harvesting/jobs' },
+  { key: 'markings', label: 'Markeringen', route: '/harvesting/markings' },
+  // The predecessor of markings, for laws still pinned to schema v0.5.x.
   { key: 'untranslatables', label: 'Untranslatables', route: '/harvesting/untranslatables' },
 ];
 const activeTab = computed(() => route.name);
@@ -68,7 +70,7 @@ function goToLibrary() {
               icon="arrow-left"
               text="Terug"
               tooltip-timing="never"
-              variant="neutral-tinted"
+              appearance="neutral-tinted"
               @click="goToLibrary"
             ></nldd-icon-button>
           </nldd-toolbar-item>
@@ -102,7 +104,7 @@ function goToLibrary() {
               icon="plus-small"
               text="Nieuwe harvest-job"
               tooltip-timing="never"
-              variant="neutral-tinted"
+              appearance="neutral-tinted"
               @click="openNewHarvestJob"
             ></nldd-icon-button>
           </nldd-toolbar-item>

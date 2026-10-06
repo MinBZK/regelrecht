@@ -11,6 +11,11 @@
 //! symlink, so a bump without a manifest is a failure, and the structural
 //! invariants run over every manifest in the tree.
 
+// Allowed crate-wide: test helpers outside a `#[test]` fn may unwrap, expect and
+// panic too, because that is how a failing fixture reports itself.
+// `allow-*-in-tests` in clippy.toml only reaches `#[test]` fns.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 use regelrecht_engine::types::Operation;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};

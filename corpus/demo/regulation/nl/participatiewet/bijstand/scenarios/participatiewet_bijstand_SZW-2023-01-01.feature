@@ -9,8 +9,8 @@ Feature: Bepalen recht op bijstand landelijk
 
   Scenario: Alleenstaande met recht op bijstand heeft kostendelersnorm 1.0
     Given the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres                                                                                                      | medebewoners | partner_geboortedatum |
-      | 999993653 | 1990-01-01    | GEEN              | null        | []                | Amsterdam      | []             |               |               | {"straat":"Kalverstraat","huisnummer":"1","postcode":"1012NX","woonplaats":"Amsterdam","type":"WOONADRES"} | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres                                                                                                      | medebewoners | partner_geboortedatum |
+      | 999993653 | 1990-01-01    | GEEN              | null        | []                | []             |               |               | {"straat":"Kalverstraat","huisnummer":"1","postcode":"1012NX","woonplaats":"Amsterdam","type":"WOONADRES"} | []           |                       |
     And the following "DJI" data with key "bsn" for law "penitentiaire_beginselenwet":
       | bsn       | status | inrichting_type |
       | 999993653 | null   | null            |
@@ -32,8 +32,8 @@ Feature: Bepalen recht op bijstand landelijk
 
   Scenario: Huishouden van drie kostendelende personen heeft kostendelersnorm 0.43
     Given the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres                                                                                                      | medebewoners                                | partner_geboortedatum |
-      | 999993653 | 1990-01-01    | GEEN              | null        | []                | Amsterdam      | []             |               |               | {"straat":"Kalverstraat","huisnummer":"1","postcode":"1012NX","woonplaats":"Amsterdam","type":"WOONADRES"} | [{"bsn":"999993655"},{"bsn":"999993656"}]   |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres                                                                                                      | medebewoners                                | partner_geboortedatum |
+      | 999993653 | 1990-01-01    | GEEN              | null        | []                | []             |               |               | {"straat":"Kalverstraat","huisnummer":"1","postcode":"1012NX","woonplaats":"Amsterdam","type":"WOONADRES"} | [{"bsn":"999993655"},{"bsn":"999993656"}]   |                       |
     And the following "DJI" data with key "bsn" for law "penitentiaire_beginselenwet":
       | bsn       | status | inrichting_type |
       | 999993653 | null   | null            |
@@ -54,8 +54,8 @@ Feature: Bepalen recht op bijstand landelijk
 
   Scenario: Huishouden van vijf of meer kostendelende personen heeft geen bekende kostendelersnorm
     Given the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres                                                                                                      | medebewoners                                                              | partner_geboortedatum |
-      | 999993653 | 1990-01-01    | GEEN              | null        | []                | Amsterdam      | []             |               |               | {"straat":"Kalverstraat","huisnummer":"1","postcode":"1012NX","woonplaats":"Amsterdam","type":"WOONADRES"} | [{"bsn":"999993655"},{"bsn":"999993656"},{"bsn":"999993657"},{"bsn":"999993658"}] |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres                                                                                                      | medebewoners                                                              | partner_geboortedatum |
+      | 999993653 | 1990-01-01    | GEEN              | null        | []                | []             |               |               | {"straat":"Kalverstraat","huisnummer":"1","postcode":"1012NX","woonplaats":"Amsterdam","type":"WOONADRES"} | [{"bsn":"999993655"},{"bsn":"999993656"},{"bsn":"999993657"},{"bsn":"999993658"}] |                       |
     And the following "DJI" data with key "bsn" for law "penitentiaire_beginselenwet":
       | bsn       | status | inrichting_type |
       | 999993653 | null   | null            |
@@ -78,8 +78,8 @@ Feature: Bepalen recht op bijstand landelijk
     Given the following "RvIG" data with key "bsn" for law "wet_brp":
       # Art. 11 lid 2 Pw gaat over een vreemdeling: de nationaliteit is bekend en niet Nederlands.
       # Een lege cel zou onbekend zijn en de uitkomst onbekend maken in plaats van false.
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres                                                                                                      | medebewoners | partner_geboortedatum |
-      | 999993653 | 1990-01-01    | GEEN              | null        | []                | Amsterdam      | []             |               | TURKS         | {"straat":"Kalverstraat","huisnummer":"1","postcode":"1012NX","woonplaats":"Amsterdam","type":"WOONADRES"} | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres                                                                                                      | medebewoners | partner_geboortedatum |
+      | 999993653 | 1990-01-01    | GEEN              | null        | []                | []             |               | TURKS         | {"straat":"Kalverstraat","huisnummer":"1","postcode":"1012NX","woonplaats":"Amsterdam","type":"WOONADRES"} | []           |                       |
     And the following "DJI" data with key "bsn" for law "penitentiaire_beginselenwet":
       | bsn       | status | inrichting_type |
       | 999993653 | null   | null            |

@@ -342,8 +342,8 @@ function onTabDismiss(e) {
               <nldd-just-in-time-education
                 placement="bottom"
                 arrow-length="160px"
-                text="Zoek een wet om te openen"
-                supporting-text="Markeer een wet als favoriet om die later snel terug te vinden."
+                text="Zoek een regelwerk om te openen"
+                supporting-text="Markeer een regelwerk als favoriet om het later snel terug te vinden."
                 :active="showSearchHintMd || undefined"
                 :dismissable="trajectActive || undefined"
                 @nldd-close="onSearchHintClose"
@@ -354,7 +354,7 @@ function onTabDismiss(e) {
             <nldd-toolbar-item slot="end" v-if="trajectActive || (!authLoading && oidcConfigured && !authenticated)">
               <nldd-icon-button size="md" icon="plus-small" text="Nieuw" tooltip-timing="never" expandable>
                 <nldd-menu v-if="trajectActive" slot="popup">
-                  <nldd-menu-item icon="new-book" text="Wet toevoegen…" @select="triggerAddLaw"></nldd-menu-item>
+                  <nldd-menu-item icon="new-book" text="Regelwerk toevoegen…" @select="triggerAddLaw"></nldd-menu-item>
                   <nldd-menu-item icon="new-text-document" text="Werkdocument toevoegen">
                     <nldd-menu>
                       <nldd-menu-item icon="new-text-document" text="Nieuw document" @select="triggerNewWerkdoc"></nldd-menu-item>
@@ -372,10 +372,10 @@ function onTabDismiss(e) {
                     <nldd-inline-dialog
                       icon="login"
                       text="Log in om iets toe te voegen"
-                      supporting-text="Zodra je bent ingelogd kun je wetten, werkdocumenten en leden aan een traject toevoegen."
+                      supporting-text="Zodra je bent ingelogd kun je regelwerken, werkdocumenten en leden aan een traject toevoegen."
                     >
-                      <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login()"></nldd-button>
-                      <nldd-button slot="actions" variant="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
+                      <nldd-button slot="actions" appearance="primary" text="Inloggen" @click="login()"></nldd-button>
+                      <nldd-button slot="actions" appearance="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
                     </nldd-inline-dialog>
                   </nldd-container>
                 </nldd-popover>
@@ -444,8 +444,8 @@ function onTabDismiss(e) {
               <nldd-just-in-time-education
                 placement="bottom"
                 arrow-length="160px"
-                text="Zoek een wet om te openen"
-                supporting-text="Markeer een wet als favoriet om die later snel terug te vinden."
+                text="Zoek een regelwerk om te openen"
+                supporting-text="Markeer een regelwerk als favoriet om het later snel terug te vinden."
                 :active="showSearchHintLg || undefined"
                 :dismissable="trajectActive || undefined"
                 @nldd-close="onSearchHintClose"
@@ -466,7 +466,7 @@ function onTabDismiss(e) {
             <nldd-toolbar-item slot="end" v-if="trajectActive || (!authLoading && oidcConfigured && !authenticated)">
               <nldd-icon-button size="md" icon="plus-small" text="Nieuw" tooltip-timing="never" expandable>
                 <nldd-menu v-if="trajectActive" slot="popup">
-                  <nldd-menu-item icon="new-book" text="Wet toevoegen…" @select="triggerAddLaw"></nldd-menu-item>
+                  <nldd-menu-item icon="new-book" text="Regelwerk toevoegen…" @select="triggerAddLaw"></nldd-menu-item>
                   <nldd-menu-item icon="new-text-document" text="Werkdocument toevoegen">
                     <nldd-menu>
                       <nldd-menu-item icon="new-text-document" text="Nieuw document" @select="triggerNewWerkdoc"></nldd-menu-item>
@@ -480,10 +480,10 @@ function onTabDismiss(e) {
                     <nldd-inline-dialog
                       icon="login"
                       text="Log in om iets toe te voegen"
-                      supporting-text="Zodra je bent ingelogd kun je wetten, werkdocumenten en leden aan een traject toevoegen."
+                      supporting-text="Zodra je bent ingelogd kun je regelwerken, werkdocumenten en leden aan een traject toevoegen."
                     >
-                      <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login()"></nldd-button>
-                      <nldd-button slot="actions" variant="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
+                      <nldd-button slot="actions" appearance="primary" text="Inloggen" @click="login()"></nldd-button>
+                      <nldd-button slot="actions" appearance="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
                     </nldd-inline-dialog>
                   </nldd-container>
                 </nldd-popover>
@@ -684,7 +684,7 @@ function onTabDismiss(e) {
                  overloopmenu. -->
             <nldd-toolbar-item v-if="inReview" slot="end" label="Verwerp voorstel" :priority="2">
               <nldd-button
-                variant="destructive"
+                appearance="destructive"
                 size="md"
                 start-icon="dismiss-circle"
                 text="Verwerp voorstel"
@@ -711,7 +711,7 @@ function onTabDismiss(e) {
               :priority="3"
             >
               <nldd-button
-                variant="primary"
+                appearance="primary"
                 size="md"
                 :start-icon="inReview ? 'check-mark-circle' : undefined"
                 :width="inReview ? undefined : 'full'"
@@ -754,8 +754,8 @@ function onTabDismiss(e) {
               <nldd-just-in-time-education
                 placement="top"
                 arrow-length="160px"
-                text="Zoek een wet om te openen"
-                supporting-text="Markeer een wet als favoriet om die later snel terug te vinden."
+                text="Zoek een regelwerk om te openen"
+                supporting-text="Markeer een regelwerk als favoriet om het later snel terug te vinden."
                 :active="showSearchHintSm || undefined"
                 :dismissable="trajectActive || undefined"
                 @nldd-close="onSearchHintClose"
@@ -766,7 +766,7 @@ function onTabDismiss(e) {
             <nldd-toolbar-item slot="end" v-if="trajectActive || (!authLoading && oidcConfigured && !authenticated)">
               <nldd-icon-button size="lg" icon="plus-small" text="Nieuw" tooltip-timing="never">
                 <nldd-menu v-if="trajectActive" slot="popup">
-                  <nldd-menu-item icon="new-book" text="Wet toevoegen…" @select="triggerAddLaw"></nldd-menu-item>
+                  <nldd-menu-item icon="new-book" text="Regelwerk toevoegen…" @select="triggerAddLaw"></nldd-menu-item>
                   <nldd-menu-item icon="new-text-document" text="Werkdocument toevoegen">
                     <nldd-menu>
                       <nldd-menu-item icon="new-text-document" text="Nieuw document" @select="triggerNewWerkdoc"></nldd-menu-item>
@@ -780,10 +780,10 @@ function onTabDismiss(e) {
                     <nldd-inline-dialog
                       icon="login"
                       text="Log in om iets toe te voegen"
-                      supporting-text="Zodra je bent ingelogd kun je wetten, werkdocumenten en leden aan een traject toevoegen."
+                      supporting-text="Zodra je bent ingelogd kun je regelwerken, werkdocumenten en leden aan een traject toevoegen."
                     >
-                      <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login()"></nldd-button>
-                      <nldd-button slot="actions" variant="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
+                      <nldd-button slot="actions" appearance="primary" text="Inloggen" @click="login()"></nldd-button>
+                      <nldd-button slot="actions" appearance="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
                     </nldd-inline-dialog>
                   </nldd-container>
                 </nldd-popover>
@@ -849,8 +849,8 @@ function onTabDismiss(e) {
         text="Log in om de editor te gebruiken"
         supporting-text="Zodra je bent ingelogd kies je een traject en kun je aan de slag."
       >
-        <nldd-button slot="actions" variant="primary" text="Inloggen" @click="login(loginRedirect || editorTabHref)"></nldd-button>
-        <nldd-button slot="actions" variant="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
+        <nldd-button slot="actions" appearance="primary" text="Inloggen" @click="login(loginRedirect || editorTabHref)"></nldd-button>
+        <nldd-button slot="actions" appearance="secondary" text="Account aanvragen" :href="accountRequestHref" @click.prevent="goToAccountRequest"></nldd-button>
       </nldd-inline-dialog>
     </nldd-container>
   </nldd-popover>
@@ -860,17 +860,17 @@ function onTabDismiss(e) {
     variant="alert"
     icon="exclamation-triangle"
     text="Voorstel verwerpen?"
-    supporting-text="De taak wordt afgesloten en het gegenereerde voorstel gaat verloren. Een nieuw voorstel vraag je opnieuw aan met Verrijk deze wet."
+    supporting-text="De taak wordt afgesloten en het gegenereerde voorstel gaat verloren. Een nieuw voorstel vraag je opnieuw aan met Verrijk dit regelwerk."
   >
     <nldd-button
       slot="actions"
-      variant="primary"
+      appearance="primary"
       text="Behoud voorstel"
       @click="rejectConfirm?.hide()"
     ></nldd-button>
     <nldd-button
       slot="actions"
-      variant="destructive"
+      appearance="destructive"
       text="Verwerp voorstel"
       @click="confirmReject"
     ></nldd-button>
@@ -885,13 +885,13 @@ function onTabDismiss(e) {
   >
     <nldd-button
       slot="actions"
-      variant="primary"
+      appearance="primary"
       text="Verder beoordelen"
       @click="rejectRestConfirm?.hide()"
     ></nldd-button>
     <nldd-button
       slot="actions"
-      variant="destructive"
+      appearance="destructive"
       text="Rond af"
       @click="confirmRejectRest"
     ></nldd-button>

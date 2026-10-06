@@ -135,7 +135,7 @@ export interface LandingContent {
     partOfTitle: string
     copyright: string
     links: NavLink[]
-    partOf: string[]
+    partOf: { label: string; href?: string }[]
   }
   signup: {
     pageTitle: string
@@ -176,7 +176,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     meta: {
       title: 'RegelRecht: van wet naar digitale werking',
       description:
-        'Een verkenning van het Ministerie van BZK naar transparante, machine-uitvoerbare wetgeving.',
+        'Een project van de Nederlandse Digitale Dienst dat verkent of wetgeving als uitvoerbare code geschreven kan worden.',
     },
     nav: {
       brandMinistry: 'Ministerie van Economische Zaken en Klimaat',
@@ -203,7 +203,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       cards: [
         {
           h: 'Van analoog recht naar code',
-          p: 'Kunnen we traditionele wetgeving transformeren naar machine-uitvoerbare specificaties? We onderzoeken of dit de kloof tussen wetgever en uitvoering kan verkleinen.',
+          p: 'Kunnen we traditionele wetgeving omzetten naar regelwerken, waarin de wettekst en de uitvoerbare interpretatie naast elkaar staan? We onderzoeken of dit de kloof tussen wetgever en uitvoering kan verkleinen.',
         },
         {
           h: 'Gedeelde, controleerbare uitvoering',
@@ -251,7 +251,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       steps: [
         {
           title: 'Analoog naar digitaal',
-          text: 'Kunnen bestaande wetten systematisch worden omgezet van analoge tekst naar machine-uitvoerbare specificaties? Een eerste stap om een digitale basis te onderzoeken.',
+          text: 'Kunnen bestaande wetten systematisch worden omgezet van analoge tekst naar regelwerken? Een eerste stap om een digitale basis te onderzoeken.',
         },
         {
           title: 'Digitaal rechtsstelsel',
@@ -285,12 +285,13 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           title: 'Regelformaat',
           meta: 'YAML + JSON Schema',
-          link: { label: 'RFC-001', href: '/rfcs/rfc-001' },
-          text: 'Wetten als YAML-bestanden met de wettekst en de machine-uitvoerbare regels naast elkaar. Een versioned JSON Schema bewaakt de structuur.',
+          link: { label: 'Schemadocumentatie', href: '/reference/schema' },
+          text: 'Elke regeling als regelwerk: YAML met de wettekst en de machine-uitvoerbare regels naast elkaar, één bestand per versie. Een versioned JSON Schema bewaakt de structuur.',
         },
         {
           title: 'BDD-scenario’s',
           meta: 'Gherkin + cucumber',
+          link: { label: 'Scenario’s uitproberen', href: '/concepts/scenarios' },
           text: 'Verwachte uitkomsten worden vastgelegd als leesbare scenario’s. Juristen en programmeurs lezen dezelfde tests, en elke wijziging in de regels wordt direct gevalideerd. Waar mogelijk halen we die scenario’s rechtstreeks uit de memorie van toelichting.',
         },
         {
@@ -403,7 +404,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     },
     research: {
       title: 'Onderzoek',
-      lede: 'De verkenning roept vragen op die verder reiken dan techniek: wat het voor de verhouding tussen de staatsmachten betekent als wetsuitvoering publiek en narekenbaar wordt, en welke juridische status een uitvoerbare specificatie heeft. Dat denkwerk schrijven we op voor een academisch publiek, zodat juristen en bestuurskundigen het kunnen toetsen en aanscherpen.',
+      lede: 'De verkenning roept vragen op die verder reiken dan techniek: wat het voor de verhouding tussen de staatsmachten betekent als wetsuitvoering publiek en narekenbaar wordt, en welke juridische status een regelwerk heeft. Dat denkwerk schrijven we op voor een academisch publiek, zodat juristen en bestuurskundigen het kunnen toetsen en aanscherpen.',
       items: [
         {
           title: paperTitle,
@@ -527,7 +528,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       items: [
         {
           q: 'Wat gebeurt er met open normen?',
-          a: 'Wetten bevatten bewust ruimte voor interpretatie: termen die "bij ministeriële regeling" worden ingevuld, of begrippen die een afweging aan de uitvoerder laten. Bij gewone automatisering verdwijnt die ruimte stilzwijgend in code: de keuze die een programmeur maakt wordt feitelijk recht, zonder publicatie of toetsing. RegelRecht maakt zo\'n keuze juist expliciet: de hogere wet markeert een open norm, de lagere regeling vult hem in, en juristen kunnen aantekenen of een begrip volledig, deels of nog niet is ingevuld. Zo wordt zichtbaar waar de wet eindigt en de interpretatie begint. Echte menselijke beoordelingen in een besluitproces, zoals een hardheidsclausule of een individuele afweging door een ambtenaar, blijven gewoon menselijk werk; die proberen we niet weg te automatiseren.',
+          a: 'Wetten bevatten bewust ruimte voor interpretatie: termen die "bij ministeriële regeling" worden ingevuld, of begrippen die een afweging aan de uitvoerder laten. Bij gewone automatisering verdwijnt die ruimte stilzwijgend in code: de keuze die een programmeur maakt wordt feitelijk recht, zonder publicatie of toetsing. RegelRecht maakt zo\'n keuze juist expliciet: de wet markeert een open term, een regeling vult hem in, en juristen kunnen aantekenen of een begrip volledig, deels of nog niet is ingevuld. Zo wordt zichtbaar waar de wet eindigt en de interpretatie begint. Echte menselijke beoordelingen in een besluitproces, zoals een hardheidsclausule of een individuele afweging door een ambtenaar, blijven gewoon menselijk werk; die proberen we niet weg te automatiseren.',
         },
         {
           q: 'Wat zou een digitaal rechtsstelsel kunnen betekenen?',
@@ -551,7 +552,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         },
         {
           q: 'Waarom een eigen regelformaat?',
-          a: 'Het formaat is YAML met wettekst en machine-uitvoerbare regels naast elkaar in één bestand. Een versioned JSON Schema bewaakt de structuur, BDD-scenario’s leggen de bedoelde uitkomsten vast. Zo kunnen juristen meelezen, ontwikkelaars meebouwen, en verschillende overheidssystemen dezelfde regels gebruiken.',
+          a: 'Het formaat is YAML met wettekst en machine-uitvoerbare regels naast elkaar. Een regeling in dat formaat heet een regelwerk. Een versioned JSON Schema bewaakt de structuur, BDD-scenario’s leggen de bedoelde uitkomsten vast. Zo kunnen juristen meelezen, ontwikkelaars meebouwen, en verschillende overheidssystemen dezelfde regels gebruiken.',
           link: { label: 'Lees RFC-011', href: '/rfcs/rfc-011' },
         },
         {
@@ -610,7 +611,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     },
     footer: {
       blurb:
-        'Een verkenning van Bureau Architectuur van het Ministerie van Economische Zaken en Klimaat naar de mogelijkheden van transparante, uitvoerbare wetgeving.',
+        'Een verkenning naar transparante, uitvoerbare wetgeving, en een van de drie projecten uit de startselectie van de Nederlandse Digitale Dienst.',
       linksTitle: 'Links',
       contactTitle: 'Contact',
       partOfTitle: 'Onderdeel van',
@@ -625,8 +626,11 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         { label: 'Onderzoek (Engels)', href: '/research/' },
       ],
       partOf: [
-        'Bureau Architectuur',
-        'Ministerie van Economische Zaken en Klimaat',
+        {
+          label: 'Nederlandse Digitale Dienst',
+          href: 'https://digitaledienst.overheid.nl/',
+        },
+        { label: 'Ministerie van Economische Zaken en Klimaat' },
       ],
     },
     signup: {
@@ -665,7 +669,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     meta: {
       title: 'RegelRecht: from statute to digital execution',
       description:
-        'An exploration by the Dutch Ministry of the Interior into transparent, machine-executable legislation.',
+        'A project of the Nederlandse Digitale Dienst exploring whether legislation can be written as executable code.',
     },
     nav: {
       brandMinistry: 'Ministry of Economic Affairs and Climate Policy',
@@ -692,7 +696,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       cards: [
         {
           h: 'From analogue law to code',
-          p: 'Can we transform traditional legislation into machine-executable specifications? We are investigating whether this can narrow the gap between legislator and execution.',
+          p: 'Can we turn traditional legislation into ruleworks, in which the legal text and its executable interpretation sit side by side? We are investigating whether this can narrow the gap between legislator and execution.',
         },
         {
           h: 'Shared, verifiable execution',
@@ -740,7 +744,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       steps: [
         {
           title: 'Analogue to digital',
-          text: 'Can existing laws be systematically converted from analogue text into machine-executable specifications? A first step to explore a digital foundation.',
+          text: 'Can existing laws be systematically converted from analogue text into ruleworks? A first step to explore a digital foundation.',
         },
         {
           title: 'Digital legal system',
@@ -774,12 +778,13 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           title: 'Rule format',
           meta: 'YAML + JSON Schema',
-          link: { label: 'RFC-001', href: '/rfcs/rfc-001' },
-          text: 'Laws as YAML files, with the legal text and the machine-executable rules side by side. A versioned JSON Schema guards the structure.',
+          link: { label: 'Schema reference', href: '/reference/schema' },
+          text: 'Every regulation as a rulework: YAML with the legal text and the machine-executable rules side by side, one file per version. A versioned JSON Schema guards the structure.',
         },
         {
           title: 'BDD scenarios',
           meta: 'Gherkin + cucumber',
+          link: { label: 'Try a scenario', href: '/concepts/scenarios' },
           text: 'Expected outcomes are captured as readable scenarios. Legal experts and programmers read the same tests, and every change to the rules is validated immediately. Where possible we draw those scenarios straight from the explanatory memorandum.',
         },
         {
@@ -892,7 +897,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     },
     research: {
       title: 'Research',
-      lede: 'This exploration raises questions that reach beyond technology: what it means for the balance between the branches of government when law execution becomes public and checkable, and what legal status an executable specification has. We write that up for an academic audience, so that legal and public-administration scholars can test and sharpen it.',
+      lede: 'This exploration raises questions that reach beyond technology: what it means for the balance between the branches of government when law execution becomes public and checkable, and what legal status a rulework has. We write that up for an academic audience, so that legal and public-administration scholars can test and sharpen it.',
       items: [
         {
           title: paperTitle,
@@ -1012,7 +1017,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       items: [
         {
           q: 'What happens to open norms?',
-          a: 'Laws deliberately leave room for interpretation: terms that are filled in "by ministerial regulation", or concepts that leave a judgement to the implementing body. In ordinary automation that room quietly disappears into code: the choice the programmer makes effectively becomes law, with no publication or scrutiny. RegelRecht turns that choice into something explicit instead: the higher law marks an open norm, the lower regulation fills it in, and lawyers can record whether a concept is fully, partly or not yet filled in. That makes visible where the statute ends and interpretation begins. Genuinely human judgements inside a decision process, such as a hardship clause or a case-by-case assessment by an official, stay human work; we are not trying to automate those away.',
+          a: 'Laws deliberately leave room for interpretation: terms that are filled in "by ministerial regulation", or concepts that leave a judgement to the implementing body. In ordinary automation that room quietly disappears into code: the choice the programmer makes effectively becomes law, with no publication or scrutiny. RegelRecht turns that choice into something explicit instead: the law marks an open term, a regulation fills it in, and lawyers can record whether a concept is fully, partly or not yet filled in. That makes visible where the statute ends and interpretation begins. Genuinely human judgements inside a decision process, such as a hardship clause or a case-by-case assessment by an official, stay human work; we are not trying to automate those away.',
         },
         {
           q: 'What could a digital legal system mean?',
@@ -1036,7 +1041,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         },
         {
           q: 'Why a dedicated rule format?',
-          a: 'The format is YAML, with legal text and machine-executable rules side by side in a single file. A versioned JSON Schema guards the structure, and BDD scenarios capture the intended outcomes. Legal experts can read along, developers can contribute, and different government systems can use the same rules.',
+          a: 'The format is YAML, with legal text and machine-executable rules side by side. A regulation in that format is called a rulework. A versioned JSON Schema guards the structure, and BDD scenarios capture the intended outcomes. Legal experts can read along, developers can contribute, and different government systems can use the same rules.',
           link: { label: 'Read RFC-011', href: '/rfcs/rfc-011' },
         },
         {
@@ -1095,7 +1100,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     },
     footer: {
       blurb:
-        'An exploration by Bureau Architectuur of the Dutch Ministry of Economic Affairs and Climate Policy into the possibilities of transparent, executable legislation.',
+        'An exploration into transparent, executable legislation, and one of the three projects in the starting selection of the Nederlandse Digitale Dienst.',
       linksTitle: 'Links',
       contactTitle: 'Contact',
       partOfTitle: 'Part of',
@@ -1110,8 +1115,11 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         { label: 'Research', href: '/research/' },
       ],
       partOf: [
-        'Bureau Architectuur',
-        'Ministry of Economic Affairs and Climate Policy',
+        {
+          label: 'Nederlandse Digitale Dienst',
+          href: 'https://digitaledienst.overheid.nl/',
+        },
+        { label: 'Ministry of Economic Affairs and Climate Policy' },
       ],
     },
     signup: {

@@ -439,7 +439,7 @@ const statusInfo = computed(() => {
         <nldd-form-field>
           <nldd-text-editor
             ref="commentFieldEl"
-            variant="input-field"
+            appearance="input-field"
             :rows="3"
             resize="auto"
             :value="commentText"
@@ -545,7 +545,7 @@ const statusInfo = computed(() => {
         <nldd-form-actions>
           <nldd-button
             size="md"
-            variant="primary"
+            appearance="primary"
             width="full"
             :text="isEditing ? 'Werk notitie bij' : 'Voeg notitie toe'"
             data-testid="note-save"

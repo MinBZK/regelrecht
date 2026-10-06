@@ -44,6 +44,7 @@ pub mod job_queue;
 pub mod law_convert;
 pub mod law_migrate;
 pub mod law_status;
+pub mod markings;
 pub mod models;
 pub mod tasks;
 #[cfg(feature = "test-utils")]

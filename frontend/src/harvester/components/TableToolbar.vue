@@ -102,7 +102,7 @@ onUnmounted(() => Object.values(debounceTimers).forEach(clearTimeout));
       v-if="sortableColumns.length > 0"
       :id="`sort-btn-${uid}`"
       expandable
-      variant="neutral-tinted"
+      appearance="neutral-tinted"
       size="sm"
       :text="activeSortLabel"
     />
@@ -126,7 +126,7 @@ onUnmounted(() => Object.values(debounceTimers).forEach(clearTimeout));
       <nldd-button
         :id="`filter-btn-${uid}-${getFilterKey(col)}`"
         expandable
-        variant="neutral-tinted"
+        appearance="neutral-tinted"
         size="sm"
         :text="getFilterButtonLabel(col)"
       />

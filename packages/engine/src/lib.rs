@@ -31,6 +31,7 @@ pub mod article;
 pub mod config;
 pub mod context;
 pub mod data_source;
+mod demand;
 pub mod engine;
 pub mod error;
 mod load_check;
@@ -49,13 +50,6 @@ pub mod uri;
 
 #[cfg(feature = "wasm")]
 pub mod wasm;
-
-/// OpenTelemetry integration (requires `otel` feature).
-///
-/// **Note:** The `otel` and `wasm` features are mutually exclusive in practice —
-/// OTel requires network I/O that WASM cannot provide.
-#[cfg(feature = "otel")]
-pub mod telemetry;
 
 // Re-export commonly used items
 pub use annotation::{

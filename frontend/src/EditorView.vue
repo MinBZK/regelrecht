@@ -401,8 +401,8 @@ const { draftNotesForArticle } = useResolvedDraftNotes(
 // Authoring is part of the notes pane (the old separate `notes.create` flag is
 // folded in): wherever the pane is available, you can create notes in it.
 // Note creation is a writer action (it persists to the traject sidecar), so it
-// follows the same write-access gate as law-text editing. The old panel.notes
-// flag is gone - notes now live in the Tekst editor itself.
+// follows the same write-access gate as law-text editing. Whether the pane is
+// offered at all is the panel.notes flag (VIEW_DEFINITIONS above).
 const canCreateNotes = computed(() => canEdit.value);
 // Committed + draft notes share the highlight path. Draft entries already
 // carry __draft so the popover can mark them unsaved.
@@ -751,7 +751,7 @@ function fileTimestamp() {
 
 // Law id as a filename part, hyphenated (the corpus slug uses underscores).
 function lawSlug() {
-  return (lawId.value || 'wet').replace(/_/g, '-');
+  return (lawId.value || 'regelwerk').replace(/_/g, '-');
 }
 
 // Trigger a browser download of `text` as `filename`. Revoke on a later tick:
@@ -1720,12 +1720,12 @@ const reviewBannerVariant = computed(() => {
   return 'accent';
 });
 const reviewBannerText = computed(() =>
-  reviewIsLawCreate.value ? 'Nieuwe wet uit documentconversie' : 'Voorstel uit verrijking',
+  reviewIsLawCreate.value ? 'Nieuw regelwerk uit documentconversie' : 'Voorstel uit verrijking',
 );
 const reviewBannerSupportingText = computed(() => {
   if (reviewLoadError.value) return reviewLoadError.value;
   if (reviewIsLawCreate.value) {
-    return 'Controleer de wet; Opslaan voegt de wet toe aan het traject, Verwerpen wijst af.';
+    return 'Controleer het regelwerk; Opslaan voegt het toe aan het traject, Verwerpen wijst af.';
   }
   if (!reviewSeeded.value) {
     return reviewArticleNumber.value
@@ -1758,7 +1758,7 @@ const reviewChangedPanes = computed(() => {
 const reviewStatusText = computed(() => {
   if (reviewLoadError.value) return reviewLoadError.value;
   const what = reviewIsLawCreate.value
-    ? 'Dit is een nieuwe wet uit documentconversie'
+    ? 'Dit is een nieuw regelwerk uit documentconversie'
     : 'Dit is een gegenereerd voorstel';
   const panes = reviewChangedPanes.value;
   const list =
@@ -1777,8 +1777,8 @@ const reviewProgressNote = computed(() => {
       ? ` Onderdeel ${reviewPartIndex.value} van ${reviewPartCount.value}.`
       : '';
   return reviewUndecidedParts.value.length > 1
-    ? `${position} De wet wordt pas bijgewerkt als alle onderdelen zijn beoordeeld.`
-    : `${position} Dit is het laatste onderdeel; daarna wordt de wet bijgewerkt.`;
+    ? `${position} Het regelwerk wordt pas bijgewerkt als alle onderdelen zijn beoordeeld.`
+    : `${position} Dit is het laatste onderdeel; daarna wordt het regelwerk bijgewerkt.`;
 });
 
 // Fires once the law + its first article have finished loading (whether
@@ -2041,13 +2041,13 @@ async function enrichLaw() {
   try {
     const { alreadyRunning, tooMany } = await requestEnrich();
     if (alreadyRunning) {
-      enrichFeedback.value = { variant: 'warning', text: 'Er loopt al een verrijking voor deze wet.' };
+      enrichFeedback.value = { variant: 'warning', text: 'Er loopt al een verrijking voor dit regelwerk.' };
     } else if (tooMany) {
       enrichFeedback.value = { variant: 'warning', text: 'Je hebt te veel verrijkingen tegelijk lopen.' };
     } else {
       enrichFeedback.value = {
         variant: 'success',
-        text: 'Verrijking van de hele wet gestart - je krijgt een taak per gewijzigd artikel zodra het resultaat klaarstaat.',
+        text: 'Verrijking van alle artikelen gestart - je krijgt een taak per gewijzigd artikel zodra het resultaat klaarstaat.',
       };
     }
   } catch (e) {
@@ -2565,7 +2565,7 @@ async function handleActionSave() {
         <nldd-page v-else-if="!activeTab && !loading && !selectedArticle && !error">
           <nldd-simple-section width="full">
             <nldd-inline-dialog text="Open een artikel vanuit de tabbalk of Home om te bewerken.">
-              <nldd-button slot="actions" variant="secondary" text="Naar Home" :href="libraryTabHref" @click.prevent="router.push(libraryTabTarget)"></nldd-button>
+              <nldd-button slot="actions" appearance="secondary" text="Naar Home" :href="libraryTabHref" @click.prevent="router.push(libraryTabTarget)"></nldd-button>
             </nldd-inline-dialog>
           </nldd-simple-section>
         </nldd-page>
@@ -2585,8 +2585,8 @@ async function handleActionSave() {
               :text="`${failedLawName} is niet beschikbaar in dit traject`"
               supporting-text="Wissel van traject via het menu rechtsboven of ga terug naar het overzicht."
             >
-              <nldd-button slot="actions" variant="primary" text="Naar Home" :href="libraryTabHref" @click.prevent="router.push(libraryTabTarget)"></nldd-button>
-              <nldd-button slot="actions" variant="secondary" text="Probeer opnieuw" @click="retryLoadLaw"></nldd-button>
+              <nldd-button slot="actions" appearance="primary" text="Naar Home" :href="libraryTabHref" @click.prevent="router.push(libraryTabTarget)"></nldd-button>
+              <nldd-button slot="actions" appearance="secondary" text="Probeer opnieuw" @click="retryLoadLaw"></nldd-button>
             </nldd-inline-dialog>
             <nldd-inline-dialog
               v-else
@@ -2594,8 +2594,8 @@ async function handleActionSave() {
               :text="`${failedLawName} is niet geladen`"
               supporting-text="De gegevens konden niet worden opgehaald."
             >
-              <nldd-button slot="actions" variant="primary" text="Probeer opnieuw" @click="retryLoadLaw"></nldd-button>
-              <nldd-button slot="actions" variant="secondary" text="Neem contact op via e-mail" :href="`mailto:${SUPPORT_EMAIL}`"></nldd-button>
+              <nldd-button slot="actions" appearance="primary" text="Probeer opnieuw" @click="retryLoadLaw"></nldd-button>
+              <nldd-button slot="actions" appearance="secondary" text="Neem contact op via e-mail" :href="`mailto:${SUPPORT_EMAIL}`"></nldd-button>
             </nldd-inline-dialog>
           </nldd-simple-section>
         </nldd-page>
@@ -2644,7 +2644,7 @@ async function handleActionSave() {
           <nldd-container v-if="engineLoadError" padding="8">
             <nldd-banner
               variant="critical"
-              text="De engine kan deze wet niet laden"
+              text="De engine kan dit regelwerk niet laden"
               :supporting-text="engineLoadError"
             ></nldd-banner>
           </nldd-container>
@@ -2665,8 +2665,11 @@ async function handleActionSave() {
             :slot="`pane-${idx + 1}`"
             :data-testid="`pane-${view}`"
           >
+            <!-- A page in a pane renders no main landmark of its own; the
+                 first pane holds the primary content, so it carries it. -->
             <nldd-page
               sticky-header
+              :landmarks="idx === 0 ? 'page' : 'auto'"
               :background="view === 'scenario' ? 'base' : undefined"
             >
               <nldd-container slot="header" padding="8" padding-bottom="0">
@@ -2893,7 +2896,7 @@ async function handleActionSave() {
                     <nldd-icon-button
                       icon="comment"
                       text="Notitie toevoegen"
-                      variant="secondary"
+                      appearance="secondary"
                       size="md"
                       :disabled="textEditorRefs[idx].selectionEmpty || undefined"
                       @mousedown.prevent
@@ -2921,18 +2924,18 @@ async function handleActionSave() {
                     <nldd-icon-button
                       icon="download"
                       text="Notities downloaden"
-                      variant="secondary"
+                      appearance="secondary"
                       size="md"
                       expandable
                     >
                       <nldd-menu slot="popup">
                         <nldd-menu-item icon="document" text="Artikel-notities als YAML" @select="exportArticleNotes"></nldd-menu-item>
-                        <nldd-menu-item icon="document" text="Wet-notities als YAML" @select="exportNotes"></nldd-menu-item>
+                        <nldd-menu-item icon="document" text="Regelwerk-notities als YAML" @select="exportNotes"></nldd-menu-item>
                       </nldd-menu>
                     </nldd-icon-button>
                     <nldd-menu-group slot="overflow" text="Notities downloaden">
                       <nldd-menu-item icon="document" text="Artikel-notities als YAML" @select="exportArticleNotes"></nldd-menu-item>
-                      <nldd-menu-item icon="document" text="Wet-notities als YAML" @select="exportNotes"></nldd-menu-item>
+                      <nldd-menu-item icon="document" text="Regelwerk-notities als YAML" @select="exportNotes"></nldd-menu-item>
                     </nldd-menu-group>
                   </nldd-toolbar-item>
                   <!-- YAML parse-status (Machine-readable pane). -->
@@ -2955,7 +2958,7 @@ async function handleActionSave() {
                     v-if="canEnrichLaw && isEnrichPane(view) && hasMachineReadable"
                     slot="overflow"
                     icon="ai"
-                    text="Verrijk deze wet opnieuw"
+                    text="Verrijk dit regelwerk opnieuw"
                     @select="enrichLaw"
                   ></nldd-menu-item>
                 </nldd-toolbar>
@@ -3040,7 +3043,7 @@ async function handleActionSave() {
                         <template v-if="canCreateNotes && activeGroup && activeGroup.quote">
                           <nldd-spacer size="12"></nldd-spacer>
                           <nldd-button
-                            variant="secondary"
+                            appearance="secondary"
                             size="md"
                             width="full"
                             start-icon="add"
@@ -3101,7 +3104,7 @@ async function handleActionSave() {
                     </template>
                     <nldd-spacer size="16"></nldd-spacer>
                     <nldd-button
-                      variant="secondary"
+                      appearance="secondary"
                       width="full"
                       text="Bijdragen of bewerken"
                       @click="openSheetFromAnnotation"
@@ -3259,7 +3262,7 @@ async function handleActionSave() {
                     <template v-if="canCreateNotes && group.quote">
                       <nldd-spacer size="12"></nldd-spacer>
                       <nldd-button
-                        variant="secondary"
+                        appearance="secondary"
                         size="md"
                         width="full"
                         start-icon="add"
@@ -3296,8 +3299,8 @@ async function handleActionSave() {
     data-testid="publish-confirm"
     @close="cancelPublish"
   >
-    <nldd-button slot="actions" variant="primary" text="Houd privé" @click="cancelPublish"></nldd-button>
-    <nldd-button slot="actions" variant="secondary" text="Deel binnen traject" data-testid="publish-confirm-btn" @click="confirmPublish"></nldd-button>
+    <nldd-button slot="actions" appearance="primary" text="Houd privé" @click="cancelPublish"></nldd-button>
+    <nldd-button slot="actions" appearance="secondary" text="Deel binnen traject" data-testid="publish-confirm-btn" @click="confirmPublish"></nldd-button>
   </nldd-modal-dialog>
 
   <!-- Deleting a draft is irreversible (it is the only copy), so confirm. The
@@ -3310,8 +3313,8 @@ async function handleActionSave() {
     data-testid="delete-confirm"
     @close="cancelDelete"
   >
-    <nldd-button slot="actions" variant="primary" text="Behoud notitie" @click="cancelDelete"></nldd-button>
-    <nldd-button slot="actions" variant="destructive" text="Verwijder" data-testid="delete-confirm-btn" @click="confirmDelete"></nldd-button>
+    <nldd-button slot="actions" appearance="primary" text="Behoud notitie" @click="cancelDelete"></nldd-button>
+    <nldd-button slot="actions" appearance="destructive" text="Verwijder" data-testid="delete-confirm-btn" @click="confirmDelete"></nldd-button>
   </nldd-modal-dialog>
 
   <!-- Whole-law save failure, shown over the whole editor rather than inline in
@@ -3324,7 +3327,7 @@ async function handleActionSave() {
     data-testid="save-error-modal"
     @close="dismissSaveError"
   >
-    <nldd-button slot="actions" variant="primary" text="Sluiten" @click="dismissSaveError"></nldd-button>
+    <nldd-button slot="actions" appearance="primary" text="Sluiten" @click="dismissSaveError"></nldd-button>
   </nldd-modal-dialog>
 
   <!-- Trace sheet - execution trace + expected outcomes for the most

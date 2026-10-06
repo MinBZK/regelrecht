@@ -8,6 +8,11 @@
 //! only when the report is empty, and these tests hold both halves: without
 //! the flag nothing changes, with it a finding is enough.
 
+// Allowed crate-wide: test helpers outside a `#[test]` fn may unwrap, expect and
+// panic too, because that is how a failing fixture reports itself.
+// `allow-*-in-tests` in clippy.toml only reaches `#[test]` fns.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 use std::path::Path;
 use std::process::Command;
 

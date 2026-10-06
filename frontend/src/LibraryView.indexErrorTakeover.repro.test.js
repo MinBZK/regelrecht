@@ -172,9 +172,9 @@ beforeEach(() => {
 });
 
 // The warning banner LibraryView now raises over the non-library modes.
-const NOTIFICATION_TEXT = 'Wetten en regels van dit traject zijn niet geladen';
+const NOTIFICATION_TEXT = 'De regelwerken van dit traject zijn niet geladen';
 // The fullscreen takeover that still owns the library routes themselves.
-const FULLSCREEN_TEXT = 'Wetten en regels zijn niet geladen';
+const FULLSCREEN_TEXT = 'De regelwerken zijn niet geladen';
 
 describe('LibraryView index-error scoping', () => {
   it('probes the traject corpus even with nothing curated (fresh private repo)', async () => {

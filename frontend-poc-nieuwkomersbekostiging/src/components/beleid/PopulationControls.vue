@@ -4,7 +4,7 @@
       <nldd-button
         text="Herstel de aannames"
         start-icon="undo"
-        variant="neutral-transparent"
+        appearance="neutral-transparent"
         size="sm"
         @click="resetOverrides"
       ></nldd-button>

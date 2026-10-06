@@ -106,7 +106,7 @@ watch(() => session.beoordelaar, laad);
         <nldd-card accessible-label="SSO Rijk login">
           <nldd-container padding="24" gap="16">
             <nldd-button
-              variant="primary"
+              appearance="primary"
               text="Inloggen met SSO Rijk"
               start-icon="shield-check-mark"
               :href="b('/auth/login')"
@@ -128,7 +128,7 @@ watch(() => session.beoordelaar, laad);
                 ></nldd-text-field>
               </nldd-form-field>
               <nldd-form-actions>
-                <nldd-button variant="secondary" type="submit" text="Demo-login"></nldd-button>
+                <nldd-button appearance="secondary" type="submit" text="Demo-login"></nldd-button>
               </nldd-form-actions>
             </nldd-form>
             <template v-if="loginFout">
@@ -162,7 +162,7 @@ watch(() => session.beoordelaar, laad);
         <template v-if="tab === 'werkvoorraad' || tab === 'afgerond'">
           <nldd-list
             v-if="(tab === 'werkvoorraad' ? openstaand : afgerond).length"
-            variant="box"
+            appearance="box"
           >
             <nldd-list-item
               v-for="item in tab === 'werkvoorraad' ? openstaand : afgerond"
@@ -244,7 +244,7 @@ watch(() => session.beoordelaar, laad);
               ></nldd-text-cell>
               <nldd-cell v-if="opdracht.status === 'AANGEMAAKT'">
                 <nldd-button
-                  variant="secondary"
+                  appearance="secondary"
                   size="sm"
                   text="Uitbetalen"
                   :disabled="betaalBezig === opdracht.id || undefined"
@@ -263,7 +263,7 @@ watch(() => session.beoordelaar, laad);
               ></nldd-text-cell>
               <nldd-cell>
                 <nldd-button
-                  variant="neutral-transparent"
+                  appearance="neutral-transparent"
                   size="sm"
                   text="Bekijk"
                   end-icon="chevron-right"

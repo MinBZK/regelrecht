@@ -80,6 +80,7 @@ const {
   featureText,
   loading: scenariosLoading,
   saving,
+  error: scenariosError,
   saveError,
   selectScenario: selectScenarioFile,
   saveScenario,
@@ -98,7 +99,7 @@ const selectedScenarioMismatchTargets = computed(() =>
 );
 const mismatchSupportingText = computed(() =>
   selectedScenarioMismatchTargets.value
-    ? `Dit scenario evalueert '${selectedScenarioMismatchTargets.value.join("', '")}', niet deze wet ('${props.lawId}'). Uitvoeren gebruikt die andere wet.`
+    ? `Dit scenario evalueert '${selectedScenarioMismatchTargets.value.join("', '")}', niet dit regelwerk ('${props.lawId}'). Uitvoeren gebruikt dat andere regelwerk.`
     : '',
 );
 
@@ -568,7 +569,7 @@ defineExpose({ save: onSave });
       <template v-if="selectedScenarioMismatchTargets">
         <nldd-banner
           variant="warning"
-          text="Scenario hoort bij een andere wet"
+          text="Scenario hoort bij een ander regelwerk"
           :supporting-text="mismatchSupportingText"
         ></nldd-banner>
         <nldd-spacer size="16"></nldd-spacer>
@@ -578,6 +579,13 @@ defineExpose({ save: onSave });
       <nldd-inline-dialog v-if="saveError" variant="alert" text="Opslaan mislukt" :supporting-text="saveError.message || String(saveError)"></nldd-inline-dialog>
 
       <nldd-inline-dialog v-if="depsError" variant="alert" text="Fout" :supporting-text="String(depsError)"></nldd-inline-dialog>
+
+      <nldd-inline-dialog
+        v-if="scenariosError"
+        variant="alert"
+        text="Scenario's konden niet worden geladen"
+        :supporting-text="scenariosError.message || String(scenariosError)"
+      ></nldd-inline-dialog>
 
       <template v-if="formState">
         <nldd-collection layout="grid" item-width="320px">
@@ -589,7 +597,7 @@ defineExpose({ save: onSave });
               <template v-if="scenarioExpectations(i).length">
                 <nldd-title size="6"><h4>Verwachte uitkomsten</h4></nldd-title>
                 <nldd-spacer size="4"></nldd-spacer>
-                <nldd-list variant="simple">
+                <nldd-list appearance="simple">
                   <nldd-list-item v-for="(exp, j) in scenarioExpectations(i)" :key="j" size="sm">
                     <nldd-text-cell size="sm" :text="exp.name"></nldd-text-cell>
                     <nldd-text-cell size="sm" horizontal-alignment="right" :text="exp.value"></nldd-text-cell>
@@ -613,7 +621,7 @@ defineExpose({ save: onSave });
                   @click="onShowDetails(i, 'trace')"
                 ></nldd-button>
                 <nldd-button
-                  variant="secondary"
+                  appearance="secondary"
                   text="Graaf"
                   @click="onShowDetails(i, 'graph')"
                 ></nldd-button>
@@ -628,13 +636,13 @@ defineExpose({ save: onSave });
       </template>
 
       <nldd-inline-dialog
-        v-else-if="!articleLoading && !scenariosLoading && !depsLoading"
+        v-else-if="!articleLoading && !scenariosLoading && !depsLoading && !scenariosError"
         text="Geen scenario's beschikbaar voor dit artikel."
       ></nldd-inline-dialog>
     </nldd-simple-section>
     <!-- Full-pane loading overlay, shown across the WHOLE scenario story: the
          article/law load, then the scenario files, then their dependency laws
-         ("X/Y wetten geladen"). Deliberately one condition over all three so
+         ("X/Y regelwerken geladen"). Deliberately one condition over all three so
          this element stays mounted throughout - the DS resets its anti-flash
          timer on every connectedCallback, so handing off between two separate
          indicators produced spinner -> 1s blank -> spinner. Staying mounted
@@ -707,7 +715,7 @@ defineExpose({ save: onSave });
         <nldd-container v-if="isDirty" slot="footer" padding="16">
           <nldd-button-group orientation="vertical">
             <nldd-button
-              variant="primary"
+              appearance="primary"
               size="md"
               data-testid="save-scenarios-btn"
               :disabled="saving || undefined"

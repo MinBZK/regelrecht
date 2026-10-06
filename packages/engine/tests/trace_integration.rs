@@ -3,6 +3,11 @@
 //! Verifies that the trace output matches the expected box-drawing format
 //! for the zorgtoeslag (healthcare allowance) scenario.
 
+// Allowed crate-wide: test helpers outside a `#[test]` fn may unwrap, expect and
+// panic too, because that is how a failing fixture reports itself.
+// `allow-*-in-tests` in clippy.toml only reaches `#[test]` fns.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 mod common;
 
 use regelrecht_engine::{LawExecutionService, PathNodeType, Value};
@@ -60,6 +65,7 @@ fn setup_zorgtoeslag_service() -> LawExecutionService {
     let relationship = record(vec![
         ("bsn", Value::String("999993653".to_string())),
         ("partnerschap_type", Value::String("GEEN".to_string())),
+        ("partner_bsn", Value::Null),
     ]);
     let insurance = record(vec![
         ("bsn", Value::String("999993653".to_string())),
@@ -73,7 +79,15 @@ fn setup_zorgtoeslag_service() -> LawExecutionService {
         ("winst_uit_onderneming", Value::Int(0)),
         ("resultaat_overige_werkzaamheden", Value::Int(0)),
         ("eigen_woning", Value::Int(0)),
-        ("buitenlands_inkomen", Value::Int(0)),
+    ]);
+    let inkomensgegevens = record(vec![
+        ("bsn", Value::String("999993653".to_string())),
+        (
+            "aanslag_of_navorderingsaanslag_vastgesteld",
+            Value::Bool(true),
+        ),
+        ("belastbaar_loon", Value::Int(79547)),
+        ("niet_in_nederland_belastbaar_inkomen", Value::Int(0)),
     ]);
     let box2 = record(vec![
         ("bsn", Value::String("999993653".to_string())),
@@ -107,6 +121,9 @@ fn setup_zorgtoeslag_service() -> LawExecutionService {
     service
         .register_dict_source("box1", "bsn", vec![box1])
         .expect("Failed to register box1");
+    service
+        .register_dict_source("inkomensgegevens", "bsn", vec![inkomensgegevens])
+        .expect("Failed to register inkomensgegevens");
     service
         .register_dict_source("box2", "bsn", vec![box2])
         .expect("Failed to register box2");
@@ -265,7 +282,9 @@ fn every_step_is_anchored_to_the_provision_it_came_from() {
     let result = service
         .evaluate_law_output_with_trace(
             "wet_op_de_zorgtoeslag",
-            "hoogte_zorgtoeslag",
+            // The entitlement reads every article of the chain; the amount
+            // alone does not read the insurance or the capital test (RFC-043).
+            "heeft_recht_op_zorgtoeslag",
             params,
             "2025-01-01",
         )
@@ -330,10 +349,19 @@ fn every_step_is_anchored_to_the_provision_it_came_from() {
     // article 4, and `rendementsgrondslag` is an input of article 3. A reader
     // following either anchor to wetten.overheid.nl has to land where the
     // engine actually was.
+    // The first step under that name of the kind that resolves it: with
+    // resolution at the point of use (RFC-043), the article reading the value
+    // shows a step of the same name around it.
     let article_of = |name: &str| -> Option<String> {
         nodes
             .iter()
-            .find(|n| n.name == name)
+            .find(|n| {
+                n.name == name
+                    && matches!(
+                        n.node_type,
+                        PathNodeType::OpenTermResolution | PathNodeType::CrossLawReference
+                    )
+            })
             .and_then(|n| n.anchor.as_ref())
             .and_then(|a| a.article.clone())
     };
@@ -364,7 +392,9 @@ fn an_action_carries_the_provision_the_corpus_cites() {
     let result = service
         .evaluate_law_output_with_trace(
             "wet_op_de_zorgtoeslag",
-            "hoogte_zorgtoeslag",
+            // The entitlement reads every article of the chain; the amount
+            // alone does not read the insurance or the capital test (RFC-043).
+            "heeft_recht_op_zorgtoeslag",
             params,
             "2025-01-01",
         )
@@ -424,15 +454,22 @@ fn an_action_carries_the_provision_the_corpus_cites() {
 
     // Every action that states a basis gets one, not just the first: stamping
     // only the first action would otherwise pass unnoticed.
-    let cited: Vec<&str> = nodes
+    let cited: std::collections::BTreeSet<&str> = nodes
         .iter()
         .filter(|n| n.legal_basis.is_some())
         .map(|n| n.name.as_str())
         .collect();
     assert_eq!(
         cited,
-        vec!["hoogte_zorgtoeslag", "heeft_recht_op_zorgtoeslag"],
-        "both actions of article 2 cite their basis"
+        [
+            "vermogen_onder_grens",
+            "in_aanmerking_genomen_toetsingsinkomen",
+            "hoogte_zorgtoeslag",
+            "heeft_recht_op_zorgtoeslag",
+        ]
+        .into_iter()
+        .collect(),
+        "every action of articles 2 and 3 cites its basis"
     );
 
     // The entitlement test draws on three provisions, so it cites the article
@@ -463,7 +500,9 @@ fn a_value_from_a_register_names_its_source() {
     let result = service
         .evaluate_law_output_with_trace(
             "wet_op_de_zorgtoeslag",
-            "hoogte_zorgtoeslag",
+            // The entitlement reads every article of the chain; the amount
+            // alone does not read the insurance or the capital test (RFC-043).
+            "heeft_recht_op_zorgtoeslag",
             params,
             "2025-01-01",
         )
@@ -638,4 +677,81 @@ fn a_declared_value_reports_its_unit() {
             "a reported spec carries only unit and precision, found {key:?} in {keys:?}"
         );
     }
+}
+
+/// The closing line of a trace for several outputs names each requested output
+/// with its value, not the whole result object as a dict, and leaves out what a
+/// hook added: that has its own lines under the HOOK node. A date the engine
+/// carries as an object (`$referencedate`) reads as the date it is.
+#[test]
+fn a_multi_output_trace_ends_with_one_value_per_requested_output() {
+    let law = r#"
+$id: trace_multi
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Het bestuursorgaan stelt het bedrag vast op de peildatum.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+        output:
+          - name: bedrag
+            type: number
+          - name: peildatum
+            type: date
+        actions:
+          - output: bedrag
+            value: 100
+          - output: peildatum
+            value: $referencedate
+"#;
+    let hook = r#"
+$id: trace_multi_hook
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Bij de beschikking hoort een bezwaartermijn.
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: BESLUIT
+      execution:
+        output:
+          - name: bezwaartermijn_weken
+            type: number
+        actions:
+          - output: bezwaartermijn_weken
+            value: 6
+"#;
+    let mut service = LawExecutionService::new();
+    service.load_law(law).unwrap();
+    service.load_law(hook).unwrap();
+    let result = service
+        .evaluate_law_with_trace(
+            "trace_multi",
+            &["bedrag", "peildatum"],
+            BTreeMap::new(),
+            "2025-02-01",
+        )
+        .unwrap();
+    let rendered = result.trace.as_ref().unwrap().render_box_drawing();
+    let last = rendered.lines().next_back().unwrap();
+
+    assert!(
+        last.ends_with("Result: bedrag = 100, peildatum = '2025-02-01'"),
+        "closing line:\n{last}\n\nin:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("'iso':"),
+        "a date object renders as its date:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("bezwaartermijn_weken = 6"),
+        "the hook keeps its own line:\n{rendered}"
+    );
 }

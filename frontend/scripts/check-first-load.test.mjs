@@ -33,10 +33,12 @@ const ROUTE_CHUNKS = ['AccountRequestView-DjPvsnLO.js', 'DataTable-CvK3xaic.js']
  * index.html with the entry as a module script and every eagerly-fetched chunk
  * as a modulepreload.
  */
-async function dist({ assets, entry = 'index-SWwzPvTN.js', preloads = SHARED_CHUNKS }) {
+async function dist({ assets, entry = 'index-SWwzPvTN.js', preloads = SHARED_CHUNKS, bodies = {} }) {
   const dir = await mkdtemp(join(tmpdir(), 'check-first-load-'));
   await mkdir(join(dir, 'assets'));
-  for (const name of assets) await writeFile(join(dir, 'assets', name), '/* chunk */\n');
+  for (const name of assets) {
+    await writeFile(join(dir, 'assets', name), bodies[name] ?? '/* chunk */\n');
+  }
 
   const html = `<!DOCTYPE html>
 <html lang="nl">
@@ -145,6 +147,57 @@ test('both failures are reported in one run', async () => {
     },
     (dir) => {
       assert.equal(checkFirstLoad(dir).problems.length, 2);
+    },
+  );
+});
+
+test('an echarts chunk importing back from a route chunk fails', async () => {
+  // The shape that broke the harvester section in September 2026: vite 8.3.0
+  // put echarts' TypeScript `__extends` helper in OverviewView while echarts
+  // still called it, so the two chunks imported each other. echarts evaluated
+  // first, reached for a binding OverviewView had not initialised yet, and
+  // threw "M is not a function" before the section rendered. Nothing else
+  // catches it: the build succeeds, index.html is unchanged, and all 1012
+  // unit tests pass, because the bug lives only in the emitted chunk graph.
+  await withDist(
+    {
+      assets: [
+        'index-SWwzPvTN.js',
+        'echarts-B-2PdTzp.js',
+        'OverviewView-DGcaNwgn.js',
+        ...SHARED_CHUNKS,
+      ],
+      bodies: {
+        'echarts-B-2PdTzp.js': 'import{t as y}from"./OverviewView-DGcaNwgn.js";\n',
+      },
+    },
+    (dir) => {
+      const { problems } = checkFirstLoad(dir);
+      assert.equal(problems.length, 1);
+      assert.match(problems[0], /circular chunk import/);
+      assert.match(problems[0], /OverviewView-DGcaNwgn\.js/);
+    },
+  );
+});
+
+test('an echarts chunk importing only shared chunks passes', async () => {
+  // The fix, and the guard must not flag it: echarts may import the runtime
+  // and vue chunks, because those do not import echarts back.
+  await withDist(
+    {
+      assets: [
+        'index-SWwzPvTN.js',
+        'echarts-B-2PdTzp.js',
+        'OverviewView-DGcaNwgn.js',
+        ...SHARED_CHUNKS,
+      ],
+      bodies: {
+        'echarts-B-2PdTzp.js':
+          'import{a as w}from"./runtime-core.esm-bundler-yi8_EWx1.js";\n',
+      },
+    },
+    (dir) => {
+      assert.deepEqual(checkFirstLoad(dir).problems, []);
     },
   );
 });

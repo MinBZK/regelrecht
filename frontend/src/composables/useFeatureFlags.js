@@ -8,12 +8,19 @@ import { ref, readonly } from 'vue';
 import { apiFetch, apiFetchJson } from '../lib/apiFetch.js';
 import { useAuth } from './useAuth.js';
 
-const DEFAULTS = {
+// Must match DEFAULTS in packages/editor-api/src/feature_flags.rs, which is
+// also the backend's allow-list: a key missing there makes the toggle PUT 400
+// and the change silently revert. useFeatureFlags.drift.test.js pins the two.
+export const DEFAULTS = {
   'panel.article_text': true,
   'panel.scenario_form': true,
   'panel.yaml_editor': true,
   'panel.machine_readable': true,
   'panel.notes': true,
+  // Default on for the Financieel CV traject demo (branch-local intent).
+  'panel.law_graph': true,
+  'notes.create': false,
+  'editor.article_text_edit': false,
   // Per-user GitHub OAuth link (spike, PR #887): gates the "Koppel
   // GitHub-account" affordance in the account menu. Off by default so the
   // spike stays invisible until a user opts in; the backend is independently

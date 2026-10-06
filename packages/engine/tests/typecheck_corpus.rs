@@ -9,6 +9,11 @@
 //! names the law, the article, the place and the rule, so the reader can tell
 //! which.
 
+// Allowed crate-wide: test helpers outside a `#[test]` fn may unwrap, expect and
+// panic too, because that is how a failing fixture reports itself.
+// `allow-*-in-tests` in clippy.toml only reaches `#[test]` fns.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 use regelrecht_engine::article::{ArticleBasedLaw, LawLoad};
 use regelrecht_engine::typecheck::{check_law, Finding};
 use std::collections::HashMap;

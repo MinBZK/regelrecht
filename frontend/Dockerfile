@@ -61,7 +61,7 @@ RUN cargo build --target wasm32-unknown-unknown --release --features wasm -p reg
       target/wasm32-unknown-unknown/release/regelrecht_engine.wasm
 
 # Stage 1b: Build frontend (with WASM module)
-FROM node:26-alpine@sha256:2c45bdcbf63561a54da9549612084b43ca309854a4110c87857d609ddeb61c9e AS frontend-builder
+FROM node:26-alpine@sha256:0b36e8c136b94cd4fcf02188228e76c31ad5872eef3fec8cbd2eee500cfd9e80 AS frontend-builder
 WORKDIR /app
 # Workspace manifests first so `npm ci` is cached independently of source.
 COPY package.json package-lock.json .npmrc ./
@@ -162,7 +162,7 @@ RUN find . -name '*.rs' -exec touch {} + && \
     cargo build --release --bin regelrecht-editor-api
 
 # Stage 5: Runtime
-FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
+FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
 RUN apk add --no-cache ca-certificates git && \
     addgroup -S app && adduser -S app -G app
 

@@ -124,7 +124,7 @@ async function confirmRemoveInvite() {
     <nldd-spacer v-if="paneChromeVisible(loading)" size="16"></nldd-spacer>
     <nldd-toolbar v-if="isOwner && paneChromeVisible(loading)" label="Ledenacties">
       <nldd-toolbar-item slot="start">
-        <nldd-button variant="secondary" size="md" start-icon="plus-small" text="Uitnodigen" @click="triggerInviteMembers"></nldd-button>
+        <nldd-button appearance="secondary" size="md" start-icon="plus-small" text="Uitnodigen" @click="triggerInviteMembers"></nldd-button>
       </nldd-toolbar-item>
     </nldd-toolbar>
     <nldd-spacer v-if="isOwner && paneChromeVisible(loading)" size="16"></nldd-spacer>
@@ -132,10 +132,10 @@ async function confirmRemoveInvite() {
     <nldd-activity-indicator v-if="loading" text="Leden laden" show-text></nldd-activity-indicator>
     <nldd-inline-dialog v-else-if="loadError" variant="alert" text="Leden niet geladen" :supporting-text="loadError.message"></nldd-inline-dialog>
     <template v-else>
-    <nldd-list variant="box-tinted">
+    <nldd-list appearance="box-tinted">
       <template v-for="m in members" :key="m.account_id">
         <nldd-list-item size="md">
-          <nldd-icon-cell size="24"><nldd-icon name="user"></nldd-icon></nldd-icon-cell>
+          <nldd-icon-cell size="24"><nldd-icon icon="user"></nldd-icon></nldd-icon-cell>
           <nldd-spacer-cell size="8"></nldd-spacer-cell>
           <nldd-text-cell :supporting-text="m.name ? m.email : null">
             <span class="member-name">
@@ -174,7 +174,7 @@ async function confirmRemoveInvite() {
            instead of scrolling them out of view in a separate section below. -->
       <template v-for="inv in pendingInvites" :key="inv.email">
         <nldd-list-item size="md">
-          <nldd-icon-cell size="24"><nldd-icon name="user"></nldd-icon></nldd-icon-cell>
+          <nldd-icon-cell size="24"><nldd-icon icon="user"></nldd-icon></nldd-icon-cell>
           <nldd-spacer-cell size="8"></nldd-spacer-cell>
           <nldd-text-cell supporting-text="Openstaande uitnodiging. Wacht op eerste login voor activatie.">
             <span class="member-name">
@@ -185,7 +185,7 @@ async function confirmRemoveInvite() {
           <nldd-spacer-cell size="8"></nldd-spacer-cell>
           <nldd-cell v-if="isOwner">
             <nldd-button
-              variant="destructive"
+              appearance="destructive"
               size="sm"
               text="Intrekken"
               :disabled="rowBusy.has(inv.email) || undefined"
@@ -208,8 +208,8 @@ async function confirmRemoveInvite() {
       :text="confirmInvite ? `Uitnodiging voor ${confirmInvite.email} intrekken?` : ''"
       supporting-text="Je kunt deze persoon op een later moment weer uitnodigen."
     >
-      <nldd-button slot="actions" variant="secondary" size="md" width="full" text="Behoud uitnodiging" @click="cancelRemoveInvite"></nldd-button>
-      <nldd-button slot="actions" variant="destructive" size="md" width="full" text="Trek uitnodiging in" @click="confirmRemoveInvite"></nldd-button>
+      <nldd-button slot="actions" appearance="secondary" size="md" width="full" text="Behoud uitnodiging" @click="cancelRemoveInvite"></nldd-button>
+      <nldd-button slot="actions" appearance="destructive" size="md" width="full" text="Trek uitnodiging in" @click="confirmRemoveInvite"></nldd-button>
     </nldd-modal-dialog>
   </Teleport>
 </template>

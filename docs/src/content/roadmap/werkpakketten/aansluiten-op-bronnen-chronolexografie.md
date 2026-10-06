@@ -10,7 +10,7 @@ capability: implementeren
 capaciteit: 1 architect + 1 engineer; aan uitvoerderskant 1 domeinexpert en 1
   IT-contact in een wekelijks ritme
 toelichting: |-
-  Een uitvoerbare specificatie levert pas iets op als ze tegen echte feiten
+  Een regelwerk levert pas iets op als het tegen echte feiten
   draait. Het corpus bevat de wet en de engine rekent een geval door, maar de
   gegevens waarop dat geval berust liggen bij uitvoeringsorganisaties in
   systemen die het artikel niet kennen waaruit een bedrag volgt. De burger die
@@ -28,10 +28,9 @@ toelichting: |-
 
   De eerste aansluiting is een Blauwe-Knop-source: data blijft bij de bron,
   aggregatie gebeurt on-device. Wat ontbreekt is juridische provenance per
-  vordering. Het [pilotvoorstel](/concepts/cjib-blauwe-knop-source-proposal) zet
-  een engine achter zo'n source, te beginnen bij de Wahv, die *lex specialis* is
-  en dus meteen toetst of de rechtsmiddel-route uit de procedure wordt afgeleid
-  in plaats van ergens ingebakken te zitten.
+  vordering. Een engine achter zo'n source zetten begint bij een wet die
+  *lex specialis* is, want dan toetst het meteen of de rechtsmiddel-route uit
+  de procedure wordt afgeleid in plaats van ergens ingebakken te zitten.
 
   **Klaar** als voor één wet bij één organisatie de keten sluit en een
   domeinexpert bevestigt dat bedrag, termijn en route overeenkomen met het
@@ -110,4 +109,5 @@ samenhangIds:
   - verkenning-publicatievoorziening
   - lakmoesproef-besluiten-execution-trace
   - rechtsbescherming-en-de-execution-trace
+  - referentie-casus-i
 ---

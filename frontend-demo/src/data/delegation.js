@@ -23,6 +23,7 @@
  * Een wet die niets oplevert zegt `heeft_delegaties: false`; een wet die de
  * engine niet kan uitvoeren telt niet mee en blokkeert de rest niet.
  */
+import { t } from '../i18n/index.js';
 
 import { isDelegationProvider } from './entrypoints.js';
 
@@ -45,29 +46,47 @@ const OUTPUTS = [
  */
 export const PERMISSION_ORDER = ['LEZEN', 'CLAIMS_INDIENEN', 'BESLUITEN_ONTVANGEN'];
 
-/** Wat een recht in het Nederlands betekent, voor de uitleg in het scherm. */
+/**
+ * Wat een recht betekent, als sleutel in de woordenboeken.
+ *
+ * Een sleutel en geen zin: deze labels staan in een menu dat tijdens een demo
+ * van taal wisselt, en de enum-waarden ernaast (`LEZEN`, `OUDERLIJK_GEZAG`)
+ * komen uit de wet en blijven zoals ze zijn.
+ */
 export const PERMISSION_LABELS = {
-  LEZEN: 'Gegevens inzien',
-  CLAIMS_INDIENEN: 'Gegevens corrigeren en aanvragen indienen',
-  BESLUITEN_ONTVANGEN: 'Besluiten ontvangen',
+  LEZEN: 'delegation.permission.read',
+  CLAIMS_INDIENEN: 'delegation.permission.correct_and_apply',
+  BESLUITEN_ONTVANGEN: 'delegation.permission.receive_decisions',
 };
 
-/** Wat een soort machtiging in het Nederlands heet. */
+/** Wat een soort machtiging heet, als sleutel. */
 export const DELEGATION_TYPE_LABELS = {
-  EIGEN_ZAKEN: 'Eigen zaken',
-  OUDERLIJK_GEZAG: 'Ouderlijk gezag',
-  GEZAMENLIJK_GEZAG: 'Gezamenlijk gezag',
-  VOOGDIJ: 'Voogdij',
-  VOOGDIJ_INSTELLING: 'Voogdij (instelling)',
-  EIGENAAR: 'Eigenaar',
-  VENNOOT: 'Vennoot',
-  BESTUURDER: 'Bestuurder',
-  GEVOLMACHTIGDE: 'Gevolmachtigde',
-  CURATOR: 'Curator',
-  BEWINDVOERDER: 'Bewindvoerder',
-  MENTOR: 'Mentor',
-  EXECUTEUR: 'Executeur',
+  EIGEN_ZAKEN: 'delegation.type.own_affairs',
+  OUDERLIJK_GEZAG: 'delegation.type.parental_authority',
+  GEZAMENLIJK_GEZAG: 'delegation.type.joint_authority',
+  VOOGDIJ: 'delegation.type.guardianship',
+  VOOGDIJ_INSTELLING: 'delegation.type.guardianship_institution',
+  EIGENAAR: 'delegation.type.owner',
+  VENNOOT: 'delegation.type.partner',
+  BESTUURDER: 'delegation.type.director',
+  GEVOLMACHTIGDE: 'delegation.type.authorised_agent',
+  CURATOR: 'delegation.type.curator',
+  BEWINDVOERDER: 'delegation.type.administrator',
+  MENTOR: 'delegation.type.mentor',
+  EXECUTEUR: 'delegation.type.executor',
 };
+
+/** Het label van een soort machtiging, in de taal die aan staat. */
+export function delegationTypeLabel(type) {
+  const key = DELEGATION_TYPE_LABELS[type];
+  return key ? t(key) : String(type ?? '');
+}
+
+/** Het label van een recht, in de taal die aan staat. */
+export function permissionLabel(permission) {
+  const key = PERMISSION_LABELS[permission];
+  return key ? t(key) : String(permission ?? '');
+}
 
 /** De wetten die machtigingen leveren, in een vaste volgorde. */
 export function delegationProviders(corpus) {
@@ -227,7 +246,8 @@ export function delegationsFor(engine, corpus, bsn, referenceDate) {
 export function delegationLabel(delegation) {
   if (!delegation) return null;
   const type = delegation.delegationType;
-  return DELEGATION_TYPE_LABELS[type] ?? type ?? null;
+  if (!type) return null;
+  return delegationTypeLabel(type);
 }
 
 /** Mag er met deze machtiging gecorrigeerd en aangevraagd worden? */

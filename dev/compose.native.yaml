@@ -1,7 +1,7 @@
 ---
 # Override for native dev (just dev):
 # - expose postgres to host (port 5433 to avoid conflicts)
-# - move grafana to 3002 (3001 is used by admin vite dev server)
+# - move grafana to 3002 (just local uses 3001)
 # - use prometheus config that scrapes host.docker.internal (admin runs natively)
 services:
   postgres:

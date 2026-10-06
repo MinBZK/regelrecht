@@ -110,7 +110,7 @@ describe('runningTitle', () => {
       job_type: 'law_convert',
       target_path: 'uploads/zorgtoeslag.pdf',
     };
-    expect(runningTitle(job, lawName)).toBe('Wachten op wet maken van zorgtoeslag.pdf');
+    expect(runningTitle(job, lawName)).toBe('Wachten op conversie van zorgtoeslag.pdf naar een regelwerk');
   });
 
   it('schrijft een lopende traject-harvest als wachten, met het BWB-id', () => {

@@ -11,6 +11,11 @@
 //! Example:
 //!   cargo run --example trace -- wet_op_de_zorgtoeslag hoogte_zorgtoeslag 2025-01-01 bsn=999993653
 
+// Allowed crate-wide: this example outside a `#[test]` fn may unwrap, expect and
+// panic too, because that is how a failing fixture reports itself.
+// `allow-*-in-tests` in clippy.toml only reaches `#[test]` fns.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 use regelrecht_engine::{LawExecutionService, Value};
 use std::collections::BTreeMap;
 use std::path::Path;

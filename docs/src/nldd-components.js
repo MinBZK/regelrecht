@@ -9,6 +9,7 @@
 //
 // Regenerate: npm run nldd:imports
 import '@nldd/design-system/badge';
+import '@nldd/design-system/banner';
 import '@nldd/design-system/blockquote';
 import '@nldd/design-system/box';
 import '@nldd/design-system/breadcrumbs';
@@ -17,6 +18,7 @@ import '@nldd/design-system/button-group';
 import '@nldd/design-system/card';
 import '@nldd/design-system/cell';
 import '@nldd/design-system/checkbox-field';
+import '@nldd/design-system/code-editor';
 import '@nldd/design-system/code-viewer';
 import '@nldd/design-system/collection';
 import '@nldd/design-system/container';
@@ -43,6 +45,7 @@ import '@nldd/design-system/radio-button-field';
 import '@nldd/design-system/radio-button-group';
 import '@nldd/design-system/rich-text';
 import '@nldd/design-system/search-field';
+import '@nldd/design-system/sheet';
 import '@nldd/design-system/sidebar-section';
 import '@nldd/design-system/simple-section';
 import '@nldd/design-system/skip-link';

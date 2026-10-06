@@ -1,5 +1,6 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use regelrecht_engine::uri::{RegelrechtUri, RegelrechtUriBuilder};
+use std::hint::black_box;
 
 fn bench_parse_regelrecht_uri(c: &mut Criterion) {
     let mut group = c.benchmark_group("uri_parsing");

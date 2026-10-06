@@ -1,0 +1,29 @@
+---
+/*
+ * Kader in de lopende tekst. `variant` is warning, accent, neutral of aside
+ * (een redactionele noot, kleiner gezet).
+ */
+import '~/styles/basiswerk.css';
+
+interface Props {
+  variant?: 'warning' | 'accent' | 'neutral' | 'aside';
+  title: string;
+}
+const { variant = 'neutral', title } = Astro.props;
+---
+
+{
+  variant === 'aside' ? (
+    <aside class="rr-aside">
+      <p class="rr-aside__title">{title}</p>
+      <div class="rr-prose"><slot /></div>
+    </aside>
+  ) : (
+    <div class={`rr-callout rr-callout--${variant}`}>
+      <div>
+        <p class="rr-callout__title">{title}</p>
+        <div class="rr-prose"><slot /></div>
+      </div>
+    </div>
+  )
+}

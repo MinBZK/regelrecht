@@ -1,6 +1,6 @@
 ---
 id: juridische-status-van-een-specificatie
-titel: Juridische status van een specificatie
+titel: Juridische status van een regelwerk
 faseId: wat
 disciplineId: recht
 prioriteit: hoog
@@ -9,11 +9,50 @@ categorie: bar
 capability: basis
 capaciteit: juridisch specialist / PhD
 toelichting: >-
-  De specificatie lijkt op onderdelen op een beleidsregel maar wijkt daar ook op
+  **Waarom dit werkpakket**\
+
+  Zolang de juridische status van interpretatieve keuzes in het regelwerk
+  onbepaald blijft, ontstaan drie risico's die zich niet in het onderzoek maar
+  in de uitvoeringspraktijk manifesteren.
+
+
+  Ten eerste ontbreekt een aangewezen correctieroute wanneer een keuze
+  naderhand onjuist blijkt. Bij de WIA-uitkeringen constateerde de Algemene
+  Rekenkamer dat wettelijke regels onjuist waren geïmplementeerd in de gebruikte
+  ICT-toepassingen en dat een systeem niet was aangepast aan wetswijzigingen;
+  structurele samenwerking tussen uitvoeringsmedewerkers, juristen en
+  IT-professionals en een proces voor validatie van gemaakte keuzes bleken geen
+  zichtbaar onderdeel van het kwaliteitsmanagementsysteem (Lokin, _Digitaal
+  disciplineren anno 2026_, § 3).
+
+
+  Ten tweede is het niet waarschijnlijk dat juridische afdelingen van potentiële
+  deelnemende organisaties instemmen met het uitbesteden van hun
+  uitvoeringslogica aan een gedeeld regelwerk zolang onduidelijk is wie
+  verantwoordelijk is wanneer dat regelwerk een fout bevat. De vraag is
+  daarmee ook een adoptievoorwaarde.
+
+
+  Ten derde bestaat het risico dat de aanpak het aantal interpretatieve keuzes
+  wel verkleint, maar de resterende keuzes concentreert in één regelwerk
+  zonder dat daar een juridisch kanaal tegenover staat dat publicatie en
+  toetsing waarborgt. Het probleem van onzichtbare interpretatie verplaatst zich
+  dan van veel systemen naar één, in plaats van dat het wordt opgelost.
+
+
+  Het wetsvoorstel versterking waarborgfunctie Awb, waarin een specifieke
+  beleidsregelplicht voor digitale uitvoering een plek zou kunnen krijgen, ligt
+  op dit moment nog open (Lokin, _Digitaal disciplineren anno 2026_, § 5.3.1).
+  De uitkomst van dit werkpakket kan als input dienen voor die lopende
+  wetgevingsprocedure.
+
+
+  **Het regelwerk**\
+
+  Het regelwerk (in het paper: _the specification_) lijkt op onderdelen op een beleidsregel maar wijkt daar ook op
   wezenlijke punten vanaf. Met name omdat het uitvoerbaar, samenstelbaar en via
   attestatie aan uitvoering gebonden is. (section 4.2, _Rules as Executed_, 12
   July 2026)
-
 
 
   **De juridische kwalificatie en rechtmatigheid van keuzes**\
@@ -43,7 +82,7 @@ toelichting: >-
   die wel is uitgevoerd, maar nooit officieel is gepubliceerd?
 volgorde: 1000
 onderzoeksvragen:
-  - vraag: Wat voor juridisch instrument is de specificatie?
+  - vraag: Wat voor juridisch instrument is een regelwerk?
     paper: sec:legalstatus
   - vraag: Is het een beleidsregel of een nieuwe vorm?
     paper: sec:legalstatus
@@ -54,12 +93,12 @@ onderzoeksvragen:
       vastgelegd?
     paper: sec:agenda-legal
   - vraag: >-
-      Hoe kunnen we garanderen dat de vertaling van wet naar software-specificatie
+      Hoe kunnen we garanderen dat de vertaling van wet naar regelwerk
       een verdedigbare juridische interpretatie is?
     paper: sec:whochooses
   - vraag: >-
-      Wat betekent het juridisch om een 'uitvoerbare specificatie' officieel te
-      publiceren?
+      Wat betekent het juridisch om een regelwerk (in het paper: een
+      'uitvoerbare specificatie') officieel te publiceren?
     paper: sec:agenda-legal
   - vraag: >-
       Welke juridische status en certificering moeten digitale bewijzen

@@ -228,7 +228,7 @@ xmlns:bwb="http://www.overheid.nl/2011/BWB"
 
 **Target Structure:**
 ```yaml
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.7.1/schema/v0.7.1/schema.json
 $id: "{LAW_SLUG}"
 name: "{LAW_TITLE}"
 regulatory_layer: "{MAPPED_LAYER}"
@@ -272,7 +272,7 @@ Create directories if they don't exist.
 
 ### Step 9: Validate YAML Against Schema (with repair loop)
 
-**CRITICAL**: The generated YAML MUST pass `just validate`. The schema is the single
+The generated YAML has to pass `just validate`. The schema is the single
 source of truth.
 
 ```bash

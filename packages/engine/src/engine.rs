@@ -20,7 +20,7 @@
 //! ```
 
 use crate::article::{Action, ActionOperation, Article, ArticleBasedLaw};
-use crate::context::RuleContext;
+use crate::context::{LazyInputs, RuleContext};
 use crate::error::{EngineError, Result};
 use crate::operations::{evaluate_value, execute_operation};
 use crate::resolver::{DeclarationNotInForce, DeclarationsFromOtherVersion, DelegationRefusal};
@@ -124,6 +124,31 @@ pub struct ArticleEngine<'a> {
     symbols: crate::units::SymbolUnits,
 }
 
+/// The scope an article's rules execute in: the caller's parameters, the
+/// optional parameters left out (RFC-036), the article's definitions, and,
+/// when tracing, the provision every step is anchored to (RFC-039).
+pub(crate) fn article_context<'l>(
+    law: &ArticleBasedLaw,
+    article: &Article,
+    parameters: &BTreeMap<String, Value>,
+    calculation_date: &str,
+    trace: Option<&Rc<RefCell<TraceBuilder>>>,
+) -> Result<RuleContext<'l>> {
+    let mut context = RuleContext::new(parameters.clone(), calculation_date)?;
+    context.set_law_scope(&law.id, unpassed_optional_parameters(article, parameters));
+    if let Some(tb) = trace {
+        context.set_trace(Rc::clone(tb));
+        // This is where the engine knows both the law and the article, so it
+        // is where the provision gets attached. Every step the rules push from
+        // here carries it (RFC-039).
+        context.set_anchor(LegalAnchor::from_article(law, article));
+    }
+    if let Some(definitions) = article.get_definitions() {
+        context.set_definitions(definitions);
+    }
+    Ok(context)
+}
+
 /// The parameters `article` declares with `required: false` that `parameters`
 /// does not carry (RFC-036).
 ///
@@ -173,7 +198,6 @@ impl<'a> ArticleEngine<'a> {
     /// # Returns
     /// * `Ok(ArticleResult)` - Execution result with outputs and metadata
     /// * `Err(EngineError)` - If execution fails
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, parameters), fields(law_id = %self.law.id, article = %self.article.number)))]
     pub fn evaluate(
         &self,
         parameters: BTreeMap<String, Value>,
@@ -187,7 +211,8 @@ impl<'a> ArticleEngine<'a> {
     /// # Arguments
     /// * `parameters` - Input parameters (e.g., {"BSN": "123456789"})
     /// * `calculation_date` - Date for which calculations are performed (YYYY-MM-DD)
-    /// * `requested_output` - Specific output to calculate (optional, calculates all if None)
+    /// * `requested_output` - Output to calculate. Only the actions it depends on
+    ///   run (RFC-043); `None` runs every action.
     ///
     /// # Returns
     /// * `Ok(ArticleResult)` - Execution result with outputs and metadata
@@ -198,7 +223,8 @@ impl<'a> ArticleEngine<'a> {
         calculation_date: &str,
         requested_output: Option<&str>,
     ) -> Result<ArticleResult> {
-        self.evaluate_internal_traced(parameters, calculation_date, requested_output, None)
+        let required = self.required_for(requested_output);
+        self.evaluate_outputs(parameters, calculation_date, required.as_ref(), None, None)
     }
 
     /// Execute this article's logic with trace support.
@@ -211,53 +237,59 @@ impl<'a> ArticleEngine<'a> {
         requested_output: Option<&str>,
         trace: Rc<RefCell<TraceBuilder>>,
     ) -> Result<ArticleResult> {
-        self.evaluate_internal_traced(parameters, calculation_date, requested_output, Some(trace))
+        let required = self.required_for(requested_output);
+        self.evaluate_outputs(
+            parameters,
+            calculation_date,
+            required.as_ref(),
+            Some(trace),
+            None,
+        )
     }
 
-    /// Internal evaluation, optionally tracing.
-    ///
-    /// `parameters` must already contain every value this article needs;
-    /// cross-article/cross-law resolution is [`crate::LawExecutionService`]'s job.
-    fn evaluate_internal_traced(
+    /// The outputs `requested_output` depends on (RFC-043); `None` for all.
+    fn required_for(&self, requested_output: Option<&str>) -> Option<BTreeSet<String>> {
+        requested_output.map(|name| crate::demand::required_outputs(self.get_actions(), &[name]))
+    }
+
+    /// Execute the actions producing `outputs` (a dependency closure, see
+    /// [`crate::demand::required_outputs`]); `None` runs every action
+    /// (RFC-043). With `lazy`, an input or open term is resolved when an
+    /// operation first reads it; without it, `parameters` must already
+    /// contain every value this article needs (cross-article and cross-law
+    /// resolution is [`crate::LawExecutionService`]'s job).
+    pub(crate) fn evaluate_outputs(
         &self,
         parameters: BTreeMap<String, Value>,
         calculation_date: &str,
-        requested_output: Option<&str>,
+        outputs: Option<&BTreeSet<String>>,
         trace: Option<Rc<RefCell<TraceBuilder>>>,
+        lazy: Option<&dyn LazyInputs>,
     ) -> Result<ArticleResult> {
         tracing::debug!(
             law_id = %self.law.id,
             article = %self.article.number,
-            requested_output = ?requested_output,
+            outputs = ?outputs,
             "Starting article evaluation"
         );
 
-        // Create execution context
-        let mut context = RuleContext::new(parameters.clone(), calculation_date)?;
-        context.set_law_scope(
-            &self.law.id,
-            unpassed_optional_parameters(self.article, &parameters),
-        );
+        let mut context = article_context(
+            self.law,
+            self.article,
+            &parameters,
+            calculation_date,
+            trace.as_ref(),
+        )?;
 
-        // Attach trace builder if provided
-        if let Some(ref tb) = trace {
-            context.set_trace(Rc::clone(tb));
-            // This is where the engine knows both the law and the article, so
-            // it is where the provision gets attached. Every step the rules
-            // push from here carries it (RFC-039).
-            context.set_anchor(LegalAnchor::from_article(self.law, self.article));
+        // Guard against any input that still carries an unresolved external
+        // source, unless inputs resolve on first read (RFC-043).
+        match lazy {
+            Some(lazy) => context.set_lazy(lazy),
+            None => self.check_input_sources(&parameters)?,
         }
-
-        // Set definitions from article
-        if let Some(definitions) = self.article.get_definitions() {
-            context.set_definitions(definitions);
-        }
-
-        // Guard against any input that still carries an unresolved external source.
-        self.check_input_sources(&parameters)?;
 
         // Execute actions (with trace instrumentation)
-        self.execute_actions_traced(&mut context, requested_output)?;
+        self.execute_actions_traced(&mut context, outputs)?;
 
         // Build result
         // Tag all outputs as Direct (hooks/overrides are tagged by the service layer)
@@ -278,7 +310,8 @@ impl<'a> ArticleEngine<'a> {
         let result = ArticleResult {
             outputs: context.outputs().clone(),
             output_provenance,
-            resolved_inputs: context.resolved_inputs().clone(),
+            // Filled by the service with what it resolved for the article.
+            resolved_inputs: BTreeMap::new(),
             article_number: self.article.number.clone(),
             law_id: self.law.id.clone(),
             law_uuid: self.law.uuid.clone(),
@@ -340,16 +373,25 @@ impl<'a> ArticleEngine<'a> {
         Ok(())
     }
 
-    /// Execute all actions in order, with optional trace instrumentation.
+    /// Execute the actions the requested outputs depend on, in declaration
+    /// order, with optional trace instrumentation (RFC-043). An action outside
+    /// that closure does not run: it fetches nothing, computes nothing, and
+    /// cannot fail the article.
     fn execute_actions_traced(
         &self,
         context: &mut RuleContext,
-        _requested_output: Option<&str>,
+        outputs: Option<&BTreeSet<String>>,
     ) -> Result<()> {
         let actions = self.get_actions();
         let tracing_active = context.has_trace();
 
-        for action in actions {
+        for (index, action) in actions.iter().enumerate() {
+            if let (Some(outputs), Some(name)) = (outputs, &action.output) {
+                if !outputs.contains(name) {
+                    continue;
+                }
+            }
+
             // An action without `output` is a computation with nowhere to
             // land. The schema requires the field and the model has it as an
             // `Option`, because the model must also read files written before
@@ -427,6 +469,42 @@ impl<'a> ArticleEngine<'a> {
                 }
                 return Err(err);
             }
+
+            // A replacing override takes effect where the output is set, so
+            // the actions after it read the value the special rule gives, the
+            // same value every other article reads (RFC-007). Only after the
+            // last action writing the output: an output assigned twice is
+            // replaced once, as what the article ends up with.
+            let is_last_write = !actions[index + 1..]
+                .iter()
+                .any(|a| a.output.as_deref() == Some(output_name.as_str()));
+            let replaced = if is_last_write {
+                context.replaced_output(output_name, &value)
+            } else {
+                None
+            };
+            let value = match replaced {
+                None => value,
+                Some(Ok(replaced)) => {
+                    // The action node keeps the value the article computed,
+                    // which is what the override departs from; the override
+                    // node nested under it carries the replaced value.
+                    if tracing_active {
+                        context.trace_set_message(format!(
+                            "Computing {output_name} = {value}, replaced by a lex specialis \
+                             override: {replaced}"
+                        ));
+                    }
+                    replaced
+                }
+                Some(Err(e)) => {
+                    if tracing_active {
+                        context.trace_set_message(format!("Action failed: {}", e));
+                        context.trace_pop();
+                    }
+                    return Err(e);
+                }
+            };
 
             tracing::debug!("Output {} = {}", output_name, value);
             context.set_output(output_name, value.clone());
@@ -1097,15 +1175,63 @@ articles:
         let mut params = BTreeMap::new();
         params.insert("age".to_string(), Value::Int(25));
 
-        // Request specific output (used for article lookup)
         let result = engine
-            .evaluate_with_output(params, "2025-01-01", Some("is_adult"))
+            .evaluate_with_output(params.clone(), "2025-01-01", Some("is_adult"))
             .unwrap();
 
-        // All outputs are calculated (matches Python behavior)
-        // Later actions may depend on earlier outputs
+        // Only the requested output and what it depends on are computed
+        // (RFC-043); `age_check_result` does not read `is_adult`.
         assert!(result.outputs.contains_key("is_adult"));
-        assert!(result.outputs.contains_key("age_check_result"));
+        assert!(!result.outputs.contains_key("age_check_result"));
+
+        // Without a requested output, every action runs.
+        let all = engine.evaluate(params, "2025-01-01").unwrap();
+        assert!(all.outputs.contains_key("is_adult"));
+        assert!(all.outputs.contains_key("age_check_result"));
+    }
+
+    /// An action outside the closure of the requested output cannot fail the
+    /// article (RFC-043): here it reads a variable nobody passed.
+    #[test]
+    fn an_action_nobody_asked_for_does_not_fail_the_article() {
+        let yaml = r#"
+$id: demand_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: t
+    machine_readable:
+      execution:
+        output:
+          - name: gevraagd
+            type: number
+          - name: tussen
+            type: number
+          - name: niet_gevraagd
+            type: number
+        actions:
+          - output: tussen
+            value: 2
+          - output: niet_gevraagd
+            value: $bestaat_niet
+          - output: gevraagd
+            value:
+              operation: MULTIPLY
+              values: [$tussen, 3]
+"#;
+        let law = ArticleBasedLaw::from_yaml_str(yaml).unwrap();
+        let article = law.find_article_by_number("1").unwrap();
+        let engine = ArticleEngine::new(article, &law);
+
+        let result = engine
+            .evaluate_with_output(BTreeMap::new(), "2025-01-01", Some("gevraagd"))
+            .unwrap();
+        assert_eq!(result.outputs.get("gevraagd"), Some(&Value::Int(6)));
+        assert_eq!(result.outputs.get("tussen"), Some(&Value::Int(2)));
+        assert!(!result.outputs.contains_key("niet_gevraagd"));
+
+        assert!(engine.evaluate(BTreeMap::new(), "2025-01-01").is_err());
     }
 
     // -------------------------------------------------------------------------
@@ -1290,12 +1416,20 @@ articles:
             let article = article.unwrap();
             let engine = ArticleEngine::new(article, &law);
 
-            // Test with vermogen under threshold for single person
-            // The article requires: vermogen, heeft_toeslagpartner
-            // Thresholds: €161.329 single, €203.643 with partner
+            // Test with vermogen under threshold for a person without a partner.
+            // Without a service no other law runs, so every input is passed in;
+            // no partner means the partner's bsn and rendementsgrondslag are
+            // absent (null), which both inputs declare nullable (RFC-036).
+            // Thresholds: €141.896 own, €179.429 joint.
             let mut params = BTreeMap::new();
-            params.insert("vermogen".to_string(), Value::Int(100000)); // €1000 in cents, well under €161.329
+            params.insert("vermogen".to_string(), Value::Int(100000)); // €1000 in cents, well under €141.896
             params.insert("heeft_toeslagpartner".to_string(), Value::Bool(false));
+            params.insert("bsn_toeslagpartner".to_string(), Value::Null);
+            params.insert("vermogen_toeslagpartner".to_string(), Value::Null);
+            params.insert(
+                "heeft_gehele_berekeningsjaar_dezelfde_partner".to_string(),
+                Value::Bool(false),
+            );
 
             let result = engine.evaluate(params, "2025-01-01").unwrap();
 

@@ -2,7 +2,7 @@
   <nldd-side-by-side-split-view panes="2">
     <!-- LINKS: wat je wijzigt, hulpmiddelen, instellingen -->
     <div slot="pane-1" class="pane pane-left">
-      <nldd-page>
+      <nldd-page landmarks="page">
         <div class="pane-inner">
           <nldd-title :size="2">
             <span slot="overline">Voor beleidsmakers</span>
@@ -25,7 +25,7 @@
                     :key="d.entry.path"
                     :text="`Open ${d.entry.name} in de YAML-editor`"
                     start-icon="code"
-                    variant="secondary"
+                    appearance="secondary"
                     size="sm"
                     @click="openYaml(d.entry.path)"
                   ></nldd-button>
@@ -33,11 +33,14 @@
               </details>
             </paneel>
 
-            <paneel titel="Beleidsassistent" subtitel="Een instructie of doel in gewone taal; de assistent wijzigt de werkversie en rekent door." samenvatting="instructie of doel">
+            <!-- Loopt er een gesprek, dan staat dit paneel open. Je komt terug op
+                 deze pagina om te zien wat de assistent doet; dan is dichtgeklapt
+                 precies het verkeerde. -->
+            <paneel titel="Beleidsassistent" subtitel="Een instructie of doel in gewone taal; de assistent wijzigt de werkversie en rekent door." samenvatting="instructie of doel" :badge="assistentLoopt ? 'bezig' : ''" :open="assistentLoopt">
               <assistent-panel />
             </paneel>
 
-            <paneel titel="Uitvoeringslastmodel" subtitel="Handelingen × minuten × tarief. Wat DUO het kost staat in euro's, wat het debiteuren kost in uren." :samenvatting="uitvoeringSamenvatting">
+            <paneel titel="Uitvoeringslastmodel" subtitel="Handelingen × minuten × tarief. Wat DUO het kost staat in euro's, wat het debiteuren kost in uren." :samenvatting="uitvoeringSamenvatting" :badge="handelingenGewijzigd ? 'aangepast' : ''">
               <handelingen-panel />
             </paneel>
 
@@ -55,12 +58,12 @@
 
     <!-- RECHTS: effecten, huidig recht naast de werkversie -->
     <div slot="pane-2" class="pane pane-right">
-      <nldd-page background="tinted">
+      <nldd-page background="tinted" accessible-label="Effecten">
         <div class="pane-inner">
           <div class="kop-rij">
             <nldd-title :size="3">
               <span>{{ werkversie || hasChanges ? `Effecten: huidig recht naast ${kolomLabel}` : 'Effecten onder huidig recht' }}</span>
-              <span slot="subtitle">{{ hasChanges ? `${werkversieLabel} met ${changeCount} bewerkt${changeCount === 1 ? '' : 'e'} document${changeCount === 1 ? '' : 'en'}; de pijlen en de grafiek vergelijken met huidig recht.` : werkversie ? 'De variant zoals hij op de branch staat, vergeleken met huidig recht.' : 'Wijzig links een parameter of kies een variant als werkversie; dan komt huidig recht ernaast te staan.' }}</span>
+              <span slot="supporting-text">{{ hasChanges ? `${werkversieLabel} met ${changeCount} bewerkt${changeCount === 1 ? '' : 'e'} document${changeCount === 1 ? '' : 'en'}; de pijlen en de grafiek vergelijken met huidig recht.` : werkversie ? 'De variant zoals hij op de branch staat, vergeleken met huidig recht.' : 'Wijzig links een parameter of kies een variant als werkversie; dan komt huidig recht ernaast te staan.' }}</span>
             </nldd-title>
             <doorreken-knop v-if="ready" class="kop-actie" />
           </div>
@@ -69,7 +72,7 @@
             <section class="block">
               <nldd-title :size="4">
                 <span>De posten per kolom</span>
-                <span slot="subtitle">Wat de regeling doet met de OCW-begroting, wat debiteuren ervan merken en welke volumes bij DUO landen. Vink links varianten aan om ze als kolom toe te voegen.</span>
+                <span slot="supporting-text">Wat de regeling doet met de OCW-begroting, wat debiteuren ervan merken en welke volumes bij DUO landen. Vink links varianten aan om ze als kolom toe te voegen.</span>
               </nldd-title>
               <kolom-tabel :columns="columns" :metrics-by-column="metricsByColumn" :running="running" />
             </section>
@@ -77,7 +80,7 @@
             <section class="block">
               <nldd-title :size="4">
                 <span>Populatie</span>
-                <span slot="subtitle">De tegels zijn kengetallen onder {{ kolomLabel }}. De grafiek eronder zet dezelfde kolommen als de tabel naast elkaar, per terugbetaalregime.</span>
+                <span slot="supporting-text">De tegels zijn kengetallen onder {{ kolomLabel }}. De grafiek eronder zet dezelfde kolommen als de tabel naast elkaar, per terugbetaalregime.</span>
               </nldd-title>
               <metric-tiles :metrics="metrics" :baseline-metrics="baselineMetrics" :kolom-label="kolomLabel" />
               <regime-metrics-chart :columns="columns" :metrics-by-column="metricsByColumn" />
@@ -109,14 +112,23 @@ import PopulationControls from '../components/beleid/PopulationControls.vue';
 import DoorrekenKnop from '../components/beleid/DoorrekenKnop.vue';
 import RegimeMetricsChart from '../components/beleid/RegimeMetricsChart.vue';
 import AssistentPanel from '../components/beleid/AssistentPanel.vue';
+import { useAssistent } from '../composables/useAssistent.js';
 import HandelingenPanel from '../components/beleid/HandelingenPanel.vue';
 import VariantenLijst from '../components/beleid/VariantenLijst.vue';
 
 const { ready, initError, lawIndex, initEngine } = useEngine();
 const { initStore, hasChanges, changeCount, editableDocs, werkversie, werkversieLabel, variants } = useLawStore();
 const { fetchPersonas } = usePersonas();
-const { metrics, baselineMetrics, columns, metricsByColumn, running, simVersion, recompute, n } = usePopulation();
+const { metrics, baselineMetrics, columns, metricsByColumn, running, simVersion, recompute, n, handelingenGewijzigd } = usePopulation();
 const { totaalDebiteuren } = usePopulatieAannames();
+
+/**
+ * Loopt er een gesprek, of staat er een antwoord dat nog niet gezien is? Dan
+ * staat het assistentpaneel open: je komt terug op deze pagina om te zien wat
+ * hij doet, en dan is dichtgeklapt precies het verkeerde.
+ */
+const { streaming: assistentStreamt, gesprekId: assistentGesprek } = useAssistent();
+const assistentLoopt = computed(() => assistentStreamt.value || !!assistentGesprek.value);
 
 const yamlOpen = ref(false);
 const yamlPath = ref(null);

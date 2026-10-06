@@ -5,6 +5,17 @@ on:
   push:
     tags:
       - "engine-v*"
+  # Een workflow die alleen op een tag draait zegt tussen twee releases niets,
+  # dus een kapotte route bleek pas bij de volgende release (#1282: van april
+  # tot september rood op engine-v0.2.0 zonder dat iemand het zag). Daarom
+  # bouwt hij ook bij een wijziging aan dit bestand en eens per maand, zonder
+  # iets te publiceren; alleen een tag maakt een release.
+  pull_request:
+    paths:
+      - ".github/workflows/release-engine.yml"
+  schedule:
+    - cron: "17 5 1 * *"
+  workflow_dispatch:
 
 permissions: {}
 
@@ -89,6 +100,7 @@ jobs:
   release:
     name: Create GitHub Release
     needs: build
+    if: startsWith(github.ref, 'refs/tags/engine-v')
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -122,7 +122,7 @@ export function useDependencies() {
           usable = true;
           loaded++;
           loadedDeps.value = [...loadedDeps.value, lawId];
-          progress.value = `${loaded}/${total} wetten geladen`;
+          progress.value = `${loaded}/${total} regelwerken geladen`;
         } catch (e) {
           loaded++;
           if (alreadyLoaded) {
@@ -130,11 +130,11 @@ export function useDependencies() {
             // be (re)fetched. Don't route it to harvest as if it were missing.
             console.warn(`Could not refetch versions of already-loaded '${lawId}'; type map may be incomplete:`, e);
             loadedDeps.value = [...loadedDeps.value, lawId];
-            progress.value = `${loaded}/${total} wetten geladen`;
+            progress.value = `${loaded}/${total} regelwerken geladen`;
           } else {
             console.warn(`Failed to load dependency '${lawId}':`, e);
             missingDeps.push(lawId);
-            progress.value = `${loaded}/${total} wetten geladen (${lawId} mislukt)`;
+            progress.value = `${loaded}/${total} regelwerken geladen (${lawId} mislukt)`;
           }
         }
 
@@ -167,7 +167,7 @@ export function useDependencies() {
 
       // Phase 4: Request harvest for missing dependencies
       const defaultProgress = total > 0
-        ? `${loadedDeps.value.length}/${total} wetten geladen`
+        ? `${loadedDeps.value.length}/${total} regelwerken geladen`
         : 'Geen afhankelijkheden';
 
       if (missingDeps.length > 0) {
@@ -176,7 +176,7 @@ export function useDependencies() {
           (r) => r.status === 'queued' || r.status === 'already_queued',
         ) ?? [];
         progress.value = requested.length > 0
-          ? `${defaultProgress} \u2014 ${requested.length} ontbrekende wet(ten) aangevraagd`
+          ? `${defaultProgress} \u2014 ${requested.length === 1 ? '1 ontbrekend regelwerk' : `${requested.length} ontbrekende regelwerken`} aangevraagd`
           : defaultProgress;
       } else {
         progress.value = defaultProgress;

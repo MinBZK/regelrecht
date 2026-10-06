@@ -1,13 +1,13 @@
 ---
 title: "RegelRecht Validation: From Analysis-First to Execution-First"
-description: "The full research background for RegelRecht's execution-first validation method, fifteen years in the making."
+description: "The argument behind RegelRecht's execution-first validation method, how it relates to Wetsanalyse, and what the expert's role becomes when a language model writes the first draft."
 ---
 
 ## Problem statement
 
 Turning law into working software is hard. For fifteen years, teams have worked in silos on methods, frameworks, and languages for formalizing legal rules. None of them scale.
 
-This document traces those fifteen years and proposes a validation method that fits the way RegelRecht works.
+This document traces those fifteen years and sets out a validation method that fits the way RegelRecht works. The procedure as it runs today is summarized on [Execution-First Validation](./methodology); this page is the argument behind it.
 
 ## Existing methods
 
@@ -60,19 +60,19 @@ RegelRecht is a broad execution ecosystem for making laws machine-executable, wi
 
 Where existing methods share an analysis-first approach, RegelRecht aims to create a coherent system of machine-executable legislation. Laws interact across boundaries and citizens are not burdened with complexity.
 
-The rule specification gets *single source of truth* status for how the law works. It is not an analysis layer that leads to a translation. The output of the analysis **is** the law in executable form.
+The rulework gets *single source of truth* status for how the law works. It is not an analysis layer that leads to a translation. The output of the analysis **is** the law in executable form.
 
 ### Transparent and simple
 
 The execution-first starting point requires transparency: open source, and understandable to experts from different disciplines when they need to reach a joint decision on how laws work.
 
-The core of the rule specification schema consists of simple logical operators that people can verify. No vendor lock-in, no convoluted stack of schemas.
+The core of the schema consists of simple logical operators that people can verify. No vendor lock-in, no convoluted stack of schemas.
 
 ### Scalable analysis
 
 Existing methods laid the groundwork for dealing with the legal reality of machine-executability. That process is interdisciplinary and intensive.
 
-Within the RegelRecht ecosystem, generative AI is the starting point: AI generates candidate rule specifications, and the analysis (or validation) runs against those candidates. This creates potential for faster and broader coverage.
+Within the RegelRecht ecosystem, generative AI is the starting point: AI generates candidate ruleworks, and the analysis (or validation) runs against those candidates. This creates potential for faster and broader coverage.
 
 ## The expert's changing role
 
@@ -113,9 +113,9 @@ The shift introduces specific risks that do not exist in analysis-first:
 - **Blind spots**: the AI does not know what it does not know; neither does a reviewer who is not actively searching
 - **Implicit interpretation choices**: where the law is ambiguous, the AI makes a choice without documenting it
 
-## The missing link
+## Where legal validation fits
 
-The current RegelRecht ecosystem already has an automated pipeline:
+When this page was first written, the automated pipeline ended at reverse validation, and the step after it was a gap: nobody had a structured way to judge the AI's proposal as a lawyer would. The desk checks have since closed part of that gap.
 
 ```mermaid
 flowchart TD
@@ -123,17 +123,21 @@ flowchart TD
     B --> C[AI generates machine_readable]
     C --> D[Schema validation + BDD tests\nmax 3 iterations]
     D --> E[Reverse validation\nTraceability check]
-    E --> F{{"❓ Legal validation\n(missing)"}}
-    F --> G[Executable rule specification]
-
+    E --> F[Letter-fidelity audit\nConcept hygiene]
+    F --> G{Judgement question?}
+    G -->|No| H[Rulework]
+    G -->|Yes| W[Expert workshop]
+    W --> C
 ```
 
-The automated steps cover:
+The automated and desk steps cover:
 - **Structural correctness**: schema validation
 - **Behavioral correctness**: BDD tests based on MvT examples
 - **Traceability**: reverse validation checks whether every element points to the legal text
+- **Fidelity to the letter**: an audit per lid that separates what the text says from what the toelichting explains
+- **Conceptual soundness**: a check that a value bound across two laws means the same thing in both
 
-A **structured process for legal experts to systematically assess the AI proposals** is missing. This differs from the Wetsanalyse validation step (step 4), because:
+What remains for the expert is judgement: where the law allows more than one reading, where practice decides, where the text is defective. That differs from the Wetsanalyse validation step (step 4), because:
 
 1. The expert did not build the proposal; the mental model is absent
 2. The AI does not document its interpretation choices; they must be uncovered
@@ -144,12 +148,12 @@ A **structured process for legal experts to systematically assess the AI proposa
 ```mermaid
 flowchart TD
     subgraph A ["Phase A: Generate (automated)"]
-        A1[MvT research] --> A2[AI generates rule specification]
+        A1[MvT research] --> A2[AI drafts a rulework]
         A2 --> A3[Schema + BDD iteration loop]
         A3 --> A4[Reverse validation]
     end
 
-    A4 --> CANDIDATE["Candidate rule specification\n+ traceability report\n+ BDD results\n+ list of assumptions"]
+    A4 --> CANDIDATE["Candidate rulework\n+ traceability report\n+ BDD results\n+ list of assumptions"]
 
     CANDIDATE --> B
 
@@ -170,7 +174,7 @@ flowchart TD
     end
 
     C3 --> PASS{Approved?}
-    PASS -->|No| ITERATE[Iterate:\nadjust specification\nback to A or B]
+    PASS -->|No| ITERATE[Iterate:\nadjust the rulework\nback to A or B]
     ITERATE --> A2
     PASS -->|Yes| D
 
@@ -180,12 +184,12 @@ flowchart TD
         D3[D3. Expert sign-off]
     end
 
-    D3 --> DONE[Validated rule specification]
+    D3 --> DONE[Validated rulework]
 ```
 
-### Phase A: Generate (automated, existing)
+### Phase A: Generate (automated, in use)
 
-This is the current pipeline. The AI generates a candidate rule specification and automated checks filter structural errors and untraceable elements. The output is a *proposal with documentation*:
+This is the current pipeline, run by hand through the `law-interpret` skill or at scale by the enrich worker. The AI generates a candidate rulework and automated checks filter structural errors and untraceable elements. The output is a *proposal with documentation*:
 
 - **Traceability report**: which elements are grounded in the legal text, which are assumptions
 - **BDD results**: which MvT scenarios pass and fail
@@ -193,7 +197,7 @@ This is the current pipeline. The AI generates a candidate rule specification an
 
 ### Phase B: Expert preparation
 
-The expert reviews the proposal *before* scenarios are run. This is the phase missing from the current pipeline and it draws on insights from Wetsanalyse:
+The expert reviews the proposal *before* scenarios are run. It draws on insights from Wetsanalyse. The desk skills now prepare most of the material for it: the corpus review reports coverage (B1), reverse validation lists the assumptions (B2), and the letter-fidelity audit lists the places where the letter and the toelichting part ways (B3). The judgement on each item is still the expert's.
 
 **B1. Completeness check**: Are all articles covered? Did the AI skip articles that contain executable logic? This is analogous to the scope step (step 1) of Wetsanalyse, asked after the fact: has everything been analyzed?
 
@@ -203,11 +207,11 @@ The expert reviews the proposal *before* scenarios are run. This is the phase mi
 
 ### Phase C: Scenario validation (workshop)
 
-The expert validates the *behavior* of the specification, not the YAML itself.
+The expert validates the *behavior* of the rulework, not the YAML itself.
 
-**C1. Walk through MvT scenarios**: The engine runs scenarios from parliamentary documents. The expert checks whether outcomes match legislative intent.
+**C1. Walk through MvT scenarios**: The engine runs scenarios from parliamentary documents. The expert checks whether the outcomes follow from the law as enacted, and where they differ from the example, which of the two is right.
 
-**C2. Build adversarial scenarios**: This is where the expert is irreplaceable. The AI has no access to case law, implementation practice, or political context. The expert builds scenarios that stress-test the specification:
+**C2. Build adversarial scenarios**: This is where the expert is irreplaceable. The AI has no access to case law, implementation practice, or political context. The expert builds scenarios that stress-test the rulework:
 - Edge cases from practice and case law
 - Exception paths ("unless" clauses)
 - Boundary values (just above/below thresholds)
@@ -227,7 +231,7 @@ Analogous to the policy-gap step (step 5) of Wetsanalyse:
 
 ### The expert does not read YAML
 
-The expert reviews *reports* and *outcomes*, not the specification itself. The automated pipeline delivers:
+The expert reviews *reports* and *outcomes*, not the rulework itself. The automated pipeline delivers:
 - A traceability report in readable form
 - Scenario outcomes with references to legal articles
 - A list of assumptions and interpretation choices
@@ -236,9 +240,9 @@ The expert reviews *reports* and *outcomes*, not the specification itself. The a
 
 The difference with Wetsanalyse validation matters: the expert did not build the proposal and must actively search for errors. The method structures that search by asking for adversarial scenarios.
 
-### MvT examples are ground truth
+### The letter leads, the MvT tests
 
-Worked examples from the Memorie van Toelichting represent the legislature's intent. If the engine produces a different result than the MvT example, the specification is wrong, not the example.
+The first version of this method treated worked examples from the Memorie van Toelichting as ground truth: when the engine disagreed with an example, the rulework was wrong. Practice showed that rule to be too strong. An MvT explains the bill as introduced, and Parliament then amends it; in the Wet op de zorgtoeslag the original memorandum works out an example in which an insured person with an uninsured partner receives no allowance at all, an outcome a nota van wijziging rejected and replaced with the rule in the law today. An example is therefore a test to be checked against the enacted text, not a norm. When the two disagree, the text decides, and the disagreement itself is a finding worth recording.
 
 ### The method is iterative
 
@@ -250,7 +254,7 @@ flowchart LR
     W1 --> V2[Validation process v2]
     V2 --> W2[Workshop 2\nExecute + evaluate]
     W2 --> VN[Validation process vN]
-    VN --> PUB[Publication\nSept - Dec 2026]
+    VN --> PUB[Publication]
 ```
 
 The method itself is developed via a Design Science Research approach:
@@ -273,9 +277,6 @@ The method itself is developed via a Design Science Research approach:
 
 The method keeps the discipline of Wetsanalyse (traceability, scenarios, policy gaps) but adapts the execution to the reality that the expert *judges* rather than *builds*.
 
-## Approach and planning
+## Status
 
-- **Consultation** with experts from the legal domain (Wetsanalyse) for the design of the validation method
-- **Workshops** where the process is run on real cases and evaluated
-- **Iteration** of the method based on findings (Design Science Research)
-- **Publication** of findings: September–December 2026
+The generate, check and desk steps are in use; the skills that carry them are listed on [Execution-First Validation](./methodology). The expert phases are designed and have their tooling (`regelrecht-audit-products` for a validation session, `regelrecht-uitvoeringstoets` for a session with implementation practice), but the repository records no validating workshop yet. What it does record is a legal expert's written review of three RFCs ([RFC-002](/rfcs/rfc-002), [RFC-008](/rfcs/rfc-008) and [RFC-009](/rfcs/rfc-009)), whose eleven corrections seed the curated legal memo in [RFC-027](/rfcs/rfc-027), and a session with OCW and DUO around one proof of concept. The Design Science Research loop above has not yet reached its workshops, and there are no findings to publish.

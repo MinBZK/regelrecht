@@ -266,6 +266,11 @@ const router = createRouter({
           component: () => import('./harvester/views/JobsView.vue'),
         },
         {
+          path: 'markings',
+          name: 'markings',
+          component: () => import('./harvester/views/MarkingsView.vue'),
+        },
+        {
           path: 'untranslatables',
           name: 'untranslatables',
           component: () => import('./harvester/views/UntranslatablesView.vue'),

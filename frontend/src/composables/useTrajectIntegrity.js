@@ -112,7 +112,7 @@ export function impactSummary(report) {
   const total = countsLabel(groups.flatMap((g) => g.findings));
   const laws = groups.filter((g) => g.title !== TRAJECT_WIDE_TITLE).length;
   const spread =
-    laws > 1 ? `, verdeeld over ${laws} wetten` : laws === 1 ? ', in één wet' : '';
+    laws > 1 ? `, verdeeld over ${laws} regelwerken` : laws === 1 ? ', in één regelwerk' : '';
   return `In totaal ${total}${spread}.`;
 }
 

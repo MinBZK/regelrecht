@@ -65,7 +65,9 @@ for (const f of files) {
   // Only matches double-quoted hrefs. Astro's built HTML always double-quotes
   // attributes, so single-quoted/unquoted hrefs do not occur here; if that ever
   // changes this regex would silently skip them.
-  for (const m of html.matchAll(/<a\b[^>]*\shref="([^"]+)"/g)) {
+  // NLDD components that navigate (nldd-list-item on the category and /docs
+  // overview pages, among others) carry their own href and are checked too.
+  for (const m of html.matchAll(/<(?:a|nldd-[a-z-]+)\b[^>]*\shref="([^"]+)"/g)) {
     let href = m[1].trim();
     if (!href) continue;
     if (href.startsWith('mailto:') || href.startsWith('tel:')) continue;

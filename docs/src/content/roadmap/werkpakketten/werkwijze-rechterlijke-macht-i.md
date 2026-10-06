@@ -9,13 +9,12 @@ categorie: bet
 capability: verifieren
 capaciteit: ''
 toelichting: |-
-  Dit werkpakket richt zich op het gebruik van machine-uitvoerbare
-  specificaties in individuele zaken voor de rechter: hoe worden de
-  specificatie en het uitvoeringsspoor (execution trace) van een concreet
+  Dit werkpakket richt zich op het gebruik van regelwerken in individuele zaken voor de rechter: hoe worden het
+  regelwerk en het uitvoeringsspoor (execution trace) van een concreet
   besluit ingebracht en getoetst in een lopende procedure?
 volgorde: 3000
 onderzoeksvragen:
-  - Welke informatie — de specificatie en de execution trace — moet in een
+  - Welke informatie — het regelwerk en de execution trace — moet in een
     individuele zaak voor de rechter beschikbaar zijn, en in welke vorm?
   - Hoe worden rechters en gerechtsjuristen toegerust om deze informatie in
     een individuele zaak te kunnen beoordelen?

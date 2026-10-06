@@ -126,3 +126,34 @@ pub enum ResolveType {
     /// Value resolved via lex specialis override (RFC-007)
     Override,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The mode string arrives from the `--untranslatable=` flag of the
+    /// evaluate binary and from BDD steps. A mode that parses to the wrong
+    /// variant changes how flagged articles execute, so every spelling maps to
+    /// its own variant and none falls back to the default.
+    #[test]
+    fn untranslatable_mode_parses_each_mode_to_its_own_variant() {
+        let cases = [
+            ("error", UntranslatableMode::Error),
+            ("propagate", UntranslatableMode::Propagate),
+            ("warn", UntranslatableMode::Warn),
+            ("ignore", UntranslatableMode::Ignore),
+        ];
+        for (input, expected) in cases {
+            assert_eq!(input.parse::<UntranslatableMode>(), Ok(expected), "{input}");
+        }
+    }
+
+    /// An unknown mode is an error, not the default: a typo in the flag must
+    /// not silently run in `Error` mode while the caller believes it chose
+    /// another.
+    #[test]
+    fn untranslatable_mode_rejects_unknown_mode() {
+        let err = "propogate".parse::<UntranslatableMode>().unwrap_err();
+        assert!(err.contains("propogate"), "{err}");
+    }
+}

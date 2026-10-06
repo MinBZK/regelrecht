@@ -394,7 +394,7 @@ pub async fn notify_reaped_task_jobs(
             JobType::Enrich => {
                 let law_id = str_field("law_id").unwrap_or(&job.law_id);
                 if payload.get("new_law").and_then(|v| v.as_bool()) == Some(true) {
-                    format!("Wet aanmaken mislukt: {law_id}")
+                    format!("Regelwerk aanmaken mislukt: {law_id}")
                 } else {
                     format!("Verrijking mislukt: {law_id}")
                 }
@@ -404,7 +404,7 @@ pub async fn notify_reaped_task_jobs(
                 str_field("target_path").unwrap_or("werkdocument")
             ),
             JobType::LawConvert => format!(
-                "Conversie naar wet mislukt: {}",
+                "Conversie naar regelwerk mislukt: {}",
                 str_field("filename").unwrap_or("document")
             ),
             JobType::TrajectHarvest => format!(

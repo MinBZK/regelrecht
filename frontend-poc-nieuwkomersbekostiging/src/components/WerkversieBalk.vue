@@ -20,8 +20,8 @@
       </span>
     </div>
     <div class="wv-rechts">
-      <nldd-button size="sm" text="Bekijk wijzigingen" start-icon="document" variant="neutral-transparent" :disabled="!werkversie && changeCount === 0 ? true : undefined" @click="diffOpen = true"></nldd-button>
-      <nldd-button size="sm" text="Terugzetten" start-icon="undo" variant="neutral-transparent" :disabled="changeCount === 0 ? true : undefined" @click="resetChanges"></nldd-button>
+      <nldd-button size="sm" text="Bekijk wijzigingen" start-icon="document" appearance="neutral-transparent" :disabled="!werkversie && changeCount === 0 ? true : undefined" @click="diffOpen = true"></nldd-button>
+      <nldd-button size="sm" text="Terugzetten" start-icon="undo" appearance="neutral-transparent" :disabled="changeCount === 0 ? true : undefined" @click="resetChanges"></nldd-button>
       <!-- Werk je in je eigen variant, dan is bewaren in diezelfde variant de
            gewone handeling en aftakken de uitzondering; daarom staat die knop
            hier voorop en draagt hij de naam van de variant. -->
@@ -30,12 +30,12 @@
         size="sm"
         :text="`Bewaar in ${werkversieLabel}`"
         start-icon="save"
-        variant="secondary"
+        appearance="secondary"
         :disabled="changeCount === 0 || bezig ? true : undefined"
         @click="bewerkBij"
       ></nldd-button>
-      <nldd-button size="sm" :text="eigenWerkversie ? 'Bewaar als nieuwe variant' : 'Bewaar als variant'" :start-icon="eigenWerkversie ? 'add' : 'save'" :variant="eigenWerkversie ? 'neutral-transparent' : 'secondary'" :disabled="changeCount === 0 ? true : undefined" @click="opslaanOpen = !opslaanOpen"></nldd-button>
-      <nldd-button v-if="eigenWerkversie" size="sm" text="Verwijder variant" start-icon="remove" variant="neutral-transparent" @click="verwijderOpen = true"></nldd-button>
+      <nldd-button size="sm" :text="eigenWerkversie ? 'Bewaar als nieuwe variant' : 'Bewaar als variant'" :start-icon="eigenWerkversie ? 'add' : 'save'" :appearance="eigenWerkversie ? 'neutral-transparent' : 'secondary'" :disabled="changeCount === 0 ? true : undefined" @click="opslaanOpen = !opslaanOpen"></nldd-button>
+      <nldd-button v-if="eigenWerkversie" size="sm" text="Verwijder variant" start-icon="remove" appearance="neutral-transparent" @click="verwijderOpen = true"></nldd-button>
       <!-- "Terugzetten" hierboven maakt bewerkingen in de wet ongedaan; deze
            knop wist wat de browser onthoudt (kolommen, gekozen casus of
            school, populatie-instellingen) en begint de demo schoon. -->
@@ -44,7 +44,7 @@
         size="sm"
         text="Begin opnieuw"
         start-icon="undo"
-        variant="neutral-transparent"
+        appearance="neutral-transparent"
         @click="opnieuwOpen = true"
       ></nldd-button>
     </div>
@@ -53,16 +53,16 @@
       Hiermee vergeet de demo je keuzes: de gekozen kolommen, de werkversie, welke casus en school je bekijkt en de
       instellingen van de populatie. De wet zelf en de opgeslagen varianten blijven staan.
       <span class="wv-knoppen">
-        <nldd-button size="sm" text="Wis en begin opnieuw" variant="primary" @click="wisStand"></nldd-button>
-        <nldd-button size="sm" text="Annuleren" variant="neutral-transparent" @click="opnieuwOpen = false"></nldd-button>
+        <nldd-button size="sm" text="Wis en begin opnieuw" appearance="primary" @click="wisStand"></nldd-button>
+        <nldd-button size="sm" text="Annuleren" appearance="neutral-transparent" @click="opnieuwOpen = false"></nldd-button>
       </span>
     </nldd-banner>
 
     <nldd-banner v-if="wisselNaar !== null" variant="warning" class="wv-breed">
       Je hebt {{ changeCount }} bewerkte {{ changeCount === 1 ? 'document' : 'documenten' }} in {{ werkversieLabel }}. Wisselen gooit die weg.
       <span class="wv-knoppen">
-        <nldd-button size="sm" text="Toch wisselen" variant="primary" @click="wisselBevestigd"></nldd-button>
-        <nldd-button size="sm" text="Annuleren" variant="neutral-transparent" @click="annuleerWissel"></nldd-button>
+        <nldd-button size="sm" text="Toch wisselen" appearance="primary" @click="wisselBevestigd"></nldd-button>
+        <nldd-button size="sm" text="Annuleren" appearance="neutral-transparent" @click="annuleerWissel"></nldd-button>
       </span>
     </nldd-banner>
 
@@ -83,8 +83,8 @@
         </nldd-form-field>
       </div>
       <div class="wv-knoppen">
-        <nldd-button size="sm" text="Bewaar" variant="primary" :disabled="!titel.trim() || bezig ? true : undefined" @click="opslaan"></nldd-button>
-        <nldd-button size="sm" text="Annuleren" variant="neutral-transparent" @click="opslaanOpen = false"></nldd-button>
+        <nldd-button size="sm" text="Bewaar" appearance="primary" :disabled="!titel.trim() || bezig ? true : undefined" @click="opslaan"></nldd-button>
+        <nldd-button size="sm" text="Annuleren" appearance="neutral-transparent" @click="opslaanOpen = false"></nldd-button>
         <span v-if="bezig" class="wv-status">bezig…</span>
       </div>
     </div>
@@ -93,8 +93,8 @@
       {{ werkversieLabel }} verwijderen? Deze variant staat alleen in deze browser, dus hij is daarna weg.
       De werkversie valt terug op huidig recht.
       <span class="wv-knoppen">
-        <nldd-button size="sm" text="Verwijderen" variant="primary" @click="verwijder"></nldd-button>
-        <nldd-button size="sm" text="Annuleren" variant="neutral-transparent" @click="verwijderOpen = false"></nldd-button>
+        <nldd-button size="sm" text="Verwijderen" appearance="primary" @click="verwijder"></nldd-button>
+        <nldd-button size="sm" text="Annuleren" appearance="neutral-transparent" @click="verwijderOpen = false"></nldd-button>
       </span>
     </nldd-banner>
 

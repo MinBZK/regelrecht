@@ -277,7 +277,7 @@ impl ReadScope {
                         );
                         (
                             StatusCode::BAD_GATEWAY,
-                            format!("Kon versies van wet '{law_id}' niet laden"),
+                            format!("Kon de versies van '{law_id}' niet laden"),
                         )
                     })
             }
@@ -315,7 +315,7 @@ fn law_read_error(
         tracing::warn!(traject = %traject_id, law_id = %law_id, error = %e, "failed to load law body");
         (
             StatusCode::BAD_GATEWAY,
-            format!("Kon wet '{law_id}' niet laden"),
+            format!("Kon regelwerk '{law_id}' niet laden"),
         )
     }
 }
@@ -722,7 +722,7 @@ pub async fn list_traject_changed_laws(
             tracing::warn!(traject_ref = %traject_ref, error = %e, "changed-laws diff failed");
             (
                 StatusCode::BAD_GATEWAY,
-                "Kon de gewijzigde wetten van dit traject niet ophalen".to_string(),
+                "Kon de gewijzigde regelwerken van dit traject niet ophalen".to_string(),
             )
         })?;
     Ok(Json(ids))
@@ -2265,7 +2265,7 @@ async fn read_traject_scenario_cached(
 /// sidecar by law id, independent of where the law file lives. Routing
 /// and writability come from `resolve_traject_law_write` (same backend
 /// the law/scenario writes use), so notes land in the same traject
-/// branch/PR as the rest of the edits in the session.
+/// branch as the rest of the edits in the session.
 async fn resolve_traject_annotation_target(
     traject: &Arc<TrajectCorpus>,
     law_id: &str,
@@ -2439,7 +2439,7 @@ fn partition_notes_by_visibility(
 ///   never git), marker and all other handling server-side;
 /// - `"public"` or absent → the stand-off sidecar in the traject's
 ///   writable backend (its branch), so a note and a law edit made in the
-///   same session ride the same PR.
+///   same session land on the same branch.
 ///
 /// A personal-marked note can therefore never end up in git, even when a
 /// client naively round-trips the merged GET document back into a save.
@@ -2548,8 +2548,8 @@ pub async fn save_annotations(
         .for_write(&**backend, writable)
         .await?;
 
-    // Read the current sidecar from the traject backend (the branch this
-    // traject's PR is built on — read-your-writes within the traject).
+    // Read the current sidecar from the traject backend (the traject
+    // branch — read-your-writes within the traject).
     // Absent file = first notes for this law. Uses the write's token: on a
     // token-less writable-own backend this read would otherwise 404 on a
     // private repo and silently drop the existing notes from the append
@@ -2861,7 +2861,7 @@ where
         None
     };
     if if_match.is_some() {
-        check_if_match(current.as_deref(), if_match.as_deref(), "Wet")?;
+        check_if_match(current.as_deref(), if_match.as_deref(), "Regelwerk")?;
     }
 
     let (body, message) = compose(current.as_deref())?;
@@ -3069,7 +3069,7 @@ pub struct ReloadResponse {
 //
 // Documents live alongside laws in the writable-own backend's source
 // root under `documents/<traject-ref>/<rest>` so they share the
-// traject's branch, PR review and access control with the laws
+// traject's branch and access control with the laws
 // themselves. The MVP allows two text-based extensions (`.md` and
 // `.txt`); binary uploads (PDF/images) and canvas-style collaboration
 // are explicit out-of-scope for fase 1.
@@ -3956,7 +3956,10 @@ pub async fn create_traject_law(
     let meta = regelrecht_pipeline::law_convert::validate_law_yaml(&body).map_err(|errors| {
         (
             StatusCode::BAD_REQUEST,
-            format!("Wet valideert niet tegen het schema: {}", errors.join("; ")),
+            format!(
+                "Regelwerk valideert niet tegen het schema: {}",
+                errors.join("; ")
+            ),
         )
     })?;
     let law_id = meta.law_id.clone();
@@ -3967,7 +3970,7 @@ pub async fn create_traject_law(
     if traject.corpus.source_map.get_law(&law_id).is_some() {
         return Err((
             StatusCode::CONFLICT,
-            "Er bestaat al een wet met dit $id in dit traject; pas het $id in de YAML aan."
+            "Er bestaat al een regelwerk met dit $id in dit traject; pas het $id in de YAML aan."
                 .to_string(),
         ));
     }
@@ -3997,7 +4000,7 @@ pub async fn create_traject_law(
     {
         return Err((
             StatusCode::CONFLICT,
-            "Er staat al een wetsbestand op dit pad in het traject; pas het $id in de YAML aan."
+            "Er staat al een versie van een regelwerk op dit pad in het traject; pas het $id in de YAML aan."
                 .to_string(),
         ));
     }
@@ -4010,7 +4013,7 @@ pub async fn create_traject_law(
     let outcome = writer
         .backend
         .persist(&auth.into_write_context(
-            format!("Nieuwe wet {} uit documentconversie", law_id),
+            format!("Nieuw regelwerk {} uit documentconversie", law_id),
             author,
         ))
         .await
@@ -4094,7 +4097,7 @@ pub async fn promote_corpus_law(
         if law.source_id == traject.writable_own_source_id {
             return Err((
                 StatusCode::CONFLICT,
-                "Deze wet staat al in dit traject.".to_string(),
+                "Dit regelwerk staat al in dit traject.".to_string(),
             ));
         }
     }
@@ -4146,7 +4149,7 @@ pub async fn promote_corpus_law(
         {
             return Err((
                 StatusCode::CONFLICT,
-                "Deze wet staat al (deels) in dit traject.".to_string(),
+                "Dit regelwerk staat al (deels) in dit traject.".to_string(),
             ));
         }
         tracing::info!(
@@ -4166,7 +4169,7 @@ pub async fn promote_corpus_law(
     let outcome = writer
         .backend
         .persist(&auth.into_write_context(
-            format!("Voeg wet {} toe uit het centrale corpus", law_id),
+            format!("Voeg regelwerk {} toe uit het centrale corpus", law_id),
             author,
         ))
         .await
@@ -4212,7 +4215,7 @@ async fn collect_promote_files(
     let not_found = || {
         (
             StatusCode::NOT_FOUND,
-            "Deze wet is niet gevonden in het centrale corpus van dit traject.".to_string(),
+            "Dit regelwerk is niet gevonden in het centrale corpus van dit traject.".to_string(),
         )
     };
     let versions: Vec<LoadedLaw> = traject
@@ -4232,7 +4235,7 @@ async fn collect_promote_files(
         tracing::warn!(law_id = %law_id, path = %path.display(), error = %e, "promote: {what} lezen uit seed-bron mislukt");
         (
             StatusCode::BAD_GATEWAY,
-            "Kon de wet niet volledig uit het centrale corpus lezen.".to_string(),
+            "Kon het regelwerk niet volledig uit het centrale corpus lezen.".to_string(),
         )
     };
 
@@ -4267,13 +4270,9 @@ async fn collect_promote_files(
             backend
                 .read_file(&relative_path)
                 .await
-                .map_err(|e| fetch_error("wet-versie", &relative_path, &e))?
+                .map_err(|e| fetch_error("versie", &relative_path, &e))?
                 .ok_or_else(|| {
-                    fetch_error(
-                        "wet-versie",
-                        &relative_path,
-                        &"bestand ontbreekt bij de bron",
-                    )
+                    fetch_error("versie", &relative_path, &"bestand ontbreekt bij de bron")
                 })?
         };
         files.push(PromoteFile {
@@ -4292,7 +4291,7 @@ async fn collect_promote_files(
         .map(PathBuf::from)
         .ok_or((
             StatusCode::INTERNAL_SERVER_ERROR,
-            "Kan de wet-map niet bepalen.".to_string(),
+            "Kan de map van het regelwerk niet bepalen.".to_string(),
         ))?;
     let scenarios_dir = law_dir.join("scenarios");
     if let Some(entry) = traject.corpus.backends.get(&primary.source_id) {
@@ -4715,6 +4714,9 @@ mod tests {
     /// signature assertion rather than a runtime probe — the runtime
     /// path is "session in → context out", with no body in between.
     #[test]
+    // The spelled-out fn-pointer types are the assertion: an alias would hide
+    // exactly the parameter list this test exists to pin.
+    #[allow(clippy::type_complexity)]
     fn save_handler_signatures_take_raw_body_no_author_field() {
         // Compile-time assertions: the function pointer types include
         // `body: String` as the last positional argument. If any handler
@@ -5153,7 +5155,7 @@ mod tests {
         // header is absent, which is what keeps older clients (frontend
         // without etag plumbing, curl) on the blind last-write-wins save.
         let current = "$id: wet\nname: v1\n";
-        let etag = check_if_match(Some(current), None, "Wet").unwrap();
+        let etag = check_if_match(Some(current), None, "Regelwerk").unwrap();
         assert_eq!(etag.as_deref(), Some(document_etag(current).as_str()));
     }
 
@@ -5164,11 +5166,11 @@ mod tests {
         // message names the law (not "Document").
         let current = "$id: wet\nname: v2-van-iemand-anders\n";
         let stale = document_etag("$id: wet\nname: v1\n");
-        let err = check_if_match(Some(current), Some(&stale), "Wet")
+        let err = check_if_match(Some(current), Some(&stale), "Regelwerk")
             .expect_err("stale etag must be refused");
         assert_eq!(err.0, StatusCode::PRECONDITION_FAILED);
         assert!(
-            err.1.contains("Wet"),
+            err.1.contains("Regelwerk"),
             "message should name the noun: {}",
             err.1
         );

@@ -27,7 +27,7 @@ defineEmits(['edit', 'delete']);
     icon="more"
     :text="accessibleLabel"
     tooltip-timing="never"
-    variant="neutral-tinted"
+    appearance="neutral-tinted"
   >
     <nldd-menu slot="popup">
       <nldd-menu-item

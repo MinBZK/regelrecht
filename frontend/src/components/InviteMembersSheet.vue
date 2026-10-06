@@ -139,8 +139,8 @@ defineExpose({ show });
             :text="`${inviteResult.succeeded.length} uitnodiging${inviteResult.succeeded.length === 1 ? '' : 'en'} verstuurd`"
             supporting-text="Toegang wordt actief bij de eerste login."
           >
-            <nldd-button slot="actions" variant="primary" size="md" width="full" text="Sluit" @click="closeInvite"></nldd-button>
-            <nldd-button slot="actions" variant="secondary" size="md" width="full" text="Meer uitnodigen" @click="inviteAgain"></nldd-button>
+            <nldd-button slot="actions" appearance="primary" size="md" width="full" text="Sluit" @click="closeInvite"></nldd-button>
+            <nldd-button slot="actions" appearance="secondary" size="md" width="full" text="Meer uitnodigen" @click="inviteAgain"></nldd-button>
           </nldd-inline-dialog>
 
           <nldd-form v-else>
@@ -174,7 +174,7 @@ defineExpose({ show });
                   <nldd-toggle-button value="owner" text="Beheerder" :selected="inviteRole === 'owner' || undefined"></nldd-toggle-button>
                 </nldd-toggle-button-group>
                 <nldd-form-field-help-text>
-                  Een bijdrager kan wetten en scenario's in dit traject bekijken en bewerken. Een beheerder kan daarnaast ook leden en instellingen van dit traject aanpassen.
+                  Een bijdrager kan regelwerken en scenario's in dit traject bekijken en bewerken. Een beheerder kan daarnaast ook leden en instellingen van dit traject aanpassen.
                 </nldd-form-field-help-text>
               </nldd-form-field>
 
@@ -191,7 +191,7 @@ defineExpose({ show });
 
               <nldd-form-actions>
                 <nldd-button
-                  variant="primary"
+                  appearance="primary"
                   size="md"
                   type="submit"
                   width="full"

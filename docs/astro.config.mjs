@@ -21,6 +21,25 @@ export default defineConfig({
   build: {
     format: 'directory',
   },
+  // Pagina's die van naam zijn veranderd houden hun oude adres. Een
+  // documentatiepagina is een adres dat elders geciteerd wordt: in een RFC, in
+  // een issue, in een bladwijzer, en dat adres stilletjes laten verdwijnen
+  // verplaatst het probleem naar de lezer.
+  //
+  // `/concepts/untranslatables` heette zo toen het schemaveld nog
+  // `untranslatables` heette. Schema v0.7.0 vervangt dat door `markings`
+  // (RFC-031), dus de pagina heet nu naar wat ze beschrijft. De oude naam
+  // blijft doorverwijzen, en de pagina zelf legt de hernoeming uit zodat
+  // zoeken op de oude term er nog steeds uitkomt.
+  redirects: {
+    '/concepts/untranslatables': '/concepts/markings',
+    // Het CJIB-pilotvoorstel is verwijderd: een ongevraagd voorstel aan een
+    // andere organisatie, met bemensing, een tijdpad en aannames over hun
+    // systemen, hoort niet op een publieke documentatiesite. De techniek die
+    // erin stond (chronolexogram-types, de afleiding van de rechtsmiddel-route,
+    // het `blauwe_knop`-blok) staat in RFC-022 en blijft daar staan.
+    '/concepts/cjib-blauwe-knop-source-proposal': '/rfcs/rfc-022',
+  },
   integrations: [
     mdx(),
     // force_language: en builds ONE index for the whole site instead of

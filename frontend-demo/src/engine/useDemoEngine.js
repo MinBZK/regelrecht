@@ -12,6 +12,7 @@ import {
   materialiseAll,
   tablesFromProfiles,
 } from '../data/materialize.js';
+import { t } from '../i18n/index.js';
 
 let engineInstance = null;
 let initPromise = null;
@@ -266,7 +267,7 @@ function traceRoot(trace) {
 
 export function evaluateLaw(engine, lawEntry, params, referenceDate, outputs = null) {
   const names = outputs ?? lawEntry.outputs;
-  if (names.length === 0) return { ok: false, error: 'Deze wet heeft geen uitvoer.' };
+  if (names.length === 0) return { ok: false, error: t('engine.no_outputs') };
   try {
     const result = engine.executeMultipleWithTrace(lawEntry.id, names, params, referenceDate);
     return {

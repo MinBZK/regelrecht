@@ -1,6 +1,6 @@
 ---
 id: vaststelling-van-specificaties
-titel: Vaststelling van specificaties
+titel: Vaststelling van regelwerken
 faseId: wat
 disciplineId: service-design
 prioriteit: hoog
@@ -9,7 +9,7 @@ categorie: bet
 capability: ''
 capaciteit: ''
 toelichting: |-
-  Deze onderzoeksopgave richt zich op het vaststellen van een specificatie:
+  Deze onderzoeksopgave richt zich op het vaststellen van een regelwerk:
   het moment waarop een machine-uitvoerbare encoding van een regel formeel
   wordt aangemerkt als de geldige uitvoering van die regel. Dat is geen
   technische stap maar een juridisch-organisatorische: wie is daartoe
@@ -20,7 +20,7 @@ toelichting: |-
   de wet, ook wanneer de code zelf foutloos draait.
 volgorde: 1000
 onderzoeksvragen:
-  - Hoe kan een specificatie in de praktijk vastgesteld worden en door wie?
+  - Hoe kan een regelwerk in de praktijk vastgesteld worden en door wie?
   - Welke vergelijkbare praktijken van vaststellen van uitvoeringsbeleid (dat
     gepubliceerd wordt of kan worden) bestaan al?
   - Wat is er nodig qua organisatie (processen, rollen, bevoegdheden, etc.)?
@@ -36,4 +36,5 @@ rfcs: []
 samenhangIds:
   - juridische-status-van-een-specificatie
   - onderzoeken-juridisch-toetsingskader-voor-validatie
+  - referentie-casus-i
 ---

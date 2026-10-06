@@ -13,6 +13,19 @@ set -uo pipefail
 
 : "${URLS:?URLS is verplicht (JSON-object component -> url)}"
 
+# Componenten die op `/` niets serveren, met het pad dat wél bewijst dat ze
+# leven. De rest wordt op zijn hoofdadres bevraagd.
+#
+# harvester-admin is sinds #902 een kale API: zijn dashboard verhuisde naar de
+# editor (frontend/src/harvester), en packages/admin/src/main.rs heeft bewust
+# geen fallback meer, dus `/` geeft 404. Dat is het juiste antwoord van die
+# dienst, geen storing; `/health` is de route die er wel is.
+#
+# Dit is een uitzonderingslijst, geen vrijbrief: een 404 blijft overal rood,
+# ook op het pad hieronder, dus een component dat echt verdwijnt valt nog op.
+# Voeg hier alleen iets toe als de code aantoont dat `/` niet hoort te bestaan.
+PROBE_PATHS='{"harvester-admin":"/health"}'
+
 ATTEMPTS="${ATTEMPTS:-10}"
 DELAY="${DELAY:-15}"
 
@@ -31,6 +44,8 @@ status=0
 
 while IFS=$'\t' read -r naam url; do
     [ -z "$url" ] && continue
+    pad=$(jq -r --arg n "$naam" '.[$n] // empty' <<<"$PROBE_PATHS")
+    [ -n "$pad" ] && url="${url%/}${pad}"
     code=""
     for _ in $(seq 1 "$ATTEMPTS"); do
         code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 -L "$url" 2>/dev/null)

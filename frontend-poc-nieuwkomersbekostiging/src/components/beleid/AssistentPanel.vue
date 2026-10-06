@@ -55,7 +55,7 @@
       <nldd-button
         v-if="gekozenStand.wijzigingen?.length"
         size="sm"
-        variant="secondary"
+        appearance="secondary"
         start-icon="save"
         :text="`Neem deze stand over in ${werkversieLabel}`"
         @click="neemStandOver(gekozenStand)"
@@ -66,7 +66,7 @@
       <div v-for="(item, i) in feed" :key="i" class="as-item" :class="`as-${item.type}`">
         <span v-if="item.type === 'tekst'" class="as-md" v-html="eenvoudigeMarkdown(item.tekst)"></span>
         <template v-else-if="item.type === 'tool'">
-          🔧 {{ item.naam }}<span v-if="item.inputText"> {{ item.inputText }}</span>
+          🔧 {{ item.regel }}
         </template>
         <template v-else-if="item.type === 'wijziging'">
           ✏️ <strong>{{ item.document_key }}</strong>: {{ item.toelichting }}
@@ -84,8 +84,8 @@
            de feed stond hij los van waar je kijkt. -->
       <div v-if="streaming || afronding" class="as-status">
         <span class="as-status-wat">
-          <nldd-icon v-if="openVraag" name="help" size="16"></nldd-icon>
-          <nldd-icon v-else-if="afronding" name="checked" size="16"></nldd-icon>
+          <nldd-icon v-if="openVraag" icon="help" size="16"></nldd-icon>
+          <nldd-icon v-else-if="afronding" icon="checked" size="16"></nldd-icon>
           <nldd-activity-indicator v-else size="16" timing="instant"></nldd-activity-indicator>
           <span>{{ openVraag ? 'Wacht op jouw keuze.' : statusWat }}</span>
         </span>
@@ -111,7 +111,7 @@
             ></nldd-checkbox-field>
             <nldd-button
               size="sm"
-              variant="primary"
+              appearance="primary"
               text="Doorgeven"
               :disabled="!aangevinkt.length ? true : undefined"
               @click="beantwoord(aangevinkt)"
@@ -122,7 +122,7 @@
               v-for="(o, i) in openVraag.opties"
               :key="i"
               size="sm"
-              :variant="i === 0 ? 'primary' : 'secondary'"
+              :appearance="i === 0 ? 'primary' : 'secondary'"
               :text="o.gevolg ? `${o.label} — ${o.gevolg}` : o.label"
               @click="beantwoord([o.label])"
             ></nldd-button>
@@ -138,7 +138,7 @@
       v-if="heeftWijziging"
       :text="`Overnemen in ${werkversieLabel}`"
       start-icon="save"
-      variant="secondary"
+      appearance="secondary"
       @click="takeOverlays"
     ></nldd-button>
     <p v-if="heeftWijziging" class="as-hint">
@@ -171,7 +171,7 @@
       <summary @click.prevent="voorbeeldenOpen = !voorbeeldenOpen">
         Voorbeelden ({{ voorbeelden.length }})
       </summary>
-      <nldd-list variant="simple">
+      <nldd-list appearance="simple">
         <nldd-list-item
           v-for="(v, i) in voorbeelden"
           :key="i"
@@ -188,17 +188,18 @@
       <nldd-button
         text="Verstuur"
         start-icon="send"
-        variant="primary"
+        appearance="primary"
         :disabled="!beschikbaar || !prompt.trim() || (loopt && !!openVraag)"
         @click="verstuur"
       ></nldd-button>
-      <nldd-button v-if="loopt" text="Stop" start-icon="remove" variant="secondary" @click="stop"></nldd-button>
+      <nldd-button v-if="loopt" text="Stop" start-icon="remove" appearance="secondary" @click="stop"></nldd-button>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue';
+import { formatToolCall } from '@regelrecht/frontend-shared/formatToolCall.js';
+import { watch, ref, computed, nextTick, onMounted, onUnmounted } from 'vue';
 import { useAssistent } from '../../composables/useAssistent.js';
 import { useHandelingen } from '../../composables/useHandelingen.js';
 import { useLawStore } from '../../engine/lawStore.js';
@@ -212,7 +213,14 @@ import OptimalisatiepadChart from '@regelrecht/frontend-shared/components/Optima
 // tussenstand; die cijfers naast de tegels zetten zou de doorrekening van de
 // gebruiker stil overschrijven met een tussenmeting. Ze horen thuis in de feed
 // en in het optimalisatiepad.
-const { streaming, run, stuur, antwoord, abort } = useAssistent();
+const {
+  streaming, run, hervat, stuur, antwoord, abort,
+  // Gedeelde state: leeft buiten dit paneel, zodat een routewissel het gesprek
+  // niet wist. Zie de kop van useAssistent.
+  gesprekId, feed, voortgang, afronding, openVraag, overlays,
+  modus, prompt, pad, gekozenPunt, handelingenYaml,
+  meld, vraagNotificatieToestemming,
+} = useAssistent();
 
 /**
  * De drie posten die een doel in deze casus tegen elkaar afweegt. Kleuren uit
@@ -283,15 +291,8 @@ async function peilHealth() {
   return health.value;
 }
 
-const modus = ref('vraag');
-const prompt = ref('');
-const feed = ref([]);
-const pad = ref([]); // [{iteratie, waarden, …}] voor de doel-modus
-const gekozenPunt = ref(null); // index in `pad`, of null
-const overlays = ref(null);
 // De bewerkte handelingen.yaml, als de assistent het uitvoeringslastmodel
 // raakte. Apart van de overlays: dat zijn wetten, dit is het kostenmodel.
-const handelingenYaml = ref(null);
 // Is er een resultaat binnen? Onderscheidt "nog niets gedraaid" van "gedraaid
 // en niets gewijzigd"; zonder dat verscheen de banner ook voor de eerste run.
 const resultaat = ref(false);
@@ -350,8 +351,35 @@ const modusUitleg = computed(() => ({
   instructie: 'Je weet wat je wilt veranderen. De assistent voert die ene wijziging uit en rekent door.',
 }[modus.value]));
 
-onMounted(peilHealth);
+onMounted(() => {
+  peilHealth();
+  // Het gesprek van voor de routewissel staat er al; zet het meteen onderaan,
+  // want daar staat het laatste bericht.
+  scrollNaarBeneden();
+  // Loopt er nog een gesprek van voor de routewissel? Haak er weer op aan; de
+  // backend stuurt eerst wat er gemist is en gaat daarna live verder.
+  if (gesprekId.value && !streaming.value) {
+    hervat(gesprekId.value, verwerkEvent).then((gelukt) => {
+      if (!gelukt) rondGesprekAf();
+    });
+  }
+});
+
+// Staat het paneel dicht, dan heeft de feed geen hoogte en doet scrollen
+// niets. Zodra hij er is (het paneel klapt open), alsnog naar beneden.
+watch(feedEl, (el) => {
+  if (el) scrollNaarBeneden();
+});
+
+// En als het browsertabblad weer de aandacht krijgt. Een verborgen tabblad
+// krijgt zijn berichten wel binnen, maar het scrollen erbij landt op een
+// pagina die niemand ziet; sommige browsers rekenen er dan ook niet goed mee.
+function opZichtbaar() {
+  if (document.visibilityState === 'visible') scrollNaarBeneden();
+}
+document.addEventListener('visibilitychange', opZichtbaar);
 onUnmounted(() => {
+  document.removeEventListener('visibilitychange', opZichtbaar);
   if (healthTimer) clearInterval(healthTimer);
 });
 
@@ -366,11 +394,8 @@ function samenvatting(metrics) {
 }
 
 /** Laatste voortgangsmelding van de backend, en de afronding na afloop. */
-const voortgang = ref(null);
-const afronding = ref(null);
 
 /** De keuze die nu voorligt, als de assistent er een stelde. */
-const openVraag = ref(null);
 const aangevinkt = ref([]);
 
 function vinkAan(label, ev) {
@@ -498,6 +523,10 @@ function neemStandOver(stand) {
 }
 
 async function submit() {
+  // Toestemming voor notificaties vragen we hier en niet bij het laden: de
+  // browser weigert de prompt buiten een klik om, en een prompt zodra je
+  // binnenkomt is in een demo voor OCW lelijk.
+  vraagNotificatieToestemming();
   feed.value = [];
   pad.value = [];
   gekozenPunt.value = null;
@@ -516,7 +545,6 @@ async function submit() {
   // dicht.
   voorbeeldenGebruikt.value = true;
   voorbeeldenOpen.value = false;
-  let iteratie = 0;
 
   // De assistent werkt op de werkversie: stuur die documenten mee als beginstand.
   const documenten = (await lawDocsFor(werkversie.value)).map((d) => ({ key: `${d.entry.id}@${d.entry.valid_from ?? ''}`, yaml: d.yaml }));
@@ -530,10 +558,22 @@ async function submit() {
   prompt.value = '';
   feed.value.push({ type: 'gebruiker', tekst: opdracht });
   feed.value.push({ type: 'tekst', tekst: `Werkt op ${werkversieLabel.value}.` });
-  await run({ modus: modus.value, prompt: opdracht, documenten, handelingen }, (ev) => {
+  await run({ modus: modus.value, prompt: opdracht, documenten, handelingen }, verwerkEvent);
+  rondGesprekAf();
+}
+
+/**
+ * Verwerk één bericht uit de stream. Staat los van `submit`, want
+ * hervatten na een routewissel voert dezelfde berichten langs dezelfde
+ * verwerking.
+ */
+function verwerkEvent(ev) {
     if (ev.type === 'voortgang') {
       voortgang.value = ev;
     } else if (ev.type === 'vraag') {
+      // Hier staat de assistent stil tot er iemand antwoordt, dus dit is de
+      // melding die het meest oplevert.
+      meld('vraag', 'De beleidsassistent wacht op een keuze.');
       openVraag.value = ev;
       aangevinkt.value = [];
       feed.value.push({ type: 'vraag', vraag: ev.vraag });
@@ -561,17 +601,14 @@ async function submit() {
       if (laatste?.deels) feed.value[feed.value.length - 1] = { type: 'tekst', tekst: ev.tekst };
       else feed.value.push(ev);
     } else if (ev.type === 'tool') {
-      const inputText = ev.input
-        ? Object.entries(ev.input).map(([k, v]) => `${k}=${v}`).join(' ')
-        : '';
-      feed.value.push({ type: 'tool', naam: ev.naam, inputText });
+      feed.value.push({ type: 'tool', regel: formatToolCall(ev.naam, ev.input) });
     } else if (ev.type === 'simulatie') {
       const kort = samenvatting(ev.metrics);
       feed.value.push({ type: 'simulatie', doel: ev.doel, n: ev.n, samenvatting: kort });
       const t = ev.metrics?.totaal;
       if (ev.doel === 'populatie' && t) {
         pad.value.push({
-          iteratie: ++iteratie,
+          iteratie: pad.value.length + 1,
           waarden: {
             regeling_po: t.regeling_po ?? null,
             regeling_vo: t.regeling_vo ?? null,
@@ -585,6 +622,11 @@ async function submit() {
         });
       }
     } else if (ev.type === 'beurt_klaar' || ev.type === 'klaar') {
+      // Wie op een andere pagina staat hoort dit te weten; daar is het paneel
+      // niet in beeld en blijft hij anders wachten op iets dat al gebeurd is.
+      meld('klaar', ev.type === 'klaar'
+        ? 'De beleidsassistent is klaar.'
+        : 'De beleidsassistent heeft een antwoord.');
       // beurt_klaar komt na elk antwoord, klaar pas als het gesprek sluit.
       // Allebei betekenen ze: deze beurt is af, dus het spinnertje uit en de
       // wijzigingen klaarzetten om over te nemen.
@@ -597,14 +639,31 @@ async function submit() {
     } else {
       feed.value.push(ev);
     }
-    nextTick(() => {
-      if (feedEl.value) feedEl.value.scrollTop = feedEl.value.scrollHeight;
-    });
+    scrollNaarBeneden();
+}
+
+/**
+ * Houd het gesprek onderaan, waar het laatste bericht staat.
+ *
+ * Gebeurt bij elk bericht, en ook bij het openen van het paneel: kom je terug
+ * van een andere pagina, dan is de feed al gevuld en staat hij anders bovenaan
+ * te wachten terwijl het antwoord onderaan staat.
+ */
+function scrollNaarBeneden() {
+  nextTick(() => {
+    if (feedEl.value) feedEl.value.scrollTop = feedEl.value.scrollHeight;
   });
-  // De stream is dicht. Staat er nog een vraag open, dan komt er niemand meer
-  // om de keuze te beantwoorden; een dialoog laten staan die niets meer doet
-  // is erger dan die weghalen.
+}
+/**
+ * De stream is dicht. Dat hoeft niet te betekenen dat het gesprek voorbij is:
+ * sinds een run doorloopt als je naar een ander tabblad gaat, sluit de stream
+ * ook bij een routewissel. Alleen als het gesprek echt weg is (`gesprekId` is
+ * gewist door een `klaar`, of hervatten gaf 404) valt er iets af te ronden.
+ */
+function rondGesprekAf() {
+  if (gesprekId.value) return;
   if (openVraag.value) {
+    // Een dialoog laten staan die niets meer doet is erger dan hem weghalen.
     openVraag.value = null;
     feed.value.push({ type: 'tekst', tekst: 'Het gesprek is afgelopen terwijl er een keuze openstond.' });
   }

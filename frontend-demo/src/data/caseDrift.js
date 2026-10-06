@@ -51,7 +51,7 @@ export function resultsMatch(claimed, current) {
  * aan de hand is.
  *
  * Geeft per uitkomst het bedrag van toen en dat van nu, zodat de tekst die de
- * burger leest ("U vroeg eerder € x aan") uit de wet zelf komt en niet uit een
+ * burger leest ("Je vroeg eerder € x aan") uit de wet zelf komt en niet uit een
  * lijst met een regel per regeling.
  */
 export function driftOf(caseRecord, evaluation) {
@@ -93,5 +93,5 @@ export function driftRows(drift, lawDoc) {
 export function driftSentence(drift, lawDoc) {
   const row = driftRows(drift, lawDoc)[0];
   if (!row) return '';
-  return `U vroeg eerder ${row.was} aan. Sindsdien zijn er gegevens gewijzigd waarmee deze regeling nu uitkomt op ${row.now}. Uw besluit blijft gelden totdat u uw aanvraag wijzigt.`;
+  return `Je vroeg eerder ${row.was} aan. Sindsdien zijn er gegevens gewijzigd waarmee deze regeling nu uitkomt op ${row.now}. Je besluit blijft gelden totdat je je aanvraag wijzigt.`;
 }

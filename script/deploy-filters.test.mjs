@@ -173,6 +173,19 @@ test('het poc-portaal volgt zijn register, zijn corpus en zijn frontends', () =>
   assert.equal(namesOf(['frontend-poc-terugbetaalregimes/src/App.vue'])['poc-napp'], false);
 });
 
+test('een engine-wijziging bouwt het poc-image, want dat bakt de engine als WASM', () => {
+  // Het portaal zelf hangt niet aan de engine; het image bouwt hem wel, voor de
+  // pocs in de browser. Met alleen de portaal-crate bleef het poc-image na een
+  // engine-wijziging staan, terwijl napp en de demo wel meeschoven.
+  const engine = namesOf(['packages/engine/src/engine.rs']);
+  assert.equal(engine.poc, true);
+  assert.equal(engine.demo, true);
+  assert.equal(engine['poc-napp'], true);
+
+  // En de portaal-crate telt nog steeds, naast de engine.
+  assert.equal(namesOf(['packages/poc-portal/src/app.rs']).poc, true);
+});
+
 test('de beleidsassistent laat het poc-image bouwen', () => {
   // De assistent is JavaScript, geen crate, dus de cargo-graaf vindt hem
   // nooit — terwijl het portaal-image hem wel meekopieert. Zonder de

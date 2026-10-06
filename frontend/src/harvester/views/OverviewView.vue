@@ -106,12 +106,12 @@ async function onFailureClick(row) {
         <nldd-container padding="16">
           <nldd-title size="3">
             {{ formatNumber(panel.total) }}
-            <span slot="subtitle">jobs totaal</span>
+            <span slot="supporting-text">jobs totaal</span>
           </nldd-title>
 
           <nldd-spacer size="16"></nldd-spacer>
 
-          <nldd-list variant="simple">
+          <nldd-list appearance="simple">
             <nldd-list-item v-for="item in panel.statuses" :key="item.status">
               <nldd-cell width="fit-content">
                 <StatusBadge :status="item.status" size="md" />
@@ -124,7 +124,7 @@ async function onFailureClick(row) {
           <nldd-divider></nldd-divider>
           <nldd-spacer size="12"></nldd-spacer>
 
-          <nldd-list variant="simple">
+          <nldd-list appearance="simple">
             <nldd-list-item>
               <nldd-text-cell text="Uitgevoerd vandaag" color="secondary" />
               <nldd-text-cell :text="formatNumber(panel.today)" horizontal-alignment="right" />

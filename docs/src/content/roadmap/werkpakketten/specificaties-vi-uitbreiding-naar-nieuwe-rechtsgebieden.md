@@ -61,10 +61,10 @@ onderzoeksvragen:
     gebied een andere invulling krijgt?'
   - vraag: >-
       Welke wetten raken zoveel andere wetten dat ze als eerste in aanmerking
-      komen, en wie is eigenaar van zo'n specificatie?
+      komen, en wie is eigenaar van zo'n regelwerk?
     paper: sec:crosscutting
   - vraag: >-
-      Hoe verhoudt een nationale uitvoerbare specificatie zich tot rechtstreeks
+      Hoe verhoudt een nationaal regelwerk zich tot rechtstreeks
       werkend Europees recht en tot richtlijnen die nog omgezet moeten worden?
     paper: sec:european
   - vraag: >-

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared helpers for the `just dev` and `just dev-frontend` recipes.
+# Shared helpers for the `just dev` recipe.
 #
 # This file is *sourced* (not executed) by those recipes, so they can share one
 # implementation of preflight checks, infra start-up, dependency installation,
@@ -13,18 +13,24 @@
 bold="\033[1m"  dim="\033[2m"  reset="\033[0m"
 green="\033[32m"  red="\033[31m"  yellow="\033[33m"
 
-# dev_preflight [--rust] [--node] [--watch]
+# dev_needs_mold — succeeds when cargo links with mold on this machine. That is
+# only x86_64 Linux: packages/.cargo/config.toml scopes the mold link-arg to
+# [target.x86_64-unknown-linux-gnu], so elsewhere (macOS, aarch64 Linux) the
+# default linker is used and mold is dead weight. Keep the two in step.
+dev_needs_mold() {
+    [ "$(uname -s)" = "Linux" ] && [ "$(uname -m)" = "x86_64" ]
+}
+
+# dev_preflight [--rust] [--node]
 # Verify the tools the recipe needs. Always checks docker. --node also checks
-# node; --rust also checks cargo and requires mold (the linker configured in
-# packages/.cargo/config.toml); --watch additionally auto-installs cargo-watch
-# (only `just dev` hot-reloads the backend). Exits 1 listing every missing dep.
+# node; --rust also checks cargo, and mold where cargo links with it (see
+# dev_needs_mold). Exits 1 listing every missing dep.
 dev_preflight() {
-    local want_rust=false want_node=false want_watch=false arg
+    local want_rust=false want_node=false arg
     for arg in "$@"; do
         case "$arg" in
             --rust)  want_rust=true ;;
             --node)  want_node=true ;;
-            --watch) want_watch=true ;;
         esac
     done
 
@@ -34,17 +40,9 @@ dev_preflight() {
 
     if [ "$want_rust" = true ]; then
         command -v cargo >/dev/null || missing+=("cargo (rustup.rs)")
-        # mold is the linker in packages/.cargo/config.toml; without it dev
-        # builds fail to link.
-        command -v mold >/dev/null 2>&1 || missing+=("mold (run 'just dev-setup')")
-    fi
-
-    if [ "$want_watch" = true ] && ! cargo watch --version >/dev/null 2>&1; then
-        printf "${yellow}=> Installing cargo-watch…${reset} "
-        if cargo install cargo-watch --quiet 2>/dev/null; then
-            printf "${green}done${reset}\n"
-        else
-            missing+=("cargo-watch (cargo install cargo-watch)")
+        # Where mold is the configured linker, dev builds fail to link without it.
+        if dev_needs_mold; then
+            command -v mold >/dev/null 2>&1 || missing+=("mold (run 'just dev-setup')")
         fi
     fi
 
@@ -143,7 +141,7 @@ dev_start() {
 }
 
 # dev_stop — kill everything recorded in $PIDFILE, remove dev logs, stop infra.
-# Shared by `just dev-down`; works for whichever of dev / dev-frontend ran.
+# Shared by `just dev-down`.
 dev_stop() {
     printf "${bold}=> Stopping native services…${reset} "
     if [ -f "$PIDFILE" ]; then

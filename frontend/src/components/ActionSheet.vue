@@ -130,7 +130,7 @@ onUnmounted(() => {
 
         <!-- Section A: Bovenliggende operaties -->
         <template v-if="parentOperations.length">
-          <nldd-list variant="box-tinted">
+          <nldd-list appearance="box-tinted">
             <!-- Back/up navigation - clickable parent rows with a
                  chevron-left, identical in view and edit: click any
                  ancestor to jump up one or more levels. -->
@@ -143,7 +143,7 @@ onUnmounted(() => {
               @click="selectOperation(op)"
             >
               <nldd-icon-cell size="20">
-                <nldd-icon name="chevron-left"></nldd-icon>
+                <nldd-icon icon="chevron-left"></nldd-icon>
               </nldd-icon-cell>
               <nldd-spacer-cell size="12"></nldd-spacer-cell>
               <nldd-text-cell :text="`${op.number}. ${op.title}`" :supporting-text="op.subtitle">
@@ -170,7 +170,7 @@ onUnmounted(() => {
              (literal or $VAR reference). Mirror OperationSettings' Titel +
              Waarde layout so the sheet body isn't blank and the user sees
              which action they're looking at. -->
-        <nldd-list v-if="directValue" variant="box-tinted">
+        <nldd-list v-if="directValue" appearance="box-tinted">
           <nldd-list-item size="md">
             <nldd-text-cell text="Output" :width="editable ? '120px' : 'fit-content'"></nldd-text-cell>
             <nldd-spacer-cell size="12"></nldd-spacer-cell>
@@ -188,8 +188,8 @@ onUnmounted(() => {
       </nldd-simple-section>
 
       <nldd-container slot="footer" padding="16">
-        <nldd-button v-if="editable && (isNew || isDirty)" variant="primary" size="md" width="full" data-testid="action-sheet-save-btn" @click="emit('save')" text="Opslaan"></nldd-button>
-        <nldd-button v-else-if="!editable" variant="secondary" size="md" width="full" data-testid="action-sheet-edit-btn" @click="emit('edit')" text="Bewerken"></nldd-button>
+        <nldd-button v-if="editable && (isNew || isDirty)" appearance="primary" size="md" width="full" data-testid="action-sheet-save-btn" @click="emit('save')" text="Opslaan"></nldd-button>
+        <nldd-button v-else-if="!editable" appearance="secondary" size="md" width="full" data-testid="action-sheet-edit-btn" @click="emit('edit')" text="Bewerken"></nldd-button>
       </nldd-container>
     </nldd-page>
   </nldd-sheet>
