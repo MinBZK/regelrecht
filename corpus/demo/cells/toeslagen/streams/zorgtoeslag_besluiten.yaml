@@ -1,0 +1,9 @@
+---
+# De toekenning van de zorgtoeslag op de aanvraag: een decretogram met de
+# uitkomsten van Zorgtoeslagwet art. 2.
+$id: zorgtoeslag_besluiten
+recording_actor: belastingdienst_toeslagen
+chronicle: toeslagen
+events:
+  - name: zorgtoeslag_toegekend
+    establishes: zorgtoeslagwet#2
