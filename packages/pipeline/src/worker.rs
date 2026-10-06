@@ -2634,39 +2634,49 @@ pub async fn complete_enrich_success_tx(
     Ok(continuation)
 }
 
+/// Shrink the per-call LLM timeouts so a whole run fits the job budget.
+///
+/// A run is not one agent call. Translation, the feedback rounds of every
+/// gate, the closing pass and the final gates all count, as many as
+/// `ENRICH_FEEDBACK_ROUNDS` allows ([`FeedbackRounds::max_calls`]), and the
+/// job timeout covers all of them at once, so each call gets a share of the
+/// budget (minus a reserve for commit and cleanup). Lowering a ceiling is
+/// right here: a call that would overrun the job is a call whose result is
+/// thrown away.
+///
+/// The shares are not equal. The translation reads the window and writes
+/// every `machine_readable` in it; a feedback round answers a list of
+/// findings. Splitting evenly gave both about 550 s under the production
+/// budget, and a 15-article window of the Kieswet did not translate in that.
+/// The translation weighs [`TRANSLATE_SHARE_WEIGHT`] shares, each other call
+/// one.
+///
+/// [`FeedbackRounds::max_calls`]: crate::enrich::FeedbackRounds::max_calls
+fn bound_llm_timeout(config: &mut crate::enrich::EnrichConfig, job_timeout: Duration) {
+    let reserve = Duration::from_secs(30);
+    let budget = job_timeout.saturating_sub(reserve);
+    let feedback_calls = config.feedback_rounds.max_calls();
+    let unit = budget / TRANSLATE_SHARE_WEIGHT.saturating_add(feedback_calls);
+    let translate_share = unit * TRANSLATE_SHARE_WEIGHT;
+    config.timeout = config.timeout.min(translate_share);
+    config.feedback_timeout = config.feedback_timeout.min(unit);
+    tracing::info!(
+        job_timeout = ?job_timeout,
+        feedback_calls,
+        translate_timeout = ?config.timeout,
+        feedback_timeout = ?config.feedback_timeout,
+        "LLM ceilings sized to fit a full chain in the job budget"
+    );
+}
+
+/// How many per-call shares of the job budget the translation call gets; every
+/// other call of a run gets one. See [`bound_llm_timeout`].
+const TRANSLATE_SHARE_WEIGHT: u32 = 3;
+
 /// Process the next available enrich job.
 ///
 /// Returns the [`JobOutcome`]: `Processed` when a job was handled, `Idle` when
 /// none was available, or `ResourceExhausted` when the job failed because the
-/// Shrink the per-call LLM timeout so a whole run fits the job budget.
-///
-/// A run is not one agent call. Translation, a feedback round per gate, the
-/// closing pass and the final schema gate together make up to
-/// [`MAX_AGENT_CALLS_PER_RUN`] of them, and the job timeout covers all of
-/// them at once. The old rule only fired when a single call exceeded the
-/// whole job, so with the defaults (600 s per call, 1200 s per job) nothing
-/// was adjusted and a law needing a third call was killed mid-round, failed,
-/// and hit the same wall on every retry.
-///
-/// The share is the budget minus a reserve for commit and cleanup, divided by
-/// the calls a run may make. Lowering the ceiling is right here: a call that
-/// would overrun the job is a call whose result is thrown away.
-fn bound_llm_timeout(config: &mut crate::enrich::EnrichConfig, job_timeout: Duration) {
-    let reserve = Duration::from_secs(30);
-    let budget = job_timeout.saturating_sub(reserve);
-    let share = budget / crate::enrich::MAX_AGENT_CALLS_PER_RUN;
-    if config.timeout > share {
-        tracing::warn!(
-            llm_timeout = ?config.timeout,
-            job_timeout = ?job_timeout,
-            calls = crate::enrich::MAX_AGENT_CALLS_PER_RUN,
-            adjusted_to = ?share,
-            "LLM timeout leaves no room for a full chain, reducing it to the per-call share"
-        );
-        config.timeout = share;
-    }
-}
-
 /// container could not spawn processes/threads (fork()/EAGAIN).
 ///
 /// Each enrichment creates a separate branch (`enrich/{provider}`)
@@ -3938,6 +3948,58 @@ articles:
         assert!(task_walk_complete(true, walking));
         assert!(task_walk_complete(false, reconcile_only));
         assert!(task_walk_complete(true, reconcile_only));
+    }
+
+    fn config_with_timeouts(secs: u64) -> crate::enrich::EnrichConfig {
+        let mut config =
+            crate::enrich::EnrichConfig::for_test(crate::enrich::LlmProvider::Claude {
+                path: "claude".into(),
+                model: None,
+            });
+        config.timeout = Duration::from_secs(secs);
+        config.feedback_timeout = Duration::from_secs(secs);
+        config
+    }
+
+    #[test]
+    fn bound_llm_timeout_gives_the_translation_a_larger_share() {
+        // Production: LLM_TIMEOUT_SECS=3600, WORKER_JOB_TIMEOUT_SECS=3900.
+        let mut config = config_with_timeouts(3600);
+        bound_llm_timeout(&mut config, Duration::from_secs(3900));
+        // (3900 - 30) / (3 + 6) = 430 per share.
+        assert_eq!(config.feedback_timeout, Duration::from_secs(430));
+        assert_eq!(config.timeout, Duration::from_secs(1290));
+        // A run that uses every call still fits the job.
+        let all_calls =
+            config.timeout + config.feedback_timeout * config.feedback_rounds.max_calls();
+        assert!(all_calls <= Duration::from_secs(3900 - 30));
+    }
+
+    #[test]
+    fn bound_llm_timeout_counts_the_configured_feedback_rounds() {
+        let mut config = config_with_timeouts(3600);
+        config.feedback_rounds = crate::enrich::FeedbackRounds::uniform(2);
+        bound_llm_timeout(&mut config, Duration::from_secs(3900));
+        // (3900 - 30) / (3 + 12) = 258 per share.
+        assert_eq!(config.feedback_timeout, Duration::from_secs(258));
+        assert_eq!(config.timeout, Duration::from_secs(774));
+    }
+
+    #[test]
+    fn bound_llm_timeout_leaves_ceilings_that_already_fit() {
+        let mut config = config_with_timeouts(300);
+        bound_llm_timeout(&mut config, Duration::from_secs(3900));
+        assert_eq!(config.timeout, Duration::from_secs(300));
+        assert_eq!(config.feedback_timeout, Duration::from_secs(300));
+    }
+
+    #[test]
+    fn bound_llm_timeout_lowers_each_ceiling_on_its_own() {
+        // Between the two shares: only the feedback ceiling has to come down.
+        let mut config = config_with_timeouts(1000);
+        bound_llm_timeout(&mut config, Duration::from_secs(3900));
+        assert_eq!(config.timeout, Duration::from_secs(1000));
+        assert_eq!(config.feedback_timeout, Duration::from_secs(430));
     }
 }
 
