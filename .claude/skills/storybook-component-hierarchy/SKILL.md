@@ -74,13 +74,15 @@ Vier-koloms layout met sidebar, secundaire sidebar, main content en inspector. P
     <nldd-page>...</nldd-page>
   </nldd-split-view-pane>
   <nldd-split-view-pane slot="main">
-    <nldd-page>...</nldd-page>
+    <nldd-page landmarks="page">...</nldd-page>
   </nldd-split-view-pane>
   <nldd-split-view-pane slot="inspector">
     <nldd-page>...</nldd-page>
   </nldd-split-view-pane>
 </nldd-navigation-split-view>
 ```
+
+Een `nldd-page` in een paneel van een navigation, side-by-side of stacked split view rendert geen `main`-landmark meer (sinds 0.8.93). Zet `landmarks="page"` op de ene pagina met de primaire inhoud; zonder dat heeft de app geen `main`, en niets waarschuwt daarvoor. In het `main`-slot van een `nldd-bar-split-view` is dit niet nodig.
 
 Split views kunnen genest worden. Bijvoorbeeld een `nldd-bar-split-view` in het main-slot van een `nldd-navigation-split-view`.
 
@@ -252,10 +254,10 @@ Titelbalk voor panelen met optionele terugknop en toolbar. Wanneer er een anchor
 ```html
 <nldd-tab-bar navigation responsive accessible-label="Hoofdnavigatie">
   <nldd-tab-bar-item text="Overzicht" href="/overzicht" selected>
-    <nldd-icon slot="icon" name="home"></nldd-icon>
+    <nldd-icon slot="icon" icon="home"></nldd-icon>
   </nldd-tab-bar-item>
   <nldd-tab-bar-item text="Instellingen" href="/instellingen">
-    <nldd-icon slot="icon" name="settings"></nldd-icon>
+    <nldd-icon slot="icon" icon="settings"></nldd-icon>
   </nldd-tab-bar-item>
 </nldd-tab-bar>
 ```

@@ -25,7 +25,7 @@
                 <span class="ds-art">artikel {{ c.article }}</span>
                 <code>{{ c.name }}</code>:
                 <span class="ds-old">{{ c.oud }}</span>
-                <nldd-icon name="arrow-right" size="16"></nldd-icon>
+                <nldd-icon icon="arrow-right" size="16"></nldd-icon>
                 <span class="ds-new">{{ c.nieuw }}</span>
               </li>
             </ul>

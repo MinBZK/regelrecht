@@ -134,7 +134,7 @@ function confirmDisconnect() {
               <h2>Koppelingen</h2>
             </nldd-title>
             <nldd-spacer size="8"></nldd-spacer>
-            <nldd-list variant="box-tinted">
+            <nldd-list appearance="box-tinted">
               <nldd-list-item>
                 <nldd-text-cell
                   text="GitHub"
@@ -143,13 +143,13 @@ function confirmDisconnect() {
                 <nldd-cell>
                   <nldd-button
                     v-if="githubConnected"
-                    variant="destructive"
+                    appearance="destructive"
                     text="Ontkoppelen"
                     @click="disconnectConfirm?.show()"
                   ></nldd-button>
                   <nldd-button
                     v-else
-                    variant="primary"
+                    appearance="primary"
                     text="Koppelen"
                     end-icon="external-link"
                     @click="connectGithub()"
@@ -163,10 +163,10 @@ function confirmDisconnect() {
             <nldd-spacer size="24"></nldd-spacer>
             <nldd-title size="5">
               <h2>Beheer</h2>
-              <span slot="subtitle">Geldt voor alle gebruikers en trajecten in deze installatie.</span>
+              <span slot="supporting-text">Geldt voor alle gebruikers en trajecten in deze installatie.</span>
             </nldd-title>
             <nldd-spacer size="8"></nldd-spacer>
-            <nldd-list variant="box-tinted">
+            <nldd-list appearance="box-tinted">
               <nldd-list-item v-for="[key, label] in editorPanelFlags" :key="key">
                 <nldd-text-cell :text="label"></nldd-text-cell>
                 <nldd-cell>
@@ -213,7 +213,7 @@ function confirmDisconnect() {
         >
           <nldd-button
             slot="actions"
-            variant="primary"
+            appearance="primary"
             text="Inschakelen"
             @click="confirmUserOauthEnforcement"
           ></nldd-button>
@@ -235,13 +235,13 @@ function confirmDisconnect() {
     >
       <nldd-button
         slot="actions"
-        variant="primary"
+        appearance="primary"
         text="Behoud koppeling"
         @click="disconnectConfirm?.hide()"
       ></nldd-button>
       <nldd-button
         slot="actions"
-        variant="destructive"
+        appearance="destructive"
         text="Ontkoppel"
         @click="confirmDisconnect"
       ></nldd-button>

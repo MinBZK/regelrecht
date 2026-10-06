@@ -145,7 +145,7 @@ onMounted(run);
 
     <nldd-simple-section width="860px">
       <nldd-button
-        variant="neutral-transparent"
+        appearance="neutral-transparent"
         size="sm"
         text="Terug naar de werkvoorraad"
         start-icon="chevron-left"
@@ -158,7 +158,7 @@ onMounted(run);
         <h2>Scenario's</h2>
         <div slot="actions">
           <nldd-button
-            variant="secondary"
+            appearance="secondary"
             text="Alles opnieuw uitvoeren"
             start-icon="arrow-2-counter-clockwise"
             :disabled="bezig || undefined"
@@ -195,7 +195,7 @@ onMounted(run);
         <nldd-spacer size="32"></nldd-spacer>
         <nldd-title size="4"><h3>{{ feature.feature }}</h3></nldd-title>
         <nldd-spacer size="12"></nldd-spacer>
-        <nldd-list variant="box">
+        <nldd-list appearance="box">
           <template v-for="scenario in feature.scenarios" :key="scenario.name">
             <nldd-list-item
               size="md"
@@ -269,7 +269,7 @@ onMounted(run);
                 <nldd-cell width="full">
                   <nldd-button-group orientation="horizontal">
                     <nldd-button
-                      variant="primary"
+                      appearance="primary"
                       size="sm"
                       text="Uitvoeren met deze gegevens"
                       start-icon="arrow-right"
@@ -277,7 +277,7 @@ onMounted(run);
                     ></nldd-button>
                     <nldd-button
                       v-if="isAangepast(sleutel(feature.feature, scenario.name))"
-                      variant="secondary"
+                      appearance="secondary"
                       size="sm"
                       text="Herstel origineel"
                       start-icon="arrow-2-counter-clockwise"

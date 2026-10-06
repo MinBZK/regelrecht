@@ -39,7 +39,7 @@ const docsHref = '/docs/';
     supporting-text={t.body}
     heading-level="1"
   >
-  <nldd-button slot="actions" variant="primary" href={home} text={t.home}>
+  <nldd-button slot="actions" appearance="primary" href={home} text={t.home}>
     <a slot="fallback" href={home}>{t.home}</a>
   </nldd-button>
   {/* Opens the search dialog via Base.astro's wiring ([data-search-trigger]).
@@ -47,7 +47,7 @@ const docsHref = '/docs/';
       no-JS path, since search is JS-only. */}
   <nldd-button
     slot="actions"
-    variant="secondary"
+    appearance="secondary"
     text={t.search}
     data-search-trigger
   >

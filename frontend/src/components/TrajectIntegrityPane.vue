@@ -54,7 +54,7 @@ function scopeSummary(r) {
     <nldd-toolbar v-if="paneChromeVisible(loading)" label="Integriteitsacties">
       <nldd-toolbar-item slot="start">
         <nldd-button
-          variant="secondary"
+          appearance="secondary"
           size="md"
           start-icon="refresh"
           text="Opnieuw controleren"
@@ -77,7 +77,7 @@ function scopeSummary(r) {
       text="Structuurcontrole niet gelukt"
       :supporting-text="error.message || 'De gegevens konden niet worden opgehaald.'"
     >
-      <nldd-button slot="actions" variant="primary" text="Probeer opnieuw" @click="reload"></nldd-button>
+      <nldd-button slot="actions" appearance="primary" text="Probeer opnieuw" @click="reload"></nldd-button>
     </nldd-inline-dialog>
 
     <template v-else-if="report">
@@ -101,14 +101,14 @@ function scopeSummary(r) {
         <template v-for="group in groups" :key="group.key">
           <nldd-title size="5"><h4>{{ group.title }} ({{ group.counts }})</h4></nldd-title>
           <nldd-spacer size="8"></nldd-spacer>
-          <nldd-list variant="box-tinted">
+          <nldd-list appearance="box-tinted">
             <nldd-list-item
               v-for="(finding, i) in group.findings"
               :key="`${group.key}-${i}`"
               size="md"
             >
               <nldd-icon-cell size="20" vertical-alignment="top">
-                <nldd-icon :name="SEVERITY_ICONS[finding.severity] ?? 'info'"></nldd-icon>
+                <nldd-icon :icon="SEVERITY_ICONS[finding.severity] ?? 'info'"></nldd-icon>
               </nldd-icon-cell>
               <nldd-spacer-cell size="8"></nldd-spacer-cell>
               <nldd-text-cell

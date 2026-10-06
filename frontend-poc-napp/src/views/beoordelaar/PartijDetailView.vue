@@ -136,7 +136,7 @@ watch(kvk, laad);
         />
         <nldd-spacer size="16"></nldd-spacer>
         <nldd-button
-          variant="primary"
+          appearance="primary"
           text="Naar de inlogpagina"
           start-icon="login"
           @click="router.push('/')"
@@ -147,7 +147,7 @@ watch(kvk, laad);
     <template v-else-if="session.beoordelaar">
       <nldd-simple-section>
         <nldd-button
-          variant="neutral-transparent"
+          appearance="neutral-transparent"
           size="sm"
           text="Terug naar het partijregister"
           start-icon="chevron-left"
@@ -163,7 +163,7 @@ watch(kvk, laad);
             <h2>{{ partij.naam }}</h2>
             <div slot="actions">
               <nldd-button
-                variant="secondary"
+                appearance="secondary"
                 text="Koppeling bewerken"
                 start-icon="pencil"
                 @click="openBewerken"
@@ -328,13 +328,13 @@ watch(kvk, laad);
             <nldd-form-actions>
               <nldd-button-group orientation="horizontal">
                 <nldd-button
-                  variant="primary"
+                  appearance="primary"
                   type="submit"
                   text="Opslaan"
                   :disabled="bewerkBezig || undefined"
                 ></nldd-button>
                 <nldd-button
-                  variant="secondary"
+                  appearance="secondary"
                   text="Annuleren"
                   @click="bewerkOpen = false"
                 ></nldd-button>

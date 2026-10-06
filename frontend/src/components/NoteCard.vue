@@ -49,7 +49,7 @@ const canShare = computed(() => isDraft.value && props.canEdit);
         <nldd-icon-button
           icon="edit"
           text="Bewerken"
-          variant="secondary"
+          appearance="secondary"
           size="md"
           @click="$emit('edit', $event)"
         ></nldd-icon-button>
@@ -58,7 +58,7 @@ const canShare = computed(() => isDraft.value && props.canEdit);
       <nldd-toolbar-item v-if="canShare" slot="start" label="Delen">
         <nldd-button
           text="Delen"
-          variant="secondary"
+          appearance="secondary"
           size="md"
           :disabled="saving || undefined"
           @click="$emit('share')"
@@ -69,7 +69,7 @@ const canShare = computed(() => isDraft.value && props.canEdit);
         <nldd-icon-button
           icon="trash"
           text="Verwijderen"
-          variant="destructive"
+          appearance="destructive"
           size="md"
           @click="$emit('delete')"
         ></nldd-icon-button>

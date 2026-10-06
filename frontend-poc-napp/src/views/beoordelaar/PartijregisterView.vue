@@ -165,7 +165,7 @@ watch(() => session.beoordelaar, alles);
         />
         <nldd-spacer size="16"></nldd-spacer>
         <nldd-button
-          variant="primary"
+          appearance="primary"
           text="Naar de inlogpagina"
           start-icon="login"
           @click="router.push('/')"
@@ -221,14 +221,14 @@ watch(() => session.beoordelaar, alles);
                 <HrToetsRegels :toets="claim.hr_toets" />
                 <nldd-button-group orientation="horizontal">
                   <nldd-button
-                    variant="primary"
+                    appearance="primary"
                     text="Bevestigen"
                     start-icon="check"
                     :disabled="claimBezig || undefined"
                     @click="bevestigClaim(claim)"
                   ></nldd-button>
                   <nldd-button
-                    variant="secondary"
+                    appearance="secondary"
                     text="Afwijzen"
                     :disabled="claimBezig || undefined"
                     @click="openAfwijzen(claim)"
@@ -289,7 +289,7 @@ watch(() => session.beoordelaar, alles);
               ></nldd-text-cell>
               <nldd-cell horizontal-alignment="right">
                 <nldd-button
-                  variant="secondary"
+                  appearance="secondary"
                   size="sm"
                   text="Bekijk"
                   end-icon="chevron-right"
@@ -354,13 +354,13 @@ watch(() => session.beoordelaar, alles);
             <nldd-form-actions>
               <nldd-button-group orientation="horizontal">
                 <nldd-button
-                  variant="primary"
+                  appearance="primary"
                   type="submit"
                   text="Afwijzen"
                   :disabled="claimBezig || !afwijsReden.trim() || undefined"
                 ></nldd-button>
                 <nldd-button
-                  variant="secondary"
+                  appearance="secondary"
                   text="Annuleren"
                   @click="afwijsOpen = false"
                 ></nldd-button>

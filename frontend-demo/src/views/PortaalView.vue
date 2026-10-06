@@ -136,7 +136,7 @@ const loadFailureText = computed(() => loadFailures.value.map((f) => `${f.id} ($
            van hem aan te kondigen. -->
       <nldd-title slot="header" size="2">
         <h1>{{ heading }}</h1>
-        <span v-if="!narrow" slot="subtitle">{{ subtitle }}</span>
+        <span v-if="!narrow" slot="supporting-text">{{ subtitle }}</span>
       </nldd-title>
       <!-- Naam, voorbehoud en beschrijving horen bij elkaar: het zijn drie
            dingen over dezelfde persoon. Ze staan in één blok onder de kop, met
@@ -176,7 +176,7 @@ const loadFailureText = computed(() => loadFailures.value.map((f) => `${f.id} ($
            één regeling gaan. Onder de kop en niet ernaast: het is een actie op
            de hele pagina, geen eigenschap van de persoon. -->
       <nldd-container v-if="showWizard" padding-top="8">
-        <nldd-button size="sm" variant="secondary" start-icon="edit" :text="t('zaak.portaal.change_wizard')" @click="wizardOpen = true"></nldd-button>
+        <nldd-button size="sm" appearance="secondary" start-icon="edit" :text="t('zaak.portaal.change_wizard')" @click="wizardOpen = true"></nldd-button>
       </nldd-container>
       <!-- De banners krijgen hun eigen container met een marge, zodat ze los
            staan van wat erboven eindigt. -->

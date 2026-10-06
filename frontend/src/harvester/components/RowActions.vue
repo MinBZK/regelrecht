@@ -88,7 +88,7 @@ async function onResetExhausted() {
     icon="ellipsis"
     text="Actions"
     tooltip-timing="never"
-    variant="neutral-tinted"
+    appearance="neutral-tinted"
     size="md"
   >
     <nldd-menu slot="popup">

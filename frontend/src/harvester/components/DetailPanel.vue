@@ -77,7 +77,7 @@ function onSheetClose() {
           @dismiss="$emit('close')"
         />
         <nldd-simple-section v-if="job">
-          <nldd-list variant="simple">
+          <nldd-list appearance="simple">
             <nldd-list-item v-for="[label, value] in infoFields" :key="label">
               <nldd-text-cell :text="label" color="secondary" width="fit-content" />
               <nldd-spacer-cell size="12" />

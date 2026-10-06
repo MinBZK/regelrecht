@@ -238,7 +238,7 @@ function bind(field) {
 
       <nldd-form-actions>
         <nldd-button
-          variant="primary"
+          appearance="primary"
           size="md"
           width="full"
           :text="busy ? 'Bezig…' : 'Maak traject aan'"

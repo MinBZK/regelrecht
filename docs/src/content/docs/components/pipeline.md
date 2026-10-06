@@ -185,8 +185,27 @@ windows of at most `ENRICH_MAX_ARTICLES_PER_RUN` articles (default 15) and owns
 the cursor itself: it lives in `.enrichment.yaml` on the `enrich/{provider}`
 branch, each chunk pushes its own result, and the next chunk is queued in the
 same transaction that completes the current one. A law of N articles is done in
-at most `ceil(N / 15)` successful runs, whatever the model does. Task-flow
-enrichments (`deliver: task`) always take the whole law.
+at most `ceil(N / 15)` successful runs, whatever the model does.
+
+Task-flow enrichments (`deliver: task`) walk the same windows but push nothing.
+Each window is its own job with its own review tasks. The next job takes the
+current job's result as its input blobs: the proposal, so the next window
+builds on what this one enriched, and `.enrichment.yaml`, which carries the
+cursor. A window's review tasks cover the articles that window changed. The
+last window is wider: its closing reconcile pass and binding check run over the
+whole law, so it can also carry tasks for articles from earlier windows.
+
+A new law (`new_law`, from an upload or a harvest into a traject) is created as
+a whole, so its windows produce no review task along the way. Only the last
+window does, with the complete law as one proposal. If a window fails for good,
+the requester gets a failure task and the earlier windows' work is lost; the
+law has to be uploaded or harvested again.
+
+When an existing law takes more than one window, a window whose proposal cannot
+be compared article by article fails and is retried, the last window included.
+It does not fall back to one task for the whole law, because that proposal also
+contains the earlier windows' articles, and approving it would silently restore
+changes a reviewer had rejected.
 
 Within one window, `ENRICH_SESSION_REUSE` decides how the translation pass and
 the feedback rounds of the gates share an agent session: all of them (`window`,

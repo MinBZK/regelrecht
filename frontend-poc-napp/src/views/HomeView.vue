@@ -62,13 +62,13 @@ const stappen = [
       <nldd-spacer size="20"></nldd-spacer>
       <nldd-button-group orientation="horizontal">
         <nldd-button
-          variant="primary"
+          appearance="primary"
           text="Subsidie aanvragen"
           end-icon="arrow-right"
           :href="b('/aanvrager/')"
         ></nldd-button>
         <nldd-button
-          variant="secondary"
+          appearance="secondary"
           text="Inloggen"
           start-icon="person"
           :href="b('/aanvrager/')"
@@ -80,7 +80,7 @@ const stappen = [
       <nldd-title size="2" slot="header">
         <h2>Hoe werkt het?</h2>
       </nldd-title>
-      <nldd-list variant="simple" no-dividers>
+      <nldd-list appearance="simple" no-dividers>
         <nldd-list-item v-for="(stap, i) in stappen" :key="stap.titel" size="md">
           <nldd-timeline-track-cell
             status="past"
@@ -99,7 +99,7 @@ const stappen = [
       <nldd-collection layout="grid" item-width="300px">
         <nldd-card accessible-label="Subsidie aanvragen">
           <nldd-container padding="20">
-            <nldd-icon name="apartment-building" size="32" color="lintblauw"></nldd-icon>
+            <nldd-icon icon="apartment-building" size="32" color="lintblauw"></nldd-icon>
             <nldd-spacer size="12"></nldd-spacer>
             <nldd-title size="4"><h3>Voor politieke partijen</h3></nldd-title>
             <nldd-spacer size="8"></nldd-spacer>
@@ -111,7 +111,7 @@ const stappen = [
             </nldd-rich-text>
             <nldd-spacer size="16"></nldd-spacer>
             <nldd-button
-              variant="primary"
+              appearance="primary"
               text="Naar het subsidieportaal"
               end-icon="arrow-right"
               :href="b('/aanvrager/')"
@@ -120,7 +120,7 @@ const stappen = [
         </nldd-card>
         <nldd-card accessible-label="Openbaar register">
           <nldd-container padding="20">
-            <nldd-icon name="books-vertical" size="32" color="lintblauw"></nldd-icon>
+            <nldd-icon icon="books-vertical" size="32" color="lintblauw"></nldd-icon>
             <nldd-spacer size="12"></nldd-spacer>
             <nldd-title size="4"><h3>Voor iedereen</h3></nldd-title>
             <nldd-spacer size="8"></nldd-spacer>
@@ -132,7 +132,7 @@ const stappen = [
             </nldd-rich-text>
             <nldd-spacer size="16"></nldd-spacer>
             <nldd-button
-              variant="secondary"
+              appearance="secondary"
               text="Bekijk het register"
               end-icon="arrow-right"
               @click="router.push('/register')"

@@ -158,7 +158,7 @@ describe('TrajectIntegrityPane', () => {
     const warning = cells.find((c) => c.attributes('text') === WARNING_FINDING.message);
     expect(warning.attributes('supporting-text')).toBe(WARNING_FINDING.remedy);
 
-    const icons = wrapper.findAll('nldd-icon').map((i) => i.attributes('name'));
+    const icons = wrapper.findAll('nldd-icon').map((i) => i.attributes('icon'));
     expect(icons).toContain('error');
     expect(icons).toContain('warning');
 

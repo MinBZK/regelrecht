@@ -5,7 +5,7 @@
        een knop niet. -->
   <nldd-button
     expandable
-    variant="neutral-tinted"
+    appearance="neutral-tinted"
     size="sm"
     :text="knopTekst"
     :disabled="!varianten.length ? true : undefined"

@@ -148,15 +148,15 @@ function onSheetClose() {
               </nldd-validation-list>
             </nldd-form-field>
             <nldd-form-actions>
-              <nldd-button-group>
+              <nldd-button-group orientation="vertical">
                 <nldd-button
-                  variant="accent-filled"
+                  appearance="accent-filled"
                   :text="buttonLabel"
                   :disabled="submitting ? '' : undefined"
                   @click="onSubmit"
                 />
                 <nldd-button
-                  variant="secondary"
+                  appearance="secondary"
                   text="Add and add another"
                   :disabled="submitting ? '' : undefined"
                   @click="onSubmitAndAddAnother"

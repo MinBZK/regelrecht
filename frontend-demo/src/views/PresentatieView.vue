@@ -53,11 +53,11 @@ function kindLabel(s) {
       <nldd-title slot="header" size="2">
         <span slot="overline">{{ t('home.presentation.overline') }}</span>
         <h1>{{ t('home.presentation.title') }}</h1>
-        <span slot="subtitle">{{ t('home.presentation.subtitle') }}</span>
+        <span slot="supporting-text">{{ t('home.presentation.subtitle') }}</span>
         <!-- `end`, niet `actions`: nldd-title heeft geen actions-slot, en de
              knop viel daardoor buiten de shadow-DOM (0x0, onzichtbaar). Zonder
              container ertussen, want die krijgt in `.title__end` geen breedte. -->
-        <nldd-button slot="end" variant="primary" start-icon="play" :text="t('home.presentation.start')" :disabled="!ready || undefined" @click="p.start(0)"></nldd-button>
+        <nldd-button slot="end" appearance="primary" start-icon="play" :text="t('home.presentation.start')" :disabled="!ready || undefined" @click="p.start(0)"></nldd-button>
       </nldd-title>
       <nldd-rich-text spacing="tight">
         <p v-html="keyHelp"></p>
@@ -81,7 +81,7 @@ function kindLabel(s) {
           <p v-html="modeHelp"></p>
         </nldd-rich-text>
       </nldd-container>
-      <nldd-list variant="box-base" :accessible-label="t('home.presentation.slides.label')">
+      <nldd-list appearance="box-base" :accessible-label="t('home.presentation.slides.label')">
         <nldd-list-item v-for="(s, i) in slides" :key="i" size="sm" button @click="p.start(i)">
           <nldd-text-cell size="sm" color="secondary" width="fit-content" min-width="32px" :text="String(i + 1)"></nldd-text-cell>
           <nldd-text-cell size="sm" :text="s.title ?? s.lines?.[0]?.replaceAll('**', '') ?? ''" :supporting-text="s.route ? `${kindLabel(s)} · ${s.route}` : kindLabel(s)"></nldd-text-cell>

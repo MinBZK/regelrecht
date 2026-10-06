@@ -121,7 +121,7 @@ onMounted(async () => {
         <nldd-progress-bar
           v-for="maand in stats.per_maand"
           :key="maand.maand"
-          mode="progress"
+          variant="progress"
           :max="maxMaandBedrag"
           :value="maand.toegekend_bedrag"
           :text="maand.maand"

@@ -21,7 +21,7 @@ const flat = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
 
 {
   flat.length > 0 && (
-    <nldd-list type="navigation" variant="simple" aria-label="On this page">
+    <nldd-list type="navigation" appearance="simple" aria-label="On this page">
       {flat.map((h) => (
         <nldd-list-item href={`#${h.slug}`}>
           {h.depth === 3 && <nldd-spacer-cell />}

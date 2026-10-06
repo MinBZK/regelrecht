@@ -230,7 +230,7 @@ onBeforeUnmount(() => {
             text="Log in om een traject te kiezen of aan te maken"
             supporting-text="Zodra je bent ingelogd zie je hier je lopende trajecten en kun je gemakkelijk wisselen."
           >
-            <nldd-button slot="actions" variant="primary" text="Inloggen" @click="loginToChooser"></nldd-button>
+            <nldd-button slot="actions" appearance="primary" text="Inloggen" @click="loginToChooser"></nldd-button>
           </nldd-inline-dialog>
         </nldd-simple-section>
 
@@ -248,25 +248,25 @@ onBeforeUnmount(() => {
         <nldd-simple-section v-else>
           <!-- Acties van het actieve traject - bovenaan, zonder titel (de
                sheet-titel dekt dit al). -->
-          <nldd-list v-if="activeTraject" variant="box-tinted">
+          <nldd-list v-if="activeTraject" appearance="box-tinted">
             <nldd-list-item size="md" button @click="openDocuments">
-              <nldd-icon-cell size="20"><nldd-icon name="documents"></nldd-icon></nldd-icon-cell>
+              <nldd-icon-cell size="20"><nldd-icon icon="documents"></nldd-icon></nldd-icon-cell>
               <nldd-spacer-cell size="8"></nldd-spacer-cell>
               <nldd-text-cell text="Werkdocumenten"></nldd-text-cell>
             </nldd-list-item>
             <nldd-list-item size="md" button @click="openTaken">
-              <nldd-icon-cell size="20"><nldd-icon name="tasks"></nldd-icon></nldd-icon-cell>
+              <nldd-icon-cell size="20"><nldd-icon icon="tasks"></nldd-icon></nldd-icon-cell>
               <nldd-spacer-cell size="8"></nldd-spacer-cell>
               <nldd-text-cell text="Taken"></nldd-text-cell>
             </nldd-list-item>
             <!-- Eén rij naar Instellingen, net als in de zijbalk: Algemeen en
                  Leden staan daarbinnen, niet ernaast. -->
             <nldd-list-item size="md" button @click="goToInstellingen()">
-              <nldd-icon-cell size="20"><nldd-icon name="settings"></nldd-icon></nldd-icon-cell>
+              <nldd-icon-cell size="20"><nldd-icon icon="settings"></nldd-icon></nldd-icon-cell>
               <nldd-spacer-cell size="8"></nldd-spacer-cell>
               <nldd-text-cell text="Instellingen"></nldd-text-cell>
               <nldd-spacer-cell size="8"></nldd-spacer-cell>
-              <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
+              <nldd-icon-cell size="20"><nldd-icon icon="chevron-right"></nldd-icon></nldd-icon-cell>
             </nldd-list-item>
           </nldd-list>
 
@@ -279,7 +279,7 @@ onBeforeUnmount(() => {
             <nldd-title size="5"><h2>Trajecten</h2></nldd-title>
             <nldd-spacer size="8"></nldd-spacer>
           </template>
-          <nldd-list variant="box-tinted">
+          <nldd-list appearance="box-tinted">
             <!-- "Corpus juris" = the traject-less global scope, the default
                  option (like `main` among the branches). -->
             <nldd-list-item
@@ -289,7 +289,7 @@ onBeforeUnmount(() => {
               @click="goToCorpusJuris"
             >
               <nldd-spacer-cell size="12"></nldd-spacer-cell>
-              <nldd-icon-cell v-if="!activeTrajectRef" size="20"><nldd-icon name="check-mark"></nldd-icon></nldd-icon-cell>
+              <nldd-icon-cell v-if="!activeTrajectRef" size="20"><nldd-icon icon="check-mark"></nldd-icon></nldd-icon-cell>
               <nldd-spacer-cell v-else size="20"></nldd-spacer-cell>
               <nldd-spacer-cell size="8"></nldd-spacer-cell>
               <nldd-text-cell text="Corpus juris"></nldd-text-cell>
@@ -303,13 +303,13 @@ onBeforeUnmount(() => {
               @click="selectTraject(t)"
             >
               <nldd-spacer-cell size="12"></nldd-spacer-cell>
-              <nldd-icon-cell v-if="t.ref === activeTrajectRef" size="20"><nldd-icon name="check-mark"></nldd-icon></nldd-icon-cell>
+              <nldd-icon-cell v-if="t.ref === activeTrajectRef" size="20"><nldd-icon icon="check-mark"></nldd-icon></nldd-icon-cell>
               <nldd-spacer-cell v-else size="20"></nldd-spacer-cell>
               <nldd-spacer-cell size="8"></nldd-spacer-cell>
               <nldd-text-cell :text="`${t.name}${t.status === 'afgerond' ? ' (afgerond)' : ''}`"></nldd-text-cell>
             </nldd-list-item>
             <nldd-list-item size="md" button @click="startCreate">
-              <nldd-icon-cell size="20"><nldd-icon name="plus"></nldd-icon></nldd-icon-cell>
+              <nldd-icon-cell size="20"><nldd-icon icon="plus"></nldd-icon></nldd-icon-cell>
               <nldd-spacer-cell size="8"></nldd-spacer-cell>
               <nldd-text-cell text="Nieuw traject"></nldd-text-cell>
             </nldd-list-item>
@@ -321,7 +321,7 @@ onBeforeUnmount(() => {
             <nldd-spacer size="24"></nldd-spacer>
             <nldd-title size="5"><h2>Artikelen</h2></nldd-title>
             <nldd-spacer size="8"></nldd-spacer>
-            <nldd-list variant="box-tinted">
+            <nldd-list appearance="box-tinted">
               <nldd-list-item
                 v-for="tab in documentTabs"
                 :key="`${documentTabsTrajectRef ?? ''}:${tabActions.key(tab)}`"
@@ -331,7 +331,7 @@ onBeforeUnmount(() => {
                 @click="selectTab(tab)"
               >
                 <nldd-spacer-cell size="12"></nldd-spacer-cell>
-                <nldd-icon-cell v-if="isActiveTab(tab)" size="20"><nldd-icon name="check-mark"></nldd-icon></nldd-icon-cell>
+                <nldd-icon-cell v-if="isActiveTab(tab)" size="20"><nldd-icon icon="check-mark"></nldd-icon></nldd-icon-cell>
                 <nldd-spacer-cell v-else size="20"></nldd-spacer-cell>
                 <nldd-spacer-cell size="8"></nldd-spacer-cell>
                 <nldd-text-cell :text="tabText(tab)" :supporting-text="tabSupporting(tab)"></nldd-text-cell>

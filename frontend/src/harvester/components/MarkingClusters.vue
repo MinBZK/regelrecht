@@ -90,7 +90,7 @@ function kind(cluster) {
 
         <nldd-spacer size="16" />
 
-        <nldd-list variant="simple">
+        <nldd-list appearance="simple">
           <nldd-list-item
             v-for="(cluster, i) in clusters"
             :key="`${cluster.resolution}-${cluster.resolved_by}-${i}`"
