@@ -1903,7 +1903,7 @@
                       "description": "What the belanghebbende submits. AANVRAAG: a request to take a decision (Awb 1:3 lid 3)."
                     }
                   },
-                  "description": "The article establishes a submission of a belanghebbende, such as an application (RFC-046). Hooks with applies_to.submission fire when the article runs. Independent of the legal character of the article's own outputs."
+                  "description": "The article establishes a submission of a belanghebbende, such as an application . Hooks with applies_to.submission fire when the article runs. Independent of the legal character of the article's own outputs."
                 },
                 "decides_on": {
                   "type": "array",
@@ -1912,7 +1912,7 @@
                   "items": {
                     "$ref": "#/definitions/articleReference"
                   },
-                  "description": "The articles (`<regulation>#<article>`) that establish the submission this decision is taken on (RFC-046), as the text says (\"besluit op de aanvraag\"). A hook with applies_to.decided_by reads the legal character of this article."
+                  "description": "The articles (`<regulation>#<article>`) that establish the submission this decision is taken on, as the text says (\"besluit op de aanvraag\"). A hook with applies_to.decided_by reads the legal character of this article."
                 },
                 "extensions": {
                   "type": "object",
@@ -1927,7 +1927,7 @@
                     "chronolex": {
                       "type": "object",
                       "additionalProperties": false,
-                      "description": "The chronolex runtime (RFC-022, RFC-045): which facts this article establishes and how the article reads them back from a chronicle. The runtime validates the shape inside each key when it loads the law.",
+                      "description": "The chronolex runtime (RFC-022): which facts this article establishes and how the article reads them back from a chronicle. The runtime validates the shape inside each key when it loads the law.",
                       "properties": {
                         "establishes": {
                           "type": "array",
@@ -2034,7 +2034,7 @@
                     "enum": [
                       "AANVRAAG"
                     ],
-                    "description": "Match articles that establish a submission of this kind (RFC-046). A hook names either legal_character or submission."
+                    "description": "Match articles that establish a submission of this kind. A hook names either legal_character or submission."
                   },
                   "decided_by": {
                     "type": "string",
@@ -2054,7 +2054,7 @@
                   }
                 },
                 "additionalProperties": false,
-                "description": "Which decisions (legal_character, optionally decision_type and stage) or which submissions (submission, optionally decided_by and established_by, RFC-046) of other articles this hook fires on.",
+                "description": "Which decisions (legal_character, optionally decision_type and stage) or which submissions (submission, optionally decided_by and established_by) of other articles this hook fires on.",
                 "oneOf": [
                   {
                     "required": [
@@ -2334,7 +2334,7 @@
     "provisionGround": {
       "type": "string",
       "pattern": "^[a-z0-9_]+#[A-Za-z0-9]([A-Za-z0-9:._ -]*[A-Za-z0-9])?$",
-      "description": "A provision, `<regulation>#<article>`, optionally followed by ` lid <n>` (RFC-048): the format of the event streams. The article holds letters, digits, `:`, `.`, `_`, `-` and spaces (Kieswet `G 1`, Awb `4:13`), and starts and ends with a letter or digit."
+      "description": "A provision, `<regulation>#<article>`, optionally followed by ` lid <n>`. The article holds letters, digits, `:`, `.`, `_`, `-` and spaces (Kieswet `G 1`, Awb `4:13`), and starts and ends with a letter or digit."
     },
     "origin": {
       "type": "object",
@@ -2353,7 +2353,7 @@
             "REGISTER",
             "KANAAL"
           ],
-          "description": "Who supplies the value (RFC-048). BELANGHEBBENDE: the applicant supplies or chooses it. DOSSIER: a fact from the course of the case. OORDEEL: a judgement the administrative body gives when it decides. REGISTER: a fact from a register kept by or under the regulation in `register` (narrowed by RFC-045 §1). KANAAL: what the intake channel says."
+          "description": "Who supplies the value. BELANGHEBBENDE: the applicant supplies or chooses it. DOSSIER: a fact from the course of the case. OORDEEL: a judgement the administrative body gives when it decides. REGISTER: a fact from a register kept by or under the regulation in `register`. KANAAL: what the intake channel says."
         },
         "register": {
           "type": "string",
@@ -2371,7 +2371,7 @@
             "GEVRAAGD_BESLUIT",
             "BESLUIT"
           ],
-          "description": "What the parameter is within the decision requested (TIJDVAK, the period, and GEVRAAGD_BESLUIT, the decision requested, both only with BELANGHEBBENDE: the applicant chooses them, Awb 4:2 lid 1; RFC-048), or the decision already taken that it is about (BESLUIT, only with DOSSIER: the runtime gives it; RFC-047)."
+          "description": "What the parameter is within the decision requested (TIJDVAK, the period, and GEVRAAGD_BESLUIT, the decision requested, both only with BELANGHEBBENDE: the applicant chooses them, Awb 4:2 lid 1), or the decision already taken that it is about (BESLUIT, only with DOSSIER: the runtime gives it)."
         }
       },
       "allOf": [
@@ -2457,7 +2457,7 @@
           }
         }
       ],
-      "description": "Who supplies a parameter, per the law, with the provision that says so (RFC-048). Metadata for a process runtime and an editor; the engine does not read it, and the law-model keeps an invalid one as written instead of refusing the law."
+      "description": "Who supplies a parameter, per the law, with the provision that says so. Metadata for a process runtime and an editor; the engine does not read it, and the law-model keeps an invalid one as written instead of refusing the law."
     }
   }
 }
