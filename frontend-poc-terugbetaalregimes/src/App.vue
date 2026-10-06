@@ -3,8 +3,9 @@
     <div class="app-frame">
       <nldd-skip-link text="Direct naar de inhoud">
       <nldd-top-navigation-bar
-        logo-title="Terugbetalen studieschuld"
-        logo-subtitle="OCW/DUO-casus · Stand van de Uitvoering"
+        logo-title="Nederlandse Digitale Dienst"
+        logo-subtitle="Ministerie van Economische Zaken en Klimaat"
+        website-title="Terugbetalen studieschuld"
         :logo-href="b('/beleid')"
         :website-href="b('/beleid')"
         @click.prevent

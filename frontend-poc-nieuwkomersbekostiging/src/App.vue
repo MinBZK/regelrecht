@@ -3,8 +3,9 @@
     <div class="app-frame">
       <nldd-skip-link text="Direct naar de inhoud">
       <nldd-top-navigation-bar
-        logo-title="Nieuwkomersbekostiging"
-        logo-subtitle="OCW/DUO-casus · knelpuntenbrief DUO 2025"
+        logo-title="Nederlandse Digitale Dienst"
+        logo-subtitle="Ministerie van Economische Zaken en Klimaat"
+        website-title="Nieuwkomersbekostiging"
         :logo-href="b('/beleid')"
         :website-href="b('/beleid')"
         @click.prevent
