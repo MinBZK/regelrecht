@@ -686,6 +686,9 @@
             "required": {
               "type": "boolean",
               "description": "Whether the caller must pass this parameter. Defaults to true: an omitted required parameter is an error. A parameter declared `required: false` that the caller omits resolves to an unknown value that names the parameter (RFC-036), so a law can declare application-form fields another law never passes."
+            },
+            "origin": {
+              "$ref": "#/definitions/origin"
             }
           }
         }
@@ -1907,10 +1910,49 @@
                   "minItems": 1,
                   "uniqueItems": true,
                   "items": {
-                    "type": "string",
-                    "pattern": "^[a-z][a-z0-9_]*#[A-Za-z0-9]([A-Za-z0-9:._ -]*[A-Za-z0-9])?$"
+                    "$ref": "#/definitions/articleReference"
                   },
                   "description": "The articles (`<regulation>#<article>`) that establish the submission this decision is taken on (RFC-046), as the text says (\"besluit op de aanvraag\"). A hook with applies_to.decided_by reads the legal character of this article."
+                },
+                "extensions": {
+                  "type": "object",
+                  "description": "Namespaced integration blocks (RFC-022 §3.2): each integration owns one key and the shape inside it. The engine does not read them; a runtime that knows the namespace does. Kept as written by the law-model.",
+                  "propertyNames": {
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  },
+                  "additionalProperties": {
+                    "type": "object"
+                  },
+                  "properties": {
+                    "chronolex": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "description": "The chronolex runtime (RFC-022, RFC-045): which facts this article establishes and how the article reads them back from a chronicle. The runtime validates the shape inside each key when it loads the law.",
+                      "properties": {
+                        "establishes": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          },
+                          "description": "The grams this article establishes (`event`), or extends (`extends`), with their fields and references."
+                        },
+                        "reads": {
+                          "oneOf": [
+                            {
+                              "type": "object"
+                            },
+                            {
+                              "type": "array",
+                              "items": {
+                                "type": "object"
+                              }
+                            }
+                          ],
+                          "description": "How this article reads its input back from a chronicle; one reading, or one per paragraph."
+                        }
+                      }
+                    }
+                  }
                 }
               },
               "description": "What executing this article yields in legal terms: its legal character, the kind of decision it is, and the procedure that governs it. Not merely annotation: `legal_character` and `decision_type` select which hooks fire, and `legal_character` with `procedure_id` selects the Awb procedure, so an article's outputs and how it runs both depend on what is declared here."
@@ -2283,6 +2325,139 @@
         }
       },
       "additionalProperties": false
+    },
+    "articleReference": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*#[A-Za-z0-9]([A-Za-z0-9:._-]*[A-Za-z0-9])?$",
+      "description": "An article of a regulation, `<regulation>#<article>`, without a paragraph: no space, so no ` lid <n>`."
+    },
+    "provisionGround": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+#[A-Za-z0-9]([A-Za-z0-9:._ -]*[A-Za-z0-9])?$",
+      "description": "A provision, `<regulation>#<article>`, optionally followed by ` lid <n>` (RFC-048): the format of the event streams. The article holds letters, digits, `:`, `.`, `_`, `-` and spaces (Kieswet `G 1`, Awb `4:13`), and starts and ends with a letter or digit."
+    },
+    "origin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "waarde",
+        "grondslag"
+      ],
+      "properties": {
+        "waarde": {
+          "type": "string",
+          "enum": [
+            "BELANGHEBBENDE",
+            "DOSSIER",
+            "OORDEEL",
+            "REGISTER",
+            "KANAAL"
+          ],
+          "description": "Who supplies the value (RFC-048). BELANGHEBBENDE: the applicant supplies or chooses it. DOSSIER: a fact from the course of the case. OORDEEL: a judgement the administrative body gives when it decides. REGISTER: a fact from a register kept by or under the regulation in `register` (narrowed by RFC-045 §1). KANAAL: what the intake channel says."
+        },
+        "register": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "With REGISTER only: the `$id` of the regulation that sets up the register."
+        },
+        "grondslag": {
+          "$ref": "#/definitions/provisionGround",
+          "description": "The provision that says who supplies the value."
+        },
+        "rol": {
+          "type": "string",
+          "enum": [
+            "TIJDVAK",
+            "GEVRAAGD_BESLUIT",
+            "BESLUIT"
+          ],
+          "description": "What the parameter is within the decision requested (TIJDVAK, the period, and GEVRAAGD_BESLUIT, the decision requested, both only with BELANGHEBBENDE: the applicant chooses them, Awb 4:2 lid 1; RFC-048), or the decision already taken that it is about (BESLUIT, only with DOSSIER: the runtime gives it; RFC-047)."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "waarde": {
+                "const": "REGISTER"
+              }
+            },
+            "required": [
+              "waarde"
+            ]
+          },
+          "then": {
+            "required": [
+              "register"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "register"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rol": {
+                "const": "TIJDVAK"
+              }
+            },
+            "required": [
+              "rol"
+            ]
+          },
+          "then": {
+            "properties": {
+              "waarde": {
+                "const": "BELANGHEBBENDE"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rol": {
+                "const": "GEVRAAGD_BESLUIT"
+              }
+            },
+            "required": [
+              "rol"
+            ]
+          },
+          "then": {
+            "properties": {
+              "waarde": {
+                "const": "BELANGHEBBENDE"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rol": {
+                "const": "BESLUIT"
+              }
+            },
+            "required": [
+              "rol"
+            ]
+          },
+          "then": {
+            "properties": {
+              "waarde": {
+                "const": "DOSSIER"
+              }
+            }
+          }
+        }
+      ],
+      "description": "Who supplies a parameter, per the law, with the provision that says so (RFC-048). Metadata for a process runtime and an editor; the engine does not read it, and the law-model keeps an invalid one as written instead of refusing the law."
     }
   }
 }
