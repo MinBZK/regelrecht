@@ -2098,7 +2098,10 @@ pub async fn finish_enrich_task_job(
         );
     } else {
         match per_article {
-            Some(articles) if !articles.is_empty() => {
+            // Een lege lijst betekent: de proposal verschilt nergens van de
+            // bron. Dan valt er niets te beoordelen en komt er geen taak; de
+            // job is klaar (bij een venster: het volgende venster volgt).
+            Some(articles) => {
                 tracing::info!(
                     job_id = %job.id,
                     law_id = %payload.law_id,
@@ -2124,15 +2127,6 @@ pub async fn finish_enrich_task_job(
                     )
                     .await?;
                 }
-            }
-            // Leeg betekent: de proposal verschilt nergens van de bron. Dan valt er
-            // niets te beoordelen en hoort er geen taak te komen; de job is klaar.
-            Some(_) => {
-                tracing::info!(
-                    job_id = %job.id,
-                    law_id = %payload.law_id,
-                    "verrijking leverde geen wijziging op, geen review-taak"
-                );
             }
             None => {
                 let title = if new_law {
@@ -2363,6 +2357,15 @@ pub async fn fail_enrich_task_job_with_retry(
     Ok(())
 }
 
+/// Of de taak-flow na deze run klaar is met de wet, of er een vervolgjob moet
+/// komen.
+///
+/// Zonder vertaalstap (`ENRICH_STEPS` zonder `window`) schuift de cursor niet
+/// op; een vervolgjob zou hetzelfde venster dan eindeloos herhalen.
+fn task_walk_complete(law_complete: bool, steps: crate::enrich::RunSteps) -> bool {
+    law_complete || !steps.window
+}
+
 /// Taak-flow-verwerking van een enrich-job: werkdirectory uit input-blobs,
 /// enrichment draaien, resultaat als blobs + taak terugschrijven. Raakt
 /// bewust geen law_entries, untranslatables of vervolg-harvests aan: dit is
@@ -2468,10 +2471,7 @@ async fn process_enrich_task_job(
                     None
                 }
             };
-            // Zonder vertaalstap (`ENRICH_STEPS` zonder `window`) schuift de
-            // cursor niet op; een vervolgjob zou hetzelfde venster eindeloos
-            // herhalen.
-            let law_complete = result.law_complete || !bounded_config.steps.window;
+            let law_complete = task_walk_complete(result.law_complete, bounded_config.steps);
             match finish_enrich_task_job(
                 pool,
                 job,
@@ -3906,6 +3906,20 @@ articles:
         let root = HarvestPayload::for_law("BWBR0018451", None);
         let root_json = serde_json::to_string(&root).unwrap();
         assert!(!root_json.contains("depth"));
+    }
+
+    #[test]
+    fn task_walk_stops_only_when_the_law_is_done_or_nothing_walks() {
+        use crate::enrich::RunSteps;
+        let walking = RunSteps::all();
+        let reconcile_only = RunSteps {
+            window: false,
+            reconcile: true,
+        };
+        assert!(!task_walk_complete(false, walking));
+        assert!(task_walk_complete(true, walking));
+        assert!(task_walk_complete(false, reconcile_only));
+        assert!(task_walk_complete(true, reconcile_only));
     }
 }
 

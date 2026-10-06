@@ -764,6 +764,55 @@ async fn test_finish_enrich_task_job_mid_law_chains_next_window() {
 }
 
 #[tokio::test]
+async fn test_finish_enrich_task_job_unchanged_proposal_creates_no_task() {
+    let db = TestDb::new().await;
+    let (account_id, traject_id) = seed_account_and_traject(&db).await;
+    let _created = job_queue::create_job(
+        &db.pool,
+        CreateJobRequest::new(JobType::Enrich, "test_wet").with_payload(json!({
+            "law_id": "test_wet",
+            "yaml_path": "laws/test_wet/law.yaml",
+            "requested_by": account_id,
+            "deliver": "task",
+            "traject_id": traject_id,
+            "traject_ref": "testtraject-abcd1234"
+        })),
+    )
+    .await
+    .unwrap();
+    let job = job_queue::claim_job(&db.pool, Some(JobType::Enrich))
+        .await
+        .unwrap()
+        .unwrap();
+    let law = "articles:\n  - number: '1'\n    text: een\n";
+    tasks::insert_blob(
+        &db.pool,
+        job.id,
+        BlobKind::Input,
+        "laws/test_wet/law.yaml",
+        law,
+    )
+    .await
+    .unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let law_abs = dir.path().join("laws/test_wet/law.yaml");
+    tokio::fs::create_dir_all(law_abs.parent().unwrap())
+        .await
+        .unwrap();
+    tokio::fs::write(&law_abs, law).await.unwrap();
+
+    // Een venster dat niets veranderde levert geen taak op, ook geen taak
+    // voor de hele wet.
+    finish_enrich_task_job(&db.pool, &job, dir.path(), &[law_abs], true, None)
+        .await
+        .unwrap();
+    let open = tasks::list_open_tasks_for_account(&db.pool, account_id)
+        .await
+        .unwrap();
+    assert!(open.is_empty());
+}
+
+#[tokio::test]
 async fn test_finish_enrich_task_job_new_law_mid_law_creates_no_task_yet() {
     let db = TestDb::new().await;
     let (account_id, traject_id) = seed_account_and_traject(&db).await;
