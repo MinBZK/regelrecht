@@ -57,13 +57,19 @@ const groepen = filters.map((id) => FILTERGROEPEN[id]);
   </nldd-title>
 
   {
+    /*
+     * `current` is `undefined` en niet `false` op de andere tabs: Astro
+     * schrijft false uit als current="false", en voor een webcomponent is
+     * een aanwezig attribuut waar, welke tekst er ook in staat. Dan stond
+     * elke tab op "huidig".
+     */
     WEERGAVEN.length > 1 && (
       <nldd-tab-bar navigation accessible-label="Weergave van de roadmap">
         {WEERGAVEN.map((w) => (
           <nldd-tab-bar-item
             href={w.href}
             text={w.label}
-            current={w.id === huidig}
+            current={w.id === huidig ? true : undefined}
           />
         ))}
       </nldd-tab-bar>

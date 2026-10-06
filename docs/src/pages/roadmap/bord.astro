@@ -1,0 +1,127 @@
+---
+/*
+ * /roadmap/bord — dezelfde werkpakketten als de matrix, in drie lanes op
+ * belegging: vrij, opgepakt, klaar.
+ *
+ * Waar de matrix laat zien wát er te doen is (per fase en discipline), laat
+ * het bord zien óf er iemand op zit. Dat is de derde as naast onderzoek en
+ * bouw (zie BELEGGING_STANDEN in lib/roadmap.ts), en de enige die een vraag
+ * beantwoordt waar de matrix geen kolom voor heeft: wat ligt er open.
+ *
+ * Geen nldd-collection met layout="lanes": dat is een masonry-raster dat
+ * items op breedte over kolommen verdeelt, niet op een eigenschap, en het
+ * verbergt alles voorbij `max-items` (24) zonder knop om het terug te halen.
+ * Een nldd-box per lane in een grid-container is wat het ontwerpsysteem wél
+ * heeft voor drie gelijke kolommen, en het kost geen eigen CSS.
+ *
+ * Geen beleggingsfilter: de lanes zíjn de belegging, en een vinkje dat een
+ * hele lane leegmaakt zegt niets wat de kop van de lane niet al zei. Geen
+ * afhankelijkhedenschakelaar: die ordent kaarten binnen een cel van de
+ * matrix, en hier is geen cel. Zoeken en het categoriefilter werken wel,
+ * want de kaarten dragen dezelfde data-attributen als op de matrix en de
+ * CSS-regels hangen aan `.rr-roadmap`, die RoadmapSectie hier ook zet.
+ */
+import { getCollection } from 'astro:content';
+import Base from '~/layouts/Base.astro';
+import RoadmapSectie from '~/components/RoadmapSectie.astro';
+import RoadmapKop from '~/components/RoadmapKop.astro';
+import RoadmapKaart from '~/components/RoadmapKaart.astro';
+import {
+  BORD_LANES,
+  beleggingStand,
+  werkpakketVolgorde,
+  kaartOndertitel,
+  sindsTekst,
+  assertReferencesResolve,
+  assertBelegging,
+  assertFilterRules,
+} from '~/lib/roadmap';
+import '~/styles/roadmap.css';
+// De tekst van de stylesheet, voor assertFilterRules(); zie index.astro.
+import roadmapCss from '~/styles/roadmap.css?raw';
+
+const werkpakketten = await getCollection('werkpakketten');
+assertReferencesResolve(werkpakketten);
+// Een belegging die zichzelf tegenspreekt zou hier in de verkeerde lane
+// staan; dezelfde controle als op de werkpakketpagina.
+assertBelegging(werkpakketten);
+assertFilterRules(roadmapCss);
+
+/*
+ * Per lane de werkpakketten in de leesvolgorde van de matrix, zodat wie van
+ * de ene weergave naar de andere gaat ze op dezelfde plek terugvindt. Een
+ * leeg veld is 'vrij', via beleggingStand(), net als op de kaart.
+ */
+const lanes = BORD_LANES.map((lane) => ({
+  ...lane,
+  kaarten: werkpakketten
+    .filter((w) => beleggingStand(w.data.belegging.stand) === lane.id)
+    .sort((a, b) => werkpakketVolgorde(a.data, b.data)),
+}));
+
+const pathname = '/roadmap/bord';
+---
+
+<Base
+  lang="nl"
+  kind="docs"
+  pathname={pathname}
+  noSearchIndex
+  title="Bord · Roadmap · RegelRecht"
+  description="Werkpakketten van RegelRecht op belegging: vrij, opgepakt en klaar."
+>
+  <RoadmapSectie>
+    <RoadmapKop
+      huidig="bord"
+      ondertitel="Werkpakketten op belegging: wat open ligt, wat iemand heeft opgepakt, en wat klaar is."
+      zoek={{ placeholder: 'Zoek in werkpakketten', noun: 'werkpakketten' }}
+      filters={['categorie']}
+    />
+
+    {/*
+      Drie gelijke kolommen die op een smal scherm onder elkaar komen; de
+      container regelt dat zelf op zijn eigen breedte. De telling in de kop
+      van een lane is de stand bij de build: zoeken en het categoriefilter
+      verbergen kaarten zonder die telling bij te werken, en de teller onder
+      het zoekveld zegt dan hoeveel er over is.
+    */}
+    <nldd-container layout="grid" column-count="3" sm-column-count="1" gap="16">
+      {
+        lanes.map((lane) => (
+          <nldd-box background="tinted">
+            <nldd-container padding="12" gap="12">
+              <nldd-container gap="2">
+                <nldd-title size="5">
+                  <h2>{lane.label}</h2>
+                </nldd-title>
+                <nldd-text size="sm" color="secondary">
+                  {lane.kaarten.length}{' '}
+                  {lane.kaarten.length === 1 ? 'werkpakket' : 'werkpakketten'}
+                </nldd-text>
+              </nldd-container>
+              {lane.kaarten.length ? (
+                <nldd-container gap="8">
+                  {lane.kaarten.map((wp) => (
+                    <RoadmapKaart
+                      wp={wp}
+                      ondertitel={kaartOndertitel(wp.data)}
+                      onder={
+                        wp.data.belegging.sinds
+                          ? `sinds ${sindsTekst(wp.data.belegging.sinds)}`
+                          : undefined
+                      }
+                    />
+                  ))}
+                </nldd-container>
+              ) : (
+                <nldd-text size="sm" color="secondary">
+                  {lane.leeg}
+                </nldd-text>
+              )}
+            </nldd-container>
+          </nldd-box>
+        ))
+      }
+    </nldd-container>
+  </RoadmapSectie>
+</Base>

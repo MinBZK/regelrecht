@@ -280,6 +280,7 @@ export const GEEN_TREFFER = 'rr-geen-treffer';
  */
 export const WEERGAVEN = [
   { id: 'matrix', label: 'Matrix', href: '/roadmap' },
+  { id: 'bord', label: 'Bord', href: '/roadmap/bord' },
 ] as const;
 
 export type WeergaveId = (typeof WEERGAVEN)[number]['id'];
@@ -490,6 +491,70 @@ export function werkpakkettenInCel<T extends { data: WerkpakketData }>(
     )
     .sort((a, b) => a.data.volgorde - b.data.volgorde);
 }
+
+/*
+ * De rang van elke discipline op de matrix: swimlane voor swimlane, en
+ * daarbinnen de volgorde van `disciplineIds`. Dezelfde volgorde als
+ * `matrixRijen` in pages/roadmap/index.astro, hier als getal zodat een
+ * sortering erop kan.
+ */
+const rijRang = new Map(
+  swimlanes.flatMap((lane) => lane.disciplineIds).map((id, i) => [id, i]),
+);
+
+/**
+ * De volgorde van werkpakketten buiten de matrix: eerst de fase (de kolom),
+ * dan de rij zoals de matrix hem tekent, dan `volgorde` binnen de cel, en als
+ * laatste het id zodat de uitkomst stabiel is.
+ *
+ * Dat is de leesvolgorde van de matrix, links naar rechts en van boven naar
+ * beneden. Een lane op het bord toont zo dezelfde werkpakketten in dezelfde
+ * volgorde als een rondgang over de matrix, en wie van de ene weergave naar
+ * de andere gaat hoeft niet opnieuw te zoeken.
+ *
+ * Een onbekende fase of discipline sorteert achteraan; assertReferencesResolve
+ * heeft die bij de build al gemeld, dus dit is alleen de val als die controle
+ * er een keer niet voor stond.
+ */
+export function werkpakketVolgorde(a: WerkpakketData, b: WerkpakketData): number {
+  const fase =
+    (getFase(a.faseId)?.volgnummer ?? Infinity) -
+    (getFase(b.faseId)?.volgnummer ?? Infinity);
+  if (fase) return fase;
+  const rij =
+    (rijRang.get(a.disciplineId) ?? Infinity) -
+    (rijRang.get(b.disciplineId) ?? Infinity);
+  if (rij) return rij;
+  return a.volgorde - b.volgorde || a.id.localeCompare(b.id);
+}
+
+/**
+ * "Fase I · Techniek & Architectuur": de cel van de matrix, in woorden, voor
+ * een weergave waar die cel niet te zien is.
+ */
+export function kaartOndertitel(data: WerkpakketData): string {
+  return [getFase(data.faseId)?.naam, getDiscipline(data.disciplineId)?.naam]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/**
+ * De lanes van het bord op /roadmap/bord: de drie beleggingsstanden, elk met
+ * de tekst die de lane toont als er geen werkpakket in staat.
+ *
+ * Die tekst staat hier en niet in de pagina omdat hij per stand iets anders
+ * zegt. Een lege lane Vrij is goed nieuws, een lege lane Klaar is de stand
+ * van vandaag, en een lege lane Opgepakt is een uitnodiging; "Geen
+ * werkpakketten" zou alle drie hetzelfde laten klinken.
+ */
+export const BORD_LANES = BELEGGING_STANDEN.map((stand) => ({
+  ...stand,
+  leeg: {
+    vrij: 'Alles is opgepakt of klaar.',
+    opgepakt: 'Nog niemand heeft een werkpakket opgepakt.',
+    klaar: 'Nog geen werkpakket is klaar.',
+  }[stand.id],
+}));
 
 /**
  * Everything of a werkpakket that the zoekfilter on /roadmap matches against,
