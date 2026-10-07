@@ -32,9 +32,11 @@ interface Props {
   vraag: Onderzoeksvraag;
   werkpakket: WerkpakketData;
   verwanten: Map<string, VraagVerwijzing[]>;
+  /** De paragraaftegel waar deze vraag onder hoort; zie de schakelaar op de pagina. */
+  paragraaf?: string;
 }
 
-const { vraag, werkpakket, verwanten } = Astro.props;
+const { vraag, werkpakket, verwanten, paragraaf } = Astro.props;
 
 const { lane, eigen } = vraagLane(vraag, werkpakket);
 const status = getOnderzoek(vraag.status);
@@ -68,6 +70,7 @@ const tickets: MiniTicket[] = vraag.deelvragen.map((d) => {
   accessible-label={vraag.vraag}
   data-lane={lane}
   data-zoek={vraagZoektekst(vraag, werkpakket)}
+  data-paragraaf={paragraaf}
 >
 <nldd-list-item data-uitklap>
   {/* Een gesegmenteerde rij: eerst de link naar het paper, dan een knop die

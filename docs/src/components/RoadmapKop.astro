@@ -356,12 +356,21 @@ const groepen = filters.map((id) => FILTERGROEPEN[id]);
      * height settles it against every filter at once and cannot drift from the
      * CSS the way a second copy of the categorie logic in JS would.
      *
-     * Always call this through `hertelStraks`, never directly: offsetHeight is
-     * only meaningful once the DOM change that prompted it has been styled.
+     * Always call this through `hertelStraks`, never directly: the computed
+     * style is only meaningful once the DOM change that prompted it has been
+     * styled.
      */
     const hertel = (raw: string) => {
       const heeftQuery = normaliseerZoekterm(raw).length > 0;
-      const zichtbaar = items.filter((item) => item.offsetHeight > 0).length;
+      // De eigen display van het item, niet zijn gerenderde hoogte: op de
+      // vragenpagina zit een vraag in een ingeklapte paragraaf en heeft dan
+      // hoogte nul terwijl hij wél gevonden is. Elk filter dat een item
+      // wegneemt zet display:none op het item zelf (de klassen hieronder,
+      // of de :has()-regels van het categoriefilter), en dat is wat hier
+      // gemeten wordt; een dichtgeklapte ouder raakt het niet.
+      const zichtbaar = items.filter(
+        (item) => getComputedStyle(item).display !== 'none',
+      ).length;
 
       // Silent while the field is empty: with nothing typed the count would
       // state the obvious on every page load and read as a result.

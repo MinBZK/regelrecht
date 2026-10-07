@@ -259,10 +259,11 @@ de titel om ertussen te wisselen:
   mini-kanbanbord uit met zijn onderzoeksvragen in drie lanes: vrij,
   opgepakt, klaar. Geen afhankelijkheden, want die ordenen binnen een cel
   van de matrix.
-- `/roadmap/onderzoeksvragen`, de **vragen**: alle onderzoeksvragen als
-  kaarten in de volgorde van het paper, per paragraaf onder een kop met het
-  aantal vragen en deelvragen (de schakelaar "Per paragraaf" laat de koppen
-  weg), met een filter op hun stand. Een
+- `/roadmap/onderzoeksvragen`, de **vragen**: de paragrafen van het paper
+  als tegels, elk met de telling van zijn vragen per stand; een druk op een
+  paragraaf laat de vragen eronder vallen, elk weer een tegel. De schakelaar
+  "Per paragraaf" uit geeft dezelfde vragen als één vlakke lijst. Met een
+  filter op de stand van de vraag. Een
   vraag heeft een stand zoals een werkpakket een belegging heeft: zijn eigen
   status (open is vrij, loopt is opgepakt, beantwoord is klaar) en zonder
   eigen status die van de belegging van zijn werkpakket; de kaart zegt welke
@@ -278,8 +279,9 @@ mini-bord, op de vragenpagina via het werkpakketveld op een kaart
 (`RoadmapWerkpakketPaneel.astro`, met de toelichting, de vragen op het
 mini-bord, de RFC's en een link naar de volledige pagina).
 
-Beide borden zijn een `nldd-list` van het type `tree` per kaart
-(`RoadmapWerkpakketRij.astro`, `RoadmapVraagRij.astro`) met het bordje in
+Beide borden zijn een `nldd-list` van het type `tree` per tegel
+(`RoadmapWerkpakketRij.astro`, `RoadmapParagraafRij.astro`,
+`RoadmapVraagRij.astro`) met het bordje in
 `RoadmapMiniBord.astro`; `RoadmapUitklap.astro` zet `expanded` om bij een
 klik.
 
