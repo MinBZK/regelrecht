@@ -432,7 +432,6 @@ algemene_plaatselijke_verordening/terrassen:
     table: terrassenbeleid
     fields:
       - gebied
-      - max_oppervlakte
       - max_sluitingstijd
       - seizoensregels
       - toegestane_locaties
