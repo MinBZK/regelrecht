@@ -46,7 +46,7 @@ Wat de cel vastlegt, blijft wat de wet zegt (`produces.extensions.chronolex.esta
 
 **Wijziging ten opzichte van #1679:** het huidige besluit "zorgtoeslag toegekend" (Zorgtoeslagwet art. 2, vastgelegd op de besluitdag) splitst in een **voorschot** (Awir 16) en een **toekenning** (Awir 19). Zorgtoeslagwet art. 2 blijft het bedrag uitrekenen; de Awir zegt welk besluit het draagt.
 
-**Eigen keuze, nog open:** of Zorgtoeslagwet art. 2 zelf `decides_on` blijft houden of dat Awir 16 en 19 die rol overnemen. De wet zegt: de toeslag wordt toegekend door de Dienst Toeslagen op aanvraag (Awir 14), met het bedrag uit de Zorgtoeslagwet. Ik stel voor dat Awir 16 en 19 `decides_on: awir#15` krijgen en Zorgtoeslagwet 2 het bedrag levert. Dan geldt het voor elke toeslag.
+**Besloten (7 oktober 2026): de Awir als "Awb van de toeslagen".** Zorgtoeslagwet art. 2 neemt het besluit, in twee soorten: voorschot en toekenning. Awir 16, 19, 22 en 24 haken erop, zoals Awb 4:2 en 4:13 op elke aanvraag haken. Zo noemt de Awir geen enkele toeslag bij naam en geldt ze voor elke inkomensafhankelijke regeling. (Eerder besloten was dat Awir 16 en 19 het besluit zouden dragen. Dat vroeg dat de Awir het bedrag uit de Zorgtoeslagwet ophaalt, en delegatie loopt in regelrecht alleen naar een lagere laag.)
 
 ## 4. Betalingen: de termijnen komen uit de wet
 
@@ -80,7 +80,7 @@ Dit is nu het grootste gat. Het staat in `Cell::decide` en in de review van #168
 
 - **Wet:** Awir 2 definieert het berekeningsjaar als kalenderjaar, Awir 8 neemt het inkomen over dat jaar. Het corpus modelleert `berekeningsjaar = $referencedate.year`: het jaar van de rekendatum, niet dat van de aanvraag.
 - **Voorstel (eigen keuze):** het berekeningsjaar is een gegeven van de aanvraag (`aangevraagd_berekeningsjaar`, origin BELANGHEBBENDE, staat er al). Awir 2 leest het als parameter in plaats van uit de rekendatum. De cel voert de besluiten uit op een rekendatum in dat jaar: de rekendatum is **wat het besluit betreft**, niet de dag waarop het wordt genomen. De wet bepaalt welk moment dat is; voor een jaarbedrag ligt 1 januari van het berekeningsjaar voor de hand.
-- **Gevolg:** de wetsversie volgt het berekeningsjaar. Een aanvraag voor 2025 die in 2026 wordt beslist, rekent met de wet van 2025, en de Awb-termijnen van de beslissing met de wet van de besluitdag. Dat zijn twee data, en de engine moet ze allebei kunnen krijgen: één om de versie te kiezen, één voor de procedure. Dat moet nog worden uitgezocht.
+- **Gevolg:** de wetsversie volgt het berekeningsjaar. Een aanvraag voor 2025 die in 2026 wordt beslist, rekent met de wet van 2025, en de Awb-termijnen van de beslissing met de wet van de besluitdag. Dat zijn twee data. Opgelost in stap 1: de wet zegt bij het besluit over welke periode het gaat (`period`), de cel rekent op 1 januari van dat jaar en legt het besluit vast op de besluitdag.
 
 ## 7. Voorschot op een geschat inkomen
 
@@ -129,7 +129,7 @@ Eén knop zet de peildatum op het eerstvolgende moment. De cel legt vast wat dan
 
 Besloten (6 oktober 2026):
 
-1. Zorgtoeslagwet art. 2 draagt `decides_on` over aan Awir 16 en 19 (§3). Zorgtoeslagwet 2 levert het bedrag; zo werkt het patroon voor elke toeslag.
+1. ~~Zorgtoeslagwet art. 2 draagt `decides_on` over aan Awir 16 en 19.~~ Vervangen op 7 oktober: de Awir haakt op het besluit van Zorgtoeslagwet 2 (§3).
 2. Art. 22 wordt een regel per maand, geen lijst (§4).
 3. Het geschatte inkomen wordt een veld van de aanvraag (§7).
 4. Eerst de Awir opnieuw harvesten, voor 2025 en 2026 (stap 0).
