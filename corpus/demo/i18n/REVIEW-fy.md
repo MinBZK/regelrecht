@@ -47,6 +47,11 @@ corrigeren.
   "gevestigd" (een feit dat een artikel in het leven roept, niet een vestiging)
   en bij `útfierder` voor "uitvoerder" (het bestuursorgaan dat de wet uitvoert).
   `Kronyk` volgt het Nederlandse "kroniek" als term uit de chronolexografie.
+- **`zaak.moments.*`, `sheet.application.payments.*`, `case.event.decision_due`**
+  (de tijd in de demo: het volgende moment, betalingen) zijn door een
+  taalmodel vertaald. Twijfel bij `momint` voor "moment" in de zin van een
+  rechtens telbaar tijdstip, bij `útfiering` voor de uitvoering van een
+  besluit (een betaalde termijn) en bij `betelling` voor "betaling".
 
 ## 3. De banner over de wettekst
 

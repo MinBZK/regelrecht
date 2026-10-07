@@ -12,6 +12,7 @@ import { dateInputFor, phraseOutcome, phrasingFor } from '../data/outcomePhrasin
 import { driftSentence } from '../data/caseDrift.js';
 import { useDemo } from '../store/demoStore.js';
 import { objectionOpen, statusOf } from '../data/lifecycle.js';
+import { amountTotals } from '../data/chronicleView.js';
 import { useLocalePath } from '../i18n/useLocalePath.js';
 import { activeLocale, useI18n } from '../i18n/index.js';
 
@@ -235,6 +236,18 @@ watch(showTrace, async (open) => {
   traceSheet.value?.show?.();
 });
 
+/**
+ * Wat er op deze zaak tot nu toe is uitbetaald: de som van de uitvoeringen in
+ * de kroniek (de betaalde voorschottermijnen). Leeg zonder uitvoeringen.
+ */
+const received = computed(() => {
+  void dataVersion.value;
+  const c = currentCase.value;
+  if (!c?.applicationGramId) return [];
+  const executions = demo.gramsOfCase(c).filter((g) => g.type === 'executogram');
+  return amountTotals(executions, demo.gramFields, corpus.value);
+});
+
 const statusTag = computed(() => {
   const c = currentCase.value;
   if (!c) return null;
@@ -311,6 +324,13 @@ const statusTag = computed(() => {
               :text="requirementsMet ? (primary ? formatValue(primary.value, primary.spec) : t('wet.tile.outcome.yes')) : t('wet.tile.outcome.not_applicable')"
               :supporting-text="requirementsMet && primary ? (isUnknown(primary.value) ? t('wet.tile.outcome.missing', { field: humanize(primary.name), missing: formatMissing(primary.value, { ownLaw: law.id, lawName }) }) : humanize(primary.name)) : ''"
             ></nldd-title-cell>
+          </nldd-list-item>
+        </nldd-list>
+
+        <nldd-list v-if="received.length" appearance="simple" :accessible-label="t('sheet.application.payments.received')">
+          <nldd-list-item v-for="r in received" :key="r.name" size="sm">
+            <nldd-text-cell size="sm" color="secondary" min-width="55%" :text="t('sheet.application.payments.received')" :supporting-text="t.plural(r.count, 'sheet.application.payments.count')"></nldd-text-cell>
+            <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="r.text"></nldd-text-cell>
           </nldd-list-item>
         </nldd-list>
 

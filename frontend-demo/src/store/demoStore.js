@@ -18,13 +18,25 @@ import {
   registerClaims,
   registerPersonaData,
 } from '../engine/useDemoEngine.js';
-import { decisionDates, procedureStages, statusOf } from '../data/lifecycle.js';
+import { carriedInputs, decisionDates, procedureStages, statusOf } from '../data/lifecycle.js';
 import { delegationKey, delegationTypeLabel, delegationsFor, maySubmitClaims } from '../data/delegation.js';
 import { verdictOf } from '../data/format.js';
 import { driftOf } from '../data/caseDrift.js';
 import { isEntrypointFor, subjectOf } from '../data/entrypoints.js';
 import { assignClaimOwnership } from '../data/claimOwnership.js';
 import { applicationValues, eventsForLaw, gramsOfCase as gramsFor, momentOn } from '../data/chronolex.js';
+import { materialiseRecord, tablesFromProfiles } from '../data/materialize.js';
+import {
+  addDays,
+  comingDates,
+  decisionDue,
+  executionStart,
+  fixedDates,
+  nextExecution,
+  nextMoment,
+  pendingExecutionDays,
+  periodEnd,
+} from '../data/moments.js';
 import { activeLocale, t } from '../i18n/index.js';
 
 const STORAGE_KEY = 'rr-demo-state-v1';
@@ -38,6 +50,8 @@ function today() {
 function defaultState() {
   return {
     profileKey: null, // null = config default
+    // De klok van de demo: alles wat er in een zaak gebeurt, gebeurt op deze
+    // dag (`nowMoment`). Hij loopt alleen vooruit (`advanceTo`).
     referenceDate: today(),
     // Uit, zoals in de POC (`SAMPLE_RATE = 0.0`): een aanvraag waarbij de
     // burger niets gewijzigd heeft, rekent de wet zelf af en wordt direct
@@ -139,8 +153,17 @@ function newId(prefix) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-function nowIso() {
-  return new Date().toISOString();
+/**
+ * Het moment van nu, op de peildatum. De demo heeft één klok: de peildatum
+ * (`state.referenceDate`) is de tijd van de demo, en alles wat er in een zaak
+ * gebeurt (het indienen, het besluit, de bekendmaking, de grammen in de
+ * kroniek) gebeurt op die dag. Daarvoor liepen er twee tijdassen naast
+ * elkaar: de grammen op de peildatum, de rest op de wandklok. Het tijdstip
+ * van de dag komt van de wandklok, zodat wat na elkaar gebeurt ook na elkaar
+ * staat.
+ */
+function nowMoment() {
+  return momentOn(state.referenceDate);
 }
 
 /** Cases in the shape the materialiser's `kind: cases` bindings expect. */
@@ -314,43 +337,112 @@ function recordApplication(c, lawEntry, params) {
 }
 
 /**
- * Leg het besluit op de aanvraag vast dat in fase `stage` valt: het besluit
- * waarvan de wet zegt dat het in die fase wordt genomen (de vorm van de
- * gebeurtenis, `stage`). Een wet met één besluit heeft er één, de
- * Zorgtoeslagwet in de procedure van de Awir twee (voorschot en toekenning).
- * De cel leest wat het besluit vraagt terug uit haar kroniek (`inputsFor`, de
- * lexostatussen die de gebeurtenis leest) en voert die fase van het
+ * Het besluit dat de wet in fase `stage` neemt (de vorm van de gebeurtenis,
+ * `stage`): de gebeurtenis en haar vorm. Een wet met één besluit heeft er
+ * één, de Zorgtoeslagwet in de procedure van de Awir twee (voorschot en
+ * toekenning).
+ */
+function decisionAt(chrono, stage) {
+  if (!stage) return null;
+  for (const d of chrono.decisions) {
+    const shape = chrono.wasmCell.shape(engine.value, d.name, state.referenceDate);
+    if (shape.stage === stage) return { event: d.name, shape };
+  }
+  return null;
+}
+
+/**
+ * De verwijzing van een besluit naar de aanvraag waarop het wordt genomen.
+ * Hoe die verwijzing heet, zegt de wet (de vorm van het besluit).
+ */
+function applicationReference(event, shape, c) {
+  const required = Object.entries(shape.refers_to ?? {}).filter(([, r]) => r.required);
+  if (required.length !== 1) throw new Error(`${event}: geen eenduidige verwijzing naar de aanvraag`);
+  return { [required[0][0]]: c.applicationGramId };
+}
+
+/** De rijen van de persona's per tabel, één keer per geladen corpus. */
+let dossierTables = null;
+function dossierRows() {
+  const c = loadedCorpus.value;
+  if (dossierTables?.corpus !== c) dossierTables = { corpus: c, rowsFor: tablesFromProfiles(c.profiles) };
+  return dossierTables.rowsFor;
+}
+
+/**
+ * Wat het dossier geeft voor het besluit `event` op de zaak `root`: wat de
+ * fase van het besluit vraagt met herkomst DOSSIER (de wet zegt het, RFC-043)
+ * en de cel niet zelf uit haar kroniek leest. Waar het dossier het heeft,
+ * staat in `dossier` in demo-config.yaml, in de vorm van een binding; de
+ * gegevens van de zaak die de cel leest (de BSN, het berekeningsjaar) kiezen
+ * de rij.
+ *
+ * `inputs` gaat als `extraInputs` naar de cel; `dates` zijn de datums
+ * daaruit, de momenten waarop het besluit wacht.
+ */
+function dossierInputs(wasmCell, event, root, now) {
+  const config = corpus.value?.config?.dossier ?? {};
+  const stage = wasmCell.decisionStage(engine.value, event, root, now);
+  const read = wasmCell.inputsFor(engine.value, event, root, now);
+  const params = Object.fromEntries(Object.entries(read).map(([k, i]) => [k, i.value]));
+  const inputs = {};
+  const dates = {};
+  for (const input of stage.inputs ?? []) {
+    const { name, type, origin } = input.parameter;
+    const binding = config[input.law_id]?.[name];
+    if (!binding || origin?.waarde !== 'DOSSIER' || name in read || name in inputs) continue;
+    const { record } = materialiseRecord(
+      { id: input.law_id, parameters: Object.keys(params), inputTypes: { [name]: type } },
+      { [name]: binding },
+      params,
+      dossierRows(),
+    );
+    if (!(name in record)) continue;
+    inputs[name] = { value: record[name], provenance: { source: 'dossier', service: binding.service } };
+    if (type === 'date') dates[name] = record[name];
+  }
+  return { inputs, dates };
+}
+
+/**
+ * Wat de wet in fase `stage` op de aanvraag van de zaak zou besluiten, zonder
+ * het vast te leggen: de cel voert die fase uit zoals bij het besluit zelf
+ * (het voorschot op de schatting, de toekenning op het inkomen), met wat het
+ * dossier geeft. `null` als de wet van deze zaak geen besluit in die fase
+ * vastlegt.
+ */
+function previewAt(c, stage) {
+  const chrono = chronolexFor(corpus.value?.lawById(c.lawId));
+  const found = chrono && c.applicationGramId ? decisionAt(chrono, stage) : null;
+  if (!found) return null;
+  const now = nowMoment();
+  const refersTo = applicationReference(found.event, found.shape, c);
+  const { inputs } = dossierInputs(chrono.wasmCell, found.event, c.applicationGramId, now);
+  const gram = chrono.wasmCell.previewDecision(engine.value, found.event, refersTo, now, inputs);
+  return { chrono, ...found, refersTo, inputs, now, gram };
+}
+
+/**
+ * Leg het besluit op de aanvraag vast dat in fase `stage` valt. De cel leest
+ * wat het besluit vraagt terug uit haar kroniek (de lexostatussen die de
+ * gebeurtenis leest), krijgt wat het dossier geeft, en voert die fase van het
  * besluitartikel uit.
  *
- * De kroniek zegt niets anders dan het besluit. Kan de wet nog niet
- * beslissen, wijkt de behandelaar af van wat de wet berekent, of is het
- * besluit een weigering waar de wet een toekenning vestigt, dan komt er geen
- * gram; de zaak zegt waarom.
+ * Eerst zonder vast te leggen, in dezelfde fase: dat is het oordeel van de
+ * wet waartegen het besluit wordt gelegd. De kroniek zegt niets anders dan
+ * het besluit. Kan de wet nog niet beslissen, wijkt de behandelaar af van wat
+ * de wet in die fase berekent, of is het besluit een weigering waar de wet
+ * een toekenning vestigt, dan komt er geen gram; de zaak zegt waarom.
  */
 function recordDecision(c, stage) {
   if (!c.applicationGramId) return;
-  const lawEntry = corpus.value?.lawById(c.lawId);
-  const chrono = chronolexFor(lawEntry);
-  if (!chrono) return;
   c.chronicleError = null;
   c.chronicleNoteKey = null;
   try {
-    const shapes = chrono.decisions.map((d) => ({
-      event: d.name,
-      shape: chrono.wasmCell.shape(engine.value, d.name, state.referenceDate),
-    }));
-    const found = shapes.find((d) => d.shape.stage === stage);
-    if (!found || c.decisionGrams?.[found.event]) return;
-    const { event, shape } = found;
-    // Wat de cel bij het besluit zal teruglezen (alleen kijken), en wat de
-    // wet daarop beslist, vóór de cel het vastlegt.
-    // Eén moment voor het lezen en het vastleggen: de cel leest de kroniek
-    // zoals die dan geldt.
-    const now = momentOn(state.referenceDate);
-    const inputs = chrono.wasmCell.inputsFor(engine.value, event, c.applicationGramId, now);
-    const computed = evaluate(lawEntry, Object.fromEntries(Object.entries(inputs).map(([k, i]) => [k, i.value])));
-    if (!computed.ok) throw new Error(computed.error);
-    const verdict = verdictOf(computed.outputs);
+    const preview = previewAt(c, stage);
+    if (!preview || c.decisionGrams?.[preview.event]) return;
+    const { chrono, event, shape, refersTo, inputs, now } = preview;
+    const verdict = verdictOf(preview.gram.fields);
     const lawGrants = verdict === null || verdict === true;
     if (verdict === 'unknown') {
       c.chronicleNoteKey = 'zaak.chronicle.undecided';
@@ -364,16 +456,7 @@ function recordDecision(c, stage) {
       c.chronicleNoteKey = 'zaak.chronicle.refusal';
       return;
     }
-    // De cel leest de aanvraag waarnaar het besluit verwijst zelf terug. Hoe
-    // die verwijzing heet, zegt de wet (de vorm van het besluit).
-    const required = Object.entries(shape.refers_to ?? {}).filter(([, r]) => r.required);
-    if (required.length !== 1) throw new Error(`${event}: geen eenduidige verwijzing naar de aanvraag`);
-    const gram = chrono.wasmCell.decide(
-      engine.value,
-      event,
-      { [required[0][0]]: c.applicationGramId },
-      now,
-    );
+    const gram = chrono.wasmCell.decide(engine.value, event, refersTo, now, inputs);
     c.decisionGrams = { ...(c.decisionGrams ?? {}), [event]: gram.id };
     syncGrams();
   } catch (e) {
@@ -383,12 +466,237 @@ function recordDecision(c, stage) {
 
 /**
  * Het besluit wordt genomen op `date`: de fase waarop de zaak wacht krijgt
- * haar dagtekening, en de cel legt het besluit van die fase vast.
+ * haar dagtekening, en de cel legt het besluit van die fase vast. Is er al
+ * eerder besloten (het voorschot, nu de toekenning), dan is dit een nieuw
+ * besluit: het moet zelf weer worden bekendgemaakt, met een eigen
+ * bezwaartermijn. Daarna legt de cel vast wat er op die dag uit voortkomt,
+ * zoals een termijn in de maand van de dagtekening.
  */
 function takeDecision(c, date) {
   const stage = c.stageState?.current_stage ?? null;
+  c.publishedAt = null;
+  c.dueStage = null;
+  if (c.objection && c.objection.status !== 'PENDING') c.objection = null;
   advanceLifecycle(c, decisionDates(c, date));
   recordDecision(c, stage);
+  executeDue(c);
+}
+
+/** De uitvoeringen (executogrammen) die de cel van deze wet vastlegt, met hun vorm. */
+function executionsOf(chrono) {
+  const out = [];
+  for (const e of chrono.cell.events) {
+    if (e.name === chrono.application.name || chrono.decisions.some((d) => d.name === e.name)) continue;
+    try {
+      const shape = chrono.wasmCell.shape(engine.value, e.name, state.referenceDate);
+      if (shape.executed_on) out.push({ event: e.name, shape });
+    } catch (err) {
+      console.warn(`Vorm van ${e.name} niet af te leiden:`, err);
+    }
+  }
+  return out;
+}
+
+/**
+ * Leg vast wat er in deze zaak tot en met de peildatum uit de wet voortkomt:
+ * per uitvoering (een betaalde voorschottermijn) één keer per kalendermaand
+ * die de klok passeerde, op de eerste van die maand. Of er in die maand iets
+ * ontstaat, zegt de wet; de cel legt alleen vast als het zo is. Wat al
+ * gevraagd is, wordt niet opnieuw gevraagd.
+ */
+function executeDue(c) {
+  if (!c.applicationGramId || !engine.value) return;
+  const chrono = chronolexFor(corpus.value?.lawById(c.lawId));
+  if (!chrono) return;
+  const today = state.referenceDate;
+  const now = nowMoment();
+  let recorded = false;
+  for (const { event, shape } of executionsOf(chrono)) {
+    const caseGrams = gramsOfCase(c);
+    const start = executionStart(shape, caseGrams, today);
+    const days = pendingExecutionDays({ shape, event, caseGrams, start, checkedThrough: c.executedThrough?.[event], today });
+    for (const day of days) {
+      try {
+        if (chrono.wasmCell.execute(engine.value, event, c.applicationGramId, day, now)) recorded = true;
+      } catch (e) {
+        c.chronicleError = String(e?.message ?? e);
+        break;
+      }
+      c.executedThrough = { ...(c.executedThrough ?? {}), [event]: day };
+    }
+  }
+  if (recorded) syncGrams();
+}
+
+/**
+ * Het volgende besluit van de zaak: het eerste besluit van de wet dat nog
+ * geen gram heeft, in de volgorde van de stromen van de cel.
+ */
+function nextDecisionOf(c, chrono) {
+  const d = chrono.decisions.find((x) => !c.decisionGrams?.[x.name]);
+  if (!d) return null;
+  return { event: d.name, shape: chrono.wasmCell.shape(engine.value, d.name, state.referenceDate) };
+}
+
+/**
+ * Het besluit waarop de zaak nu wacht, als zijn moment er is: de levensloop
+ * staat in zijn fase, en elke datum die het dossier ervoor geeft (de aanslag
+ * van Awir 19) ligt op of vóór de peildatum. `null` anders.
+ */
+function dueDecision(c) {
+  const chrono = chronolexFor(corpus.value?.lawById(c.lawId));
+  if (!chrono || !c.applicationGramId) return null;
+  try {
+    const found = decisionAt(chrono, c.stageState?.current_stage);
+    if (!found || c.decisionGrams?.[found.event]) return null;
+    const { dates } = dossierInputs(chrono.wasmCell, found.event, c.applicationGramId, nowMoment());
+    return decisionDue(dates, state.referenceDate) ? found : null;
+  } catch (e) {
+    c.chronicleError = String(e?.message ?? e);
+    return null;
+  }
+}
+
+/**
+ * Wat de wet als volgende moment van deze zaak geeft, als verwachting en niet
+ * als gram: wat er nog niet is, is geen feit (RFC-044). De cel voert de wet
+ * daarvoor uit zonder vast te leggen. Elk moment draagt zijn datum, wat voor
+ * moment het is en de naam van wat het geeft:
+ *
+ * - `execution`: de eerstvolgende maand waarin een uitvoering ontstaat (de
+ *   volgende voorschottermijn), met wat de cel dan zou vastleggen;
+ * - `period_end`: het eind van de periode waarover besloten is;
+ * - `dossier`: een datum uit het dossier waarop het volgende besluit wacht;
+ * - `law`: een datum die de wet aan een besluit geeft, al genomen of nog te
+ *   nemen (de uiterste toekenningsdatum, de uiterste betaaldatum). Van een
+ *   besluit dat nog komt alleen de datums die niet met de besluitdag
+ *   meeschuiven.
+ */
+function nextMoments(c) {
+  if (!c?.applicationGramId || !engine.value) return [];
+  const chrono = chronolexFor(corpus.value?.lawById(c.lawId));
+  if (!chrono) return [];
+  const today = state.referenceDate;
+  const now = nowMoment();
+  const caseGrams = gramsOfCase(c);
+  const moments = [];
+  for (const { event, shape } of executionsOf(chrono)) {
+    if (executionStart(shape, caseGrams, today) === null) continue;
+    const next = nextExecution(
+      (day) => chrono.wasmCell.previewExecution(engine.value, event, c.applicationGramId, day, now),
+      today,
+    );
+    if (next) moments.push({ date: next.date, kind: 'execution', name: event, gram: next.gram });
+  }
+  for (const g of caseGrams) {
+    const end = periodEnd(g.period);
+    if (end && end > today && !moments.some((m) => m.kind === 'period_end' && m.date === end)) {
+      moments.push({ date: end, kind: 'period_end', name: g.name, period: g.period });
+    }
+  }
+  try {
+    const next = nextDecisionOf(c, chrono);
+    if (next) {
+      const { inputs, dates } = dossierInputs(chrono.wasmCell, next.event, c.applicationGramId, now);
+      for (const [name, date] of Object.entries(dates)) {
+        if (typeof date === 'string' && date > today) moments.push({ date, kind: 'dossier', name, event: next.event });
+      }
+      const refersTo = applicationReference(next.event, next.shape, c);
+      const preview = (at) => chrono.wasmCell.previewDecision(engine.value, next.event, refersTo, at, inputs);
+      const fields = Object.fromEntries(next.shape.fields.map((f) => [f.name, f]));
+      const later = momentOn(addDays(today, 1));
+      for (const m of fixedDates(preview(now), preview(later), fields, today)) {
+        moments.push({ ...m, kind: 'law', event: next.event, provision: fields[m.name]?.declared_by ?? null });
+      }
+    }
+  } catch (e) {
+    console.warn('Het volgende besluit is niet vooruit te zien:', e);
+  }
+  for (const g of caseGrams) {
+    const fields = gramFields(g);
+    for (const m of comingDates(g, fields, today)) {
+      moments.push({ ...m, kind: 'law', event: g.name, provision: fields[m.name]?.declared_by ?? null });
+    }
+  }
+  return moments.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/**
+ * Zet de klok vooruit naar `date` en laat de cel vastleggen wat er dan in de
+ * zaken is ontstaan: de termijnen van elke gepasseerde maand, en een besluit
+ * waarvan het moment er is. Dat besluit neemt de demo zelf als de wet erover
+ * beslist en niet elke aanvraag met de hand wordt beoordeeld (zoals bij het
+ * indienen); anders komt het bij de behandelaar te liggen. Terug kan niet: een
+ * gram ligt nooit in de toekomst (RFC-044), dus terug is opnieuw beginnen.
+ */
+function advanceTo(date) {
+  if (!date || date <= state.referenceDate) return;
+  state.referenceDate = date;
+  reregister();
+  for (const c of state.cases) {
+    if (statusOf(c) === 'WITHDRAWN' || !c.applicationGramId) continue;
+    executeDue(c);
+    const due = dueDecision(c);
+    if (!due) continue;
+    if (state.manualReview) {
+      if (c.dueStage !== due.shape.stage) {
+        c.dueStage = due.shape.stage;
+        c.events.push({ at: nowMoment(), type: 'IN_REVIEW', key: 'case.event.decision_due' });
+      }
+      continue;
+    }
+    decideByLaw(c, due.shape.stage);
+  }
+  reregister();
+}
+
+/**
+ * Wat de wet in de fase van het volgende besluit van de zaak zou besluiten
+ * (de fase waarvan het moment er is, anders de fase waarop de levensloop
+ * wacht), zonder het vast te leggen: `{event, gram}`, of null.
+ */
+function decisionPreview(c) {
+  try {
+    const preview = previewAt(c, c?.dueStage ?? c?.stageState?.current_stage);
+    return preview ? { event: preview.event, gram: preview.gram } : null;
+  } catch (e) {
+    console.warn('Het besluit is niet vooruit te zien:', e);
+    return null;
+  }
+}
+
+/** Naar het eerstvolgende moment dat de wet voor deze zaak geeft. */
+function advanceToNextMoment(c) {
+  advanceTo(nextMoment(nextMoments(c), state.referenceDate)?.date ?? null);
+}
+
+/**
+ * Het besluit van fase `stage` zoals de wet het neemt, zonder behandelaar:
+ * toegekend of afgewezen naar het oordeel van de wet in die fase. Weet de wet
+ * het niet, dan komt het bij de behandelaar.
+ */
+function decideByLaw(c, stage) {
+  let verdict;
+  try {
+    verdict = verdictOf(previewAt(c, stage)?.gram?.fields);
+  } catch (e) {
+    c.chronicleError = String(e?.message ?? e);
+    return;
+  }
+  if (verdict === 'unknown') {
+    c.dueStage = stage;
+    c.events.push({ at: nowMoment(), type: 'IN_REVIEW', key: 'case.review.law_needs_more_facts' });
+    return;
+  }
+  const grants = verdict === null || verdict === true;
+  c.approved = grants;
+  c.reason = null;
+  c.reasonKey = grants ? 'case.reason.granted_by_law' : 'case.reason.conditions_not_met';
+  c.decidedAt = nowMoment();
+  c.events.push({ at: c.decidedAt, type: 'DECIDED', approved: grants, key: grants ? 'case.event.granted_auto' : 'case.event.refused_auto' });
+  takeDecision(c, state.referenceDate);
+  c.status = statusOf(c);
+  announceIfAutomatic(c);
 }
 
 /**
@@ -582,11 +890,6 @@ function setProfile(key) {
   state.delegationKey = null;
 }
 
-function setReferenceDate(date) {
-  state.referenceDate = date;
-  reregister();
-}
-
 /**
  * Is a law shown on the active profile's portal?
  *
@@ -706,14 +1009,14 @@ function submitCase(lawEntry, evaluation, params = personaParams()) {
     status: needsReview ? 'IN_REVIEW' : 'DECIDED',
     approved: needsReview ? null : requirementsMet,
     reasonKey: needsReview ? null : requirementsMet ? 'case.reason.granted_by_law' : 'case.reason.conditions_not_met',
-    submittedAt: nowIso(),
-    decidedAt: needsReview ? null : nowIso(),
+    submittedAt: nowMoment(),
+    decidedAt: needsReview ? null : nowMoment(),
     objection: null,
     // Namens wie deze aanvraag is ingediend, als dat niet de persoon zelf was.
     acting,
     events: [
       {
-        at: nowIso(),
+        at: nowMoment(),
         type: 'SUBMITTED',
         ...(acting
           ? {
@@ -727,8 +1030,8 @@ function submitCase(lawEntry, evaluation, params = personaParams()) {
           : { key: 'case.event.submitted' }),
       },
       needsReview
-        ? { at: nowIso(), type: 'IN_REVIEW', key: reviewReasonKey({ pendingClaims, undecided }) }
-        : { at: nowIso(), type: 'DECIDED', key: requirementsMet ? 'case.event.granted_auto' : 'case.event.refused_auto' },
+        ? { at: nowMoment(), type: 'IN_REVIEW', key: reviewReasonKey({ pendingClaims, undecided }) }
+        : { at: nowMoment(), type: 'DECIDED', key: requirementsMet ? 'case.event.granted_auto' : 'case.event.refused_auto' },
     ],
   };
   for (const claim of pendingClaims) claim.caseId = c.id;
@@ -781,7 +1084,10 @@ function advanceLifecycle(c, supplied = {}) {
   const outputName = primaryOutputFor(lawEntry);
   if (!outputName) return;
 
-  const params = { ...(c.parameters ?? {}), ...(c.lifecycleInputs ?? {}), ...supplied };
+  // Wat een fase vraagt die nog moet komen, gaat alleen mee als het nu wordt
+  // aangeleverd: een tweede bekendmaking krijgt niet de datum van de eerste.
+  const carried = carriedInputs(c.lifecycleInputs, c.procedureStages, c.stageState?.current_stage);
+  const params = { ...(c.parameters ?? {}), ...carried, ...supplied };
   c.lifecycleInputs = { ...(c.lifecycleInputs ?? {}), ...supplied };
 
   const step = engineExecuteStage(engine.value, lawEntry, outputName, c.stageState ?? null, params, state.referenceDate);
@@ -850,12 +1156,12 @@ function resubmitCase(caseId, evaluation, params = personaParams()) {
   c.verifiedResult = null;
   c.approved = needsReview ? null : requirementsMet;
   c.reasonKey = needsReview ? null : requirementsMet ? 'case.reason.granted_by_law' : 'case.reason.conditions_not_met';
-  c.decidedAt = needsReview ? null : nowIso();
-  c.events.push({ at: nowIso(), type: 'SUBMITTED', key: 'case.event.amended' });
+  c.decidedAt = needsReview ? null : nowMoment();
+  c.events.push({ at: nowMoment(), type: 'SUBMITTED', key: 'case.event.amended' });
   c.events.push(
     needsReview
-      ? { at: nowIso(), type: 'IN_REVIEW', key: reviewReasonKey({ pendingClaims, undecided }) }
-      : { at: nowIso(), type: 'DECIDED', key: requirementsMet ? 'case.event.granted_auto' : 'case.event.refused_auto' },
+      ? { at: nowMoment(), type: 'IN_REVIEW', key: reviewReasonKey({ pendingClaims, undecided }) }
+      : { at: nowMoment(), type: 'DECIDED', key: requirementsMet ? 'case.event.granted_auto' : 'case.event.refused_auto' },
   );
   // De lijst hierboven is met opzet breder dan deze regeling — een wijziging
   // bij een andere regeling telt mee voor de vraag óf er beoordeeld moet
@@ -873,11 +1179,13 @@ function resubmitCase(caseId, evaluation, params = personaParams()) {
   // erop; de grammen van de vorige blijven in de kroniek staan.
   c.applicationGramId = null;
   c.decisionGrams = {};
+  c.executedThrough = {};
+  c.dueStage = null;
   c.chronicleNoteKey = null;
   c.chronicleError = null;
   const lawEntry = corpus.value?.lawById(c.lawId);
   if (lawEntry) recordApplication(c, lawEntry, params);
-  const opnieuw = isoDate(nowIso());
+  const opnieuw = isoDate(nowMoment());
   advanceLifecycle(c, { aanvraag_datum: opnieuw, beslistermijn_start: opnieuw });
   if (!needsReview) takeDecision(c, opnieuw);
   c.status = statusOf(c);
@@ -892,9 +1200,9 @@ function decideCase(caseId, approved, reason, verifiedResult = null) {
   c.approved = approved;
   c.reason = reason;
   c.verifiedResult = verifiedResult;
-  c.decidedAt = nowIso();
+  c.decidedAt = nowMoment();
   c.events.push({
-    at: nowIso(),
+    at: nowMoment(),
     type: 'DECIDED',
     approved,
     key: approved ? 'case.event.granted_by_officer' : 'case.event.refused_by_officer',
@@ -925,9 +1233,9 @@ function publishCase(caseId, bekendmakingDatum = null) {
   // is er niets mee te delen. De knop staat er ook niet eerder, maar dat is een
   // regel van de wet en hoort niet van het scherm af te hangen.
   if (statusOf(c) !== 'DECIDED') return;
-  c.publishedAt = nowIso();
+  c.publishedAt = nowMoment();
   const datum = bekendmakingDatum ?? isoDate(c.publishedAt);
-  c.events.push({ at: nowIso(), type: 'BEKENDMAKING', key: 'case.event.announced', vars: { date: datum } });
+  c.events.push({ at: nowMoment(), type: 'BEKENDMAKING', key: 'case.event.announced', vars: { date: datum } });
   advanceLifecycle(c, { bekendmaking_datum: datum });
   c.status = statusOf(c);
   reregister();
@@ -935,14 +1243,14 @@ function publishCase(caseId, bekendmakingDatum = null) {
 
 /** De kalenderdatum uit een tijdstempel; de wet rekent in dagen, niet in uren. */
 function isoDate(iso) {
-  return String(iso ?? nowIso()).slice(0, 10);
+  return String(iso ?? state.referenceDate).slice(0, 10);
 }
 
 function moveCase(caseId, status) {
   const c = state.cases.find((x) => x.id === caseId);
   if (!c || c.status === status) return;
   c.status = status;
-  c.events.push({ at: nowIso(), type: status, key: 'case.event.status_changed', vars: { status } });
+  c.events.push({ at: nowMoment(), type: status, key: 'case.event.status_changed', vars: { status } });
   reregister();
 }
 
@@ -958,8 +1266,8 @@ function moveCase(caseId, status) {
 function objectToCase(caseId, reason) {
   const c = state.cases.find((x) => x.id === caseId);
   if (!c) return;
-  c.objection = { reason, status: 'PENDING', filedAt: nowIso() };
-  c.events.push({ at: nowIso(), type: 'OBJECTION', key: 'case.event.objection', vars: { reason } });
+  c.objection = { reason, status: 'PENDING', filedAt: nowMoment() };
+  c.events.push({ at: nowMoment(), type: 'OBJECTION', key: 'case.event.objection', vars: { reason } });
   reregister();
 }
 
@@ -967,11 +1275,11 @@ function decideObjection(caseId, upheld, reason) {
   const c = state.cases.find((x) => x.id === caseId);
   if (!c?.objection) return;
   c.objection.status = upheld ? 'UPHELD' : 'DISMISSED';
-  c.objection.decidedAt = nowIso();
+  c.objection.decidedAt = nowMoment();
   c.status = 'DECIDED';
   if (upheld) c.approved = !c.approved;
   c.events.push({
-    at: nowIso(),
+    at: nowMoment(),
     type: 'OBJECTION_DECIDED',
     upheld,
     key: upheld ? 'case.event.objection_upheld' : 'case.event.objection_dismissed',
@@ -1097,8 +1405,8 @@ function submitClaim({
     caseId,
     // Namens wie deze correctie is ingediend, als dat niet de persoon zelf was.
     acting,
-    submittedAt: nowIso(),
-    decidedAt: autoApprove ? nowIso() : null,
+    submittedAt: nowMoment(),
+    decidedAt: autoApprove ? nowMoment() : null,
   };
   state.claims.unshift(claim);
   reregister();
@@ -1110,7 +1418,7 @@ function decideClaim(claimId, approved, reason = '') {
   if (!claim) return;
   claim.status = approved ? 'APPROVED' : 'REJECTED';
   claim.decisionReason = reason;
-  claim.decidedAt = nowIso();
+  claim.decidedAt = nowMoment();
   reregister();
 }
 
@@ -1148,7 +1456,10 @@ export function useDemo() {
     setDelegation,
     subjectBsn,
     setProfile,
-    setReferenceDate,
+    advanceTo,
+    advanceToNextMoment,
+    nextMoments,
+    decisionPreview,
     reregister,
     portalLaws,
     isLawEnabled,
