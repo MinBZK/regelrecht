@@ -425,3 +425,148 @@ fn one_stage_refuses_a_procedure_that_is_not_loaded() {
         .to_string();
     assert!(err.contains("tegemoetkoming"), "{err}");
 }
+
+#[test]
+fn a_parameter_a_pre_hook_replaced_at_one_stage_is_the_given_one_at_the_next() {
+    // Als de vervangen invoer een parameter is: bij de volgende fase geldt
+    // weer de opgegeven waarde, niet die van de haak.
+    let law = r#"
+$id: parameter_stages
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2020-01-01'
+procedure:
+  - id: twee_fasen
+    applies_to: {legal_character: BESCHIKKING}
+    stages:
+      - name: EERSTE
+      - name: TWEEDE
+        requires: [{name: datum_tweede, type: date}]
+articles:
+  - number: '1'
+    text: het bedrag op het inkomen
+    machine_readable:
+      execution:
+        produces: {legal_character: BESCHIKKING, procedure_id: twee_fasen}
+        parameters: [{name: inkomen, type: number, required: true}]
+        output: [{name: bedrag, type: number}]
+        actions: [{output: bedrag, value: $inkomen}]
+  - number: '2'
+    text: bij de eerste fase het geschatte inkomen
+    machine_readable:
+      hooks:
+        - hook_point: pre_actions
+          applies_to: {legal_character: BESCHIKKING, stage: EERSTE}
+      execution:
+        parameters: [{name: geschat, type: number, required: true}]
+        output: [{name: inkomen, type: number}]
+        actions: [{output: inkomen, value: $geschat}]
+"#;
+    let service = service(&[law]);
+    let first = service
+        .execute_stage(
+            "parameter_stages",
+            "bedrag",
+            None,
+            params(&[("inkomen", Value::Int(300)), ("geschat", Value::Int(200))]),
+            "2025-01-01",
+        )
+        .unwrap();
+    let ExecutionOutcome::Yielded { state, outputs, .. } = first else {
+        panic!("expected a yield before TWEEDE");
+    };
+    assert_eq!(outputs["bedrag"], Value::Int(200));
+    let second = service
+        .execute_stage(
+            "parameter_stages",
+            "bedrag",
+            Some(state),
+            params(&[("datum_tweede", date("2026-01-01"))]),
+            "2025-01-01",
+        )
+        .unwrap();
+    let ExecutionOutcome::Complete(result) = second else {
+        panic!("expected the procedure to complete");
+    };
+    assert_eq!(result.outputs["bedrag"], Value::Int(300));
+}
+
+#[test]
+fn an_open_term_a_pre_hook_replaced_at_one_stage_is_filled_again_at_the_next() {
+    let law = r#"
+$id: open_term_stages
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2020-01-01'
+procedure:
+  - id: twee_fasen
+    applies_to: {legal_character: BESCHIKKING}
+    stages:
+      - name: EERSTE
+      - name: TWEEDE
+        requires: [{name: datum_tweede, type: date}]
+articles:
+  - number: '1'
+    text: het bedrag op het inkomen, bij regeling vast te stellen
+    machine_readable:
+      open_terms:
+        - id: inkomen
+          type: number
+          required: true
+          default:
+            actions:
+              - output: inkomen
+                value: 300
+      execution:
+        produces: {legal_character: BESCHIKKING, procedure_id: twee_fasen}
+        output: [{name: bedrag, type: number}]
+        actions: [{output: bedrag, value: $inkomen}]
+  - number: '2'
+    text: bij de eerste fase het geschatte inkomen
+    machine_readable:
+      hooks:
+        - hook_point: pre_actions
+          applies_to: {legal_character: BESCHIKKING, stage: EERSTE}
+      execution:
+        parameters: [{name: geschat, type: number, required: true}]
+        output:
+          - {name: inkomen, type: number}
+          - {name: inkomen_geschat, type: boolean}
+        actions:
+          - {output: inkomen, value: $geschat}
+          - {output: inkomen_geschat, value: true}
+"#;
+    let service = service(&[law]);
+    let first = service
+        .execute_stage(
+            "open_term_stages",
+            "bedrag",
+            None,
+            params(&[("geschat", Value::Int(200))]),
+            "2025-01-01",
+        )
+        .unwrap();
+    let ExecutionOutcome::Yielded { state, outputs, .. } = first else {
+        panic!("expected a yield before TWEEDE");
+    };
+    assert_eq!(outputs["bedrag"], Value::Int(200));
+    // Alleen wat het open begrip vervangt hoort bij de fase; de rest gaat mee.
+    assert!(!state.accumulated_outputs.contains_key("inkomen"));
+    assert_eq!(
+        state.accumulated_outputs["inkomen_geschat"],
+        Value::Bool(true)
+    );
+    let second = service
+        .execute_stage(
+            "open_term_stages",
+            "bedrag",
+            Some(state),
+            params(&[("datum_tweede", date("2026-01-01"))]),
+            "2025-01-01",
+        )
+        .unwrap();
+    let ExecutionOutcome::Complete(result) = second else {
+        panic!("expected the procedure to complete");
+    };
+    assert_eq!(result.outputs["bedrag"], Value::Int(300));
+}
