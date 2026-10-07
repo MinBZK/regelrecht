@@ -11,9 +11,9 @@ use std::path::{Path, PathBuf};
 
 use crate::model::{Edge, EdgeKind, Kind, Level, Node};
 
-/// The tooling crate itself is not part of the product architecture, so it is
-/// excluded from the model (keeping exactly the 10 product crates).
-const SELF_CRATE: &str = "regelrecht-arch-extract";
+/// Developer tools are not part of the product architecture, so they are left
+/// out of the model: this crate itself, and the code guide.
+const TOOLING_CRATES: [&str; 2] = ["regelrecht-arch-extract", "regelrecht-code-guide"];
 
 /// A workspace member we will extract, with the bits later stages need.
 pub struct CrateInfo {
@@ -83,7 +83,7 @@ pub fn load(manifest_path: Option<&Path>) -> Result<CrateGraph, Box<dyn std::err
     let mut by_name: BTreeMap<String, String> = BTreeMap::new(); // package name -> node id
 
     for pkg in &metadata.packages {
-        if !member_ids.contains(&pkg.id) || pkg.name.as_str() == SELF_CRATE {
+        if !member_ids.contains(&pkg.id) || TOOLING_CRATES.contains(&pkg.name.as_str()) {
             continue;
         }
         let short = short_name(pkg.name.as_str());
