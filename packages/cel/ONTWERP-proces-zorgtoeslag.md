@@ -48,6 +48,18 @@ Wat de cel vastlegt, blijft wat de wet zegt (`produces.extensions.chronolex.esta
 
 **Besloten (7 oktober 2026): de Awir als "Awb van de toeslagen".** Zorgtoeslagwet art. 2 neemt het besluit, in twee soorten: voorschot en toekenning. Awir 16, 19, 22 en 24 haken erop, zoals Awb 4:2 en 4:13 op elke aanvraag haken. Zo noemt de Awir geen enkele toeslag bij naam en geldt ze voor elke inkomensafhankelijke regeling. (Eerder besloten was dat Awir 16 en 19 het besluit zouden dragen. Dat vroeg dat de Awir het bedrag uit de Zorgtoeslagwet ophaalt, en delegatie loopt in regelrecht alleen naar een lagere laag.)
 
+### Uitwerking na de spike (7 oktober 2026)
+
+Een prototype op de engine laat zien hoe het past:
+
+- **De Awir krijgt een eigen procedure** `tegemoetkoming` (Awir 1: geldt voor inkomensafhankelijke regelingen), met de fasen AANVRAAG, VOORSCHOT en TOEKENNING. Zorgtoeslagwet 2 kiest die procedure met `procedure_id` (Wzt 1 onder e: "zorgtoeslag: een tegemoetkoming"). De Awir-haken vuren alleen in die fasen, dus niet op elke beschikking.
+- **Het geschatte inkomen:** Awir 16 is een pre-haak op VOORSCHOT met als uitvoer `toetsingsinkomen`, een term die Awir 2 lid 1 onder i definieert "in deze wet … alsmede in inkomensafhankelijke regelingen". Die vervangt bij het voorschot de invoer die bij de toekenning uit Awir 8 komt. Geen van beide wetten noemt de andere.
+- **De engine moet eerst drie dingen goed doen:**
+  1. twee artikelen met dezelfde uitvoer (Awir 8 en 16) mogen niet stil op het laatst geladen artikel uitkomen;
+  2. een fase VOORSCHOT of TOEKENNING is een besluitfase, zodat Awb 3:46 en 6:7 er ook op haken (een stage krijgt `is: BESLUIT`);
+  3. de cel voert precies één fase uit op een verse toestand, zodat het geschatte inkomen niet doorlekt naar de toekenning.
+- **Awir 22** wordt een gewoon artikel dat de cel per maand uitvoert. De hoogte van een termijn komt uit een gemarkeerde beleidsregel van Toeslagen, niet uit de Awir.
+
 ## 4. Betalingen: de termijnen komen uit de wet
 
 **Bron:** Awir 22 en de oude PoC (#1466, #1469, #1482). Die zette verplichtingen in het besluitartikel (`extensions.chronolex.verplichtingen` met bedrag, ritme en grondslag) en benaderde het ritme van art. 22 met `ritme: $betalingsritme`.
