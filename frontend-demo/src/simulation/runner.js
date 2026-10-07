@@ -118,13 +118,18 @@ const FORM_PARAMETERS = [
   'activiteitsstarttijd',
 ];
 
-/** The laws a `kind: cases` binding reads decided cases of (its `law` criterion). */
+/**
+ * The laws another law reads decided cases of (the `law` criterion of a
+ * `kind: cases` binding). A law that reads its own cases, such as the
+ * ontheffingspas counting this year's exemptions, is not one: nobody else
+ * waits for it to be applied for.
+ */
 export function caseSourceLaws(bindings) {
   const out = new Set();
-  for (const lawBindings of Object.values(bindings ?? {})) {
+  for (const [owner, lawBindings] of Object.entries(bindings ?? {})) {
     for (const b of Object.values(lawBindings)) {
       const law = b.kind === 'cases' ? (b.select_on ?? []).find((c) => c.name === 'law')?.value : null;
-      if (typeof law === 'string' && !law.startsWith('$')) out.add(law);
+      if (typeof law === 'string' && !law.startsWith('$') && law !== owner) out.add(law);
     }
   }
   return out;

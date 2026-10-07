@@ -88,6 +88,15 @@ describe('caseSourceLaws', () => {
     };
     expect([...caseSourceLaws(bindings)]).toEqual(['apv/terrassen']);
   });
+
+  it('laat een wet weg die alleen haar eigen zaken leest', () => {
+    const bindings = {
+      'apv/ontheffingspas': {
+        verleende_ontheffingen_dit_jaar: { kind: 'cases', select_on: [{ name: 'law', value: 'apv/ontheffingspas' }, { name: 'kvk_nummer', value: '$kvk_nummer' }] },
+      },
+    };
+    expect([...caseSourceLaws(bindings)]).toEqual([]);
+  });
 });
 
 describe('notAppliedFor', () => {
