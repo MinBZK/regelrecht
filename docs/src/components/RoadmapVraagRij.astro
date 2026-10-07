@@ -71,11 +71,26 @@ const tickets: MiniTicket[] = vraag.deelvragen.map((d) => {
   data-zoek={vraagZoektekst(vraag, werkpakket)}
 >
 <nldd-list-item data-uitklap>
-  {/* Een gesegmenteerde rij: het eerste segment (de vraag met zijn tags) is
-      de knop die uitklapt, de twee erna zijn links naar het werkpakket en
-      naar het paper. Zo is alles in de kaart klikbaar zonder een link in een
+  {/* Een gesegmenteerde rij: eerst twee links, naar het paper en naar het
+      werkpakket, en dan de vraag met zijn tags als de knop die uitklapt. De
+      plek in het paper en het werkpakket staan vooraan omdat ze zeggen waar
+      de vraag bij hoort, en de lijst is op het paper gesorteerd. Zo is alles in de kaart klikbaar zonder een link in een
       knop te stoppen; het ontwerpsysteem geeft elk segment zijn eigen
       hit-area en focus, en zet aria-expanded op het disclosure-segment. */}
+  {/* Vaste breedtes, zodat de twee velden op elke kaart onder elkaar staan.
+      Een vraag zonder sectie houdt dezelfde plek vrij, met een tekst die dat
+      zegt, anders schuift zijn werkpakket een kolom naar links. */}
+  {!vraag.paper && (
+    <nldd-text-cell overline="Position paper" text="Geen sectie" width="11rem" min-width="11rem" />
+  )}
+  {vraag.paper && (
+    <nldd-list-item-segment href={vraag.paper.href} accessible-label={`Position paper, Rules as Executed paragraaf ${vraag.paper.nummer}`}>
+      <nldd-text-cell overline="Position paper" text={`Rules as Executed § ${vraag.paper.nummer}`} width="11rem" min-width="11rem" />
+    </nldd-list-item-segment>
+  )}
+  <nldd-list-item-segment href={werkpakketHref} accessible-label={`Werkpakket ${werkpakket.titel}`}>
+    <nldd-text-cell overline="Werkpakket" text={werkpakket.titel} width="16rem" min-width="16rem" />
+  </nldd-list-item-segment>
   <nldd-list-item-segment button disclosure width="full" accessible-label={`${vraag.vraag}, deelvragen tonen`}>
     <nldd-text-cell overline={kopregel} text={vraag.vraag} width="full">
       <nldd-container slot="supporting-text" layout="wrap" gap="4" vertical-alignment="center">
@@ -105,14 +120,6 @@ const tickets: MiniTicket[] = vraag.deelvragen.map((d) => {
     </nldd-text-cell>
     <nldd-icon-cell size="20" icon="chevron-right" disclosure />
   </nldd-list-item-segment>
-  <nldd-list-item-segment href={werkpakketHref} accessible-label={`Werkpakket ${werkpakket.titel}`}>
-    <nldd-text-cell overline="Werkpakket" text={werkpakket.titel} />
-  </nldd-list-item-segment>
-  {vraag.paper && (
-    <nldd-list-item-segment href={vraag.paper.href} accessible-label={`Position paper, Rules as Executed paragraaf ${vraag.paper.nummer}`}>
-      <nldd-text-cell overline="Position paper" text={`Rules as Executed § ${vraag.paper.nummer}`} />
-    </nldd-list-item-segment>
-  )}
 
   <nldd-list-item slot="children">
     <nldd-spacer-cell />
