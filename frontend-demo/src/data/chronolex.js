@@ -101,6 +101,18 @@ export function provisionLabel(corpus, reference) {
 }
 
 /**
+ * Waar een bepaling (`<regelwerk>#<artikel>[ lid n]`) in de demo staat: de
+ * wet en het artikel, om naar te linken. Een lid wijst naar zijn artikel.
+ * `null` als het corpus de wet niet kent: dan valt er niets te openen.
+ */
+export function provisionTarget(corpus, reference) {
+  const [lawId, rest = ''] = String(reference ?? '').split('#');
+  if (!lawId || !corpus?.lawById?.(lawId)) return null;
+  const article = rest.trim().split(/\s+/)[0] || null;
+  return { lawId, article };
+}
+
+/**
  * De waarde van een veld van een gram zoals een mens haar leest, naar wat de
  * wet over het veld zegt. `field` is het veld uit de vorm van de gebeurtenis
  * (WasmCell.shape: `type`, `fixed`), `spec` de declaratie in de wet die het

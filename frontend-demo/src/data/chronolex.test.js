@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applicationValues, eventsForLaw, gramsOfCase, momentOn, provisionLabel, fieldText } from './chronolex.js';
+import { applicationValues, eventsForLaw, gramsOfCase, momentOn, provisionLabel, provisionTarget, fieldText } from './chronolex.js';
 
 const cell = {
   id: 'toeslagen',
@@ -122,5 +122,18 @@ describe('fieldText', () => {
   it('leest zonder declaratie een bedrag naar het type van het veld', () => {
     // Het geschatte inkomen vraagt Awir 16, niet het besluitartikel.
     expect(fieldText(2200000, { type: 'amount' })).toBe('€\u00a022.000,00');
+  });
+});
+
+describe('waar een bepaling in de demo staat', () => {
+  const corpus = { lawById: (id) => (id === 'awb' ? { id } : null) };
+  it('wijst een lid naar zijn artikel', () => {
+    expect(provisionTarget(corpus, 'awb#4:13 lid 1')).toEqual({ lawId: 'awb', article: '4:13' });
+  });
+  it('wijst een wet zonder artikel naar de wet', () => {
+    expect(provisionTarget(corpus, 'awb')).toEqual({ lawId: 'awb', article: null });
+  });
+  it('geeft niets voor een wet die het corpus niet kent', () => {
+    expect(provisionTarget(corpus, 'onbekend#1')).toBeNull();
   });
 });

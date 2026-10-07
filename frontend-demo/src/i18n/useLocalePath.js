@@ -27,9 +27,13 @@ export function useLocalePath() {
     return router.resolve({ name: localeRouteName(page, locale.value), params }).path;
   }
 
-  /** `localePath`, then navigate there. */
-  function goTo(page, params) {
-    return router.push(localePath(page, params));
+  /**
+   * `localePath`, then navigate there. `query` is optional: the rulework tab
+   * reads `artikel` from it to open and show one article.
+   */
+  function goTo(page, params, query) {
+    const path = localePath(page, params);
+    return router.push(query ? { path, query } : path);
   }
 
   return { localePath, goTo };
