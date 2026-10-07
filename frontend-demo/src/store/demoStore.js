@@ -354,9 +354,13 @@ const delegations = computed(() => (delegationEnabled.value ? delegationResult.v
  * vervalt stil naar 'voor zichzelf': dat is de veilige kant.
  */
 const activeDelegation = computed(() => {
-  const key = state.delegationKey ?? startDelegationKey(profile.value);
+  const start = startDelegationKey(profile.value);
+  const key = state.delegationKey ?? start;
   if (!key || key === SELF_KEY) return null;
-  const found = delegations.value.find((d) => delegationKey(d) === key) ?? null;
+  // De startmachtiging volgt uit het profiel en de wet; de vlag gaat alleen
+  // over wat er in de werkbalk te kiezen is.
+  const pool = key === start ? delegationResult.value.delegations : delegations.value;
+  const found = pool.find((d) => delegationKey(d) === key) ?? null;
   return found && found.subjectType !== 'SELF' ? found : null;
 });
 

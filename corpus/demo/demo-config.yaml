@@ -30,8 +30,8 @@ profiles:
     # demo aan via Features in het menu. De vlaggen stonden hier eerder aan
     # omdat de features net gebouwd waren, wat geen reden is om ze aan een
     # presentator op te dringen.
-    # Claudia (ondernemer) heeft alleen DELEGATION aan: haar verhaal speelt
-    # namens Café Noon B.V.
+    # Claudia (ondernemer) heeft dezelfde vlaggen: dat ze namens Café Noon B.V.
+    # begint, volgt uit haar profiel en de Machtigingenwet, niet uit een vlag.
     feature_flags:
       DELEGATION: false
       AUTO_APPROVE_CLAIMS: false
@@ -95,9 +95,14 @@ profiles:
     portal_heading: Waar heb ik recht op? Wat zijn mijn plichten?
     portal_subtitle: >-
       Bekijk hier je toeslagen, uitkeringen, aangiften, en andere regelingen van de overheid.
-    # Alleen DELEGATION: zonder die vlag is er geen machtiging en begint ze niet
-    # namens Café Noon (start_namens). De rest staat uit, zoals bij Merijn.
-    feature_flags: {DELEGATION: true}
+    # Alles uit, zoals bij Merijn. Ze begint toch namens Café Noon
+    # (start_namens), want die machtiging volgt uit de wet; DELEGATION voegt
+    # alleen de wisselknop in de werkbalk toe.
+    feature_flags:
+      DELEGATION: false
+      AUTO_APPROVE_CLAIMS: false
+      CHANGE_WIZARD: false
+      HARMONIZE: false
     sidebar_laws: [verordening_precariobelasting/gemeenten]
     # Wat Café Noon in zijn accijnsaangifte opgaf: het huisbier dat de eigen
     # brouwerij verliet. De accijnswet vraagt dat als parameters; hiermee rekent

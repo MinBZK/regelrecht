@@ -19,9 +19,13 @@ function makeContext({ delegations = [], profile, delegationEnabledFlag = true }
   const key = ref(null);
   const list = computed(() => (delegationEnabledFlag ? delegations : []));
   const active = computed(() => {
-    const k = key.value ?? startDelegationKey(profile);
+    const start = startDelegationKey(profile);
+    const k = key.value ?? start;
     if (!k || k === 'SELF') return null;
-    const found = list.value.find((d) => delegationKey(d) === k) ?? null;
+    // De startmachtiging volgt uit het profiel en de wet; de vlag gaat alleen
+    // over wat er in de werkbalk te kiezen is.
+    const pool = k === start ? delegations : list.value;
+    const found = pool.find((d) => delegationKey(d) === k) ?? null;
     return found && found.subjectType !== 'SELF' ? found : null;
   });
   const setDelegation = (d) => {
@@ -196,6 +200,14 @@ describe('een ondernemer die namens haar zaak begint', () => {
     const c = ctx();
     c.key.value = null;
     expect(c.active.value).toEqual(NOON);
+  });
+
+  it('begint ook namens de onderneming als DELEGATION uit staat; alleen de keuze verdwijnt', () => {
+    const c = makeContext({ delegations: [ZELF, NOON], profile: CLAUDIA, delegationEnabledFlag: false });
+    expect(c.active.value).toEqual(NOON);
+    expect(c.personaParams()).toEqual({ kvk_nummer: '85234567' });
+    expect(c.wantedDiscoverable.value).toBe('BUSINESS');
+    expect(c.list.value).toEqual([]);
   });
 
   it('begint als zichzelf als de wet de startmachtiging niet geeft', () => {
