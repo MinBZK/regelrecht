@@ -17,6 +17,10 @@ url: https://wetten.overheid.nl/BWBR0018472/2025-01-01
 # tekst, is een keuze in de modellering: de wet regelt het voorschot (art. 16)
 # en de toekenning (art. 14 lid 1, art. 19) elk als eigen beschikking op de
 # aanvraag. Ontwerpnotitie: packages/cel/ONTWERP-proces-zorgtoeslag.md, par. 3.
+# Elk van die besluiten wordt bekendgemaakt (Awb 3:40 en 3:41 gelden per
+# besluit), dus elk heeft een eigen fase BEKENDMAKING; daarop haakt Awb 6:8,
+# zodat de bezwaartermijn per besluit loopt. Ook dat is een eigen keuze in de
+# modellering: de Awir geeft geen lijst van fasen.
 procedure:
   - id: tegemoetkoming
     applies_to:
@@ -30,11 +34,23 @@ procedure:
         requires:
           - name: dagtekening_voorschot
             type: date
+      - name: VOORSCHOT_BEKENDMAKING
+        is: BEKENDMAKING
+        description: De beschikking tot verlening van het voorschot wordt bekendgemaakt (Awb 3:40, 3:41)
+        requires:
+          - name: bekendmaking_datum
+            type: date
       - name: TOEKENNING
         is: BESLUIT
         description: De Dienst Toeslagen kent de tegemoetkoming toe (art. 14 lid 1, art. 19)
         requires:
           - name: dagtekening_toekenning
+            type: date
+      - name: TOEKENNING_BEKENDMAKING
+        is: BEKENDMAKING
+        description: De beschikking tot toekenning wordt bekendgemaakt (Awb 3:40, 3:41)
+        requires:
+          - name: bekendmaking_datum
             type: date
 articles:
   - number: '8'
