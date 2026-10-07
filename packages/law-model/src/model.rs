@@ -1118,6 +1118,13 @@ pub struct StageRequirement {
 pub struct Stage {
     /// Stage name (e.g., "AANVRAAG", "BESLUIT", "BEKENDMAKING")
     pub name: String,
+    /// The stage of the default procedure this stage is an instance of: a
+    /// stage VOORSCHOT of the Awir's procedure says `is: BESLUIT`, and a hook
+    /// on BESLUIT (Awb 3:46, 6:7) then also fires on it. A free stage name;
+    /// the engine compares it with the hook's `applies_to.stage` and nothing
+    /// more.
+    #[serde(default, rename = "is", skip_serializing_if = "Option::is_none")]
+    pub is: Option<String>,
     /// Human-readable description
     #[serde(default)]
     pub description: Option<String>,

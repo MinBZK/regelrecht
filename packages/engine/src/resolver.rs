@@ -1724,13 +1724,16 @@ impl RuleResolver {
     /// Find hooks that match a given lifecycle event.
     ///
     /// Returns matching (law_id, article_number, filter) entries.
-    /// Filters by stage: if the hook has a stage, it must match; if not, it defaults to "BESLUIT".
+    /// Filters by stage: if the hook has a stage, it must match `stage` or
+    /// what that stage `is` (`stage_is`, see [`Self::stage_is`]); if not, it
+    /// defaults to "BESLUIT".
     pub fn find_hooks(
         &self,
         hook_point: HookPoint,
         legal_character: &str,
         decision_type: Option<&str>,
         stage: &str,
+        stage_is: Option<&str>,
     ) -> Vec<&HookEntry> {
         let key = (hook_point, legal_character.to_string());
         let Some(entries) = self.hooks_index.get(&key) else {
@@ -1739,8 +1742,27 @@ impl RuleResolver {
 
         entries
             .iter()
-            .filter(|entry| hook_filter_admits(&entry.filter, decision_type, stage))
+            .filter(|entry| hook_filter_admits(&entry.filter, decision_type, stage, stage_is))
             .collect()
+    }
+
+    /// What stage `stage` of the procedure a decision of `legal_character`
+    /// follows (`procedure_id`, or the default) is an instance of: its `is`.
+    /// The Awir's VOORSCHOT `is: BESLUIT`, so the hooks on BESLUIT fire on it.
+    /// `None` when the procedure or the stage is not found, or the stage
+    /// says nothing.
+    pub fn stage_is(
+        &self,
+        legal_character: &str,
+        procedure_id: Option<&str>,
+        stage: &str,
+    ) -> Option<&str> {
+        self.find_procedure(legal_character, procedure_id)?
+            .stages
+            .iter()
+            .find(|s| s.name == stage)?
+            .is
+            .as_deref()
     }
 
     /// The decisions taken on the submission that `<law_id>#<article>`
@@ -1940,9 +1962,17 @@ pub fn unique_output_producer<'l>(
 /// character (which the hooks index is keyed on).
 ///
 /// An absent stage means BESLUIT (backward compatibility per RFC-008); an
-/// absent decision type admits every decision type.
-pub fn hook_filter_admits(filter: &HookFilter, decision_type: Option<&str>, stage: &str) -> bool {
-    if filter.stage.as_deref().unwrap_or("BESLUIT") != stage {
+/// absent decision type admits every decision type. A stage that says what it
+/// `is` (`stage_is`) is admitted under that name too: a hook on BESLUIT fires
+/// on the Awir's VOORSCHOT, which `is: BESLUIT`.
+pub fn hook_filter_admits(
+    filter: &HookFilter,
+    decision_type: Option<&str>,
+    stage: &str,
+    stage_is: Option<&str>,
+) -> bool {
+    let hook_stage = filter.stage.as_deref().unwrap_or("BESLUIT");
+    if hook_stage != stage && Some(hook_stage) != stage_is {
         return false;
     }
     match filter.decision_type.as_deref() {
@@ -2206,6 +2236,92 @@ articles:
             .resolve_article_by_output("override_here", "bedrag", Some(date))
             .unwrap();
         assert_eq!(article.number, "1");
+    }
+
+    #[test]
+    fn a_stage_says_what_it_is_in_its_own_procedure_only() {
+        let yaml = r#"
+$id: awir_stages
+regulatory_layer: WET
+publication_date: '2025-01-01'
+procedure:
+  - id: tegemoetkoming
+    applies_to: {legal_character: BESCHIKKING}
+    stages:
+      - name: AANVRAAG
+      - name: VOORSCHOT
+        is: BESLUIT
+  - id: beschikking
+    default: true
+    applies_to: {legal_character: BESCHIKKING}
+    stages:
+      - name: VOORSCHOT
+articles: []
+"#;
+        let mut resolver = RuleResolver::new();
+        resolver.load_from_yaml(yaml).unwrap();
+        let named = Some("tegemoetkoming");
+        assert_eq!(
+            resolver.stage_is("BESCHIKKING", named, "VOORSCHOT"),
+            Some("BESLUIT")
+        );
+        // A stage that says nothing, a stage the procedure lacks, the default
+        // procedure (whose VOORSCHOT says nothing), a procedure not loaded.
+        assert_eq!(resolver.stage_is("BESCHIKKING", named, "AANVRAAG"), None);
+        assert_eq!(resolver.stage_is("BESCHIKKING", named, "TOEKENNING"), None);
+        assert_eq!(resolver.stage_is("BESCHIKKING", None, "VOORSCHOT"), None);
+        assert_eq!(
+            resolver.stage_is("BESCHIKKING", Some("x"), "VOORSCHOT"),
+            None
+        );
+    }
+
+    #[test]
+    fn a_hook_filter_admits_a_stage_by_its_name_or_by_what_it_is() {
+        let filter = |stage: Option<&str>| HookFilter {
+            legal_character: Some("BESCHIKKING".to_string()),
+            decision_type: None,
+            stage: stage.map(str::to_string),
+            submission: None,
+            decided_by: None,
+            established_by: None,
+        };
+        let besluit = filter(Some("BESLUIT"));
+        assert!(hook_filter_admits(&besluit, None, "BESLUIT", None));
+        assert!(hook_filter_admits(
+            &besluit,
+            None,
+            "VOORSCHOT",
+            Some("BESLUIT")
+        ));
+        assert!(!hook_filter_admits(&besluit, None, "VOORSCHOT", None));
+        assert!(!hook_filter_admits(
+            &besluit,
+            None,
+            "VOORSCHOT",
+            Some("BEKENDMAKING")
+        ));
+        // No stage on the hook means BESLUIT.
+        assert!(hook_filter_admits(
+            &filter(None),
+            None,
+            "VOORSCHOT",
+            Some("BESLUIT")
+        ));
+        // A hook on the stage's own name still fires.
+        let voorschot = filter(Some("VOORSCHOT"));
+        assert!(hook_filter_admits(
+            &voorschot,
+            None,
+            "VOORSCHOT",
+            Some("BESLUIT")
+        ));
+        assert!(!hook_filter_admits(
+            &voorschot,
+            None,
+            "TOEKENNING",
+            Some("BESLUIT")
+        ));
     }
 
     #[test]
@@ -4297,7 +4413,8 @@ articles:
         assert_eq!(overrides.len(), 1);
         assert_eq!(overrides[0].law_id, "afwijkingswet");
 
-        let hooks = resolver.find_hooks(HookPoint::PostActions, "BESCHIKKING", None, "BESLUIT");
+        let hooks =
+            resolver.find_hooks(HookPoint::PostActions, "BESCHIKKING", None, "BESLUIT", None);
         assert_eq!(hooks.len(), 1);
         assert_eq!(hooks[0].law_id, "hookwet");
 
@@ -4356,7 +4473,8 @@ articles:
         assert_eq!(overrides[0].law_id, "afwijkingswet_b");
 
         // Hooks: only b survives, and it is really b.
-        let hooks = resolver.find_hooks(HookPoint::PostActions, "BESCHIKKING", None, "BESLUIT");
+        let hooks =
+            resolver.find_hooks(HookPoint::PostActions, "BESCHIKKING", None, "BESLUIT", None);
         assert_eq!(hooks.len(), 1);
         assert_eq!(hooks[0].law_id, "hookwet_b");
 
@@ -4804,7 +4922,7 @@ articles:
 
         let find = |dt: Option<&str>| {
             resolver
-                .find_hooks(HookPoint::PostActions, "BESCHIKKING", dt, "BESLUIT")
+                .find_hooks(HookPoint::PostActions, "BESCHIKKING", dt, "BESLUIT", None)
                 .len()
         };
 
@@ -4824,7 +4942,7 @@ articles:
         for dt in [Some("TOEKENNING"), Some("AFWIJZING"), None] {
             assert_eq!(
                 resolver
-                    .find_hooks(HookPoint::PostActions, "BESCHIKKING", dt, "BESLUIT")
+                    .find_hooks(HookPoint::PostActions, "BESCHIKKING", dt, "BESLUIT", None)
                     .len(),
                 1,
                 "unfiltered hook should fire for decision_type {dt:?}"
@@ -4834,7 +4952,13 @@ articles:
         // Stage still filters.
         assert_eq!(
             resolver
-                .find_hooks(HookPoint::PostActions, "BESCHIKKING", None, "BEKENDMAKING")
+                .find_hooks(
+                    HookPoint::PostActions,
+                    "BESCHIKKING",
+                    None,
+                    "BEKENDMAKING",
+                    None
+                )
                 .len(),
             0
         );

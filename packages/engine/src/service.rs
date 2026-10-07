@@ -2428,10 +2428,14 @@ impl LawExecutionService {
             return Vec::new();
         };
         let mut hooks = match produces.legal_character.as_deref() {
-            Some(lc) => {
+            Some(lc) => self.resolver.find_hooks(
+                hook_point,
+                lc,
+                produces.decision_type.as_deref(),
+                stage,
                 self.resolver
-                    .find_hooks(hook_point, lc, produces.decision_type.as_deref(), stage)
-            }
+                    .stage_is(lc, produces.procedure_id.as_deref(), stage),
+            ),
             None => Vec::new(),
         };
         if let Some(s) = &produces.submission {
@@ -2485,6 +2489,10 @@ impl LawExecutionService {
             (None, None) => return None,
         };
         let matching_hooks = self.hooks_firing_on(hook_point, article, law, stage);
+        let stage_is = legal_character.and_then(|lc| {
+            self.resolver
+                .stage_is(lc, produces.procedure_id.as_deref(), stage)
+        });
         let subject = format!("hook point {} on {on}", hook_point.as_str());
         // Below, `law` and `article` are those of each hook.
         let (establishing_law, establishing_article) = (law.id.as_str(), article.number.as_str());
@@ -2552,6 +2560,7 @@ impl LawExecutionService {
                                                                 &d.applies_to,
                                                                 decision_type,
                                                                 stage,
+                                                                stage_is,
                                                             )
                                                     }
                                                     (None, Some(k)) => {

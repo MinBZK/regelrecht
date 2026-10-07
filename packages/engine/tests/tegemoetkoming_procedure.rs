@@ -11,7 +11,7 @@
 // `allow-*-in-tests` in clippy.toml only reaches `#[test]` fns.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use regelrecht_engine::{EngineError, LawExecutionService, Value};
+use regelrecht_engine::{EngineError, ExecutionOutcome, LawExecutionService, StageState, Value};
 use std::collections::BTreeMap;
 
 /// Awr 21: het inkomensgegeven, hier een vast bedrag.
@@ -43,8 +43,10 @@ procedure:
     applies_to: {legal_character: BESCHIKKING}
     stages:
       - name: VOORSCHOT
+        is: BESLUIT
         requires: [{name: dagtekening_voorschot, type: date}]
       - name: TOEKENNING
+        is: BESLUIT
         requires: [{name: dagtekening_toekenning, type: date}]
 articles:
   - number: '8'
@@ -69,6 +71,32 @@ articles:
           - {name: vermoedelijk_toetsingsinkomen, type: number, required: true}
         output: [{name: toetsingsinkomen, type: number}]
         actions: [{output: toetsingsinkomen, value: $vermoedelijk_toetsingsinkomen}]
+"#;
+
+/// De Awb: de standaardprocedure en art. 6:7, een haak op elk besluit.
+const AWB: &str = r#"
+$id: awb_proto
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2020-01-01'
+procedure:
+  - id: beschikking
+    default: true
+    applies_to: {legal_character: BESCHIKKING}
+    stages:
+      - name: BESLUIT
+      - name: BEKENDMAKING
+        requires: [{name: bekendmaking_datum, type: date}]
+articles:
+  - number: '6:7'
+    text: De termijn voor het indienen van een bezwaarschrift bedraagt zes weken.
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to: {legal_character: BESCHIKKING, stage: BESLUIT}
+      execution:
+        output: [{name: bezwaartermijn_weken, type: number}]
+        actions: [{output: bezwaartermijn_weken, value: 6}]
 "#;
 
 /// Zorgtoeslagwet 2: de hoogte, op het toetsingsinkomen uit de Awir.
@@ -115,6 +143,39 @@ fn params(pairs: &[(&str, Value)]) -> BTreeMap<String, Value> {
 
 fn bsn() -> (&'static str, Value) {
     ("bsn", Value::String("999993653".to_string()))
+}
+
+fn date(s: &str) -> Value {
+    Value::String(s.to_string())
+}
+
+/// Een verse toestand aan het begin van `stage` van de procedure
+/// `tegemoetkoming`, zoals de cel die bouwt.
+fn at(stage: &str) -> Option<StageState> {
+    Some(StageState {
+        procedure_id: "tegemoetkoming".to_string(),
+        contextual_law: "wzt_proto".to_string(),
+        current_stage: stage.to_string(),
+        accumulated_outputs: BTreeMap::new(),
+        parameters: BTreeMap::new(),
+    })
+}
+
+/// De voorschotfase op een verse toestand: het geschatte inkomen is 2000000.
+fn voorschot(service: &LawExecutionService) -> ExecutionOutcome {
+    service
+        .execute_stage(
+            "wzt_proto",
+            "hoogte_zorgtoeslag",
+            at("VOORSCHOT"),
+            params(&[
+                bsn(),
+                ("vermoedelijk_toetsingsinkomen", Value::Int(2_000_000)),
+                ("dagtekening_voorschot", date("2024-12-01")),
+            ]),
+            "2025-01-01",
+        )
+        .unwrap()
 }
 
 /// De hoogte bij een inkomen: 5000000 min het inkomen (een rekenregel die
@@ -185,4 +246,32 @@ articles:
     }
     let message = err.to_string();
     assert!(message.contains("(3, 4)"), "{message}");
+}
+
+#[test]
+fn a_hook_on_besluit_fires_on_a_stage_that_is_a_besluit() {
+    // VOORSCHOT is een besluitfase (`is: BESLUIT`), dus Awb 6:7 vuurt erop;
+    // Awir 16 vuurt op de naam van de fase zelf.
+    let service = service(&[AWB, AWR, AWIR, WZT]);
+    match voorschot(&service) {
+        ExecutionOutcome::Yielded { state, outputs, .. } => {
+            assert_eq!(state.current_stage, "TOEKENNING");
+            assert_eq!(outputs["bezwaartermijn_weken"], Value::Int(6));
+            assert_eq!(outputs["hoogte_zorgtoeslag"], hoogte(2_000_000));
+        }
+        other => panic!("expected a yield before TOEKENNING, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_hook_on_besluit_does_not_fire_on_a_stage_that_does_not_say_it_is_one() {
+    let awir = AWIR.replace("        is: BESLUIT\n", "");
+    let service = service(&[AWB, AWR, &awir, WZT]);
+    match voorschot(&service) {
+        ExecutionOutcome::Yielded { outputs, .. } => {
+            assert!(!outputs.contains_key("bezwaartermijn_weken"), "{outputs:?}");
+            assert_eq!(outputs["hoogte_zorgtoeslag"], hoogte(2_000_000));
+        }
+        other => panic!("expected a yield before TOEKENNING, got {other:?}"),
+    }
 }

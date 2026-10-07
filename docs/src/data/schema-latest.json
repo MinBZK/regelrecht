@@ -406,6 +406,10 @@
                   "type": "string",
                   "description": "Stage name (e.g., AANVRAAG, BESLUIT, BEKENDMAKING)."
                 },
+                "is": {
+                  "type": "string",
+                  "description": "The stage of the default procedure this stage is an instance of, such as BESLUIT for the VOORSCHOT and TOEKENNING stages of the Awir's procedure. A hook whose applies_to.stage names it also fires on this stage, so Awb 3:46 and 6:7 apply to every decision of the procedure. A free stage name, compared with applies_to.stage and nothing else."
+                },
                 "description": {
                   "type": "string",
                   "description": "Human-readable description."
@@ -2027,7 +2031,7 @@
                   },
                   "stage": {
                     "type": "string",
-                    "description": "Lifecycle stage at which this hook fires (e.g., BESLUIT, BEKENDMAKING). Defaults to BESLUIT."
+                    "description": "Lifecycle stage at which this hook fires (e.g., BESLUIT, BEKENDMAKING). Defaults to BESLUIT. Also matches a stage whose `is` names this stage."
                   },
                   "submission": {
                     "type": "string",

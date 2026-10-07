@@ -191,6 +191,8 @@ The Awb defines a procedure lifecycle:
 
 The engine yields between stages, returning accumulated outputs and indicating what inputs are needed for the next stage. The engine itself stays stateless; the procedure state is managed externally.
 
+A law can define a procedure of its own, which an article selects with `produces.procedure_id`. Its stages need not be called BESLUIT to be decisions: the Awir's procedure `tegemoetkoming` has the stages VOORSCHOT and TOEKENNING. Such a stage says which stage of the default procedure it is with `is: BESLUIT`, and a hook on BESLUIT (Awb 3:46, 6:7) then fires on it as well. A hook on the stage's own name (`stage: VOORSCHOT`) fires only there.
+
 ## Further reading
 
 - [Cross-Law References](./cross-law-references) - how laws reference each other explicitly

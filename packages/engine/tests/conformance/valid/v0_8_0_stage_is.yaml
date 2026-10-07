@@ -1,0 +1,36 @@
+---
+# Tier C: a procedure stage that says which stage of the default procedure it
+# is (`is`, RFC-008), so a hook on BESLUIT also fires on it.
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.8.0/schema/v0.8.0/schema.json
+$id: test_conformance_stage_is
+regulatory_layer: WET
+publication_date: '2025-01-01'
+bwb_id: BWBR0123458
+url: https://example.invalid/stage-is
+procedure:
+  - id: tegemoetkoming
+    applies_to:
+      legal_character: BESCHIKKING
+    stages:
+      - name: VOORSCHOT
+        is: BESLUIT
+        requires:
+          - name: dagtekening_voorschot
+            type: date
+      - name: TOEKENNING
+        is: BESLUIT
+articles:
+  - number: '1'
+    url: https://example.invalid/stage-is/1
+    text: Op aanvraag wordt een tegemoetkoming toegekend.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          procedure_id: tegemoetkoming
+        output:
+          - name: tegemoetkoming
+            type: number
+        actions:
+          - output: tegemoetkoming
+            value: 100
