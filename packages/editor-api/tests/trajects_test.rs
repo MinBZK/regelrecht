@@ -26,7 +26,8 @@ use regelrecht_editor_api::github_oauth::{self, GithubOAuth};
 use regelrecht_editor_api::state::{AppState, CorpusState};
 use regelrecht_editor_api::traject_corpus::TrajectCorpusCache;
 use regelrecht_editor_api::trajects::{
-    self, AddMemberRequest, CreateTrajectRequest, UpdateMemberRequest, UpdateTrajectRequest,
+    self, AddMemberRequest, CreateTrajectRequest, MoveRepoRequest, UpdateMemberRequest,
+    UpdateTrajectRequest,
 };
 
 use regelrecht_pipeline::job_queue::{self, CreateJobRequest};
@@ -1117,6 +1118,329 @@ async fn update_refuses_a_repo_path_without_an_own_source() {
     )
     .await
     .unwrap();
+}
+
+// ---------------------------------------------------------------------------
+// `move_repo`
+// ---------------------------------------------------------------------------
+
+/// A session without a login: what a non-admin request carries.
+fn anonymous_session() -> tower_sessions::Session {
+    tower_sessions::Session::new(
+        None,
+        Arc::new(tower_sessions_memory_store::MemoryStore::default()),
+        None,
+    )
+}
+
+/// A logged-in session holding `editor-admin`.
+async fn admin_session() -> tower_sessions::Session {
+    let session = anonymous_session();
+    session
+        .insert(regelrecht_auth::SESSION_KEY_AUTHENTICATED, true)
+        .await
+        .unwrap();
+    session
+        .insert(
+            regelrecht_auth::SESSION_KEY_ROLES,
+            vec!["editor-admin".to_string()],
+        )
+        .await
+        .unwrap();
+    session
+}
+
+fn move_req(owner: &str, repo: &str) -> MoveRepoRequest {
+    MoveRepoRequest {
+        repo_owner: owner.to_string(),
+        repo_name: repo.to_string(),
+    }
+}
+
+/// `(gh_owner, gh_repo, auth_ref, name)` of the writable-own source.
+async fn stored_repo(pool: &PgPool, traject_id: Uuid) -> (String, String, String, String) {
+    sqlx::query_as(
+        "SELECT gh_owner, gh_repo, auth_ref, name FROM traject_corpus_sources
+         WHERE traject_id = $1 AND is_writable_own",
+    )
+    .bind(traject_id)
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
+fn untouched_repo() -> (String, String, String, String) {
+    (
+        "example-org".to_string(),
+        "regelrecht-corpus-example".to_string(),
+        "example-org-regelrecht-corpus-example".to_string(),
+        "Eigen repo".to_string(),
+    )
+}
+
+#[tokio::test]
+async fn move_repo_is_refused_for_contributors_and_outsiders() {
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
+    let bob = seed_account(&db.pool, "bob@test.local", "Bob").await;
+    let carol = seed_account(&db.pool, "carol@test.local", "Carol").await;
+    let traject_id = own_repo_traject(&db.pool, &alice, None).await;
+    sqlx::query(
+        "INSERT INTO traject_members (traject_id, account_id, role)
+         VALUES ($1, $2, 'contributor')",
+    )
+    .bind(traject_id)
+    .bind(bob.id)
+    .execute(&db.pool)
+    .await
+    .unwrap();
+
+    for who in [bob, carol] {
+        let err = trajects::move_repo(
+            State(state.clone()),
+            Extension(who),
+            anonymous_session(),
+            axum::http::HeaderMap::new(),
+            Path(traject_id),
+            Json(move_req("other-org", "regelrecht-corpus-example")),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.0, StatusCode::FORBIDDEN);
+    }
+    assert_eq!(stored_repo(&db.pool, traject_id).await, untouched_repo());
+}
+
+#[tokio::test]
+async fn move_repo_lets_an_admin_in_who_is_not_a_member() {
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
+    let admin = seed_account(&db.pool, "admin@test.local", "Admin").await;
+    let traject_id = own_repo_traject(&db.pool, &alice, None).await;
+
+    // Past the access check, the request is judged on its content: a bad
+    // owner is a 400, not the 403 a non-member without the role gets.
+    let err = trajects::move_repo(
+        State(state.clone()),
+        Extension(admin.clone()),
+        admin_session().await,
+        axum::http::HeaderMap::new(),
+        Path(traject_id),
+        Json(move_req("../etc", "regelrecht-corpus-example")),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err.0, StatusCode::BAD_REQUEST);
+
+    // An admin asking for a traject that does not exist gets a 404.
+    let err = trajects::move_repo(
+        State(state.clone()),
+        Extension(admin),
+        admin_session().await,
+        axum::http::HeaderMap::new(),
+        Path(Uuid::new_v4()),
+        Json(move_req("other-org", "regelrecht-corpus-example")),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err.0, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn move_repo_refuses_the_central_corpus() {
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
+    let traject_id = create_traject(&state, &alice, "Tarief").await;
+
+    let err = trajects::move_repo(
+        State(state.clone()),
+        Extension(alice),
+        anonymous_session(),
+        axum::http::HeaderMap::new(),
+        Path(traject_id),
+        Json(move_req("other-org", "regelrecht-corpus-example")),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err.0, StatusCode::BAD_REQUEST);
+    assert!(
+        err.1.contains("centrale corpus"),
+        "the message must explain why, got {:?}",
+        err.1
+    );
+}
+
+#[tokio::test]
+async fn move_repo_refuses_to_point_a_traject_at_the_central_repo() {
+    // The central repo is shared by every traject on it. A traject moved
+    // onto it would not be recognised as central, so its layout guards
+    // would not apply; refuse it whatever the casing.
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
+    let traject_id = own_repo_traject(&db.pool, &alice, None).await;
+
+    for (owner, repo) in [
+        ("MinBZK", "regelrecht-corpus"),
+        ("minbzk", "Regelrecht-Corpus"),
+    ] {
+        let err = trajects::move_repo(
+            State(state.clone()),
+            Extension(alice.clone()),
+            anonymous_session(),
+            axum::http::HeaderMap::new(),
+            Path(traject_id),
+            Json(move_req(owner, repo)),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(
+            err.0,
+            StatusCode::BAD_REQUEST,
+            "expected 400 for {owner}/{repo}"
+        );
+    }
+    assert_eq!(stored_repo(&db.pool, traject_id).await, untouched_repo());
+}
+
+#[tokio::test]
+async fn move_repo_without_a_token_for_the_new_repo_changes_nothing() {
+    // User-token mode with no linked account: the preflight refuses before
+    // any GitHub call, and the row keeps pointing at the old repo.
+    let db = TestDb::new().await;
+    let mut state = empty_state(db.pool.clone());
+    state.config = Arc::new(AppConfig {
+        oidc: None,
+        base_url: None,
+        github_oauth: Some(GithubOAuth::for_tests(true)),
+        task_enrich_provider: "claude".to_string(),
+    });
+    let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
+    let traject_id = own_repo_traject(&db.pool, &alice, Some("regulation/nl")).await;
+
+    let err = trajects::move_repo(
+        State(state.clone()),
+        Extension(alice),
+        anonymous_session(),
+        axum::http::HeaderMap::new(),
+        Path(traject_id),
+        Json(move_req("other-org", "regelrecht-corpus-example")),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err.0, StatusCode::PRECONDITION_REQUIRED);
+    assert_eq!(stored_repo(&db.pool, traject_id).await, untouched_repo());
+}
+
+#[tokio::test]
+async fn move_repo_points_the_own_source_at_the_new_repo() {
+    use wiremock::matchers::{header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let db = TestDb::new().await;
+    let server = MockServer::start().await;
+    let mut oauth = GithubOAuth::for_tests(true);
+    oauth.api_base = server.uri();
+    let mut state = empty_state(db.pool.clone());
+    state.config = Arc::new(AppConfig {
+        oidc: None,
+        base_url: None,
+        github_oauth: Some(oauth.clone()),
+        task_enrich_provider: "claude".to_string(),
+    });
+    let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
+    let traject_id = own_repo_traject(&db.pool, &alice, Some("regulation/nl")).await;
+
+    // The preflight runs against the NEW coordinates, as the acting user.
+    Mock::given(method("GET"))
+        .and(path("/repos/other-org/regelrecht-corpus-example"))
+        .and(header("authorization", "Bearer user-token"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "default_branch": "main",
+            "private": true,
+            "permissions": { "push": true, "pull": true },
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(
+            "/repos/other-org/regelrecht-corpus-example/branches/main",
+        ))
+        .and(header("authorization", "Bearer user-token"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({ "name": "main" })),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    // A transferred repo keeps its branches: the traject branch is there,
+    // so nothing gets minted.
+    Mock::given(method("GET"))
+        .and(path(
+            "/repos/other-org/regelrecht-corpus-example/git/ref/heads/traject/voorbeeld",
+        ))
+        .and(header("authorization", "Bearer user-token"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "ref": "refs/heads/traject/voorbeeld",
+            "object": { "sha": "abc123def456", "type": "commit" },
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(500))
+        .expect(0)
+        .mount(&server)
+        .await;
+
+    let mut headers = axum::http::HeaderMap::new();
+    headers.insert(
+        axum::http::header::COOKIE,
+        axum::http::HeaderValue::from_str(&github_oauth::seal_token_cookie_for_tests(
+            &oauth,
+            alice.id,
+            "user-token",
+        ))
+        .unwrap(),
+    );
+
+    let status = trajects::move_repo(
+        State(state.clone()),
+        Extension(alice),
+        anonymous_session(),
+        headers,
+        Path(traject_id),
+        Json(move_req(" other-org ", "regelrecht-corpus-example")),
+    )
+    .await
+    .expect("a repo the user can push to must be accepted");
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    assert_eq!(
+        stored_repo(&db.pool, traject_id).await,
+        (
+            "other-org".to_string(),
+            "regelrecht-corpus-example".to_string(),
+            "other-org-regelrecht-corpus-example".to_string(),
+            "other-org/regelrecht-corpus-example".to_string(),
+        ),
+    );
+    // Branch, base branch and path are the traject's, not the repo's.
+    let (branch, base, repo_path): (String, String, Option<String>) = sqlx::query_as(
+        "SELECT gh_branch, gh_base_branch, gh_path FROM traject_corpus_sources
+         WHERE traject_id = $1 AND is_writable_own",
+    )
+    .bind(traject_id)
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(branch, "traject/voorbeeld");
+    assert_eq!(base, "main");
+    assert_eq!(repo_path.as_deref(), Some("regulation/nl"));
 }
 
 // ---------------------------------------------------------------------------

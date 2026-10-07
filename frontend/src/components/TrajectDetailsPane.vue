@@ -13,8 +13,10 @@ import {
 import {
   deleteTraject,
   leaveTraject,
+  moveTrajectRepo,
   updateTraject,
 } from '../composables/useTrajects.js';
+import { hasRole } from '../composables/useAuth.js';
 import { paneChromeVisible } from '../constants.js';
 
 const router = useRouter();
@@ -105,6 +107,56 @@ async function saveSubpath() {
     subpathError.value = e.message || 'Opslaan mislukt';
   } finally {
     subpathSaving.value = false;
+  }
+}
+
+// --- Repo wijzigen (owner of editor-admin, traject met eigen repo) ---
+//
+// Voor als de repo verhuist, bijvoorbeeld naar een andere GitHub-organisatie.
+// Branch, base branch en subpath blijven staan; de backend controleert eerst of
+// de editor op de nieuwe repo kan werken en weigert anders met een uitleg.
+const canEditRepo = computed(
+  () =>
+    (detail.value?.role === 'owner' || hasRole('editor-admin')) &&
+    !!source.value &&
+    source.value.source_type === 'github' &&
+    !isCentralSource(source.value),
+);
+
+const repoDraft = ref('');
+const repoSaving = ref(false);
+const repoError = ref(null);
+
+watch(
+  repoLabel,
+  (label) => {
+    repoDraft.value = label || '';
+    repoError.value = null;
+  },
+  { immediate: true },
+);
+
+function onRepoInput(event) {
+  repoDraft.value = event.detail?.value ?? event.target?.value ?? repoDraft.value;
+  if (repoError.value) repoError.value = null;
+}
+
+async function saveRepo() {
+  if (repoSaving.value || !props.trajectId) return;
+  const parts = repoDraft.value.trim().split('/');
+  if (parts.length !== 2 || !parts[0].trim() || !parts[1].trim()) {
+    repoError.value = 'Schrijf de repo als eigenaar/naam, bijvoorbeeld example-org/regelrecht-corpus.';
+    return;
+  }
+  repoSaving.value = true;
+  repoError.value = null;
+  try {
+    await moveTrajectRepo(props.trajectId, parts[0].trim(), parts[1].trim());
+    reload();
+  } catch (e) {
+    repoError.value = e.message || 'Opslaan mislukt';
+  } finally {
+    repoSaving.value = false;
   }
 }
 
@@ -227,8 +279,47 @@ async function confirmLeave() {
       <nldd-list-item size="md">
         <nldd-text-cell text="Repo" max-width="180px" vertical-alignment="top"></nldd-text-cell>
         <nldd-spacer-cell size="8"></nldd-spacer-cell>
+        <nldd-cell v-if="canEditRepo" width="full" vertical-alignment="top">
+          <nldd-link
+            v-if="repoUrl"
+            size="md"
+            :href="repoUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            end-icon="external-link"
+            text="Traject-branch op GitHub"
+          ></nldd-link>
+          <nldd-spacer v-if="repoUrl" size="8"></nldd-spacer>
+          <nldd-form-field>
+            <nldd-text-field
+              size="md"
+              name="repo"
+              accessible-label="Repo"
+              :value="repoDraft"
+              :invalid="repoError ? true : undefined"
+              :unmet="repoError ? 'repo-error' : undefined"
+              @input="onRepoInput"
+            ></nldd-text-field>
+            <nldd-form-field-help-text>
+              Eigenaar/naam van de GitHub-repo. Pas dit aan als de repo naar een andere organisatie is verhuisd.
+            </nldd-form-field-help-text>
+            <nldd-validation-list>
+              <nldd-validation-item id="repo-error">
+                {{ repoError }}
+              </nldd-validation-item>
+            </nldd-validation-list>
+          </nldd-form-field>
+          <nldd-spacer size="8"></nldd-spacer>
+          <nldd-button
+            variant="secondary"
+            size="md"
+            :text="repoSaving ? 'Bezig…' : 'Repo wijzigen'"
+            :disabled="repoSaving || undefined"
+            @click="saveRepo"
+          ></nldd-button>
+        </nldd-cell>
         <nldd-text-cell
-          v-if="repoUrl"
+          v-else-if="repoUrl"
           supporting-text="Opent de traject-branch op GitHub in een nieuw tabblad."
           vertical-alignment="top"
         >

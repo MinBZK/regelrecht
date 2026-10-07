@@ -12,6 +12,12 @@ vi.mock('../lib/apiFetch.js', () => ({
   apiFetchJson: (...a) => apiFetchJson(...a),
 }));
 
+// Rollen komen uit de sessie; standaard heeft de gebruiker er geen.
+const roles = new Set();
+vi.mock('../composables/useAuth.js', () => ({
+  hasRole: (role) => roles.has(role),
+}));
+
 vi.mock('vue-router', () => ({
   useRoute: () => ({ params: {} }),
   useRouter: () => ({ push: vi.fn() }),
@@ -83,6 +89,7 @@ async function flush(w) {
 }
 
 beforeEach(() => {
+  roles.clear();
   apiFetch.mockReset();
   apiFetch.mockResolvedValue(undefined);
   apiFetchJson.mockReset();
@@ -170,14 +177,14 @@ describe('TrajectDetailsPane subpath', () => {
     await saveButton(w).trigger('click');
     await flush(w);
 
-    expect(w.find('nldd-validation-item').text()).toContain(
+    expect(w.find('#subpath-error').text()).toContain(
       'repo_path moet een relatief pad zijn',
     );
     expect(subpathField(w).attributes('invalid')).toBeDefined();
     // De foutmelding hangt via `unmet` aan het veld; zonder die verwijzing
     // toont het ontwerpsysteem de lijst niet.
     expect(subpathField(w).attributes('unmet')).toBe(
-      w.find('nldd-validation-item').attributes('id'),
+      w.find('#subpath-error').attributes('id'),
     );
 
     // Zodra de gebruiker het pad corrigeert verdwijnt de melding, samen met
@@ -193,6 +200,97 @@ describe('TrajectDetailsPane subpath', () => {
     );
     await w.vm.$nextTick();
     expect(subpathField(w).attributes('invalid')).toBeUndefined();
-    expect(w.find('nldd-validation-item').text()).toBe('');
+    expect(w.find('#subpath-error').text()).toBe('');
+  });
+});
+
+const repoField = (w) => w.find('nldd-text-field[name="repo"]');
+const repoButton = (w) =>
+  w.findAll('nldd-button').find((b) => b.attributes('text') === 'Repo wijzigen');
+
+function typeInto(field, value) {
+  field.element.value = value;
+  field.element.dispatchEvent(
+    new CustomEvent('input', { detail: { value }, bubbles: true, composed: true }),
+  );
+}
+
+describe('TrajectDetailsPane repo', () => {
+  it('geeft de eigenaar een veld met de huidige repo', async () => {
+    const w = await mountPane(detail());
+    expect(repoField(w).attributes('value')).toBe('example-org/regelrecht-corpus-example');
+    expect(repoButton(w)).toBeTruthy();
+  });
+
+  it('geeft een editor-admin het veld ook als bijdrager', async () => {
+    roles.add('editor-admin');
+    const w = await mountPane(detail({ role: 'contributor' }));
+    expect(repoField(w).exists()).toBe(true);
+  });
+
+  it('toont een bijdrager zonder admin-rol alleen de link', async () => {
+    const w = await mountPane(detail({ role: 'contributor' }));
+    expect(repoField(w).exists()).toBe(false);
+    expect(repoButton(w)).toBeUndefined();
+  });
+
+  it('laat de repo van het centrale corpus met rust, ook voor een admin', async () => {
+    roles.add('editor-admin');
+    const w = await mountPane(
+      detail({
+        source: ownSource({
+          gh_owner: 'MinBZK',
+          gh_repo: 'regelrecht-corpus',
+          auth_ref: 'minbzk-central',
+        }),
+      }),
+    );
+    expect(repoField(w).exists()).toBe(false);
+  });
+
+  it('stuurt bij Repo wijzigen een PUT met eigenaar en naam en herlaadt', async () => {
+    const w = await mountPane(detail());
+    typeInto(repoField(w), ' other-org/regelrecht-corpus-example ');
+    await w.vm.$nextTick();
+    apiFetchJson.mockClear();
+
+    await repoButton(w).trigger('click');
+    await flush(w);
+
+    expect(apiFetch).toHaveBeenCalledTimes(1);
+    const [url, options] = apiFetch.mock.calls[0];
+    expect(url).toBe(`/api/trajects/${TRAJECT_ID}/repo`);
+    expect(options.method).toBe('PUT');
+    expect(JSON.parse(options.body)).toEqual({
+      repo_owner: 'other-org',
+      repo_name: 'regelrecht-corpus-example',
+    });
+    expect(apiFetchJson).toHaveBeenCalledWith(`/api/trajects/${TRAJECT_ID}`, expect.anything());
+  });
+
+  it('weigert een waarde zonder eigenaar/naam zonder de backend te bellen', async () => {
+    const w = await mountPane(detail());
+    typeInto(repoField(w), 'alleen-een-naam');
+    await w.vm.$nextTick();
+
+    await repoButton(w).trigger('click');
+    await flush(w);
+
+    expect(apiFetch).not.toHaveBeenCalled();
+    expect(w.find('#repo-error').text()).toContain('eigenaar/naam');
+    expect(repoField(w).attributes('invalid')).toBeDefined();
+  });
+
+  it('laat een geweigerde wijziging bij het veld zien', async () => {
+    const w = await mountPane(detail());
+    typeInto(repoField(w), 'other-org/regelrecht-corpus-example');
+    await w.vm.$nextTick();
+    apiFetch.mockRejectedValueOnce(new Error('het geconfigureerde token heeft geen schrijftoegang'));
+
+    await repoButton(w).trigger('click');
+    await flush(w);
+
+    expect(w.find('#repo-error').text()).toContain('geen schrijftoegang');
+    expect(repoField(w).attributes('unmet')).toBe('repo-error');
   });
 });

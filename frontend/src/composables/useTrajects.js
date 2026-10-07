@@ -91,6 +91,20 @@ export async function updateTraject(trajectId, patch) {
   await refreshTrajects();
 }
 
+// Point the traject's own source at another GitHub repo, e.g. after the repo
+// moved to a new owner (backend: PUT /api/trajects/:id/repo → 204). Owner or
+// editor-admin only. The backend first proves the new repo works (token, push
+// access, base branch, traject branch) and answers a refusal with a Dutch
+// explanation in the body, which is the message the caller shows.
+export async function moveTrajectRepo(trajectId, repoOwner, repoName) {
+  await apiFetch(`/api/trajects/${encodeURIComponent(trajectId)}/repo`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ repo_owner: repoOwner, repo_name: repoName }),
+    errorMessage: (status, body) => body || `Opslaan mislukt: ${status}`,
+  });
+}
+
 // Owner-only hard delete (backend: DELETE /api/trajects/:id → 204). The
 // upstream branch on GitHub is deliberately left untouched by the backend.
 export async function deleteTraject(trajectId) {

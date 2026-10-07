@@ -483,6 +483,10 @@ async fn main() {
             axum::routing::patch(trajects::update).delete(trajects::delete),
         )
         .route(
+            "/api/trajects/{id}/repo",
+            axum::routing::put(trajects::move_repo),
+        )
+        .route(
             "/api/trajects/{traject_ref}/favorites/{law_id}",
             axum::routing::put(favorites::add_traject).delete(favorites::remove_traject),
         )

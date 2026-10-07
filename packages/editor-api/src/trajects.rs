@@ -10,6 +10,7 @@ use axum::http::StatusCode;
 use axum::{Extension, Json};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use tower_sessions::Session;
 use uuid::Uuid;
 
 use regelrecht_pipeline::tasks;
@@ -284,6 +285,14 @@ pub struct UpdateTrajectRequest {
     /// is concerned. Relocating them is the user's job (on the branch),
     /// not this endpoint's.
     pub repo_path: Option<String>,
+}
+
+/// Body of `PUT /api/trajects/:id/repo`: the GitHub repository the
+/// traject's own source should point at from now on.
+#[derive(Debug, Deserialize)]
+pub struct MoveRepoRequest {
+    pub repo_owner: String,
+    pub repo_name: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -593,6 +602,40 @@ async fn require_owner(
     }
 }
 
+/// The realm role that may manage any traject, member or not.
+const TRAJECT_ADMIN_ROLE: &str = "editor-admin";
+
+/// Allow the traject's owner, or anyone holding [`TRAJECT_ADMIN_ROLE`].
+///
+/// The admin path reads the role from the session, so it only opens for a
+/// logged-in session that carries it; with auth disabled nobody is admin and
+/// only the owner gets through. An admin still gets a 404 for a traject that
+/// does not exist, the same answer a member gets.
+async fn require_owner_or_admin(
+    pool: &PgPool,
+    session: &Session,
+    traject_id: Uuid,
+    account_id: Uuid,
+) -> Result<(), StatusCode> {
+    let is_admin = matches!(
+        regelrecht_auth::check_session_role(session, TRAJECT_ADMIN_ROLE).await,
+        regelrecht_auth::RoleCheck::Allowed
+    );
+    if !is_admin {
+        return require_owner(pool, traject_id, account_id).await;
+    }
+    let exists: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM trajects WHERE id = $1)")
+        .bind(traject_id)
+        .fetch_one(pool)
+        .await
+        .map_err(db_err("traject lookup failed"))?;
+    if exists {
+        Ok(())
+    } else {
+        Err(StatusCode::NOT_FOUND)
+    }
+}
+
 fn validate_role(role: &str) -> Result<(), StatusCode> {
     if role == "owner" || role == "contributor" {
         Ok(())
@@ -815,14 +858,7 @@ async fn resolve_writable_target(
         }),
         // All three filled → user-supplied repo path. Validate.
         (Some(owner), Some(repo), Some(base_branch)) => {
-            if !valid_repo_segment(owner) || !valid_repo_segment(repo) {
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    "repo_owner / repo_name mogen alleen letters, cijfers, en \
-                     de tekens '-', '_' en '.' bevatten"
-                        .to_string(),
-                ));
-            }
+            let auth_ref = validate_repo_coords(owner, repo)?;
             // `base_branch` flows unencoded into a GitHub URL and is
             // later persisted + used as a git refname; reject any
             // refname-illegal character at the boundary so neither
@@ -856,145 +892,18 @@ async fn resolve_writable_target(
                     return Err((StatusCode::BAD_REQUEST, REPO_PATH_INVALID_MSG.to_string()));
                 }
             }
-            let auth_ref = derive_auth_ref(owner, repo);
-            if auth_ref.is_empty() {
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    format!("owner/repo \"{owner}/{repo}\" produces an empty auth_ref"),
-                ));
-            }
-            // Reject the rare collision where a user-supplied
-            // owner/repo combination derives to the same slug as the
-            // hardcoded central writable auth ref. Without this check,
-            // a user who happens to point a traject at
-            // `MinBZK/central` would silently get the central token
-            // routed to their repo, violating the design principle
-            // that the central token only ever reaches the central
-            // repo. Surface as a 400 so the operator picks a
-            // different slug (or omits the repo fields entirely to
-            // use the actual MinBZK default).
-            if auth_ref == CENTRAL_WRITABLE_AUTH_REF {
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    format!(
-                        "repo \"{owner}/{repo}\" botst met de gereserveerde central auth ref; \
-                         gebruik een andere repo of laat de repo-velden weg om naar de centrale \
-                         MinBZK-repo te wijzen"
-                    ),
-                ));
-            }
-
-            // Resolve the token to preflight the repo with through the one
-            // credential service, following the same precedence rule as the
-            // write path: a configured per-repo service token goes first — the
-            // eventual writes on this repo run over that token too, so
-            // preflighting with the user's personal token would validate an
-            // access path the traject will never use. Only for a token-less
-            // ref does the acting user's OWN GitHub token come into play
-            // (user-OAuth spike): the preflight then validates *their* push
-            // access to the chosen repo — the entitlement check GitHub gives us
-            // for free, so the editor never needs an all-access credential to
-            // police repo choice (the gap that #885 tracks). The service uses a
-            // strict lookup for `auth_ref` (derived from user-supplied repo
-            // coords), so an unknown ref never falls back to the legacy shared
-            // token, and returns 428 when a linked token is required but absent.
-            let token = crate::credentials::TrajectCredentials::new(state, account_id, headers)
-                .for_new_repo_preflight(&auth_ref)
-                .await?;
-
-            // Build the shared GitHub client for the pre-flight. A build
-            // failure is an infrastructure problem, not a caller error → 503.
-            let mut client = regelrecht_github::GithubClient::new().map_err(|e| {
-                tracing::error!(error = %e, "failed to build GitHub client for repo preflight");
-                (
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    "kon de GitHub-client niet initialiseren".to_string(),
-                )
-            })?;
-            // The OAuth config's `api_base` (a pub field, overridable in tests
-            // with a wiremock server — `for_tests` uses `api.github.invalid`)
-            // wins over the client's own default when set, so the preflight —
-            // including WHICH token it authenticates with — is testable without
-            // touching github.com.
-            if let Some(api_base) = state
-                .config
-                .github_oauth
-                .as_ref()
-                .map(|o| o.api_base.as_str())
-            {
-                client.set_base_url(api_base);
-            }
-            let info = client
-                .validate_repo_access(owner, repo, base_branch, &token)
-                .await
-                .map_err(|e| repo_access_error_to_status(&e, owner, repo, base_branch))?;
-
-            tracing::info!(
-                owner = %owner,
-                repo = %repo,
-                base_branch = %base_branch,
-                default_branch = %info.default_branch,
-                is_private = info.is_private,
-                "validated user-supplied repo for new traject"
-            );
-
-            // Mint the traject branch eagerly, right here where we still
-            // hold the token that just proved push access. Without this a
-            // freshly created traject is dead-on-arrival: the index scan
-            // reads `traject/{slug}-{short}`, which does not exist yet, so
-            // the Trees API 404s and every traject-scoped corpus endpoint
-            // 502s — including the very write UI you'd use to trigger the
-            // lazy branch-bootstrap on the write path. A closed loop.
-            //
-            // In user-token write mode the backend has no service token to
-            // bootstrap the branch at `ensure_ready`, so this is the only
-            // moment a token is guaranteed in hand. Reuse `ensure_branch`
-            // rather than calling `create_branch` directly: it already
-            // absorbs the "branch already exists" race (a repeated create,
-            // or two members racing), keeping this idempotent (criterion 4).
-            // The lazy bootstrap on the write path stays as the safety net
-            // for trajects that predate this and sit branch-less in the DB.
-            //
-            // `writable_branch` is the caller's single derivation, the very
-            // same string the INSERT persists as `gh_branch`. Deriving it a
-            // second time here would reintroduce the failure mode this fix
-            // exists to close: mint branch A, store branch B, traject still
-            // dead-on-arrival.
-            // The bool says whether this call minted the branch; here it
-            // is only of interest to `persist`, which uses it to refuse
-            // blind overwrites of base content. Minting it now is exactly
-            // what makes that case not arise on the write path.
-            regelrecht_corpus::GitHubApiBackend::ensure_branch(
-                &client,
-                &format!("{owner}/{repo}"),
+            preflight_repo(
+                state,
+                account_id,
+                headers,
+                owner,
+                repo,
+                base_branch,
                 writable_branch,
-                Some(base_branch),
-                Some(&token),
+                &auth_ref,
+                "het traject is niet aangemaakt",
             )
-            .await
-            .map(|_created| ())
-            .map_err(|e| {
-                // Push access was just confirmed by the preflight, so a
-                // failure here is genuinely exceptional (an upstream GitHub
-                // hiccup or a permission revoked mid-flight). Fail loud so no
-                // good-looking-but-broken traject is created — nothing has
-                // been written to the DB yet at this point.
-                tracing::error!(
-                    error = %e,
-                    owner = %owner,
-                    repo = %repo,
-                    branch = %writable_branch,
-                    "failed to create traject branch during create preflight"
-                );
-                (
-                    StatusCode::BAD_GATEWAY,
-                    format!(
-                        "kon de traject-branch '{writable_branch}' niet aanmaken op \
-                         {owner}/{repo}; het traject is niet aangemaakt. Probeer het \
-                         opnieuw of controleer je GitHub-toegang."
-                    ),
-                )
-            })?;
+            .await?;
 
             Ok(WritableTarget {
                 owner: owner.to_string(),
@@ -1021,6 +930,185 @@ async fn resolve_writable_target(
                 .to_string(),
         )),
     }
+}
+
+/// Validate user-supplied GitHub `owner` / `repo` coordinates and derive
+/// the `auth_ref` that names their token (`CORPUS_AUTH_{AUTH_REF}_TOKEN`).
+/// Shared by `create` and `move_repo` so both refuse the same input with
+/// the same words.
+fn validate_repo_coords(owner: &str, repo: &str) -> Result<String, (StatusCode, String)> {
+    if !valid_repo_segment(owner) || !valid_repo_segment(repo) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "repo_owner / repo_name mogen alleen letters, cijfers, en \
+             de tekens '-', '_' en '.' bevatten"
+                .to_string(),
+        ));
+    }
+    let auth_ref = derive_auth_ref(owner, repo);
+    if auth_ref.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("owner/repo \"{owner}/{repo}\" produces an empty auth_ref"),
+        ));
+    }
+    // Reject the rare collision where a user-supplied owner/repo
+    // combination derives to the same slug as the hardcoded central
+    // writable auth ref. Without this check, a user who happens to point a
+    // traject at `MinBZK/central` would silently get the central token
+    // routed to their repo, violating the design principle that the
+    // central token only ever reaches the central repo. Surface as a 400 so
+    // the operator picks a different slug (or omits the repo fields
+    // entirely to use the actual MinBZK default).
+    // The central repo itself is reserved the same way: a traject pointed at
+    // it would write there without being recognised as central, so the
+    // guards that keep its layout fixed would not apply.
+    let is_central_repo = owner.eq_ignore_ascii_case(CENTRAL_WRITABLE_OWNER)
+        && repo.eq_ignore_ascii_case(CENTRAL_WRITABLE_REPO);
+    if auth_ref == CENTRAL_WRITABLE_AUTH_REF || is_central_repo {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "repo \"{owner}/{repo}\" botst met de gereserveerde central auth ref; \
+                 gebruik een andere repo of laat de repo-velden weg om naar de centrale \
+                 MinBZK-repo te wijzen"
+            ),
+        ));
+    }
+    Ok(auth_ref)
+}
+
+/// Prove that the traject can work on `owner/repo` before anything is
+/// stored: resolve the token for `auth_ref`, check push access and the base
+/// branch, and make sure the traject branch exists there (minting it off
+/// `base_branch` when it does not). Shared by `create` and `move_repo`.
+///
+/// `consequence` finishes the branch-failure message, so the caller can say
+/// what did not happen ("het traject is niet aangemaakt").
+#[allow(clippy::too_many_arguments)]
+async fn preflight_repo(
+    state: &AppState,
+    account_id: Uuid,
+    headers: &axum::http::HeaderMap,
+    owner: &str,
+    repo: &str,
+    base_branch: &str,
+    writable_branch: &str,
+    auth_ref: &str,
+    consequence: &str,
+) -> Result<(), (StatusCode, String)> {
+    // Resolve the token to preflight the repo with through the one
+    // credential service, following the same precedence rule as the
+    // write path: a configured per-repo service token goes first — the
+    // eventual writes on this repo run over that token too, so
+    // preflighting with the user's personal token would validate an
+    // access path the traject will never use. Only for a token-less
+    // ref does the acting user's OWN GitHub token come into play
+    // (user-OAuth spike): the preflight then validates *their* push
+    // access to the chosen repo — the entitlement check GitHub gives us
+    // for free, so the editor never needs an all-access credential to
+    // police repo choice (the gap that #885 tracks). The service uses a
+    // strict lookup for `auth_ref` (derived from user-supplied repo
+    // coords), so an unknown ref never falls back to the legacy shared
+    // token, and returns 428 when a linked token is required but absent.
+    let token = crate::credentials::TrajectCredentials::new(state, account_id, headers)
+        .for_new_repo_preflight(auth_ref)
+        .await?;
+
+    // Build the shared GitHub client for the pre-flight. A build
+    // failure is an infrastructure problem, not a caller error → 503.
+    let mut client = regelrecht_github::GithubClient::new().map_err(|e| {
+        tracing::error!(error = %e, "failed to build GitHub client for repo preflight");
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "kon de GitHub-client niet initialiseren".to_string(),
+        )
+    })?;
+    // The OAuth config's `api_base` (a pub field, overridable in tests
+    // with a wiremock server — `for_tests` uses `api.github.invalid`)
+    // wins over the client's own default when set, so the preflight —
+    // including WHICH token it authenticates with — is testable without
+    // touching github.com.
+    if let Some(api_base) = state
+        .config
+        .github_oauth
+        .as_ref()
+        .map(|o| o.api_base.as_str())
+    {
+        client.set_base_url(api_base);
+    }
+    let info = client
+        .validate_repo_access(owner, repo, base_branch, &token)
+        .await
+        .map_err(|e| repo_access_error_to_status(&e, owner, repo, base_branch))?;
+
+    tracing::info!(
+        owner = %owner,
+        repo = %repo,
+        base_branch = %base_branch,
+        default_branch = %info.default_branch,
+        is_private = info.is_private,
+        "validated user-supplied repo for traject"
+    );
+
+    // Mint the traject branch eagerly, right here where we still
+    // hold the token that just proved push access. Without this a
+    // freshly created traject is dead-on-arrival: the index scan
+    // reads `traject/{slug}-{short}`, which does not exist yet, so
+    // the Trees API 404s and every traject-scoped corpus endpoint
+    // 502s — including the very write UI you'd use to trigger the
+    // lazy branch-bootstrap on the write path. A closed loop.
+    //
+    // In user-token write mode the backend has no service token to
+    // bootstrap the branch at `ensure_ready`, so this is the only
+    // moment a token is guaranteed in hand. Reuse `ensure_branch`
+    // rather than calling `create_branch` directly: it already
+    // absorbs the "branch already exists" race (a repeated create,
+    // or two members racing), keeping this idempotent (criterion 4).
+    // The lazy bootstrap on the write path stays as the safety net
+    // for trajects that predate this and sit branch-less in the DB.
+    //
+    // `writable_branch` is the caller's single derivation, the very
+    // same string the INSERT persists as `gh_branch`. Deriving it a
+    // second time here would reintroduce the failure mode this fix
+    // exists to close: mint branch A, store branch B, traject still
+    // dead-on-arrival.
+    // The bool says whether this call minted the branch; here it
+    // is only of interest to `persist`, which uses it to refuse
+    // blind overwrites of base content. Minting it now is exactly
+    // what makes that case not arise on the write path.
+    regelrecht_corpus::GitHubApiBackend::ensure_branch(
+        &client,
+        &format!("{owner}/{repo}"),
+        writable_branch,
+        Some(base_branch),
+        Some(&token),
+    )
+    .await
+    .map(|_created| ())
+    .map_err(|e| {
+        // Push access was just confirmed by the preflight, so a
+        // failure here is genuinely exceptional (an upstream GitHub
+        // hiccup or a permission revoked mid-flight). Fail loud so no
+        // good-looking-but-broken traject is created — nothing has
+        // been written to the DB yet at this point.
+        tracing::error!(
+            error = %e,
+            owner = %owner,
+            repo = %repo,
+            branch = %writable_branch,
+            "failed to create traject branch during repo preflight"
+        );
+        (
+            StatusCode::BAD_GATEWAY,
+            format!(
+                "kon de traject-branch '{writable_branch}' niet aanmaken op \
+                 {owner}/{repo}; {consequence}. Probeer het opnieuw of \
+                 controleer je GitHub-toegang."
+            ),
+        )
+    })?;
+    Ok(())
 }
 
 /// Map a `RepoAccessError` to the appropriate HTTP status + a NL message
@@ -1387,29 +1475,7 @@ async fn update_own_repo_path(
         StatusCode::BAD_REQUEST,
         "dit traject heeft geen eigen bron waarvan het pad te wijzigen is".to_string(),
     ))?;
-
-    // `auth_ref` is the marker, not owner/repo: it decides which token
-    // the writes run over, and `create` rejects any user-supplied repo
-    // that derives to the central ref — so this value appears on
-    // exactly the trajects that write to the central corpus.
-    if auth_ref.as_deref() == Some(CENTRAL_WRITABLE_AUTH_REF) {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            format!(
-                "dit traject schrijft naar het centrale corpus ({CENTRAL_WRITABLE_NAME}); \
-                 daar ligt het pad vast op '{CENTRAL_WRITABLE_PATH}'. Maak een traject op \
-                 een eigen repo om een ander pad te gebruiken."
-            ),
-        ));
-    }
-    if source_type != "github" {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "de eigen bron van dit traject is geen GitHub-repo, dus er is geen pad te \
-             wijzigen"
-                .to_string(),
-        ));
-    }
+    refuse_unmovable_own_source(&source_type, auth_ref.as_deref(), "pad")?;
 
     sqlx::query(
         "UPDATE traject_corpus_sources SET gh_path = $2
@@ -1421,6 +1487,170 @@ async fn update_own_repo_path(
     .await
     .map_err(db_err_msg("update traject repo path"))?;
 
+    Ok(())
+}
+
+/// The writable-own source row as `move_repo` needs it.
+#[derive(sqlx::FromRow)]
+struct OwnGithubSource {
+    source_type: String,
+    auth_ref: Option<String>,
+    gh_owner: Option<String>,
+    gh_repo: Option<String>,
+    gh_branch: Option<String>,
+    gh_base_branch: Option<String>,
+}
+
+/// PUT /api/trajects/:id/repo — point the traject's own source at another
+/// GitHub repository, typically after the repository moved to a new owner.
+///
+/// Allowed for the traject owner and for an `editor-admin`. The new repo
+/// gets the same preflight as `create`: its token (named after the new
+/// `auth_ref`) must be configured, must have push access, the base branch
+/// must exist, and the traject branch is minted there when it is missing.
+/// Only then are `gh_owner`, `gh_repo`, `auth_ref` and the display name
+/// rewritten; branch, base branch and path stay as they are.
+pub async fn move_repo(
+    State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
+    session: Session,
+    headers: axum::http::HeaderMap,
+    Path(id): Path<Uuid>,
+    Json(req): Json<MoveRepoRequest>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let pool = get_pool_msg(&state)?;
+    require_owner_or_admin(pool, &session, id, account.id)
+        .await
+        .map_err(bare)?;
+
+    let owner = req.repo_owner.trim();
+    let repo = req.repo_name.trim();
+    let auth_ref = validate_repo_coords(owner, repo)?;
+
+    let current: OwnGithubSource = sqlx::query_as(
+        "SELECT source_type::text AS source_type, auth_ref, gh_owner, gh_repo,
+                gh_branch, gh_base_branch
+         FROM traject_corpus_sources
+         WHERE traject_id = $1 AND is_writable_own",
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await
+    .map_err(db_err_msg("writable-own source lookup"))?
+    .ok_or((
+        StatusCode::BAD_REQUEST,
+        "dit traject heeft geen eigen bron waarvan de repo te wijzigen is".to_string(),
+    ))?;
+    refuse_unmovable_own_source(&current.source_type, current.auth_ref.as_deref(), "repo")?;
+
+    if current.gh_owner.as_deref() == Some(owner) && current.gh_repo.as_deref() == Some(repo) {
+        return Ok(StatusCode::NO_CONTENT);
+    }
+    // The CHECK on the table guarantees a branch on every GitHub row.
+    let branch = current
+        .gh_branch
+        .clone()
+        .ok_or_else(|| bare(StatusCode::INTERNAL_SERVER_ERROR))?;
+    // Same fallback the backend applies when it bootstraps the branch.
+    let base_branch = current
+        .gh_base_branch
+        .clone()
+        .unwrap_or_else(|| "main".to_string());
+
+    preflight_repo(
+        &state,
+        account.id,
+        &headers,
+        owner,
+        repo,
+        &base_branch,
+        &branch,
+        &auth_ref,
+        "de repo van het traject is niet gewijzigd",
+    )
+    .await?;
+
+    // Conditional on the row still being what the preflight was run for:
+    // the GitHub calls above happen outside any transaction, so a concurrent
+    // move or delete would otherwise be overwritten or reported as done.
+    let updated = sqlx::query(
+        "UPDATE traject_corpus_sources
+         SET gh_owner = $2, gh_repo = $3, auth_ref = $4, name = $5
+         WHERE traject_id = $1 AND is_writable_own
+           AND gh_owner IS NOT DISTINCT FROM $6
+           AND gh_repo IS NOT DISTINCT FROM $7
+           AND auth_ref IS NOT DISTINCT FROM $8",
+    )
+    .bind(id)
+    .bind(owner)
+    .bind(repo)
+    .bind(&auth_ref)
+    .bind(format!("{owner}/{repo}"))
+    .bind(current.gh_owner.as_deref())
+    .bind(current.gh_repo.as_deref())
+    .bind(current.auth_ref.as_deref())
+    .execute(pool)
+    .await
+    .map_err(db_err_msg("update traject repo"))?;
+    if updated.rows_affected() == 0 {
+        return Err((
+            StatusCode::CONFLICT,
+            "het traject is intussen gewijzigd of verwijderd; laad het opnieuw en \
+             probeer het nog eens"
+                .to_string(),
+        ));
+    }
+
+    tracing::info!(
+        traject = %id,
+        by = %account.id,
+        from = %format!(
+            "{}/{}",
+            current.gh_owner.as_deref().unwrap_or_default(),
+            current.gh_repo.as_deref().unwrap_or_default()
+        ),
+        to = %format!("{owner}/{repo}"),
+        "traject repo changed"
+    );
+    // The cached `TrajectCorpus` holds backends on the old repo.
+    state.trajects.invalidate(id).await;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Refuse to move the own source of a traject that has none of its own to
+/// move: one that writes to the central MinBZK corpus (its repo and layout
+/// are shared by every traject on it), or one whose own source is not a
+/// GitHub repo. `what` names what the caller tried to change ("pad",
+/// "repo") so the message says it.
+fn refuse_unmovable_own_source(
+    source_type: &str,
+    auth_ref: Option<&str>,
+    what: &str,
+) -> Result<(), (StatusCode, String)> {
+    // `auth_ref` is the marker, not owner/repo: it decides which token
+    // the writes run over, and `create` rejects any user-supplied repo
+    // that derives to the central ref — so this value appears on
+    // exactly the trajects that write to the central corpus.
+    if auth_ref == Some(CENTRAL_WRITABLE_AUTH_REF) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "dit traject schrijft naar het centrale corpus ({CENTRAL_WRITABLE_NAME}); \
+                 daar liggen repo en pad vast ('{CENTRAL_WRITABLE_PATH}'). Maak een traject \
+                 op een eigen repo om een ander {what} te gebruiken."
+            ),
+        ));
+    }
+    if source_type != "github" {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "de eigen bron van dit traject is geen GitHub-repo, dus er is geen {what} te \
+                 wijzigen"
+            ),
+        ));
+    }
     Ok(())
 }
 
