@@ -65,8 +65,16 @@ const panelen = werkpakketten.map(({ data }) => {
 });
 ---
 
+{/*
+  De sheet houdt een nldd-page, zoals het ontwerpsysteem voorschrijft: de
+  titelbalk in de header-slot en de inhoud in het midden, en dan scrolt
+  alleen dat midden. Zonder page sneed de sheet alles onder de rand af en
+  was er niets te scrollen. `landmarks="region"`, want de pagina eronder
+  draagt al de main.
+*/}
 <nldd-sheet placement="right" width="50vw" accessible-label="Werkpakket" data-werkpakket-sheet>
-  <nldd-top-title-bar text="Werkpakket" heading-level="2" back-text="" dismiss-text="Sluiten" />
+  <nldd-page sticky-header landmarks="region" accessible-label="Werkpakket">
+  <nldd-top-title-bar slot="header" text="Werkpakket" heading-level="2" back-text="" dismiss-text="Sluiten" />
   <nldd-container padding="24" sm-padding="16">
     {
       panelen.map((p) => (
@@ -145,6 +153,7 @@ const panelen = werkpakketten.map(({ data }) => {
       ))
     }
   </nldd-container>
+  </nldd-page>
 </nldd-sheet>
 
 {/*
