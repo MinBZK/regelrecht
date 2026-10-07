@@ -255,16 +255,16 @@ de titel om ertussen te wisselen:
   beleggingsfilter en de afhankelijkhedenschakelaar hierboven.
 - `/roadmap/bord`, het **bord**: dezelfde werkpakketten als losse kaarten
   onder elkaar, in de leesvolgorde van de matrix, met zoeken en het
-  categorie- en beleggingsfilter. Druk op een kaart en eronder klapt een
+  categorie- en beleggingsfilter. Druk op een tegel en eronder klapt een
   mini-kanbanbord uit met zijn onderzoeksvragen in drie lanes: vrij,
   opgepakt, klaar. Geen afhankelijkheden, want die ordenen binnen een cel
   van de matrix.
 - `/roadmap/onderzoeksvragen`, de **vragen**: de paragrafen van het paper
   als tegels, elk met de telling van zijn vragen per stand; een druk op een
   paragraaf laat de vragen eronder vallen, elk weer een tegel. De schakelaar
-  "Per paragraaf" uit geeft dezelfde vragen als één vlakke lijst. Met een
-  filter op de stand van de vraag. Een
-  vraag heeft een stand zoals een werkpakket een belegging heeft: zijn eigen
+  "Per paragraaf" uit geeft dezelfde vragen als één vlakke lijst, met een
+  filter op de stand van de vraag. Een vraag heeft een stand zoals een
+  werkpakket een belegging heeft: zijn eigen
   status (open is vrij, loopt is opgepakt, beantwoord is klaar) en zonder
   eigen status die van de belegging van zijn werkpakket; de kaart zegt welke
   van de twee het was. Het werkpakket en de papersectie staan als klikbare
@@ -375,7 +375,7 @@ antwoord in plaats van dezelfde vraag.
 **Koppel niet wat niet past.** Tweeënzestig van de honderdnegenenveertig
 vragen hebben geen sectie, deels omdat ze te algemeen zijn ("Hoe navolgbaar is
 het?"), deels omdat niemand er nog naar gekeken heeft; op de vragenpagina
-mist zo'n kaart zijn §-tag. Een gedwongen verwijzing kost de lezer een klik
+staan die onder de tegel "Zonder sectie in het paper". Een gedwongen verwijzing kost de lezer een klik
 en levert niets op. Een verzonnen anker laat de build vallen met het werkpakket en de vraag
 erbij, ook bij een deelvraag.
 

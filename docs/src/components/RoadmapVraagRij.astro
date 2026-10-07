@@ -76,11 +76,11 @@ const tickets: MiniTicket[] = vraag.deelvragen.map((d) => {
   {/* Een gesegmenteerde rij: eerst de link naar het paper, dan een knop die
       het werkpakket opent in een paneel over de helft van het scherm
       (RoadmapWerkpakketPaneel), en dan de vraag met zijn tags als de knop die
-      uitklapt. De
-      plek in het paper en het werkpakket staan vooraan omdat ze zeggen waar
-      de vraag bij hoort, en de lijst is op het paper gesorteerd. Zo is alles in de kaart klikbaar zonder een link in een
-      knop te stoppen; het ontwerpsysteem geeft elk segment zijn eigen
-      hit-area en focus, en zet aria-expanded op het disclosure-segment. */}
+      uitklapt. De plek in het paper en het werkpakket staan vooraan omdat ze
+      zeggen waar de vraag bij hoort, en de lijst is op het paper gesorteerd.
+      Zo is alles op de tegel klikbaar zonder een link in een knop te
+      stoppen; het ontwerpsysteem geeft elk segment zijn eigen hit-area en
+      focus, en zet aria-expanded op het disclosure-segment. */}
   {/* Vaste breedtes (roadmap.css, .rr-vraag__veld), zodat de twee velden op
       elke kaart onder elkaar staan. Een vraag zonder sectie houdt dezelfde
       plek vrij, met een tekst die dat zegt, anders schuift zijn werkpakket

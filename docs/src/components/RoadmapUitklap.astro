@@ -35,5 +35,39 @@
     }
   }
 
-  document.addEventListener('astro:page-load', wireUitklappen);
+  /*
+   * Een boomlijst in een boomlijst: op de vragenpagina staat elke vraagtegel
+   * (een eigen nldd-list type="tree") in de kindrij van een paragraaftegel.
+   * De lijst luistert op `keydown` op zichzelf, in de bubbelfase, en stopt de
+   * toets niet; een ArrowLeft of Space in de binnenste lijst bereikte dus ook
+   * de buitenste, die de paragraaf dichtklapte of het omklappen weer ongedaan
+   * maakte. Hier stopt de toets aan de rand van de binnenste lijst, alleen
+   * voor de toetsen die een tree afhandelt, zodat Tab en Escape gewoon
+   * doorlopen.
+   */
+  const TREE_TOETSEN = new Set([
+    'ArrowUp',
+    'ArrowDown',
+    'ArrowLeft',
+    'ArrowRight',
+    'Home',
+    'End',
+    'Enter',
+    ' ',
+  ]);
+
+  function wireGenesteTrees() {
+    for (const lijst of document.querySelectorAll<HTMLElement>(
+      '.rr-roadmap nldd-list[type="tree"] nldd-list[type="tree"]',
+    )) {
+      lijst.addEventListener('keydown', (event) => {
+        if (TREE_TOETSEN.has(event.key)) event.stopPropagation();
+      });
+    }
+  }
+
+  document.addEventListener('astro:page-load', () => {
+    wireUitklappen();
+    wireGenesteTrees();
+  });
 </script>

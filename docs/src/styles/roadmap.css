@@ -5,9 +5,10 @@
  * Almost everything the roadmap renders is a design-system component:
  * nldd-sidebar-section for the werkpakket layout, nldd-container for spacing
  * and nldd-text for every run of text. Those bring their own responsive
- * behaviour, so this file holds exactly one media query — on the filter bar,
- * where a group has to stop being pushed to the right once the bar wraps.
- * Its reason is written out at the rule.
+ * behaviour, so this file holds only a few media queries: on the filter bar,
+ * where a group has to stop being pushed to the right once the bar wraps, and
+ * on the two fixed fields of a vraagtegel. Each reason is written out at the
+ * rule.
  *
  * What is left are the things the design system has no component for:
  *

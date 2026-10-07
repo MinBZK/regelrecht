@@ -69,6 +69,9 @@ const supporting = [
   data-zoek={zoektekst(data)}
 >
 <nldd-list-item button data-uitklap data-wp-id={data.id}>
+  {/* `supporting-text` als attribuut én als slot: de slot wint zodra hij
+      inhoud heeft (de tekst plus de tags), het attribuut is de terugval voor
+      een werkpakket zonder tags. */}
   <nldd-text-cell text={data.titel} supporting-text={supporting} width="full">
     {(belegging?.id !== 'vrij' || tags.length > 0 || rfcs) && (
       <nldd-container slot="supporting-text" gap="4">

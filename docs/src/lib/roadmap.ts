@@ -567,9 +567,9 @@ const rijRang = new Map(
  * laatste het id zodat de uitkomst stabiel is.
  *
  * Dat is de leesvolgorde van de matrix, links naar rechts en van boven naar
- * beneden. Een lane op het bord toont zo dezelfde werkpakketten in dezelfde
- * volgorde als een rondgang over de matrix, en wie van de ene weergave naar
- * de andere gaat hoeft niet opnieuw te zoeken.
+ * beneden. Het bord toont zo dezelfde werkpakketten in dezelfde volgorde als
+ * een rondgang over de matrix, en wie van de ene weergave naar de andere gaat
+ * hoeft niet opnieuw te zoeken.
  *
  * Een onbekende fase of discipline sorteert achteraan; assertReferencesResolve
  * heeft die bij de build al gemeld, dus dit is alleen de val als die controle
@@ -600,7 +600,7 @@ export interface KaartTag {
  * De tags van een werkpakket op een kaart: prioriteit, omvang, categorie en
  * capability, in die volgorde, alleen de velden die ingevuld zijn. De
  * belegging zit er niet bij: de werkpakketkaart zet die vooraan, de
- * vraagkaart zegt er iets anders over (zie RoadmapVraagKaart.astro).
+ * vraagtegel zegt er iets anders over (zie RoadmapVraagRij.astro).
  *
  * Eén helper voor beide kaarten, zodat een vraag dezelfde tags draagt als
  * het werkpakket waar hij in staat, met dezelfde kleuren en dezelfde
@@ -1012,18 +1012,14 @@ export interface MiniTicket {
  * eerst op sectie (§ 4.1, § 4.2, … zoals het paper ze nummert), daarbinnen
  * in de leesvolgorde van de matrix en dan de volgorde van het bestand. Vragen
  * zonder sectie komen achteraan, want het paper is de agenda en die lijst is
- * wat er nog niet aan hangt.
- *
- * Elke vraag krijgt een sleutel waar de kaart en zijn detailpaneel elkaar op
- * vinden: het id als de vraag er een heeft, anders het werkpakket met het
- * volgnummer. Deelvragen staan in het paneel van hun ouder, niet los in de
- * lijst.
+ * wat er nog niet aan hangt. Deelvragen staan in de tegel van hun ouder,
+ * niet los in de lijst.
  */
 export function vragenOpVolgorde(
   werkpakketten: { data: WerkpakketData }[],
-): (VraagMetWerkpakket & { sleutel: string })[] {
+): VraagMetWerkpakket[] {
   const sectieRang = new Map(paperSectieLijst.map((s, i) => [s.slug, i]));
-  const uit: (VraagMetWerkpakket & { sleutel: string; rang: number[] })[] = [];
+  const uit: (VraagMetWerkpakket & { rang: number[] })[] = [];
   const gesorteerd = [...werkpakketten].sort((a, b) =>
     werkpakketVolgorde(a.data, b.data),
   );
@@ -1032,7 +1028,6 @@ export function vragenOpVolgorde(
       uit.push({
         vraag,
         werkpakket: data,
-        sleutel: vraag.id ?? `${data.id}-${i + 1}`,
         rang: [vraag.paper ? (sectieRang.get(vraag.paper.slug) ?? Infinity) : Infinity, w, i],
       });
     });

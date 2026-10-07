@@ -179,6 +179,10 @@ const pathname = '/roadmap/onderzoeksvragen';
     schakelaar.addEventListener('change', () =>
       requestAnimationFrame(indeel),
     );
+    // Ook één keer bij het laden: de knop is form-associated, en een browser
+    // kan zijn stand herstellen bij een terugnavigatie terwijl de tegels nog
+    // in de build-stand staan.
+    indeel();
   }
 
   document.addEventListener('astro:page-load', wireParagrafen);
