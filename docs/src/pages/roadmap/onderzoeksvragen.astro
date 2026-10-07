@@ -1,27 +1,34 @@
 ---
 /*
  * /roadmap/onderzoeksvragen — alle onderzoeksvragen van de roadmap als
- * kaarten op een bord, in dezelfde drie lanes als het werkpakkettenbord:
- * vrij, opgepakt, klaar.
+ * kaarten, met een filter op hun stand (vrij, opgepakt, klaar) en een
+ * zijpaneel dat opent als je op een kaart drukt.
  *
- * Een vraag staat in de lane van zijn eigen status (open, loopt, beantwoord),
- * en zonder eigen status in de lane van de belegging van zijn werkpakket; zie
+ * Een vraag heeft een stand zoals een werkpakket een belegging heeft: zijn
+ * eigen status (open is vrij, loopt is opgepakt, beantwoord is klaar), en
+ * zonder eigen status die van de belegging van zijn werkpakket; zie
  * vraagLane() in lib/roadmap.ts. De kaart zegt welke van de twee het was.
- * Elke kaart linkt naar de vraag op zijn werkpakketpagina, waar het doel, de
- * deelvragen en de verwante vragen voluit staan.
  *
- * Dezelfde opbouw als bord.astro, met opzet: wie het ene bord kent, kent het
- * andere. Geen statusfilter, want de lanes zíjn de status; wel zoeken, over de
- * vraag, het doel, de deelvragen, het werkpakket en de papersectie.
+ * Geen lanes, met opzet: de vragen zijn te veel en te ongelijk verdeeld voor
+ * drie kolommen, en de vraag die iemand hier heeft is "welke staan open" of
+ * "waar wordt aan gewerkt". Dat is een filter, hetzelfde als het
+ * beleggingsfilter op de matrix.
+ *
+ * Drukken op een kaart gaat niet naar de werkpakketpagina maar opent een
+ * nldd-sheet aan de rechterkant met het doel, de deelvragen en de verwante
+ * vragen. Alle panelen staan bij de build in de DOM, verborgen; het script
+ * hieronder toont er één. Op een smal scherm wordt de sheet vanzelf een
+ * paneel van onderen. De werkpakketpagina blijft één link verder.
  */
 import { getCollection } from 'astro:content';
 import Base from '~/layouts/Base.astro';
 import RoadmapSectie from '~/components/RoadmapSectie.astro';
 import RoadmapKop from '~/components/RoadmapKop.astro';
 import RoadmapVraagKaart from '~/components/RoadmapVraagKaart.astro';
+import RoadmapVraagDetail from '~/components/RoadmapVraagDetail.astro';
 import {
-  VRAGEN_LANES,
-  vragenPerLane,
+  vragenOpVolgorde,
+  verwantIndex,
   telStatussen,
   ONDERZOEK_STANDEN,
   GEEN_STATUS,
@@ -40,11 +47,8 @@ assertPaperSections(werkpakketten);
 assertOnderzoeksvragen(werkpakketten);
 assertFilterRules(roadmapCss);
 
-const perLane = vragenPerLane(werkpakketten);
-const lanes = VRAGEN_LANES.map((lane) => ({
-  ...lane,
-  kaarten: perLane.get(lane.id) ?? [],
-}));
+const vragen = vragenOpVolgorde(werkpakketten);
+const verwanten = verwantIndex(werkpakketten);
 const telling = telStatussen(werkpakketten);
 
 // "14 open, 10 loopt, 0 beantwoord, 25 niet bepaald", in de volgorde van de
@@ -67,20 +71,20 @@ const pathname = '/roadmap/onderzoeksvragen';
   pathname={pathname}
   noSearchIndex
   title="Onderzoeksvragen · Roadmap · RegelRecht"
-  description="Alle onderzoeksvragen van de RegelRecht-roadmap op een bord: vrij, opgepakt en beantwoord."
+  description="Alle onderzoeksvragen van de RegelRecht-roadmap, met hun stand, deelvragen en verwante vragen."
 >
   <RoadmapSectie>
     <RoadmapKop
       huidig="onderzoeksvragen"
-      ondertitel="Alle onderzoeksvragen van de werkpakketten op een bord: wat open ligt, waar iemand aan werkt, en wat beantwoord is. Een vraag volgt zijn eigen status, en anders de belegging van zijn werkpakket."
+      ondertitel="Alle onderzoeksvragen van de werkpakketten. Druk op een vraag voor het doel, de deelvragen en de verwante vragen. Een vraag volgt zijn eigen status, en anders de belegging van zijn werkpakket."
       zoek={{ placeholder: 'Zoek in onderzoeksvragen', noun: 'vragen' }}
-      filters={[]}
+      filters={['stand']}
     />
 
     {/*
       Twee regels tellingen, niet één: de eerste gaat over de vragen zelf
       (eigen status), de tweede over hun werkpakketten. Ze lopen uiteen, en
-      dat is precies wat dit bord zichtbaar wil maken.
+      dat is precies wat deze pagina zichtbaar wil maken.
     */}
     <nldd-container gap="4">
       <nldd-text size="sm">
@@ -95,36 +99,69 @@ const pathname = '/roadmap/onderzoeksvragen';
       </nldd-text>
     </nldd-container>
 
-    {/* Zelfde lanes als bord.astro; de telling in de kop is de stand bij de
-        build, het zoekveld meldt zelf hoeveel er na het zoeken over is. */}
-    <nldd-container layout="grid" column-count="3" sm-column-count="1" gap="16">
+    {/* Dezelfde kolomopbouw als het bord, zodat de kaarten even breed zijn. */}
+    <nldd-container layout="grid" column-count="3" sm-column-count="1" gap="8">
       {
-        lanes.map((lane) => (
-          <nldd-box background="tinted">
-            <nldd-container padding="12" gap="12">
-              <nldd-container gap="2">
-                <nldd-title size="5">
-                  <h2>{lane.label}</h2>
-                </nldd-title>
-                <nldd-text size="sm" color="secondary">
-                  {meervoud(lane.kaarten.length, 'vraag', 'vragen')}
-                </nldd-text>
-              </nldd-container>
-              {lane.kaarten.length ? (
-                <nldd-container gap="8">
-                  {lane.kaarten.map(({ vraag, werkpakket }) => (
-                    <RoadmapVraagKaart vraag={vraag} werkpakket={werkpakket} />
-                  ))}
-                </nldd-container>
-              ) : (
-                <nldd-text size="sm" color="secondary">
-                  {lane.leeg}
-                </nldd-text>
-              )}
-            </nldd-container>
-          </nldd-box>
+        vragen.map(({ vraag, werkpakket, sleutel }) => (
+          <RoadmapVraagKaart vraag={vraag} werkpakket={werkpakket} sleutel={sleutel} />
         ))
       }
     </nldd-container>
   </RoadmapSectie>
+
+  {/*
+    Het zijpaneel, één voor alle vragen. De titelbalk geeft het paneel zijn
+    naam en zijn sluitknop; de sheet vangt `dismiss` zelf op. heading-level 2,
+    want de pagina heeft zijn h1 al.
+  */}
+  <nldd-sheet placement="right" width="520px" accessible-label="Onderzoeksvraag" data-vraag-sheet>
+    <nldd-top-title-bar
+      text="Onderzoeksvraag"
+      heading-level="2"
+      back-text=""
+      dismiss-text="Sluiten"
+    />
+    <nldd-container padding="24" sm-padding="16">
+      {
+        vragen.map(({ vraag, werkpakket, sleutel }) => (
+          <RoadmapVraagDetail
+            vraag={vraag}
+            werkpakket={werkpakket}
+            sleutel={sleutel}
+            verwanten={verwanten}
+          />
+        ))
+      }
+    </nldd-container>
+  </nldd-sheet>
 </Base>
+
+{/*
+  Kaart → paneel. Alles staat al in de DOM; dit script verbergt alle panelen
+  op één na en opent de sheet. Gebonden op astro:page-load, om dezelfde reden
+  als het zoekscript in RoadmapKop.astro: na een ClientRouter-navigatie is de
+  DOM vers en zou een binding op het topniveau niet meer draaien.
+*/}
+<script>
+  function wireVraagPaneel() {
+    const sheet = document.querySelector<HTMLElement & { show(): void }>(
+      'nldd-sheet[data-vraag-sheet]',
+    );
+    if (!sheet) return;
+    const panelen = Array.from(
+      sheet.querySelectorAll<HTMLElement>('[data-vraag-detail]'),
+    );
+    for (const kaart of document.querySelectorAll<HTMLElement>(
+      '.rr-roadmap .rr-wp-card[data-vraag]',
+    )) {
+      kaart.addEventListener('click', () => {
+        for (const paneel of panelen) {
+          paneel.hidden = paneel.dataset.vraagDetail !== kaart.dataset.vraag;
+        }
+        sheet.show();
+      });
+    }
+  }
+
+  document.addEventListener('astro:page-load', wireVraagPaneel);
+</script>

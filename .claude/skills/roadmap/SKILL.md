@@ -257,13 +257,14 @@ de titel om ertussen te wisselen:
   belegging (vrij, opgepakt, klaar), in de leesvolgorde van de matrix. Zoeken
   en het categoriefilter werken; het beleggingsfilter niet, want de lanes zíjn
   de belegging, en de afhankelijkheden niet, want die ordenen binnen een cel.
-- `/roadmap/onderzoeksvragen`, het **vragenbord**: alle onderzoeksvragen als
-  kaarten in dezelfde drie lanes. Een vraag staat in de lane van zijn eigen
-  status (open is vrij, loopt is opgepakt, beantwoord is klaar) en zonder
-  eigen status in die van de belegging van zijn werkpakket; de kaart zegt
-  welke van de twee het was. De kaart linkt naar de vraag op zijn
-  werkpakketpagina, waar het doel, de deelvragen en de verwante vragen voluit
-  staan. Geen statusfilter, want de lanes zíjn de status.
+- `/roadmap/onderzoeksvragen`, de **vragen**: alle onderzoeksvragen als
+  kaarten, met een filter op hun stand. Een vraag heeft een stand zoals een
+  werkpakket een belegging heeft: zijn eigen status (open is vrij, loopt is
+  opgepakt, beantwoord is klaar) en zonder eigen status die van de belegging
+  van zijn werkpakket; de kaart zegt welke van de twee het was. Drukken op
+  een kaart opent een zijpaneel met het doel, de deelvragen en de verwante
+  vragen, zonder van scherm te wisselen; de werkpakketpagina is daar één
+  link verder.
 
 De weergaven delen één kop (`RoadmapKop.astro`) en één kaart
 (`RoadmapKaart.astro`). Een nieuwe weergave is een regel in `WEERGAVEN` in
@@ -354,7 +355,7 @@ antwoord in plaats van dezelfde vraag.
 
 **Koppel niet wat niet past.** Tweeënzestig van de honderdnegenenveertig
 vragen hebben geen sectie, deels omdat ze te algemeen zijn ("Hoe navolgbaar is
-het?"), deels omdat niemand er nog naar gekeken heeft; op het vragenbord
+het?"), deels omdat niemand er nog naar gekeken heeft; op de vragenpagina
 mist zo'n kaart zijn §-tag. Een gedwongen verwijzing kost de lezer een klik
 en levert niets op. Een verzonnen anker laat de build vallen met het werkpakket en de vraag
 erbij, ook bij een deelvraag.

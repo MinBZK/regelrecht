@@ -1,0 +1,130 @@
+---
+/*
+ * Het detailpaneel van één onderzoeksvraag, in het zijpaneel naast de lijst
+ * op /roadmap/onderzoeksvragen. Alle panelen staan bij de build in de DOM,
+ * verborgen; het script op de pagina toont er één als zijn kaart ingedrukt
+ * wordt. Zo is er geen tweede bron voor de inhoud en niets dat nageladen
+ * hoeft te worden.
+ *
+ * Geen koppen in het paneel: de sheet draagt al een h2 (de titelbalk) en
+ * check-heading-order zou een h3 hier als sprong zien zodra de h2 ontbreekt.
+ * De onderdelen zijn gelabelde tekstblokken, zoals de kerngegevens in de
+ * zijbalk van de werkpakketpagina.
+ */
+import {
+  getOnderzoek,
+  getBelegging,
+  vraagLane,
+  type Onderzoeksvraag,
+  type VraagVerwijzing,
+  type WerkpakketData,
+} from '~/lib/roadmap';
+
+interface Props {
+  vraag: Onderzoeksvraag;
+  werkpakket: WerkpakketData;
+  sleutel: string;
+  verwanten: Map<string, VraagVerwijzing[]>;
+}
+
+const { vraag, werkpakket, sleutel, verwanten } = Astro.props;
+
+const { eigen } = vraagLane(vraag, werkpakket);
+const status = getOnderzoek(vraag.status);
+const belegging = getBelegging(werkpakket.belegging.stand);
+const verwant = vraag.id ? (verwanten.get(vraag.id) ?? []) : [];
+const werkpakketHref = `/roadmap/werkpakket/${werkpakket.id}${vraag.anker ? `#${vraag.anker}` : ''}`;
+---
+
+<nldd-container gap="20" data-vraag-detail={sleutel} hidden>
+  <nldd-title size="4">
+    <p>{vraag.vraag}</p>
+  </nldd-title>
+
+  <nldd-container gap="16">
+    <nldd-container gap="2">
+      <nldd-text size="xs" weight="medium" color="secondary">Status</nldd-text>
+      <nldd-container layout="wrap" gap="4" vertical-alignment="center">
+        {status ? (
+          <nldd-tag size="sm" color={status.tagColor} text={status.label} />
+        ) : (
+          <nldd-text size="sm" color="secondary">Nog niet bepaald</nldd-text>
+        )}
+        {/* Zonder eigen status volgt de vraag de belegging van zijn werkpakket;
+            dat staat hier uitgeschreven, want de lane van de kaart komt daar
+            dan vandaan. */}
+        {!eigen && belegging && belegging.id !== 'vrij' && (
+          <nldd-text size="xs" color="secondary">
+            volgt de belegging van het werkpakket ({belegging.label.toLowerCase()})
+          </nldd-text>
+        )}
+      </nldd-container>
+    </nldd-container>
+
+    <nldd-container gap="2">
+      <nldd-text size="xs" weight="medium" color="secondary">Werkpakket</nldd-text>
+      <nldd-link size="sm" href={werkpakketHref} text={werkpakket.titel} />
+    </nldd-container>
+
+    {vraag.paper && (
+      <nldd-container gap="2">
+        <nldd-text size="xs" weight="medium" color="secondary">Position paper</nldd-text>
+        <nldd-link
+          size="sm"
+          href={vraag.paper.href}
+          text={`Rules as Executed § ${vraag.paper.nummer}`}
+        />
+      </nldd-container>
+    )}
+
+    {vraag.doel && (
+      <nldd-container gap="2">
+        <nldd-text size="xs" weight="medium" color="secondary">Doel</nldd-text>
+        <nldd-text size="sm">{vraag.doel}</nldd-text>
+      </nldd-container>
+    )}
+
+    <nldd-container gap="2">
+      <nldd-text size="xs" weight="medium" color="secondary">Deelvragen</nldd-text>
+      {vraag.deelvragen.length ? (
+        <nldd-rich-text>
+          <ol>
+            {vraag.deelvragen.map((d) => {
+              const ds = getOnderzoek(d.status);
+              return (
+                <li id={d.anker}>
+                  {d.vraag}
+                  {(ds || d.doel) && (
+                    <nldd-container layout="wrap" gap="8" vertical-alignment="center">
+                      {ds && <nldd-tag size="sm" color={ds.tagColor} text={ds.label} />}
+                      {d.doel && (
+                        <nldd-text size="xs" color="secondary">Doel: {d.doel}</nldd-text>
+                      )}
+                    </nldd-container>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        </nldd-rich-text>
+      ) : (
+        <nldd-text size="sm" color="secondary">Nog geen deelvragen.</nldd-text>
+      )}
+    </nldd-container>
+
+    {verwant.length > 0 && (
+      <nldd-container gap="2">
+        <nldd-text size="xs" weight="medium" color="secondary">Verwante vragen</nldd-text>
+        <nldd-list type="navigation" appearance="box-tinted">
+          {verwant.map((v) => (
+            <nldd-list-item href={v.href}>
+              <nldd-text-cell text={v.vraag} supporting-text={v.werkpakketTitel} width="full" />
+              <nldd-spacer-cell />
+              <nldd-icon-cell size="20" icon="chevron-right" />
+            </nldd-list-item>
+          ))}
+        </nldd-list>
+      </nldd-container>
+    )}
+  </nldd-container>
+</nldd-container>

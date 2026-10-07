@@ -283,7 +283,7 @@ export interface FilterGroep {
   verbergKlasse?: string;
 }
 
-export type FilterGroepId = 'categorie' | 'belegging';
+export type FilterGroepId = 'categorie' | 'belegging' | 'stand';
 
 export const FILTERGROEPEN: Record<FilterGroepId, FilterGroep> = {
   categorie: {
@@ -301,6 +301,21 @@ export const FILTERGROEPEN: Record<FilterGroepId, FilterGroep> = {
     opties: BELEGGING_FILTER_OPTIES,
     attribuut: 'belegging',
     verbergKlasse: 'rr-wp-card--geen-belegging',
+  },
+  /*
+   * De stand van een onderzoeksvraag: vrij, opgepakt of klaar, zoals
+   * vraagLane() hem bepaalt. Dezelfde drie vinkjes als het beleggingsfilter,
+   * want een vraag staat naast zijn werkpakket; de kaart draagt de uitkomst
+   * op `data-lane`.
+   */
+  stand: {
+    id: 'stand',
+    knop: 'Stand',
+    titel: 'Filter op stand van de vraag',
+    optieKlasse: 'rr-filter__stand-option',
+    opties: BELEGGING_FILTER_OPTIES,
+    attribuut: 'lane',
+    verbergKlasse: 'rr-vraag--geen-stand',
   },
 };
 
@@ -954,38 +969,29 @@ export function vraagLane(
 }
 
 /**
- * De lanes van het vragenbord, met per lane de lege-staat-tekst; dezelfde
- * drie standen als BORD_LANES, want een vraag staat naast zijn werkpakket.
+ * Alle bovenliggende onderzoeksvragen in de leesvolgorde van de matrix en
+ * daarbinnen in de volgorde van het bestand, elk met een sleutel waar de
+ * kaart en zijn detailpaneel elkaar op vinden: het id als de vraag er een
+ * heeft, anders het werkpakket met het volgnummer. Deelvragen staan in het
+ * paneel van hun ouder, niet los in de lijst.
  */
-export const VRAGEN_LANES = BELEGGING_STANDEN.map((stand) => ({
-  ...stand,
-  leeg: {
-    vrij: 'Elke vraag is opgepakt of beantwoord.',
-    opgepakt: 'Nog geen vraag is opgepakt.',
-    klaar: 'Nog geen vraag is beantwoord.',
-  }[stand.id],
-}));
-
-/**
- * De bovenliggende onderzoeksvragen per lane, in de leesvolgorde van de
- * matrix en daarbinnen in de volgorde van het bestand. Deelvragen staan op
- * de kaart van hun ouder, niet los op het bord.
- */
-export function vragenPerLane(
+export function vragenOpVolgorde(
   werkpakketten: { data: WerkpakketData }[],
-): Map<string, VraagMetWerkpakket[]> {
-  const lanes = new Map<string, VraagMetWerkpakket[]>(
-    BELEGGING_STANDEN.map((s) => [s.id, []]),
-  );
+): (VraagMetWerkpakket & { sleutel: string })[] {
+  const uit: (VraagMetWerkpakket & { sleutel: string })[] = [];
   const gesorteerd = [...werkpakketten].sort((a, b) =>
     werkpakketVolgorde(a.data, b.data),
   );
   for (const { data } of gesorteerd) {
-    for (const vraag of onderzoeksvraagLijst(data.onderzoeksvragen)) {
-      lanes.get(vraagLane(vraag, data).lane)!.push({ vraag, werkpakket: data });
-    }
+    onderzoeksvraagLijst(data.onderzoeksvragen).forEach((vraag, i) => {
+      uit.push({
+        vraag,
+        werkpakket: data,
+        sleutel: vraag.id ?? `${data.id}-${i + 1}`,
+      });
+    });
   }
-  return lanes;
+  return uit;
 }
 
 /**

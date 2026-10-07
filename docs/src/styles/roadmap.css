@@ -256,7 +256,8 @@
  * dat hij hier staat.
  */
 .rr-roadmap .rr-geen-treffer,
-.rr-roadmap .rr-wp-card--geen-belegging {
+.rr-roadmap .rr-wp-card--geen-belegging,
+.rr-roadmap .rr-vraag--geen-stand {
   display: none !important;
 }
 

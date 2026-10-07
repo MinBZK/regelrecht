@@ -4,10 +4,12 @@
  * werkpakketkaart (RoadmapKaart.astro): de vraag als titel, het werkpakket
  * als ondertitel, een rij tags, en een stille regel eronder.
  *
- * De kaart linkt naar de vraag op zijn werkpakketpagina, op het anker als de
- * vraag een id heeft en anders naar de pagina zelf; daar staan het doel, de
- * deelvragen en de verwante vragen voluit. De kaart draagt dezelfde
- * `data-zoek` als de werkpakketkaart, zodat het zoekveld in de kop hem vindt.
+ * De kaart is een knop, geen link: drukken opent het detailpaneel naast de
+ * lijst (zie pages/roadmap/onderzoeksvragen.astro), met het doel, de
+ * deelvragen en de verwante vragen, zonder van scherm te wisselen. De kaart
+ * en zijn paneel vinden elkaar op `data-vraag`. De kaart draagt dezelfde
+ * `data-zoek` als de werkpakketkaart, zodat het zoekveld in de kop hem vindt,
+ * en `data-lane` voor het standfilter.
  */
 import {
   getOnderzoek,
@@ -25,9 +27,11 @@ import {
 interface Props {
   vraag: Onderzoeksvraag;
   werkpakket: WerkpakketData;
+  /** De sleutel die kaart en detailpaneel delen; zie vragenOpVolgorde(). */
+  sleutel: string;
 }
 
-const { vraag, werkpakket } = Astro.props;
+const { vraag, werkpakket, sleutel } = Astro.props;
 
 const { lane, eigen } = vraagLane(vraag, werkpakket);
 const status = getOnderzoek(vraag.status);
@@ -74,8 +78,6 @@ const onder = [
   .filter(Boolean)
   .join(' · ');
 
-const href = `/roadmap/werkpakket/${werkpakket.id}${vraag.anker ? `#${vraag.anker}` : ''}`;
-
 const accessibleLabel = [vraag.vraag, werkpakket.titel, ...tags.map((t) => t.label), rfcs, onder]
   .filter(Boolean)
   .join(', ');
@@ -83,12 +85,13 @@ const accessibleLabel = [vraag.vraag, werkpakket.titel, ...tags.map((t) => t.lab
 
 <nldd-card
   class="rr-wp-card"
-  href={href}
+  button
   background={lane === 'opgepakt' ? 'tinted' : undefined}
-  accessible-label={accessibleLabel}
+  accessible-label={`${accessibleLabel}, details openen`}
   data-zoek={vraagZoektekst(vraag, werkpakket)}
   data-lane={lane}
   data-eigen={eigen ? 'ja' : undefined}
+  data-vraag={sleutel}
 >
   <nldd-container padding="12" gap="8">
     <nldd-container gap="2">
