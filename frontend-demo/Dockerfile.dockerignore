@@ -34,3 +34,4 @@ packages/auth
 packages/github
 packages/corpus
 packages/arch-extract
+packages/code-guide

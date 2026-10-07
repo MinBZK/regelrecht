@@ -105,12 +105,13 @@ test('een wijziging in packages/law-model raakt alle crate-componenten', () => {
 });
 
 test('een pad dat bij geen enkel component hoort levert niets op', () => {
-  // tui en arch-extract zitten in geen enkele closure: het zijn crates zonder
-  // image. Zou hier iets `true` worden, dan is de closure te ruim en zegt een
-  // groene filter niets meer.
+  // tui, arch-extract en code-guide zitten in geen enkele closure: het zijn
+  // crates zonder image. Zou hier iets `true` worden, dan is de closure te ruim
+  // en zegt een groene filter niets meer.
   for (const path of [
     'packages/tui/src/main.rs',
     'packages/arch-extract/src/lib.rs',
+    'packages/code-guide/src/main.rs',
     'README.md',
     'REVIEW.md',
   ]) {

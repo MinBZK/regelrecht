@@ -187,7 +187,7 @@ nldd-imports-test:
 # maar zag niemand ze. Deze guard laat de build erop omvallen.
 [doc("Check that every nldd slot assignment exists")]
 nldd-slots:
-    node script/check-nldd-slots.mjs frontend-demo/src frontend/src frontend-lawmaking/src
+    node script/check-nldd-slots.mjs frontend-demo/src frontend/src frontend-lawmaking/src packages/code-guide/ui/src
 
 [doc("Check the design-system slot guard")]
 nldd-slots-test:
@@ -1001,6 +1001,33 @@ arch-test:
     cd packages && {{ci_flags}} cargo test -p regelrecht-arch-extract
     npm --prefix packages/arch-extract/ui install
     npm --prefix packages/arch-extract/ui test
+
+# --- Code guide ---
+# A guide to the Rust workspace, layered by method calls as rust-analyzer
+# resolves them. See packages/code-guide/README.md.
+
+# Build the cached rust-analyzer index the code guide reads (about a minute and
+# several GB of memory). Does nothing when the index matches the sources; pass
+# --force to rebuild anyway. Needs `rustup component add rust-analyzer`.
+[doc("Build the code guide's rust-analyzer index (cached)")]
+code-guide-index *ARGS:
+    cd packages && {{ci_flags}} cargo run --release --quiet -p regelrecht-code-guide -- index {{ARGS}}
+
+# Build the code guide's UI and serve it on 0.0.0.0:7190 (override with
+# CODE_GUIDE_PORT, stay in 7100–7300 for the dev container). It reads the index
+# from `just code-guide-index` and says so when the index is missing or stale.
+[doc("Start the code guide on http://localhost:7190")]
+code-guide:
+    cd packages/code-guide/ui && npm install && npm run build
+    cd packages && cargo run --release --quiet -p regelrecht-code-guide -- serve
+
+# Run the code guide's tests: the Rust side (index key, source scan, model,
+# views, the source endpoint) and the UI's vitest suite.
+[doc("Run the code guide tests, Rust and UI")]
+code-guide-test:
+    cd packages && {{ci_flags}} cargo test -p regelrecht-code-guide
+    npm --prefix packages/code-guide/ui install
+    npm --prefix packages/code-guide/ui test
 
 # --- Architecture prose sidecar ---
 # Per-node "wat/waarom" narrative lives beside the model in

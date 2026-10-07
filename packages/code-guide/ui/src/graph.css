@@ -1,0 +1,29 @@
+/* Vue Flow's own styles: the structural sheet is required for the canvas to work
+   at all, the default theme supplies the edge strokes and handle dots that would
+   otherwise be invisible. Nothing here overrides the design system. */
+@import '@vue-flow/core/dist/style.css';
+@import '@vue-flow/core/dist/theme-default.css';
+@import '@vue-flow/controls/dist/style.css';
+
+/* Vue Flow draws into whatever box it is given and warns (and shows nothing)
+   when that box has no height. A section's height is not definite, so the
+   canvas states its own. */
+.graph-canvas {
+  width: 100%;
+  height: 70vh;
+  min-height: 320px;
+}
+.graph-canvas .vue-flow {
+  width: 100%;
+  height: 100%;
+}
+
+/* Vue Flow's default node box is a white rectangle with a border; the card
+   inside already draws the node, so the wrapper must not draw a second one. */
+.graph-canvas .vue-flow__node-card {
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  width: auto;
+}

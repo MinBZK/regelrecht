@@ -1,0 +1,42 @@
+# regelrecht-code-guide — a guide to the Rust workspace, built on rust-analyzer.
+#
+# A developer tool (a tooling-only workspace member), not part of the product.
+# `code-guide index` has rust-analyzer write a SCIP index of the workspace and
+# caches it; `code-guide serve` turns the index into crates, modules, types and
+# the calls between their functions, and serves the app in `ui/`. See README.md.
+[package]
+name = "regelrecht-code-guide"
+version = "0.1.0"
+edition = "2021"
+authors = ["MinBZK <noreply@minbzk.nl>"]
+description = "A guide to the regelrecht Rust workspace, layered by method calls resolved by rust-analyzer"
+license = "EUPL-1.2"
+repository = "https://github.com/MinBZK/regelrecht"
+homepage = "https://github.com/MinBZK/regelrecht"
+publish = false
+
+[[bin]]
+name = "code-guide"
+path = "src/main.rs"
+
+[dependencies]
+# Reading rust-analyzer's SCIP index: the published schema and symbol parser.
+scip = "0.10"
+protobuf = "3"
+# Workspace members, their directories and the shared target dir.
+cargo_metadata = "0.23"
+# What the index does not hold: visibility, exact item extents in
+# macro-generated code, and which code is test-only.
+syn = { version = "3", features = ["full", "visit", "parsing"] }
+proc-macro2 = { version = "1", features = ["span-locations"] }
+quote = "1"
+sha2.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+walkdir.workspace = true
+axum.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tower-http = { workspace = true, features = ["fs"] }
+
+[lints]
+workspace = true

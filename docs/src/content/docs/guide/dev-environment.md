@@ -166,6 +166,12 @@ silences logging.
 
 `just arch-explore` builds and starts a local explorer of the codebase on port 7180 (override with `ARCH_EXPLORE_PORT`). It renders a model of the Rust workspace and the Vue frontends, from crate down to method and from app down to component, with the dependencies between them. The model comes from `packages/arch-extract/`, a developer tool that is not deployed. It is generated from the working tree on demand and never committed, so it cannot go stale; `just arch-generate` writes it to disk for inspection. `packages/arch-extract/README.md` explains how the edges are resolved and what the explorer misses.
 
+## Code Guide
+
+`just code-guide` builds and starts a guide to the Rust workspace on port 7190 (override with `CODE_GUIDE_PORT`). It shows how the code calls itself: crates and modules in reading order, the modules a module calls into and is called from, and for every type its methods with their signatures, doc comments, callers and callees, in any crate. Each view also has a graph.
+
+Every relation is a call as rust-analyzer resolved it, so the guide needs an index first: `just code-guide-index` builds one in about a minute and caches it until a source, a Cargo file or the toolchain changes. Test code is left out. When files change after indexing, the guide names them and leaves the calls made in them out until the index is rebuilt, rather than placing them in the wrong function. `packages/code-guide/README.md` says what counts as a call and what the index cannot see.
+
 ## Pre-commit Hooks
 
 Install [pre-commit](https://pre-commit.com/) (for example with

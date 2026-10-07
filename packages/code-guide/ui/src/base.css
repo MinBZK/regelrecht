@@ -1,0 +1,13 @@
+/* App-level styles only; component styles come from @nldd/design-system.
+   Same three rules as frontend/css/main.css: a full-height root for the
+   app view, no default body margin, and the design system's body font for
+   plain text that sits outside an nldd component. */
+html,
+body,
+#app {
+  height: 100%;
+}
+body {
+  margin: 0;
+  font-family: var(--primitives-font-family-body);
+}

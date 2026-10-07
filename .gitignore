@@ -40,6 +40,7 @@ docs/src/lib/gherkin/
 # PoC-frontends: alles wat copy-assets.js in public/ neerzet komt uit
 # corpus-poc/ en de wasm-build, en hoort dus niet ook in git.
 frontend-poc-*/dist/
+packages/code-guide/ui/dist/
 frontend-poc-*/public/laws/
 frontend-poc-*/public/data/
 frontend-poc-*/public/wasm/

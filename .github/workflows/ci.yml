@@ -697,6 +697,7 @@ jobs:
         run: |
           node script/check-nldd-imports.mjs frontend/src frontend/src/nldd-components.js
           node script/check-nldd-imports.mjs docs/src docs/src/nldd-components.js
+          node script/check-nldd-imports.mjs packages/code-guide/ui/src packages/code-guide/ui/src/nldd-components.js
 
   frontend-tests:
     name: Frontend tests
@@ -748,6 +749,13 @@ jobs:
       # draaide nergens.
       - name: Run arch-explorer tests
         working-directory: packages/arch-extract/ui
+        run: |
+          npm ci --ignore-scripts
+          npm test
+
+      # Ook geen workspace-member, om dezelfde reden.
+      - name: Run code guide tests
+        working-directory: packages/code-guide/ui
         run: |
           npm ci --ignore-scripts
           npm test
