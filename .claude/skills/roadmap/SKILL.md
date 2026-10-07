@@ -253,20 +253,26 @@ de titel om ertussen te wisselen:
 
 - `/roadmap`, de **matrix**: fase × discipline, met zoeken, het categorie- en
   beleggingsfilter en de afhankelijkhedenschakelaar hierboven.
-- `/roadmap/bord`, het **bord**: dezelfde werkpakketten als brede rijen
+- `/roadmap/bord`, het **bord**: dezelfde werkpakketten als losse kaarten
   onder elkaar, in de leesvolgorde van de matrix, met zoeken en het
-  categorie- en beleggingsfilter. Druk op een rij en zijn onderzoeksvragen
-  schuiven eruit, elk met de stand (vrij, opgepakt, klaar; zie de vragen
-  hieronder) en de eigen status. Geen afhankelijkheden, want die ordenen
-  binnen een cel van de matrix.
+  categorie- en beleggingsfilter. Druk op een kaart en eronder klapt een
+  mini-kanbanbord uit met zijn onderzoeksvragen in drie lanes: vrij,
+  opgepakt, klaar. Geen afhankelijkheden, want die ordenen binnen een cel
+  van de matrix.
 - `/roadmap/onderzoeksvragen`, de **vragen**: alle onderzoeksvragen als
-  kaarten, met een filter op hun stand. Een vraag heeft een stand zoals een
-  werkpakket een belegging heeft: zijn eigen status (open is vrij, loopt is
-  opgepakt, beantwoord is klaar) en zonder eigen status die van de belegging
-  van zijn werkpakket; de kaart zegt welke van de twee het was. Drukken op
-  een kaart opent een zijpaneel met het doel, de deelvragen en de verwante
-  vragen, zonder van scherm te wisselen; de werkpakketpagina is daar één
-  link verder.
+  kaarten in de volgorde van het paper, met een filter op hun stand. Een
+  vraag heeft een stand zoals een werkpakket een belegging heeft: zijn eigen
+  status (open is vrij, loopt is opgepakt, beantwoord is klaar) en zonder
+  eigen status die van de belegging van zijn werkpakket; de kaart zegt welke
+  van de twee het was. Druk op een kaart en eronder staan het werkpakket, de
+  papersectie, het doel, de verwante vragen en een mini-bord met de
+  deelvragen in dezelfde drie lanes; een deelvraag zonder eigen status volgt
+  zijn vraag.
+
+Beide borden zijn een `nldd-list` van het type `tree` per kaart
+(`RoadmapWerkpakketRij.astro`, `RoadmapVraagRij.astro`) met het bordje in
+`RoadmapMiniBord.astro`; `RoadmapUitklap.astro` zet `expanded` om bij een
+klik.
 
 De weergaven delen één kop (`RoadmapKop.astro`) en dezelfde tags per
 werkpakket (`werkpakketTags()` in `lib/roadmap.ts`). Een nieuwe weergave is een regel in `WEERGAVEN` in

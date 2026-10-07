@@ -17,14 +17,15 @@
  * Per werkpakket een eigen nldd-list van het type `tree`
  * (RoadmapWerkpakketRij.astro), als losse kaart; het ontwerpsysteem regelt de pijltoetsen, aria-expanded en het
  * tonen van de kinderen op `expanded`. Wat het niet doet is `expanded`
- * omzetten bij een klik op de rij: die stand is van de pagina, en het script
- * onderaan zet hem. Geen eigen CSS.
+ * omzetten bij een klik op de rij: dat doet RoadmapUitklap.astro, gedeeld
+ * met de vragenpagina. Geen eigen CSS.
  */
 import { getCollection } from 'astro:content';
 import Base from '~/layouts/Base.astro';
 import RoadmapSectie from '~/components/RoadmapSectie.astro';
 import RoadmapKop from '~/components/RoadmapKop.astro';
 import RoadmapWerkpakketRij from '~/components/RoadmapWerkpakketRij.astro';
+import RoadmapUitklap from '~/components/RoadmapUitklap.astro';
 import {
   werkpakketVolgorde,
   assertReferencesResolve,
@@ -58,7 +59,7 @@ const pathname = '/roadmap/bord';
   <RoadmapSectie>
     <RoadmapKop
       huidig="bord"
-      ondertitel="Werkpakketten onder elkaar. Druk op een werkpakket en zijn onderzoeksvragen schuiven eruit, elk met de stand: vrij, opgepakt of klaar."
+      ondertitel="Werkpakketten onder elkaar. Druk op een werkpakket en zijn onderzoeksvragen schuiven eruit, op een bordje met drie lanes: vrij, opgepakt en klaar."
       zoek={{ placeholder: 'Zoek in werkpakketten', noun: 'werkpakketten' }}
       filters={['categorie', 'belegging']}
     />
@@ -69,26 +70,5 @@ const pathname = '/roadmap/bord';
       {rijen.map((wp) => <RoadmapWerkpakketRij wp={wp} />)}
     </nldd-container>
   </RoadmapSectie>
+  <RoadmapUitklap />
 </Base>
-
-{/*
-  Een klik op een werkpakketrij klapt zijn vragen uit of in. Alleen de rij
-  zelf: een klik in een uitgeklapte vraag bubbelt naar de ouder en zou hem
-  anders weer dichtklappen. Gebonden op astro:page-load, om dezelfde reden als
-  het zoekscript in RoadmapKop.astro.
-*/}
-<script>
-  function wireUitklappen() {
-    for (const rij of document.querySelectorAll<HTMLElement>(
-      '.rr-roadmap nldd-list-item[button][data-wp-id]',
-    )) {
-      rij.addEventListener('click', (event) => {
-        const bron = (event.target as HTMLElement).closest('nldd-list-item');
-        if (bron !== rij) return;
-        rij.toggleAttribute('expanded');
-      });
-    }
-  }
-
-  document.addEventListener('astro:page-load', wireUitklappen);
-</script>

@@ -952,6 +952,36 @@ export function vraagLane(
 }
 
 /**
+ * Dezelfde afleiding één laag dieper: een deelvraag staat in de lane van zijn
+ * eigen status, en zonder eigen status in die van zijn ouder. Wie aan een
+ * vraag werkt, werkt aan de deelvragen erin, tot er per deelvraag iets anders
+ * over gezegd is.
+ */
+export function deelvraagLane(
+  deelvraag: Onderzoeksvraag,
+  ouderLane: string,
+): { lane: string; eigen: boolean } {
+  const eigen = LANE_VAN_STATUS[deelvraag.status];
+  if (eigen) return { lane: eigen, eigen: true };
+  return { lane: ouderLane, eigen: false };
+}
+
+/** Eén klein ticket op een mini-bord onder een uitgeklapte rij. */
+export interface MiniTicket {
+  tekst: string;
+  /** vrij, opgepakt of klaar; zie vraagLane() en deelvraagLane(). */
+  lane: string;
+  /** Of de lane uit de eigen status komt (true) of overgenomen is. */
+  eigen: boolean;
+  /** Waarvan overgenomen, voor het bijschrift: "werkpakket" of "vraag". */
+  bron: string;
+  /** De eigen status, als die er is; wordt een tag. */
+  status: string;
+  /** Een stille regel, bijvoorbeeld het §-nummer of het aantal deelvragen. */
+  onder?: string;
+}
+
+/**
  * Alle bovenliggende onderzoeksvragen in de volgorde van het position paper:
  * eerst op sectie (§ 4.1, § 4.2, … zoals het paper ze nummert), daarbinnen
  * in de leesvolgorde van de matrix en dan de volgorde van het bestand. Vragen

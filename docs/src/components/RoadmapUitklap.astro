@@ -1,0 +1,30 @@
+---
+/*
+ * Het script dat een rij op het bord en op de vragenpagina uitklapt.
+ *
+ * Een nldd-list van het type `tree` toont de kinderen van een rij op
+ * `expanded` en regelt aria-expanded en de pijltoetsen, maar zet `expanded`
+ * niet zelf om bij een klik op de rij: die stand is van de pagina. Dit is
+ * dat ene stukje, één keer, voor elke rij met `data-uitklap`.
+ *
+ * Alleen de rij zelf: een klik in het uitgeklapte deel bubbelt naar de rij
+ * en zou hem anders weer dichtklappen. Gebonden op astro:page-load, om
+ * dezelfde reden als het zoekscript in RoadmapKop.astro.
+ */
+---
+
+<script>
+  function wireUitklappen() {
+    for (const rij of document.querySelectorAll<HTMLElement>(
+      '.rr-roadmap nldd-list-item[button][data-uitklap]',
+    )) {
+      rij.addEventListener('click', (event) => {
+        const bron = (event.target as HTMLElement).closest('nldd-list-item');
+        if (bron !== rij) return;
+        rij.toggleAttribute('expanded');
+      });
+    }
+  }
+
+  document.addEventListener('astro:page-load', wireUitklappen);
+</script>

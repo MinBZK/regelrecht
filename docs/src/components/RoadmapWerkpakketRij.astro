@@ -15,15 +15,16 @@
  * dezelfde als op de matrixkaart (werkpakketTags), zodat een werkpakket er
  * hier hetzelfde uitziet als daar.
  *
- * Per vraag staat de stand (vrij, opgepakt, klaar) zoals vraagLane() hem
- * afleidt, en de eigen status als die er is. Op de vragenpagina zijn
- * dezelfde vragen te filteren en te openen; hier zie je ze per werkpakket.
+ * Onder de rij staat een mini-kanbanbord (RoadmapMiniBord) met de vragen in
+ * de lanes vrij, opgepakt en klaar, zoals vraagLane() ze afleidt. Op de
+ * vragenpagina zijn dezelfde vragen te filteren en uit te klappen tot hun
+ * deelvragen; hier zie je ze per werkpakket.
  */
+import RoadmapMiniBord from '~/components/RoadmapMiniBord.astro';
 import {
   GEEN_CATEGORIE,
   beleggingStand,
   getBelegging,
-  getOnderzoek,
   werkpakketTags,
   rfcTekst,
   kaartOndertitel,
@@ -31,7 +32,7 @@ import {
   zoektekst,
   onderzoeksvraagLijst,
   vraagLane,
-  BELEGGING_STANDEN,
+  type MiniTicket,
   type WerkpakketData,
 } from '~/lib/roadmap';
 
@@ -45,7 +46,27 @@ const belegging = getBelegging(data.belegging.stand);
 const tags = werkpakketTags(data);
 const rfcs = rfcTekst(data);
 const vragen = onderzoeksvraagLijst(data.onderzoeksvragen);
-const standVan = (id: string) => BELEGGING_STANDEN.find((s) => s.id === id)!;
+
+// De vragen als tickets voor het mini-bord: de stand uit de eigen status, of
+// uit de belegging van dit werkpakket.
+const tickets: MiniTicket[] = vragen.map((vraag) => {
+  const { lane, eigen } = vraagLane(vraag, data);
+  return {
+    tekst: vraag.vraag,
+    lane,
+    eigen,
+    bron: 'werkpakket',
+    status: vraag.status,
+    onder:
+      [
+        vraag.paper && `§ ${vraag.paper.nummer}`,
+        vraag.deelvragen.length > 0 &&
+          `${vraag.deelvragen.length} ${vraag.deelvragen.length === 1 ? 'deelvraag' : 'deelvragen'}`,
+      ]
+        .filter(Boolean)
+        .join(' · ') || undefined,
+  };
+});
 
 const supporting = [
   kaartOndertitel(data),
@@ -64,7 +85,7 @@ const supporting = [
   data-belegging={beleggingStand(data.belegging.stand)}
   data-zoek={zoektekst(data)}
 >
-<nldd-list-item button data-wp-id={data.id}>
+<nldd-list-item button data-uitklap data-wp-id={data.id}>
   <nldd-text-cell text={data.titel} supporting-text={supporting} width="full">
     {(belegging?.id !== 'vrij' || tags.length > 0 || rfcs) && (
       <nldd-container slot="supporting-text" gap="4">
@@ -96,49 +117,13 @@ const supporting = [
   <nldd-spacer-cell />
   <nldd-icon-cell size="20" icon="chevron-right" disclosure />
 
-  {
-    vragen.length ? (
-      vragen.map((vraag) => {
-        const { lane, eigen } = vraagLane(vraag, data);
-        const stand = standVan(lane);
-        const status = getOnderzoek(vraag.status);
-        return (
-          <nldd-list-item slot="children">
-            <nldd-spacer-cell />
-            <nldd-text-cell text={vraag.vraag} width="full">
-              <nldd-container slot="supporting-text" layout="wrap" gap="4" vertical-alignment="center">
-                {/* De stand: uit de eigen status, of (gedempt gelabeld) uit
-                    de belegging van het werkpakket. Vrij krijgt hier wél een
-                    tag, want hier is de vraag "hoe ver is elke vraag". */}
-                <nldd-tag
-                  size="sm"
-                  color={stand.tagColor}
-                  text={eigen ? stand.label : `${stand.label} (via werkpakket)`}
-                  icon={stand.id === 'klaar' ? 'done' : stand.id === 'opgepakt' ? 'user' : undefined}
-                />
-                {status && <nldd-tag size="sm" color={status.tagColor} text={status.label} />}
-                {vraag.paper && (
-                  <nldd-text size="xs" color="secondary">
-                    § {vraag.paper.nummer}
-                  </nldd-text>
-                )}
-                {vraag.deelvragen.length > 0 && (
-                  <nldd-text size="xs" color="secondary">
-                    {vraag.deelvragen.length}{' '}
-                    {vraag.deelvragen.length === 1 ? 'deelvraag' : 'deelvragen'}
-                  </nldd-text>
-                )}
-              </nldd-container>
-            </nldd-text-cell>
-          </nldd-list-item>
-        );
-      })
-    ) : (
-      <nldd-list-item slot="children">
-        <nldd-spacer-cell />
-        <nldd-text-cell text="Nog geen onderzoeksvragen geregistreerd." width="full" />
-      </nldd-list-item>
-    )
-  }
+  {/* Eén kindrij met het mini-bord erin: de vragen van dit werkpakket in
+      drie lanes, zodat je ziet aan welke gewerkt wordt. */}
+  <nldd-list-item slot="children">
+    <nldd-spacer-cell />
+    <nldd-cell width="full" vertical-alignment="top">
+      <RoadmapMiniBord tickets={tickets} leeg="Nog geen onderzoeksvragen geregistreerd." />
+    </nldd-cell>
+  </nldd-list-item>
 </nldd-list-item>
 </nldd-list>

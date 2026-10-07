@@ -1,0 +1,165 @@
+---
+/*
+ * Eén onderzoeksvraag als kaart op de vragenpagina, uit te klappen tot een
+ * mini-kanbanbord met zijn deelvragen.
+ *
+ * Dezelfde opbouw als RoadmapWerkpakketRij.astro: een eigen omlijste
+ * nldd-list van het type `tree` met één tak, de rij als knop, en in de
+ * `children`-slot één rij met het uitgeklapte deel. Daarin eerst wat er over
+ * de vraag te zeggen is (werkpakket, papersectie, doel, verwante vragen) en
+ * dan het mini-bord met de deelvragen in vrij, opgepakt en klaar; een
+ * deelvraag zonder eigen status volgt de lane van deze vraag.
+ *
+ * De data-attributen voor zoeken en het standfilter staan op de lijst, niet
+ * op de rij, om dezelfde reden als bij de werkpakketrij.
+ */
+import RoadmapMiniBord from '~/components/RoadmapMiniBord.astro';
+import {
+  getOnderzoek,
+  getBelegging,
+  vraagLane,
+  deelvraagLane,
+  vraagZoektekst,
+  werkpakketTags,
+  rfcTekst,
+  type MiniTicket,
+  type Onderzoeksvraag,
+  type VraagVerwijzing,
+  type WerkpakketData,
+} from '~/lib/roadmap';
+
+interface Props {
+  vraag: Onderzoeksvraag;
+  werkpakket: WerkpakketData;
+  verwanten: Map<string, VraagVerwijzing[]>;
+}
+
+const { vraag, werkpakket, verwanten } = Astro.props;
+
+const { lane, eigen } = vraagLane(vraag, werkpakket);
+const status = getOnderzoek(vraag.status);
+const belegging = getBelegging(werkpakket.belegging.stand);
+const tags = werkpakketTags(werkpakket);
+const rfcs = rfcTekst(werkpakket);
+const verwant = vraag.id ? (verwanten.get(vraag.id) ?? []) : [];
+const werkpakketHref = `/roadmap/werkpakket/${werkpakket.id}${vraag.anker ? `#${vraag.anker}` : ''}`;
+
+// De papersectie als kopregel boven de vraag, want daar is de lijst op
+// gesorteerd. Zonder sectie zegt de kopregel dat.
+const kopregel = vraag.paper
+  ? `§ ${vraag.paper.nummer} ${vraag.paper.titel}`
+  : 'Zonder sectie in het paper';
+
+const tickets: MiniTicket[] = vraag.deelvragen.map((d) => {
+  const stand = deelvraagLane(d, lane);
+  return {
+    tekst: d.vraag,
+    lane: stand.lane,
+    eigen: stand.eigen,
+    bron: 'vraag',
+    status: d.status,
+    onder: d.doel ? `Doel: ${d.doel}` : undefined,
+  };
+});
+---
+
+<nldd-list
+  type="tree"
+  appearance="box-tinted"
+  accessible-label={vraag.vraag}
+  data-lane={lane}
+  data-zoek={vraagZoektekst(vraag, werkpakket)}
+>
+<nldd-list-item button data-uitklap>
+  <nldd-text-cell overline={kopregel} text={vraag.vraag} width="full">
+    <nldd-container slot="supporting-text" gap="4">
+      <nldd-text size="xs" color="secondary">{werkpakket.titel}</nldd-text>
+      <nldd-container layout="wrap" gap="4" vertical-alignment="center">
+        {/* De eigen status als tag; zonder eigen status de belegging van het
+            werkpakket, met "werkpakket" ervoor, want daar komt de stand dan
+            vandaan. Vrij krijgt geen tag, net als op de werkpakketkaart. */}
+        {status && <nldd-tag size="sm" color={status.tagColor} text={status.label} />}
+        {!status && belegging && belegging.id !== 'vrij' && (
+          <nldd-tag
+            size="sm"
+            color={belegging.tagColor}
+            text={`werkpakket ${belegging.label.toLowerCase()}`}
+            icon={belegging.id === 'klaar' ? 'done' : 'user'}
+          />
+        )}
+        {tags.map((tag) => (
+          <nldd-tag
+            size="sm"
+            color={tag.color}
+            text={tag.text}
+            icon={tag.icon}
+            accessible-label={tag.label}
+          />
+        ))}
+        {rfcs && <nldd-text size="xs" color="secondary">{rfcs}</nldd-text>}
+      </nldd-container>
+    </nldd-container>
+  </nldd-text-cell>
+  <nldd-spacer-cell />
+  <nldd-icon-cell size="20" icon="chevron-right" disclosure />
+
+  <nldd-list-item slot="children">
+    <nldd-spacer-cell />
+    <nldd-cell width="full" vertical-alignment="top">
+      <nldd-container gap="16">
+        <nldd-container layout="wrap" gap="16">
+          <nldd-container gap="2">
+            <nldd-text size="xs" weight="medium" color="secondary">Werkpakket</nldd-text>
+            <nldd-link size="sm" href={werkpakketHref} text={werkpakket.titel} />
+          </nldd-container>
+          {vraag.paper && (
+            <nldd-container gap="2">
+              <nldd-text size="xs" weight="medium" color="secondary">Position paper</nldd-text>
+              <nldd-link
+                size="sm"
+                href={vraag.paper.href}
+                text={`Rules as Executed § ${vraag.paper.nummer}`}
+              />
+            </nldd-container>
+          )}
+          {!eigen && belegging && belegging.id !== 'vrij' && (
+            <nldd-container gap="2">
+              <nldd-text size="xs" weight="medium" color="secondary">Stand</nldd-text>
+              <nldd-text size="sm" color="secondary">
+                {belegging.label}, overgenomen van het werkpakket
+              </nldd-text>
+            </nldd-container>
+          )}
+        </nldd-container>
+
+        {vraag.doel && (
+          <nldd-container gap="2">
+            <nldd-text size="xs" weight="medium" color="secondary">Doel</nldd-text>
+            <nldd-text size="sm">{vraag.doel}</nldd-text>
+          </nldd-container>
+        )}
+
+        <nldd-container gap="4">
+          <nldd-text size="xs" weight="medium" color="secondary">Deelvragen</nldd-text>
+          <RoadmapMiniBord tickets={tickets} leeg="Nog geen deelvragen." />
+        </nldd-container>
+
+        {verwant.length > 0 && (
+          <nldd-container gap="2">
+            <nldd-text size="xs" weight="medium" color="secondary">Verwante vragen</nldd-text>
+            <nldd-list type="navigation" appearance="box-base">
+              {verwant.map((v) => (
+                <nldd-list-item href={v.href}>
+                  <nldd-text-cell text={v.vraag} supporting-text={v.werkpakketTitel} width="full" />
+                  <nldd-spacer-cell />
+                  <nldd-icon-cell size="20" icon="chevron-right" />
+                </nldd-list-item>
+              ))}
+            </nldd-list>
+          </nldd-container>
+        )}
+      </nldd-container>
+    </nldd-cell>
+  </nldd-list-item>
+</nldd-list-item>
+</nldd-list>

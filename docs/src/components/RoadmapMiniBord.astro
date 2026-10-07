@@ -1,0 +1,78 @@
+---
+/*
+ * Het mini-kanbanbord onder een uitgeklapte rij: drie lanes (vrij, opgepakt,
+ * klaar) met kleine tickets. Onder een werkpakket zijn dat zijn
+ * onderzoeksvragen, onder een vraag zijn deelvragen. Zo zie je in één
+ * oogopslag waar aan gewerkt wordt, zonder een pagina verder te hoeven.
+ *
+ * Een ticket zonder eigen status staat in de lane van wat erboven hangt
+ * (het werkpakket, of de vraag) en zegt dat in een bijschrift; de eigen
+ * status, als die er is, staat als tag. Een lege lane zegt "Geen", want een
+ * lege kolom zonder woord leest als een kapot bordje.
+ *
+ * Geen koppen: de pagina heeft zijn h1 en een bordje onder een rij hoort
+ * niet in de koppenstructuur. De lanes zijn gelabelde blokken.
+ */
+import { BELEGGING_STANDEN, getOnderzoek, type MiniTicket } from '~/lib/roadmap';
+
+interface Props {
+  tickets: MiniTicket[];
+  /** Wat er staat als er helemaal geen tickets zijn. */
+  leeg: string;
+}
+
+const { tickets, leeg } = Astro.props;
+
+const lanes = BELEGGING_STANDEN.map((stand) => ({
+  ...stand,
+  tickets: tickets.filter((t) => t.lane === stand.id),
+}));
+---
+
+{
+  tickets.length ? (
+    <nldd-container layout="grid" column-count="3" sm-column-count="1" gap="8">
+      {lanes.map((lane) => (
+        <nldd-box background="base">
+          <nldd-container padding="8" gap="8">
+            <nldd-container layout="row" gap="4" vertical-alignment="center">
+              <nldd-text size="xs" weight="medium">{lane.label}</nldd-text>
+              <nldd-text size="xs" color="secondary">{lane.tickets.length}</nldd-text>
+            </nldd-container>
+            {lane.tickets.length ? (
+              lane.tickets.map((ticket) => {
+                const status = getOnderzoek(ticket.status);
+                return (
+                  <nldd-card background={lane.id === 'opgepakt' ? 'tinted' : undefined}>
+                    <nldd-container padding="8" gap="4">
+                      <nldd-text size="sm">{ticket.tekst}</nldd-text>
+                      {(status || !ticket.eigen || ticket.onder) && (
+                        <nldd-container layout="wrap" gap="4" vertical-alignment="center">
+                          {status && (
+                            <nldd-tag size="sm" color={status.tagColor} text={status.label} />
+                          )}
+                          {!ticket.eigen && lane.id !== 'vrij' && (
+                            <nldd-text size="xs" color="secondary">
+                              via {ticket.bron}
+                            </nldd-text>
+                          )}
+                          {ticket.onder && (
+                            <nldd-text size="xs" color="secondary">{ticket.onder}</nldd-text>
+                          )}
+                        </nldd-container>
+                      )}
+                    </nldd-container>
+                  </nldd-card>
+                );
+              })
+            ) : (
+              <nldd-text size="xs" color="secondary">Geen</nldd-text>
+            )}
+          </nldd-container>
+        </nldd-box>
+      ))}
+    </nldd-container>
+  ) : (
+    <nldd-text size="sm" color="secondary">{leeg}</nldd-text>
+  )
+}
