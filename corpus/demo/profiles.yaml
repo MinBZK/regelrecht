@@ -131,6 +131,18 @@ profiles:
             status: ACTIEF
             heeft_handlichting: false
       BELASTINGDIENST:
+        # De dag waarop de aanslag inkomstenbelasting over een jaar is vastgesteld
+        # (Awir 19: de toekenning volgt binnen zes maanden).
+        aanslagen_inkomstenbelasting:
+          - bsn: '999100001'
+            jaar: 2024
+            datum_vaststelling: '2025-04-15'
+          - bsn: '999100001'
+            jaar: 2025
+            datum_vaststelling: '2026-04-15'
+          - bsn: '999100001'
+            jaar: 2026
+            datum_vaststelling: '2027-04-15'
         box1:
           - bsn: '999100001'
             loon_uit_dienstbetrekking: 0
