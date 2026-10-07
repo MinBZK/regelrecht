@@ -77,8 +77,8 @@ pub use resolver::{
     ProcedureMiss, RuleResolver,
 };
 pub use service::{
-    ExecutionOutcome, LawExecutionService, LawInfo, RequestedInput, ServiceProvider, StageState,
-    Submission, SubmissionArticle, SubmissionHook,
+    ExecutionOutcome, LawExecutionService, LawInfo, RequestedInput, ServiceProvider, StageInputs,
+    StageState, Submission, SubmissionArticle, SubmissionHook,
 };
 pub use trace::{PathNode, TraceBuilder};
 pub use types::{

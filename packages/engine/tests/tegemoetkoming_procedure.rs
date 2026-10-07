@@ -12,7 +12,8 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use regelrecht_engine::{
-    EngineError, ExecutionOutcome, LawExecutionService, OutputProvenance, StageState, Value,
+    EngineError, ExecutionOutcome, LawExecutionService, MissingKind, OutputProvenance, StageState,
+    Value,
 };
 use std::collections::BTreeMap;
 
@@ -569,4 +570,204 @@ articles:
         panic!("expected the procedure to complete");
     };
     assert_eq!(result.outputs["bedrag"], Value::Int(300));
+}
+
+/// What `stage_inputs` reports, as (law, article, hook point) per article and
+/// (article, name, supplied) per input.
+#[allow(clippy::type_complexity)]
+fn taking_part(
+    stage: &regelrecht_engine::StageInputs,
+) -> (
+    Vec<(String, String, Option<String>)>,
+    Vec<(String, String, bool)>,
+) {
+    let articles = stage
+        .articles
+        .iter()
+        .map(|a| {
+            (
+                a.law_id.clone(),
+                a.article_number.clone(),
+                a.hook.as_ref().map(|h| h.hook_point.as_str().to_string()),
+            )
+        })
+        .collect();
+    let inputs = stage
+        .inputs
+        .iter()
+        .map(|i| {
+            (
+                i.article_number.clone(),
+                i.parameter.name.clone(),
+                i.supplied,
+            )
+        })
+        .collect();
+    (articles, inputs)
+}
+
+fn s(x: &str) -> String {
+    x.to_string()
+}
+
+#[test]
+fn a_stage_asks_what_the_article_and_the_hooks_at_that_stage_ask() {
+    let service = service(&[AWB, AWR, AWIR, WZT]);
+    let voorschot = service
+        .stage_inputs(
+            "wzt_proto",
+            "2",
+            "VOORSCHOT",
+            &params(&[
+                bsn(),
+                // An unknown value names nobody: the input is still missing.
+                (
+                    "vermoedelijk_toetsingsinkomen",
+                    Value::unknown(
+                        "awir_proto",
+                        "vermoedelijk_toetsingsinkomen",
+                        MissingKind::NotPassed,
+                    ),
+                ),
+            ]),
+            "2025-01-01",
+        )
+        .unwrap();
+    assert_eq!(voorschot.procedure_id, "tegemoetkoming");
+    assert_eq!(voorschot.stage, "VOORSCHOT");
+    assert_eq!(voorschot.is.as_deref(), Some("BESLUIT"));
+    let requires: Vec<&str> = voorschot.requires.iter().map(|r| r.name.as_str()).collect();
+    assert_eq!(requires, ["dagtekening_voorschot"]);
+    let (articles, inputs) = taking_part(&voorschot);
+    assert_eq!(
+        articles,
+        [
+            (s("wzt_proto"), s("2"), None),
+            (s("awir_proto"), s("16"), Some(s("pre_actions"))),
+            // Awb 6:7 hooks on BESLUIT, and VOORSCHOT is one.
+            (s("awb_proto"), s("6:7"), Some(s("post_actions"))),
+        ]
+    );
+    assert_eq!(
+        inputs,
+        [
+            (s("2"), s("bsn"), true),
+            (s("16"), s("vermoedelijk_toetsingsinkomen"), false),
+        ]
+    );
+
+    // At the toekenning Awir 16 does not fire, so its input is not asked.
+    let toekenning = service
+        .stage_inputs(
+            "wzt_proto",
+            "2",
+            "TOEKENNING",
+            &BTreeMap::new(),
+            "2025-01-01",
+        )
+        .unwrap();
+    let (articles, inputs) = taking_part(&toekenning);
+    assert_eq!(
+        articles,
+        [
+            (s("wzt_proto"), s("2"), None),
+            (s("awb_proto"), s("6:7"), Some(s("post_actions"))),
+        ]
+    );
+    assert_eq!(inputs, [(s("2"), s("bsn"), false)]);
+    let requires: Vec<&str> = toekenning
+        .requires
+        .iter()
+        .map(|r| r.name.as_str())
+        .collect();
+    assert_eq!(requires, ["dagtekening_toekenning"]);
+}
+
+#[test]
+fn a_hook_on_besluit_does_not_take_part_in_a_stage_that_is_none() {
+    let awir = AWIR.replace("        is: BESLUIT\n", "");
+    let service = service(&[AWB, AWR, &awir, WZT]);
+    let stage = service
+        .stage_inputs(
+            "wzt_proto",
+            "2",
+            "VOORSCHOT",
+            &BTreeMap::new(),
+            "2025-01-01",
+        )
+        .unwrap();
+    assert_eq!(stage.is, None);
+    let (articles, _) = taking_part(&stage);
+    assert_eq!(
+        articles,
+        [
+            (s("wzt_proto"), s("2"), None),
+            (s("awir_proto"), s("16"), Some(s("pre_actions"))),
+        ]
+    );
+}
+
+#[test]
+fn an_article_hooked_before_and_after_a_stage_takes_part_once() {
+    // Awir 16 also after the actions at VOORSCHOT: one article, its inputs
+    // once.
+    let awir = AWIR.replace(
+        "          applies_to: {legal_character: BESCHIKKING, stage: VOORSCHOT}\n",
+        "          applies_to: {legal_character: BESCHIKKING, stage: VOORSCHOT}\n        - hook_point: post_actions\n          applies_to: {legal_character: BESCHIKKING, stage: VOORSCHOT}\n",
+    );
+    assert_ne!(awir, AWIR);
+    let service = service(&[AWR, &awir, WZT]);
+    let stage = service
+        .stage_inputs(
+            "wzt_proto",
+            "2",
+            "VOORSCHOT",
+            &BTreeMap::new(),
+            "2025-01-01",
+        )
+        .unwrap();
+    let (articles, inputs) = taking_part(&stage);
+    assert_eq!(
+        articles,
+        [
+            (s("wzt_proto"), s("2"), None),
+            (s("awir_proto"), s("16"), Some(s("pre_actions"))),
+        ]
+    );
+    assert_eq!(
+        inputs,
+        [
+            (s("2"), s("bsn"), false),
+            (s("16"), s("vermoedelijk_toetsingsinkomen"), false),
+        ]
+    );
+}
+
+#[test]
+fn a_stage_is_refused_where_executing_it_would_be() {
+    let service = service(&[AWB, AWR, AWIR, WZT]);
+    let ask = |law: &str, article: &str, stage: &str| {
+        service
+            .stage_inputs(law, article, stage, &BTreeMap::new(), "2025-01-01")
+            .unwrap_err()
+            .to_string()
+    };
+    let err = ask("wzt_proto", "2", "BEKENDMAKING");
+    assert!(err.contains("BEKENDMAKING"), "{err}");
+    assert!(err.contains("tegemoetkoming"), "{err}");
+    let err = ask("awr_proto", "21", "TOEKENNING");
+    assert!(err.contains("follows no procedure"), "{err}");
+    let err = ask("wzt_proto", "3", "TOEKENNING");
+    assert!(err.contains("no article 3"), "{err}");
+    let err = service
+        .stage_inputs(
+            "wzt_proto",
+            "2",
+            "TOEKENNING",
+            &BTreeMap::new(),
+            "1999-01-01",
+        )
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("wzt_proto"), "{err}");
 }

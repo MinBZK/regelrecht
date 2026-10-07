@@ -1317,7 +1317,8 @@ impl Submission {
     }
 }
 
-/// An article that takes part in a submission.
+/// An article that takes part in a submission, or in a stage of a procedure
+/// ([`StageInputs`]).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SubmissionArticle {
     pub law_id: String,
@@ -1327,7 +1328,7 @@ pub struct SubmissionArticle {
     pub hook: Option<SubmissionHook>,
 }
 
-/// The hook by which an article takes part in a submission.
+/// The hook by which an article takes part in a submission or a stage.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SubmissionHook {
     pub hook_point: HookPoint,
@@ -1352,6 +1353,35 @@ impl RequestedInput {
     pub fn required(&self) -> bool {
         self.parameter.required != Some(false)
     }
+}
+
+/// What executing a decision article at one stage of its procedure involves
+/// (RFC-008): the stage, the article and the hooks that fire at that stage,
+/// and every parameter those articles declare. The Awir's VOORSCHOT asks what
+/// Zorgtoeslagwet art. 2 asks, and also the estimated income Awir 16 asks,
+/// which TOEKENNING does not. A runtime that takes one decision of a
+/// procedure, such as a cell, takes what to supply from here; executing the
+/// stage is [`LawExecutionService::execute_stage_at`].
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct StageInputs {
+    /// The procedure the article follows.
+    pub procedure_id: String,
+    /// The stage, as the procedure names it.
+    pub stage: String,
+    /// The stage of the default procedure it is an instance of (`is`), such
+    /// as BESLUIT.
+    pub is: Option<String>,
+    /// What the stage itself requires to be entered, such as the dagtekening
+    /// of the decision.
+    pub requires: Vec<crate::article::StageRequirement>,
+    /// The article first, then every hook that fires on it at this stage, in
+    /// the order the engine fires them (`pre_actions`, then `post_actions`),
+    /// each article once.
+    pub articles: Vec<SubmissionArticle>,
+    /// Every parameter the articles declare, per article in the order of
+    /// `articles`, as declared. A post hook may declare an output of the
+    /// article as a parameter; the execution supplies that one.
+    pub inputs: Vec<RequestedInput>,
 }
 
 /// High-level service for executing laws with automatic cross-law resolution.
@@ -1847,6 +1877,32 @@ impl LawExecutionService {
         else {
             return Ok(None);
         };
+        let (articles, inputs) =
+            self.taking_part(law_id, article, law, "BESLUIT", ref_date, parameters);
+        Ok(Some(Submission {
+            kind,
+            articles,
+            decisions: self.resolver.decisions_on(law_id, article_number).to_vec(),
+            inputs,
+        }))
+    }
+
+    /// The articles that take part when `article` of `law` runs at `stage`:
+    /// the article itself, then every hook that fires on it there (by the
+    /// rule [`Self::fire_hooks`] fires them), each article once; and every
+    /// parameter they declare, with whether `parameters` supplies it. A hook
+    /// whose law or article has no version in force on `ref_date` does not
+    /// fire, so it does not take part (an execution records that skip on its
+    /// trace and receipt; the model only leaves it out).
+    fn taking_part(
+        &self,
+        law_id: &str,
+        article: &Article,
+        law: &ArticleBasedLaw,
+        stage: &str,
+        ref_date: Option<NaiveDate>,
+        parameters: &BTreeMap<String, Value>,
+    ) -> (Vec<SubmissionArticle>, Vec<RequestedInput>) {
         let requested = |law_id: &str, article: &Article| -> Vec<RequestedInput> {
             article
                 .get_parameters()
@@ -1863,12 +1919,12 @@ impl LawExecutionService {
         };
         let mut articles = vec![SubmissionArticle {
             law_id: law_id.to_string(),
-            article_number: article_number.to_string(),
+            article_number: article.number.clone(),
             hook: None,
         }];
         let mut inputs = requested(law_id, article);
         for hook_point in [HookPoint::PreActions, HookPoint::PostActions] {
-            for h in self.hooks_firing_on(hook_point, article, law, "BESLUIT") {
+            for h in self.hooks_firing_on(hook_point, article, law, stage) {
                 if articles
                     .iter()
                     .any(|a| a.law_id == h.law_id && a.article_number == h.article_number)
@@ -1893,12 +1949,77 @@ impl LawExecutionService {
                 });
             }
         }
-        Ok(Some(Submission {
-            kind,
+        (articles, inputs)
+    }
+
+    /// What executing article `article_number` of `law_id` at stage
+    /// `stage_name` of its procedure involves, in the version in force on
+    /// `calculation_date`: the stage with what it requires, the article and
+    /// the hooks that fire on it at that stage (a hook on the stage the stage
+    /// `is`, too), and every parameter those articles declare, with whether
+    /// `parameters` supplies it. What [`Self::execute_stage_at`] runs, before
+    /// running it.
+    ///
+    /// Fails as [`Self::execute_stage_at`] does when the article follows no
+    /// procedure or its procedure has no such stage; a missing required value
+    /// is not an error here, it is what the caller asks this for.
+    pub fn stage_inputs(
+        &self,
+        law_id: &str,
+        article_number: &str,
+        stage_name: &str,
+        parameters: &BTreeMap<String, Value>,
+        calculation_date: &str,
+    ) -> Result<StageInputs> {
+        let ref_date = Some(parse_calculation_date(calculation_date)?);
+        let law = self
+            .resolver
+            .get_law_for_date_reported(law_id, ref_date)
+            .map_err(|reason| selection_error(law_id, calculation_date, reason))?;
+        let article = law.find_article_by_number(article_number).ok_or_else(|| {
+            EngineError::ResolutionError(format!(
+                "the version of {law_id} in force on {calculation_date} has no article {article_number}"
+            ))
+        })?;
+        let (procedure, stage) = self.procedure_stage(law_id, article, stage_name)?;
+        let (articles, inputs) =
+            self.taking_part(law_id, article, law, &stage.name, ref_date, parameters);
+        Ok(StageInputs {
+            procedure_id: procedure.id.clone(),
+            stage: stage.name.clone(),
+            is: stage.is.clone(),
+            requires: stage.requires.clone().unwrap_or_default(),
             articles,
-            decisions: self.resolver.decisions_on(law_id, article_number).to_vec(),
             inputs,
-        }))
+        })
+    }
+
+    /// The procedure `article` of `law_id` follows and its stage
+    /// `stage_name`. Fails when the article follows no procedure or the
+    /// procedure has no such stage.
+    fn procedure_stage(
+        &self,
+        law_id: &str,
+        article: &Article,
+        stage_name: &str,
+    ) -> Result<(&ProcedureDefinition, &crate::article::Stage)> {
+        let procedure = self.procedure_of(law_id, article)?.ok_or_else(|| {
+            EngineError::InvalidOperation(format!(
+                "{law_id} article {} follows no procedure, so it has no stage '{stage_name}'",
+                article.number
+            ))
+        })?;
+        let stage = procedure
+            .stages
+            .iter()
+            .find(|s| s.name == stage_name)
+            .ok_or_else(|| {
+                EngineError::InvalidOperation(format!(
+                    "Stage '{stage_name}' not found in procedure '{}'",
+                    procedure.id
+                ))
+            })?;
+        Ok((procedure, stage))
     }
 
     /// The procedure the decision `article` of `law_id` produces follows
@@ -1967,22 +2088,7 @@ impl LawExecutionService {
         let article = self
             .resolver
             .resolve_article_by_output(law_id, output_name, ref_date)?;
-        let procedure = self.procedure_of(law_id, article)?.ok_or_else(|| {
-            EngineError::InvalidOperation(format!(
-                "{law_id} article {} follows no procedure, so it has no stage '{stage_name}'",
-                article.number
-            ))
-        })?;
-        let stage = procedure
-            .stages
-            .iter()
-            .find(|s| s.name == stage_name)
-            .ok_or_else(|| {
-                EngineError::InvalidOperation(format!(
-                    "Stage '{stage_name}' not found in procedure '{}'",
-                    procedure.id
-                ))
-            })?;
+        let (procedure, stage) = self.procedure_stage(law_id, article, stage_name)?;
         let missing: Vec<&str> = stage
             .requires
             .iter()
