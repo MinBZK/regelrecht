@@ -80,6 +80,7 @@ export default {
       "tarief_tussenproduct": "Intermediate product rate",
       "tarief_wijn": "Wine rate",
       "termijn_in_maand": "Instalment in month",
+      "termijn_wordt_betaald": "Instalment is paid",
       "tijdig_aangevraagd": "Applied for in time",
       "toeslagen_onderzoek": "Toeslagen investigation",
       "toeslagen_twijfel": "Doubt flagged by Toeslagen",

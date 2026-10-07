@@ -62,9 +62,14 @@ fn object(v: serde_json::Value) -> Map<String, serde_json::Value> {
 /// The application as the citizen fills it in: what Awir 15 and Awb 4:2 lid
 /// 1 ask of them.
 fn application() -> Map<String, serde_json::Value> {
+    application_for(2025)
+}
+
+/// The same application, for the berekeningsjaar `year`.
+fn application_for(year: i32) -> Map<String, serde_json::Value> {
     object(json!({
         "bsn": BSN,
-        "aangevraagd_berekeningsjaar": 2025,
+        "aangevraagd_berekeningsjaar": year,
         "naam_aanvrager": "J. Voorbeeld",
         "adres_aanvrager": "Voorbeeldstraat 1, 2511 AA Den Haag",
         "dagtekening": "2025-03-03",
@@ -544,6 +549,7 @@ fn a_lexostatus_reading_an_unknown_field_is_refused() {
         "cell.yaml",
         "streams/zorgtoeslag_aanvragen.yaml",
         "streams/zorgtoeslag_besluiten.yaml",
+        "streams/zorgtoeslag_betalingen.yaml",
     ] {
         std::fs::copy(fixture.join(f), config.path().join(f)).unwrap();
     }
@@ -826,7 +832,11 @@ fn a_decision_reads_several_lexostatuses() {
     let config = |lexostatuses: &str| {
         CellConfig::from_yaml(
             &read("cell.yaml"),
-            &[&read("streams/zorgtoeslag_aanvragen.yaml"), &decisions],
+            &[
+                &read("streams/zorgtoeslag_aanvragen.yaml"),
+                &decisions,
+                &read("streams/zorgtoeslag_betalingen.yaml"),
+            ],
             Some(lexostatuses),
         )
         .unwrap_or_else(|e| panic!("{e}"))
@@ -864,4 +874,311 @@ fn a_decision_reads_several_lexostatuses() {
         .unwrap_err();
     assert!(matches!(e, Error::Setup(_)), "{e}");
     assert!(e.to_string().contains("'bsn'"), "{e}");
+}
+
+/// An application received at `received`, the citizen's registers, and the
+/// voorschot on it decided at `decided`: the cell with both grams.
+fn with_voorschot(
+    service: &mut LawExecutionService,
+    data: &Path,
+    received: &str,
+    decided: &str,
+) -> (Cell, Gram, Gram) {
+    let received = at(received);
+    let mut cell = cell(service, data, received);
+    let application = cell
+        .record_submission(service, "aanvraag_ontvangen", &application(), received)
+        .unwrap_or_else(|e| panic!("{e}"));
+    register_sources(service);
+    let voorschot = cell
+        .decide(
+            service,
+            "voorschot_verleend",
+            BTreeMap::from([("on_application".to_string(), application.id.clone())]),
+            BTreeMap::new(),
+            at(decided),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+    (cell, application, voorschot)
+}
+
+/// Pay the voorschottermijn of the month of `day`, on that day at ten.
+fn pay(cell: &mut Cell, service: &LawExecutionService, root: &str, day: &str) -> Option<Gram> {
+    let now = at(&format!("{day}T10:00:00+01:00"));
+    cell.execute(
+        service,
+        "voorschottermijn_betaald",
+        root,
+        now.date_naive(),
+        now,
+    )
+    .unwrap_or_else(|e| panic!("{day}: {e}"))
+}
+
+/// The first day of each month from `year`-`month`, `count` of them.
+fn months(year: i32, month: u32, count: u32) -> Vec<String> {
+    (0..count)
+        .map(|i| {
+            let m = month - 1 + i;
+            format!("{}-{:02}-01", year + (m / 12) as i32, m % 12 + 1)
+        })
+        .collect()
+}
+
+fn amount(gram: &Gram, field: &str) -> i64 {
+    gram.fields[field]
+        .as_i64()
+        .unwrap_or_else(|| panic!("{field}: {}", gram.fields[field]))
+}
+
+/// Awir 22 lid 1: a voorschot granted before the berekeningsjaar begins is
+/// paid in 12 termijnen, the first in December before it. The cell pays the
+/// law per month; a termijn becomes a gram only when it is paid.
+#[test]
+fn a_voorschot_before_the_year_is_paid_in_twelve_termijnen() {
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    // A doorlopende aanvraag for 2025, received and granted in November
+    // 2024, under the law of 2025 (Awir 16 lid 2).
+    let (mut cell, application, voorschot) = with_voorschot(
+        &mut service,
+        data.path(),
+        "2024-11-04T10:15:00+01:00",
+        "2024-11-20T09:00:00+01:00",
+    );
+    assert_eq!(voorschot.period, Some(year(2025)));
+    let voorschotbedrag = amount(&voorschot, "voorschotbedrag");
+    assert!(voorschotbedrag > 0);
+
+    // November: no termijn yet, no gram.
+    assert_eq!(
+        pay(&mut cell, &service, &application.id, "2024-11-25"),
+        None
+    );
+
+    let mut paid = Vec::new();
+    for day in months(2024, 12, 12) {
+        let gram = pay(&mut cell, &service, &application.id, &day)
+            .unwrap_or_else(|| panic!("{day}: no termijn"));
+        paid.push(gram);
+    }
+    let first = &paid[0];
+    assert_eq!(first.type_, "executogram");
+    assert_eq!(first.name, "voorschottermijn_betaald");
+    assert_eq!(first.stage, None);
+    assert_eq!(
+        first.establishes,
+        "fictief_beleid_termijnbedrag_voorschot#1"
+    );
+    // It refers to the voorschot by its stage, and belongs to the case of
+    // the application.
+    assert_eq!(first.refers_to["voorschot"], voorschot.id);
+    assert_eq!(first.period, Some(year(2025)));
+    assert_eq!(first.regulation_valid_from.as_deref(), Some("2025-01-01"));
+    assert_eq!(first.effective_at, "2024-12-01T10:00:00+01:00");
+    assert_eq!(
+        first.fields.keys().collect::<Vec<_>>(),
+        ["termijnbedrag"],
+        "only what the law names"
+    );
+    // What it was paid on: the voorschot read back, and the month.
+    assert_eq!(first.inputs["voorschotbedrag"]["value"], voorschotbedrag);
+    assert_eq!(first.inputs["dagtekening_voorschot"]["value"], "2024-11-20");
+    assert_eq!(first.inputs["berekeningsjaar"]["value"], 2025);
+    assert_eq!(
+        first.inputs["maand"],
+        json!({"value": "2024-12-01", "provenance": {"source": "execution"}})
+    );
+    // Twelve termijnen, December to November, together the voorschot.
+    let total: i64 = paid.iter().map(|g| amount(g, "termijnbedrag")).sum();
+    assert_eq!(total, voorschotbedrag);
+    assert_eq!(amount(&paid[0], "termijnbedrag"), voorschotbedrag / 12);
+
+    // December after the year: no more termijnen.
+    assert_eq!(
+        pay(&mut cell, &service, &application.id, "2025-12-01"),
+        None
+    );
+    let termijnen = cell
+        .grams()
+        .filter(|g| g.name == "voorschottermijn_betaald")
+        .count();
+    assert_eq!(termijnen, 12);
+}
+
+/// Awir 22 lid 2 and 4: granted in March, the months that passed are paid
+/// at once with the first termijn, the rest in termijnen until November.
+#[test]
+fn a_voorschot_in_march_pays_the_passed_months_at_once() {
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    let (mut cell, application, voorschot) = with_voorschot(
+        &mut service,
+        data.path(),
+        "2025-03-04T10:15:00+01:00",
+        "2025-03-10T09:00:00+01:00",
+    );
+    let voorschotbedrag = amount(&voorschot, "voorschotbedrag");
+    let paid: Vec<Gram> = ["2025-03-20"]
+        .into_iter()
+        .map(String::from)
+        .chain(months(2025, 4, 8))
+        .map(|day| {
+            pay(&mut cell, &service, &application.id, &day)
+                .unwrap_or_else(|| panic!("{day}: no termijn"))
+        })
+        .collect();
+    assert_eq!(paid.len(), 9);
+    // The first termijn carries January to March at once.
+    let at_once = (voorschotbedrag * 3 + 6) / 12;
+    let per_termijn = (voorschotbedrag - at_once) / 9;
+    assert_eq!(amount(&paid[0], "termijnbedrag"), at_once + per_termijn);
+    assert_eq!(amount(&paid[1], "termijnbedrag"), per_termijn);
+    let total: i64 = paid.iter().map(|g| amount(g, "termijnbedrag")).sum();
+    assert_eq!(total, voorschotbedrag);
+}
+
+/// A termijn is paid once a month, never before the voorschot it executes,
+/// and never ahead of time: a termijn that has yet to come is not a fact.
+#[test]
+fn a_termijn_is_paid_once_and_not_ahead_of_time() {
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    let (mut cell, application, _) = with_voorschot(
+        &mut service,
+        data.path(),
+        "2025-03-04T10:15:00+01:00",
+        "2025-03-10T09:00:00+01:00",
+    );
+    let refused = |cell: &mut Cell, on: &str, now: &str| {
+        let e = cell
+            .execute(
+                &service,
+                "voorschottermijn_betaald",
+                &application.id,
+                on.parse().unwrap(),
+                at(now),
+            )
+            .unwrap_err();
+        assert!(matches!(e, Error::Refused(_)), "{on}: {e}");
+        e.to_string()
+    };
+    // Before the voorschot it executes.
+    refused(&mut cell, "2025-03-01", "2025-03-20T10:00:00+01:00");
+    // Ahead of time.
+    let e = refused(&mut cell, "2025-04-01", "2025-03-20T10:00:00+01:00");
+    assert!(e.contains("not a fact"), "{e}");
+    // Once a month.
+    assert!(pay(&mut cell, &service, &application.id, "2025-04-01").is_some());
+    let e = refused(&mut cell, "2025-04-15", "2025-04-15T10:00:00+02:00");
+    assert!(e.contains("already"), "{e}");
+    // A decision is not executed on a day, and a case without a voorschot
+    // has nothing to execute.
+    let e = cell
+        .execute(
+            &service,
+            "voorschot_verleend",
+            &application.id,
+            "2025-04-15".parse().unwrap(),
+            at("2025-04-15T10:00:00+02:00"),
+        )
+        .unwrap_err();
+    assert!(matches!(e, Error::Refused(_)), "{e}");
+    let other = cell
+        .record_submission(
+            &service,
+            "aanvraag_ontvangen",
+            &application_for(2025),
+            at("2025-04-15T10:00:00+02:00"),
+        )
+        .unwrap();
+    let e = cell
+        .execute(
+            &service,
+            "voorschottermijn_betaald",
+            &other.id,
+            "2025-04-15".parse().unwrap(),
+            at("2025-04-15T10:00:00+02:00"),
+        )
+        .unwrap_err();
+    assert!(e.to_string().contains("has none"), "{e}");
+}
+
+/// A reading is the state at a moment: a termijn paid later does not count
+/// at an earlier moment, and the sum of nothing is zero.
+#[test]
+fn a_reading_counts_only_what_holds_at_its_moment() {
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    let (mut cell, application, voorschot) = with_voorschot(
+        &mut service,
+        data.path(),
+        "2024-11-04T10:15:00+01:00",
+        "2024-11-20T09:00:00+01:00",
+    );
+    let root = object(json!({"root": application.id}));
+    let paid = |cell: &Cell, moment: &str| {
+        cell.read("uitbetaald", &root, at(moment)).unwrap()["uitbetaalde_voorschotten"]
+            .as_i64()
+            .unwrap()
+    };
+    assert_eq!(paid(&cell, "2025-06-30T12:00:00+02:00"), 0);
+    let termijnen: Vec<Gram> = months(2024, 12, 6)
+        .iter()
+        .map(|day| pay(&mut cell, &service, &application.id, day).unwrap())
+        .collect();
+    let sum = |n: usize| -> i64 {
+        termijnen[..n]
+            .iter()
+            .map(|g| amount(g, "termijnbedrag"))
+            .sum()
+    };
+    assert_eq!(paid(&cell, "2025-06-30T12:00:00+02:00"), sum(6));
+    assert_eq!(paid(&cell, "2025-03-15T12:00:00+01:00"), sum(4));
+    // Before the first termijn: nothing paid.
+    assert_eq!(paid(&cell, "2024-11-30T12:00:00+01:00"), 0);
+
+    // The voorschot read before it was granted is not there.
+    let e = cell
+        .read("voorschot", &root, at("2024-11-19T12:00:00+01:00"))
+        .unwrap_err();
+    assert!(matches!(e, Error::Refused(_)), "{e}");
+    let read = cell
+        .read("voorschot", &root, at("2024-11-20T12:00:00+01:00"))
+        .unwrap();
+    assert_eq!(read["voorschotbedrag"], voorschot.fields["voorschotbedrag"]);
+    assert_eq!(read["dagtekening_voorschot"], "2024-11-20");
+    assert_eq!(read["berekeningsjaar"], 2025);
+}
+
+/// A sum reads many grams, so it goes with `pick: all`; `pick: all` reads
+/// nothing but sums.
+#[test]
+fn a_sum_goes_with_pick_all() {
+    let fixture = cell_yaml().parent().unwrap().to_path_buf();
+    let read = |f: &str| std::fs::read_to_string(fixture.join(f)).unwrap();
+    let streams = [
+        read("streams/zorgtoeslag_aanvragen.yaml"),
+        read("streams/zorgtoeslag_besluiten.yaml"),
+        read("streams/zorgtoeslag_betalingen.yaml"),
+    ];
+    let streams: Vec<&str> = streams.iter().map(String::as_str).collect();
+    let lexostatuses = read("lexostatuses.yaml");
+    for (from, to) in [
+        ("pick: all", "pick: latest"),
+        (
+            "          sum: termijnbedrag",
+            "          field: termijnbedrag",
+        ),
+    ] {
+        assert!(lexostatuses.contains(from), "{from}");
+        let e = CellConfig::from_yaml(
+            &read("cell.yaml"),
+            &streams,
+            Some(&lexostatuses.replace(from, to)),
+        )
+        .unwrap_err();
+        assert!(matches!(e, Error::Setup(_)), "{to}: {e}");
+        assert!(e.to_string().contains("uitbetaalde_voorschotten"), "{e}");
+    }
 }

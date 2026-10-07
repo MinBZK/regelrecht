@@ -28,3 +28,40 @@ lexostatus_definitions:
         datum_ontvangst:
           moment: effective_at
           legal_basis: [algemene_wet_bestuursrecht#4:13 lid 1]
+  # Het voorschot op de aanvraag `root`: het besluit in de fase VOORSCHOT van
+  # de procedure van de Awir. De termijnen van art. 22 volgen uit het bedrag,
+  # de dagtekening van de beschikking en het berekeningsjaar.
+  - name: voorschot
+    inputs: [root]
+    reduction:
+      chronicle: toeslagen
+      filter: {type: decretogram, stage: VOORSCHOT, root: $root}
+      pick: latest
+      derivations:
+        voorschotbedrag:
+          field: voorschotbedrag
+          legal_basis: [algemene_wet_inkomensafhankelijke_regelingen#16 lid 1]
+        # Art. 22 lid 1 en 2: de termijnen volgen uit de dagtekening van de
+        # beschikking; die telt vanaf het moment van het besluit.
+        dagtekening_voorschot:
+          moment: effective_at
+          legal_basis: [algemene_wet_inkomensafhankelijke_regelingen#22 lid 1]
+        # Art. 2 lid 1 onder b: het kalenderjaar waarop het voorschot
+        # betrekking heeft.
+        berekeningsjaar:
+          period: year
+          legal_basis: [algemene_wet_inkomensafhankelijke_regelingen#2 lid 1]
+  # Wat er op het voorschot van de aanvraag `root` is uitbetaald: de som van
+  # de betaalde termijnen, zoals de kroniek die kent op het moment van lezen.
+  # Art. 24 lid 2 verrekent de uitbetaalde voorschotten, niet de verleende:
+  # een termijn die nooit is betaald, telt niet. Geen termijn is nul.
+  - name: uitbetaald
+    inputs: [root]
+    reduction:
+      chronicle: toeslagen
+      filter: {type: executogram, event: voorschottermijn_betaald, root: $root}
+      pick: all
+      derivations:
+        uitbetaalde_voorschotten:
+          sum: termijnbedrag
+          legal_basis: [algemene_wet_inkomensafhankelijke_regelingen#24 lid 2]

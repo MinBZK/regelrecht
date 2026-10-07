@@ -31,6 +31,42 @@ articles:
       heeft, en wordt het met de eerste termijn uitbetaald.
     machine_readable:
       execution:
+        # Een betaalde termijn is een feit in de kroniek van Toeslagen
+        # (chronolex, een executogram: de uitvoering van het voorschot). Een
+        # termijn die nog moet komen is geen feit (RFC-044): de cel voert dit
+        # artikel uit op een dag (`executed_on`) en legt alleen een gram vast
+        # als er in die maand een termijn valt (`record_when`, art. 22 Awir).
+        # - refers_to: het voorschot, als het besluit in de fase VOORSCHOT
+        #   van de procedure tegemoetkoming van de Awir. Zo noemt dit beleid
+        #   geen toeslag.
+        # - period: de termijnen rekenen met het beleid van het
+        #   berekeningsjaar, ook de termijn in december ervoor (art. 22 lid 1).
+        # - once_per: per voorschot ten hoogste één termijn per maand (art. 22
+        #   lid 1: "telkens een maand later").
+        # - until: na de toekenning wordt geen termijn meer betaald. Eigen
+        #   keuze, gelezen uit art. 24 lid 2 Awir: de voorschotten worden met
+        #   de tegemoetkoming verrekend, dus wat dan nog niet betaald is, komt
+        #   niet meer. Dat volgt uit de toekenning en wordt geen eigen gram.
+        produces:
+          extensions:
+            chronolex:
+              establishes:
+                - event: voorschottermijn_betaald
+                  type: executogram
+                  refers_to:
+                    voorschot:
+                      stage: VOORSCHOT
+                      required: true
+                  fields: [termijnbedrag]
+                  period:
+                    parameter: berekeningsjaar
+                    unit: year
+                  executed_on:
+                    parameter: maand
+                    once_per: month
+                  record_when: termijn_wordt_betaald
+                  until:
+                    stage: TOEKENNING
         parameters:
           - name: voorschotbedrag
             type: amount
@@ -93,6 +129,10 @@ articles:
                 berekeningsjaar: $berekeningsjaar
                 maand: $maand
         output:
+          # Art. 22 Awir: valt er in deze maand een termijn, dan wordt die
+          # betaald. Zo zegt het beleid wanneer er een betaalde termijn is.
+          - name: termijn_wordt_betaald
+            type: boolean
           - name: deel_ineens
             type: amount
             type_spec:
@@ -106,6 +146,8 @@ articles:
             type_spec:
               unit: eurocent
         actions:
+          - output: termijn_wordt_betaald
+            value: $termijn_in_maand
           # Het deel in één bedrag: het voorschot naar rato van de maanden.
           - output: deel_ineens
             value:

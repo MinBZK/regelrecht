@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use chrono::DateTime;
 use regelrecht_cel::cell::load_regulations;
 use regelrecht_cel::extension::{PeriodParameter, PeriodUnit};
-use regelrecht_cel::Cell;
+use regelrecht_cel::{Cell, Gram};
 use regelrecht_engine::{LawExecutionService, Value};
 use serde_json::json;
 
@@ -261,4 +261,117 @@ fn the_demo_cell_grants_a_voorschot_on_the_estimate() {
         hoogte_on(79547, "2025-01-01")
     );
     assert_ne!(toekenning.fields["hoogte_toeslag"], on_estimate);
+}
+
+fn at(moment: &str) -> DateTime<chrono::FixedOffset> {
+    DateTime::parse_from_rfc3339(moment).unwrap()
+}
+
+/// The demo cell with the persona's application received at `received` and
+/// the voorschot on it decided at `decided`; the registers know `income`.
+fn with_voorschot(
+    service: &mut LawExecutionService,
+    data: &std::path::Path,
+    received: &str,
+    decided: &str,
+    income: i64,
+) -> (Cell, Gram, Gram) {
+    let received = at(received);
+    let mut cell = Cell::open(
+        &demo().join("cells/toeslagen/cell.yaml"),
+        service,
+        data,
+        received.date_naive(),
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    let application = cell
+        .record_submission(
+            service,
+            "aanvraag_ontvangen",
+            json!({
+                "bsn": BSN,
+                "aangevraagd_berekeningsjaar": 2025,
+                "vermoedelijk_toetsingsinkomen": ESTIMATE,
+            })
+            .as_object()
+            .unwrap(),
+            received,
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+    register(service, income);
+    let voorschot = cell
+        .decide(
+            service,
+            "voorschot_verleend",
+            BTreeMap::from([("on_application".to_string(), application.id.clone())]),
+            BTreeMap::new(),
+            at(decided),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+    (cell, application, voorschot)
+}
+
+/// Pay the voorschottermijn of the month of the first of `year`-`month`.
+fn pay(
+    cell: &mut Cell,
+    service: &LawExecutionService,
+    root: &str,
+    year: i32,
+    month: u32,
+) -> Option<Gram> {
+    let now = at(&format!("{year}-{month:02}-01T10:00:00+01:00"));
+    cell.execute(
+        service,
+        "voorschottermijn_betaald",
+        root,
+        now.date_naive(),
+        now,
+    )
+    .unwrap_or_else(|e| panic!("{year}-{month}: {e}"))
+}
+
+fn amount(gram: &Gram, field: &str) -> i64 {
+    gram.fields[field]
+        .as_i64()
+        .unwrap_or_else(|| panic!("{field}: {}", gram.fields[field]))
+}
+
+/// The demo pays the voorschot as the main corpus does: twelve termijnen
+/// from December when it is granted before the year (Awir 22 lid 1), the
+/// passed months at once when it is granted in March (lid 2 and 4).
+#[test]
+fn the_demo_cell_pays_the_voorschot_in_termijnen() {
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    let (mut cell, application, voorschot) = with_voorschot(
+        &mut service,
+        data.path(),
+        "2024-11-04T10:15:00+01:00",
+        "2024-11-20T09:00:00+01:00",
+        79547,
+    );
+    let mut paid = Vec::new();
+    for (year, month) in std::iter::once((2024, 12)).chain((1..=11).map(|m| (2025, m))) {
+        paid.push(pay(&mut cell, &service, &application.id, year, month).unwrap());
+    }
+    assert_eq!(pay(&mut cell, &service, &application.id, 2025, 12), None);
+    let total: i64 = paid.iter().map(|g| amount(g, "termijnbedrag")).sum();
+    assert_eq!(total, amount(&voorschot, "voorschotbedrag"));
+    assert_eq!(paid[0].refers_to["voorschot"], voorschot.id);
+
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    let (mut cell, application, voorschot) = with_voorschot(
+        &mut service,
+        data.path(),
+        "2025-02-27T10:15:00+01:00",
+        "2025-03-01T09:00:00+01:00",
+        79547,
+    );
+    let paid: Vec<Gram> = (3..=11)
+        .map(|m| pay(&mut cell, &service, &application.id, 2025, m).unwrap())
+        .collect();
+    let total: i64 = paid.iter().map(|g| amount(g, "termijnbedrag")).sum();
+    assert_eq!(total, amount(&voorschot, "voorschotbedrag"));
+    assert!(amount(&paid[0], "termijnbedrag") > amount(&paid[1], "termijnbedrag"));
 }
