@@ -118,6 +118,8 @@ Eén knop zet de peildatum op het eerstvolgende moment. De cel legt vast wat dan
 
 **Pagina:** de bestaande pagina's (Portaal, Zaaksysteem met Kroniek), zoals afgesproken. De tijdsbediening hoort bij de zaak, niet bij een losse pagina.
 
+**Gebouwd (stap 5, 7 oktober 2026).** De demo heeft één klok en de knop "Naar het volgende moment" in de Kroniek. Wat de volgende momenten zijn, haalt de demo uit voorbeelden van de cel (`preview_execution`, `preview_decision`): de wet uitgevoerd zonder vast te leggen. De datum van de aanslag (Awir 19, herkomst DOSSIER) komt uit de gegevens van de persona, via `dossier` in `demo-config.yaml`. Elk besluit heeft een eigen bekendmaking (fasen VOORSCHOT_BEKENDMAKING en TOEKENNING_BEKENDMAKING, `is: BEKENDMAKING`), zodat Awb 6:8 per besluit vuurt (eigen keuze, naar Awb 3:40 en 3:41). Het berekeningsjaar van de aanvraag is in de demo nog het jaar van de peildatum, dus een voorschot vóór het berekeningsjaar is in de demo niet te bereiken.
+
 ## 9. Wat bewust later komt
 
 - de aanspraak per kalendermaand (Zorgtoeslagwet 2 lid 5); eerst een jaarbedrag over de termijnen
