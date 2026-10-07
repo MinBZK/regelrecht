@@ -72,8 +72,24 @@ const tickets: MiniTicket[] = vraag.deelvragen.map((d) => {
 >
 <nldd-list-item button data-uitklap>
   <nldd-text-cell overline={kopregel} text={vraag.vraag} width="full">
-    <nldd-container slot="supporting-text" gap="4">
-      <nldd-text size="xs" color="secondary">{werkpakket.titel}</nldd-text>
+    <nldd-container slot="supporting-text" gap="8">
+      {/* Werkpakket en papersectie als gelabelde tekst op de kaart zelf, zodat
+          je ze ziet zonder uit te klappen. Tekst en geen link: de rij is een
+          knop, en een link in een knop is geen geldige HTML en is voor
+          toetsenbord en schermlezer niet te bereiken. De klikbare links staan
+          in het uitgeklapte deel. */}
+      <nldd-container layout="row" gap="24">
+        <nldd-container gap="2">
+          <nldd-text size="xs" weight="medium" color="secondary">Werkpakket</nldd-text>
+          <nldd-text size="sm">{werkpakket.titel}</nldd-text>
+        </nldd-container>
+        {vraag.paper && (
+          <nldd-container gap="2">
+            <nldd-text size="xs" weight="medium" color="secondary">Position paper</nldd-text>
+            <nldd-text size="sm">Rules as Executed § {vraag.paper.nummer}</nldd-text>
+          </nldd-container>
+        )}
+      </nldd-container>
       <nldd-container layout="wrap" gap="4" vertical-alignment="center">
         {/* De eigen status als tag; zonder eigen status de belegging van het
             werkpakket, met "werkpakket" ervoor, want daar komt de stand dan
