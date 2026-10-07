@@ -51,10 +51,27 @@ pub struct Stream {
 pub struct Event {
     pub name: String,
     pub establishes: String,
-    /// For a decision: the lexostatus the cell reads the parameters of the
-    /// establishing article from (see [`crate::Cell::decision_inputs`]).
-    #[serde(default)]
-    pub reads: Option<String>,
+    /// For a decision: the lexostatuses the cell reads the parameters of the
+    /// decision from (see [`crate::Cell::decision_inputs`]); one name or a
+    /// list.
+    #[serde(default, deserialize_with = "one_or_more")]
+    pub reads: Vec<String>,
+}
+
+/// A name or a list of names.
+fn one_or_more<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> std::result::Result<Vec<String>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum OneOrMore {
+        One(String),
+        More(Vec<String>),
+    }
+    Ok(match OneOrMore::deserialize(d)? {
+        OneOrMore::One(name) => vec![name],
+        OneOrMore::More(names) => names,
+    })
 }
 
 /// A lexostatus file: how the cell reads its own chronicle back.
@@ -216,20 +233,21 @@ impl CellConfig {
         };
         for s in &streams {
             for e in &s.events {
-                let Some(name) = &e.reads else { continue };
-                let Some(l) = lexostatuses.iter().find(|l| &l.name == name) else {
-                    return Err(setup(format!(
+                for name in &e.reads {
+                    let Some(l) = lexostatuses.iter().find(|l| &l.name == name) else {
+                        return Err(setup(format!(
                         "stream '{}', event '{}' reads lexostatus '{name}', which the cell does not define",
                         s.id, e.name
                     )));
-                };
-                // A decision reads the case it is taken on: the cell passes
-                // the root of the gram it refers to, and nothing else.
-                if l.inputs != ["root"] || l.reduction.filter.root.as_deref() != Some("$root") {
-                    return Err(setup(format!(
+                    };
+                    // A decision reads the case it is taken on: the cell passes
+                    // the root of the gram it refers to, and nothing else.
+                    if l.inputs != ["root"] || l.reduction.filter.root.as_deref() != Some("$root") {
+                        return Err(setup(format!(
                         "stream '{}', event '{}' reads lexostatus '{name}', which must have `inputs: [root]` and filter on `root: $root`",
                         s.id, e.name
                     )));
+                    }
                 }
             }
         }

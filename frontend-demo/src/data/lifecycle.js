@@ -64,11 +64,47 @@ export function statusOf(caseRecord) {
   //
   // Dat verschil verkeerd lezen draait de demo om: elke aanvraag die naar een
   // behandelaar gaat, zou meteen als besloten op het portaal staan.
-  if (stage === 'AANVRAAG') return 'SUBMITTED';
-  if (stage === 'BEHANDELING' || stage === 'BESLUIT') return 'IN_REVIEW';
-  // Voorbij BESLUIT is het besluit genomen. Of het toe- of afwijst zegt
+  //
+  // Wat een fase is, zegt de procedure: een fase VOORSCHOT van de Awir `is`
+  // een BESLUIT. Zonder procedure bij de zaak gelden de fasen van de Awb.
+  const stages = caseRecord.procedureStages ?? STAGES.map((name) => ({ name }));
+  const at = stages.findIndex((s) => s.name === stage);
+  // Een fase buiten de procedure: de levensloop is klaar.
+  if (at < 0) return 'DECIDED';
+  // Voorbij een besluit is het besluit genomen. Of het toe- of afwijst zegt
   // `approved`, niet de fase.
-  return 'DECIDED';
+  if (stages.slice(0, at).some((s) => stageKind(s) === 'BESLUIT')) return 'DECIDED';
+  if (stageKind(stages[at]) === 'AANVRAAG') return 'SUBMITTED';
+  return 'IN_REVIEW';
+}
+
+/** Wat een fase is: haar `is` (VOORSCHOT is een BESLUIT), anders haar naam. */
+function stageKind(stage) {
+  return stage?.is ?? stage?.name;
+}
+
+/**
+ * De fasen van procedure `procedureId`, uit de wet die haar vastlegt
+ * (`procedure:` in de YAML): per fase de naam en wat ze `is`. `null` als geen
+ * wet in `lawDocs` die procedure kent.
+ */
+export function procedureStages(lawDocs, procedureId) {
+  if (!procedureId) return null;
+  for (const doc of lawDocs ?? []) {
+    const procedure = (doc?.procedure ?? []).find((p) => p.id === procedureId);
+    if (procedure) return procedure.stages.map((s) => ({ name: s.name, is: s.is ?? null }));
+  }
+  return null;
+}
+
+/**
+ * Wat een besluit op `date` aanlevert aan de fase waarop de zaak wacht: de
+ * dagtekening. De fase van een besluit vraagt alleen haar datum (de
+ * besluitdatum van de Awb, de dagtekening van het voorschot van de Awir); welke
+ * naam die heeft, zegt de procedure en niet de demo.
+ */
+export function decisionDates(caseRecord, date) {
+  return Object.fromEntries((caseRecord?.pendingInputs ?? []).map((name) => [name, date]));
 }
 
 /**

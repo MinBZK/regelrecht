@@ -11,22 +11,27 @@ import { formatValue } from './format.js';
  */
 
 /**
- * De gebeurtenissen van een wet in de cellen van het corpus: het besluit (een
- * gebeurtenis die een artikel van deze wet vestigt) en de aanvraag waarop dat
- * besluit wordt genomen (`produces.decides_on` van dat artikel). `null` als de
- * wet geen besluit in een kroniek legt.
+ * De gebeurtenissen van een wet in de cellen van het corpus: de besluiten (de
+ * gebeurtenissen die een artikel van deze wet vestigt; een besluitartikel in
+ * een procedure met meer besluiten vestigt er meer, zoals het voorschot en de
+ * toekenning) en de aanvraag waarop die besluiten worden genomen
+ * (`produces.decides_on` van dat artikel). `null` als de wet geen besluit in
+ * een kroniek legt.
  */
 export function eventsForLaw(cells, lawDoc) {
   if (!lawDoc) return null;
   for (const cell of cells ?? []) {
-    for (const decision of cell.events) {
+    let application = null;
+    const decisions = cell.events.filter((decision) => {
       const [lawId, number] = decision.establishes.split('#');
-      if (lawId !== lawDoc.$id) continue;
+      if (lawId !== lawDoc.$id) return false;
       const article = (lawDoc.articles ?? []).find((a) => String(a.number) === number);
       const on = article?.machine_readable?.execution?.produces?.decides_on ?? [];
-      const application = cell.events.find((e) => on.includes(e.establishes));
-      if (application) return { cell, decision, application };
-    }
+      const found = cell.events.find((e) => on.includes(e.establishes));
+      application ??= found ?? null;
+      return !!found;
+    });
+    if (application && decisions.length) return { cell, decisions, application };
   }
   return null;
 }
@@ -88,10 +93,13 @@ export function provisionLabel(corpus, reference) {
  * (WasmCell.shape: `type`, `fixed`), `spec` de declaratie in de wet die het
  * besluit neemt. Een veld dat de cel vastzet (de gevraagde beschikking) is
  * een bepaling: bij naam. Een geheel getal zonder eenheid blijft een getal
- * zonder groepering ("2026", niet "2.026").
+ * zonder groepering ("2026", niet "2.026"). Zonder declaratie in het
+ * besluitartikel (een veld dat een andere wet vraagt of geeft, zoals het
+ * geschatte inkomen van Awir 16) leest de waarde naar het type van het veld:
+ * een bedrag is een bedrag.
  */
 export function fieldText(value, field = null, spec = null, corpus = null) {
   if (field?.fixed != null) return provisionLabel(corpus, value);
   if (field?.type === 'number' && !spec?.type_spec?.unit && Number.isInteger(value)) return String(value);
-  return formatValue(value, spec);
+  return formatValue(value, spec ?? field);
 }

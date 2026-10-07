@@ -18,7 +18,7 @@ import {
   registerClaims,
   registerPersonaData,
 } from '../engine/useDemoEngine.js';
-import { statusOf } from '../data/lifecycle.js';
+import { decisionDates, procedureStages, statusOf } from '../data/lifecycle.js';
 import { delegationKey, delegationTypeLabel, delegationsFor, maySubmitClaims } from '../data/delegation.js';
 import { verdictOf } from '../data/format.js';
 import { driftOf } from '../data/caseDrift.js';
@@ -314,26 +314,37 @@ function recordApplication(c, lawEntry, params) {
 }
 
 /**
- * Leg het besluit op de aanvraag vast: de cel leest wat het besluitartikel
- * vraagt terug uit haar kroniek (`inputsFor`, de lexostatus die de
- * gebeurtenis leest) en voert dat artikel uit.
+ * Leg het besluit op de aanvraag vast dat in fase `stage` valt: het besluit
+ * waarvan de wet zegt dat het in die fase wordt genomen (de vorm van de
+ * gebeurtenis, `stage`). Een wet met één besluit heeft er één, de
+ * Zorgtoeslagwet in de procedure van de Awir twee (voorschot en toekenning).
+ * De cel leest wat het besluit vraagt terug uit haar kroniek (`inputsFor`, de
+ * lexostatussen die de gebeurtenis leest) en voert die fase van het
+ * besluitartikel uit.
  *
  * De kroniek zegt niets anders dan het besluit. Kan de wet nog niet
  * beslissen, wijkt de behandelaar af van wat de wet berekent, of is het
  * besluit een weigering waar de wet een toekenning vestigt, dan komt er geen
  * gram; de zaak zegt waarom.
  */
-function recordDecision(c) {
-  if (!c.applicationGramId || c.decisionGramId) return;
+function recordDecision(c, stage) {
+  if (!c.applicationGramId) return;
   const lawEntry = corpus.value?.lawById(c.lawId);
   const chrono = chronolexFor(lawEntry);
   if (!chrono) return;
   c.chronicleError = null;
   c.chronicleNoteKey = null;
   try {
+    const shapes = chrono.decisions.map((d) => ({
+      event: d.name,
+      shape: chrono.wasmCell.shape(engine.value, d.name, state.referenceDate),
+    }));
+    const found = shapes.find((d) => d.shape.stage === stage);
+    if (!found || c.decisionGrams?.[found.event]) return;
+    const { event, shape } = found;
     // Wat de cel bij het besluit zal teruglezen (alleen kijken), en wat de
     // wet daarop beslist, vóór de cel het vastlegt.
-    const inputs = chrono.wasmCell.inputsFor(engine.value, chrono.decision.name, c.applicationGramId, state.referenceDate);
+    const inputs = chrono.wasmCell.inputsFor(engine.value, event, c.applicationGramId, state.referenceDate);
     const computed = evaluate(lawEntry, Object.fromEntries(Object.entries(inputs).map(([k, i]) => [k, i.value])));
     if (!computed.ok) throw new Error(computed.error);
     const verdict = verdictOf(computed.outputs);
@@ -346,7 +357,6 @@ function recordDecision(c) {
       c.chronicleNoteKey = 'zaak.chronicle.deviates';
       return;
     }
-    const shape = chrono.wasmCell.shape(engine.value, chrono.decision.name, state.referenceDate);
     if (!c.approved && shape.decision_type === 'TOEKENNING') {
       c.chronicleNoteKey = 'zaak.chronicle.refusal';
       return;
@@ -354,18 +364,28 @@ function recordDecision(c) {
     // De cel leest de aanvraag waarnaar het besluit verwijst zelf terug. Hoe
     // die verwijzing heet, zegt de wet (de vorm van het besluit).
     const required = Object.entries(shape.refers_to ?? {}).filter(([, r]) => r.required);
-    if (required.length !== 1) throw new Error(`${chrono.decision.name}: geen eenduidige verwijzing naar de aanvraag`);
+    if (required.length !== 1) throw new Error(`${event}: geen eenduidige verwijzing naar de aanvraag`);
     const gram = chrono.wasmCell.decide(
       engine.value,
-      chrono.decision.name,
+      event,
       { [required[0][0]]: c.applicationGramId },
       momentOn(state.referenceDate),
     );
-    c.decisionGramId = gram.id;
+    c.decisionGrams = { ...(c.decisionGrams ?? {}), [event]: gram.id };
     syncGrams();
   } catch (e) {
     c.chronicleError = String(e?.message ?? e);
   }
+}
+
+/**
+ * Het besluit wordt genomen op `date`: de fase waarop de zaak wacht krijgt
+ * haar dagtekening, en de cel legt het besluit van die fase vast.
+ */
+function takeDecision(c, date) {
+  const stage = c.stageState?.current_stage ?? null;
+  advanceLifecycle(c, decisionDates(c, date));
+  recordDecision(c, stage);
 }
 
 /**
@@ -717,10 +737,7 @@ function submitCase(lawEntry, evaluation, params = personaParams()) {
   // volgt die in dezelfde adem.
   const vandaag = isoDate(c.submittedAt);
   advanceLifecycle(c, { aanvraag_datum: vandaag, beslistermijn_start: vandaag });
-  if (!needsReview) {
-    advanceLifecycle(c, { besluit_datum: vandaag });
-    recordDecision(c);
-  }
+  if (!needsReview) takeDecision(c, vandaag);
   c.status = statusOf(c);
   announceIfAutomatic(c);
   reregister();
@@ -785,6 +802,12 @@ function advanceLifecycle(c, supplied = {}) {
   }
   c.stageState = step.state;
   c.pendingInputs = step.pendingInputs;
+  // Welke fasen de procedure heeft en wat elke fase is (VOORSCHOT is een
+  // BESLUIT), zegt de wet die haar vastlegt.
+  c.procedureStages = procedureStages(
+    [...(corpus.value?.latestById?.values() ?? [])].map((l) => l.doc),
+    step.state?.procedure_id,
+  );
 }
 
 /**
@@ -846,17 +869,14 @@ function resubmitCase(caseId, evaluation, params = personaParams()) {
   // In de kroniek is dit een nieuwe aanvraag, met straks een eigen besluit
   // erop; de grammen van de vorige blijven in de kroniek staan.
   c.applicationGramId = null;
-  c.decisionGramId = null;
+  c.decisionGrams = {};
   c.chronicleNoteKey = null;
   c.chronicleError = null;
   const lawEntry = corpus.value?.lawById(c.lawId);
   if (lawEntry) recordApplication(c, lawEntry, params);
   const opnieuw = isoDate(nowIso());
   advanceLifecycle(c, { aanvraag_datum: opnieuw, beslistermijn_start: opnieuw });
-  if (!needsReview) {
-    advanceLifecycle(c, { besluit_datum: opnieuw });
-    recordDecision(c);
-  }
+  if (!needsReview) takeDecision(c, opnieuw);
   c.status = statusOf(c);
   announceIfAutomatic(c);
   reregister();
@@ -877,9 +897,9 @@ function decideCase(caseId, approved, reason, verifiedResult = null) {
     key: approved ? 'case.event.granted_by_officer' : 'case.event.refused_by_officer',
     vars: { reason },
   });
-  // Het besluit is genomen: dat is de datum waar de fase BESLUIT op wachtte.
-  advanceLifecycle(c, { besluit_datum: isoDate(c.decidedAt) });
-  recordDecision(c);
+  // Het besluit is genomen: dat is de datum waar de fase van het besluit op
+  // wachtte.
+  takeDecision(c, isoDate(c.decidedAt));
   c.status = statusOf(c);
   announceIfAutomatic(c);
   reregister();

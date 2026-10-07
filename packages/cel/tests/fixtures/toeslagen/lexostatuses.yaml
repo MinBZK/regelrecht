@@ -19,6 +19,11 @@ lexostatus_definitions:
         aangevraagd_berekeningsjaar:
           field: aangevraagd_berekeningsjaar
           legal_basis: [algemene_wet_inkomensafhankelijke_regelingen#15 lid 1]
+        # Awir 16 lid 1: het toetsingsinkomen dat de aanvrager verwacht; het
+        # voorschot rekent ermee.
+        vermoedelijk_toetsingsinkomen:
+          field: vermoedelijk_toetsingsinkomen
+          legal_basis: [algemene_wet_inkomensafhankelijke_regelingen#16 lid 1]
         # Awb 4:13 lid 1: de aanvraag telt vanaf de ontvangst.
         datum_ontvangst:
           moment: effective_at

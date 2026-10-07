@@ -1,11 +1,16 @@
 ---
-# De toekenning van de zorgtoeslag op de aanvraag: een decretogram met de
-# uitkomsten van Zorgtoeslagwet art. 2. De parameters van dat artikel leest
-# de cel uit haar eigen kroniek: de lexostatus `aanvraag`.
+# De besluiten op de aanvraag om zorgtoeslag: het voorschot (Awir 16) en de
+# toekenning (Awir 14 lid 1, 19), elk een decretogram met de uitkomsten van
+# Zorgtoeslagwet art. 2 en de haken in zijn fase van de procedure van de Awir.
+# In welke fase een besluit valt, zegt de wet. De parameters leest de cel uit
+# haar eigen kroniek: de lexostatus `aanvraag`.
 $id: zorgtoeslag_besluiten
 recording_actor: belastingdienst_toeslagen
 chronicle: toeslagen
 events:
+  - name: voorschot_verleend
+    establishes: zorgtoeslagwet#2
+    reads: [aanvraag]
   - name: zorgtoeslag_toegekend
     establishes: zorgtoeslagwet#2
-    reads: aanvraag
+    reads: [aanvraag]

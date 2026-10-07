@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use chrono::{DateTime, FixedOffset, NaiveDate};
-use regelrecht_engine::{LawExecutionService, Value};
+use regelrecht_engine::{LawExecutionService, ParameterType, StageInputs, Value};
 use serde::{Deserialize, Serialize};
 use serde_json::Map;
 
@@ -292,12 +292,13 @@ impl Cell {
     }
 
     /// The parameters of the decision `event` on the gram `root`: the
-    /// lexostatus the event `reads`, read with `{root}`, kept to the
-    /// parameters the establishing article declares, each with where it came
-    /// from. The article is the version in force on `day`, or, if the law
-    /// says the decision concerns a period, on the first day of the period
-    /// read; the parameter that gives the period is kept too. What
-    /// [`Cell::decide`] reads; read-only, to look before deciding.
+    /// lexostatuses the event `reads`, each read with `{root}`, kept to what
+    /// executing the establishing article at the event's stage asks (the
+    /// article and the hooks that fire at that stage), each with the
+    /// lexostatus it came from. The article is the version in force on `day`,
+    /// or, if the law says the decision concerns a period, on the first day
+    /// of the period read; the parameter that gives the period is kept too.
+    /// What [`Cell::decide`] reads; read-only, to look before deciding.
     pub fn decision_inputs(
         &self,
         service: &LawExecutionService,
@@ -311,27 +312,40 @@ impl Cell {
                 self.config.id
             ))
         })?;
-        let lexostatus = e.reads.as_deref().ok_or_else(|| {
-            refused(format!(
+        if e.reads.is_empty() {
+            return Err(refused(format!(
                 "event '{event}' reads no lexostatus (`reads` in its stream)"
-            ))
-        })?;
+            )));
+        }
         let mut inputs = Map::new();
         inputs.insert("root".into(), serde_json::Value::String(root.into()));
-        let read = self.read(lexostatus, &inputs)?;
+        let mut read: BTreeMap<String, (serde_json::Value, &str)> = BTreeMap::new();
+        for lexostatus in &e.reads {
+            for (name, value) in self.read(lexostatus, &inputs)? {
+                if let Some((_, first)) = read.get(&name) {
+                    return Err(setup(format!(
+                        "event '{event}' reads '{name}' from both lexostatus '{first}' and '{lexostatus}'"
+                    )));
+                }
+                read.insert(name, (value, lexostatus));
+            }
+        }
         let (shape, _) = self.shape(service, event, day)?;
         let period_parameter = shape.period.as_ref().map(|p| p.parameter.as_str());
         // A period the case does not give leaves the day as it is: `decide`
         // refuses to take the decision without one.
         let day = match period_parameter.and_then(|p| read.get(p)) {
-            Some(value) => period(&shape, Some(value))?.map_or(day, |(_, d)| d),
+            Some((value, _)) => period(&shape, Some(value))?.map_or(day, |(_, d)| d),
             None => day,
         };
-        let asked = shape::parameter_names(service, &e.establishes, day)?;
+        let at = stage_of(service, &shape, day)?;
+        let asked = asked(&at);
         Ok(read
             .into_iter()
-            .filter(|(name, _)| asked.contains(name) || Some(name.as_str()) == period_parameter)
-            .map(|(name, value)| {
+            .filter(|(name, _)| {
+                asked.contains(&name.as_str()) || Some(name.as_str()) == period_parameter
+            })
+            .map(|(name, (value, lexostatus))| {
                 let input = Input {
                     value,
                     provenance: serde_json::json!({
@@ -405,13 +419,15 @@ impl Cell {
         let today = now.date_naive();
         let (shape, chronicle) = self.shape(service, event, today)?;
 
-        let reads = self.config.event(event).and_then(|(_, e)| e.reads.clone());
-        let mut inputs = match reads {
-            Some(_) => {
-                let root = self.case_root(&shape, &chronicle, &refers_to)?;
-                self.decision_inputs(service, event, &root, today)?
-            }
-            None => BTreeMap::new(),
+        let reads = self
+            .config
+            .event(event)
+            .is_some_and(|(_, e)| !e.reads.is_empty());
+        let mut inputs = if reads {
+            let root = self.case_root(&shape, &chronicle, &refers_to)?;
+            self.decision_inputs(service, event, &root, today)?
+        } else {
+            BTreeMap::new()
         };
         for (name, input) in extra_inputs {
             if inputs.contains_key(&name) {
@@ -438,16 +454,44 @@ impl Cell {
         };
         self.check_references(&shape, &chronicle, &refers_to)?;
 
+        // The decision is taken at its stage of the procedure: what that
+        // stage requires to be entered and is a date (the dagtekening of the
+        // voorschot, the besluitdatum) is the day it is taken.
+        let at = stage_of(service, &shape, day)?;
+        for required in &at.requires {
+            if required.req_type == ParameterType::Date && !inputs.contains_key(&required.name) {
+                let input = Input {
+                    value: serde_json::Value::String(today.to_string()),
+                    provenance: serde_json::json!({
+                        "source": "decision",
+                        "stage": at.stage,
+                    }),
+                };
+                inputs.insert(required.name.clone(), input);
+            }
+        }
+
         // The parameter that gives the period takes part in the decision,
-        // but goes to the article only if the article declares it.
-        let declared = shape::parameter_names(service, &shape.establishes, day)?;
+        // but goes to the article only if the stage asks it.
+        let asked = asked(&at);
         let parameters: BTreeMap<String, Value> = inputs
             .iter()
-            .filter(|(k, _)| declared.contains(k) || Some(*k) != period_parameter.as_ref())
+            .filter(|(k, _)| asked.contains(&k.as_str()) || Some(*k) != period_parameter.as_ref())
             .map(|(k, i)| (k.clone(), Value::from(&i.value)))
             .collect();
-        let names: Vec<&str> = shape.fields.iter().map(|f| f.name.as_str()).collect();
-        let result = service.evaluate_law(&shape.law_id, &names, parameters, &day.to_string())?;
+        let output = shape.outputs.first().ok_or_else(|| {
+            setup(format!(
+                "{}: the article has no output to take the decision by",
+                shape.establishes
+            ))
+        })?;
+        let result = service.execute_stage_at(
+            &shape.law_id,
+            output,
+            &at.stage,
+            parameters,
+            &day.to_string(),
+        )?;
 
         let mut gram = self.gram(&shape, &chronicle, now);
         gram.regulation = Some(shape.law_id.clone());
@@ -514,6 +558,26 @@ impl Cell {
         }
         Ok(())
     }
+}
+
+/// What executing the decision `shape` at its stage asks: the article and
+/// every hook that fires at that stage, and what the stage requires.
+fn stage_of(service: &LawExecutionService, shape: &Shape, day: NaiveDate) -> Result<StageInputs> {
+    let stage = shape.stage.as_deref().ok_or_else(|| {
+        setup(format!(
+            "{}: '{}' names no stage of its procedure to be taken at",
+            shape.establishes, shape.event
+        ))
+    })?;
+    shape::stage_inputs(service, shape, stage, day)
+}
+
+/// The names of the parameters a stage asks.
+fn asked(at: &StageInputs) -> Vec<&str> {
+    at.inputs
+        .iter()
+        .map(|i| i.parameter.name.as_str())
+        .collect()
 }
 
 /// The period a decision of `shape` concerns, from `value` (the value of the

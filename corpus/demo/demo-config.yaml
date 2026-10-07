@@ -32,6 +32,10 @@ profiles:
       adres_aanvrager: Meeuwenlaan 28, 1021HS Amsterdam
       dagtekening: $reference_date
       ondertekening: Merijn van der Meer
+      # Awir 16: het toetsingsinkomen dat Merijn over het jaar verwacht, in
+      # eurocent. Het voorschot rekent ermee; de toekenning later met wat de
+      # Belastingdienst over het jaar weet (24.150 euro).
+      vermoedelijk_toetsingsinkomen: 2200000
     portal_tab_label: Mijn overheid
     portal_heading: Waar heb ik recht op? Wat zijn mijn plichten?
     portal_subtitle: >-

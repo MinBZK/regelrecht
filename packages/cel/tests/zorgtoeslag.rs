@@ -23,6 +23,9 @@ use serde_json::{json, Map};
 const BSN: &str = "999993653";
 const AWIR: &str = "algemene_wet_inkomensafhankelijke_regelingen";
 const ZORGTOESLAG: &str = "wet_op_de_zorgtoeslag";
+/// The toetsingsinkomen the citizen expects (Awir 16): 30.000 euro, far
+/// above what the registers will know of the year (795,47 euro).
+const ESTIMATE: i64 = 3_000_000;
 
 fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -66,6 +69,7 @@ fn application() -> Map<String, serde_json::Value> {
         "adres_aanvrager": "Voorbeeldstraat 1, 2511 AA Den Haag",
         "dagtekening": "2025-03-03",
         "ondertekening": "J. Voorbeeld",
+        "vermoedelijk_toetsingsinkomen": ESTIMATE,
     }))
 }
 
@@ -79,6 +83,11 @@ fn record(entries: Vec<(&str, Value)>) -> BTreeMap<String, Value> {
 /// What the registers know of the citizen, as the engine's zorgtoeslag trace
 /// test registers it.
 fn register_sources(service: &mut LawExecutionService) {
+    register_sources_with_income(service, 79547);
+}
+
+/// The same registers, with `income` as the citizen's wages over the year.
+fn register_sources_with_income(service: &mut LawExecutionService, income: i64) {
     let bsn = || ("bsn", Value::String(BSN.to_string()));
     let sources = [
         (
@@ -108,7 +117,7 @@ fn register_sources(service: &mut LawExecutionService) {
             "box1",
             record(vec![
                 bsn(),
-                ("loon_uit_dienstbetrekking", Value::Int(79547)),
+                ("loon_uit_dienstbetrekking", Value::Int(income)),
                 ("uitkeringen_en_pensioenen", Value::Int(0)),
                 ("winst_uit_onderneming", Value::Int(0)),
                 ("resultaat_overige_werkzaamheden", Value::Int(0)),
@@ -123,7 +132,7 @@ fn register_sources(service: &mut LawExecutionService) {
                     "aanslag_of_navorderingsaanslag_vastgesteld",
                     Value::Bool(true),
                 ),
-                ("belastbaar_loon", Value::Int(79547)),
+                ("belastbaar_loon", Value::Int(income)),
                 ("niet_in_nederland_belastbaar_inkomen", Value::Int(0)),
             ]),
         ),
@@ -245,6 +254,7 @@ fn toeslagen_decides_on_the_application_and_records_the_decision() {
         json!({
             "bsn": BSN,
             "aangevraagd_berekeningsjaar": 2025,
+            "vermoedelijk_toetsingsinkomen": ESTIMATE,
             "datum_ontvangst": "2025-03-04",
         })
     );
@@ -271,8 +281,9 @@ fn toeslagen_decides_on_the_application_and_records_the_decision() {
     let mut service = service;
     register_sources(&mut service);
     // The decision reads its parameters from the lexostatus its event
-    // `reads`, kept to what art. 2 declares (the bsn, not the day of
-    // receipt) and the berekeningsjaar it concerns. `decision_inputs` shows
+    // `reads`, kept to what its stage asks (the bsn; not the day of receipt,
+    // and at the toekenning not the estimate, which only Awir 16 asks at the
+    // voorschot) and the berekeningsjaar it concerns. `decision_inputs` shows
     // what `decide` will read.
     let inputs = cell
         .decision_inputs(
@@ -326,7 +337,9 @@ fn toeslagen_decides_on_the_application_and_records_the_decision() {
         )
         .unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(decision.type_, "decretogram");
-    assert_eq!(decision.stage.as_deref(), Some("BESLUIT"));
+    // The stage of the procedure of the Awir it is taken at (Zorgtoeslagwet
+    // art. 2: `procedure_id: tegemoetkoming`).
+    assert_eq!(decision.stage.as_deref(), Some("TOEKENNING"));
     assert_eq!(decision.legal_character.as_deref(), Some("BESCHIKKING"));
     assert_eq!(decision.decision_type.as_deref(), Some("TOEKENNING"));
     assert_eq!(decision.regulation.as_deref(), Some(ZORGTOESLAG));
@@ -336,13 +349,20 @@ fn toeslagen_decides_on_the_application_and_records_the_decision() {
     );
     assert_eq!(decision.refers_to["on_application"], application.id);
     assert_eq!(decision.establishes, format!("{ZORGTOESLAG}#2"));
-    assert_eq!(
-        decision.inputs,
-        inputs
-            .into_iter()
-            .map(|(k, i)| (k, serde_json::to_value(i).unwrap()))
-            .collect::<BTreeMap<_, _>>()
+    // What the case gave, and the dagtekening the stage requires: the day
+    // the decision is taken.
+    let mut expected_inputs: BTreeMap<String, serde_json::Value> = inputs
+        .into_iter()
+        .map(|(k, i)| (k, serde_json::to_value(i).unwrap()))
+        .collect();
+    expected_inputs.insert(
+        "dagtekening_toekenning".into(),
+        json!({
+            "value": "2025-04-15",
+            "provenance": {"source": "decision", "stage": "TOEKENNING"},
+        }),
     );
+    assert_eq!(decision.inputs, expected_inputs);
     assert_eq!(decision.inputs["bsn"]["provenance"]["source"], "lexostatus");
     assert_eq!(decision.period, Some(year(2025)));
 
@@ -363,6 +383,13 @@ fn toeslagen_decides_on_the_application_and_records_the_decision() {
         serde_json::to_value(&expected.outputs["hoogte_zorgtoeslag"]).unwrap()
     );
     assert_eq!(decision.fields["hoogte_zorgtoeslag"], json!(157731));
+    assert_eq!(decision.fields["tegemoetkoming"], json!(157731));
+    // The Awb hooks on every besluit, and TOEKENNING is one (`is: BESLUIT`).
+    assert_eq!(decision.fields["bezwaartermijn_weken"], json!(6));
+    assert_eq!(decision.fields["motivering_vereist"], json!(true));
+    // Awir 16 does not fire at the toekenning: no voorschot, no estimate.
+    assert!(!decision.fields.contains_key("voorschotbedrag"));
+    assert!(!decision.fields.contains_key("toetsingsinkomen"));
 
     let chronicle = data.path().join("toeslagen/toeslagen.jsonl");
     assert_eq!(
@@ -541,8 +568,13 @@ fn a_lexostatus_reading_an_unknown_field_is_refused() {
 fn an_event_reading_an_unknown_lexostatus_is_refused() {
     let fixture = cell_yaml().parent().unwrap().to_path_buf();
     let read = |f: &str| std::fs::read_to_string(fixture.join(f)).unwrap();
-    let decisions =
-        read("streams/zorgtoeslag_besluiten.yaml").replace("reads: aanvraag", "reads: aanvragen");
+    // Every lexostatus of the list is checked, not only the first.
+    let decisions = read("streams/zorgtoeslag_besluiten.yaml").replacen(
+        "reads: [aanvraag]",
+        "reads: [aanvraag, aanvragen]",
+        1,
+    );
+    assert_ne!(decisions, read("streams/zorgtoeslag_besluiten.yaml"));
     let e = CellConfig::from_yaml(
         &read("cell.yaml"),
         &[&read("streams/zorgtoeslag_aanvragen.yaml"), &decisions],
@@ -639,4 +671,204 @@ fn a_chronicle_in_memory_reads_back_what_it_was_given() {
     // A gram given twice is refused, not silently kept twice.
     let twice = [kept.clone(), kept].concat();
     assert!(Cell::in_memory(config, twice, &service, received.date_naive()).is_err());
+}
+
+/// The hoogte Zorgtoeslagwet art. 2 gives on `day` for the citizen whose
+/// registered income is `income`, without any cell.
+fn hoogte_on(income: i64, day: &str) -> serde_json::Value {
+    let mut direct = regulations();
+    register_sources_with_income(&mut direct, income);
+    let result = direct
+        .evaluate_law_output(
+            ZORGTOESLAG,
+            "hoogte_zorgtoeslag",
+            BTreeMap::from([("bsn".to_string(), Value::String(BSN.into()))]),
+            day,
+        )
+        .unwrap();
+    serde_json::to_value(&result.outputs["hoogte_zorgtoeslag"]).unwrap()
+}
+
+/// Awir 16: the voorschot is computed on the income the citizen expects, at
+/// the stage VOORSCHOT; the toekenning on the income the registers know, at
+/// the stage TOEKENNING, and not on the estimate.
+#[test]
+fn the_voorschot_rests_on_the_estimate_and_the_toekenning_on_the_income() {
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    let received = at("2025-03-04T10:15:00+01:00");
+    let mut cell = cell(&service, data.path(), received);
+    let application = cell
+        .record_submission(&service, "aanvraag_ontvangen", &application(), received)
+        .unwrap();
+    // Awir 16 hooks on the application of Awir 15: it asks the estimate.
+    assert_eq!(
+        application.fields["vermoedelijk_toetsingsinkomen"],
+        ESTIMATE
+    );
+    register_sources(&mut service);
+    let refers_to = || BTreeMap::from([("on_application".to_string(), application.id.clone())]);
+
+    // The voorschot asks the estimate; the toekenning does not.
+    let decided = at("2025-04-15T09:00:00+02:00");
+    let voorschot_inputs = cell
+        .decision_inputs(
+            &service,
+            "voorschot_verleend",
+            &application.id,
+            decided.date_naive(),
+        )
+        .unwrap();
+    assert_eq!(
+        voorschot_inputs.keys().collect::<Vec<_>>(),
+        [
+            "aangevraagd_berekeningsjaar",
+            "bsn",
+            "vermoedelijk_toetsingsinkomen"
+        ]
+    );
+    let toekenning_inputs = cell
+        .decision_inputs(
+            &service,
+            "zorgtoeslag_toegekend",
+            &application.id,
+            decided.date_naive(),
+        )
+        .unwrap();
+    assert!(!toekenning_inputs.contains_key("vermoedelijk_toetsingsinkomen"));
+
+    let voorschot = cell
+        .decide(
+            &service,
+            "voorschot_verleend",
+            refers_to(),
+            BTreeMap::new(),
+            decided,
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(voorschot.stage.as_deref(), Some("VOORSCHOT"));
+    assert_eq!(voorschot.period, Some(year(2025)));
+    assert_eq!(
+        voorschot.regulation_valid_from.as_deref(),
+        Some("2025-01-01")
+    );
+    assert_eq!(
+        voorschot.inputs["dagtekening_voorschot"],
+        json!({
+            "value": "2025-04-15",
+            "provenance": {"source": "decision", "stage": "VOORSCHOT"},
+        })
+    );
+    assert_eq!(
+        voorschot.inputs["vermoedelijk_toetsingsinkomen"]["value"],
+        ESTIMATE
+    );
+    // Computed on the estimate: what the law gives a citizen whose income is
+    // the estimate.
+    assert_eq!(voorschot.fields["toetsingsinkomen"], ESTIMATE);
+    let on_estimate = hoogte_on(ESTIMATE, "2025-01-01");
+    assert_eq!(voorschot.fields["hoogte_zorgtoeslag"], on_estimate);
+    // Awir 14 lid 4: the voorschot in whole euros, rounded half up.
+    let hoogte = on_estimate.as_i64().unwrap();
+    assert_ne!(hoogte % 100, 0, "pick an estimate whose hoogte has cents");
+    assert_eq!(
+        voorschot.fields["voorschotbedrag"],
+        json!((hoogte + 50) / 100 * 100)
+    );
+    // The Awb on a besluit: VOORSCHOT is one.
+    assert_eq!(voorschot.fields["bezwaartermijn_weken"], json!(6));
+    assert_eq!(voorschot.fields["motivering_vereist"], json!(true));
+    for basis in [
+        "algemene_wet_inkomensafhankelijke_regelingen#16",
+        "algemene_wet_bestuursrecht#6:7",
+    ] {
+        assert!(voorschot.legal_basis.iter().any(|b| b == basis), "{basis}");
+    }
+
+    // A year later the toekenning, still on the law of 2025, on the income
+    // the registers know: not the estimate.
+    let toegekend = at("2026-06-01T09:00:00+02:00");
+    let toekenning = cell
+        .decide(
+            &service,
+            "zorgtoeslag_toegekend",
+            refers_to(),
+            BTreeMap::new(),
+            toegekend,
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(toekenning.stage.as_deref(), Some("TOEKENNING"));
+    assert_eq!(
+        toekenning.regulation_valid_from.as_deref(),
+        Some("2025-01-01")
+    );
+    assert_eq!(toekenning.fields["hoogte_zorgtoeslag"], json!(157731));
+    assert_ne!(toekenning.fields["hoogte_zorgtoeslag"], on_estimate);
+    assert!(!toekenning
+        .inputs
+        .contains_key("vermoedelijk_toetsingsinkomen"));
+    assert_eq!(toekenning.fields["bezwaartermijn_weken"], json!(6));
+    assert_eq!(toekenning.fields["motivering_vereist"], json!(true));
+}
+
+/// A decision may read several lexostatuses; a parameter two of them give is
+/// ambiguous, and refused.
+#[test]
+fn a_decision_reads_several_lexostatuses() {
+    let fixture = cell_yaml().parent().unwrap().to_path_buf();
+    let read = |f: &str| std::fs::read_to_string(fixture.join(f)).unwrap();
+    let estimate = "        vermoedelijk_toetsingsinkomen:\n          field: vermoedelijk_toetsingsinkomen\n          legal_basis: [algemene_wet_inkomensafhankelijke_regelingen#16 lid 1]\n";
+    let lexostatuses = read("lexostatuses.yaml");
+    assert!(lexostatuses.contains(estimate));
+    let schatting = |derivations: &str| {
+        format!(
+            "{}\n  - name: schatting\n    inputs: [root]\n    reduction:\n      chronicle: toeslagen\n      filter: {{type: submission, subtype: aanvraag, root: $root}}\n      pick: latest\n      derivations:\n{derivations}",
+            lexostatuses.replace(estimate, "").trim_end()
+        )
+    };
+    let decisions = read("streams/zorgtoeslag_besluiten.yaml")
+        .replacen("reads: [aanvraag]", "reads: [aanvraag, schatting]", 1)
+        // One name is a list of one.
+        .replacen("reads: [aanvraag]", "reads: aanvraag", 1);
+    let config = |lexostatuses: &str| {
+        CellConfig::from_yaml(
+            &read("cell.yaml"),
+            &[&read("streams/zorgtoeslag_aanvragen.yaml"), &decisions],
+            Some(lexostatuses),
+        )
+        .unwrap_or_else(|e| panic!("{e}"))
+    };
+    let service = regulations();
+    let received = at("2025-03-04T10:15:00+01:00");
+    let day = received.date_naive();
+
+    let split = config(&schatting(estimate));
+    let (_, toekenning) = split.event("zorgtoeslag_toegekend").unwrap();
+    assert_eq!(toekenning.reads, ["aanvraag"]);
+    let mut cell = Cell::in_memory(split, Vec::new(), &service, day).unwrap();
+    let aanvraag = cell
+        .record_submission(&service, "aanvraag_ontvangen", &application(), received)
+        .unwrap();
+    let inputs = cell
+        .decision_inputs(&service, "voorschot_verleend", &aanvraag.id, day)
+        .unwrap();
+    assert_eq!(inputs["bsn"].provenance["lexostatus"], "aanvraag");
+    assert_eq!(
+        inputs["vermoedelijk_toetsingsinkomen"].provenance["lexostatus"],
+        "schatting"
+    );
+    assert_eq!(inputs["vermoedelijk_toetsingsinkomen"].value, ESTIMATE);
+
+    let twice = config(&schatting(&format!(
+        "{estimate}        bsn:\n          field: bsn\n"
+    )));
+    let mut cell = Cell::in_memory(twice, Vec::new(), &service, day).unwrap();
+    let aanvraag = cell
+        .record_submission(&service, "aanvraag_ontvangen", &application(), received)
+        .unwrap();
+    let e = cell
+        .decision_inputs(&service, "voorschot_verleend", &aanvraag.id, day)
+        .unwrap_err();
+    assert!(matches!(e, Error::Setup(_)), "{e}");
+    assert!(e.to_string().contains("'bsn'"), "{e}");
 }

@@ -12,8 +12,10 @@
 use std::collections::BTreeMap;
 
 use chrono::NaiveDate;
-use regelrecht_engine::{Article, ExecutionOutcome, LawExecutionService, Submission, Value};
-use regelrecht_law_model::{Origin, OriginRole, OriginValue, Parameter, ParameterType};
+use regelrecht_engine::{
+    Article, ExecutionOutcome, LawExecutionService, StageInputs, Submission, Value,
+};
+use regelrecht_law_model::{Origin, OriginRole, OriginValue, Output, Parameter, ParameterType};
 use serde::Serialize;
 
 use crate::error::{setup, Result};
@@ -114,12 +116,18 @@ fn article_on<'s>(
     Ok((law, article))
 }
 
-fn outputs(article: &Article) -> Vec<String> {
+fn declared_outputs(article: &Article) -> Vec<Output> {
     article
         .get_execution_spec()
-        .and_then(|e| e.output.as_ref())
-        .map(|o| o.iter().map(|x| x.name.clone()).collect())
+        .and_then(|e| e.output.clone())
         .unwrap_or_default()
+}
+
+fn outputs(article: &Article) -> Vec<String> {
+    declared_outputs(article)
+        .into_iter()
+        .map(|o| o.name)
+        .collect()
 }
 
 fn declared_parameters(article: &Article) -> Vec<Parameter> {
@@ -127,20 +135,6 @@ fn declared_parameters(article: &Article) -> Vec<Parameter> {
         .get_execution_spec()
         .and_then(|e| e.parameters.clone())
         .unwrap_or_default()
-}
-
-/// The names of the parameters the article `reference` declares, in the
-/// version that applies on `day`.
-pub fn parameter_names(
-    service: &LawExecutionService,
-    reference: &str,
-    day: NaiveDate,
-) -> Result<Vec<String>> {
-    let (_, article) = article_on(service, reference, day)?;
-    Ok(declared_parameters(article)
-        .into_iter()
-        .map(|p| p.name)
-        .collect())
 }
 
 /// Derive the shape of `event`, which `establishes` establishes, from the
@@ -201,11 +195,45 @@ pub fn derive(
                 entry,
                 establishes,
                 &declared_parameters(article),
-                &shape.outputs,
+                &declared_outputs(article),
             )?;
+            // A decision taken at a stage of its procedure is the article
+            // with the hooks that fire at that stage: Awb 3:46 and 6:7 on
+            // every besluit, Awir 16 on the voorschot. What they produce is
+            // part of the decision too.
+            if let Some(stage) = &entry.stage {
+                let at = stage_inputs(service, &shape, stage, day)?;
+                for part in at.articles.iter().filter(|a| a.hook.is_some()) {
+                    let reference = format!("{}#{}", part.law_id, part.article_number);
+                    let (_, hook) = article_on(service, &reference, day)?;
+                    for field in part_fields(entry, &reference, &[], &declared_outputs(hook))? {
+                        merge_field(&mut shape.fields, field);
+                    }
+                }
+            }
         }
     }
     Ok(shape)
+}
+
+/// What executing the decision `shape` describes at `stage` of its procedure
+/// asks, in the law as it applies on `day` ([`LawExecutionService::stage_inputs`]).
+pub fn stage_inputs(
+    service: &LawExecutionService,
+    shape: &Shape,
+    stage: &str,
+    day: NaiveDate,
+) -> Result<StageInputs> {
+    let (_, number) = split_reference(&shape.establishes)?;
+    service
+        .stage_inputs(
+            &shape.law_id,
+            number,
+            stage,
+            &BTreeMap::new(),
+            &day.to_string(),
+        )
+        .map_err(|e| setup(format!("{}: {e}", shape.establishes)))
 }
 
 /// Execute the article that establishes a submission with nothing: the
@@ -300,7 +328,7 @@ fn submission_fields(
             .map(|i| i.parameter.clone())
             .collect();
         for entry in entries {
-            for field in part_fields(entry, &reference, &parameters, &outputs(article))? {
+            for field in part_fields(entry, &reference, &parameters, &declared_outputs(article))? {
                 merge_field(&mut shape.fields, field);
             }
             if let Some(e) = &entry.effective_at {
@@ -347,7 +375,7 @@ fn part_fields(
     entry: &Establishment,
     reference: &str,
     parameters: &[Parameter],
-    outputs: &[String],
+    outputs: &[Output],
 ) -> Result<Vec<FieldDef>> {
     let def = |name: &str, type_: Option<ParameterType>, legal_basis: Vec<String>| FieldDef {
         name: name.to_string(),
@@ -374,7 +402,7 @@ fn part_fields(
         }
         Some(Fields::Outputs) => outputs
             .iter()
-            .map(|o| def(o, None, vec![reference.to_string()]))
+            .map(|o| def(&o.name, Some(o.output_type), vec![reference.to_string()]))
             .collect(),
     })
 }

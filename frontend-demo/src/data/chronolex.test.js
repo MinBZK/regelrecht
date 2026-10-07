@@ -5,6 +5,7 @@ const cell = {
   id: 'toeslagen',
   events: [
     { name: 'aanvraag_ontvangen', establishes: 'awir#15', chronicle: 'toeslagen' },
+    { name: 'voorschot_verleend', establishes: 'zorgtoeslagwet#2', chronicle: 'toeslagen' },
     { name: 'zorgtoeslag_toegekend', establishes: 'zorgtoeslagwet#2', chronicle: 'toeslagen' },
   ],
 };
@@ -14,9 +15,11 @@ const zorgtoeslag = {
 };
 
 describe('eventsForLaw', () => {
-  it('vindt het besluit en de aanvraag waarop het wordt genomen', () => {
+  it('vindt de besluiten en de aanvraag waarop ze worden genomen', () => {
+    // De Zorgtoeslagwet in de procedure van de Awir neemt twee besluiten op
+    // dezelfde aanvraag: het voorschot en de toekenning.
     const found = eventsForLaw([cell], zorgtoeslag);
-    expect(found.decision.name).toBe('zorgtoeslag_toegekend');
+    expect(found.decisions.map((d) => d.name)).toEqual(['voorschot_verleend', 'zorgtoeslag_toegekend']);
     expect(found.application.name).toBe('aanvraag_ontvangen');
   });
 
@@ -104,5 +107,10 @@ describe('fieldText', () => {
 
   it('volgt de eenheid uit de declaratie van de wet', () => {
     expect(fieldText(157731, { type: 'number' }, { type: 'amount', type_spec: { unit: 'eurocent' } })).toBe('€\u00a01.577,31');
+  });
+
+  it('leest zonder declaratie een bedrag naar het type van het veld', () => {
+    // Het geschatte inkomen vraagt Awir 16, niet het besluitartikel.
+    expect(fieldText(2200000, { type: 'amount' })).toBe('€\u00a022.000,00');
   });
 });

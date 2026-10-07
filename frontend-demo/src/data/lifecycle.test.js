@@ -7,7 +7,7 @@
  * besluit, want daar zat het verschil dat de demo eerder niet liet zien.
  */
 import { describe, expect, it } from 'vitest';
-import { awbOutcomes, objectionOpen, reachedStage, statusOf } from './lifecycle.js';
+import { awbOutcomes, decisionDates, objectionOpen, procedureStages, reachedStage, statusOf } from './lifecycle.js';
 
 const atStage = (stage, extra = {}) => ({
   stageState: { current_stage: stage, accumulated_outputs: {} },
@@ -49,6 +49,52 @@ describe('statusOf', () => {
 
   it('kent een ingetrokken zaak', () => {
     expect(statusOf({ ...atStage('BEZWAAR'), withdrawnAt: '2026-03-12T10:00:00Z' })).toBe('WITHDRAWN');
+  });
+});
+
+describe('een procedure met eigen fasen', () => {
+  // De procedure van de Awir: twee besluiten, elk een fase die een BESLUIT `is`.
+  const awir = {
+    $id: 'awir',
+    procedure: [
+      {
+        id: 'tegemoetkoming',
+        stages: [{ name: 'AANVRAAG' }, { name: 'VOORSCHOT', is: 'BESLUIT' }, { name: 'TOEKENNING', is: 'BESLUIT' }],
+      },
+    ],
+  };
+  const stages = procedureStages([{ $id: 'wet' }, awir], 'tegemoetkoming');
+  const at = (stage) => atStage(stage, { procedureStages: stages });
+
+  it('leest de fasen uit de wet die de procedure vastlegt', () => {
+    expect(stages).toEqual([
+      { name: 'AANVRAAG', is: null },
+      { name: 'VOORSCHOT', is: 'BESLUIT' },
+      { name: 'TOEKENNING', is: 'BESLUIT' },
+    ]);
+    expect(procedureStages([awir], 'beschikking')).toBeNull();
+    expect(procedureStages([awir], undefined)).toBeNull();
+  });
+
+  it('leest een zaak die op het voorschot wacht niet als besloten', () => {
+    expect(statusOf(at('AANVRAAG'))).toBe('SUBMITTED');
+    expect(statusOf(at('VOORSCHOT'))).toBe('IN_REVIEW');
+  });
+
+  it('leest een zaak na het voorschot als besloten, ook al komt de toekenning nog', () => {
+    expect(statusOf(at('TOEKENNING'))).toBe('DECIDED');
+    // Klaar met de levensloop: een fase buiten de procedure.
+    expect(statusOf(at('BEZWAAR'))).toBe('DECIDED');
+  });
+});
+
+describe('decisionDates', () => {
+  it('geeft de fase waarop de zaak wacht de dagtekening van het besluit', () => {
+    expect(decisionDates({ pendingInputs: ['besluit_datum'] }, '2026-03-12')).toEqual({ besluit_datum: '2026-03-12' });
+    expect(decisionDates({ pendingInputs: ['dagtekening_voorschot'] }, '2026-03-12')).toEqual({
+      dagtekening_voorschot: '2026-03-12',
+    });
+    expect(decisionDates({}, '2026-03-12')).toEqual({});
   });
 });
 
