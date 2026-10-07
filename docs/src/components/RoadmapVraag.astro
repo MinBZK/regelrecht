@@ -1,18 +1,17 @@
 ---
 /*
- * Eén onderzoeksvraag als lijstregel, op de werkpakketpagina en op het
- * overzicht dezelfde. Voor de deelvragen roept hij zichzelf aan (Astro.self),
- * één niveau diep, want dieper gaat het schema niet.
+ * Eén onderzoeksvraag als lijstregel op de werkpakketpagina. Voor de
+ * deelvragen roept hij zichzelf aan (Astro.self), één niveau diep, want
+ * dieper gaat het schema niet. De vragenpagina gebruikt hem niet: die heeft
+ * zijn eigen tegels (RoadmapVraagRij.astro).
  *
  * Wat er bij de vraag staat, en waarom in deze volgorde:
  *
  * - De vraag zelf, als lopende tekst in het <li>; de rest is er een
  *   bijschrift bij en staat eronder, zodat de vraag de regel blijft.
- * - Een metaregel met de status (alleen de eigen status van de vraag; op het
- *   overzicht anders een gedempte "werkpakket: loopt", want daar staat het
- *   werkpakket niet in de zijbalk), het werkpakket met zijn belegging (alleen
- *   op het overzicht, om dezelfde reden), de papersectie, en hoeveel
- *   deelvragen beantwoord zijn.
+ * - Een metaregel met de eigen status van de vraag, de papersectie, en
+ *   hoeveel deelvragen beantwoord zijn. Het werkpakket zelf staat niet in de
+ *   regel: dit is zijn eigen pagina, met de standen in de zijbalk.
  * - Het doel, als stille regel.
  * - De verwante vragen, beide kanten gelezen (verwantIndex in lib/roadmap.ts).
  * - De deelvragen, als geneste lijst.
@@ -24,9 +23,7 @@
  */
 import {
   getOnderzoek,
-  getBelegging,
   telDeelvragen,
-  vraagStatusWaarde,
   type Onderzoeksvraag,
   type VraagVerwijzing,
 } from '~/lib/roadmap';
@@ -35,69 +32,23 @@ interface Props {
   vraag: Onderzoeksvraag;
   /** Per vraag-id de verwante vragen, uit verwantIndex(); geldt ook voor de deelvragen. */
   verwanten?: Map<string, VraagVerwijzing[]>;
-  /** Regelbereik in het bronbestand, voor de bewerkknop; alleen op de werkpakketpagina. */
+  /** Regelbereik in het bronbestand, voor de bewerkknop; alleen op een bovenliggende vraag. */
   regels?: [number, number];
-  /** De zoektekst voor het zoekfilter; alleen op het overzicht, alleen op een bovenliggende vraag. */
-  zoek?: string;
-  /**
-   * Het werkpakket, alleen op het overzicht: daar staat de vraag niet op zijn
-   * eigen pagina. `link: false` laat de link weg waar de kop erboven het
-   * werkpakket al noemt; de stand en de belegging blijven. Op een deelvraag
-   * (niveau 2) rendert er niets van: de ouder erboven draagt het al.
-   */
-  werkpakket?: {
-    id: string;
-    titel: string;
-    belegging: string;
-    onderzoek: string;
-    link?: boolean;
-  };
-  /** 1 voor een vraag, 2 voor een deelvraag; bepaalt wat de regel herhaalt. */
+  /** 1 voor een vraag, 2 voor een deelvraag. */
   niveau: 1 | 2;
 }
 
-const { vraag, verwanten, regels, zoek, werkpakket, niveau } = Astro.props;
+const { vraag, verwanten, regels, niveau } = Astro.props;
 
 const status = getOnderzoek(vraag.status);
-// Het werkpakket hoort bij de bovenliggende vraag: een deelvraag staat er
-// direct onder, en de link, de stand en de belegging nog eens herhalen zegt
-// niets nieuws.
-const bijWerkpakket = niveau === 1 ? werkpakket : undefined;
-// De stand van het werkpakket als de vraag er zelf geen heeft, alleen op het
-// overzicht. Gedempt en met het woord "werkpakket" ervoor, want het is niet
-// de status van deze vraag; het statusfilter telt hem dan ook als "niet
-// bepaald".
-const werkpakketStand =
-  !status && bijWerkpakket ? getOnderzoek(bijWerkpakket.onderzoek) : undefined;
-const werkpakketLink = bijWerkpakket && bijWerkpakket.link !== false;
-// Alleen opgepakt en klaar, net als op de kaart: vrij is de stilzwijgende
-// meerderheid en verdient geen tag per vraag.
-const beleggingTag = (() => {
-  const b = bijWerkpakket ? getBelegging(bijWerkpakket.belegging) : undefined;
-  return b && b.id !== 'vrij' ? b : undefined;
-})();
 const verwant = vraag.id ? (verwanten?.get(vraag.id) ?? []) : [];
 const deel = telDeelvragen(vraag);
 // Alleen een metaregel als er iets in komt: een lege container krijgt van
 // rich-text toch zijn ritme-marge, en dan hangt het doel eronder in de lucht.
-const heeftMeta =
-  status ||
-  werkpakketStand ||
-  werkpakketLink ||
-  beleggingTag ||
-  vraag.paper ||
-  deel.totaal > 0;
+const heeftMeta = status || vraag.paper || deel.totaal > 0;
 ---
 
-{/* `data-status` alleen op een bovenliggende vraag: het statusfilter werkt
-    op de items met `data-zoek`, en een deelvraag gaat met zijn ouder mee. */}
-<li
-  id={vraag.anker}
-  data-line={regels?.[0]}
-  data-line-end={regels?.[1]}
-  data-zoek={zoek}
-  data-status={niveau === 1 ? vraagStatusWaarde(vraag.status) : undefined}
->
+<li id={vraag.anker} data-line={regels?.[0]} data-line-end={regels?.[1]}>
   {vraag.vraag}
   {
     heeftMeta && (
@@ -105,30 +56,6 @@ const heeftMeta =
         {status && (
           <nldd-tag size="sm" color={status.tagColor} text={status.label} />
         )}
-        {werkpakketStand && (
-          <nldd-text size="xs" color="secondary">
-            werkpakket: {werkpakketStand.label.toLowerCase()}
-          </nldd-text>
-        )}
-        {werkpakketLink && (
-          <nldd-link
-            size="xs"
-            href={`/roadmap/werkpakket/${bijWerkpakket!.id}`}
-            text={bijWerkpakket!.titel}
-          />
-        )}
-        {beleggingTag && (
-          <nldd-tag
-            size="sm"
-            color={beleggingTag.tagColor}
-            text={beleggingTag.label}
-            icon={beleggingTag.id === 'klaar' ? 'done' : 'user'}
-          />
-        )}
-        {/* Kort: de verwijzing is een wijzer, geen deel van de zin. De
-            sectietitel zou een tweede Engelse bijzin na elke Nederlandse
-            vraag zijn; de volledige titel staat op de pagina waar de link
-            heen gaat. */}
         {vraag.paper && (
           <a class="rr-papersectie" href={vraag.paper.href}>
             Rules as Executed §&nbsp;{vraag.paper.nummer}
@@ -171,7 +98,6 @@ const heeftMeta =
           <Astro.self
             vraag={d}
             verwanten={verwanten}
-            werkpakket={werkpakket}
             niveau={2}
           />
         ))}
