@@ -168,6 +168,14 @@ exclude_re = [
     # JS-contract; het ligt vast in de tests van de aanroeper in frontend-demo
     # en in de levensloop-integratietest, die dezelfde fasen langsloopt.
     'engine/src/wasm\.rs.*WasmEngine::execute_stage',
+    # execute_stage_at (executeStageAt) is hetzelfde doorgeefluik: parameters
+    # uit een JsValue, `LawExecutionService::execute_stage_at` (in service.rs
+    # gemuteerd), en het resultaat via `WasmExecuteResult::from` terug naar
+    # een JsValue. Die omzetting is native wel uit te voeren en wordt in
+    # test_wasm_engine_execute_stage_at gedood. Het patroon hierboven
+    # (`execute_stage` zonder grens) dekt deze naam al; deze regel zegt dat
+    # dat bedoeld is.
+    'engine/src/wasm\.rs.*WasmEngine::execute_stage_at',
     'engine/src/wasm\.rs.*WasmEngine::get_law_info',
     'engine/src/wasm\.rs.*WasmEngine::resolve_note\b',
     'engine/src/wasm\.rs.*WasmEngine::resolve_notes',

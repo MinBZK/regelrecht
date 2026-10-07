@@ -193,6 +193,8 @@ The engine yields between stages, returning accumulated outputs and indicating w
 
 A law can define a procedure of its own, which an article selects with `produces.procedure_id`. Its stages need not be called BESLUIT to be decisions: the Awir's procedure `tegemoetkoming` has the stages VOORSCHOT and TOEKENNING. Such a stage says which stage of the default procedure it is with `is: BESLUIT`, and a hook on BESLUIT (Awb 3:46, 6:7) then fires on it as well. A hook on the stage's own name (`stage: VOORSCHOT`) fires only there.
 
+What one stage produces is carried into the stages after it, with one exception: an output that a `pre_actions` hook produced in place of an input of the article belongs to that stage only. Awir 16 gives the estimated `toetsingsinkomen` at VOORSCHOT, in place of the one Awir 8 gives. The estimate is part of the voorschot's outputs, but at TOEKENNING the hook does not fire and the input is resolved again from Awir 8. A caller that keeps its own record of the decision can also run one stage on a fresh state (`execute_stage_at`, `executeStageAt` in WASM), with exactly the hooks of that stage.
+
 ## Further reading
 
 - [Cross-Law References](./cross-law-references) - how laws reference each other explicitly

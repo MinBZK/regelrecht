@@ -60,7 +60,7 @@ use wasm_bindgen::prelude::*;
 
 use crate::annotation::{self, law_id_from_source, TextQuoteSelector};
 use crate::config;
-use crate::engine::OutputProvenance;
+use crate::engine::{ArticleResult, OutputProvenance};
 use crate::error::EngineError;
 use crate::service::{ExecutionOutcome, LawExecutionService, StageState};
 use crate::trace::{TraceBuilder, TraceDocument};
@@ -204,6 +204,23 @@ struct WasmExecuteResult {
     regulation_hash: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     regulation_valid_from: Option<String>,
+}
+
+impl From<ArticleResult> for WasmExecuteResult {
+    fn from(result: ArticleResult) -> Self {
+        Self {
+            outputs: result.outputs,
+            output_provenance: result.output_provenance,
+            resolved_inputs: result.resolved_inputs,
+            article_number: result.article_number,
+            law_id: result.law_id,
+            law_uuid: result.law_uuid,
+            engine_version: result.engine_version,
+            schema_version: result.schema_version,
+            regulation_hash: result.regulation_hash,
+            regulation_valid_from: result.regulation_valid_from,
+        }
+    }
 }
 
 /// Serializable result for executeStage().
@@ -355,18 +372,7 @@ impl WasmEngine {
             .evaluate_law_output(law_id, output_name, params, calculation_date)
             .map_err(engine_error_to_wasm)?;
 
-        let wasm_result = WasmExecuteResult {
-            outputs: result.outputs,
-            output_provenance: result.output_provenance,
-            resolved_inputs: result.resolved_inputs,
-            article_number: result.article_number,
-            law_id: result.law_id,
-            law_uuid: result.law_uuid,
-            engine_version: result.engine_version,
-            schema_version: result.schema_version,
-            regulation_hash: result.regulation_hash,
-            regulation_valid_from: result.regulation_valid_from,
-        };
+        let wasm_result = WasmExecuteResult::from(result);
 
         wasm_result.serialize(&js_serializer()).map_err(|e| {
             wasm_error(&format!(
@@ -451,6 +457,44 @@ impl WasmEngine {
                 law_id, e
             ))
         })
+    }
+
+    /// Execute exactly one stage of a decision's procedure, on a fresh state
+    /// (RFC-008).
+    ///
+    /// Where `executeStage()` walks the procedure and carries each stage's
+    /// outputs into the next, this runs the stage named and nothing else: the
+    /// article with the hooks of that stage. For a caller that keeps its own
+    /// record of the decision, such as a cell that takes the voorschot and
+    /// later the toekenning, each from what is known when it is taken.
+    ///
+    /// # Returns
+    /// * `Ok(JsValue)` — the same shape as `execute()`: `outputs`,
+    ///   `output_provenance`, `resolved_inputs`, ...
+    /// * `Err(JsValue)` — when the article follows no procedure, the procedure
+    ///   has no such stage, or a value the stage requires is missing
+    #[wasm_bindgen(js_name = executeStageAt)]
+    pub fn execute_stage_at(
+        &self,
+        law_id: &str,
+        output_name: &str,
+        stage_name: &str,
+        parameters: JsValue,
+        calculation_date: &str,
+    ) -> Result<JsValue, JsValue> {
+        let params = parse_parameters(parameters)?;
+        let result = self
+            .service
+            .execute_stage_at(law_id, output_name, stage_name, params, calculation_date)
+            .map_err(engine_error_to_wasm)?;
+        WasmExecuteResult::from(result)
+            .serialize(&js_serializer())
+            .map_err(|e| {
+                wasm_error(&format!(
+                    "Failed to serialize stage result for law '{}': {}",
+                    law_id, e
+                ))
+            })
     }
 
     /// Execute a law output with tracing enabled.
@@ -563,18 +607,7 @@ impl WasmEngine {
             .evaluate_law(law_id, &name_refs, params, calculation_date)
             .map_err(engine_error_to_wasm)?;
 
-        let wasm_result = WasmExecuteResult {
-            outputs: result.outputs,
-            output_provenance: result.output_provenance,
-            resolved_inputs: result.resolved_inputs,
-            article_number: result.article_number,
-            law_id: result.law_id,
-            law_uuid: result.law_uuid,
-            engine_version: result.engine_version,
-            schema_version: result.schema_version,
-            regulation_hash: result.regulation_hash,
-            regulation_valid_from: result.regulation_valid_from,
-        };
+        let wasm_result = WasmExecuteResult::from(result);
 
         wasm_result.serialize(&js_serializer()).map_err(|e| {
             wasm_error(&format!(
@@ -1358,6 +1391,70 @@ articles:
         // Verify box-drawing rendering works
         let text = trace.render_box_drawing();
         assert!(!text.is_empty(), "Box-drawing trace should not be empty");
+    }
+
+    /// `executeStageAt` geeft wat `LawExecutionService::execute_stage_at`
+    /// teruggeeft in de vorm van `execute()`. Het marshallen over de JS-grens
+    /// is native niet uit te voeren; de omzetting van het resultaat wel.
+    #[test]
+    fn test_wasm_engine_execute_stage_at() {
+        let mut engine = WasmEngine::new();
+        let procedure_law = r#"
+$id: stage_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+procedure:
+  - id: tegemoetkoming
+    applies_to: {legal_character: BESCHIKKING}
+    stages:
+      - name: VOORSCHOT
+        is: BESLUIT
+articles:
+  - number: '1'
+    text: Op aanvraag wordt een voorschot verleend.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          procedure_id: tegemoetkoming
+        output: [{name: voorschot, type: number}]
+        actions: [{output: voorschot, value: 100}]
+  - number: '2'
+    text: De termijn bedraagt zes weken.
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to: {legal_character: BESCHIKKING, stage: BESLUIT}
+      execution:
+        output: [{name: bezwaartermijn_weken, type: number}]
+        actions: [{output: bezwaartermijn_weken, value: 6}]
+"#;
+        load_law(&mut engine, procedure_law);
+
+        let result = engine
+            .service
+            .execute_stage_at(
+                "stage_law",
+                "voorschot",
+                "VOORSCHOT",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+        let wasm = WasmExecuteResult::from(result);
+
+        assert_eq!(wasm.outputs.get("voorschot"), Some(&Value::Int(100)));
+        assert_eq!(
+            wasm.outputs.get("bezwaartermijn_weken"),
+            Some(&Value::Int(6))
+        );
+        assert!(matches!(
+            wasm.output_provenance.get("bezwaartermijn_weken"),
+            Some(OutputProvenance::Reactive { article, .. }) if article == "2"
+        ));
+        assert_eq!(wasm.article_number, "1");
+        assert_eq!(wasm.law_id, "stage_law");
+        assert_eq!(wasm.engine_version, env!("CARGO_PKG_VERSION"));
     }
 
     fn note_with_source(source: &str) -> serde_json::Value {

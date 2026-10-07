@@ -25,7 +25,9 @@
 //! )?;
 //! ```
 
-use crate::article::{Article, ArticleBasedLaw, Execution, HookPoint, Input, MachineReadable};
+use crate::article::{
+    Article, ArticleBasedLaw, Execution, HookPoint, Input, MachineReadable, ProcedureDefinition,
+};
 use crate::config;
 use crate::context::{LazyInputs, RuleContext};
 use crate::data_source::{DataSource, DataSourceRegistry, DictDataSource};
@@ -702,6 +704,35 @@ fn replaced_article<'l>(
                 .find_article_by_number(&d.article)
                 .filter(|target| target.has_output(output))
         })
+}
+
+/// The outputs of a stage that belong to that stage only: those a
+/// `pre_actions` hook produced in place of an input, parameter or open term of
+/// the article (Awir 16 gives the estimated `toetsingsinkomen` at VOORSCHOT,
+/// in place of the one Awir 8 gives). The hook fired because of this stage, so
+/// its value answers for this stage. Carried into the parameters of a later
+/// stage, it would stand in for the input there too, where the hook does not
+/// fire and the input is resolved as usual (at TOEKENNING, from Awir 8).
+fn stage_local_outputs(article: &Article, result: &ArticleResult) -> BTreeSet<String> {
+    let replaces_an_input = |name: &str| {
+        article.get_parameters().iter().any(|p| p.name == name)
+            || article.get_inputs().iter().any(|i| i.name == name)
+            || article
+                .get_open_terms()
+                .is_some_and(|terms| terms.iter().any(|t| t.id == name))
+    };
+    result
+        .output_provenance
+        .iter()
+        .filter(|(name, provenance)| {
+            matches!(
+                provenance,
+                OutputProvenance::Reactive { hook_point, .. }
+                    if hook_point == HookPoint::PreActions.as_str()
+            ) && replaces_an_input(name)
+        })
+        .map(|(name, _)| name.clone())
+        .collect()
 }
 
 /// The key the implementation in `law_id` article `article` of an open term
@@ -1870,6 +1901,126 @@ impl LawExecutionService {
         }))
     }
 
+    /// The procedure the decision `article` of `law_id` produces follows
+    /// (RFC-008), or `None` when it has none.
+    ///
+    /// An article that produces nothing with a legal character has no
+    /// lifecycle to begin with; beyond that, only "this legal character has no
+    /// procedure in the corpus" may fall through to single-stage execution. A
+    /// procedure that was asked for by name and not found must not: dropping
+    /// it would drop the stages it imposes — the hearing, the notification,
+    /// the objection period — and the decision would look complete while the
+    /// person it is about never got what the procedure owes them.
+    fn procedure_of(
+        &self,
+        law_id: &str,
+        article: &Article,
+    ) -> Result<Option<&ProcedureDefinition>> {
+        let produces = article.get_produces();
+        let procedure_id = produces.and_then(|p| p.procedure_id.as_deref());
+        let Some(lc) = produces.and_then(|p| p.legal_character.as_deref()) else {
+            return Ok(None);
+        };
+        match self.resolver.find_procedure_reported(lc, procedure_id) {
+            Ok(def) => Ok(Some(def)),
+            Err(ProcedureMiss::NoneForCharacter) => Ok(None),
+            Err(ProcedureMiss::NamedNotFound(id)) => Err(EngineError::ResolutionError(format!(
+                "{law_id} article {} asks for procedure '{id}' for legal character \
+                 '{lc}', which no loaded law defines. Executing without it would drop \
+                 the stages that procedure imposes.",
+                article.number
+            ))),
+            Err(ProcedureMiss::DefaultDangling(id)) => Err(EngineError::ResolutionError(format!(
+                "legal character '{lc}' has '{id}' registered as its default procedure, \
+                 but no definition of '{id}' is loaded"
+            ))),
+        }
+    }
+
+    /// Execute one stage of the procedure the article producing `output_name`
+    /// follows, on a fresh state (RFC-008).
+    ///
+    /// Where [`Self::execute_stage`] walks the procedure from a state and
+    /// carries what each stage produced into the next, this runs exactly the
+    /// stage named: the article, with the hooks that fire at that stage
+    /// (pre and post), and nothing from an earlier stage. It is for a caller
+    /// that keeps its own record of the decision, such as a cell that takes
+    /// the voorschot and, a year later, the toekenning: each is computed from
+    /// what is known when it is taken, not from the voorschot.
+    ///
+    /// Fails when the article follows no procedure, when its procedure has no
+    /// stage `stage_name`, or when a value the stage requires is not among
+    /// `parameters`.
+    pub fn execute_stage_at(
+        &self,
+        law_id: &str,
+        output_name: &str,
+        stage_name: &str,
+        parameters: BTreeMap<String, Value>,
+        calculation_date: &str,
+    ) -> Result<ArticleResult> {
+        let ref_date = Some(parse_calculation_date(calculation_date)?);
+        let law = self
+            .resolver
+            .get_law_for_date_reported(law_id, ref_date)
+            .map_err(|reason| selection_error(law_id, calculation_date, reason))?;
+        let article = self
+            .resolver
+            .resolve_article_by_output(law_id, output_name, ref_date)?;
+        let procedure = self.procedure_of(law_id, article)?.ok_or_else(|| {
+            EngineError::InvalidOperation(format!(
+                "{law_id} article {} follows no procedure, so it has no stage '{stage_name}'",
+                article.number
+            ))
+        })?;
+        let stage = procedure
+            .stages
+            .iter()
+            .find(|s| s.name == stage_name)
+            .ok_or_else(|| {
+                EngineError::InvalidOperation(format!(
+                    "Stage '{stage_name}' not found in procedure '{}'",
+                    procedure.id
+                ))
+            })?;
+        let missing: Vec<&str> = stage
+            .requires
+            .iter()
+            .flatten()
+            .map(|req| req.name.as_str())
+            .filter(|name| !parameters.contains_key(*name))
+            .collect();
+        if !missing.is_empty() {
+            return Err(EngineError::InvalidOperation(format!(
+                "stage '{stage_name}' of procedure '{}' requires {}",
+                procedure.id,
+                missing.join(", ")
+            )));
+        }
+
+        let mut res_ctx = ResolutionContext::new(calculation_date)?;
+        res_ctx.contextual_law_id = Some(law_id.to_string());
+        self.note_declaration_versions(&mut res_ctx);
+        let mut result = self.evaluate_article_with_service(
+            article,
+            law,
+            parameters,
+            None,
+            &stage.name,
+            &mut res_ctx,
+        )?;
+        result
+            .delegation_refusals
+            .clone_from(&res_ctx.delegation_refusals);
+        result
+            .declaration_version_notes
+            .clone_from(&res_ctx.declaration_version_notes);
+        result
+            .declarations_not_in_force
+            .clone_from(&res_ctx.declarations_not_in_force);
+        Ok(result)
+    }
+
     /// Internal stage execution with optional tracing.
     fn execute_stage_internal(
         &self,
@@ -1946,39 +2097,7 @@ impl LawExecutionService {
             None
         };
 
-        // Check if this article produces something with a procedure
-        let legal_character = produces.and_then(|p| p.legal_character.as_deref());
-        let procedure_id = produces.and_then(|p| p.procedure_id.as_deref());
-
-        // Look up the procedure definition. An article that produces nothing
-        // with a legal character has no lifecycle to begin with; beyond that,
-        // only "this legal character has no procedure in the corpus" may fall
-        // through to single-stage execution. A procedure that was asked for by
-        // name and not found must not: dropping it would drop the stages it
-        // imposes — the hearing, the notification, the objection period — and
-        // the decision would look complete while the person it is about never
-        // got what the procedure owes them.
-        let procedure = match legal_character {
-            None => None,
-            Some(lc) => match self.resolver.find_procedure_reported(lc, procedure_id) {
-                Ok(def) => Some(def),
-                Err(ProcedureMiss::NoneForCharacter) => None,
-                Err(ProcedureMiss::NamedNotFound(id)) => {
-                    return Err(EngineError::ResolutionError(format!(
-                        "{law_id} article {} asks for procedure '{id}' for legal character \
-                         '{lc}', which no loaded law defines. Executing without it would drop \
-                         the stages that procedure imposes.",
-                        article.number
-                    )));
-                }
-                Err(ProcedureMiss::DefaultDangling(id)) => {
-                    return Err(EngineError::ResolutionError(format!(
-                        "legal character '{lc}' has '{id}' registered as its default procedure, \
-                         but no definition of '{id}' is loaded"
-                    )));
-                }
-            },
-        };
+        let procedure = self.procedure_of(law_id, article)?;
 
         // If no procedure, fall through to normal single-stage execution
         let Some(procedure) = procedure else {
@@ -2080,10 +2199,26 @@ impl LawExecutionService {
             &mut res_ctx,
         )?;
 
-        // Merge outputs into accumulated state
+        // Merge outputs into accumulated state, apart from those that belong
+        // to this stage only (see `stage_local_outputs`). They are reported
+        // with this stage's outputs, and resolved anew at a later stage.
+        let stage_local = stage_local_outputs(article, &result);
         for (k, v) in &result.outputs {
-            stage_state.accumulated_outputs.insert(k.clone(), v.clone());
+            if !stage_local.contains(k) {
+                stage_state.accumulated_outputs.insert(k.clone(), v.clone());
+            }
         }
+        let stage_outputs = |accumulated: &BTreeMap<String, Value>| {
+            let mut outputs = accumulated.clone();
+            outputs.extend(
+                result
+                    .outputs
+                    .iter()
+                    .filter(|(k, _)| stage_local.contains(*k))
+                    .map(|(k, v)| (k.clone(), v.clone())),
+            );
+            outputs
+        };
 
         // Advance to next stage
         if stage_idx + 1 < procedure.stages.len() {
@@ -2104,7 +2239,7 @@ impl LawExecutionService {
 
                 if !missing.is_empty() {
                     return Ok(ExecutionOutcome::Yielded {
-                        outputs: stage_state.accumulated_outputs.clone(),
+                        outputs: stage_outputs(&stage_state.accumulated_outputs),
                         state: stage_state,
                         pending_inputs: missing,
                         submission: None,
@@ -2124,8 +2259,9 @@ impl LawExecutionService {
         }
 
         // All stages complete
+        let outputs = stage_outputs(&stage_state.accumulated_outputs);
         let mut final_result = result;
-        final_result.outputs = stage_state.accumulated_outputs;
+        final_result.outputs = outputs;
         final_result
             .delegation_refusals
             .clone_from(&res_ctx.delegation_refusals);

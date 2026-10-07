@@ -11,7 +11,9 @@
 // `allow-*-in-tests` in clippy.toml only reaches `#[test]` fns.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use regelrecht_engine::{EngineError, ExecutionOutcome, LawExecutionService, StageState, Value};
+use regelrecht_engine::{
+    EngineError, ExecutionOutcome, LawExecutionService, OutputProvenance, StageState, Value,
+};
 use std::collections::BTreeMap;
 
 /// Awr 21: het inkomensgegeven, hier een vast bedrag.
@@ -69,8 +71,12 @@ articles:
       execution:
         parameters:
           - {name: vermoedelijk_toetsingsinkomen, type: number, required: true}
-        output: [{name: toetsingsinkomen, type: number}]
-        actions: [{output: toetsingsinkomen, value: $vermoedelijk_toetsingsinkomen}]
+        output:
+          - {name: toetsingsinkomen, type: number}
+          - {name: inkomen_geschat, type: boolean}
+        actions:
+          - {output: toetsingsinkomen, value: $vermoedelijk_toetsingsinkomen}
+          - {output: inkomen_geschat, value: true}
 "#;
 
 /// De Awb: de standaardprocedure en art. 6:7, een haak op elk besluit.
@@ -274,4 +280,148 @@ fn a_hook_on_besluit_does_not_fire_on_a_stage_that_does_not_say_it_is_one() {
         }
         other => panic!("expected a yield before TOEKENNING, got {other:?}"),
     }
+}
+
+#[test]
+fn an_input_a_pre_hook_replaced_at_one_stage_is_resolved_again_at_the_next() {
+    // Awir 16 vervangt bij VOORSCHOT het toetsingsinkomen door het geschatte.
+    // Bij TOEKENNING vuurt die haak niet, en geldt weer Awir 8: het
+    // geschatte inkomen mag niet als parameter doorlekken.
+    let service = service(&[AWB, AWR, AWIR, WZT]);
+    let ExecutionOutcome::Yielded { state, outputs, .. } = voorschot(&service) else {
+        panic!("expected a yield before TOEKENNING");
+    };
+    // Bij het voorschot zelf is het geschatte inkomen gebruikt en te zien.
+    assert_eq!(outputs["toetsingsinkomen"], Value::Int(2_000_000));
+    assert!(
+        !state.accumulated_outputs.contains_key("toetsingsinkomen"),
+        "{:?}",
+        state.accumulated_outputs
+    );
+    // Wat de haak daarnaast produceert, en geen invoer vervangt, gaat mee.
+    assert_eq!(
+        state.accumulated_outputs["inkomen_geschat"],
+        Value::Bool(true)
+    );
+    let outcome = service
+        .execute_stage(
+            "wzt_proto",
+            "hoogte_zorgtoeslag",
+            Some(state),
+            params(&[bsn(), ("dagtekening_toekenning", date("2026-06-01"))]),
+            "2025-01-01",
+        )
+        .unwrap();
+    match outcome {
+        ExecutionOutcome::Complete(result) => {
+            assert_eq!(result.outputs["hoogte_zorgtoeslag"], hoogte(3_000_000));
+            assert_eq!(
+                result.resolved_inputs["toetsingsinkomen"],
+                Value::Int(3_000_000)
+            );
+        }
+        other => panic!("expected the procedure to complete, got {other:?}"),
+    }
+}
+
+fn stage_at(
+    service: &LawExecutionService,
+    stage: &str,
+    extra: &[(&str, Value)],
+) -> regelrecht_engine::Result<regelrecht_engine::ArticleResult> {
+    let mut parameters = params(&[bsn()]);
+    parameters.extend(params(extra));
+    service.execute_stage_at(
+        "wzt_proto",
+        "hoogte_zorgtoeslag",
+        stage,
+        parameters,
+        "2025-01-01",
+    )
+}
+
+#[test]
+fn one_stage_runs_on_a_fresh_state_with_the_hooks_of_that_stage() {
+    let service = service(&[AWB, AWR, AWIR, WZT]);
+    let voorschot = stage_at(
+        &service,
+        "VOORSCHOT",
+        &[
+            ("vermoedelijk_toetsingsinkomen", Value::Int(2_000_000)),
+            ("dagtekening_voorschot", date("2024-12-01")),
+        ],
+    )
+    .unwrap();
+    assert_eq!(voorschot.outputs["hoogte_zorgtoeslag"], hoogte(2_000_000));
+    assert_eq!(voorschot.outputs["bezwaartermijn_weken"], Value::Int(6));
+    assert_eq!(voorschot.outputs["toetsingsinkomen"], Value::Int(2_000_000));
+    assert_eq!(
+        voorschot.output_provenance["toetsingsinkomen"],
+        OutputProvenance::Reactive {
+            law_id: "awir_proto".to_string(),
+            article: "16".to_string(),
+            hook_point: "pre_actions".to_string(),
+        }
+    );
+
+    // De toekenning, los van het voorschot: Awir 16 vuurt niet, Awir 8 geldt.
+    let toekenning = stage_at(
+        &service,
+        "TOEKENNING",
+        &[("dagtekening_toekenning", date("2026-06-01"))],
+    )
+    .unwrap();
+    assert_eq!(toekenning.outputs["hoogte_zorgtoeslag"], hoogte(3_000_000));
+    assert_eq!(toekenning.outputs["bezwaartermijn_weken"], Value::Int(6));
+    assert!(!toekenning.outputs.contains_key("inkomen_geschat"));
+    assert_eq!(
+        toekenning.resolved_inputs["toetsingsinkomen"],
+        Value::Int(3_000_000)
+    );
+}
+
+#[test]
+fn one_stage_refuses_a_stage_the_procedure_does_not_have() {
+    let service = service(&[AWB, AWR, AWIR, WZT]);
+    let err = stage_at(&service, "BEKENDMAKING", &[])
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("BEKENDMAKING"), "{err}");
+    assert!(err.contains("tegemoetkoming"), "{err}");
+}
+
+#[test]
+fn one_stage_refuses_when_a_value_the_stage_requires_is_missing() {
+    let service = service(&[AWB, AWR, AWIR, WZT]);
+    let err = stage_at(&service, "TOEKENNING", &[])
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("dagtekening_toekenning"), "{err}");
+}
+
+#[test]
+fn one_stage_refuses_an_article_that_follows_no_procedure() {
+    let service = service(&[AWB, AWR, AWIR, WZT]);
+    let err = service
+        .execute_stage_at(
+            "awr_proto",
+            "inkomensgegeven",
+            "TOEKENNING",
+            params(&[bsn()]),
+            "2025-01-01",
+        )
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("follows no procedure"), "{err}");
+}
+
+#[test]
+fn one_stage_refuses_a_procedure_that_is_not_loaded() {
+    // Zonder de Awir bestaat de procedure `tegemoetkoming` niet: dan mag
+    // de fase niet stil zonder procedure worden uitgevoerd.
+    let service = service(&[AWB, AWR, WZT]);
+    let err = stage_at(&service, "VOORSCHOT", &[])
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("tegemoetkoming"), "{err}");
 }
