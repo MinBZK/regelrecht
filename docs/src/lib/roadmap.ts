@@ -218,17 +218,6 @@ export const GEEN_CATEGORIE = 'geen';
 export const GEEN_STATUS = 'geen';
 export const vraagStatusWaarde = (status: string) => status || GEEN_STATUS;
 
-/**
- * De vinkjes van het statusfilter op /roadmap/onderzoeksvragen: de drie
- * standen van een vraag plus "Niet bepaald", want vandaag heeft bijna geen
- * vraag een eigen status en zonder dat vakje zijn die niet terug te halen.
- * Het filter leest de eigen status van de vraag, niet die van zijn
- * werkpakket; zie RoadmapVraag.astro.
- */
-export const STATUS_FILTER_OPTIES = [
-  ...ONDERZOEK_STANDEN.map((s) => ({ id: s.id, label: s.label })),
-  { id: GEEN_STATUS, label: 'Niet bepaald' },
-];
 
 /**
  * De beleggingsstand zoals hij op `data-belegging` komt te staan, met een leeg
@@ -294,7 +283,7 @@ export interface FilterGroep {
   verbergKlasse?: string;
 }
 
-export type FilterGroepId = 'categorie' | 'belegging' | 'status';
+export type FilterGroepId = 'categorie' | 'belegging';
 
 export const FILTERGROEPEN: Record<FilterGroepId, FilterGroep> = {
   categorie: {
@@ -312,15 +301,6 @@ export const FILTERGROEPEN: Record<FilterGroepId, FilterGroep> = {
     opties: BELEGGING_FILTER_OPTIES,
     attribuut: 'belegging',
     verbergKlasse: 'rr-wp-card--geen-belegging',
-  },
-  status: {
-    id: 'status',
-    knop: 'Status',
-    titel: 'Filter op eigen status van de vraag',
-    optieKlasse: 'rr-filter__status-option',
-    opties: STATUS_FILTER_OPTIES,
-    attribuut: 'status',
-    verbergKlasse: 'rr-vraag--geen-status',
   },
 };
 
@@ -898,54 +878,64 @@ export interface VraagMetWerkpakket {
   werkpakket: WerkpakketData;
 }
 
-export interface VragenPerSectie {
-  /** Alleen de secties waar een vraag naar wijst, in de volgorde van het paper. */
-  secties: { sectie: PaperSectie; items: VraagMetWerkpakket[] }[];
-  /** De vragen zonder sectie, per werkpakket, in de leesvolgorde van de matrix. */
-  zonderSectie: { werkpakket: WerkpakketData; items: Onderzoeksvraag[] }[];
+/**
+ * In welke lane van het vragenbord een vraag staat: vrij, opgepakt of klaar.
+ *
+ * De eigen status van de vraag gaat voor: open is vrij, loopt is opgepakt,
+ * beantwoord is klaar. Zonder eigen status volgt de vraag de belegging van
+ * zijn werkpakket: wie een werkpakket oppakt, pakt de vragen erin op, tot er
+ * per vraag iets anders over gezegd is. De kaart laat zien welke van de twee
+ * het was (`eigen`), zodat een vraag die alleen via zijn werkpakket op
+ * Opgepakt staat niet leest als een vraag waar iemand aan werkt.
+ */
+export const LANE_VAN_STATUS: Record<string, string> = {
+  open: 'vrij',
+  loopt: 'opgepakt',
+  beantwoord: 'klaar',
+};
+
+export function vraagLane(
+  vraag: Onderzoeksvraag,
+  werkpakket: WerkpakketData,
+): { lane: string; eigen: boolean } {
+  const eigen = LANE_VAN_STATUS[vraag.status];
+  if (eigen) return { lane: eigen, eigen: true };
+  return { lane: beleggingStand(werkpakket.belegging.stand), eigen: false };
 }
 
 /**
- * De onderzoeksvragen van de roadmap per sectie van het position paper, voor
- * /roadmap/onderzoeksvragen.
- *
- * De sectie is de groepering en niet het werkpakket, omdat het paper de
- * onderzoeksagenda is die de roadmap zegt te beantwoorden: twee vragen onder
- * dezelfde sectie zijn verwant zonder dat iemand dat opgeschreven heeft. Wat
- * naar geen sectie wijst komt achteraan, per werkpakket; dat is de lijst van
- * vragen die nog niet aan de agenda hangen, en die lijst is zelf informatie.
- *
- * Alleen bovenliggende vragen worden ingedeeld. Een deelvraag staat onder
- * zijn ouder, ook als hij een eigen `paper` heeft; hem apart onder zijn
- * sectie herhalen zou dezelfde vraag twee keer op de pagina zetten.
+ * De lanes van het vragenbord, met per lane de lege-staat-tekst; dezelfde
+ * drie standen als BORD_LANES, want een vraag staat naast zijn werkpakket.
  */
-export function vragenPerSectie(
+export const VRAGEN_LANES = BELEGGING_STANDEN.map((stand) => ({
+  ...stand,
+  leeg: {
+    vrij: 'Elke vraag is opgepakt of beantwoord.',
+    opgepakt: 'Nog geen vraag is opgepakt.',
+    klaar: 'Nog geen vraag is beantwoord.',
+  }[stand.id],
+}));
+
+/**
+ * De bovenliggende onderzoeksvragen per lane, in de leesvolgorde van de
+ * matrix en daarbinnen in de volgorde van het bestand. Deelvragen staan op
+ * de kaart van hun ouder, niet los op het bord.
+ */
+export function vragenPerLane(
   werkpakketten: { data: WerkpakketData }[],
-): VragenPerSectie {
+): Map<string, VraagMetWerkpakket[]> {
+  const lanes = new Map<string, VraagMetWerkpakket[]>(
+    BELEGGING_STANDEN.map((s) => [s.id, []]),
+  );
   const gesorteerd = [...werkpakketten].sort((a, b) =>
     werkpakketVolgorde(a.data, b.data),
   );
-  const perSectie = new Map<string, VraagMetWerkpakket[]>();
-  const zonderSectie: VragenPerSectie['zonderSectie'] = [];
   for (const { data } of gesorteerd) {
-    const los: Onderzoeksvraag[] = [];
     for (const vraag of onderzoeksvraagLijst(data.onderzoeksvragen)) {
-      if (!vraag.paper) {
-        los.push(vraag);
-        continue;
-      }
-      const lijst = perSectie.get(vraag.paper.slug) ?? [];
-      lijst.push({ vraag, werkpakket: data });
-      perSectie.set(vraag.paper.slug, lijst);
+      lanes.get(vraagLane(vraag, data).lane)!.push({ vraag, werkpakket: data });
     }
-    if (los.length) zonderSectie.push({ werkpakket: data, items: los });
   }
-  return {
-    secties: paperSectieLijst
-      .filter((s) => perSectie.has(s.slug))
-      .map((s) => ({ sectie: s, items: perSectie.get(s.slug)! })),
-    zonderSectie,
-  };
+  return lanes;
 }
 
 /**

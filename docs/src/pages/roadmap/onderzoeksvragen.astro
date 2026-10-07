@@ -1,44 +1,34 @@
 ---
 /*
- * /roadmap/onderzoeksvragen — alle onderzoeksvragen van de roadmap op één
- * pagina, per sectie van het position paper Rules as Executed.
+ * /roadmap/onderzoeksvragen — alle onderzoeksvragen van de roadmap als
+ * kaarten op een bord, in dezelfde drie lanes als het werkpakkettenbord:
+ * vrij, opgepakt, klaar.
  *
- * De werkpakketpagina toont de vragen van één werkpakket; dit is de andere
- * lezing: welke vragen stelt de roadmap als geheel, welke worden beantwoord,
- * bij welk werkpakket, en hoe hangen ze samen. Drie soorten samenhang staan
- * erin, en geen van drieën is hier bedacht: de papersectie (twee vragen onder
- * dezelfde sectie gaan over hetzelfde), het werkpakket (met zijn belegging,
- * want dat is het publieke antwoord op "zit er iemand op"), en `verwant`,
- * waar iemand het expliciet opgeschreven heeft.
+ * Een vraag staat in de lane van zijn eigen status (open, loopt, beantwoord),
+ * en zonder eigen status in de lane van de belegging van zijn werkpakket; zie
+ * vraagLane() in lib/roadmap.ts. De kaart zegt welke van de twee het was.
+ * Elke kaart linkt naar de vraag op zijn werkpakketpagina, waar het doel, de
+ * deelvragen en de verwante vragen voluit staan.
  *
- * Gegroepeerd op papersectie en niet op werkpakket of status, omdat het paper
- * de onderzoeksagenda is die de roadmap zegt te beantwoorden. Wat naar geen
- * sectie wijst staat achteraan, per werkpakket: die lijst is zelf informatie,
- * namelijk wat nog niet aan de agenda hangt. Zie vragenPerSectie() in
- * lib/roadmap.ts.
- *
- * De status in het filter en in de tellingen is de eigen status van de
- * vraag. Een vraag zonder eigen status toont gedempt de stand van zijn
- * werkpakket, maar telt als "niet bepaald": de stand van het werkpakket zegt
- * dat er aan het pakket gewerkt wordt, niet dat déze vraag beantwoord wordt.
+ * Dezelfde opbouw als bord.astro, met opzet: wie het ene bord kent, kent het
+ * andere. Geen statusfilter, want de lanes zíjn de status; wel zoeken, over de
+ * vraag, het doel, de deelvragen, het werkpakket en de papersectie.
  */
 import { getCollection } from 'astro:content';
 import Base from '~/layouts/Base.astro';
 import RoadmapSectie from '~/components/RoadmapSectie.astro';
 import RoadmapKop from '~/components/RoadmapKop.astro';
-import RoadmapVraag from '~/components/RoadmapVraag.astro';
+import RoadmapVraagKaart from '~/components/RoadmapVraagKaart.astro';
 import {
-  vragenPerSectie,
-  vraagZoektekst,
+  VRAGEN_LANES,
+  vragenPerLane,
   telStatussen,
-  verwantIndex,
   ONDERZOEK_STANDEN,
   GEEN_STATUS,
   assertReferencesResolve,
   assertPaperSections,
   assertOnderzoeksvragen,
   assertFilterRules,
-  type WerkpakketData,
 } from '~/lib/roadmap';
 import '~/styles/roadmap.css';
 // De tekst van de stylesheet, voor assertFilterRules(); zie index.astro.
@@ -47,28 +37,18 @@ import roadmapCss from '~/styles/roadmap.css?raw';
 const werkpakketten = await getCollection('werkpakketten');
 assertReferencesResolve(werkpakketten);
 assertPaperSections(werkpakketten);
-// Elke vraag met id krijgt hier een anker; een dubbel id zou twee elementen
-// met dezelfde id op deze pagina zetten.
 assertOnderzoeksvragen(werkpakketten);
 assertFilterRules(roadmapCss);
 
-const { secties, zonderSectie } = vragenPerSectie(werkpakketten);
-const verwanten = verwantIndex(werkpakketten);
+const perLane = vragenPerLane(werkpakketten);
+const lanes = VRAGEN_LANES.map((lane) => ({
+  ...lane,
+  kaarten: perLane.get(lane.id) ?? [],
+}));
 const telling = telStatussen(werkpakketten);
 
-// Wat RoadmapVraag van een werkpakket nodig heeft om de vraag buiten zijn
-// eigen pagina te plaatsen.
-const werkpakketProps = (data: WerkpakketData, link = true) => ({
-  id: data.id,
-  titel: data.titel,
-  belegging: data.belegging.stand,
-  onderzoek: data.onderzoek,
-  link,
-});
-
 // "14 open, 10 loopt, 0 beantwoord, 25 niet bepaald", in de volgorde van de
-// standen; een stand zonder treffers staat er als 0, zodat de rij altijd
-// dezelfde vorm heeft.
+// standen; een stand zonder treffers staat er als 0.
 const standenTekst = (per: Record<string, number>) =>
   [
     ...ONDERZOEK_STANDEN.map((s) => `${per[s.id] ?? 0} ${s.label.toLowerCase()}`),
@@ -87,20 +67,20 @@ const pathname = '/roadmap/onderzoeksvragen';
   pathname={pathname}
   noSearchIndex
   title="Onderzoeksvragen · Roadmap · RegelRecht"
-  description="Alle onderzoeksvragen van de RegelRecht-roadmap, per sectie van het position paper Rules as Executed."
+  description="Alle onderzoeksvragen van de RegelRecht-roadmap op een bord: vrij, opgepakt en beantwoord."
 >
   <RoadmapSectie>
     <RoadmapKop
       huidig="onderzoeksvragen"
-      ondertitel="Alle onderzoeksvragen van de werkpakketten, per sectie van het position paper: welke worden beantwoord, bij welk werkpakket, en hoe ze samenhangen."
+      ondertitel="Alle onderzoeksvragen van de werkpakketten op een bord: wat open ligt, waar iemand aan werkt, en wat beantwoord is. Een vraag volgt zijn eigen status, en anders de belegging van zijn werkpakket."
       zoek={{ placeholder: 'Zoek in onderzoeksvragen', noun: 'vragen' }}
-      filters={['status']}
+      filters={[]}
     />
 
     {/*
       Twee regels tellingen, niet één: de eerste gaat over de vragen zelf
       (eigen status), de tweede over hun werkpakketten. Ze lopen uiteen, en
-      dat is precies wat deze pagina zichtbaar wil maken.
+      dat is precies wat dit bord zichtbaar wil maken.
     */}
     <nldd-container gap="4">
       <nldd-text size="sm">
@@ -115,75 +95,36 @@ const pathname = '/roadmap/onderzoeksvragen';
       </nldd-text>
     </nldd-container>
 
-    {
-      secties.map(({ sectie, items }) => (
-        <nldd-container class="rr-vragen__groep" gap="12">
-          <nldd-title size="4">
-            {/* De sectietitel is Engels op een Nederlandse pagina; `lang`
-                laat een schermlezer de juiste stem kiezen. */}
-            <h2>
-              <a href={sectie.href}>
-                § {sectie.nummer} <span lang="en">{sectie.titel}</span>
-              </a>
-            </h2>
-            <p slot="supporting-text">{meervoud(items.length, 'vraag', 'vragen')}</p>
-          </nldd-title>
-          {/* Een <ul> en geen <ol>: de nummers op de werkpakketpagina zijn de
-              volgorde in dat ene bestand, en die betekent hier niets. */}
-          <nldd-rich-text>
-            <ul>
-              {items.map(({ vraag, werkpakket }) => (
-                <RoadmapVraag
-                  vraag={vraag}
-                  verwanten={verwanten}
-                  zoek={vraagZoektekst(vraag, werkpakket)}
-                  werkpakket={werkpakketProps(werkpakket)}
-                  niveau={1}
-                />
-              ))}
-            </ul>
-          </nldd-rich-text>
-        </nldd-container>
-      ))
-    }
-
-    {
-      zonderSectie.length > 0 && (
-        <nldd-container class="rr-vragen__groep" gap="16">
-          <nldd-title size="4">
-            <h2>Zonder sectie in het paper</h2>
-            <p slot="supporting-text">
-              Vragen die nog aan geen sectie van het paper hangen, per
-              werkpakket. Een vraag krijgt een sectie als het paper hem stelt
-              of uitwerkt, en anders bewust niet; zie de roadmap-skill.
-            </p>
-          </nldd-title>
-          {zonderSectie.map(({ werkpakket, items }) => (
-            <nldd-container class="rr-vragen__groep" gap="8">
-              <nldd-title size="5">
-                <h3>
-                  <a href={`/roadmap/werkpakket/${werkpakket.id}`}>
-                    {werkpakket.titel}
-                  </a>
-                </h3>
-              </nldd-title>
-              <nldd-rich-text>
-                <ul>
-                  {items.map((vraag) => (
-                    <RoadmapVraag
-                      vraag={vraag}
-                      verwanten={verwanten}
-                      zoek={vraagZoektekst(vraag, werkpakket)}
-                      werkpakket={werkpakketProps(werkpakket, false)}
-                      niveau={1}
-                    />
+    {/* Zelfde lanes als bord.astro; de telling in de kop is de stand bij de
+        build, het zoekveld meldt zelf hoeveel er na het zoeken over is. */}
+    <nldd-container layout="grid" column-count="3" sm-column-count="1" gap="16">
+      {
+        lanes.map((lane) => (
+          <nldd-box background="tinted">
+            <nldd-container padding="12" gap="12">
+              <nldd-container gap="2">
+                <nldd-title size="5">
+                  <h2>{lane.label}</h2>
+                </nldd-title>
+                <nldd-text size="sm" color="secondary">
+                  {meervoud(lane.kaarten.length, 'vraag', 'vragen')}
+                </nldd-text>
+              </nldd-container>
+              {lane.kaarten.length ? (
+                <nldd-container gap="8">
+                  {lane.kaarten.map(({ vraag, werkpakket }) => (
+                    <RoadmapVraagKaart vraag={vraag} werkpakket={werkpakket} />
                   ))}
-                </ul>
-              </nldd-rich-text>
+                </nldd-container>
+              ) : (
+                <nldd-text size="sm" color="secondary">
+                  {lane.leeg}
+                </nldd-text>
+              )}
             </nldd-container>
-          ))}
-        </nldd-container>
-      )
-    }
+          </nldd-box>
+        ))
+      }
+    </nldd-container>
   </RoadmapSectie>
 </Base>
