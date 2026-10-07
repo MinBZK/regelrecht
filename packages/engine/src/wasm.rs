@@ -459,14 +459,16 @@ impl WasmEngine {
         })
     }
 
-    /// Execute exactly one stage of a decision's procedure, on a fresh state
-    /// (RFC-008).
+    /// Execute exactly one stage of the procedure article `articleNumber` of
+    /// `lawId` follows, on a fresh state (RFC-008). The article is named, not
+    /// found by an output: several articles may produce the same output.
     ///
     /// Where `executeStage()` walks the procedure and carries each stage's
     /// outputs into the next, this runs the stage named and nothing else: the
     /// article with the hooks of that stage. For a caller that keeps its own
-    /// record of the decision, such as a cell that takes the voorschot and
-    /// later the toekenning, each from what is known when it is taken.
+    /// record of the decision, such as a cell that takes a provisional
+    /// decision and later the final one, each from what is known when it is
+    /// taken.
     ///
     /// # Returns
     /// * `Ok(JsValue)` — the same shape as `execute()`: `outputs`,
@@ -477,7 +479,7 @@ impl WasmEngine {
     pub fn execute_stage_at(
         &self,
         law_id: &str,
-        output_name: &str,
+        article_number: &str,
         stage_name: &str,
         parameters: JsValue,
         calculation_date: &str,
@@ -485,7 +487,7 @@ impl WasmEngine {
         let params = parse_parameters(parameters)?;
         let result = self
             .service
-            .execute_stage_at(law_id, output_name, stage_name, params, calculation_date)
+            .execute_stage_at(law_id, article_number, stage_name, params, calculation_date)
             .map_err(engine_error_to_wasm)?;
         WasmExecuteResult::from(result)
             .serialize(&js_serializer())
@@ -1433,13 +1435,7 @@ articles:
 
         let result = engine
             .service
-            .execute_stage_at(
-                "stage_law",
-                "voorschot",
-                "VOORSCHOT",
-                BTreeMap::new(),
-                "2025-01-01",
-            )
+            .execute_stage_at("stage_law", "1", "VOORSCHOT", BTreeMap::new(), "2025-01-01")
             .unwrap();
         let wasm = WasmExecuteResult::from(result);
 

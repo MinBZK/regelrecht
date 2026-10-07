@@ -64,6 +64,12 @@ fn main() {
             }
         }
     }
+    // A stage that says what it `is` must name a stage of the default
+    // procedure, or the hooks on that stage silently do not fire on it.
+    for problem in regelrecht_engine::unknown_stage_aliases(parsed.iter().map(|p| &p.law)) {
+        eprintln!("FAIL: procedure: {problem}");
+        failed = true;
+    }
     let latest = latest_by_id(&parsed);
     let lookup = |id: &str| latest.get(id).copied();
 

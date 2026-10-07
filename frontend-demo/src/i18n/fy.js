@@ -238,6 +238,7 @@ export default {
   "zaak.view.chronicle": "Kronyk",
   "zaak.chronicle.hint": "De feiten fan dizze saak sa't de útfierder se fêstleit: elk feit seit hokker artikel it fêstiget en hokker momint rjochtlik telt.",
   "zaak.chronicle.failed": "De kronyk koe dit net fêstlizze",
+  "chronicle.read_failed": "De kronyk koe dit net lêze",
   "zaak.chronicle.application": "Oanfraach, fêstige troch {law}",
   "zaak.chronicle.decision": "Beslút, fêstige troch {law}",
   "zaak.chronicle.effective_at": "Momint dat telt",
@@ -836,8 +837,6 @@ export default {
   "zaak.decision_due.body": "Berekkene yn de faze fan dit beslút, noch sûnder it fêst te lizzen.",
   "sheet.application.payments.title": "Betellingen",
   "sheet.application.payments.received": "Oant no ta ûntfongen",
-  "sheet.application.payments.count.one": "{n} betelling",
-  "sheet.application.payments.count.other": "{n} betellingen",
   "sheet.application.payments.coming": "Wat der noch komt",
   "zaak.moments.with_value": "{text}: {value}",
 };

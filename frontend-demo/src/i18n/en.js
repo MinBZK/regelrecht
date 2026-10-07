@@ -280,6 +280,7 @@ export default {
   'zaak.view.chronicle': 'Chronicle',
   'zaak.chronicle.hint': 'The facts of this case as the administrative body records them: each fact names the article that establishes it and the moment that counts in law.',
   'zaak.chronicle.failed': 'The chronicle could not record this',
+  'chronicle.read_failed': 'The chronicle could not read this',
   'zaak.chronicle.application': 'Application, established by {law}',
   'zaak.chronicle.decision': 'Decision, established by {law}',
   'zaak.chronicle.effective_at': 'Moment that counts',
@@ -941,8 +942,6 @@ export default {
   'zaak.decision_due.body': 'Computed at the stage of this decision, without recording it yet.',
   'sheet.application.payments.title': 'Payments',
   'sheet.application.payments.received': 'Received so far',
-  'sheet.application.payments.count.one': '{n} payment',
-  'sheet.application.payments.count.other': '{n} payments',
   'sheet.application.payments.coming': 'Still to come',
   'zaak.moments.with_value': '{text}: {value}',
 };

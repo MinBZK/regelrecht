@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { amountTotals, citizenRows, momentView } from './chronicleView.js';
+import { citizenRows, lexostatusRows, momentView } from './chronicleView.js';
 
 const corpus = { lawById: () => null };
 const fields = {
@@ -10,17 +10,18 @@ const fields = {
 };
 const fieldsOf = () => fields;
 
-describe('wat er uit de kroniek betaald is', () => {
-  it('telt per bedragveld op over de uitvoeringen', () => {
-    const grams = [{ fields: { termijnbedrag: 15409 } }, { fields: { termijnbedrag: 15410 } }];
-    const [total] = amountTotals(grams, fieldsOf, corpus);
-    expect(total.name).toBe('termijnbedrag');
-    expect(total.value).toBe(30819);
-    expect(total.count).toBe(2);
+describe('wat de cel als ontvangen leest', () => {
+  it('leest elke waarde als het veld waaruit de cel haar afleidt, zonder zelf op te tellen', () => {
+    const rows = lexostatusRows({ uitbetaald: 30819 }, { uitbetaald: fields.termijnbedrag }, corpus);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].name).toBe('uitbetaald');
+    expect(rows[0].value).toBe(30819);
+    expect(rows[0].text).toMatch(/308,19/);
   });
 
-  it('telt niets zonder uitvoeringen', () => {
-    expect(amountTotals([], fieldsOf, corpus)).toEqual([]);
+  it('geeft niets voor niets', () => {
+    expect(lexostatusRows({}, {}, corpus)).toEqual([]);
+    expect(lexostatusRows(null, null, corpus)).toEqual([]);
   });
 });
 

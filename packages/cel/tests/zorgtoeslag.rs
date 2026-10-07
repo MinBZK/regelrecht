@@ -740,6 +740,9 @@ fn the_voorschot_rests_on_the_estimate_and_the_toekenning_on_the_income() {
         [
             "aangevraagd_berekeningsjaar",
             "bsn",
+            // Awir 16 lid 1: a voorschot only on an application received
+            // before 1 April of the year after the berekeningsjaar.
+            "datum_ontvangst",
             "vermoedelijk_toetsingsinkomen"
         ]
     );
@@ -1376,7 +1379,224 @@ fn after_the_toekenning_no_termijn_is_paid() {
             at("2025-05-01T10:00:00+02:00"),
         )
         .unwrap_err();
-    assert!(matches!(e, Error::Refused(_)), "{e}");
+    assert!(matches!(e, Error::Ended(_)), "{e}");
     assert!(e.to_string().contains("TOEKENNING"), "{e}");
     assert_eq!(cell.grams().count(), before);
+}
+
+fn days(list: &[&str]) -> Vec<chrono::NaiveDate> {
+    list.iter().map(|d| d.parse().unwrap()).collect()
+}
+
+/// The cell says on which days a termijn is due: per month the day the
+/// policy executing art. 22 gives (the first), or the day the voorschot
+/// holds if that is later, never twice in a month and never after the
+/// toekenning. Whether a termijn falls on such a day is the law's to say.
+#[test]
+fn the_cell_says_which_days_a_termijn_is_due() {
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    let due = |service: &LawExecutionService,
+               cell: &Cell,
+               after: Option<&str>,
+               through: &str,
+               now: &str| {
+        cell.due_executions(
+            service,
+            "voorschottermijn_betaald",
+            &cell
+                .grams()
+                .find(|g| g.name == "aanvraag_ontvangen")
+                .unwrap()
+                .id
+                .clone(),
+            after.map(|a| a.parse().unwrap()),
+            through.parse().unwrap(),
+            at(now),
+        )
+        .unwrap_or_else(|e| panic!("{e}"))
+    };
+    // Before the voorschot there is nothing to execute.
+    let received = at("2025-03-04T10:15:00+01:00");
+    let mut early = cell(&service, data.path(), received);
+    early
+        .record_submission(&service, "aanvraag_ontvangen", &application(), received)
+        .unwrap();
+    assert!(due(
+        &service,
+        &early,
+        None,
+        "2025-06-30",
+        "2025-03-05T10:00:00+01:00"
+    )
+    .is_empty());
+
+    let data = tempfile::tempdir().unwrap();
+    let (mut cell, application, _) = with_voorschot(
+        &mut service,
+        data.path(),
+        "2025-03-04T10:15:00+01:00",
+        "2025-03-10T09:00:00+01:00",
+    );
+    // At the moment of the voorschot: that day itself.
+    assert_eq!(
+        due(
+            &service,
+            &cell,
+            None,
+            "2025-03-10",
+            "2025-03-10T09:00:00+01:00"
+        ),
+        days(&["2025-03-10"])
+    );
+    // Later: the same day, whenever the cell is asked; then the first of
+    // every month, also ahead of time.
+    assert_eq!(
+        due(
+            &service,
+            &cell,
+            None,
+            "2025-06-15",
+            "2025-04-20T10:00:00+02:00"
+        ),
+        days(&["2025-03-10", "2025-04-01", "2025-05-01", "2025-06-01"])
+    );
+    // A month that has a termijn is done; what was asked already is too.
+    pay(&mut cell, &service, &application.id, "2025-04-01").unwrap();
+    // Executed later on the day of the voorschot, the termijn holds from
+    // the voorschot's moment, not from the start of that day.
+    let late = cell
+        .preview_execution(
+            &service,
+            "voorschottermijn_betaald",
+            &application.id,
+            "2025-03-10".parse().unwrap(),
+            at("2025-04-20T10:00:00+02:00"),
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(late.effective_at, "2025-03-10T09:00:00+01:00");
+    assert_eq!(
+        due(
+            &service,
+            &cell,
+            None,
+            "2025-06-15",
+            "2025-04-20T10:00:00+02:00"
+        ),
+        days(&["2025-03-10", "2025-05-01", "2025-06-01"])
+    );
+    assert_eq!(
+        due(
+            &service,
+            &cell,
+            Some("2025-05-01"),
+            "2025-06-15",
+            "2025-04-20T10:00:00+02:00"
+        ),
+        days(&["2025-06-01"])
+    );
+    // After the toekenning nothing is due any more.
+    cell.decide(
+        &service,
+        "zorgtoeslag_toegekend",
+        BTreeMap::from([("on_application".to_string(), application.id.clone())]),
+        BTreeMap::new(),
+        at("2025-04-21T09:00:00+02:00"),
+    )
+    .unwrap();
+    assert!(due(
+        &service,
+        &cell,
+        None,
+        "2025-06-15",
+        "2025-04-21T10:00:00+02:00"
+    )
+    .is_empty());
+}
+
+/// Once a month is once a month for the case, whichever voorschot a termijn
+/// refers to: a second voorschot on the same application (a herziening) does
+/// not make a second termijn in the same month.
+#[test]
+fn a_herziening_does_not_pay_twice_in_a_month() {
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    let (mut cell, application, first) = with_voorschot(
+        &mut service,
+        data.path(),
+        "2025-03-04T10:15:00+01:00",
+        "2025-03-10T09:00:00+01:00",
+    );
+    let paid = pay(&mut cell, &service, &application.id, "2025-04-01").unwrap();
+    assert_eq!(paid.refers_to["voorschot"], first.id);
+    let second = cell
+        .decide(
+            &service,
+            "voorschot_verleend",
+            BTreeMap::from([("on_application".to_string(), application.id.clone())]),
+            BTreeMap::new(),
+            at("2025-04-10T09:00:00+02:00"),
+        )
+        .unwrap();
+    let e = cell
+        .execute(
+            &service,
+            "voorschottermijn_betaald",
+            &application.id,
+            "2025-04-15".parse().unwrap(),
+            at("2025-04-15T10:00:00+02:00"),
+        )
+        .unwrap_err();
+    assert!(matches!(e, Error::Refused(_)), "{e}");
+    assert!(e.to_string().contains("already"), "{e}");
+    // The next month, the termijn executes the latest voorschot.
+    let next = pay(&mut cell, &service, &application.id, "2025-05-01").unwrap();
+    assert_eq!(next.refers_to["voorschot"], second.id);
+}
+
+/// Time only moves forward: the cell does not record a gram at a moment
+/// before the last one it recorded.
+#[test]
+fn a_gram_is_not_recorded_before_the_last_one() {
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    let (mut cell, application, _) = with_voorschot(
+        &mut service,
+        data.path(),
+        "2025-03-04T10:15:00+01:00",
+        "2025-03-10T09:00:00+01:00",
+    );
+    let e = cell
+        .decide(
+            &service,
+            "zorgtoeslag_toegekend",
+            BTreeMap::from([("on_application".to_string(), application.id.clone())]),
+            BTreeMap::new(),
+            at("2025-03-09T09:00:00+01:00"),
+        )
+        .unwrap_err();
+    assert!(matches!(e, Error::Refused(_)), "{e}");
+    assert!(e.to_string().contains("time does not go back"), "{e}");
+}
+
+/// What a lexostatus gives is read as the field it reads: the sum of the
+/// termijnen paid is an amount, as the law declares the termijnbedrag.
+#[test]
+fn a_lexostatus_says_which_field_it_reads() {
+    let data = tempfile::tempdir().unwrap();
+    let service = regulations();
+    let cell = cell(&service, data.path(), at("2025-03-04T10:15:00+01:00"));
+    let fields = cell
+        .lexostatus_fields(&service, "uitbetaald", "2025-06-01".parse().unwrap())
+        .unwrap();
+    let def = &fields["uitbetaalde_voorschotten"];
+    assert_eq!(def.name, "termijnbedrag");
+    assert_eq!(def.type_, Some(regelrecht_law_model::ParameterType::Amount));
+    // A moment reads no field.
+    let fields = cell
+        .lexostatus_fields(&service, "voorschot", "2025-06-01".parse().unwrap())
+        .unwrap();
+    assert!(!fields.contains_key("dagtekening_voorschot"));
+    assert!(fields.contains_key("voorschotbedrag"));
 }

@@ -41,27 +41,19 @@ export function citizenRows(gram, fields, corpus) {
 }
 
 /**
- * Per bedragveld de som over `grams` (de betaalde termijnen): wat er tot nu
- * toe is ontvangen. Leest als een bedrag zoals het veld dat zegt.
+ * Wat een lexostatus van de cel geeft (`values`, uit `read`), als regels
+ * zoals een mens ze leest: per parameter de waarde, gelezen als het veld van
+ * de gram waaruit de cel haar afleidt (`fields`, uit `lexostatusFields`: een
+ * som van termijnbedragen is een bedrag). Wat de cel optelt, telt dit bestand
+ * niet na.
  */
-export function amountTotals(grams, fieldsOf, corpus) {
-  const totals = new Map();
-  for (const gram of grams ?? []) {
-    const fields = fieldsOf(gram);
-    for (const [name, value] of Object.entries(gram.fields ?? {})) {
-      if (fields?.[name]?.type !== 'amount' || typeof value !== 'number') continue;
-      const total = totals.get(name) ?? { name, value: 0, count: 0, gram, field: fields[name] };
-      total.value += value;
-      total.count += 1;
-      totals.set(name, total);
-    }
-  }
-  return [...totals.values()].map((x) => ({
-    name: x.name,
-    value: x.value,
-    count: x.count,
-    text: fieldText(x.value, x.field, specOf(x.gram, x.name, corpus), corpus),
-  }));
+export function lexostatusRows(values, fields, corpus) {
+  return Object.entries(values ?? {}).map(([name, value]) => {
+    const field = fields?.[name] ?? null;
+    const lawId = field?.declared_by?.split('#')[0];
+    const doc = lawId ? corpus?.lawById?.(lawId)?.doc : null;
+    return { name, value, text: fieldText(value, field, doc ? fieldSpec(doc, field.name) : null, corpus) };
+  });
 }
 
 /**

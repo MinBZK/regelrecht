@@ -92,7 +92,7 @@ Dit is nu het grootste gat. Het staat in `Cell::decide` en in de review van #168
 
 - **Wet:** Awir 2 definieert het berekeningsjaar als kalenderjaar, Awir 8 neemt het inkomen over dat jaar. Het corpus modelleert `berekeningsjaar = $referencedate.year`: het jaar van de rekendatum, niet dat van de aanvraag.
 - **Voorstel (eigen keuze):** het berekeningsjaar is een gegeven van de aanvraag (`aangevraagd_berekeningsjaar`, origin BELANGHEBBENDE, staat er al). Awir 2 leest het als parameter in plaats van uit de rekendatum. De cel voert de besluiten uit op een rekendatum in dat jaar: de rekendatum is **wat het besluit betreft**, niet de dag waarop het wordt genomen. De wet bepaalt welk moment dat is; voor een jaarbedrag ligt 1 januari van het berekeningsjaar voor de hand.
-- **Gevolg:** de wetsversie volgt het berekeningsjaar. Een aanvraag voor 2025 die in 2026 wordt beslist, rekent met de wet van 2025, en de Awb-termijnen van de beslissing met de wet van de besluitdag. Dat zijn twee data. Opgelost in stap 1: de wet zegt bij het besluit over welke periode het gaat (`period`), de cel rekent op 1 januari van dat jaar en legt het besluit vast op de besluitdag.
+- **Gevolg:** de wetsversie volgt het berekeningsjaar. Een aanvraag voor 2025 die in 2026 wordt beslist, rekent met de wet van 2025, en de Awb-termijnen van de beslissing met de wet van de besluitdag. Dat zijn twee data. Opgelost in stap 1: de wet zegt bij het besluit over welke periode het gaat (`period`), de cel rekent op 1 januari van dat jaar en legt het besluit vast op de besluitdag. Dat de wet van een jaar de wet op 1 januari van dat jaar is, is wat `period.unit: year` betekent, en geen aanname van de cel: een wet die een andere dag bedoelt, heeft een andere eenheid nodig.
 
 ## 7. Voorschot op een geschat inkomen
 
@@ -119,6 +119,14 @@ Eén knop zet de peildatum op het eerstvolgende moment. De cel legt vast wat dan
 **Pagina:** de bestaande pagina's (Portaal, Zaaksysteem met Kroniek), zoals afgesproken. De tijdsbediening hoort bij de zaak, niet bij een losse pagina.
 
 **Gebouwd (stap 5, 7 oktober 2026).** De demo heeft één klok en de knop "Naar het volgende moment" in de Kroniek. Wat de volgende momenten zijn, haalt de demo uit voorbeelden van de cel (`preview_execution`, `preview_decision`): de wet uitgevoerd zonder vast te leggen. De datum van de aanslag (Awir 19, herkomst DOSSIER) komt uit de gegevens van de persona, via `dossier` in `demo-config.yaml`. Elk besluit heeft een eigen bekendmaking (fasen VOORSCHOT_BEKENDMAKING en TOEKENNING_BEKENDMAKING, `is: BEKENDMAKING`), zodat Awb 6:8 per besluit vuurt (eigen keuze, naar Awb 3:40 en 3:41). Het berekeningsjaar van de aanvraag is in de demo nog het jaar van de peildatum, dus een voorschot vóór het berekeningsjaar is in de demo niet te bereiken.
+
+**Na de review (7 oktober 2026).** Wat de demo nog zelf uitrekende, komt nu uit de wet en de cel:
+
+- **De dagtekening van een besluit** noemt de wet bij het besluit: `dated_by` in `extensions.chronolex` (Zorgtoeslagwet 2: `dagtekening_voorschot` bij het voorschot, `dagtekening_toekenning` bij de toekenning). De cel vult alleen die parameter met de besluitdag; wat de fase verder vraagt en niemand geeft, weigert ze.
+- **Op welke dagen een termijn valt**, zegt de cel (`Cell::due_executions`) uit `executed_on` (met `once_per` en `day`) en `until`. De dag in de maand (`day: 1`) is een keuze van het fictieve uitvoeringsbeleid en staat daar, gemarkeerd; de demo heeft geen eigen kalender meer. Eens per maand telt per zaak, ook na een herziening van het voorschot.
+- **Wat er is ontvangen**, leest de demo met de lexostatus die de toekenning ook leest (`received` in `demo-config.yaml` wijst haar aan); de demo telt niet zelf op.
+- **Vaste datums van een besluit dat nog komt** (de uiterste toekenningsdatum) vindt de demo met een heuristiek: een datum die gelijk is in twee voorbeelden van het besluit in verschillende kalendermaanden (vandaag en een maand later) telt als vast. Dat is een keuze van de demo, geen regel van de wet; dat de wet zelf een datum als vast markeert, is een latere stap.
+- **De tijd gaat niet terug**: een kroniek weigert een gram die eerder is vastgelegd dan haar laatste.
 
 ## 9. Wat bewust later komt
 

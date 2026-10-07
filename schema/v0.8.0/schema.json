@@ -408,7 +408,7 @@
                 },
                 "is": {
                   "type": "string",
-                  "description": "The stage of the default procedure this stage is an instance of, such as BESLUIT for the VOORSCHOT and TOEKENNING stages of the Awir's procedure. A hook whose applies_to.stage names it also fires on this stage, so Awb 3:46 and 6:7 apply to every decision of the procedure. A free stage name, compared with applies_to.stage and nothing else."
+                  "description": "The stage of the default procedure this stage is an instance of: a procedure with a provisional and a final decision gives both stages `is: BESLUIT`. A hook whose applies_to.stage names it also fires on this stage, so the hooks on every decision apply to each decision of the procedure. It must name a stage of the default procedure for the same legal character; the validator refuses another name."
                 },
                 "description": {
                   "type": "string",

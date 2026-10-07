@@ -26,22 +26,14 @@ import { isEntrypointFor, subjectOf } from '../data/entrypoints.js';
 import { assignClaimOwnership } from '../data/claimOwnership.js';
 import { applicationValues, eventsForLaw, gramsOfCase as gramsFor, momentOn } from '../data/chronolex.js';
 import { materialiseRecord, tablesFromProfiles } from '../data/materialize.js';
-import {
-  addDays,
-  comingDates,
-  dayOf,
-  decisionDue,
-  executesMonthly,
-  executionStart,
-  fixedDates,
-  nextExecution,
-  nextMoment,
-  pendingExecutionDays,
-  periodEnd,
-} from '../data/moments.js';
+import { addMonths, comingDates, dayOf, decisionDue, fixedDates, nextExecution, nextMoment, periodEnd } from '../data/moments.js';
+import { advanceTo as advanceClock, executeDue as executeDueOn } from '../data/clock.js';
+import { lexostatusRows } from '../data/chronicleView.js';
 import { activeLocale, t } from '../i18n/index.js';
 
-const STORAGE_KEY = 'rr-demo-state-v1';
+// v2: de zaken dragen sinds de klok en de besluiten per fase andere velden
+// (`decisionGrams`, `executedThrough`); een oude staat wordt niet omgezet.
+const STORAGE_KEY = 'rr-demo-state-v2';
 
 function today() {
   // Local calendar date, not UTC: in the evening the two differ.
@@ -491,19 +483,32 @@ function takeDecision(c, date) {
   c.publishedAt = null;
   c.dueStage = null;
   if (c.objection && c.objection.status !== 'PENDING') c.objection = null;
-  advanceLifecycle(c, decisionDates(c, date));
+  // Legt een cel dit besluit vast, dan zegt de wet welke parameter zijn
+  // dagtekening is (`dated_by`); anders wat de fase vraagt en een datum is.
+  const chrono = c.applicationGramId ? chronolexFor(corpus.value?.lawById(c.lawId)) : null;
+  let datedBy = null;
+  try {
+    datedBy = (chrono && decisionAt(chrono, stage)?.shape?.dated_by) ?? null;
+  } catch (e) {
+    c.chronicleError = String(e?.message ?? e);
+  }
+  advanceLifecycle(c, decisionDates(c, date, datedBy));
   recordDecision(c, stage);
   executeDue(c);
 }
 
-/** De uitvoeringen (executogrammen) die de cel van deze wet vastlegt, met hun vorm. */
+/**
+ * De uitvoeringen (executogrammen) die de cel van deze wet vastlegt: de
+ * gebeurtenissen waarvan de wet zegt op welke dag ze worden uitgevoerd
+ * (`executed_on` in hun vorm).
+ */
 function executionsOf(chrono) {
   const out = [];
   for (const e of chrono.cell.events) {
     if (e.name === chrono.application.name || chrono.decisions.some((d) => d.name === e.name)) continue;
     try {
       const shape = chrono.wasmCell.shape(engine.value, e.name, state.referenceDate);
-      if (executesMonthly(shape)) out.push({ event: e.name, shape });
+      if (shape.executed_on) out.push({ event: e.name, shape });
     } catch (err) {
       console.warn(`Vorm van ${e.name} niet af te leiden:`, err);
     }
@@ -511,35 +516,28 @@ function executionsOf(chrono) {
   return out;
 }
 
+/** De cel van een wet zoals de klok haar aanspreekt: met de engine erbij. */
+function celOf(chrono) {
+  const cell = chrono.wasmCell;
+  return {
+    dueExecutions: (event, root, after, through, now) => cell.dueExecutions(engine.value, event, root, after, through, now),
+    execute: (event, root, day, now) => cell.execute(engine.value, event, root, day, now),
+    previewExecution: (event, root, day, now) => cell.previewExecution(engine.value, event, root, day, now),
+  };
+}
+
 /**
  * Leg vast wat er in deze zaak tot en met de peildatum uit de wet voortkomt:
- * per uitvoering (een betaalde voorschottermijn) één keer per kalendermaand
- * die de klok passeerde, op de eerste van die maand. Of er in die maand iets
- * ontstaat, zegt de wet; de cel legt alleen vast als het zo is. Wat al
- * gevraagd is, wordt niet opnieuw gevraagd.
+ * per uitvoering (een betaalde termijn) de dagen die de cel uit de wet geeft,
+ * elk één keer gevraagd. Of er op zo'n dag iets ontstaat, zegt de wet; de cel
+ * legt alleen vast als het zo is.
  */
 function executeDue(c) {
   if (!c.applicationGramId || !engine.value) return;
   const chrono = chronolexFor(corpus.value?.lawById(c.lawId));
   if (!chrono) return;
-  const today = state.referenceDate;
-  const now = nowMoment();
-  let recorded = false;
-  for (const { event, shape } of executionsOf(chrono)) {
-    const caseGrams = gramsOfCase(c);
-    const start = executionStart(shape, caseGrams, today);
-    const days = pendingExecutionDays({ shape, event, caseGrams, start, checkedThrough: c.executedThrough?.[event], today });
-    for (const day of days) {
-      try {
-        if (chrono.wasmCell.execute(engine.value, event, c.applicationGramId, day, now)) recorded = true;
-      } catch (e) {
-        c.chronicleError = String(e?.message ?? e);
-        break;
-      }
-      c.executedThrough = { ...(c.executedThrough ?? {}), [event]: day };
-    }
-  }
-  if (recorded) syncGrams();
+  const events = executionsOf(chrono).map((x) => x.event);
+  if (executeDueOn(c, celOf(chrono), events, { today: state.referenceDate, now: nowMoment() })) syncGrams();
 }
 
 /**
@@ -566,13 +564,13 @@ function dueDecision(c) {
     const now = nowMoment();
     const { inputs, dates } = dossierInputs(chrono.wasmCell, found.event, c.applicationGramId, now);
     // Zonder datum uit het dossier: de vaste datum die de wet het besluit
-    // geeft (Awir 19 lid 2), uit twee voorbeelden op opeenvolgende dagen.
+    // geeft, uit twee voorbeelden in verschillende maanden (`fixedDates`).
     let lawDates = [];
     if (Object.keys(dates).length && !Object.values(dates).some((d) => typeof d === 'string')) {
       const refersTo = applicationReference(found.event, found.shape, c);
       const preview = (at) => chrono.wasmCell.previewDecision(engine.value, found.event, refersTo, at, inputs);
       const fields = Object.fromEntries(found.shape.fields.map((f) => [f.name, f]));
-      lawDates = fixedDates(preview(now), preview(momentOn(addDays(state.referenceDate, 1))), fields).map((m) => m.date);
+      lawDates = fixedDates(preview(now), preview(momentOn(addMonths(state.referenceDate, 1))), fields).map((m) => m.date);
     }
     return decisionDue(dates, state.referenceDate, lawDates) ? found : null;
   } catch (e) {
@@ -595,22 +593,31 @@ function dueDecision(c) {
  *   nemen (de uiterste toekenningsdatum, de uiterste betaaldatum). Van een
  *   besluit dat nog komt alleen de datums die niet met de besluitdag
  *   meeschuiven.
+ *
+ * `{ moments, error }`: lezen schrijft niets op de zaak. Een fout van de cel
+ * komt terug als `error`, voor het scherm dat de momenten toont.
  */
-function nextMoments(c) {
-  if (!c?.applicationGramId || !engine.value) return [];
+function momentsOf(c) {
+  const none = { moments: [], error: null };
+  if (!c?.applicationGramId || !engine.value) return none;
   const chrono = chronolexFor(corpus.value?.lawById(c.lawId));
-  if (!chrono) return [];
+  if (!chrono) return none;
+  const errors = [];
   const today = state.referenceDate;
   const now = nowMoment();
   const caseGrams = gramsOfCase(c);
   const moments = [];
-  for (const { event, shape } of executionsOf(chrono)) {
-    if (executionStart(shape, caseGrams, today) === null) continue;
-    const next = nextExecution(
-      (day) => chrono.wasmCell.previewExecution(engine.value, event, c.applicationGramId, day, now),
-      today,
-    );
-    if (next) moments.push({ date: next.date, kind: 'execution', name: event, gram: next.gram });
+  const cel = celOf(chrono);
+  try {
+    for (const { event } of executionsOf(chrono)) {
+      // De dagen na vandaag die de cel uit de wet geeft, tot een jaar
+      // vooruit; de eerste waarop de wet iets laat ontstaan is het moment.
+      const days = cel.dueExecutions(event, c.applicationGramId, today, addMonths(today, 13), now);
+      const next = nextExecution((day) => cel.previewExecution(event, c.applicationGramId, day, now), days);
+      if (next) moments.push({ date: next.date, kind: 'execution', name: event, gram: next.gram });
+    }
+  } catch (e) {
+    errors.push(String(e?.message ?? e));
   }
   for (const g of caseGrams) {
     const end = periodEnd(g.period);
@@ -628,13 +635,13 @@ function nextMoments(c) {
       const refersTo = applicationReference(next.event, next.shape, c);
       const preview = (at) => chrono.wasmCell.previewDecision(engine.value, next.event, refersTo, at, inputs);
       const fields = Object.fromEntries(next.shape.fields.map((f) => [f.name, f]));
-      const later = momentOn(addDays(today, 1));
+      const later = momentOn(addMonths(today, 1));
       for (const m of fixedDates(preview(now), preview(later), fields, today)) {
         moments.push({ ...m, kind: 'law', event: next.event, provision: fields[m.name]?.declared_by ?? null });
       }
     }
   } catch (e) {
-    console.warn('Het volgende besluit is niet vooruit te zien:', e);
+    errors.push(String(e?.message ?? e));
   }
   for (const g of caseGrams) {
     const fields = gramFields(g);
@@ -642,7 +649,12 @@ function nextMoments(c) {
       moments.push({ ...m, kind: 'law', event: g.name, provision: fields[m.name]?.declared_by ?? null });
     }
   }
-  return moments.sort((a, b) => a.date.localeCompare(b.date));
+  return { moments: moments.sort((a, b) => a.date.localeCompare(b.date)), error: errors.join('; ') || null };
+}
+
+/** De momenten van `momentsOf`, zonder de fout: voor de klok. */
+function nextMoments(c) {
+  return momentsOf(c).moments;
 }
 
 /**
@@ -657,40 +669,41 @@ function advanceTo(date) {
   if (!date || date <= state.referenceDate) return;
   const open = () => state.cases.filter((c) => statusOf(c) !== 'WITHDRAWN' && c.applicationGramId);
   for (const c of open()) c.chronicleError = null;
-  // Langs elk moment van elke zaak tot `date`, niet in één sprong: een zaak
-  // waarvan de toekenning eerder valt, krijgt haar besluit op die dag, en
-  // daarna geen termijnen meer.
-  while (state.referenceDate < date) {
-    const step = nextMoment(open().flatMap((c) => nextMoments(c)), state.referenceDate)?.date;
-    state.referenceDate = step && step < date ? step : date;
-    reregister();
-    for (const c of open()) {
+  advanceClock(date, {
+    today: () => state.referenceDate,
+    setToday: (day) => {
+      state.referenceDate = day;
+      reregister();
+    },
+    cases: open,
+    momentsOf: nextMoments,
+    step: (c) => {
       executeDue(c);
       const due = dueDecision(c);
-      if (!due || c.dueStage) continue;
+      if (!due || c.dueStage) return;
       if (state.manualReview) {
         c.dueStage = due.shape.stage;
         c.events.push({ at: nowMoment(), type: 'IN_REVIEW', key: 'case.event.decision_due' });
-        continue;
+        return;
       }
       decideByLaw(c, due.shape.stage);
-    }
-  }
+    },
+  });
   reregister();
 }
 
 /**
  * Wat de wet in de fase van het volgende besluit van de zaak zou besluiten
  * (de fase waarvan het moment er is, anders de fase waarop de levensloop
- * wacht), zonder het vast te leggen: `{event, gram}`, of null.
+ * wacht), zonder het vast te leggen: `{event, gram}`, `{error}` als de cel
+ * het niet kan zeggen, of null. Lezen schrijft niets op de zaak.
  */
 function decisionPreview(c) {
   try {
     const preview = previewAt(c, c?.dueStage ?? c?.stageState?.current_stage);
     return preview ? { event: preview.event, gram: preview.gram } : null;
   } catch (e) {
-    console.warn('Het besluit is niet vooruit te zien:', e);
-    return null;
+    return { error: String(e?.message ?? e) };
   }
 }
 
@@ -742,6 +755,25 @@ function gramFields(gram) {
     return Object.fromEntries(shape.fields.map((f) => [f.name, f]));
   } catch {
     return {};
+  }
+}
+
+/**
+ * Wat er op zaak `c` tot nu toe is ontvangen: de lexostatus die de cel
+ * daarvoor heeft (`received` in demo-config.yaml), gelezen op het moment van
+ * nu, als regels: `{ rows, error }`. Geen regels zonder zo'n lexostatus. De
+ * cel telt op, niet de demo. Lezen schrijft niets op de zaak.
+ */
+function receivedOf(c) {
+  const chrono = c?.applicationGramId ? chronolexFor(corpus.value?.lawById(c.lawId)) : null;
+  const lexostatus = chrono ? corpus.value?.config?.received?.[chrono.cell.id] : null;
+  if (!lexostatus) return { rows: [], error: null };
+  try {
+    const values = chrono.wasmCell.read(lexostatus, { root: c.applicationGramId }, nowMoment());
+    const fields = chrono.wasmCell.lexostatusFields(engine.value, lexostatus, state.referenceDate);
+    return { rows: lexostatusRows(values, fields, corpus.value), error: null };
+  } catch (e) {
+    return { rows: [], error: String(e?.message ?? e) };
   }
 }
 
@@ -1488,7 +1520,9 @@ export function useDemo() {
     advanceTo,
     advanceToNextMoment,
     nextMoments,
+    momentsOf,
     decisionPreview,
+    receivedOf,
     reregister,
     portalLaws,
     isLawEnabled,

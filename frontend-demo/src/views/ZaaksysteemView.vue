@@ -82,8 +82,9 @@ const caseGrams = computed(() => {
     return {
       ...g,
       rows,
-      // Een gram met een enkel veld (een betaalde termijn) leest op één regel.
-      summary: rows.length <= 2 ? rows.map((r) => r.text).join(' · ') : '',
+      // Een uitvoering (een betaalde termijn) leest op één regel; de aanvraag
+      // en de besluiten met hun details.
+      summary: g.type === 'executogram' ? rows.map((r) => r.text).join(' · ') : '',
       basis: (g.effective_at_legal_basis ?? []).map((ref) => provisionLabel(corpus.value, ref)).join(' · '),
       establishedBy: g.establishes ? provisionLabel(corpus.value, g.establishes) : '',
     };
@@ -98,13 +99,15 @@ const detailedGrams = computed(() => caseGrams.value.filter((g) => !g.summary));
  * de store). Per moment een zin uit het soort moment en de naam die de wet
  * eraan geeft.
  */
-const moments = computed(() => {
+const upcoming = computed(() => {
   void dataVersion.value;
   void state.referenceDate;
-  if (sheetView.value !== 'kroniek' || !selected.value) return [];
+  if (sheetView.value !== 'kroniek' || !selected.value) return { moments: [], error: null };
   const decided = (event) => caseGrams.value.some((g) => g.name === event);
-  return demo.nextMoments(selected.value).map((m) => momentView(m, { corpus: corpus.value, fieldsOf: demo.gramFields, decided }));
+  const { moments: list, error } = demo.momentsOf(selected.value);
+  return { moments: list.map((m) => momentView(m, { corpus: corpus.value, fieldsOf: demo.gramFields, decided })), error };
 });
+const moments = computed(() => upcoming.value.moments);
 const nextDate = computed(() => moments.value.find((m) => m.date > state.referenceDate)?.date ?? null);
 function advance() {
   if (selected.value) demo.advanceToNextMoment(selected.value);
@@ -207,6 +210,7 @@ const duePreview = computed(() => {
   const c = selected.value;
   if (!c?.dueStage) return null;
   const preview = demo.decisionPreview(c);
+  if (preview?.error) return { error: preview.error, rows: [] };
   return preview ? { name: preview.event, rows: gramRows(preview.gram) } : null;
 });
 
@@ -387,6 +391,7 @@ function claimLawName(cl) {
                 <nldd-text size="sm" weight="medium" color="secondary">{{ t('zaak.moments.title') }}</nldd-text>
                 <nldd-text size="xs" color="secondary">{{ t('zaak.moments.hint') }}</nldd-text>
               </nldd-container>
+              <nldd-banner v-if="upcoming.error" variant="warning" :text="t('chronicle.read_failed')" :supporting-text="upcoming.error"></nldd-banner>
               <nldd-list appearance="box-tinted" :accessible-label="t('zaak.moments.title')">
                 <nldd-list-item size="sm">
                   <nldd-timeline-track-cell status="current" :position="moments.length ? 'first' : 'only'"></nldd-timeline-track-cell>
@@ -464,7 +469,8 @@ function claimLawName(cl) {
           <template v-if="awaitingDecision">
             <!-- Een volgend besluit (de toekenning): wat de wet in die fase zou
                  besluiten, met de verrekening, voordat het wordt vastgelegd. -->
-            <nldd-container v-if="duePreview" gap="4">
+            <nldd-banner v-if="duePreview?.error" variant="warning" :text="t('chronicle.read_failed')" :supporting-text="duePreview.error"></nldd-banner>
+            <nldd-container v-else-if="duePreview" gap="4">
               <nldd-container padding-inline="12">
                 <nldd-text size="sm" weight="medium" color="secondary">{{ t('zaak.decision_due.title', { decision: humanize(duePreview.name) }) }}</nldd-text>
                 <nldd-text size="xs" color="secondary">{{ t('zaak.decision_due.body') }}</nldd-text>

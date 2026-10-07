@@ -24,11 +24,12 @@ walkdir.workspace = true
 
 wasm-bindgen = { version = "0.2", optional = true }
 serde-wasm-bindgen = { version = "0.6", optional = true }
+js-sys = { version = "0.3", optional = true }
 
 [features]
 # The cell in the browser, next to the engine it executes the law with: one
 # WASM module that exports both WasmEngine and WasmCell.
-wasm = ["regelrecht-engine/wasm", "dep:wasm-bindgen", "dep:serde-wasm-bindgen", "uuid/js"]
+wasm = ["regelrecht-engine/wasm", "dep:wasm-bindgen", "dep:serde-wasm-bindgen", "dep:js-sys", "uuid/js"]
 
 [dev-dependencies]
 tempfile.workspace = true

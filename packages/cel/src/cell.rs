@@ -5,14 +5,14 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate};
-use regelrecht_engine::{LawExecutionService, ParameterType, StageInputs, Value};
+use regelrecht_engine::{LawExecutionService, StageInputs, Value};
 use serde::{Deserialize, Serialize};
 use serde_json::Map;
 
 use crate::chronicle::{Chronicle, Gram, Period};
 use crate::config::{CellConfig, Derivation};
 use crate::error::{refused, setup, Result};
-use crate::extension::Every;
+use crate::extension::{Every, ExecutedOn};
 use crate::lexostatus;
 use crate::shape::{self, Shape};
 
@@ -115,6 +115,15 @@ impl Cell {
         service: &LawExecutionService,
         today: NaiveDate,
     ) -> Result<Self> {
+        // A stage that says it `is` a stage no procedure has would make the
+        // hooks on that stage silently not fire: refuse to start instead.
+        let unknown = service.unknown_stage_aliases();
+        if !unknown.is_empty() {
+            return Err(setup(format!(
+                "the law names stages no procedure has: {}",
+                unknown.join("; ")
+            )));
+        }
         let cell = Self { config, chronicles };
         // Every event must take its shape from the law now, not at the first
         // application; and every field a lexostatus reads must be a field of
@@ -295,6 +304,89 @@ impl Cell {
         lexostatus::read(definition, inputs, chronicle, as_of)
     }
 
+    /// Per parameter the lexostatus `lexostatus` gives, the field of a gram
+    /// it reads (a `field`, a `sum`, whether one is `filled`), as the law
+    /// declares that field on `day`: how to read what [`Self::read`]
+    /// returns. The field is looked up in the events of the chronicle the
+    /// lexostatus reads, the event its filter names first. A parameter that
+    /// reads no field (a moment, a period) is left out.
+    pub fn lexostatus_fields(
+        &self,
+        service: &LawExecutionService,
+        lexostatus: &str,
+        day: NaiveDate,
+    ) -> Result<BTreeMap<String, shape::FieldDef>> {
+        let definition = self
+            .config
+            .lexostatuses
+            .iter()
+            .find(|l| l.name == lexostatus)
+            .ok_or_else(|| refused(format!("no lexostatus '{lexostatus}'")))?;
+        let reduction = &definition.reduction;
+        let mut events: Vec<&str> = self
+            .config
+            .streams
+            .iter()
+            .filter(|s| s.chronicle == reduction.chronicle)
+            .flat_map(|s| s.events.iter().map(|e| e.name.as_str()))
+            .collect();
+        if let Some(named) = reduction.filter.event.as_deref() {
+            events.sort_by_key(|e| *e != named);
+        }
+        // Shapes are derived as needed, the filter's event first, and a
+        // field is taken from the first event that has it: an event that
+        // has nothing to do with the reading cannot break it.
+        let mut shapes: Vec<Option<Result<Shape>>> = events.iter().map(|_| None).collect();
+        let mut out = BTreeMap::new();
+        for (name, derivation) in &reduction.derivations {
+            let Some(field) = derivation.field() else {
+                continue;
+            };
+            let mut found = None;
+            let mut first_error = None;
+            for (i, event) in events.iter().enumerate() {
+                let shape = shapes[i]
+                    .get_or_insert_with(|| self.shape(service, event, day).map(|(s, _)| s));
+                match shape {
+                    Ok(shape) => {
+                        if let Some(def) = shape.field(field) {
+                            found = Some(def.clone());
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        first_error.get_or_insert_with(|| e.to_string());
+                    }
+                }
+            }
+            let def = found.ok_or_else(|| {
+                setup(format!(
+                    "lexostatus '{lexostatus}' reads field '{field}', which no event of chronicle '{}' has on {day}{}",
+                    reduction.chronicle,
+                    first_error.map(|e| format!(" ({e})")).unwrap_or_default()
+                ))
+            })?;
+            // Whether a field is filled in is a yes or a no, whatever the
+            // field holds.
+            let def = match derivation {
+                Derivation::Filled { legal_basis, .. } => shape::FieldDef {
+                    name: field.to_string(),
+                    type_: Some(regelrecht_law_model::ParameterType::Boolean),
+                    legal_basis: if legal_basis.is_empty() {
+                        def.legal_basis
+                    } else {
+                        legal_basis.clone()
+                    },
+                    declared_by: def.declared_by,
+                    fixed: None,
+                },
+                _ => def,
+            };
+            out.insert(name.clone(), def);
+        }
+        Ok(out)
+    }
+
     /// What the lexostatuses `event` reads give for the case `root` at
     /// `as_of`, per parameter with the lexostatus it came from. A parameter
     /// two of them give is ambiguous.
@@ -333,14 +425,13 @@ impl Cell {
 
     /// The parameters of the decision `event` on the gram `root`: the
     /// lexostatuses the event `reads`, each read with `{root}` as the case
-    /// holds at `as_of`, kept to what
-    /// executing the establishing article at the event's stage asks (the
-    /// article and the hooks that fire at that stage), each with the
-    /// lexostatus it came from. The article is the version in force on the
-    /// day of `as_of`, or, if the law says the decision concerns a period, on
-    /// the first day of the period read; the parameter that gives the period
-    /// is kept too. What [`Cell::decide`] reads; read-only, to look before
-    /// deciding.
+    /// holds at `as_of`, kept to what executing the establishing article at
+    /// the event's stage asks (the article and the hooks that fire at that
+    /// stage), each with the lexostatus it came from. The article is the
+    /// version in force on the day of `as_of`, or, if the law says the
+    /// decision concerns a period, on the first day of the period read; the
+    /// parameter that gives the period is kept too. What [`Cell::decide`]
+    /// reads; read-only, to look before deciding.
     pub fn decision_inputs(
         &self,
         service: &LawExecutionService,
@@ -348,17 +439,9 @@ impl Cell {
         root: &str,
         as_of: DateTime<FixedOffset>,
     ) -> Result<BTreeMap<String, Input>> {
-        let (read, shape, day) = self.read_decision(service, event, root, as_of)?;
-        let period_parameter = shape.period.as_ref().map(|p| p.parameter.as_str());
-        let at = stage_of(service, &shape, day)?;
-        let asked = asked(&at);
-        Ok(read
-            .into_iter()
-            .filter(|(name, _)| {
-                asked.contains(&name.as_str()) || Some(name.as_str()) == period_parameter
-            })
-            .map(|(name, (value, lexostatus))| (name, from_lexostatus(value, &lexostatus)))
-            .collect())
+        Ok(self
+            .prepare(service, event, Some(root), BTreeMap::new(), as_of)?
+            .inputs)
     }
 
     /// What taking the decision `event` on the case `root` at `as_of` asks:
@@ -375,42 +458,80 @@ impl Cell {
         root: &str,
         as_of: DateTime<FixedOffset>,
     ) -> Result<StageInputs> {
-        let (_, shape, day) = self.read_decision(service, event, root, as_of)?;
-        stage_of(service, &shape, day)
+        Ok(self
+            .prepare(service, event, Some(root), BTreeMap::new(), as_of)?
+            .at)
     }
 
-    /// What the lexostatuses of the decision `event` give for the case
-    /// `root` at `as_of`, the shape of the decision, and the day whose law
-    /// it applies: the first day of the period read, if the law says the
-    /// decision concerns one, otherwise the day of `as_of`.
-    #[allow(clippy::type_complexity)]
-    fn read_decision(
+    /// Everything a decision `event` takes, worked out once: what the
+    /// lexostatuses it `reads` give for the case `root` at `now` (kept to
+    /// what its stage asks, and the parameter that gives its period),
+    /// together with `extra_inputs`; the period those merged inputs give, the
+    /// day whose law applies (the first day of that period, or the day of
+    /// `now`), the shape in that law, and its stage there. Filtering and
+    /// executing both use this, so they cannot apply different laws.
+    fn prepare(
         &self,
         service: &LawExecutionService,
         event: &str,
-        root: &str,
-        as_of: DateTime<FixedOffset>,
-    ) -> Result<(
-        BTreeMap<String, (serde_json::Value, String)>,
-        Shape,
-        NaiveDate,
-    )> {
-        let read = self.read_case(event, root, as_of)?;
-        let day = as_of.date_naive();
-        let (shape, _) = self.shape(service, event, day)?;
-        let period_parameter = shape.period.as_ref().map(|p| p.parameter.as_str());
-        // A period the case does not give leaves the day as it is: `decide`
-        // refuses to take the decision without one.
-        let day = match period_parameter.and_then(|p| read.get(p)) {
-            Some((value, _)) => period(&shape, Some(value))?.map_or(day, |(_, d)| d),
-            None => day,
+        root: Option<&str>,
+        extra_inputs: BTreeMap<String, Input>,
+        now: DateTime<FixedOffset>,
+    ) -> Result<Prepared> {
+        let today = now.date_naive();
+        let (shape, chronicle) = self.shape(service, event, today)?;
+        let read: BTreeMap<String, Input> = match root {
+            Some(root) => self
+                .read_case(event, root, now)?
+                .into_iter()
+                .map(|(name, (value, lexostatus))| (name, from_lexostatus(value, &lexostatus)))
+                .collect(),
+            None => BTreeMap::new(),
         };
-        let shape = if day == as_of.date_naive() {
+        let mut merged = read.clone();
+        for (name, input) in &extra_inputs {
+            if merged.contains_key(name) {
+                return Err(refused(format!(
+                    "'{name}' is read from the case; it cannot be given as well"
+                )));
+            }
+            merged.insert(name.clone(), input.clone());
+        }
+
+        let period_parameter = shape.period.as_ref().map(|p| p.parameter.clone());
+        let period = period(
+            &shape,
+            period_parameter
+                .as_ref()
+                .and_then(|p| merged.get(p))
+                .map(|i| &i.value),
+        )?;
+        let day = period.map_or(today, |(_, d)| d);
+        let shape = if day == today {
             shape
         } else {
             self.shape(service, event, day)?.0
         };
-        Ok((read, shape, day))
+        let at = stage_of(service, &shape, day)?;
+
+        // What the cell reads goes to the decision only if its stage asks
+        // it, or if it gives the period; what the caller gives goes as is.
+        let asked = asked(&at);
+        let mut inputs: BTreeMap<String, Input> = read
+            .into_iter()
+            .filter(|(name, _)| {
+                asked.contains(&name.as_str()) || Some(name) == period_parameter.as_ref()
+            })
+            .collect();
+        inputs.extend(extra_inputs);
+        Ok(Prepared {
+            inputs,
+            shape,
+            chronicle,
+            day,
+            period: period.map(|(p, _)| p),
+            at,
+        })
     }
 
     /// The root of the case a decision is taken on: the root of the gram
@@ -500,76 +621,70 @@ impl Cell {
         // Not yet: refusing an application out of time.
         let today = now.date_naive();
         let (shape, chronicle) = self.shape(service, event, today)?;
-
         let reads = self
             .config
             .event(event)
             .is_some_and(|(_, e)| !e.reads.is_empty());
-        let mut inputs = if reads {
-            let root = self.case_root(&shape, &chronicle, &refers_to)?;
-            self.decision_inputs(service, event, &root, now)?
+        let root = if reads {
+            Some(self.case_root(&shape, &chronicle, &refers_to)?)
         } else {
-            BTreeMap::new()
+            None
         };
-        for (name, input) in extra_inputs {
-            if inputs.contains_key(&name) {
-                return Err(refused(format!(
-                    "'{name}' is read from the case; it cannot be given as well"
-                )));
-            }
-            inputs.insert(name, input);
-        }
-
-        let period_parameter = shape.period.as_ref().map(|p| p.parameter.clone());
-        let period = period(
-            &shape,
-            period_parameter
-                .as_ref()
-                .and_then(|p| inputs.get(p))
-                .map(|i| &i.value),
-        )?;
-        let day = period.map_or(today, |(_, d)| d);
-        let shape = if day == today {
-            shape
-        } else {
-            self.shape(service, event, day)?.0
-        };
+        let Prepared {
+            mut inputs,
+            shape,
+            chronicle,
+            day,
+            period,
+            at,
+        } = self.prepare(service, event, root.as_deref(), extra_inputs, now)?;
         self.check_references(&shape, &chronicle, &refers_to)?;
 
-        // The decision is taken at its stage of the procedure: what that
-        // stage requires to be entered and is a date (the dagtekening of the
-        // voorschot, the besluitdatum) is the day it is taken.
-        let at = stage_of(service, &shape, day)?;
+        // The decision is taken at its stage of the procedure. The date the
+        // decision bears is the one parameter the law names for it
+        // (`dated_by`): the day it is taken. Whatever else the stage requires
+        // is not the cell's to make up; it must be given.
         for required in &at.requires {
-            if required.req_type == ParameterType::Date && !inputs.contains_key(&required.name) {
-                let input = Input {
+            if inputs.contains_key(&required.name) {
+                continue;
+            }
+            if shape.dated_by.as_deref() != Some(required.name.as_str()) {
+                return Err(refused(format!(
+                    "stage {} of '{event}' requires '{}', and nothing gives it ({} names {} as the date of the decision)",
+                    at.stage,
+                    required.name,
+                    shape.establishes,
+                    shape
+                        .dated_by
+                        .as_deref()
+                        .map_or("nothing".to_string(), |d| format!("'{d}'")),
+                )));
+            }
+            inputs.insert(
+                required.name.clone(),
+                Input {
                     value: serde_json::Value::String(today.to_string()),
                     provenance: serde_json::json!({
                         "source": "decision",
                         "stage": at.stage,
                     }),
-                };
-                inputs.insert(required.name.clone(), input);
-            }
+                },
+            );
         }
 
         // The parameter that gives the period takes part in the decision,
         // but goes to the article only if the stage asks it.
+        let period_parameter = shape.period.as_ref().map(|p| p.parameter.clone());
         let asked = asked(&at);
         let parameters: BTreeMap<String, Value> = inputs
             .iter()
             .filter(|(k, _)| asked.contains(&k.as_str()) || Some(*k) != period_parameter.as_ref())
             .map(|(k, i)| (k.clone(), Value::from(&i.value)))
             .collect();
-        let output = shape.outputs.first().ok_or_else(|| {
-            setup(format!(
-                "{}: the article has no output to take the decision by",
-                shape.establishes
-            ))
-        })?;
+        let (_, article_number) = shape::split_reference(&shape.establishes)?;
         let result = service.execute_stage_at(
             &shape.law_id,
-            output,
+            article_number,
             &at.stage,
             parameters,
             &day.to_string(),
@@ -578,30 +693,18 @@ impl Cell {
         let mut gram = self.gram(&shape, &chronicle, now);
         gram.regulation = Some(shape.law_id.clone());
         gram.regulation_valid_from = result.regulation_valid_from.clone();
-        gram.period = period.map(|(p, _)| p);
+        gram.period = period;
         gram.refers_to = refers_to;
-        for f in &shape.fields {
-            let value = result
-                .outputs
-                .get(&f.name)
-                .map(shape::to_json)
-                .unwrap_or(serde_json::Value::Null);
-            gram.fields.insert(f.name.clone(), value);
-        }
-        gram.inputs = inputs
-            .into_iter()
-            .map(|(k, i)| {
-                let v = serde_json::to_value(i).unwrap_or(serde_json::Value::Null);
-                (k, v)
-            })
-            .collect();
+        gram.fields = fields_of(&shape, &result.outputs)?;
+        gram.inputs = recorded_inputs(inputs);
         Ok((gram, chronicle))
     }
 
     /// Execute the article that establishes the execution `event` (an
-    /// executogram, such as a voorschottermijn that is paid) for the case
-    /// `root` on the day `on`, and record a gram only if the law says one
-    /// arises. Returns `None` if it does not.
+    /// executogram, such as a payment that executes a decision) for the
+    /// case `root` on the day `on`, and record a gram only if the law says
+    /// one arises. Returns `None` if it does not. Which days to ask is
+    /// [`Self::due_executions`].
     ///
     /// What the law declares (`extensions.chronolex` of the article) decides
     /// every step; the cell knows no case:
@@ -610,18 +713,18 @@ impl Cell {
     ///   article that establishes it). A required one that is not there is
     ///   refused.
     /// - `until`: once the case has a gram of that stage, no gram arises any
-    ///   more; the call is refused.
+    ///   more; the call fails with [`crate::Error::Ended`].
     /// - the parameters are what the lexostatuses the event `reads` give at
     ///   `now`, kept to the parameters of the article, and `on` in the
     ///   parameter of `executed_on`. With a `period`, the law of the period.
     /// - `record_when`: the boolean output that says whether a gram arises.
-    /// - `executed_on.once_per`: a second gram for the same references in the
-    ///   same month is refused.
+    /// - `executed_on.once_per`: a second gram of the event in the same case
+    ///   in the same month is refused, whatever gram it refers to.
     ///
     /// A fact that has yet to happen is not a fact (RFC-044): `on` may not
-    /// lie after `now`, nor before the moment of a gram it refers to. The
-    /// gram holds from the start of `on` (or from `now`, on the day itself)
-    /// and is recorded at `now`.
+    /// lie after `now`, nor before the day of a gram it refers to. The gram
+    /// holds from the start of `on` (or from `now`, on the day itself), but
+    /// not before the moment of a gram it refers to; it is recorded at `now`.
     pub fn execute(
         &mut self,
         service: &LawExecutionService,
@@ -646,7 +749,7 @@ impl Cell {
     /// reading the chronicle as it holds at `now`, without recording it:
     /// whether the law says one arises then, and with what. `on` may lie
     /// after `now`; what has yet to happen is no fact, but the law can say
-    /// what it would be, such as the voorschottermijn of next month.
+    /// what it would be, such as the execution of next month.
     pub fn preview_execution(
         &self,
         service: &LawExecutionService,
@@ -658,6 +761,115 @@ impl Cell {
         Ok(self
             .execution(service, event, root, on, now)?
             .map(|(gram, _)| gram))
+    }
+
+    /// The days up to `through` on which the execution `event` is executed
+    /// for the case `root`, as the case holds at `now`: per period of
+    /// `executed_on.once_per`, the day the law (or the policy executing it)
+    /// gives as `executed_on.day`, or the first day the execution may arise
+    /// if that is later; only days after `after` (what the caller already
+    /// asked), and no period in which the case already has a gram of the
+    /// event. Whether a gram arises on such a day is for [`Self::execute`]
+    /// to say.
+    ///
+    /// The first day an execution may arise is the moment of the latest
+    /// gram each of its references admits (it may not lie before one); none
+    /// while a required reference has no gram, and none once the case has a
+    /// gram of the stage that ends it (`until`). `through` may lie after
+    /// `now`: these are the days the law executes on, not facts.
+    pub fn due_executions(
+        &self,
+        service: &LawExecutionService,
+        event: &str,
+        root: &str,
+        after: Option<NaiveDate>,
+        through: NaiveDate,
+        now: DateTime<FixedOffset>,
+    ) -> Result<Vec<NaiveDate>> {
+        let (shape, chronicle) = self.shape(service, event, now.date_naive())?;
+        let executed_on = executed_on(&shape)?;
+        let (Some(Every::Month), Some(day_of_month)) = (executed_on.once_per, executed_on.day)
+        else {
+            return Err(setup(format!(
+                "{}: '{event}' says not on which day of which period it is executed (executed_on: once_per and day)",
+                shape.establishes
+            )));
+        };
+        let (grams, case) = self.case_at(&chronicle, root, now)?;
+        if ended(&shape, &case, root).is_err() {
+            return Ok(Vec::new());
+        }
+        let Some(references) = references(&shape, &case) else {
+            return Ok(Vec::new());
+        };
+        // From the root, or the latest gram a reference names.
+        let mut start = grams
+            .find(root)
+            .map(|g| lexostatus::moment(g, &g.effective_at))
+            .transpose()?
+            .ok_or_else(|| refused(format!("no gram '{root}' in chronicle '{chronicle}'")))?;
+        for gram in references.values() {
+            start = start.max(lexostatus::moment(gram, &gram.effective_at)?);
+        }
+        let done: Vec<(i32, u32)> = case
+            .iter()
+            .filter(|g| g.name == event)
+            .map(|g| lexostatus::moment(g, &g.effective_at).map(|m| month_of(m.date_naive())))
+            .collect::<Result<_>>()?;
+
+        let mut days = Vec::new();
+        let mut month = month_of(start.date_naive());
+        while let Some(first) = NaiveDate::from_ymd_opt(month.0, month.1, 1) {
+            if first > through {
+                break;
+            }
+            let last = last_day_of_month(first);
+            // The day does not depend on when the cell is asked: on the day
+            // the referred gram holds, the execution holds from that gram's
+            // moment (see `execute`), not from the next day.
+            let day = first
+                .with_day(day_of_month.min(last.day()))
+                .unwrap_or(last)
+                .max(start.date_naive());
+            if month_of(day) == month
+                && day <= through
+                && after.is_none_or(|a| day > a)
+                && !done.contains(&month)
+            {
+                days.push(day);
+            }
+            month = if month.1 == 12 {
+                (month.0 + 1, 1)
+            } else {
+                (month.0, month.1 + 1)
+            };
+        }
+        Ok(days)
+    }
+
+    /// The chronicle `chronicle` and the grams of the case `root` in it that
+    /// hold at `now`, in the order they hold. A root the chronicle does not
+    /// have is refused.
+    fn case_at(
+        &self,
+        chronicle: &str,
+        root: &str,
+        now: DateTime<FixedOffset>,
+    ) -> Result<(&Chronicle, Vec<&Gram>)> {
+        let grams = self
+            .chronicles
+            .get(chronicle)
+            .ok_or_else(|| setup(format!("no chronicle '{chronicle}'")))?;
+        if grams.find(root).is_none() {
+            return Err(refused(format!(
+                "no gram '{root}' in chronicle '{chronicle}'"
+            )));
+        }
+        let case = lexostatus::in_force(grams, now)?
+            .into_iter()
+            .filter(|g| grams.root_of(g) == root)
+            .collect();
+        Ok((grams, case))
     }
 
     /// Execute an execution: the gram and its chronicle if one arises, not
@@ -672,70 +884,49 @@ impl Cell {
     ) -> Result<Option<(Gram, String)>> {
         let today = now.date_naive();
         let (shape, chronicle) = self.shape(service, event, today)?;
-        let Some(executed_on) = shape.executed_on.clone() else {
+        let executed_on = executed_on(&shape)?;
+        let (_, case) = self.case_at(&chronicle, root, now)?;
+        ended(&shape, &case, root)?;
+        let Some(references) = references(&shape, &case) else {
+            let (name, reference) = shape
+                .refers_to
+                .iter()
+                .find(|(_, r)| r.required && !case.iter().any(|g| r.admits(g)))
+                .ok_or_else(|| setup("a required reference without a gram, and none missing"))?;
             return Err(refused(format!(
-                "'{event}' is not an execution: {} declares no executed_on",
-                shape.establishes
+                "'{event}' refers to a gram of {} as '{name}', and case '{root}' has none",
+                reference.target()
             )));
         };
-        let effective_at = if on == today {
+        // It holds from `now` on the day itself, otherwise from the start of
+        // `on`; but never before a gram it refers to: on the day that gram
+        // holds, from that gram's moment. A day before it is refused.
+        let mut effective_at = if on == today {
             now
         } else {
-            on.and_hms_opt(0, 0, 0)
-                .and_then(|t| t.and_local_timezone(*now.offset()).single())
-                .ok_or_else(|| setup(format!("no start of the day {on}")))?
+            start_of(on, &now)?
         };
-
-        let grams = self
-            .chronicles
-            .get(&chronicle)
-            .ok_or_else(|| setup(format!("no chronicle '{chronicle}'")))?;
-        if grams.find(root).is_none() {
-            return Err(refused(format!(
-                "no gram '{root}' in chronicle '{chronicle}'"
-            )));
-        }
-        let case: Vec<&Gram> = lexostatus::in_force(grams, now)?
-            .into_iter()
-            .filter(|g| grams.root_of(g) == root)
-            .collect();
-        if let Some(until) = &shape.until {
-            if let Some(ended) = case
-                .iter()
-                .find(|g| g.stage.as_deref() == Some(until.stage.as_str()))
-            {
-                return Err(refused(format!(
-                    "'{event}' no longer arises in case '{root}': it has a gram of stage {} ('{}')",
-                    until.stage, ended.id
-                )));
-            }
-        }
         let mut refers_to = BTreeMap::new();
-        for (name, reference) in &shape.refers_to {
-            let Some(gram) = case.iter().rev().find(|g| reference.admits(g)) else {
-                if reference.required {
-                    return Err(refused(format!(
-                        "'{event}' refers to a gram of {} as '{name}', and case '{root}' has none",
-                        reference.target()
-                    )));
-                }
-                continue;
-            };
-            if lexostatus::moment(gram, &gram.effective_at)? > effective_at {
+        for (name, gram) in &references {
+            let moment = lexostatus::moment(gram, &gram.effective_at)?;
+            if moment.date_naive() > on {
                 return Err(refused(format!(
                     "'{event}' on {on} lies before '{name}' ('{}', {})",
                     gram.id, gram.effective_at
                 )));
             }
+            effective_at = effective_at.max(moment);
             refers_to.insert(name.clone(), gram.id.clone());
         }
+
+        // Once per period for the case: a second decision referred to in the
+        // same case (a revision) does not make a second one arise.
         if executed_on.once_per == Some(Every::Month) {
-            let month = |d: NaiveDate| (d.year(), d.month());
-            for gram in grams.grams().iter().filter(|g| g.name == event) {
+            for gram in case.iter().filter(|g| g.name == event) {
                 let day = lexostatus::moment(gram, &gram.effective_at)?.date_naive();
-                if gram.refers_to == refers_to && month(day) == month(on) {
+                if month_of(day) == month_of(on) {
                     return Err(refused(format!(
-                        "'{event}' already arose in {}-{:02} ('{}')",
+                        "'{event}' already arose in case '{root}' in {}-{:02} ('{}')",
                         on.year(),
                         on.month(),
                         gram.id
@@ -811,21 +1002,8 @@ impl Cell {
         gram.regulation_valid_from = result.regulation_valid_from.clone();
         gram.period = period.map(|(p, _)| p);
         gram.refers_to = refers_to;
-        for f in &shape.fields {
-            let value = result
-                .outputs
-                .get(&f.name)
-                .map(shape::to_json)
-                .unwrap_or(serde_json::Value::Null);
-            gram.fields.insert(f.name.clone(), value);
-        }
-        gram.inputs = inputs
-            .into_iter()
-            .map(|(k, i)| {
-                let v = serde_json::to_value(i).unwrap_or(serde_json::Value::Null);
-                (k, v)
-            })
-            .collect();
+        gram.fields = fields_of(&shape, &result.outputs)?;
+        gram.inputs = recorded_inputs(inputs);
         Ok(Some((gram, chronicle)))
     }
 
@@ -877,6 +1055,116 @@ impl Cell {
         }
         Ok(())
     }
+}
+
+/// What [`Cell::prepare`] works out for a decision.
+struct Prepared {
+    inputs: BTreeMap<String, Input>,
+    shape: Shape,
+    chronicle: String,
+    day: NaiveDate,
+    period: Option<Period>,
+    at: StageInputs,
+}
+
+/// The fields of a gram of `shape`: each from the outputs of executing the
+/// law. An output the law does not give is refused, not recorded as
+/// nothing: a gram holds what the law decided, and a null is no decision.
+fn fields_of(
+    shape: &Shape,
+    outputs: &BTreeMap<String, Value>,
+) -> Result<Map<String, serde_json::Value>> {
+    shape
+        .fields
+        .iter()
+        .map(|f| {
+            outputs
+                .get(&f.name)
+                .map(|v| (f.name.clone(), shape::to_json(v)))
+                .ok_or_else(|| {
+                    refused(format!(
+                        "'{}': the law gives no '{}' ({})",
+                        shape.event, f.name, f.declared_by
+                    ))
+                })
+        })
+        .collect()
+}
+
+/// The inputs as a gram records them: per parameter its value and where it
+/// came from.
+fn recorded_inputs(inputs: BTreeMap<String, Input>) -> BTreeMap<String, serde_json::Value> {
+    inputs
+        .into_iter()
+        .map(|(k, i)| {
+            let v = serde_json::to_value(i).unwrap_or(serde_json::Value::Null);
+            (k, v)
+        })
+        .collect()
+}
+
+/// The `executed_on` of an execution; refused for an event that is none.
+fn executed_on(shape: &Shape) -> Result<ExecutedOn> {
+    shape.executed_on.clone().ok_or_else(|| {
+        refused(format!(
+            "'{}' is not an execution: {} declares no executed_on",
+            shape.event, shape.establishes
+        ))
+    })
+}
+
+/// [`crate::Error::Ended`] if the case has a gram of the stage that ends an
+/// execution of `shape` (`until`).
+fn ended(shape: &Shape, case: &[&Gram], root: &str) -> Result<()> {
+    let Some(until) = &shape.until else {
+        return Ok(());
+    };
+    match case
+        .iter()
+        .find(|g| g.stage.as_deref() == Some(until.stage.as_str()))
+    {
+        Some(gram) => Err(crate::Error::Ended(format!(
+            "'{}' no longer arises in case '{root}': it has a gram of stage {} ('{}')",
+            shape.event, until.stage, gram.id
+        ))),
+        None => Ok(()),
+    }
+}
+
+/// Per reference of `shape`, the latest gram of `case` it admits; `None` if
+/// a required one has none. An optional one without a gram is left out.
+fn references<'a>(shape: &Shape, case: &[&'a Gram]) -> Option<BTreeMap<String, &'a Gram>> {
+    let mut out = BTreeMap::new();
+    for (name, reference) in &shape.refers_to {
+        match case.iter().rev().find(|g| reference.admits(g)) {
+            Some(gram) => {
+                out.insert(name.clone(), *gram);
+            }
+            None if reference.required => return None,
+            None => {}
+        }
+    }
+    Some(out)
+}
+
+/// The calendar month of a day.
+fn month_of(day: NaiveDate) -> (i32, u32) {
+    (day.year(), day.month())
+}
+
+/// The last day of the month of `first`.
+fn last_day_of_month(first: NaiveDate) -> NaiveDate {
+    first
+        .checked_add_months(chrono::Months::new(1))
+        .and_then(|next| next.pred_opt())
+        .unwrap_or(first)
+}
+
+/// The start of `day` in the offset of `now`.
+fn start_of(day: NaiveDate, now: &DateTime<FixedOffset>) -> Result<DateTime<FixedOffset>> {
+    day.and_hms_opt(0, 0, 0)
+        .and_then(|t| t.and_local_timezone(*now.offset()).single())
+        .ok_or_else(|| setup(format!("no start of the day {day}")))
 }
 
 /// A parameter read from a lexostatus.
@@ -938,4 +1226,49 @@ fn period(shape: &Shape, value: Option<&serde_json::Value>) -> Result<Option<(Pe
                 declared.parameter, shape.event, declared.unit
             ))
         })
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_output_the_law_does_not_give_is_refused() {
+        let mut service = LawExecutionService::new();
+        service
+            .load_law(
+                "$id: testwet
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+articles:
+  - number: '1'
+    text: Test.
+    machine_readable:
+      execution:
+        produces:
+          extensions:
+            chronolex:
+              establishes:
+                - {event: gebeurd, type: decretogram, fields: outputs}
+        output: [{name: y, type: number}]
+        actions: [{output: y, value: 1}]
+",
+            )
+            .unwrap();
+        let shape = shape::derive(
+            &service,
+            "gebeurd",
+            "testwet#1",
+            "2024-06-01".parse().unwrap(),
+        )
+        .unwrap();
+        let e = fields_of(&shape, &BTreeMap::new()).unwrap_err();
+        assert!(matches!(e, crate::Error::Refused(_)), "{e}");
+        assert!(e.to_string().contains("'y'"), "{e}");
+        let fields =
+            fields_of(&shape, &BTreeMap::from([("y".to_string(), Value::Int(1))])).unwrap();
+        assert_eq!(fields["y"], 1);
+    }
 }

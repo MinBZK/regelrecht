@@ -1119,10 +1119,10 @@ pub struct Stage {
     /// Stage name (e.g., "AANVRAAG", "BESLUIT", "BEKENDMAKING")
     pub name: String,
     /// The stage of the default procedure this stage is an instance of: a
-    /// stage VOORSCHOT of the Awir's procedure says `is: BESLUIT`, and a hook
-    /// on BESLUIT (Awb 3:46, 6:7) then also fires on it. A free stage name;
-    /// the engine compares it with the hook's `applies_to.stage` and nothing
-    /// more.
+    /// stage of a provisional decision says `is: BESLUIT`, and a hook on
+    /// BESLUIT then also fires on it. The engine compares it with the hook's
+    /// `applies_to.stage`; that it names a stage of the default procedure is
+    /// checked once all laws are loaded (`unknown_stage_aliases`).
     #[serde(default, rename = "is", skip_serializing_if = "Option::is_none")]
     pub is: Option<String>,
     /// Human-readable description
@@ -1743,9 +1743,9 @@ impl ArticleBasedLaw {
     ///   to it;
     /// - a hook (RFC-007): it delivers its outputs by firing on a decision, so
     ///   when an ordinary article produces the same name, that article is
-    ///   meant. Awir 16 (the estimated toetsingsinkomen, a hook on the
-    ///   voorschot) and Awir 8 (the toetsingsinkomen) both produce
-    ///   `toetsingsinkomen`; a reference by name means art. 8. A hook is a
+    ///   meant. When a hook on a provisional decision gives an estimate of a
+    ///   value that an ordinary article of the same law also produces, a
+    ///   reference by name means the ordinary article. A hook is a
     ///   candidate only when no ordinary article produces the name, which is
     ///   how Awb 6:8 reads the bezwaartermijn of Awb 6:7.
     ///

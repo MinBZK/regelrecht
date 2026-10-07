@@ -75,10 +75,10 @@ describe('een procedure met eigen fasen', () => {
   it('leest de fasen uit de wet die de procedure vastlegt', () => {
     expect(stages).toEqual([
       { name: 'AANVRAAG', is: null, requires: [] },
-      { name: 'VOORSCHOT', is: 'BESLUIT', requires: ['dagtekening_voorschot'] },
-      { name: 'VOORSCHOT_BEKENDMAKING', is: 'BEKENDMAKING', requires: ['bekendmaking_datum'] },
-      { name: 'TOEKENNING', is: 'BESLUIT', requires: ['dagtekening_toekenning'] },
-      { name: 'TOEKENNING_BEKENDMAKING', is: 'BEKENDMAKING', requires: ['bekendmaking_datum'] },
+      { name: 'VOORSCHOT', is: 'BESLUIT', requires: [{ name: 'dagtekening_voorschot', type: 'date' }] },
+      { name: 'VOORSCHOT_BEKENDMAKING', is: 'BEKENDMAKING', requires: [{ name: 'bekendmaking_datum', type: 'date' }] },
+      { name: 'TOEKENNING', is: 'BESLUIT', requires: [{ name: 'dagtekening_toekenning', type: 'date' }] },
+      { name: 'TOEKENNING_BEKENDMAKING', is: 'BEKENDMAKING', requires: [{ name: 'bekendmaking_datum', type: 'date' }] },
     ]);
     expect(procedureStages([awir], 'beschikking')).toBeNull();
     expect(procedureStages([awir], undefined)).toBeNull();
@@ -115,11 +115,21 @@ describe('een procedure met eigen fasen', () => {
 });
 
 describe('decisionDates', () => {
-  it('geeft de fase waarop de zaak wacht de dagtekening van het besluit', () => {
-    expect(decisionDates({ pendingInputs: ['besluit_datum'] }, '2026-03-12')).toEqual({ besluit_datum: '2026-03-12' });
-    expect(decisionDates({ pendingInputs: ['dagtekening_voorschot'] }, '2026-03-12')).toEqual({
+  const stages = [
+    { name: 'BESLUIT', is: null, requires: [{ name: 'besluit_datum', type: 'date' }, { name: 'kenmerk', type: 'string' }] },
+  ];
+  const waiting = (pendingInputs) => ({ pendingInputs, procedureStages: stages, stageState: { current_stage: 'BESLUIT' } });
+
+  it('geeft de dagtekening die de wet bij het besluit noemt, en niets anders', () => {
+    expect(decisionDates(waiting(['dagtekening_voorschot', 'kenmerk']), '2026-03-12', 'dagtekening_voorschot')).toEqual({
       dagtekening_voorschot: '2026-03-12',
     });
+    expect(decisionDates(waiting(['kenmerk']), '2026-03-12', 'dagtekening_voorschot')).toEqual({});
+  });
+
+  it('geeft zonder cel alleen wat de fase vraagt en een datum is', () => {
+    expect(decisionDates(waiting(['besluit_datum', 'kenmerk']), '2026-03-12')).toEqual({ besluit_datum: '2026-03-12' });
+    expect(decisionDates({ pendingInputs: ['besluit_datum'] }, '2026-03-12')).toEqual({});
     expect(decisionDates({}, '2026-03-12')).toEqual({});
   });
 });

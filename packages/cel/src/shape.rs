@@ -20,8 +20,8 @@ use serde::Serialize;
 
 use crate::error::{setup, Result};
 use crate::extension::{
-    self, EffectiveAt, Establishment, ExecutedOn, Extends, Fields, PeriodParameter, Reference,
-    Until,
+    self, EffectiveAt, Establishment, Every, ExecutedOn, Extends, Fields, PeriodParameter,
+    Reference, Until,
 };
 
 /// One field of a gram, as the law declares it.
@@ -70,6 +70,9 @@ pub struct Shape {
     pub record_when: Option<String>,
     /// For an execution: the stage whose gram ends it.
     pub until: Option<Until>,
+    /// For a decision: the parameter that is the date it bears, which the
+    /// cell fills with the day the decision is taken.
+    pub dated_by: Option<String>,
 }
 
 impl Shape {
@@ -149,9 +152,9 @@ fn declared_parameters(article: &Article) -> Vec<Parameter> {
 
 /// Derive the shape of `event` from the law as it applies on `day`, or, if
 /// the version in force does not establish it at all, from the first later
-/// version that does: the law already enacted for a coming period. A
-/// voorschot is granted before the year it concerns begins (Awir 16 lid 2,
-/// 22 lid 1), under the law of that year.
+/// version that does: the law already enacted for a coming period, such as
+/// a decision taken before the period it concerns begins, under the law of
+/// that period.
 ///
 /// Only the absence of the event falls through to a later version: no
 /// version in force, no such article, or an article that names no such
@@ -250,6 +253,7 @@ pub fn derive(
         executed_on: entry.executed_on.clone(),
         record_when: entry.record_when.clone(),
         until: entry.until.clone(),
+        dated_by: entry.dated_by.clone(),
     };
     for (name, reference) in &shape.refers_to {
         reference
@@ -257,6 +261,7 @@ pub fn derive(
             .map_err(|e| setup(format!("{establishes}: {e}")))?;
     }
     check_execution(&shape, article)?;
+    check_dated_by(service, &shape, day)?;
     match produces.and_then(|p| p.submission.as_ref()) {
         Some(submission) => {
             // What the application is a TOETS of is not what the gram is:
@@ -285,8 +290,8 @@ pub fn derive(
                 &declared_outputs(article),
             )?;
             // A decision taken at a stage of its procedure is the article
-            // with the hooks that fire at that stage: Awb 3:46 and 6:7 on
-            // every besluit, Awir 16 on the voorschot. What they produce is
+            // with the hooks that fire at that stage (a general law that hooks
+            // onto every besluit, or onto one stage). What they produce is
             // part of the decision too, unless the law names the fields one
             // by one.
             let named = matches!(entry.fields, Some(Fields::Named(_)));
@@ -337,6 +342,20 @@ fn check_execution(shape: &Shape, article: &Article) -> Result<()> {
             return Err(at(format!("record_when: output '{when}' is not a boolean")));
         }
     }
+    if let Some(on) = &shape.executed_on {
+        match (on.day, on.once_per) {
+            (None, _) => {}
+            (Some(day), Some(Every::Month)) if (1..=31).contains(&day) => {}
+            (Some(day), Some(Every::Month)) => {
+                return Err(at(format!("executed_on: day {day} is no day of a month")))
+            }
+            (Some(_), None) => {
+                return Err(at(
+                    "executed_on: a day needs a period it is the day of (once_per)".to_string(),
+                ))
+            }
+        }
+    }
     let execution = shape.executed_on.is_some() || shape.record_when.is_some();
     if execution && (shape.executed_on.is_none() || shape.stage.is_some()) {
         return Err(at(format!(
@@ -345,6 +364,25 @@ fn check_execution(shape: &Shape, article: &Article) -> Result<()> {
         )));
     }
     Ok(())
+}
+
+/// The date a decision bears is a date its stage requires: `dated_by` names
+/// a value of type date in the `requires` of the stage it is taken at.
+fn check_dated_by(service: &LawExecutionService, shape: &Shape, day: NaiveDate) -> Result<()> {
+    let Some(dated_by) = &shape.dated_by else {
+        return Ok(());
+    };
+    let at = |what: String| setup(format!("{}: dated_by: {what}", shape.establishes));
+    let stage = shape
+        .stage
+        .as_deref()
+        .ok_or_else(|| at(format!("'{}' is taken at no stage", shape.event)))?;
+    let inputs = stage_inputs(service, shape, stage, day)?;
+    match inputs.requires.iter().find(|r| &r.name == dated_by) {
+        Some(r) if r.req_type == ParameterType::Date => Ok(()),
+        Some(_) => Err(at(format!("'{dated_by}' is not a date"))),
+        None => Err(at(format!("stage {stage} requires no '{dated_by}'"))),
+    }
 }
 
 /// What executing the decision `shape` describes at `stage` of its procedure
@@ -428,7 +466,8 @@ fn submission_fields(
     if shape.stage.is_none() {
         shape.stage = service
             .resolver()
-            .find_procedure(&decision.legal_character, None)
+            .find_procedure_reported_at(&decision.legal_character, None, Some(day))
+            .ok()
             .and_then(|p| p.stages.first())
             .map(|s| s.name.clone());
     }

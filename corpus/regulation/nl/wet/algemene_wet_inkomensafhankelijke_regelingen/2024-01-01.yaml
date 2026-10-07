@@ -1207,10 +1207,20 @@ articles:
       #   engine neemt dan de uitkomst van na de beschikking.
       # - op de aanvraag van art. 15: zo vraagt de aanvraag om de schatting
       #   (chronolex: een veld van de aanvraag).
-      # Lid 4 (nihil bij onvoldoende gegevens) is een oordeel van de Dienst
-      # Toeslagen en is niet gemodelleerd: zonder schatting is het voorschot
-      # onbekend (RFC-036), niet nihil. De leden 2, 3 en 5 tot en met 7 zijn
-      # niet gemodelleerd.
+      # Lid 1 verleent het voorschot alleen wie de aanvraag indient "vóór 1
+      # april van het jaar volgend op het berekeningsjaar". Wanneer de
+      # aanvraag is ingediend, is de dag van ontvangst (Awb 4:13 lid 1, zoals
+      # in art. 15). Een latere aanvraag krijgt geen voorschot: de wet
+      # verleent er dan geen (`voorschot_wordt_verleend` is onwaar). Eigen
+      # keuze: het voorschotbedrag is dan 0 (het uitvoeringsbeleid betaalt van
+      # een voorschot van 0 geen termijnen); de wet noemt dat geen
+      # nihilvoorschot (dat is lid 4), maar het besluit in de fase VOORSCHOT
+      # draagt wel een bedrag. Is de dag van ontvangst onbekend, dan is ook
+      # het voorschot onbekend (RFC-036). Lid 4 (nihil bij onvoldoende
+      # gegevens) is een oordeel van de Dienst Toeslagen en is niet
+      # gemodelleerd: zonder schatting is het voorschot onbekend (RFC-036),
+      # niet nihil. Niet gemodelleerd: de termijn van 13 weken uit lid 1, en
+      # de leden 2, 3 en 5 tot en met 7.
       hooks:
         - hook_point: pre_actions
           applies_to:
@@ -1250,6 +1260,24 @@ articles:
               De tegemoetkoming die de inkomensafhankelijke regeling in de fase
               VOORSCHOT berekent. De beschikking waarop dit artikel haakt geeft
               haar mee.
+          - name: aangevraagd_berekeningsjaar
+            type: number
+            required: false
+            description: >-
+              Het berekeningsjaar waarop de aanvraag betrekking heeft (art. 15
+              lid 1); lid 1 rekent de 1 april vanaf het jaar erna.
+            origin:
+              waarde: BELANGHEBBENDE
+              grondslag: algemene_wet_inkomensafhankelijke_regelingen#15 lid 1
+          - name: datum_ontvangst
+            type: date
+            required: false
+            description: >-
+              De dag waarop de Dienst Toeslagen de aanvraag ontving (Awb 4:13
+              lid 1): dan is de aanvraag ingediend (lid 1).
+            origin:
+              waarde: DOSSIER
+              grondslag: algemene_wet_bestuursrecht#4:13 lid 1
         input:
           - name: afgeronde_tegemoetkoming
             type: amount
@@ -1272,6 +1300,12 @@ articles:
             type: amount
             type_spec:
               unit: eurocent
+          - name: voorschot_wordt_verleend
+            type: boolean
+            description: >-
+              Lid 1: de aanvraag is ingediend vóór 1 april van het jaar volgend
+              op het berekeningsjaar, en de Dienst Toeslagen verleent een
+              voorschot.
           - name: voorschotbedrag
             type: amount
             type_spec:
@@ -1279,10 +1313,29 @@ articles:
         actions:
           - output: toetsingsinkomen
             value: $vermoedelijk_toetsingsinkomen
+          - output: voorschot_wordt_verleend
+            value:
+              operation: LESS_THAN
+              subject: $datum_ontvangst
+              value:
+                operation: DATE
+                year:
+                  operation: ADD
+                  values:
+                    - $aangevraagd_berekeningsjaar
+                    - 1
+                month: 4
+                day: 1
           - output: voorschotbedrag
             value:
               operation: IF
               cases:
+                # Lid 1: na 1 april geen voorschot (eigen keuze: bedrag 0).
+                - when:
+                    operation: EQUALS
+                    subject: $voorschot_wordt_verleend
+                    value: false
+                  then: 0
                 - when:
                     operation: EQUALS
                     subject: $tegemoetkoming_wordt_toegekend

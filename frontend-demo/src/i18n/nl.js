@@ -282,6 +282,7 @@ export default {
   'zaak.view.chronicle': 'Kroniek',
   'zaak.chronicle.hint': 'De feiten van deze zaak zoals de uitvoerder ze vastlegt: elk feit zegt welk artikel het vestigt en welk moment rechtens telt.',
   'zaak.chronicle.failed': 'De kroniek kon dit niet vastleggen',
+  'chronicle.read_failed': 'De kroniek kon dit niet lezen',
   'zaak.chronicle.application': 'Aanvraag, gevestigd door {law}',
   'zaak.chronicle.decision': 'Besluit, gevestigd door {law}',
   'zaak.chronicle.effective_at': 'Moment dat telt',
@@ -962,8 +963,6 @@ export default {
   'zaak.decision_due.body': 'Uitgerekend in de fase van dit besluit, nog zonder het vast te leggen.',
   'sheet.application.payments.title': 'Betalingen',
   'sheet.application.payments.received': 'Ontvangen tot nu toe',
-  'sheet.application.payments.count.one': '{n} betaling',
-  'sheet.application.payments.count.other': '{n} betalingen',
   'sheet.application.payments.coming': 'Wat er nog komt',
   'zaak.moments.with_value': '{text}: {value}',
 };

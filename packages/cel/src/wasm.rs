@@ -19,6 +19,15 @@ fn error(e: impl std::fmt::Display) -> JsValue {
     JsValue::from_str(&e.to_string())
 }
 
+/// An error of the cell as a JS `Error` whose `name` is the kind of error
+/// ([`crate::Error::code`]: `refused`, `ended`, ...), so the page can tell
+/// "nothing more to come" from a failure without reading the message.
+fn cell_error(e: crate::Error) -> JsValue {
+    let js = js_sys::Error::new(&e.to_string());
+    js.set_name(e.code());
+    js.into()
+}
+
 fn to_js<T: Serialize>(value: &T) -> Result<JsValue, JsValue> {
     value
         .serialize(&Serializer::json_compatible())
@@ -66,14 +75,15 @@ impl WasmCell {
         today: &str,
     ) -> Result<WasmCell, JsValue> {
         let streams: Vec<&str> = streams.iter().map(String::as_str).collect();
-        let config =
-            CellConfig::from_yaml(cell_yaml, &streams, lexostatuses.as_deref()).map_err(error)?;
+        let config = CellConfig::from_yaml(cell_yaml, &streams, lexostatuses.as_deref())
+            .map_err(cell_error)?;
         let grams: Vec<Gram> = if grams.is_null() || grams.is_undefined() {
             Vec::new()
         } else {
             from_js(grams)?
         };
-        let cell = Cell::in_memory(config, grams, engine.service(), day(today)?).map_err(error)?;
+        let cell =
+            Cell::in_memory(config, grams, engine.service(), day(today)?).map_err(cell_error)?;
         Ok(WasmCell { cell })
     }
 
@@ -84,7 +94,7 @@ impl WasmCell {
         let (shape, _) = self
             .cell
             .shape(engine.service(), event, day(on)?)
-            .map_err(error)?;
+            .map_err(cell_error)?;
         to_js(&shape)
     }
 
@@ -102,7 +112,7 @@ impl WasmCell {
         let gram = self
             .cell
             .record_submission(engine.service(), event, &submitted, moment(now)?)
-            .map_err(error)?;
+            .map_err(cell_error)?;
         to_js(&gram)
     }
 
@@ -114,7 +124,7 @@ impl WasmCell {
             &self
                 .cell
                 .read(lexostatus, &inputs, moment(as_of)?)
-                .map_err(error)?,
+                .map_err(cell_error)?,
         )
     }
 
@@ -132,7 +142,7 @@ impl WasmCell {
         let inputs = self
             .cell
             .decision_inputs(engine.service(), event, root, moment(now)?)
-            .map_err(error)?;
+            .map_err(cell_error)?;
         to_js(&inputs)
     }
 
@@ -152,7 +162,7 @@ impl WasmCell {
         let stage = self
             .cell
             .decision_stage(engine.service(), event, root, moment(now)?)
-            .map_err(error)?;
+            .map_err(cell_error)?;
         to_js(&stage)
     }
 
@@ -178,7 +188,7 @@ impl WasmCell {
                 extra(extra_inputs)?,
                 moment(now)?,
             )
-            .map_err(error)?;
+            .map_err(cell_error)?;
         to_js(&gram)
     }
 
@@ -204,7 +214,7 @@ impl WasmCell {
                 extra(extra_inputs)?,
                 moment(now)?,
             )
-            .map_err(error)?;
+            .map_err(cell_error)?;
         to_js(&gram)
     }
 
@@ -222,7 +232,7 @@ impl WasmCell {
         let gram = self
             .cell
             .execute(engine.service(), event, root, day(on)?, moment(now)?)
-            .map_err(error)?;
+            .map_err(cell_error)?;
         match gram {
             Some(gram) => to_js(&gram),
             None => Ok(JsValue::NULL),
@@ -245,11 +255,59 @@ impl WasmCell {
         let gram = self
             .cell
             .preview_execution(engine.service(), event, root, day(on)?, moment(now)?)
-            .map_err(error)?;
+            .map_err(cell_error)?;
         match gram {
             Some(gram) => to_js(&gram),
             None => Ok(JsValue::NULL),
         }
+    }
+
+    /// The days up to `through` (`YYYY-MM-DD`) on which the execution
+    /// `event` is executed for the case `root`, after `after` (a day, or
+    /// `null`), as the case holds at `now` (RFC 3339): `["YYYY-MM-DD", ...]`.
+    /// See `Cell::due_executions`. The page executes or previews each day;
+    /// it does not work out the days itself.
+    #[wasm_bindgen(js_name = dueExecutions)]
+    pub fn due_executions(
+        &self,
+        engine: &WasmEngine,
+        event: &str,
+        root: &str,
+        after: Option<String>,
+        through: &str,
+        now: &str,
+    ) -> Result<JsValue, JsValue> {
+        let after = after.as_deref().map(day).transpose()?;
+        let days = self
+            .cell
+            .due_executions(
+                engine.service(),
+                event,
+                root,
+                after,
+                day(through)?,
+                moment(now)?,
+            )
+            .map_err(cell_error)?;
+        to_js(&days.iter().map(ToString::to_string).collect::<Vec<_>>())
+    }
+
+    /// Per parameter a lexostatus gives, the field of a gram it reads, as
+    /// the law declares that field on `on` (name, type, legal basis, the
+    /// article): how to show what `read` returns. A parameter that reads no
+    /// field (a moment, a period) is left out.
+    #[wasm_bindgen(js_name = lexostatusFields)]
+    pub fn lexostatus_fields(
+        &self,
+        engine: &WasmEngine,
+        lexostatus: &str,
+        on: &str,
+    ) -> Result<JsValue, JsValue> {
+        let fields = self
+            .cell
+            .lexostatus_fields(engine.service(), lexostatus, day(on)?)
+            .map_err(cell_error)?;
+        to_js(&fields)
     }
 
     /// Every gram, to keep between sessions and to show.

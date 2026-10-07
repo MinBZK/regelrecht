@@ -255,6 +255,75 @@ articles:
     assert!(message.contains("(3, 4)"), "{message}");
 }
 
+/// Een verwijzing naar een uitvoer leest de versie die geldt: dat een latere
+/// versie die uitvoer in twee artikelen heeft, maakt de verwijzing op een
+/// eerdere datum niet dubbelzinnig.
+#[test]
+fn a_reference_reads_the_producers_of_the_version_in_force() {
+    // De versie van 2026 vraagt een andere parameter dan die van 2020: wie de
+    // declaraties van de nieuwste versie leest, geeft de versie die op
+    // 2025-06-01 geldt niet wat zij vraagt.
+    let doel = |valid_from: &str, parameter: &str, extra: &str| {
+        format!(
+            r#"
+$id: doelwet
+regulatory_layer: WET
+publication_date: '2020-01-01'
+valid_from: '{valid_from}'
+articles:
+  - number: '1'
+    text: bedrag
+    machine_readable:
+      execution:
+        parameters: [{{name: {parameter}, type: string, required: true}}]
+        output: [{{name: bedrag, type: number}}]
+        actions: [{{output: bedrag, value: 7}}]
+{extra}"#
+        )
+    };
+    let tweede = r#"  - number: '2'
+    text: ook bedrag
+    machine_readable:
+      execution:
+        output: [{name: bedrag, type: number}]
+        actions: [{output: bedrag, value: 8}]
+"#;
+    let vrager = r#"
+$id: vrager
+regulatory_layer: WET
+publication_date: '2020-01-01'
+valid_from: '2020-01-01'
+articles:
+  - number: '1'
+    text: vraagt
+    machine_readable:
+      execution:
+        parameters: [{name: bsn, type: string, required: true}]
+        input:
+          - name: bedrag
+            type: number
+            source: {regulation: doelwet, output: bedrag, parameters: {bsn: $bsn, kenmerk: $bsn}}
+        output: [{name: uitkomst, type: number}]
+        actions: [{output: uitkomst, value: $bedrag}]
+"#;
+    let service = service(&[
+        &doel("2020-01-01", "bsn", ""),
+        &doel("2026-01-01", "kenmerk", tweede),
+        vrager,
+    ]);
+    let bsn = || BTreeMap::from([("bsn".to_string(), Value::String("1".into()))]);
+    let result = service
+        .evaluate_law("vrager", &["uitkomst"], bsn(), "2025-06-01")
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(result.outputs["uitkomst"], Value::Int(7));
+    // In de versie van 2026 is de uitvoer wel dubbelzinnig: de resolutie
+    // zelf weigert haar.
+    let err = service
+        .evaluate_law("vrager", &["uitkomst"], bsn(), "2026-06-01")
+        .unwrap_err();
+    assert!(err.to_string().contains("bedrag"), "{err}");
+}
+
 #[test]
 fn a_hook_on_besluit_fires_on_a_stage_that_is_a_besluit() {
     // VOORSCHOT is een besluitfase (`is: BESLUIT`), dus Awb 6:7 vuurt erop;
@@ -332,13 +401,7 @@ fn stage_at(
 ) -> regelrecht_engine::Result<regelrecht_engine::ArticleResult> {
     let mut parameters = params(&[bsn()]);
     parameters.extend(params(extra));
-    service.execute_stage_at(
-        "wzt_proto",
-        "hoogte_zorgtoeslag",
-        stage,
-        parameters,
-        "2025-01-01",
-    )
+    service.execute_stage_at("wzt_proto", "2", stage, parameters, "2025-01-01")
 }
 
 #[test]
@@ -406,7 +469,7 @@ fn one_stage_refuses_an_article_that_follows_no_procedure() {
     let err = service
         .execute_stage_at(
             "awr_proto",
-            "inkomensgegeven",
+            "21",
             "TOEKENNING",
             params(&[bsn()]),
             "2025-01-01",
@@ -770,4 +833,153 @@ fn a_stage_is_refused_where_executing_it_would_be() {
         .unwrap_err()
         .to_string();
     assert!(err.contains("wzt_proto"), "{err}");
+}
+
+/// A law with a procedure `voorlopig` whose stage VOORLOPIG says `is: <is>`
+/// in the version valid from `valid_from`, an article taking its decision
+/// there, and the default procedure with a hook on BESLUIT.
+fn dated_procedure(valid_from: &str, is: &str) -> String {
+    format!(
+        r#"
+$id: dated_procedure
+regulatory_layer: WET
+publication_date: '{valid_from}'
+valid_from: '{valid_from}'
+procedure:
+  - id: standaard
+    default: true
+    applies_to: {{legal_character: BESCHIKKING}}
+    stages:
+      - name: BESLUIT
+      - name: BEKENDMAKING
+  - id: voorlopig
+    applies_to: {{legal_character: BESCHIKKING}}
+    stages:
+      - name: VOORLOPIG
+        is: {is}
+articles:
+  - number: '1'
+    text: Er wordt voorlopig beslist.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          procedure_id: voorlopig
+        output: [{{name: bedrag, type: number}}]
+        actions: [{{output: bedrag, value: 1}}]
+  - number: '2'
+    text: Op elk besluit volgt een termijn.
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to: {{legal_character: BESCHIKKING, stage: BESLUIT}}
+      execution:
+        output: [{{name: termijn, type: number}}]
+        actions: [{{output: termijn, value: 6}}]
+"#
+    )
+}
+
+#[test]
+fn what_a_stage_is_comes_from_the_version_in_force_on_the_date() {
+    // In 2024 VOORLOPIG is a BESLUIT, so the hook on BESLUIT fires; in 2025
+    // it is a BEKENDMAKING, so it does not. The newest version must not
+    // speak for 2024.
+    let first = dated_procedure("2024-01-01", "BESLUIT");
+    let second = dated_procedure("2025-01-01", "BEKENDMAKING");
+    let service = service(&[&first, &second]);
+    let termijn = |date: &str| {
+        service
+            .execute_stage_at("dated_procedure", "1", "VOORLOPIG", BTreeMap::new(), date)
+            .unwrap()
+            .outputs
+            .get("termijn")
+            .cloned()
+    };
+    assert_eq!(termijn("2024-06-01"), Some(Value::Int(6)));
+    assert_eq!(termijn("2025-06-01"), None);
+    let parts = |date: &str| {
+        service
+            .stage_inputs("dated_procedure", "1", "VOORLOPIG", &BTreeMap::new(), date)
+            .unwrap()
+            .articles
+            .len()
+    };
+    assert_eq!(parts("2024-06-01"), 2);
+    assert_eq!(parts("2025-06-01"), 1);
+}
+
+#[test]
+fn one_stage_runs_the_article_named_not_the_one_found_by_output() {
+    // Two ordinary articles produce `bedrag`: by output that is ambiguous,
+    // by number it is not.
+    let law = r#"
+$id: twee_producenten
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+procedure:
+  - id: standaard
+    default: true
+    applies_to: {legal_character: BESCHIKKING}
+    stages:
+      - name: BESLUIT
+articles:
+  - number: '1'
+    text: een
+    machine_readable:
+      execution:
+        produces: {legal_character: BESCHIKKING}
+        output: [{name: bedrag, type: number}]
+        actions: [{output: bedrag, value: 1}]
+  - number: '2'
+    text: twee
+    machine_readable:
+      execution:
+        produces: {legal_character: BESCHIKKING}
+        output: [{name: bedrag, type: number}]
+        actions: [{output: bedrag, value: 2}]
+"#;
+    let service = service(&[law]);
+    let bedrag = |number: &str| {
+        service
+            .execute_stage_at(
+                "twee_producenten",
+                number,
+                "BESLUIT",
+                BTreeMap::new(),
+                "2025-06-01",
+            )
+            .unwrap()
+            .outputs
+            .get("bedrag")
+            .cloned()
+    };
+    assert_eq!(bedrag("1"), Some(Value::Int(1)));
+    assert_eq!(bedrag("2"), Some(Value::Int(2)));
+    let err = service
+        .execute_stage_at(
+            "twee_producenten",
+            "3",
+            "BESLUIT",
+            BTreeMap::new(),
+            "2025-06-01",
+        )
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("has no article 3"), "{err}");
+}
+
+#[test]
+fn the_service_reports_a_stage_alias_that_names_no_stage() {
+    let good = dated_procedure("2025-01-01", "BESLUIT");
+    assert_eq!(
+        service(&[&good]).unknown_stage_aliases(),
+        Vec::<String>::new()
+    );
+    let typo = dated_procedure("2025-01-01", "BESLUT");
+    let problems = service(&[&typo]).unknown_stage_aliases();
+    assert_eq!(problems.len(), 1, "{problems:?}");
+    assert!(problems[0].contains("`is: BESLUT`"), "{}", problems[0]);
+    assert!(problems[0].contains("dated_procedure"), "{}", problems[0]);
 }

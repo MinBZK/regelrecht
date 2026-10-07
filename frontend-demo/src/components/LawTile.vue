@@ -12,7 +12,6 @@ import { dateInputFor, phraseOutcome, phrasingFor } from '../data/outcomePhrasin
 import { driftSentence } from '../data/caseDrift.js';
 import { useDemo } from '../store/demoStore.js';
 import { objectionOpen, statusOf } from '../data/lifecycle.js';
-import { amountTotals } from '../data/chronicleView.js';
 import { useLocalePath } from '../i18n/useLocalePath.js';
 import { activeLocale, useI18n } from '../i18n/index.js';
 
@@ -237,15 +236,17 @@ watch(showTrace, async (open) => {
 });
 
 /**
- * Wat er op deze zaak tot nu toe is uitbetaald: de som van de uitvoeringen in
- * de kroniek (de betaalde voorschottermijnen). Leeg zonder uitvoeringen.
+ * Wat er op deze zaak tot nu toe is uitbetaald, zoals de cel het uit haar
+ * kroniek leest (`receivedOf`). Leeg zolang er niets is uitgevoerd.
  */
 const received = computed(() => {
   void dataVersion.value;
+  void demo.state.referenceDate;
   const c = currentCase.value;
-  if (!c?.applicationGramId) return [];
-  const executions = demo.gramsOfCase(c).filter((g) => g.type === 'executogram');
-  return amountTotals(executions, demo.gramFields, corpus.value);
+  const none = { rows: [], error: null };
+  if (!c?.applicationGramId) return none;
+  if (!demo.gramsOfCase(c).some((g) => g.type === 'executogram')) return none;
+  return demo.receivedOf(c);
 });
 
 const statusTag = computed(() => {
@@ -327,9 +328,10 @@ const statusTag = computed(() => {
           </nldd-list-item>
         </nldd-list>
 
-        <nldd-list v-if="received.length" appearance="simple" :accessible-label="t('sheet.application.payments.received')">
-          <nldd-list-item v-for="r in received" :key="r.name" size="sm">
-            <nldd-text-cell size="sm" color="secondary" min-width="55%" :text="t('sheet.application.payments.received')" :supporting-text="t.plural(r.count, 'sheet.application.payments.count')"></nldd-text-cell>
+        <nldd-banner v-if="received.error" variant="warning" :text="t('chronicle.read_failed')" :supporting-text="received.error"></nldd-banner>
+        <nldd-list v-if="received.rows.length" appearance="simple" :accessible-label="t('sheet.application.payments.received')">
+          <nldd-list-item v-for="r in received.rows" :key="r.name" size="sm">
+            <nldd-text-cell size="sm" color="secondary" min-width="55%" :text="t('sheet.application.payments.received')"></nldd-text-cell>
             <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="r.text"></nldd-text-cell>
           </nldd-list-item>
         </nldd-list>

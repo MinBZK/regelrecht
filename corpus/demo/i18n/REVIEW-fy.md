@@ -47,6 +47,8 @@ corrigeren.
   "gevestigd" (een feit dat een artikel in het leven roept, niet een vestiging)
   en bij `útfierder` voor "uitvoerder" (het bestuursorgaan dat de wet uitvoert).
   `Kronyk` volgt het Nederlandse "kroniek" als term uit de chronolexografie.
+  Ook de latere sleutels voor de klok, de betalingen en `chronicle.read_failed`
+  ("De kronyk koe dit net lêze") zijn modelvertalingen.
 - **`zaak.moments.*`, `sheet.application.payments.*`, `case.event.decision_due`**
   (de tijd in de demo: het volgende moment, betalingen) zijn door een
   taalmodel vertaald. Twijfel bij `momint` voor "moment" in de zin van een

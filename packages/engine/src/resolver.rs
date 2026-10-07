@@ -447,11 +447,11 @@ pub struct RuleResolver {
     /// Registry of loaded laws by ID, supporting multiple versions per law ID.
     /// Each law ID maps to a list of versions, sorted by valid_from date (newest first).
     law_versions: HashMap<String, Vec<ArticleBasedLaw>>,
-    /// Index: "law_id\0output_name" -> the numbers of the articles producing
-    /// it, in file order. A single producer is the fast path of
-    /// [`Self::resolve_article_by_output`]; several go through
-    /// [`ArticleBasedLaw::output_producers`], which knows which of them a
-    /// reference means.
+    /// Index: "law_id\0output_name" -> the numbers of the articles a
+    /// reference to it can resolve to ([`ArticleBasedLaw::output_producers`]),
+    /// in file order. A single one is the fast path of
+    /// [`Self::resolve_article_by_output`]; none or several go through
+    /// [`unique_output_producer`], which says which error it is.
     /// Note: This index uses the most recent version of each law.
     /// Uses a flat string key (null-separated) to avoid two allocations per lookup.
     output_index: HashMap<String, Vec<String>>,
@@ -1401,6 +1401,13 @@ impl RuleResolver {
         self.law_versions.values().flat_map(|v| v.iter())
     }
 
+    /// Every `is` of a stage of a loaded procedure that names no stage of the
+    /// default procedure for its legal character (see
+    /// [`unknown_stage_aliases`]); empty when all are known.
+    pub fn unknown_stage_aliases(&self) -> Vec<String> {
+        unknown_stage_aliases(self.all_law_versions())
+    }
+
     /// Unload all versions of a law from the resolver.
     ///
     /// Removes all versions of the law and all its indexes.
@@ -1512,19 +1519,27 @@ impl RuleResolver {
                     }
                 }
 
+                // Output index: per output name, the articles a reference
+                // to it can resolve to, as `output_producers` says, so the
+                // fast path answers what the slow path would.
                 for article in &law.articles {
-                    // Output index
-                    if let Some(exec) = article.get_execution_spec() {
-                        if let Some(outputs) = &exec.output {
-                            for output in outputs {
-                                self.output_index
-                                    .entry(format!("{}\0{}", law_id, output.name))
-                                    .or_default()
-                                    .push(article.number.clone());
-                            }
-                        }
+                    for output in article
+                        .get_execution_spec()
+                        .and_then(|exec| exec.output.as_ref())
+                        .into_iter()
+                        .flatten()
+                    {
+                        let key = format!("{}\0{}", law_id, output.name);
+                        self.output_index.entry(key).or_insert_with(|| {
+                            law.output_producers(&output.name)
+                                .iter()
+                                .map(|a| a.number.clone())
+                                .collect()
+                        });
                     }
+                }
 
+                for article in &law.articles {
                     // Implements index (IoC)
                     if let Some(impl_decls) = article.get_implements() {
                         for decl in impl_decls {
@@ -1747,17 +1762,20 @@ impl RuleResolver {
     }
 
     /// What stage `stage` of the procedure a decision of `legal_character`
-    /// follows (`procedure_id`, or the default) is an instance of: its `is`.
-    /// The Awir's VOORSCHOT `is: BESLUIT`, so the hooks on BESLUIT fire on it.
-    /// `None` when the procedure or the stage is not found, or the stage
-    /// says nothing.
+    /// follows (`procedure_id`, or the default) is an instance of: its `is`,
+    /// in the version of the defining law in force on `reference_date` (see
+    /// [`Self::find_procedure_reported_at`]). A stage of a procedure that
+    /// says `is: BESLUIT` is where the hooks on BESLUIT fire too. `None` when
+    /// the procedure or the stage is not found, or the stage says nothing.
     pub fn stage_is(
         &self,
         legal_character: &str,
         procedure_id: Option<&str>,
         stage: &str,
+        reference_date: Option<NaiveDate>,
     ) -> Option<&str> {
-        self.find_procedure(legal_character, procedure_id)?
+        self.find_procedure_reported_at(legal_character, procedure_id, reference_date)
+            .ok()?
             .stages
             .iter()
             .find(|s| s.name == stage)?
@@ -1880,6 +1898,21 @@ impl RuleResolver {
         legal_character: &str,
         procedure_id: Option<&str>,
     ) -> std::result::Result<&ProcedureDefinition, ProcedureMiss> {
+        self.find_procedure_reported_at(legal_character, procedure_id, None)
+    }
+
+    /// Like [`Self::find_procedure_reported`], with the definition taken from
+    /// the version of the defining law in force on `reference_date`: its
+    /// stages and what each `is` are those of that version. Which procedure
+    /// is meant (the default, or one by name) is decided by the index of the
+    /// newest versions; a version in force that does not define it (or no
+    /// date) answers with the newest definition.
+    pub fn find_procedure_reported_at(
+        &self,
+        legal_character: &str,
+        procedure_id: Option<&str>,
+        reference_date: Option<NaiveDate>,
+    ) -> std::result::Result<&ProcedureDefinition, ProcedureMiss> {
         let (proc_id, named) = match procedure_id {
             Some(id) => (id.to_string(), true),
             None => match self.procedure_defaults.get(legal_character) {
@@ -1889,7 +1922,15 @@ impl RuleResolver {
         };
         let key = (legal_character.to_string(), proc_id.clone());
         match self.procedure_index.get(&key) {
-            Some((def, _)) => Ok(def),
+            Some((def, defining_law)) => Ok(reference_date
+                .and_then(|date| self.get_law_for_date(defining_law, Some(date)))
+                .and_then(|law| law.procedure.as_ref())
+                .and_then(|procedures| {
+                    procedures.iter().find(|p| {
+                        p.id == proc_id && p.applies_to.legal_character == legal_character
+                    })
+                })
+                .unwrap_or(def)),
             None if named => Err(ProcedureMiss::NamedNotFound(proc_id)),
             // The default was registered from a procedure definition, so its
             // absence here means the two indexes disagree.
@@ -1940,6 +1981,62 @@ impl RuleResolver {
     }
 }
 
+/// Every `is` of a procedure stage among `laws` that names no stage of the
+/// default procedure for the same legal character, as a sentence per problem.
+///
+/// A stage says what it `is` so the hooks on that stage of the default
+/// procedure fire on it too (`find_hooks`). A misspelled name matches no
+/// hook, and the hooks it was meant for (the motivation, the objection
+/// period) then silently do not fire. Every version of every law counts: the
+/// stages of all default procedures for the legal character, and every
+/// stage that says what it is. A legal character without a default
+/// procedure among `laws` is not judged: a set of files that leaves out the
+/// law defining it (one file passed to the validator) has nothing to check
+/// against.
+pub fn unknown_stage_aliases<'l>(
+    laws: impl IntoIterator<Item = &'l ArticleBasedLaw>,
+) -> Vec<String> {
+    let mut procedures: Vec<(&ArticleBasedLaw, &ProcedureDefinition)> = Vec::new();
+    for law in laws {
+        for procedure in law.procedure.iter().flatten() {
+            procedures.push((law, procedure));
+        }
+    }
+    let mut default_stages: HashMap<&str, BTreeSet<&str>> = HashMap::new();
+    for (_, procedure) in &procedures {
+        if procedure.default.unwrap_or(false) {
+            default_stages
+                .entry(procedure.applies_to.legal_character.as_str())
+                .or_default()
+                .extend(procedure.stages.iter().map(|s| s.name.as_str()));
+        }
+    }
+    let mut problems = Vec::new();
+    for (law, procedure) in &procedures {
+        let lc = procedure.applies_to.legal_character.as_str();
+        let Some(known) = default_stages.get(lc) else {
+            continue;
+        };
+        for stage in &procedure.stages {
+            let Some(alias) = stage.is.as_deref() else {
+                continue;
+            };
+            if !known.contains(alias) {
+                problems.push(format!(
+                    "{} ({}): stage '{}' of procedure '{}' says `is: {alias}`, which is no \
+                     stage of the default procedure for {lc} ({}); no hook on it would fire",
+                    law.id,
+                    law.valid_from.as_deref().unwrap_or("no valid_from"),
+                    stage.name,
+                    procedure.id,
+                    known.iter().copied().collect::<Vec<_>>().join(", "),
+                ));
+            }
+        }
+    }
+    problems
+}
+
 /// The article of `law` a reference to `output` by name resolves to: `None`
 /// when no article produces it, [`EngineError::AmbiguousOutput`] when more
 /// than one could be meant (see [`ArticleBasedLaw::output_producers`]).
@@ -1964,7 +2061,7 @@ pub fn unique_output_producer<'l>(
 /// An absent stage means BESLUIT (backward compatibility per RFC-008); an
 /// absent decision type admits every decision type. A stage that says what it
 /// `is` (`stage_is`) is admitted under that name too: a hook on BESLUIT fires
-/// on the Awir's VOORSCHOT, which `is: BESLUIT`.
+/// on a stage of a provisional decision that says `is: BESLUIT`.
 pub fn hook_filter_admits(
     filter: &HookFilter,
     decision_type: Option<&str>,
@@ -2239,6 +2336,179 @@ articles:
     }
 
     #[test]
+    fn the_index_and_the_producers_agree_on_a_same_law_implementation() {
+        // Article 2 fills the open term of article 1 in its own law and is
+        // the only article with that output. A reference by name does not
+        // mean it (`output_producers`), and the indexed path must not
+        // answer otherwise.
+        let yaml = r#"
+$id: eigen_invulling
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: algemeen
+    machine_readable:
+      open_terms:
+        - id: drempel
+          type: number
+          required: true
+      execution:
+        output: [{name: uitkomst, type: number}]
+        actions: [{output: uitkomst, value: $drempel}]
+  - number: '2'
+    text: invulling
+    machine_readable:
+      implements:
+        - law: eigen_invulling
+          article: '1'
+          open_term: drempel
+      execution:
+        output: [{name: drempel, type: number}]
+        actions: [{output: drempel, value: 3}]
+"#;
+        let mut resolver = RuleResolver::new();
+        resolver.load_from_yaml(yaml).unwrap();
+        let date = NaiveDate::from_ymd_opt(2025, 6, 1).unwrap();
+        let law = resolver.get_law("eigen_invulling").unwrap();
+        assert!(law.output_producers("drempel").is_empty());
+        assert!(matches!(
+            resolver.resolve_article_by_output("eigen_invulling", "drempel", Some(date)),
+            Err(EngineError::OutputNotFound { .. })
+        ));
+        assert!(resolver
+            .get_article_by_output("eigen_invulling", "drempel", Some(date))
+            .is_none());
+        // The output is still listed: the law declares it.
+        assert!(resolver
+            .list_all_outputs()
+            .contains(&("eigen_invulling", "drempel")));
+        assert_eq!(
+            resolver
+                .resolve_article_by_output("eigen_invulling", "uitkomst", Some(date))
+                .unwrap()
+                .number,
+            "1"
+        );
+    }
+
+    /// A law defining a procedure `voorlopig` for BESCHIKKING whose stage
+    /// VOORLOPIG says `is: <alias>`, valid from `valid_from`; with `default`
+    /// also the default procedure with BESLUIT and BEKENDMAKING.
+    fn alias_law(valid_from: &str, alias: Option<&str>, default: bool) -> String {
+        let is = alias.map_or(String::new(), |a| format!("\n        is: {a}"));
+        let default_procedure = if default {
+            "\n  - id: beschikking\n    default: true\n    applies_to: {legal_character: BESCHIKKING}\n    stages:\n      - name: BESLUIT\n      - name: BEKENDMAKING"
+        } else {
+            ""
+        };
+        format!(
+            "$id: alias_law\nregulatory_layer: WET\npublication_date: '{valid_from}'\n\
+             valid_from: '{valid_from}'\nprocedure:\n  - id: voorlopig\n    \
+             applies_to: {{legal_character: BESCHIKKING}}\n    stages:\n      - name: AANVRAAG\n      \
+             - name: VOORLOPIG{is}{default_procedure}\narticles: []\n"
+        )
+    }
+
+    #[test]
+    fn a_stage_alias_must_name_a_stage_of_the_default_procedure() {
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(&alias_law("2025-01-01", Some("BESLUIT"), true))
+            .unwrap();
+        assert_eq!(resolver.unknown_stage_aliases(), Vec::<String>::new());
+
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(&alias_law("2025-01-01", Some("BESLUT"), true))
+            .unwrap();
+        let problems = resolver.unknown_stage_aliases();
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert!(problems[0].contains("'VOORLOPIG'"), "{}", problems[0]);
+        assert!(problems[0].contains("`is: BESLUT`"), "{}", problems[0]);
+        assert!(
+            problems[0].contains("BEKENDMAKING, BESLUIT"),
+            "{}",
+            problems[0]
+        );
+        assert!(
+            problems[0].contains("alias_law (2025-01-01)"),
+            "{}",
+            problems[0]
+        );
+    }
+
+    #[test]
+    fn a_stage_alias_in_an_older_version_is_checked_too() {
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(&alias_law("2024-01-01", Some("BESLUT"), true))
+            .unwrap();
+        resolver
+            .load_from_yaml(&alias_law("2025-01-01", Some("BESLUIT"), true))
+            .unwrap();
+        let problems = resolver.unknown_stage_aliases();
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert!(problems[0].contains("2024-01-01"), "{}", problems[0]);
+    }
+
+    #[test]
+    fn without_a_default_procedure_an_alias_is_not_judged() {
+        // One file without the law defining the default procedure: nothing
+        // to check the alias against.
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(&alias_law("2025-01-01", Some("BESLUT"), false))
+            .unwrap();
+        assert_eq!(resolver.unknown_stage_aliases(), Vec::<String>::new());
+        // A stage that says nothing is never a problem.
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(&alias_law("2025-01-01", None, true))
+            .unwrap();
+        assert_eq!(resolver.unknown_stage_aliases(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_stage_is_what_the_version_in_force_says() {
+        // 2024 says VOORLOPIG is a BESLUIT, 2025 says it is a BEKENDMAKING.
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(&alias_law("2024-01-01", Some("BESLUIT"), true))
+            .unwrap();
+        resolver
+            .load_from_yaml(&alias_law("2025-01-01", Some("BEKENDMAKING"), true))
+            .unwrap();
+        let on = |y, m, d| NaiveDate::from_ymd_opt(y, m, d);
+        let is = |date| resolver.stage_is("BESCHIKKING", Some("voorlopig"), "VOORLOPIG", date);
+        assert_eq!(is(on(2024, 6, 1)), Some("BESLUIT"));
+        assert_eq!(is(on(2025, 6, 1)), Some("BEKENDMAKING"));
+        // No date, or a date before every version: the newest.
+        assert_eq!(is(None), Some("BEKENDMAKING"));
+        assert_eq!(is(on(2023, 6, 1)), Some("BEKENDMAKING"));
+    }
+
+    #[test]
+    fn a_version_in_force_without_the_procedure_answers_with_the_newest() {
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(
+                "$id: alias_law\nregulatory_layer: WET\npublication_date: '2024-01-01'\n\
+                 valid_from: '2024-01-01'\narticles: []\n",
+            )
+            .unwrap();
+        resolver
+            .load_from_yaml(&alias_law("2025-01-01", Some("BESLUIT"), true))
+            .unwrap();
+        let on = NaiveDate::from_ymd_opt(2024, 6, 1);
+        assert_eq!(
+            resolver.stage_is("BESCHIKKING", Some("voorlopig"), "VOORLOPIG", on),
+            Some("BESLUIT")
+        );
+    }
+
+    #[test]
     fn a_stage_says_what_it_is_in_its_own_procedure_only() {
         let yaml = r#"
 $id: awir_stages
@@ -2262,16 +2532,25 @@ articles: []
         resolver.load_from_yaml(yaml).unwrap();
         let named = Some("tegemoetkoming");
         assert_eq!(
-            resolver.stage_is("BESCHIKKING", named, "VOORSCHOT"),
+            resolver.stage_is("BESCHIKKING", named, "VOORSCHOT", None),
             Some("BESLUIT")
         );
         // A stage that says nothing, a stage the procedure lacks, the default
         // procedure (whose VOORSCHOT says nothing), a procedure not loaded.
-        assert_eq!(resolver.stage_is("BESCHIKKING", named, "AANVRAAG"), None);
-        assert_eq!(resolver.stage_is("BESCHIKKING", named, "TOEKENNING"), None);
-        assert_eq!(resolver.stage_is("BESCHIKKING", None, "VOORSCHOT"), None);
         assert_eq!(
-            resolver.stage_is("BESCHIKKING", Some("x"), "VOORSCHOT"),
+            resolver.stage_is("BESCHIKKING", named, "AANVRAAG", None),
+            None
+        );
+        assert_eq!(
+            resolver.stage_is("BESCHIKKING", named, "TOEKENNING", None),
+            None
+        );
+        assert_eq!(
+            resolver.stage_is("BESCHIKKING", None, "VOORSCHOT", None),
+            None
+        );
+        assert_eq!(
+            resolver.stage_is("BESCHIKKING", Some("x"), "VOORSCHOT", None),
             None
         );
     }

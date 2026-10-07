@@ -128,3 +128,25 @@ Feature: Termijnen van het voorschot op een tegemoetkoming
     Then output "afgeronde_tegemoetkoming" equals 2300
     When I evaluate "tegemoetkoming_wordt_toegekend" of "algemene_wet_inkomensafhankelijke_regelingen"
     Then output "tegemoetkoming_wordt_toegekend" is false
+
+  # Eigen keuze van het beleid: een voorschot van nul (Awir 16 lid 1, een
+  # aanvraag na 1 april van het jaar erna) geeft geen termijnen.
+  Scenario: Een voorschot van nul geeft geen termijn
+    Given the following parameters:
+      | voorschotbedrag      | 0          |
+      | dagtekening_voorschot | 2025-03-10 |
+      | berekeningsjaar      | 2025       |
+      | maand                | 2025-04-01 |
+    When I evaluate "termijn_in_maand" of "algemene_wet_inkomensafhankelijke_regelingen"
+    Then output "termijn_in_maand" is true
+    When I evaluate "termijn_wordt_betaald" of "fictief_beleid_termijnbedrag_voorschot"
+    Then output "termijn_wordt_betaald" is false
+
+  Scenario: Een voorschot boven nul geeft in een termijnmaand een termijn
+    Given the following parameters:
+      | voorschotbedrag      | 100001     |
+      | dagtekening_voorschot | 2025-03-10 |
+      | berekeningsjaar      | 2025       |
+      | maand                | 2025-04-01 |
+    When I evaluate "termijn_wordt_betaald" of "fictief_beleid_termijnbedrag_voorschot"
+    Then output "termijn_wordt_betaald" is true

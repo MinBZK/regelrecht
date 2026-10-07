@@ -158,6 +158,13 @@ dossier:
           value: $aangevraagd_berekeningsjaar
       absent: null
 
+# Wat de burger in het portaal ziet als "ontvangen tot nu toe", per cel: de
+# lexostatus waarin de cel uit haar kroniek leest wat er op een zaak is
+# uitbetaald. Dezelfde lezing die een besluit van de cel leest; de demo telt
+# zelf niets op. Een cel zonder regel hier toont niets.
+received:
+  toeslagen: uitbetaald
+
 # Laws that never appear on a portal: infrastructure, procedural or helper
 # laws that other laws consume (the POC's FeatureFlags.LAW_DEFAULTS).
 hidden_laws:

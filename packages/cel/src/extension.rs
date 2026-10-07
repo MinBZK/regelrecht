@@ -8,17 +8,18 @@
 //!       - event: aanvraag_ontvangen      # this article establishes the event
 //!         fields: parameters
 //!       - event: toegekend               # a decision on a calendar year
-//!         period: {parameter: berekeningsjaar, unit: year}
+//!         period: {parameter: jaar, unit: year}
+//!         dated_by: besluitdatum         # the date the decision bears
 //!       - extends: {submission: AANVRAAG} # a hook on every application
 //!         effective_at:
 //!           legal_basis: [algemene_wet_bestuursrecht#4:13 lid 1]
-//!       - event: termijn_betaald         # an execution, on a day
+//!       - event: betaald                 # an execution, on a day
 //!         type: executogram
-//!         refers_to: {voorschot: {stage: VOORSCHOT, required: true}}
-//!         fields: [termijnbedrag]
-//!         executed_on: {parameter: maand, once_per: month}
-//!         record_when: termijn_in_maand
-//!         until: {stage: TOEKENNING}
+//!         refers_to: {besluit: {stage: BESLUIT, required: true}}
+//!         fields: [bedrag]
+//!         executed_on: {parameter: maand, once_per: month, day: 1}
+//!         record_when: betaling_in_maand
+//!         until: {stage: EINDE}
 //! ```
 
 use std::collections::BTreeMap;
@@ -83,6 +84,11 @@ pub struct Establishment {
     /// stage (what follows from it is derived, not recorded).
     #[serde(default)]
     pub until: Option<Until>,
+    /// For a decision: the parameter that is the date the decision bears
+    /// (its dagtekening). The cell fills it with the day the decision is
+    /// taken; every other value its stage requires must be given.
+    #[serde(default)]
+    pub dated_by: Option<String>,
 }
 
 /// The day an execution is executed on: the parameter of the article it goes
@@ -93,6 +99,12 @@ pub struct ExecutedOn {
     pub parameter: String,
     #[serde(default)]
     pub once_per: Option<Every>,
+    /// The day of the period of `once_per` the execution falls on (`day: 1`,
+    /// the first of the month), or the first day the execution may arise if
+    /// that is later. Which day it is, is the choice of whoever executes the
+    /// law; the cell does not choose it.
+    #[serde(default)]
+    pub day: Option<u32>,
 }
 
 /// How often an execution may arise for the gram it refers to.
@@ -123,14 +135,17 @@ pub struct PeriodParameter {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PeriodUnit {
-    /// A calendar year; the law of a year is the law on its first day.
+    /// A calendar year. This is what `unit: year` means, and not something
+    /// the cell assumes: a fact that concerns a year is decided under the
+    /// version of the law in force on the first day of that year (1 January).
+    /// A law that wants another day must say so with another unit.
     Year,
 }
 
 /// A reference to another gram: the article that establishes it (`to`), or
 /// the stage of the procedure it belongs to (`stage`), so a regulation can
-/// refer to "the voorschot" without naming the law that grants it. One of
-/// the two.
+/// refer to the decision of a stage without naming the law that takes it.
+/// One of the two.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Reference {

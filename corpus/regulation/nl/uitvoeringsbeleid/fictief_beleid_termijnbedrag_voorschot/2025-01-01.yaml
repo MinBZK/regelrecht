@@ -41,8 +41,9 @@ articles:
         #   geen toeslag.
         # - period: de termijnen rekenen met het beleid van het
         #   berekeningsjaar, ook de termijn in december ervoor (art. 22 lid 1).
-        # - once_per: per voorschot ten hoogste één termijn per maand (art. 22
-        #   lid 1: "telkens een maand later").
+        # - once_per: per aanvraag ten hoogste één termijn per maand (art. 22
+        #   lid 1: "telkens een maand later"), ook na een herziening van het
+        #   voorschot.
         # - until: na de toekenning wordt geen termijn meer betaald. Eigen
         #   keuze, gelezen uit art. 24 lid 2 Awir: de voorschotten worden met
         #   de tegemoetkoming verrekend, dus wat dan nog niet betaald is, komt
@@ -64,6 +65,11 @@ articles:
                   executed_on:
                     parameter: maand
                     once_per: month
+                    # Eigen keuze van dit fictieve beleid, niet uit de wet:
+                    # Toeslagen betaalt een termijn op de eerste van de maand,
+                    # of op de dag van het voorschot als dat later in de maand
+                    # valt. Art. 22 Awir zegt alleen in welke maand.
+                    day: 1
                   record_when: termijn_wordt_betaald
                   until:
                     stage: TOEKENNING
@@ -146,8 +152,18 @@ articles:
             type_spec:
               unit: eurocent
         actions:
+          # Eigen keuze van dit fictieve beleid: een termijn van een
+          # voorschot van nul wordt niet betaald (Awir 16 lid 1: geen
+          # voorschot op een aanvraag na 1 april van het jaar erna). Art. 22
+          # zegt alleen in welke maand een termijn valt.
           - output: termijn_wordt_betaald
-            value: $termijn_in_maand
+            value:
+              operation: AND
+              conditions:
+                - $termijn_in_maand
+                - operation: GREATER_THAN
+                  subject: $voorschotbedrag
+                  value: 0
           # Het deel in één bedrag: het voorschot naar rato van de maanden.
           - output: deel_ineens
             value:

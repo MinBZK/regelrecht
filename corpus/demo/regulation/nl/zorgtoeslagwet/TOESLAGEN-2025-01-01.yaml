@@ -88,6 +88,10 @@ articles:
                   period:
                     parameter: aangevraagd_berekeningsjaar
                     unit: year
+                  # De beschikking draagt de dagtekening die de fase van de
+                  # procedure vraagt (Awir art. 16): de dag waarop het besluit
+                  # wordt genomen.
+                  dated_by: dagtekening_voorschot
                 - event: zorgtoeslag_toegekend
                   type: decretogram
                   stage: TOEKENNING
@@ -99,6 +103,10 @@ articles:
                   period:
                     parameter: aangevraagd_berekeningsjaar
                     unit: year
+                  # De beschikking draagt de dagtekening die de fase van de
+                  # procedure vraagt (Awir art. 19): de dag waarop het besluit
+                  # wordt genomen.
+                  dated_by: dagtekening_toekenning
         parameters:
           - name: bsn
             type: string

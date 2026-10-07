@@ -12,11 +12,11 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::PathBuf;
 
-use chrono::NaiveDate;
+use chrono::{DateTime, NaiveDate};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use crate::error::{setup, Result};
+use crate::error::{refused, setup, Result};
 use crate::extension::PeriodUnit;
 
 /// The period a fact concerns (a calendar year: `{unit: year, value: 2025}`).
@@ -150,12 +150,32 @@ impl Chronicle {
     }
 
     /// Append a gram: to the file first (if there is one), then to memory.
+    ///
+    /// Time only moves forward: a gram recorded before the last gram of the
+    /// chronicle was recorded is refused. A fact may hold from an earlier
+    /// moment (`effective_at`), but the cell cannot record it in the past.
     pub fn append(&mut self, gram: Gram) -> Result<&Gram> {
         if self.grams.iter().any(|g| g.id == gram.id) {
             return Err(setup(format!(
                 "gram '{}' is already in the chronicle",
                 gram.id
             )));
+        }
+        let recorded = |g: &Gram| {
+            DateTime::parse_from_rfc3339(&g.recorded_at).map_err(|e| {
+                setup(format!(
+                    "gram '{}': recorded_at '{}': {e}",
+                    g.id, g.recorded_at
+                ))
+            })
+        };
+        if let Some(last) = self.grams.last() {
+            if recorded(&gram)? < recorded(last)? {
+                return Err(refused(format!(
+                    "gram '{}' is recorded at {}, before the last gram of the chronicle ('{}', {}): time does not go back",
+                    gram.id, gram.recorded_at, last.id, last.recorded_at
+                )));
+            }
         }
         if let Some(path) = &self.path {
             if let Some(dir) = path.parent() {
@@ -167,5 +187,50 @@ impl Chronicle {
         }
         self.grams.push(gram);
         Ok(&self.grams[self.grams.len() - 1])
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    use super::*;
+
+    fn gram(id: &str, recorded_at: &str) -> Gram {
+        Gram {
+            id: id.into(),
+            type_: "submission".into(),
+            subtype: None,
+            stage: None,
+            name: "x".into(),
+            chronicle: "c".into(),
+            recording_actor: "a".into(),
+            establishes: "w#1".into(),
+            legal_basis: Vec::new(),
+            legal_character: None,
+            decision_type: None,
+            regulation: None,
+            regulation_valid_from: None,
+            period: None,
+            effective_at: recorded_at.into(),
+            effective_at_legal_basis: Vec::new(),
+            recorded_at: recorded_at.into(),
+            refers_to: BTreeMap::new(),
+            fields: Map::new(),
+            inputs: BTreeMap::new(),
+        }
+    }
+
+    #[test]
+    fn time_does_not_go_back() {
+        let mut c = Chronicle::in_memory(Vec::new());
+        c.append(gram("1", "2025-03-10T09:00:00+01:00")).unwrap();
+        // The same moment, and later (also in another offset), are fine.
+        c.append(gram("2", "2025-03-10T09:00:00+01:00")).unwrap();
+        c.append(gram("3", "2025-03-10T10:30:00+02:00")).unwrap();
+        let e = c
+            .append(gram("4", "2025-03-10T08:00:00+01:00"))
+            .unwrap_err();
+        assert!(matches!(e, crate::Error::Refused(_)), "{e}");
+        assert_eq!(c.grams().len(), 3);
     }
 }

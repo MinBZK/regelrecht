@@ -1,6 +1,5 @@
 /**
- * De tijd in de demo: welke dagen de cel nog moet uitvoeren, en welk moment
- * de wet als volgende geeft.
+ * De tijd in de demo: welk moment de wet als volgende geeft.
  *
  * De demo heeft één klok, de peildatum (`state.referenceDate`). Die loopt
  * alleen vooruit: een gram ligt nooit in de toekomst (RFC-044), dus terug kan
@@ -30,34 +29,20 @@ export function addDays(date, days) {
   return iso(d);
 }
 
-/** De eerste dag van de maand van `date`, `months` maanden verder. */
-export function monthStart(date, months = 0) {
+/**
+ * Dezelfde dag `months` kalendermaanden verder, of de laatste dag van die
+ * maand als hij korter is. Rekenen met een datum, geen regel van de wet.
+ */
+export function addMonths(date, months) {
   const d = utc(date);
-  return iso(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + months, 1)));
+  const day = d.getUTCDate();
+  const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + months + 1, 0)).getUTCDate();
+  return iso(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + months, Math.min(day, last))));
 }
 
 /** De dag van een moment (RFC 3339) of een datum. */
 export function dayOf(moment) {
   return String(moment ?? '').slice(0, 10);
-}
-
-/**
- * Per kalendermaand van `from` tot en met `to` de dag waarop de cel die maand
- * uitvoert: de eerste van de maand, of `from` als die later valt. Leeg als
- * `from` na `to` ligt.
- */
-export function executionDays(from, to) {
-  const days = [];
-  if (!from || !to || from > to) return days;
-  for (let m = monthStart(from); m <= to; m = monthStart(m, 1)) {
-    days.push(m < from ? from : m);
-  }
-  return days;
-}
-
-/** De eerste dagen van de `count` maanden na de maand van `date`. */
-export function monthsAfter(date, count) {
-  return Array.from({ length: count }, (_, i) => monthStart(date, i + 1));
 }
 
 /**
@@ -80,81 +65,30 @@ export function nextMoment(moments, date) {
 }
 
 /**
- * De gram van de zaak waarnaar een verwijzing van de wet wijst (`refers_to`
- * in de vorm van een gebeurtenis): op het artikel dat hem vestigt (`to`) of
- * op zijn fase (`stage`). De laatste, zoals de cel hem kiest.
+ * Of een fout van de cel zegt dat een uitvoering in deze zaak is beëindigd
+ * (de zaak heeft een gram van de fase die haar beëindigt, `until`): dan komt
+ * er niets meer. De cel geeft zo'n fout de naam `ended`.
  */
-export function referredGram(caseGrams, reference) {
-  const admits = (g) =>
-    reference?.to ? g.establishes === reference.to : reference?.stage ? g.stage === reference.stage : false;
-  return [...(caseGrams ?? [])].reverse().find(admits) ?? null;
+export function isEnded(error) {
+  return error?.name === 'ended';
 }
 
 /**
- * Of een uitvoering (een executogram) in deze zaak nog kan ontstaan, en zo ja
- * vanaf welke dag: de vorm zegt waarnaar ze verwijst en welke fase haar
- * beëindigt (`until`). Null als een verplichte verwijzing nog geen gram heeft,
- * of als de zaak al een gram van de eindfase heeft.
- *
- * De dag is die van de gram waarnaar ze verwijst. Een uitvoering op een
- * eerdere dag dan vandaag geldt vanaf het begin van die dag, en mag niet vóór
- * die gram liggen; daarom telt een gram van een andere dag dan vandaag pas de
- * dag erna.
+ * De eerste van `days` (de dagen die de cel als uitvoeringsdagen geeft,
+ * `dueExecutions`) waarop de wet zegt dat er iets ontstaat, gevraagd met
+ * `preview(day)` (de cel, zonder vast te leggen): de dag en wat ze zou
+ * vastleggen. Welke dagen het zijn, zegt de cel uit de wet; dit bestand kent
+ * geen kalender. Alleen de weigering "beëindigd" betekent dat er geen
+ * volgende is; elke andere fout gaat door naar de aanroeper.
  */
-export function executionStart(shape, caseGrams, today) {
-  if (shape?.until?.stage && (caseGrams ?? []).some((g) => g.stage === shape.until.stage)) return null;
-  let start = null;
-  for (const reference of Object.values(shape?.refers_to ?? {})) {
-    const gram = referredGram(caseGrams, reference);
-    if (!gram) {
-      if (reference.required) return null;
-      continue;
-    }
-    const day = dayOf(gram.effective_at);
-    const from = day === today ? day : addDays(day, 1);
-    if (!start || from > start) start = from;
-  }
-  return start;
-}
-
-/**
- * De dagen waarop de cel een uitvoering van de zaak nog moet uitvoeren, tot en
- * met `today`: één per kalendermaand vanaf `start`, behalve de maanden waarin
- * de zaak al een gram van die gebeurtenis heeft (de wet staat er één per
- * maand toe, `executed_on.once_per`) en de dagen die al zijn gevraagd
- * (`checkedThrough`).
- */
-export function pendingExecutionDays({ shape, event, caseGrams, start, checkedThrough, today }) {
-  if (!start || !executesMonthly(shape)) return [];
-  const done = new Set(
-    (caseGrams ?? []).filter((g) => g.name === event).map((g) => dayOf(g.effective_at).slice(0, 7)),
-  );
-  const checked = checkedThrough ? checkedThrough.slice(0, 7) : null;
-  return executionDays(start, today).filter((day) => (!checked || day.slice(0, 7) > checked) && !done.has(day.slice(0, 7)));
-}
-
-/**
- * Of de wet een uitvoering eens per kalendermaand laat ontstaan
- * (`executed_on.once_per: month`). Dat is het enige ritme dat de demo kent;
- * een uitvoering met een ander ritme vraagt zij niet.
- */
-export function executesMonthly(shape) {
-  return shape?.executed_on?.once_per === 'month';
-}
-
-/**
- * De eerstvolgende maand na `today` waarin de wet zegt dat een uitvoering
- * ontstaat, gevraagd met `preview(day)` (de cel, zonder vast te leggen): de
- * dag en wat ze zou vastleggen. Hoogstens `horizon` maanden vooruit; een
- * weigering van de cel (de uitvoering is beëindigd) is geen volgende maand.
- */
-export function nextExecution(preview, today, horizon = 13) {
-  for (const day of monthsAfter(today, horizon)) {
+export function nextExecution(preview, days) {
+  for (const day of days ?? []) {
     let gram;
     try {
       gram = preview(day);
-    } catch {
-      return null;
+    } catch (e) {
+      if (isEnded(e)) return null;
+      throw e;
     }
     if (gram) return { date: day, gram };
   }
@@ -163,10 +97,16 @@ export function nextExecution(preview, today, horizon = 13) {
 
 /**
  * De datumvelden die de wet een besluit geeft, los van de dag waarop het
- * wordt genomen: hetzelfde in twee voorbeelden op opeenvolgende dagen. Een
- * datum die met de besluitdag meeschuift (vier weken na de dagtekening) is nog
- * geen moment; een datum die vaststaat (zes maanden na de aanslag) wel. Met
- * `today` alleen wat daarna ligt.
+ * wordt genomen: hetzelfde in twee voorbeelden van het besluit. Een datum die
+ * met de besluitdag meeschuift (vier weken na de dagtekening) is nog geen
+ * moment; een datum die vaststaat (zes maanden na de aanslag, het eind van
+ * het jaar erna) wel. Met `today` alleen wat daarna ligt.
+ *
+ * Een heuristiek van de demo, geen regel van de wet: de aanroeper vraagt de
+ * twee voorbeelden op dagen in verschillende kalendermaanden (de eerste dag
+ * en dezelfde dag een maand later, `addMonths`), zodat een datum die per
+ * maand meeschuift (de eerste van de volgende maand) niet als vast telt. Dat
+ * de wet zelf zegt welke datum vaststaat, is een latere stap.
  */
 export function fixedDates(first, second, fields, today = null) {
   const out = [];

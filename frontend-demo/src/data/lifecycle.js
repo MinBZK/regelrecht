@@ -99,7 +99,7 @@ export function procedureStages(lawDocs, procedureId) {
       return procedure.stages.map((s) => ({
         name: s.name,
         is: s.is ?? null,
-        requires: (s.requires ?? []).map((r) => r.name),
+        requires: (s.requires ?? []).map((r) => ({ name: r.name, type: r.type ?? null })),
       }));
     }
   }
@@ -119,7 +119,7 @@ export function procedureStages(lawDocs, procedureId) {
 export function carriedInputs(inputs, stages, currentStage) {
   const at = (stages ?? []).findIndex((s) => s.name === currentStage);
   if (at < 0) return { ...(inputs ?? {}) };
-  const coming = new Set(stages.slice(at).flatMap((s) => s.requires ?? []));
+  const coming = new Set(stages.slice(at).flatMap((s) => (s.requires ?? []).map((r) => r.name)));
   return Object.fromEntries(Object.entries(inputs ?? {}).filter(([name]) => !coming.has(name)));
 }
 
@@ -145,12 +145,22 @@ export function announced(caseRecord) {
 
 /**
  * Wat een besluit op `date` aanlevert aan de fase waarop de zaak wacht: de
- * dagtekening. De fase van een besluit vraagt alleen haar datum (de
- * besluitdatum van de Awb, de dagtekening van het voorschot van de Awir); welke
- * naam die heeft, zegt de procedure en niet de demo.
+ * dagtekening, en niets anders. Welke parameter dat is, zegt de wet:
+ *
+ * - legt een cel het besluit vast, dan de parameter die de wet bij het
+ *   besluit als zijn dagtekening noemt (`dated_by` in de vorm van de
+ *   gebeurtenis, `datedBy`);
+ * - anders (de Awb-levensloop van een andere wet) wat de fase vraagt en
+ *   volgens de procedure een datum is (`type: date`).
+ *
+ * Wat de fase verder vraagt, vult de demo niet met een datum in.
  */
-export function decisionDates(caseRecord, date) {
-  return Object.fromEntries((caseRecord?.pendingInputs ?? []).map((name) => [name, date]));
+export function decisionDates(caseRecord, date, datedBy = null) {
+  const pending = caseRecord?.pendingInputs ?? [];
+  if (datedBy) return pending.includes(datedBy) ? { [datedBy]: date } : {};
+  const stage = (caseRecord?.procedureStages ?? []).find((s) => s.name === caseRecord?.stageState?.current_stage);
+  const dates = new Set((stage?.requires ?? []).filter((r) => r.type === 'date').map((r) => r.name));
+  return Object.fromEntries(pending.filter((name) => dates.has(name)).map((name) => [name, date]));
 }
 
 /**

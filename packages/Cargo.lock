@@ -3968,6 +3968,7 @@ name = "regelrecht-cel"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "js-sys",
  "regelrecht-engine",
  "regelrecht-law-model",
  "serde",

@@ -9,7 +9,7 @@ import { t } from '../i18n/index.js';
 import { awbOutcomes, objectionOpen, statusOf } from '../data/lifecycle.js';
 import { driftRows, driftSentence } from '../data/caseDrift.js';
 import { fieldText, provisionLabel } from '../data/chronolex.js';
-import { amountTotals, citizenRows, momentView } from '../data/chronicleView.js';
+import { citizenRows, momentView } from '../data/chronicleView.js';
 
 // The citizen's side of an application, inside the portal. The flow the POC
 // generated per regeling: first the questions only the citizen can answer
@@ -284,7 +284,7 @@ function fileObjection() {
 }
 /**
  * Wat er uit de kroniek van deze zaak volgt voor de burger: wat er tot nu toe
- * is ontvangen (de som van de uitvoeringen, de betaalde termijnen), de
+ * is ontvangen (zoals de cel het uit haar kroniek leest, `receivedOf`), de
  * besluiten met hun bedragen en datums (het voorschot, de toekenning met wat
  * er nog wordt nabetaald of terugbetaald), en wat de wet nog als moment
  * geeft. Uit de grammen en hun veldtypen, niet uit veldnamen.
@@ -298,13 +298,17 @@ const payments = computed(() => {
   const grams = demo.gramsOfCase(c).filter((g) => g.id !== c.applicationGramId);
   if (!grams.length) return null;
   const executions = grams.filter((g) => g.type === 'executogram');
+  // Lezen, niet vastleggen: een fout van de cel staat hier, niet op de zaak.
+  const received = executions.length ? demo.receivedOf(c) : { rows: [], error: null };
+  const coming = demo.momentsOf(c);
   const decided = (event) => grams.some((g) => g.name === event);
   return {
-    received: amountTotals(executions, demo.gramFields, corpus.value),
+    received: received.rows,
     decisions: grams
       .filter((g) => g.type !== 'executogram')
       .map((g) => ({ id: g.id, name: g.name, at: g.effective_at, rows: citizenRows(g, demo.gramFields(g), corpus.value) })),
-    coming: demo.nextMoments(c).map((m) => momentView(m, { corpus: corpus.value, fieldsOf: demo.gramFields, decided })),
+    coming: coming.moments.map((m) => momentView(m, { corpus: corpus.value, fieldsOf: demo.gramFields, decided })),
+    errors: [received.error, coming.error].filter(Boolean),
   };
 });
 const claimedPrimary = computed(() => {
@@ -483,9 +487,10 @@ function claimStatus(cl) {
             <!-- Wat er betaald is en nog komt, uit de kroniek van de zaak. -->
             <template v-if="payments">
               <nldd-title size="5"><h3>{{ t('sheet.application.payments.title') }}</h3></nldd-title>
+              <nldd-banner v-if="payments.errors.length" variant="warning" :text="t('chronicle.read_failed')" :supporting-text="payments.errors.join('; ')"></nldd-banner>
               <nldd-list v-if="payments.received.length" appearance="box-tinted" :accessible-label="t('sheet.application.payments.received')">
                 <nldd-list-item v-for="r in payments.received" :key="r.name" size="sm">
-                  <nldd-text-cell size="sm" color="secondary" :text="t('sheet.application.payments.received')" :supporting-text="t.plural(r.count, 'sheet.application.payments.count')"></nldd-text-cell>
+                  <nldd-text-cell size="sm" color="secondary" :text="t('sheet.application.payments.received')"></nldd-text-cell>
                   <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="r.text"></nldd-text-cell>
                 </nldd-list-item>
               </nldd-list>
