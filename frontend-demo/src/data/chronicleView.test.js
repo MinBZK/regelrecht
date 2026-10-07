@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { citizenRows, lexostatusRows, momentView } from './chronicleView.js';
+import { citizenRows, inputRows, lexostatusRows, momentView } from './chronicleView.js';
 
 const corpus = { lawById: () => null };
 const fields = {
@@ -50,5 +50,21 @@ describe('een moment als regel', () => {
     const given = momentView(m, { corpus, fieldsOf, decided: () => true });
     const expected = momentView(m, { corpus, fieldsOf, decided: () => false });
     expect(given.supporting).not.toBe(expected.supporting);
+  });
+});
+
+describe('de invoer van een besluit', () => {
+  it('leest een geheel getal zonder declaratie als getal en houdt de herkomst', () => {
+    const gram = { inputs: { jaar: { value: 2025, provenance: { source: 'decision' } } } };
+    expect(inputRows(gram, corpus)).toEqual([{ name: 'jaar', value: 2025, provenance: { source: 'decision' }, text: '2025' }]);
+  });
+});
+
+describe('de invoer uit een andere wet', () => {
+  it('leest een invoer naar de declaratie in een wet waarop de gram rust', () => {
+    const doc = { articles: [{ machine_readable: { execution: { parameters: [{ name: 'inkomen', type: 'amount' }] } } }] };
+    const withLaw = { lawById: (id) => (id === 'andere' ? { doc } : null) };
+    const gram = { regulation: 'eigen', legal_basis: ['eigen#1', 'andere#16'], inputs: { inkomen: { value: 2200000, provenance: null } } };
+    expect(inputRows(gram, withLaw)[0].text).toMatch(/22[.,]000/);
   });
 });

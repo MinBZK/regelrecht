@@ -17,12 +17,41 @@ function specOf(gram, name, corpus) {
   return doc ? fieldSpec(doc, name) : null;
 }
 
+/**
+ * De declaratie van parameter `name` in een van de wetten waarop de gram
+ * rust (`legal_basis`): een invoer die een andere wet vraagt of geeft, zoals
+ * het geschatte inkomen van Awir 16, staat niet in de wet die besluit.
+ */
+function basisSpecOf(gram, name, corpus) {
+  for (const reference of gram?.legal_basis ?? []) {
+    const doc = corpus?.lawById?.(String(reference).split('#')[0])?.doc;
+    const spec = doc ? fieldSpec(doc, name) : null;
+    if (spec) return spec;
+  }
+  return null;
+}
+
 /** Elk veld van een gram, met de waarde zoals een mens haar leest. */
 export function gramRows(gram, fields, corpus) {
   return Object.entries(gram?.fields ?? {}).map(([name, value]) => ({
     name,
     text: fieldText(value, fields?.[name], specOf(gram, name, corpus), corpus),
   }));
+}
+
+/**
+ * De invoer van een besluit (`inputs`: per parameter `{value, provenance}`)
+ * met de waarde zoals een mens haar leest: naar de declaratie in de wet die
+ * het besluit neemt, en zonder declaratie een geheel getal als getal ("2025",
+ * niet "2.025"). De herkomst blijft zoals de cel haar vastlegt.
+ */
+export function inputRows(gram, corpus) {
+  return Object.entries(gram?.inputs ?? {}).map(([name, input]) => {
+    const value = input && typeof input === 'object' && 'value' in input ? input.value : input;
+    const spec = specOf(gram, name, corpus) ?? basisSpecOf(gram, name, corpus);
+    const field = !spec && Number.isInteger(value) ? { type: 'number' } : null;
+    return { name, value, provenance: input?.provenance ?? null, text: fieldText(value, field, spec, corpus) };
+  });
 }
 
 /**

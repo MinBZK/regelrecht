@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router';
 import CorrectionRows from '../components/CorrectionRows.vue';
 import DataLineage from '../components/DataLineage.vue';
 import EditValueSheet from '../components/EditValueSheet.vue';
+import StoredChronicle from '../components/StoredChronicle.vue';
 import { fieldSpec, formatDate, formatDateTime, formatValue, humanize } from '../data/format.js';
 import { lineageFromTrace } from '../data/lineage.js';
 import { caseReason, eventText, useDemo } from '../store/demoStore.js';
@@ -137,6 +138,17 @@ watch(
 
 function open(c) {
   goTo('zaaksysteem', { caseId: c.id });
+}
+
+// Zaken of kroniek: het bord met de zaken, of de kroniek van de cel vanaf de
+// achterkant, elke gram zoals hij is opgeslagen. Vanuit een zaak opent die
+// kroniek op de grammen van die zaak (`chronicleRoot`).
+const boardView = ref('zaken');
+const chronicleRoot = ref(null);
+function showStored(c) {
+  chronicleRoot.value = c.applicationGramId;
+  boardView.value = 'kroniek';
+  close();
 }
 function close() {
   goTo('zaaksysteem');
@@ -291,6 +303,19 @@ function claimLawName(cl) {
           </nldd-top-title-bar>
         </nldd-container>
 
+        <!-- Het bord met de zaken, of de kroniek van de cel vanaf de achterkant. -->
+        <nldd-simple-section width="full" padding-bottom="0">
+          <nldd-container layout="row">
+            <nldd-segmented-control size="sm" width="fit-content" :value="boardView" @change="boardView = $event.detail?.value ?? 'zaken'">
+              <nldd-segmented-control-item value="zaken" :text="t('zaak.board.cases')"></nldd-segmented-control-item>
+              <nldd-segmented-control-item value="kroniek" :text="t('zaak.board.chronicle')"></nldd-segmented-control-item>
+            </nldd-segmented-control>
+          </nldd-container>
+        </nldd-simple-section>
+        <nldd-simple-section v-if="boardView === 'kroniek'" width="full">
+          <StoredChronicle :service="service" :root="chronicleRoot" @clear-root="chronicleRoot = null" />
+        </nldd-simple-section>
+        <template v-else>
         <nldd-simple-section width="full">
           <nldd-container layout="grid" column-count="3" sm-column-count="1" gap="16">
             <nldd-box v-for="lane in lanes" :key="lane.key" background="tinted">
@@ -343,6 +368,7 @@ function claimLawName(cl) {
             </nldd-list>
           </nldd-container>
         </nldd-simple-section>
+        </template>
       </nldd-page>
     </nldd-split-view-pane>
 
@@ -368,6 +394,9 @@ function claimLawName(cl) {
 
           <template v-if="sheetView === 'kroniek'">
             <nldd-rich-text spacing="tight"><p><small>{{ t('zaak.chronicle.hint') }}</small></p></nldd-rich-text>
+            <nldd-button-group orientation="horizontal">
+              <nldd-button appearance="secondary" size="sm" start-icon="code" :text="t('zaak.chronicle.stored')" @click="showStored(selected)"></nldd-button>
+            </nldd-button-group>
             <nldd-banner v-if="selected.chronicleError" variant="warning" :text="t('zaak.chronicle.failed')" :supporting-text="selected.chronicleError"></nldd-banner>
             <nldd-banner v-if="selected.chronicleNoteKey" variant="neutral" :text="t(selected.chronicleNoteKey)"></nldd-banner>
             <!-- De feiten: elke gram van de zaak op het moment dat rechtens

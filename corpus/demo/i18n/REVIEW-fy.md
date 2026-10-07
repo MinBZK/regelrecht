@@ -54,6 +54,10 @@ corrigeren.
   taalmodel vertaald. Twijfel bij `momint` voor "moment" in de zin van een
   rechtens telbaar tijdstip, bij `útfiering` voor de uitvoering van een
   besluit (een betaalde termijn) en bij `betelling` voor "betaling".
+- **`kroniek.*`, `zaak.board.*`, `zaak.chronicle.stored`** (de kroniek vanaf
+  de achterkant in het zaaksysteem) zijn door een taalmodel vertaald. Twijfel
+  bij `yntsjinning` voor "indiening", `rjochtskarakter` voor "rechtskarakter",
+  `deitekene` voor "gedagtekend" en `Saken` als kop van het bord.
 
 ## 3. De banner over de wettekst
 

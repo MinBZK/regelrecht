@@ -766,14 +766,25 @@ function decideByLaw(c, stage) {
  * gebeurtenis vastlegt.
  */
 function gramFields(gram) {
+  const shape = gramShape(gram);
+  return shape ? Object.fromEntries(shape.fields.map((f) => [f.name, f])) : {};
+}
+
+/**
+ * De vorm van de gebeurtenis van een gram zoals de cel haar uit de wet
+ * afleidt op de dag dat het gram telt (WasmCell.shape): het vestigende
+ * artikel, de soort, de fase, de velden met het artikel dat erom vraagt en
+ * de verwijzingen. `null` als geen cel de gebeurtenis vastlegt of de cel de
+ * vorm niet kan geven.
+ */
+function gramShape(gram) {
   const cell = (corpus.value?.cells ?? []).find((x) => x.events.some((e) => e.name === gram?.name));
   const wasmCell = cell && cells.value[cell.id];
-  if (!wasmCell) return {};
+  if (!wasmCell) return null;
   try {
-    const shape = wasmCell.shape(engine.value, gram.name, gram.effective_at.slice(0, 10));
-    return Object.fromEntries(shape.fields.map((f) => [f.name, f]));
+    return wasmCell.shape(engine.value, gram.name, gram.effective_at.slice(0, 10));
   } catch {
-    return {};
+    return null;
   }
 }
 
@@ -1565,6 +1576,7 @@ export function useDemo() {
     applicationShape,
     applicationValuesFor,
     gramFields,
+    gramShape,
     gramsOfCase,
   };
 }
