@@ -442,6 +442,10 @@ pub enum Binding {
         source: String,
         columns: Vec<String>,
     },
+    /// `{table: $external.<path>}` without columns: a list of rows whose
+    /// columns the law does not declare (an `array` parameter; the law
+    /// format has no `items` yet). Every row is an object of single values.
+    Rows { source: String },
     /// A fixed value of the stream.
     Constant(Value),
 }
@@ -454,6 +458,8 @@ pub enum Shape {
     Value,
     /// A list of rows with only these columns.
     Table(Vec<String>),
+    /// A list of rows with any columns of single values.
+    Rows,
     /// An object with only these keys.
     Branch(BTreeMap<String, Shape>),
 }
@@ -603,6 +609,15 @@ impl Event {
                             .collect();
                         Binding::Table { source, columns }
                     }
+                    Y::Mapping(kind) if kind.get("table").is_some() => {
+                        let source = kind
+                            .get("table")
+                            .and_then(Y::as_str)
+                            .and_then(|t| t.strip_prefix("$external."))
+                            .unwrap_or_default()
+                            .to_string();
+                        Binding::Rows { source }
+                    }
                     Y::Mapping(kind) => {
                         loop_(&path, kind, out);
                         continue;
@@ -718,6 +733,7 @@ impl Event {
                     Some((source, Shape::Value))
                 }
                 Binding::Table { source, columns } => Some((source, Shape::Table(columns))),
+                Binding::Rows { source } => Some((source, Shape::Rows)),
                 _ => None,
             })
             .collect()
@@ -829,6 +845,27 @@ fn assessment_shape(
                     "field '{path}' is a table and expects a list of rows"
                 )),
             },
+            Some(Shape::Rows) => match value {
+                Value::Null => {}
+                Value::Array(rows) => {
+                    for (i, row) in rows.iter().enumerate() {
+                        let Value::Object(row) = row else {
+                            errors.push(format!("row '{path}[{i}]' is not an object with columns"));
+                            continue;
+                        };
+                        for (column, w) in row {
+                            if !single(w) {
+                                errors.push(format!(
+                                    "column '{path}[{i}].{column}' expects a single value"
+                                ));
+                            }
+                        }
+                    }
+                }
+                _ => errors.push(format!(
+                    "field '{path}' is a table and expects a list of rows"
+                )),
+            },
         }
     }
 }
@@ -915,6 +952,9 @@ pub fn build_gram(
             Binding::Table { source, columns } => {
                 as_table(at_path(submission.external, source), columns)
             }
+            Binding::Rows { source } => at_path(submission.external, source)
+                .cloned()
+                .unwrap_or(Value::Null),
             Binding::Constant(w) => w.clone(),
             Binding::Supplied(name) => {
                 let (value, provenance) = supplied_value(event, submission, name, &leaf.path)?;

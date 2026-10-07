@@ -293,10 +293,9 @@ fn main() {
         "laatste",
         "subsidiejaar",
         "aanvraagdatum",
-        "bevat_statutaire_naam",
-        "bevat_geregistreerde_aanduiding",
-        "bevat_naam_vertegenwoordigend_orgaan",
-        "bevat_aantal_zetels",
+        "statutaire_naam",
+        "geregistreerde_aanduiding",
+        "samengevoegde_aanduiding",
         "zeteltabel",
     ];
     let datum_besluit = besluit["besluitdatum"]

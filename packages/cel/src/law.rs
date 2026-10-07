@@ -1224,6 +1224,18 @@ fn binding_of(
         );
         return Ok(Y::Mapping(m));
     }
+    // An `array` parameter of the law without a column list (the law format
+    // declares none yet; RFC-045 §6 proposes `items`): a table whose rows
+    // carry what the applicant gives. The description of the parameter says
+    // which columns that are; the cell cannot check them.
+    if f.type_.as_deref() == Some("array") && !f.from_channel() && !prefilled {
+        let mut m = serde_yaml_ng::Mapping::new();
+        m.insert(
+            Y::String("table".into()),
+            Y::String(format!("$external.{}", f.name)),
+        );
+        return Ok(Y::Mapping(m));
+    }
     Ok(Y::String(if f.from_channel() || prefilled {
         format!("{SUPPLIED_BINDING}{}", f.name)
     } else {

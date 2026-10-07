@@ -158,8 +158,9 @@ async fn a_party_submits_an_application_and_the_authority_records_it() {
     assert_eq!(gram["stage"], "AANVRAAG");
     // Awb 4:13 lid 1: the receipt is the moment that counts.
     assert_eq!(gram["effective_at"], "2027-03-05T09:30:00+01:00");
-    // The fields are what the executed law asks: Wpp 102 lid 1, 3, 4 and 5
-    // and Awb 4:2 lid 1. The name of the applicant (4:2 lid 1 onder a) is the
+    // The fields are what the executed law asks: the parameters of Wpp 102
+    // the applicant supplies (origin BELANGHEBBENDE, lid 2 to 5) and Awb 4:2
+    // lid 1. The name of the applicant (4:2 lid 1 onder a) is the
     // statutory name (102 lid 3 onder a), and the decision asked for (4:2
     // lid 1 onder c) is the one Wpp 107 takes on it: neither is a field of
     // its own for the party.
@@ -173,6 +174,9 @@ async fn a_party_submits_an_application_and_the_authority_records_it() {
             "dagtekening": "2027-03-04",
             "gevraagde_beschikking": "wet_op_de_politieke_partijen#107",
             "ondertekening": "A. Voorzitter",
+            // Lid 5: alleen bij een samengevoegde aanduiding; niet opgegeven,
+            // dus null.
+            "samengevoegde_aanduiding": null,
             "zeteltabel": [
                 {"orgaan": "gemeenteraad", "gemeentecode": "GM0001", "zetels": 3,
                  "samenstellende_aanduidingen": null}
@@ -350,10 +354,9 @@ async fn the_authority_decides_on_the_application_and_records_the_decision() {
         "laatste",
         "subsidiejaar",
         "aanvraagdatum",
-        "bevat_statutaire_naam",
-        "bevat_geregistreerde_aanduiding",
-        "bevat_naam_vertegenwoordigend_orgaan",
-        "bevat_aantal_zetels",
+        "statutaire_naam",
+        "geregistreerde_aanduiding",
+        "samengevoegde_aanduiding",
         "zeteltabel",
     ];
     let read = assessment::evaluate(
@@ -372,8 +375,9 @@ async fn the_authority_decides_on_the_application_and_records_the_decision() {
     assert_eq!(from_chronicle.len(), asked.len() - 1, "{from_chronicle:#?}");
     assert_eq!(from_chronicle["subsidiejaar"], 2027);
     assert_eq!(from_chronicle["aanvraagdatum"], "2027-03-05");
-    assert_eq!(from_chronicle["bevat_statutaire_naam"], true);
-    assert_eq!(from_chronicle["bevat_aantal_zetels"], true);
+    assert_eq!(from_chronicle["statutaire_naam"], "Vereniging Voorbeeld");
+    assert_eq!(from_chronicle["geregistreerde_aanduiding"], "VOORBEELD");
+    assert_eq!(from_chronicle["samengevoegde_aanduiding"], Value::Null);
 
     // 2. With what other authorities and the Autoriteit itself supply, each
     //    with where it came from.
