@@ -607,3 +607,36 @@
     transition: none;
   }
 }
+
+/* --- Vragenpagina ------------------------------------------------------- */
+
+/*
+ * De twee vaste velden vooraan op een vraagkaart (position paper,
+ * werkpakket). Eigen CSS bovenop het ontwerpsysteem, gemeld in de PR.
+ *
+ * Vanaf `md` (641px) krijgen ze een vaste breedte en krimpen ze niet mee met
+ * de vraag ernaast, zodat het vraagdeel op elke kaart op dezelfde plek
+ * begint. nldd-list-item-segment kent alleen `width="fit-content" | "full"`
+ * en krimpt als flexitem zodra de vraag lang is.
+ *
+ * Daaronder kan dat niet: de rij is intern een flexbox zonder terugloop, en
+ * twee vaste velden lieten de vraag op een telefoon een paar woorden breed.
+ * Daar krijgt elk veld hooguit ruim een kwart en loopt zijn tekst terug.
+ */
+@media (min-width: 641px) {
+  .rr-roadmap .rr-vraag__veld {
+    flex-shrink: 0;
+  }
+  .rr-roadmap .rr-vraag__veld--paper nldd-text-cell {
+    width: 11rem;
+  }
+  .rr-roadmap .rr-vraag__veld--werkpakket nldd-text-cell {
+    width: 16rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .rr-roadmap .rr-vraag__veld {
+    max-width: 27%;
+  }
+}

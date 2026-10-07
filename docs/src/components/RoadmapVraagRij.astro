@@ -77,19 +77,22 @@ const tickets: MiniTicket[] = vraag.deelvragen.map((d) => {
       de vraag bij hoort, en de lijst is op het paper gesorteerd. Zo is alles in de kaart klikbaar zonder een link in een
       knop te stoppen; het ontwerpsysteem geeft elk segment zijn eigen
       hit-area en focus, en zet aria-expanded op het disclosure-segment. */}
-  {/* Vaste breedtes, zodat de twee velden op elke kaart onder elkaar staan.
-      Een vraag zonder sectie houdt dezelfde plek vrij, met een tekst die dat
-      zegt, anders schuift zijn werkpakket een kolom naar links. */}
+  {/* Vaste breedtes (roadmap.css, .rr-vraag__veld), zodat de twee velden op
+      elke kaart onder elkaar staan. Een vraag zonder sectie houdt dezelfde
+      plek vrij, met een tekst die dat zegt, anders schuift zijn werkpakket
+      een kolom naar links. */}
   {!vraag.paper && (
-    <nldd-text-cell overline="Position paper" text="Geen sectie" width="11rem" min-width="11rem" />
-  )}
-  {vraag.paper && (
-    <nldd-list-item-segment href={vraag.paper.href} accessible-label={`Position paper, Rules as Executed paragraaf ${vraag.paper.nummer}`}>
-      <nldd-text-cell overline="Position paper" text={`Rules as Executed § ${vraag.paper.nummer}`} width="11rem" min-width="11rem" />
+    <nldd-list-item-segment class="rr-vraag__veld rr-vraag__veld--paper">
+      <nldd-text-cell overline="Position paper" text="Geen sectie" />
     </nldd-list-item-segment>
   )}
-  <nldd-list-item-segment href={werkpakketHref} accessible-label={`Werkpakket ${werkpakket.titel}`}>
-    <nldd-text-cell overline="Werkpakket" text={werkpakket.titel} width="16rem" min-width="16rem" />
+  {vraag.paper && (
+    <nldd-list-item-segment class="rr-vraag__veld rr-vraag__veld--paper" href={vraag.paper.href} accessible-label={`Position paper, Rules as Executed paragraaf ${vraag.paper.nummer}`}>
+      <nldd-text-cell overline="Position paper" text={`Rules as Executed § ${vraag.paper.nummer}`} />
+    </nldd-list-item-segment>
+  )}
+  <nldd-list-item-segment class="rr-vraag__veld rr-vraag__veld--werkpakket" href={werkpakketHref} accessible-label={`Werkpakket ${werkpakket.titel}`}>
+    <nldd-text-cell overline="Werkpakket" text={werkpakket.titel} />
   </nldd-list-item-segment>
   <nldd-list-item-segment button disclosure width="full" accessible-label={`${vraag.vraag}, deelvragen tonen`}>
     <nldd-text-cell overline={kopregel} text={vraag.vraag} width="full">
