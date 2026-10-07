@@ -132,6 +132,7 @@ laws:
   burgerlijk_wetboek_volmacht: NOTARIAAT
   faillissementswet_curator: RECHTSPRAAK
   faillissementswet_wsnp_bewindvoerder: RECHTSPRAAK
+  fictief_beleid_termijnbedrag_voorschot: TOESLAGEN
   handelsregisterwet: KVK
   handelsregisterwet/bedrijfsgegevens: KVK
   handelsregisterwet/jaarrekening: KVK

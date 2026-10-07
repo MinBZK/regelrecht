@@ -1,0 +1,178 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.8.0/schema/v0.8.0/schema.json
+$id: fictief_beleid_termijnbedrag_voorschot
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+# Er is geen bekendgemaakt beleid over de hoogte van een voorschottermijn. De
+# url wijst daarom naar het artikel dat dit beleid uitwerkt, niet naar een
+# bekendmaking.
+url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel22
+name: Termijnbedrag van het voorschot (fictief uitvoeringsbeleid)
+competent_authority:
+  name: Dienst Toeslagen
+articles:
+  # FICTIEF. Geen bekendgemaakt beleid van de Dienst Toeslagen, maar een eigen
+  # keuze in de modellering (ontwerpnotitie
+  # packages/cel/ONTWERP-proces-zorgtoeslag.md, par. 4). Art. 22 Awir zegt
+  # wanneer en hoeveel termijnen er zijn, niet hoe hoog een termijn is; dat is
+  # een uitvoeringskeuze. Zolang er geen beleid is, staat de keuze hier, apart
+  # van de wet en als keuze herkenbaar.
+  - number: '1'
+    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel22
+    text: >-
+      FICTIEF, eigen keuze in de modellering: geen bekendgemaakt beleid. Het
+      termijnbedrag van een voorschot is het voorschotbedrag in gelijke delen
+      over de termijnen van artikel 22 van de Algemene wet
+      inkomensafhankelijke regelingen, afgerond naar beneden op hele centen,
+      met het restant in de laatste termijn. Wordt een deel van het voorschot
+      in één bedrag uitbetaald (artikel 22, vierde en vijfde lid), dan is dat
+      deel het voorschotbedrag naar rato van de maanden waarop het betrekking
+      heeft, en wordt het met de eerste termijn uitbetaald.
+    machine_readable:
+      execution:
+        parameters:
+          - name: voorschotbedrag
+            type: amount
+            required: true
+            description: Het voorschotbedrag (art. 16 Awir).
+          - name: dagtekening_voorschot
+            type: date
+            required: true
+          - name: berekeningsjaar
+            type: number
+            required: true
+          - name: maand
+            type: date
+            required: true
+            description: Een dag in de maand waarnaar gevraagd wordt.
+        input:
+          - name: termijn_in_maand
+            type: boolean
+            source:
+              regulation: algemene_wet_inkomensafhankelijke_regelingen
+              output: termijn_in_maand
+              parameters:
+                dagtekening_voorschot: $dagtekening_voorschot
+                berekeningsjaar: $berekeningsjaar
+                maand: $maand
+          - name: eerste_termijn
+            type: boolean
+            source:
+              regulation: algemene_wet_inkomensafhankelijke_regelingen
+              output: eerste_termijn
+              parameters:
+                dagtekening_voorschot: $dagtekening_voorschot
+                berekeningsjaar: $berekeningsjaar
+                maand: $maand
+          - name: laatste_termijn
+            type: boolean
+            source:
+              regulation: algemene_wet_inkomensafhankelijke_regelingen
+              output: laatste_termijn
+              parameters:
+                dagtekening_voorschot: $dagtekening_voorschot
+                berekeningsjaar: $berekeningsjaar
+                maand: $maand
+          - name: aantal_termijnen
+            type: number
+            source:
+              regulation: algemene_wet_inkomensafhankelijke_regelingen
+              output: aantal_termijnen
+              parameters:
+                dagtekening_voorschot: $dagtekening_voorschot
+                berekeningsjaar: $berekeningsjaar
+                maand: $maand
+          - name: maanden_ineens
+            type: number
+            source:
+              regulation: algemene_wet_inkomensafhankelijke_regelingen
+              output: maanden_ineens
+              parameters:
+                dagtekening_voorschot: $dagtekening_voorschot
+                berekeningsjaar: $berekeningsjaar
+                maand: $maand
+        output:
+          - name: deel_ineens
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: bedrag_per_termijn
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: termijnbedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          # Het deel in één bedrag: het voorschot naar rato van de maanden.
+          - output: deel_ineens
+            value:
+              operation: ROUND
+              precision: 0
+              value:
+                operation: DIVIDE
+                values:
+                  - operation: MULTIPLY
+                    values:
+                      - $voorschotbedrag
+                      - $maanden_ineens
+                  - 12
+          # De rest in gelijke termijnen, naar beneden op hele centen.
+          - output: bedrag_per_termijn
+            value:
+              operation: FLOOR
+              precision: 0
+              value:
+                operation: DIVIDE
+                values:
+                  - operation: SUBTRACT
+                    values:
+                      - $voorschotbedrag
+                      - $deel_ineens
+                  - $aantal_termijnen
+          # In een maand met een termijn: in de eerste termijn ook het deel
+          # ineens; in de laatste het restant, zodat de termijnen samen het
+          # voorschotbedrag zijn.
+          - output: termijnbedrag
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $termijn_in_maand
+                    value: true
+                  then:
+                    operation: ADD
+                    values:
+                      - operation: IF
+                        cases:
+                          - when:
+                              operation: EQUALS
+                              subject: $eerste_termijn
+                              value: true
+                            then: $deel_ineens
+                        default: 0
+                      - operation: IF
+                        cases:
+                          - when:
+                              operation: EQUALS
+                              subject: $laatste_termijn
+                              value: true
+                            then:
+                              operation: SUBTRACT
+                              values:
+                                - $voorschotbedrag
+                                - operation: ADD
+                                  values:
+                                    - $deel_ineens
+                                    - operation: MULTIPLY
+                                      values:
+                                        - $bedrag_per_termijn
+                                        - operation: SUBTRACT
+                                          values:
+                                            - $aantal_termijnen
+                                            - 1
+                        default: $bedrag_per_termijn
+              default: 0

@@ -8,7 +8,218 @@ valid_from: '2026-01-01'
 name: Algemene wet inkomensafhankelijke regelingen
 bwb_id: BWBR0018472
 url: https://wetten.overheid.nl/BWBR0018472/2026-01-01
+# De Awir als "Awb van de toeslagen": een eigen procedure voor de beschikking
+# op een tegemoetkoming. Art. 1: deze wet geldt voor inkomensafhankelijke
+# regelingen; een regeling kiest de procedure met `produces.procedure_id`
+# (Zorgtoeslagwet art. 1 onder e: de zorgtoeslag is een tegemoetkoming). De
+# Awir noemt zo geen enkele toeslag, en haar haken (art. 16) vuren alleen in
+# deze fasen, niet op elke beschikking. Dat de fasen hier staan en niet in de
+# tekst, is een keuze in de modellering: de wet regelt het voorschot (art. 16)
+# en de toekenning (art. 14 lid 1, art. 19) elk als eigen beschikking op de
+# aanvraag. Ontwerpnotitie: packages/cel/ONTWERP-proces-zorgtoeslag.md, par. 3.
+procedure:
+  - id: tegemoetkoming
+    applies_to:
+      legal_character: BESCHIKKING
+    stages:
+      - name: AANVRAAG
+        description: De belanghebbende vraagt een tegemoetkoming aan (art. 14 lid 1, art. 15)
+      - name: VOORSCHOT
+        is: BESLUIT
+        description: De Dienst Toeslagen verleent een voorschot (art. 16)
+        requires:
+          - name: dagtekening_voorschot
+            type: date
+      - name: TOEKENNING
+        is: BESLUIT
+        description: De Dienst Toeslagen kent de tegemoetkoming toe (art. 14 lid 1, art. 19)
+        requires:
+          - name: dagtekening_toekenning
+            type: date
 articles:
+  - number: '8'
+    text: |-
+      1 Toetsingsinkomen is: het op het berekeningsjaar betrekking hebbende inkomensgegeven.
+
+      2 Niet in Nederland belastbaar inkomen, zoals dat bij beschikking is vastgesteld, wordt in aanvulling op het eerste
+      lid mede als toetsingsinkomen in aanmerking genomen.
+
+      3 Indien zulks leidt tot een ten minste 10 percent lager toetsingsinkomen, wordt bij beëindiging van het
+      partnerschap in het berekeningsjaar, in afwijking in zoverre van het eerste en tweede lid, op verzoek van de
+      belanghebbende bij de berekening van het toetsingsinkomen van de partner:
+
+      a. geen rekening gehouden met:
+
+      1°. belastbaar loon dat is genoten na de beëindiging van het partnerschap;
+
+      2°. winst uit een onderneming die na de beëindiging van het partnerschap is gestart; en
+
+      3°. belastbaar resultaat uit overige werkzaamheden die na beëindiging van het partnerschap zijn gestart;
+
+      b. het belastbare loon dat in de periode van partnerschap is genoten tijdsevenredig herleid naar een jaarloon.
+
+      4 Bij beëindiging van het medebewonerschap in het berekeningsjaar is het derde lid van overeenkomstige toepassing
+      met betrekking tot het toetsingsinkomen van de medebewoner.
+
+      5 Bij overlijden van de belanghebbende wordt, indien hij geen partner heeft en er geen sprake is van een
+      medebewoner, in afwijking in zoverre van het eerste en tweede lid het toetsingsinkomen berekend door het op grond
+      van die leden bepaalde toetsingsinkomen tijdsevenredig te herleiden naar een jaarinkomen.
+
+      6 In de omstandigheden, bedoeld in het vijfde lid, wordt in afwijking van het in dat lid bepaalde op verzoek
+      van een of meer van de erfgenamen het toetsingsinkomen dat betrekking heeft op het jaar voorafgaand aan het
+      berekeningsjaar als toetsingsinkomen in aanmerking genomen.
+
+      7 Op verzoek van de belanghebbende wordt het toetsingsinkomen verminderd met het bedrag aan voordelen
+      verkregen door het prijsgeven van niet voor verwezenlijking vatbare rechten door schuldeisers als bedoeld in
+      [artikel 3.13, eerste lid, onderdeel a, van de Wet inkomstenbelasting 2001][ref1], voor zover:
+
+      a. deze voordelen de som van het verlies uit werk en woning dat overigens mocht zijn geleden overtreffen; en
+
+      b. deze voordelen ingevolge [artikel 3.13, eerste lid, onderdeel a, van die wet][ref2] niet zijn vrijgesteld van
+      de belastbare winst uit onderneming als gevolg van de volgens afdeling 3.13 van die wet te verrekenen verliezen uit
+      het verleden.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0011353#Artikel3.13
+      [ref2]: https://wetten.overheid.nl/BWBR0011353#Artikel3.13
+    url: https://wetten.overheid.nl/BWBR0018472/2026-01-01#Artikel8
+    references:
+      - id: ref1
+        bwb_id: BWBR0011353
+        artikel: '3.13'
+      - id: ref2
+        bwb_id: BWBR0011353
+        artikel: '3.13'
+    machine_readable:
+      # Lid 1: het toetsingsinkomen is het inkomensgegeven over het
+      # berekeningsjaar. Eigen vereenvoudiging in de demo: het democorpus kent
+      # geen Algemene wet inzake rijksbelastingen en geen inkomen per jaar. Het
+      # inkomen komt daarom uit de Wet inkomstenbelasting, waar de
+      # Zorgtoeslagwet het eerder zelf ophaalde. Zo leest de Zorgtoeslagwet het
+      # toetsingsinkomen hier, en kan Awir 16 het bij het voorschot vervangen.
+      # De leden 2 tot en met 7 zijn niet gemodelleerd.
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+            source:
+              regulation: wet_inkomstenbelasting
+              output: inkomen
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: period
+              period_type: year
+              immutable_after: P2Y
+        output:
+          - name: toetsingsinkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
+        actions:
+          - output: toetsingsinkomen
+            value: $inkomen
+  - number: '14'
+    text: |-
+      1 Een tegemoetkoming wordt op aanvraag toegekend door de Dienst Toeslagen.
+
+      2 Indien partners een gezamenlijke aanspraak op een tegemoetkoming hebben, wordt de tegemoetkoming uitsluitend
+      toegekend aan de aanvrager.
+
+      3 Indien op het moment van de toekenning van een tegemoetkoming ten name van de belanghebbende, zijn partner
+      of een medebewoner over het berekeningsjaar geen inkomensgegeven in de basisregistratie inkomen, bedoeld in
+      [artikel 21a, eerste lid, van de Algemene wet inzake rijksbelastingen][ref1] is opgenomen, die persoon niet is
+      uitgenodigd tot het doen van aangifte inkomstenbelasting en van die persoon ook geen beschikking ter zake van
+      niet in Nederland belastbaar inkomen is of wordt vastgesteld, kent de Dienst Toeslagen de tegemoetkoming toe als
+      ware het toetsingsinkomen van die persoon nihil. De inspecteur stelt bij beschikking vast dat op het moment van de
+      toekenning van de tegemoetkoming van die persoon geen inkomensgegeven in de basisregistratie inkomen, bedoeld in
+      artikel 21a, eerste lid, van de Algemene wet inzake rijksbelastingen is opgenomen, die persoon niet is uitgenodigd
+      tot het doen van aangifte inkomstenbelasting en van die persoon ook geen beschikking ter zake van niet in Nederland
+      belastbaar inkomen is of wordt vastgesteld. Deze beschikking wordt aangemerkt als een voor bezwaar vatbare
+      beschikking als bedoeld in [hoofdstuk V van de Algemene wet inzake rijksbelastingen][ref2] en vervat in hetzelfde
+      geschrift als de toekenning van de tegemoetkoming.
+
+      4 Het bedrag van de tegemoetkoming wordt rekenkundig afgerond op hele euro’s.
+
+      5 Een tegemoetkoming wordt niet toegekend indien deze minder dan € 24 zou bedragen.
+
+      6 Bij wet kan worden bepaald dat een belanghebbende geacht wordt een aanvraag te hebben gedaan.
+
+      7 Indien een voorschot is verleend op de voet van artikel 16 en vijf jaren zijn verstreken na de laatste dag van
+      het berekeningsjaar, wordt het bedrag van de tegemoetkoming ten minste gesteld op het bedrag van het verleende
+      voorschot.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0002320#Artikel21a
+      [ref2]: https://wetten.overheid.nl/BWBR0002320#HoofdstukV
+    url: https://wetten.overheid.nl/BWBR0018472/2026-01-01#Artikel14
+    references:
+      - id: ref1
+        bwb_id: BWBR0002320
+        artikel: 21a
+      - id: ref2
+        bwb_id: BWBR0002320
+        hoofdstuk: V
+    machine_readable:
+      # Lid 4 en 5: het bedrag van een tegemoetkoming wordt afgerond op hele
+      # euro's, en een tegemoetkoming van minder dan € 24 wordt niet
+      # toegekend. Een gewoon artikel: wie het bedrag van een tegemoetkoming
+      # nodig heeft (het voorschot van art. 16), vraagt het hier op met het
+      # bedrag dat de inkomensafhankelijke regeling berekent.
+      # Eigen keuze: lid 5 toetst het afgeronde bedrag; de wet zegt niet of
+      # "minder dan € 24 zou bedragen" vóór of na de afronding van lid 4 geldt.
+      # De leden 1 tot en met 3, 6 en 7 zijn niet gemodelleerd.
+      definitions:
+        minimum_tegemoetkoming:
+          value: 2400
+          type: amount
+          type_spec:
+            unit: eurocent
+      execution:
+        parameters:
+          - name: berekende_tegemoetkoming
+            type: amount
+            required: true
+            description: >-
+              Het bedrag van de tegemoetkoming zoals de inkomensafhankelijke
+              regeling het berekent, vóór de afronding van lid 4.
+        output:
+          - name: afgeronde_tegemoetkoming
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: tegemoetkoming_wordt_toegekend
+            type: boolean
+        actions:
+          # Lid 4: rekenkundig afgerond op hele euro's.
+          - output: afgeronde_tegemoetkoming
+            value:
+              operation: MULTIPLY
+              values:
+                - 100
+                - operation: ROUND
+                  precision: 0
+                  value:
+                    operation: DIVIDE
+                    values:
+                      - $berekende_tegemoetkoming
+                      - 100
+          # Lid 5: niet toegekend als het minder dan € 24 zou bedragen.
+          - output: tegemoetkoming_wordt_toegekend
+            value:
+              operation: GREATER_THAN_OR_EQUAL
+              subject: $afgeronde_tegemoetkoming
+              value: $minimum_tegemoetkoming
   - number: '15'
     text: |-
       1 Een aanvraag om een tegemoetkoming met betrekking tot een berekeningsjaar kan tot en met 31 december van het jaar
@@ -151,3 +362,375 @@ articles:
                     - 1
                 month: 12
                 day: 31
+  - number: '16'
+    text: |-
+      1 De Dienst Toeslagen verleent de belanghebbende die een aanvraag voor een tegemoetkoming indient vóór 1 april van
+      het jaar volgend op het berekeningsjaar waarop de tegemoetkoming betrekking heeft, een voorschot tot het bedrag
+      waarop de tegemoetkoming vermoedelijk zal worden vastgesteld binnen 13 weken na de ontvangst van de aanvraag.
+
+      2 Ingeval de belanghebbende voor het gehele berekeningsjaar aanspraak heeft op een tegemoetkoming die wordt
+      toegekend met toepassing van [artikel 15, vijfde lid][ref1], wordt het voorschot verleend vóór de aanvang van het
+      berekeningsjaar.
+
+      3 Indien de Dienst Toeslagen voor de beoordeling van de aanspraak op of de bepaling van de hoogte van de
+      tegemoetkoming nadere informatie nodig acht, kan de termijn, bedoeld in het eerste lid, worden verlengd met
+      13 weken. Indien de Dienst Toeslagen informatie van buiten Nederland nodig heeft, kan de termijn, bedoeld in
+      het eerste lid, worden verlengd met 26 weken. De Dienst Toeslagen stelt de belanghebbende schriftelijk van een
+      verlenging in kennis.
+
+      4 Het bedrag van het voorschot, bedoeld in het eerste lid, bedraagt nihil indien naar het oordeel van de Dienst
+      Toeslagen onvoldoende gegevens bekend zijn bij de Dienst Toeslagen ten aanzien van de belanghebbende, tenzij de
+      belanghebbende op de door de Dienst Toeslagen aangegeven wijze zijn aanspraak op een tegemoetkoming aannemelijk
+      maakt.
+
+      5 De Dienst Toeslagen kan het voorschot herzien, met dien verstande dat het voorschot daarbij niet kan worden
+      verlaagd indien op het tijdstip van de herziening ten minste vijf jaren zijn verstreken na de laatste dag van het
+      berekeningsjaar.
+
+      6 Een herziening van het voorschot kan leiden tot een terug te vorderen bedrag.
+
+      7 De Dienst Toeslagen kan afzien van het verlenen van een voorschot of een voorschot verlenen tot een ander bedrag
+      dan volgt uit het eerste lid, indien:
+
+      a. gerede twijfel bestaat over de juistheid van het adresgegeven van de belanghebbende of dit gegeven ontbreekt;
+
+      b. de inspecteur ten aanzien van de belanghebbende of diens partner
+      [artikel 13, vijfde lid, aanhef en onderdeel c, van de Algemene wet inzake rijksbelastingen][ref2] heeft toegepast;
+
+      c. de belanghebbende als uitreiziger is aangemerkt.
+
+      Indien in een inkomensafhankelijke regeling is bepaald dat naast de draagkracht van de
+      belanghebbende en diens partner ook de draagkracht van medebewoners van belang is, kan de Dienst
+      Toeslagen eveneens afzien van het verlenen van een voorschot of een voorschot verlenen tot een
+      ander bedrag dan volgt uit het eerste lid indien de inspecteur ten aanzien van de medebewoner
+      [artikel 13, vijfde lid, aanhef en onderdeel c, van de Algemene wet inzake rijksbelastingen][ref3] heeft toegepast.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0018472#Artikel15
+      [ref2]: https://wetten.overheid.nl/BWBR0002320#Artikel13
+      [ref3]: https://wetten.overheid.nl/BWBR0002320#Artikel13
+    url: https://wetten.overheid.nl/BWBR0018472/2026-01-01#Artikel16
+    references:
+      - id: ref1
+        bwb_id: BWBR0018472
+        artikel: '15'
+        hoofdstuk: '2'
+        paragraaf: '2'
+      - id: ref2
+        bwb_id: BWBR0002320
+        artikel: '13'
+      - id: ref3
+        bwb_id: BWBR0002320
+        artikel: '13'
+    machine_readable:
+      # Lid 1: het voorschot is "tot het bedrag waarop de tegemoetkoming
+      # vermoedelijk zal worden vastgesteld". Dat is de tegemoetkoming van de
+      # inkomensafhankelijke regeling, berekend op het toetsingsinkomen dat de
+      # belanghebbende verwacht. Art. 2 lid 1 onder i definieert het
+      # toetsingsinkomen "in deze wet ... alsmede in inkomensafhankelijke
+      # regelingen", dus dit artikel kan het voor het voorschot vervangen
+      # zonder dat de regeling of deze wet de ander noemt.
+      # Eigen keuze: het vermoedelijke toetsingsinkomen is een gegeven van de
+      # aanvraag, zoals Toeslagen het in de praktijk vraagt; de wet zegt niet
+      # hoe het vermoedelijke bedrag wordt bepaald.
+      #
+      # Het artikel haakt op drie plekken, elk met dezelfde uitvoering:
+      # - vóór de beschikking in de fase VOORSCHOT van de procedure
+      #   tegemoetkoming: het toetsingsinkomen, dat anders uit art. 8 komt,
+      #   wordt de schatting. Bij de TOEKENNING vuurt het niet en geldt art. 8.
+      # - na de beschikking in die fase: het voorschotbedrag is de
+      #   tegemoetkoming die de regeling berekende, met art. 14 lid 4 en 5.
+      #   Vóór de beschikking is die er nog niet en is het bedrag onbekend; de
+      #   engine neemt dan de uitkomst van na de beschikking.
+      # - op de aanvraag van art. 15: zo vraagt de aanvraag om de schatting
+      #   (chronolex: een veld van de aanvraag).
+      # Lid 4 (nihil bij onvoldoende gegevens) is een oordeel van de Dienst
+      # Toeslagen en is niet gemodelleerd: zonder schatting is het voorschot
+      # onbekend (RFC-036), niet nihil. De leden 2, 3 en 5 tot en met 7 zijn
+      # niet gemodelleerd.
+      hooks:
+        - hook_point: pre_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: VOORSCHOT
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: VOORSCHOT
+        - hook_point: pre_actions
+          applies_to:
+            submission: AANVRAAG
+            established_by: algemene_wet_inkomensafhankelijke_regelingen#15
+      execution:
+        produces:
+          extensions:
+            chronolex:
+              establishes:
+                - extends:
+                    submission: AANVRAAG
+                  fields: parameters
+        parameters:
+          - name: vermoedelijk_toetsingsinkomen
+            type: amount
+            required: false
+            description: >-
+              Het toetsingsinkomen dat de belanghebbende over het
+              berekeningsjaar verwacht (lid 1: het bedrag waarop de
+              tegemoetkoming vermoedelijk zal worden vastgesteld).
+            origin:
+              waarde: BELANGHEBBENDE
+              grondslag: algemene_wet_inkomensafhankelijke_regelingen#16 lid 1
+          - name: tegemoetkoming
+            type: amount
+            required: false
+            description: >-
+              De tegemoetkoming die de inkomensafhankelijke regeling in de fase
+              VOORSCHOT berekent. De beschikking waarop dit artikel haakt geeft
+              haar mee.
+        input:
+          - name: afgeronde_tegemoetkoming
+            type: amount
+            source:
+              regulation: algemene_wet_inkomensafhankelijke_regelingen
+              output: afgeronde_tegemoetkoming
+              parameters:
+                berekende_tegemoetkoming: $tegemoetkoming
+            type_spec:
+              unit: eurocent
+          - name: tegemoetkoming_wordt_toegekend
+            type: boolean
+            source:
+              regulation: algemene_wet_inkomensafhankelijke_regelingen
+              output: tegemoetkoming_wordt_toegekend
+              parameters:
+                berekende_tegemoetkoming: $tegemoetkoming
+        output:
+          - name: toetsingsinkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: voorschotbedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: toetsingsinkomen
+            value: $vermoedelijk_toetsingsinkomen
+          - output: voorschotbedrag
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $tegemoetkoming_wordt_toegekend
+                    value: true
+                  then: $afgeronde_tegemoetkoming
+              default: 0
+  - number: '22'
+    text: |-
+      1 Een voorschot dat wordt verleend vóór de aanvang van het berekeningsjaar waarop het voorschot betrekking
+      heeft, wordt uitbetaald in 12 termijnen. De uitbetaling van de eerste termijn vindt plaats in de maand december
+      voorafgaand aan het berekeningsjaar en elke volgende termijn telkens een maand later.
+
+      2 Een voorschot dat wordt verleend in de loop van het berekeningsjaar waarop het voorschot betrekking heeft, en
+      waarvan de beschikking een dagtekening heeft die ligt vóór 1 november van dat jaar, wordt uitbetaald in zoveel
+      termijnen als er na de maand van dagtekening nog kalendermaanden van dat jaar overblijven. De uitbetaling van de
+      eerste termijn vindt plaats in de maand van dagtekening en elke volgende termijn telkens een maand later.
+
+      3 Indien de belanghebbende voor een deel van het berekeningsjaar aanspraak heeft op een tegemoetkoming wordt,
+      in zoverre in afwijking van de voorgaande leden, het voorschot in zoveel termijnen uitbetaald als het aantal
+      kalendermaanden waarin de aanspraak bestaat. De uitbetaling van de eerste termijn vindt niet eerder plaats dan in
+      de maand voorafgaand aan de maand waarin de aanspraak ontstaat.
+
+      4 Indien een beschikking waarbij over het berekeningsjaar voor het eerst een voorschot wordt verleend een
+      dagtekening heeft die ligt na de maand waarin de aanspraak is ontstaan, wordt het voorschot voorzover dat
+      betrekking heeft op de in het berekeningsjaar reeds verstreken kalendermaanden waarin de aanspraak bestond met
+      inbegrip van de maand van dagtekening van de beschikking, in één bedrag uitbetaald in de maand van dagtekening en
+      wordt het daarna nog resterende deel van het voorschot uitbetaald overeenkomstig het tweede lid.
+
+      5 Een voorschot dat wordt verleend in de loop van of na afloop van het berekeningsjaar waarop het voorschot
+      betrekking heeft en waarvan de beschikking een dagtekening heeft die ligt na 31 oktober van dat jaar, wordt in één
+      bedrag uitbetaald in de maand van dagtekening.
+
+      6 Ingeval er bij de uitbetaling van een voorschot een situatie van interregionaal of internationaal recht van
+      toepassing is, kan de uitbetaling op een ander moment dan als bepaald in de voorgaande leden plaatsvinden.
+
+      7 Indien executoriaal beslag is gelegd op een in een of meer termijnen uit te betalen bedrag op grond van een
+      voorschot, wordt het beslag geacht mede te omvatten een in termijnen uit te betalen bedrag van een voorschot in het
+      kader van dezelfde inkomensafhankelijke regeling voor een volgend jaar voor zover:
+
+      a. de uit te betalen termijnen van de voorschotten op elkaar aansluiten, en
+
+      b. de schuld waarvoor beslag is gelegd niet geheel is voldaan.
+
+      8 Indien op grond van [artikel 26, tweede lid][ref1], de beschikking tot terugvordering tot een lager bedrag is
+      vastgesteld, wordt een daaropvolgend voorschot slechts uitbetaald voor zover het uit te betalen bedrag hoger is dan
+      het bedrag waarmee de beschikking tot terugvordering is verlaagd.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0018472#Artikel26
+    url: https://wetten.overheid.nl/BWBR0018472/2026-01-01#Artikel22
+    references:
+      - id: ref1
+        bwb_id: BWBR0018472
+        artikel: '26'
+        hoofdstuk: '2'
+        paragraaf: '3'
+    machine_readable:
+      # Een regel per maand (ontwerpnotitie par. 4, besloten 6 oktober 2026):
+      # het artikel zegt voor een maand of daarin een termijn van het voorschot
+      # valt, uit de dagtekening van de beschikking die het voorschot verleent.
+      # Een termijn die nog moet komen is geen feit; wie wil weten of er in een
+      # maand een termijn valt, vraagt het hier op. Over de hoogte van een
+      # termijn zegt het artikel niets; die staat in het uitvoeringsbeleid.
+      #
+      # Een maand telt hier als het aantal maanden na januari van het
+      # berekeningsjaar: december ervoor is -1, november 10.
+      # Lid 3 (aanspraak voor een deel van het berekeningsjaar) is niet
+      # gemodelleerd: dit artikel gaat uit van een aanspraak over het hele
+      # berekeningsjaar, die dus in januari ontstaat (lid 4). De overige leden
+      # regelen uitzonderingen en beslag en zijn niet gemodelleerd.
+      execution:
+        parameters:
+          - name: dagtekening_voorschot
+            type: date
+            required: true
+            description: De dagtekening van de beschikking die het voorschot verleent.
+          - name: berekeningsjaar
+            type: number
+            required: true
+            description: Het berekeningsjaar waarop het voorschot betrekking heeft.
+          - name: maand
+            type: date
+            required: true
+            description: Een dag in de maand waarnaar gevraagd wordt.
+        output:
+          - name: maand_dagtekening
+            type: number
+            description: De maand van dagtekening, geteld vanaf januari van het berekeningsjaar.
+          - name: gevraagde_maand
+            type: number
+            description: De gevraagde maand, geteld vanaf januari van het berekeningsjaar.
+          - name: maand_eerste_termijn
+            type: number
+          - name: maand_laatste_termijn
+            type: number
+          - name: aantal_termijnen
+            type: number
+          - name: maanden_ineens
+            type: number
+            description: >-
+              Over hoeveel maanden het voorschot in één bedrag wordt uitbetaald
+              in de maand van dagtekening (lid 4 en 5).
+          - name: termijn_in_maand
+            type: boolean
+          - name: eerste_termijn
+            type: boolean
+          - name: laatste_termijn
+            type: boolean
+        actions:
+          - output: maand_dagtekening
+            value:
+              operation: DATE_DIFF
+              from:
+                operation: DATE
+                year: $berekeningsjaar
+                month: 1
+                day: 1
+              to:
+                operation: START_OF
+                date: $dagtekening_voorschot
+                in: month
+              in: months
+          - output: gevraagde_maand
+            value:
+              operation: DATE_DIFF
+              from:
+                operation: DATE
+                year: $berekeningsjaar
+                month: 1
+                day: 1
+              to:
+                operation: START_OF
+                date: $maand
+                in: month
+              in: months
+          # Lid 1: een voorschot dat vóór de aanvang van het berekeningsjaar
+          # wordt verleend, gaat in 12 termijnen vanaf december daarvoor.
+          # Lid 2 en 5: anders is de eerste termijn in de maand van dagtekening.
+          - output: maand_eerste_termijn
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: LESS_THAN
+                    subject: $maand_dagtekening
+                    value: 0
+                  then: -1
+              default: $maand_dagtekening
+          # Lid 1 en 2: de laatste termijn valt in november (12 termijnen vanaf
+          # december; "zoveel termijnen als er na de maand van dagtekening nog
+          # kalendermaanden van dat jaar overblijven", de eerste in de maand van
+          # dagtekening). Lid 5: na 31 oktober één bedrag in de maand van
+          # dagtekening, hier één termijn.
+          - output: maand_laatste_termijn
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: GREATER_THAN
+                    subject: $maand_dagtekening
+                    value: 9
+                  then: $maand_dagtekening
+              default: 10
+          - output: aantal_termijnen
+            value:
+              operation: ADD
+              values:
+                - operation: SUBTRACT
+                  values:
+                    - $maand_laatste_termijn
+                    - $maand_eerste_termijn
+                - 1
+          # Lid 4: is de dagtekening na januari, dan gaat het deel over de
+          # verstreken maanden, met de maand van dagtekening, in één bedrag.
+          # Lid 5: na 31 oktober het hele voorschot.
+          - output: maanden_ineens
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: GREATER_THAN
+                    subject: $maand_dagtekening
+                    value: 9
+                  then: 12
+                - when:
+                    operation: GREATER_THAN
+                    subject: $maand_dagtekening
+                    value: 0
+                  then:
+                    operation: ADD
+                    values:
+                      - $maand_dagtekening
+                      - 1
+              default: 0
+          - output: termijn_in_maand
+            value:
+              operation: AND
+              conditions:
+                - operation: GREATER_THAN_OR_EQUAL
+                  subject: $gevraagde_maand
+                  value: $maand_eerste_termijn
+                - operation: LESS_THAN_OR_EQUAL
+                  subject: $gevraagde_maand
+                  value: $maand_laatste_termijn
+          - output: eerste_termijn
+            value:
+              operation: EQUALS
+              subject: $gevraagde_maand
+              value: $maand_eerste_termijn
+          - output: laatste_termijn
+            value:
+              operation: EQUALS
+              subject: $gevraagde_maand
+              value: $maand_laatste_termijn
