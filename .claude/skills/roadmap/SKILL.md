@@ -264,10 +264,11 @@ de titel om ertussen te wisselen:
   vraag heeft een stand zoals een werkpakket een belegging heeft: zijn eigen
   status (open is vrij, loopt is opgepakt, beantwoord is klaar) en zonder
   eigen status die van de belegging van zijn werkpakket; de kaart zegt welke
-  van de twee het was. Druk op een kaart en eronder staan het werkpakket, de
-  papersectie, het doel, de verwante vragen en een mini-bord met de
-  deelvragen in dezelfde drie lanes; een deelvraag zonder eigen status volgt
-  zijn vraag.
+  van de twee het was. Het werkpakket en de papersectie staan als klikbare
+  velden op de kaart. Druk op de vraag zelf en eronder staan het doel, de
+  verwante vragen en een mini-bord met de deelvragen in dezelfde drie lanes
+  (ook als dat nog leeg is); een deelvraag zonder eigen status volgt zijn
+  vraag.
 
 Beide borden zijn een `nldd-list` van het type `tree` per kaart
 (`RoadmapWerkpakketRij.astro`, `RoadmapVraagRij.astro`) met het bordje in

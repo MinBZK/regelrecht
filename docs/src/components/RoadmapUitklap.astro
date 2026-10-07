@@ -15,12 +15,21 @@
 
 <script>
   function wireUitklappen() {
+    // Een rij die zelf de knop is (het bord) klapt om bij een klik op de rij;
+    // een gesegmenteerde rij (de vragen) bij een klik op haar
+    // disclosure-segment, zodat de link-segmenten ernaast gewoon navigeren.
     for (const rij of document.querySelectorAll<HTMLElement>(
-      '.rr-roadmap nldd-list-item[button][data-uitklap]',
+      '.rr-roadmap nldd-list-item[data-uitklap]',
     )) {
-      rij.addEventListener('click', (event) => {
-        const bron = (event.target as HTMLElement).closest('nldd-list-item');
-        if (bron !== rij) return;
+      const segment = rij.querySelector<HTMLElement>(
+        ':scope > nldd-list-item-segment[disclosure]',
+      );
+      const doel = segment ?? rij;
+      doel.addEventListener('click', (event) => {
+        const bron = (event.target as HTMLElement).closest(
+          'nldd-list-item, nldd-list-item-segment',
+        );
+        if (bron !== doel) return;
         rij.toggleAttribute('expanded');
       });
     }
