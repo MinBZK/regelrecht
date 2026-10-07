@@ -348,6 +348,53 @@ impl Cell {
         root: &str,
         as_of: DateTime<FixedOffset>,
     ) -> Result<BTreeMap<String, Input>> {
+        let (read, shape, day) = self.read_decision(service, event, root, as_of)?;
+        let period_parameter = shape.period.as_ref().map(|p| p.parameter.as_str());
+        let at = stage_of(service, &shape, day)?;
+        let asked = asked(&at);
+        Ok(read
+            .into_iter()
+            .filter(|(name, _)| {
+                asked.contains(&name.as_str()) || Some(name.as_str()) == period_parameter
+            })
+            .map(|(name, (value, lexostatus))| (name, from_lexostatus(value, &lexostatus)))
+            .collect())
+    }
+
+    /// What taking the decision `event` on the case `root` at `as_of` asks:
+    /// the stage of its procedure with what it requires, the article and the
+    /// hooks that fire at that stage, and every parameter they declare, in
+    /// the law of the period the decision concerns (see
+    /// [`Self::decision_inputs`]). A caller that holds what the cell does not
+    /// read from its chronicle (a date from a dossier) finds here what to
+    /// give as `extra_inputs`; read-only.
+    pub fn decision_stage(
+        &self,
+        service: &LawExecutionService,
+        event: &str,
+        root: &str,
+        as_of: DateTime<FixedOffset>,
+    ) -> Result<StageInputs> {
+        let (_, shape, day) = self.read_decision(service, event, root, as_of)?;
+        stage_of(service, &shape, day)
+    }
+
+    /// What the lexostatuses of the decision `event` give for the case
+    /// `root` at `as_of`, the shape of the decision, and the day whose law
+    /// it applies: the first day of the period read, if the law says the
+    /// decision concerns one, otherwise the day of `as_of`.
+    #[allow(clippy::type_complexity)]
+    fn read_decision(
+        &self,
+        service: &LawExecutionService,
+        event: &str,
+        root: &str,
+        as_of: DateTime<FixedOffset>,
+    ) -> Result<(
+        BTreeMap<String, (serde_json::Value, String)>,
+        Shape,
+        NaiveDate,
+    )> {
         let read = self.read_case(event, root, as_of)?;
         let day = as_of.date_naive();
         let (shape, _) = self.shape(service, event, day)?;
@@ -358,15 +405,12 @@ impl Cell {
             Some((value, _)) => period(&shape, Some(value))?.map_or(day, |(_, d)| d),
             None => day,
         };
-        let at = stage_of(service, &shape, day)?;
-        let asked = asked(&at);
-        Ok(read
-            .into_iter()
-            .filter(|(name, _)| {
-                asked.contains(&name.as_str()) || Some(name.as_str()) == period_parameter
-            })
-            .map(|(name, (value, lexostatus))| (name, from_lexostatus(value, &lexostatus)))
-            .collect())
+        let shape = if day == as_of.date_naive() {
+            shape
+        } else {
+            self.shape(service, event, day)?.0
+        };
+        Ok((read, shape, day))
     }
 
     /// The root of the case a decision is taken on: the root of the gram
@@ -426,6 +470,33 @@ impl Cell {
         extra_inputs: BTreeMap<String, Input>,
         now: DateTime<FixedOffset>,
     ) -> Result<Gram> {
+        let (gram, chronicle) = self.take(service, event, refers_to, extra_inputs, now)?;
+        self.append(&chronicle, gram)
+    }
+
+    /// The gram [`Self::decide`] would record at `now`, without recording
+    /// it: what the law decides, to look before deciding. Nothing in the
+    /// chronicle changes, so a moment that has yet to come may be asked too.
+    pub fn preview_decision(
+        &self,
+        service: &LawExecutionService,
+        event: &str,
+        refers_to: BTreeMap<String, String>,
+        extra_inputs: BTreeMap<String, Input>,
+        now: DateTime<FixedOffset>,
+    ) -> Result<Gram> {
+        Ok(self.take(service, event, refers_to, extra_inputs, now)?.0)
+    }
+
+    /// Take a decision: the gram and the chronicle it goes to, not recorded.
+    fn take(
+        &self,
+        service: &LawExecutionService,
+        event: &str,
+        refers_to: BTreeMap<String, String>,
+        extra_inputs: BTreeMap<String, Input>,
+        now: DateTime<FixedOffset>,
+    ) -> Result<(Gram, String)> {
         // Not yet: refusing an application out of time.
         let today = now.date_naive();
         let (shape, chronicle) = self.shape(service, event, today)?;
@@ -524,7 +595,7 @@ impl Cell {
                 (k, v)
             })
             .collect();
-        self.append(&chronicle, gram)
+        Ok((gram, chronicle))
     }
 
     /// Execute the article that establishes the execution `event` (an
@@ -559,6 +630,46 @@ impl Cell {
         on: NaiveDate,
         now: DateTime<FixedOffset>,
     ) -> Result<Option<Gram>> {
+        if on > now.date_naive() {
+            return Err(refused(format!(
+                "'{event}' on {on} has yet to happen on {}: not a fact",
+                now.date_naive()
+            )));
+        }
+        match self.execution(service, event, root, on, now)? {
+            Some((gram, chronicle)) => self.append(&chronicle, gram).map(Some),
+            None => Ok(None),
+        }
+    }
+
+    /// The gram [`Self::execute`] would record for the case `root` on `on`,
+    /// reading the chronicle as it holds at `now`, without recording it:
+    /// whether the law says one arises then, and with what. `on` may lie
+    /// after `now`; what has yet to happen is no fact, but the law can say
+    /// what it would be, such as the voorschottermijn of next month.
+    pub fn preview_execution(
+        &self,
+        service: &LawExecutionService,
+        event: &str,
+        root: &str,
+        on: NaiveDate,
+        now: DateTime<FixedOffset>,
+    ) -> Result<Option<Gram>> {
+        Ok(self
+            .execution(service, event, root, on, now)?
+            .map(|(gram, _)| gram))
+    }
+
+    /// Execute an execution: the gram and its chronicle if one arises, not
+    /// recorded.
+    fn execution(
+        &self,
+        service: &LawExecutionService,
+        event: &str,
+        root: &str,
+        on: NaiveDate,
+        now: DateTime<FixedOffset>,
+    ) -> Result<Option<(Gram, String)>> {
         let today = now.date_naive();
         let (shape, chronicle) = self.shape(service, event, today)?;
         let Some(executed_on) = shape.executed_on.clone() else {
@@ -567,11 +678,6 @@ impl Cell {
                 shape.establishes
             )));
         };
-        if on > today {
-            return Err(refused(format!(
-                "'{event}' on {on} has yet to happen on {today}: not a fact"
-            )));
-        }
         let effective_at = if on == today {
             now
         } else {
@@ -720,7 +826,7 @@ impl Cell {
                 (k, v)
             })
             .collect();
-        self.append(&chronicle, gram).map(Some)
+        Ok(Some((gram, chronicle)))
     }
 
     /// Every reference the law names is to a gram of the article it names;

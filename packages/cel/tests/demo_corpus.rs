@@ -442,3 +442,93 @@ fn the_demo_toekenning_sets_off_the_paid_termijnen() {
         assert!(e.to_string().contains("TOEKENNING"), "{e}");
     }
 }
+
+/// What the demo shows before the decision: the next termijn and the
+/// toekenning as the law would give them, without a gram. The previews
+/// record nothing; recording them afterwards gives the same fields.
+#[test]
+fn the_demo_cell_previews_the_next_termijn_and_the_toekenning_without_recording() {
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    let (mut cell, application, _) = with_voorschot(
+        &mut service,
+        data.path(),
+        "2024-11-04T10:15:00+01:00",
+        "2024-11-20T09:00:00+01:00",
+        79547,
+    );
+    let before = cell.grams().count();
+    let now = at("2024-11-20T10:00:00+01:00");
+    // November has no termijn (the first is in December, Awir 22 lid 1).
+    let november = cell
+        .preview_execution(
+            &service,
+            "voorschottermijn_betaald",
+            &application.id,
+            "2024-11-20".parse().unwrap(),
+            now,
+        )
+        .unwrap();
+    assert_eq!(november, None);
+    // December lies after now: no fact, but the law says what it would be.
+    let december = cell
+        .preview_execution(
+            &service,
+            "voorschottermijn_betaald",
+            &application.id,
+            "2024-12-01".parse().unwrap(),
+            now,
+        )
+        .unwrap()
+        .expect("a termijn in December");
+    assert_eq!(cell.grams().count(), before);
+    // Recording it is still refused before its day.
+    assert!(cell
+        .execute(
+            &service,
+            "voorschottermijn_betaald",
+            &application.id,
+            "2024-12-01".parse().unwrap(),
+            now,
+        )
+        .is_err());
+    let paid = pay(&mut cell, &service, &application.id, 2024, 12).unwrap();
+    assert_eq!(paid.fields, december.fields);
+
+    // The toekenning asks the dossier for the date of the aanslag (Awir 19),
+    // which the cell does not read from its chronicle.
+    let stage = cell
+        .decision_stage(&service, "zorgtoeslag_toegekend", &application.id, now)
+        .unwrap();
+    assert_eq!(stage.stage, "TOEKENNING");
+    let asked: Vec<&str> = stage
+        .inputs
+        .iter()
+        .map(|i| i.parameter.name.as_str())
+        .collect();
+    assert!(asked.contains(&"datum_vaststelling_aanslag"), "{asked:?}");
+    let read = cell
+        .decision_inputs(&service, "zorgtoeslag_toegekend", &application.id, now)
+        .unwrap();
+    assert!(!read.contains_key("datum_vaststelling_aanslag"));
+
+    let aanslag = BTreeMap::from([(
+        "datum_vaststelling_aanslag".to_string(),
+        regelrecht_cel::Input {
+            value: json!("2026-04-15"),
+            provenance: json!({"source": "dossier"}),
+        },
+    )]);
+    let preview = cell
+        .preview_decision(
+            &service,
+            "zorgtoeslag_toegekend",
+            BTreeMap::from([("on_application".to_string(), application.id.clone())]),
+            aanslag.clone(),
+            at("2026-04-15T09:00:00+02:00"),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+    // Awir 19 lid 1: within six months of the aanslag.
+    assert_eq!(preview.fields["uiterste_toekenningsdatum"], "2026-10-15");
+    assert_eq!(cell.grams().count(), before + 1);
+}

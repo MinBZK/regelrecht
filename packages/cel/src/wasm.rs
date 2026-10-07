@@ -37,6 +37,15 @@ fn day(day: &str) -> Result<NaiveDate, JsValue> {
     NaiveDate::parse_from_str(day, "%Y-%m-%d").map_err(|e| error(format!("'{day}': {e}")))
 }
 
+/// `{name: {value, provenance}}` from the page, or nothing.
+fn extra(extra_inputs: JsValue) -> Result<BTreeMap<String, Input>, JsValue> {
+    if extra_inputs.is_null() || extra_inputs.is_undefined() {
+        Ok(BTreeMap::new())
+    } else {
+        from_js(extra_inputs)
+    }
+}
+
 #[wasm_bindgen]
 pub struct WasmCell {
     cell: Cell,
@@ -127,6 +136,52 @@ impl WasmCell {
         to_js(&inputs)
     }
 
+    /// What taking the decision `event` on the application `root` at `now`
+    /// asks: the stage with what it requires, the articles taking part and
+    /// every parameter they declare with its origin. What the cell does not
+    /// read from its chronicle (`inputsFor`), the page may give as
+    /// `extraInputs`.
+    #[wasm_bindgen(js_name = decisionStage)]
+    pub fn decision_stage(
+        &self,
+        engine: &WasmEngine,
+        event: &str,
+        root: &str,
+        now: &str,
+    ) -> Result<JsValue, JsValue> {
+        let stage = self
+            .cell
+            .decision_stage(engine.service(), event, root, moment(now)?)
+            .map_err(error)?;
+        to_js(&stage)
+    }
+
+    /// The gram `decide` would record at `now`, without recording it: what
+    /// the law decides, to look before deciding (or ahead, to a moment that
+    /// has yet to come).
+    #[wasm_bindgen(js_name = previewDecision)]
+    pub fn preview_decision(
+        &self,
+        engine: &WasmEngine,
+        event: &str,
+        refers_to: JsValue,
+        now: &str,
+        extra_inputs: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let refers_to: BTreeMap<String, String> = from_js(refers_to)?;
+        let gram = self
+            .cell
+            .preview_decision(
+                engine.service(),
+                event,
+                refers_to,
+                extra(extra_inputs)?,
+                moment(now)?,
+            )
+            .map_err(error)?;
+        to_js(&gram)
+    }
+
     /// Take a decision at `now` and record it, referring to `refersTo`
     /// (`{on_application: <id>}`). The cell reads the parameters from that
     /// case itself; `extraInputs` (`{name: {value, provenance}}`, optional)
@@ -140,19 +195,13 @@ impl WasmCell {
         extra_inputs: JsValue,
     ) -> Result<JsValue, JsValue> {
         let refers_to: BTreeMap<String, String> = from_js(refers_to)?;
-        let extra_inputs: BTreeMap<String, Input> =
-            if extra_inputs.is_null() || extra_inputs.is_undefined() {
-                BTreeMap::new()
-            } else {
-                from_js(extra_inputs)?
-            };
         let gram = self
             .cell
             .decide(
                 engine.service(),
                 event,
                 refers_to,
-                extra_inputs,
+                extra(extra_inputs)?,
                 moment(now)?,
             )
             .map_err(error)?;
@@ -173,6 +222,29 @@ impl WasmCell {
         let gram = self
             .cell
             .execute(engine.service(), event, root, day(on)?, moment(now)?)
+            .map_err(error)?;
+        match gram {
+            Some(gram) => to_js(&gram),
+            None => Ok(JsValue::NULL),
+        }
+    }
+
+    /// The gram `execute` would record for the case `root` on `on`
+    /// (`YYYY-MM-DD`), reading the chronicle as it holds at `now`, without
+    /// recording it; `null` if the law says none arises then. `on` may lie
+    /// after `now`: what the law gives as the next instalment.
+    #[wasm_bindgen(js_name = previewExecution)]
+    pub fn preview_execution(
+        &self,
+        engine: &WasmEngine,
+        event: &str,
+        root: &str,
+        on: &str,
+        now: &str,
+    ) -> Result<JsValue, JsValue> {
+        let gram = self
+            .cell
+            .preview_execution(engine.service(), event, root, day(on)?, moment(now)?)
             .map_err(error)?;
         match gram {
             Some(gram) => to_js(&gram),
