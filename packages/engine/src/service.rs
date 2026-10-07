@@ -34,9 +34,9 @@ use crate::error::{EngineError, Result};
 use crate::operations::ValueResolver;
 use crate::priority;
 use crate::resolver::{
-    hook_filter_admits, missing_article_reason, DecisionOn, DeclarationKind, DeclarationNotInForce,
-    DeclarationsFromOtherVersion, DelegationRefusal, HookEntry, LawArticleRef, ProcedureMiss,
-    RuleResolver, SelectionReason,
+    hook_filter_admits, missing_article_reason, unique_output_producer, DecisionOn,
+    DeclarationKind, DeclarationNotInForce, DeclarationsFromOtherVersion, DelegationRefusal,
+    HookEntry, LawArticleRef, ProcedureMiss, RuleResolver, SelectionReason,
 };
 use crate::trace::{LegalAnchor, TraceBuilder, ValueSource};
 use crate::types::{
@@ -1890,11 +1890,7 @@ impl LawExecutionService {
             .map_err(|reason| selection_error(law_id, calculation_date, reason))?;
         let article = self
             .resolver
-            .get_article_by_output(law_id, output_name, ref_date)
-            .ok_or_else(|| EngineError::OutputNotFound {
-                law_id: law_id.to_string(),
-                output: output_name.to_string(),
-            })?;
+            .resolve_article_by_output(law_id, output_name, ref_date)?;
 
         // A submission (RFC-046): yield with what the articles taking part
         // ask while a required input is missing, instead of failing on the
@@ -2197,13 +2193,11 @@ impl LawExecutionService {
         // Group outputs by their producing article number to avoid redundant evaluations
         let mut article_to_outputs: BTreeMap<String, Vec<&str>> = BTreeMap::new();
         for &output_name in output_names {
-            let article = self
-                .resolver
-                .get_article_by_output(law_id, output_name, res_ctx.reference_date())
-                .ok_or_else(|| EngineError::OutputNotFound {
-                    law_id: law_id.to_string(),
-                    output: output_name.to_string(),
-                })?;
+            let article = self.resolver.resolve_article_by_output(
+                law_id,
+                output_name,
+                res_ctx.reference_date(),
+            )?;
             article_to_outputs
                 .entry(article.number.clone())
                 .or_default()
@@ -2378,13 +2372,11 @@ impl LawExecutionService {
             .map_err(|reason| selection_error(law_id, res_ctx.calculation_date, reason))?;
 
         // Find the article
-        let article = self
-            .resolver
-            .get_article_by_output(law_id, output_name, res_ctx.reference_date())
-            .ok_or_else(|| EngineError::OutputNotFound {
-                law_id: law_id.to_string(),
-                output: output_name.to_string(),
-            })?;
+        let article = self.resolver.resolve_article_by_output(
+            law_id,
+            output_name,
+            res_ctx.reference_date(),
+        )?;
 
         // Clone parameters for cache storage before moving into evaluation
         let params_for_cache = parameters.clone();
@@ -4096,8 +4088,11 @@ impl LawExecutionService {
             } else {
                 replaced_article(article, law, output_name)
             };
-            let ref_article = match base_target.or_else(|| law.find_article_by_output(output_name))
-            {
+            let found = match base_target {
+                Some(article) => Some(article),
+                None => unique_output_producer(law, output_name)?,
+            };
+            let ref_article = match found {
                 Some(a) => a,
                 None => {
                     res_ctx.trace_set_message(format!(

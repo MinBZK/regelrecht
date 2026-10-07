@@ -447,10 +447,14 @@ pub struct RuleResolver {
     /// Registry of loaded laws by ID, supporting multiple versions per law ID.
     /// Each law ID maps to a list of versions, sorted by valid_from date (newest first).
     law_versions: HashMap<String, Vec<ArticleBasedLaw>>,
-    /// Index: "law_id\0output_name" -> article_number
+    /// Index: "law_id\0output_name" -> the numbers of the articles producing
+    /// it, in file order. A single producer is the fast path of
+    /// [`Self::resolve_article_by_output`]; several go through
+    /// [`ArticleBasedLaw::output_producers`], which knows which of them a
+    /// reference means.
     /// Note: This index uses the most recent version of each law.
     /// Uses a flat string key (null-separated) to avoid two allocations per lookup.
-    output_index: HashMap<String, String>,
+    output_index: HashMap<String, Vec<String>>,
     /// IoC index: (law_id, article, open_term_id) -> list of implementing articles
     implements_index: HashMap<(String, String, String), Vec<LawArticleRef>>,
     /// Hook index: (hook_point, legal_character) -> list of (law_id, article_number, filter)
@@ -934,25 +938,57 @@ impl RuleResolver {
     ///
     /// # Returns
     /// Reference to the article if found.
+    ///
+    /// An ambiguous output answers `None` here; execution paths use
+    /// [`Self::resolve_article_by_output`], which says so.
     pub fn get_article_by_output(
         &self,
         law_id: &str,
         output: &str,
         reference_date: Option<NaiveDate>,
     ) -> Option<&Article> {
-        let law = self.get_law_for_date(law_id, reference_date)?;
-        // Try indexed lookup first (O(1)), fall back to linear scan
+        self.resolve_article_by_output(law_id, output, reference_date)
+            .ok()
+    }
+
+    /// The article a reference to `output` of `law_id` resolves to, in the
+    /// version in force on `reference_date`.
+    ///
+    /// A hook or a same-law override that produces the same name is not what
+    /// the reference means (see [`ArticleBasedLaw::output_producers`]). Two
+    /// ordinary articles producing it is [`EngineError::AmbiguousOutput`]:
+    /// picking one would let the order of the articles in the file decide.
+    pub fn resolve_article_by_output(
+        &self,
+        law_id: &str,
+        output: &str,
+        reference_date: Option<NaiveDate>,
+    ) -> Result<&Article> {
+        let not_found = || EngineError::OutputNotFound {
+            law_id: law_id.to_string(),
+            output: output.to_string(),
+        };
+        let law = self
+            .get_law_for_date(law_id, reference_date)
+            .ok_or_else(not_found)?;
+        // Indexed fast path (O(1)) for an output with a single producer. The
+        // index describes the newest version, so it only answers for that one.
+        let indexed_version = self
+            .law_versions
+            .get(law_id)
+            .and_then(|versions| versions.first())
+            .is_some_and(|newest| std::ptr::eq(newest, law));
         let index_key = format!("{}\0{}", law_id, output);
-        if let Some(article_number) = self.output_index.get(&index_key) {
+        if let (true, Some([article_number])) = (
+            indexed_version,
+            self.output_index.get(&index_key).map(Vec::as_slice),
+        ) {
             if let Some(article) = law.find_article_by_number(article_number) {
-                // Verify the article in this version actually has the output
-                if article.has_output(output) {
-                    return Some(article);
-                }
+                return Ok(article);
             }
         }
-        // Fallback: linear scan (handles version-specific differences)
-        law.find_article_by_output(output)
+        // Several producers, or an older version than the indexed one.
+        unique_output_producer(law, output)?.ok_or_else(not_found)
     }
 
     /// Find all implementations of an open term, resolved by priority.
@@ -1481,10 +1517,10 @@ impl RuleResolver {
                     if let Some(exec) = article.get_execution_spec() {
                         if let Some(outputs) = &exec.output {
                             for output in outputs {
-                                self.output_index.insert(
-                                    format!("{}\0{}", law_id, output.name),
-                                    article.number.clone(),
-                                );
+                                self.output_index
+                                    .entry(format!("{}\0{}", law_id, output.name))
+                                    .or_default()
+                                    .push(article.number.clone());
                             }
                         }
                     }
@@ -1882,6 +1918,24 @@ impl RuleResolver {
     }
 }
 
+/// The article of `law` a reference to `output` by name resolves to: `None`
+/// when no article produces it, [`EngineError::AmbiguousOutput`] when more
+/// than one could be meant (see [`ArticleBasedLaw::output_producers`]).
+pub fn unique_output_producer<'l>(
+    law: &'l ArticleBasedLaw,
+    output: &str,
+) -> Result<Option<&'l Article>> {
+    match law.output_producers(output).as_slice() {
+        [] => Ok(None),
+        [article] => Ok(Some(article)),
+        several => Err(EngineError::AmbiguousOutput {
+            law_id: law.id.clone(),
+            output: output.to_string(),
+            articles: several.iter().map(|a| a.number.clone()).collect(),
+        }),
+    }
+}
+
 /// Whether a hook filter admits a decision at this stage, apart from its legal
 /// character (which the hooks index is keyed on).
 ///
@@ -2022,6 +2076,136 @@ articles:
         assert!(resolver
             .get_article_by_output("nonexistent", "test_output", None)
             .is_none());
+    }
+
+    /// A version of `producers_law` valid from `valid_from`, whose articles
+    /// each produce `bedrag`; `true` makes the article a hook.
+    fn producers_law(valid_from: &str, articles: &[(&str, bool)]) -> String {
+        let mut yaml = format!(
+            "$id: producers_law\nregulatory_layer: WET\npublication_date: '{valid_from}'\n\
+             valid_from: '{valid_from}'\narticles:\n"
+        );
+        for (number, hook) in articles {
+            yaml.push_str(&format!(
+                "  - number: '{number}'\n    text: t\n    machine_readable:\n"
+            ));
+            if *hook {
+                yaml.push_str(
+                    "      hooks:\n        - hook_point: pre_actions\n          \
+                     applies_to: {legal_character: BESCHIKKING, stage: VOORSCHOT}\n",
+                );
+            }
+            yaml.push_str(
+                "      execution:\n        output: [{name: bedrag, type: number}]\n        \
+                 actions: [{output: bedrag, value: 1}]\n",
+            );
+        }
+        yaml
+    }
+
+    fn producer_of(resolver: &RuleResolver, date: NaiveDate) -> Result<String> {
+        resolver
+            .resolve_article_by_output("producers_law", "bedrag", Some(date))
+            .map(|article| article.number.clone())
+    }
+
+    #[test]
+    fn a_hook_producing_an_output_is_not_what_a_reference_means() {
+        let date = NaiveDate::from_ymd_opt(2025, 6, 1).unwrap();
+        for order in [[("8", false), ("16", true)], [("16", true), ("8", false)]] {
+            let mut resolver = RuleResolver::new();
+            resolver
+                .load_from_yaml(&producers_law("2025-01-01", &order))
+                .unwrap();
+            assert_eq!(producer_of(&resolver, date).unwrap(), "8", "{order:?}");
+        }
+    }
+
+    #[test]
+    fn a_hook_is_what_a_reference_means_when_no_article_produces_the_output() {
+        // Awb 6:8 reads the bezwaartermijn that the hook Awb 6:7 produces.
+        let date = NaiveDate::from_ymd_opt(2025, 6, 1).unwrap();
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(&producers_law("2025-01-01", &[("6:7", true)]))
+            .unwrap();
+        assert_eq!(producer_of(&resolver, date).unwrap(), "6:7");
+    }
+
+    #[test]
+    fn two_articles_producing_an_output_are_ambiguous_in_the_version_that_has_them() {
+        // The newest version has one producer (the indexed fast path); the
+        // older one has two, which the index of the newest must not hide.
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(&producers_law("2024-01-01", &[("1", false), ("2", false)]))
+            .unwrap();
+        resolver
+            .load_from_yaml(&producers_law("2025-01-01", &[("2", false)]))
+            .unwrap();
+        let new = NaiveDate::from_ymd_opt(2025, 6, 1).unwrap();
+        let old = NaiveDate::from_ymd_opt(2024, 6, 1).unwrap();
+        assert_eq!(producer_of(&resolver, new).unwrap(), "2");
+        match producer_of(&resolver, old) {
+            Err(EngineError::AmbiguousOutput { articles, .. }) => {
+                assert_eq!(articles, vec!["1".to_string(), "2".to_string()]);
+            }
+            other => panic!("expected AmbiguousOutput, got {other:?}"),
+        }
+        assert!(resolver
+            .get_article_by_output("producers_law", "bedrag", Some(old))
+            .is_none());
+    }
+
+    #[test]
+    fn an_output_no_article_produces_is_not_found() {
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(&producers_law("2025-01-01", &[("1", false)]))
+            .unwrap();
+        let date = NaiveDate::from_ymd_opt(2025, 6, 1).unwrap();
+        assert!(matches!(
+            resolver.resolve_article_by_output("producers_law", "anders", Some(date)),
+            Err(EngineError::OutputNotFound { .. })
+        ));
+        assert!(matches!(
+            resolver.resolve_article_by_output("geen_wet", "bedrag", Some(date)),
+            Err(EngineError::OutputNotFound { .. })
+        ));
+    }
+
+    #[test]
+    fn a_same_law_override_is_not_what_a_reference_means() {
+        let yaml = r#"
+$id: override_here
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '2'
+    text: bijzonder
+    machine_readable:
+      overrides:
+        - law: override_here
+          article: '1'
+          output: bedrag
+      execution:
+        output: [{name: bedrag, type: number}]
+        actions: [{output: bedrag, value: 2}]
+  - number: '1'
+    text: algemeen
+    machine_readable:
+      execution:
+        output: [{name: bedrag, type: number}]
+        actions: [{output: bedrag, value: 1}]
+"#;
+        let mut resolver = RuleResolver::new();
+        resolver.load_from_yaml(yaml).unwrap();
+        let date = NaiveDate::from_ymd_opt(2025, 6, 1).unwrap();
+        let article = resolver
+            .resolve_article_by_output("override_here", "bedrag", Some(date))
+            .unwrap();
+        assert_eq!(article.number, "1");
     }
 
     #[test]

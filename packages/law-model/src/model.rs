@@ -1717,13 +1717,59 @@ impl ArticleBasedLaw {
             (Some(a), Some(b), Some(c), None) if valid(a) && valid(b) && valid(c))
     }
 
-    /// Find article that produces the given output.
-    ///
-    /// Uses allocation-free search via `Article::has_output()`.
+    /// Find the article a reference to `output_name` resolves to: the first of
+    /// [`Self::output_producers`]. An engine that has to refuse an ambiguous
+    /// reference reads `output_producers` itself.
     pub fn find_article_by_output(&self, output_name: &str) -> Option<&Article> {
-        self.articles
+        self.output_producers(output_name).into_iter().next()
+    }
+
+    /// The articles a reference to `output_name` by name can resolve to.
+    ///
+    /// Two kinds of article produce an output without being what a reference
+    /// to it means, and they are left out:
+    ///
+    /// - an article that delivers the output into another article of this
+    ///   law: one that replaces it (a same-law override, RFC-007) or fills the
+    ///   open term of that name (a same-law implementation, RFC-003). The
+    ///   general article is meant, and the override or implementation applies
+    ///   to it;
+    /// - a hook (RFC-007): it delivers its outputs by firing on a decision, so
+    ///   when an ordinary article produces the same name, that article is
+    ///   meant. Awir 16 (the estimated toetsingsinkomen, a hook on the
+    ///   voorschot) and Awir 8 (the toetsingsinkomen) both produce
+    ///   `toetsingsinkomen`; a reference by name means art. 8. A hook is a
+    ///   candidate only when no ordinary article produces the name, which is
+    ///   how Awb 6:8 reads the bezwaartermijn of Awb 6:7.
+    ///
+    /// More than one article in the result means the reference is ambiguous.
+    pub fn output_producers(&self, output_name: &str) -> Vec<&Article> {
+        let delivers_here = |article: &Article| {
+            article.get_overrides().is_some_and(|decls| {
+                decls
+                    .iter()
+                    .any(|d| d.law == self.id && d.output == output_name)
+            }) || article.get_implements().is_some_and(|decls| {
+                decls
+                    .iter()
+                    .any(|d| d.law == self.id && d.open_term == output_name)
+            })
+        };
+        let producers: Vec<&Article> = self
+            .articles
             .iter()
-            .find(|article| article.has_output(output_name))
+            .filter(|article| article.has_output(output_name) && !delivers_here(article))
+            .collect();
+        let ordinary: Vec<&Article> = producers
+            .iter()
+            .copied()
+            .filter(|article| article.get_hooks().is_none_or(|hooks| hooks.is_empty()))
+            .collect();
+        if ordinary.is_empty() {
+            producers
+        } else {
+            ordinary
+        }
     }
 
     /// Find article by article number
