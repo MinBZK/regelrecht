@@ -137,6 +137,8 @@ function togglePicked(fid) {
   const fns = new Set(next.get(owner) ?? []);
   if (fns.has(fid)) {
     fns.delete(fid);
+    // Adding it again must count as new, so the view centres on it again.
+    if (lastOpened.value === fid) lastOpened.value = null;
     if (selected.value.includes(fid)) selected.value = selected.value.filter((id) => id !== fid);
   } else {
     fns.add(fid);

@@ -119,15 +119,16 @@ sends every function and call once (`/api/calls`); the app takes the part it nee
 - **Callers, callees or both, to a depth** of 0 to 6 steps. Past 400 nodes the
   farthest are left out, and the app says how many.
 - **The functions behind a module's or crate's calls**: at those levels an
-  edge stands for many calls. Selecting a node lists, below the graph, the
-  functions in it that make or receive the calls drawn to and from it, busiest
-  first, with the call sites each way. "Add to graph" adds one of them inside
-  its node, which becomes a box: that function's own calls then run through
-  it, while the node's other calls stay on the node. The added function is
-  selected, so its paths and its source show; the same button takes it out
-  again, and "Remove all" takes out every added function. "Open its graph"
-  goes to that function's own call graph. Selecting never changes the graph
-  by itself.
+  edge stands for many calls. Selecting a node lists, in the panel beside the
+  graph, the functions in it that make or receive the calls drawn to and from
+  it, busiest first, with how many call sites come in and go out. The plus
+  button ("Add X to the graph") adds one of them inside its node, which
+  becomes a box: that function's own calls then run through it, while the
+  node's other calls stay on the node. The added function is selected, so its
+  paths and its source show; the minus button takes it out again, and "Remove
+  all" takes out every added function. The graph button ("Open the graph of
+  X") goes to that function's own call graph. Selecting never changes the
+  graph by itself.
 - **Selecting** a node shows its source in the source pane (a module or crate
   shows the top of its file); clearing the selection brings back the page's own.
 - **Highlighting**: click a node for the paths between it and what is open;
@@ -135,10 +136,10 @@ sends every function and call once (`/api/calls`); the app takes the part it nee
   node and call on some route from one to the other, cycles included.
   "All callers" and "All callees" highlight all
   callers or callees of the selection instead. "Hide the rest" hides what is
-  not highlighted. These choices appear below the graph once a node is
-  selected, with a hint there until then; below, so that the graph does not
-  move between the two clicks of a double-click. The highlighted nodes are
-  also listed as links under the graph, nearest first.
+  not highlighted. These choices appear in the panel beside the graph once a
+  node is selected, with a hint there until then; beside it, so that the graph
+  does not move between the two clicks of a double-click. The highlighted
+  nodes are also listed there as links, nearest first.
 - **Layout**: layered left to right (the default) or top to bottom (dagre:
   callers left of or above what they call; a rank too long to read at the opening zoom wraps
   into several rows or columns, and a node that would land inside a box it is
@@ -195,14 +196,19 @@ canvas; every control around it is a design-system component. Cytoscape cannot
 read CSS custom properties, so `src/lib/theme.js` resolves the design system's
 colour tokens (per crate a category palette, plus content, divider and accent
 colours) to plain `rgb()` values and builds the stylesheet from those, again
-when the colour scheme changes. `src/graph.css` gives the canvas's container a
-height, border and background (Cytoscape needs a definite size). The toolbars
+when the colour scheme changes. `src/graph.css` holds the custom CSS: the
+canvas's container gets a height that fits the window, a border and a
+background (Cytoscape needs a definite size); the panel beside it
+(`.graph-side`) the same height with its own scrolling, since the design
+system has no fixed-height scrolling column; and the legend's example graph
+(`.graph-legend`) a fixed height for its rows. The toolbars
 get English texts for their overflow button, which defaults to Dutch. Two
 Cytoscape behaviours are worked around in `CallGraph.vue`, each with a comment:
 it caches where its canvas is and never sees the design system's page scroll
 (it stops looking at a shadow root), so the cache is dropped before each
-pointer event; and the instance is put on its container element, so a browser
-test can find the nodes, which are pixels. The canvas is not keyboard
+pointer event; and the instance is put on its container element, so a test
+in a browser (run by hand, not part of the repository) can find the nodes,
+which are pixels. The canvas is not keyboard
 accessible; the list of highlighted nodes and the Details view carry the same
 calls as links.
 
@@ -225,7 +231,7 @@ loses the link.
   ranges, the call graph's levels, neighbourhoods, paths and highlighting, the
   Markdown rendering, adding functions to a module graph, wrapping long ranks), every layout run in
   headless Cytoscape (force-directed without boxes: headless, fcose fails on a
-  compound node, so the browser suite checks that case), and the whole
+  compound node, so that case was checked by hand in a browser), and the whole
   app against a mocked API with the canvas stubbed (`src/App.test.js`). The Markdown tests run under
   jsdom, because happy-dom 20 has a `NodeIterator` bug that makes DOMPurify drop
   elements.

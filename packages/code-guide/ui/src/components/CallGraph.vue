@@ -215,10 +215,8 @@ watch(() => props.elements, rebuild);
 // The options object is rebuilt on every navigation; only a different layout
 // or spacing is a reason to lay out again (new elements are laid out anyway).
 watch(() => props.layout.id, runLayout);
-watch([() => props.highlight, () => props.hideRest, () => props.selected], () => {
-  applyClasses();
-  // Hiding changes what is laid out; showing again keeps the positions.
-});
+// Highlighting and hiding change only classes: the nodes stay where they are.
+watch([() => props.highlight, () => props.hideRest, () => props.selected], applyClasses);
 
 defineExpose({
   /** Everything in view. */
@@ -226,13 +224,11 @@ defineExpose({
   relayout: runLayout,
   zoom: (factor) =>
     cy?.zoom({ level: cy.zoom() * factor, renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 } }),
-  /** Centres the view on a node without changing the zoom. */
-  centre: (id) => cy?.center(cy.getElementById(id)),
 });
 </script>
 
 <template>
   <nldd-banner v-if="failed" variant="critical" text="The graph could not be drawn" :supporting-text="failed" />
   <!-- Cytoscape needs a plain element with a definite size to draw into. -->
-  <div ref="container" class="call-graph-canvas" role="img" aria-label="Call graph; the same calls are listed under the graph and on the Details page"></div>
+  <div ref="container" class="call-graph-canvas" role="img" aria-label="Call graph; the same calls are listed beside it and on the Details page"></div>
 </template>

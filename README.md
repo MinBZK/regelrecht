@@ -32,6 +32,7 @@ Machine-readable Dutch law execution. regelrecht takes legal texts, encodes them
 | [packages/github/](packages/github/) | Shared GitHub REST client |
 | [packages/shared/](packages/shared/) | Shared domain types across crates |
 | [packages/arch-extract/](packages/arch-extract/) | Derives the architecture model from the code (`just arch-explore`) |
+| [packages/code-guide/](packages/code-guide/) | Guide to the Rust workspace and its call graph, from rust-analyzer (`just code-guide`) |
 | [packages/tui/](packages/tui/) | Terminal dashboard (Ratatui) |
 
 ### Frontends and sites

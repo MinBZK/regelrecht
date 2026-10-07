@@ -18,6 +18,8 @@ const container = ref(null);
 let cy = null;
 let scheme = null;
 let lib = null;
+let themeObserver = null;
+let resizer = null;
 
 const node = (id, x, y, text, extra = {}) => ({
   group: 'nodes',
@@ -111,8 +113,21 @@ onMounted(async () => {
     cy.autoungrabify(true);
     cy.autounselectify(true);
     draw();
+    // Like the graph: redrawn for a colour scheme set by the system or by the
+    // page, and fitted again when the panel changes size.
     scheme = globalThis.matchMedia?.('(prefers-color-scheme: dark)');
     scheme?.addEventListener?.('change', draw);
+    if (globalThis.MutationObserver) {
+      themeObserver = new MutationObserver(draw);
+      themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class', 'style'] });
+    }
+    if (globalThis.ResizeObserver) {
+      resizer = new ResizeObserver(() => {
+        cy?.resize();
+        draw();
+      });
+      resizer.observe(container.value);
+    }
   } catch {
     // Without a canvas the example cannot be drawn; its description still
     // says everything it shows, and the graph beside it reports the problem.
@@ -121,6 +136,8 @@ onMounted(async () => {
 });
 onBeforeUnmount(() => {
   scheme?.removeEventListener?.('change', draw);
+  themeObserver?.disconnect();
+  resizer?.disconnect();
   cy?.destroy();
   cy = null;
 });
