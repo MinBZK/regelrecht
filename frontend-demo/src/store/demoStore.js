@@ -344,7 +344,10 @@ function recordDecision(c, stage) {
     const { event, shape } = found;
     // Wat de cel bij het besluit zal teruglezen (alleen kijken), en wat de
     // wet daarop beslist, vóór de cel het vastlegt.
-    const inputs = chrono.wasmCell.inputsFor(engine.value, event, c.applicationGramId, state.referenceDate);
+    // Eén moment voor het lezen en het vastleggen: de cel leest de kroniek
+    // zoals die dan geldt.
+    const now = momentOn(state.referenceDate);
+    const inputs = chrono.wasmCell.inputsFor(engine.value, event, c.applicationGramId, now);
     const computed = evaluate(lawEntry, Object.fromEntries(Object.entries(inputs).map(([k, i]) => [k, i.value])));
     if (!computed.ok) throw new Error(computed.error);
     const verdict = verdictOf(computed.outputs);
@@ -369,7 +372,7 @@ function recordDecision(c, stage) {
       engine.value,
       event,
       { [required[0][0]]: c.applicationGramId },
-      momentOn(state.referenceDate),
+      now,
     );
     c.decisionGrams = { ...(c.decisionGrams ?? {}), [event]: gram.id };
     syncGrams();

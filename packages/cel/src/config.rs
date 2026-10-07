@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 use crate::error::{setup, Result};
+use crate::extension::PeriodUnit;
 
 /// `cell.yaml`.
 #[derive(Debug, Clone, Deserialize)]
@@ -111,14 +112,26 @@ pub struct Filter {
     pub type_: Option<String>,
     #[serde(default)]
     pub subtype: Option<String>,
+    /// The event of the gram (its name in the stream).
+    #[serde(default)]
+    pub event: Option<String>,
+    /// The stage of the procedure the gram belongs to.
+    #[serde(default)]
+    pub stage: Option<String>,
     #[serde(default)]
     pub root: Option<String>,
 }
 
+/// Which of the grams that pass the filter the derivations read, in the
+/// order of the chronicle at the moment of reading (`effective_at`, then
+/// `recorded_at`; RFC-044).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Pick {
+    /// The last one: the state at the moment of reading. None is an error.
     Latest,
+    /// All of them, for a `sum`. None is a sum of nothing: zero.
+    All,
 }
 
 /// How one parameter follows from the picked gram.
@@ -143,6 +156,19 @@ pub enum Derivation {
         #[serde(default)]
         legal_basis: Vec<String>,
     },
+    /// The sum of a numeric field over every picked gram (`pick: all`).
+    Sum {
+        sum: String,
+        #[serde(default)]
+        legal_basis: Vec<String>,
+    },
+    /// The value of the period the gram concerns, if it is of this unit
+    /// (`period: year` gives the year).
+    Period {
+        period: PeriodUnit,
+        #[serde(default)]
+        legal_basis: Vec<String>,
+    },
 }
 
 impl Derivation {
@@ -151,8 +177,14 @@ impl Derivation {
         match self {
             Derivation::Field { field, .. } => Some(field),
             Derivation::Filled { filled, .. } => Some(filled),
-            Derivation::Moment { .. } => None,
+            Derivation::Sum { sum, .. } => Some(sum),
+            Derivation::Moment { .. } | Derivation::Period { .. } => None,
         }
+    }
+
+    /// Whether it reads many grams (`sum`) rather than one.
+    fn over_many(&self) -> bool {
+        matches!(self, Derivation::Sum { .. })
     }
 }
 
@@ -231,6 +263,22 @@ impl CellConfig {
                 l.lexostatus_definitions
             }
         };
+        // `pick: all` reads many grams and only sums them; `pick: latest`
+        // reads one and does not sum it.
+        for l in &lexostatuses {
+            let all = l.reduction.pick == Pick::All;
+            if let Some((name, _)) = l
+                .reduction
+                .derivations
+                .iter()
+                .find(|(_, d)| d.over_many() != all)
+            {
+                return Err(setup(format!(
+                    "lexostatus '{}', derivation '{name}': `sum` goes with `pick: all`, and `pick: all` only with `sum`",
+                    l.name
+                )));
+            }
+        }
         for s in &streams {
             for e in &s.events {
                 for name in &e.reads {

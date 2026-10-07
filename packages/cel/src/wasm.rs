@@ -97,14 +97,20 @@ impl WasmCell {
         to_js(&gram)
     }
 
-    /// Read a lexostatus: the chronicle reduced to parameters.
-    pub fn read(&self, lexostatus: &str, inputs: JsValue) -> Result<JsValue, JsValue> {
+    /// Read a lexostatus: the chronicle reduced to parameters, as it holds
+    /// at `asOf` (RFC 3339): a gram that holds only later does not count.
+    pub fn read(&self, lexostatus: &str, inputs: JsValue, as_of: &str) -> Result<JsValue, JsValue> {
         let inputs: serde_json::Map<String, serde_json::Value> = from_js(inputs)?;
-        to_js(&self.cell.read(lexostatus, &inputs).map_err(error)?)
+        to_js(
+            &self
+                .cell
+                .read(lexostatus, &inputs, moment(as_of)?)
+                .map_err(error)?,
+        )
     }
 
     /// The parameters of the decision `event` on the application `root`, as
-    /// the cell reads them from its chronicle on `on` (`YYYY-MM-DD`):
+    /// the cell reads them from its chronicle at `now` (RFC 3339):
     /// `{name: {value, provenance}}`, ready for `decide`.
     #[wasm_bindgen(js_name = inputsFor)]
     pub fn inputs_for(
@@ -112,11 +118,11 @@ impl WasmCell {
         engine: &WasmEngine,
         event: &str,
         root: &str,
-        on: &str,
+        now: &str,
     ) -> Result<JsValue, JsValue> {
         let inputs = self
             .cell
-            .decision_inputs(engine.service(), event, root, day(on)?)
+            .decision_inputs(engine.service(), event, root, moment(now)?)
             .map_err(error)?;
         to_js(&inputs)
     }
@@ -151,6 +157,27 @@ impl WasmCell {
             )
             .map_err(error)?;
         to_js(&gram)
+    }
+
+    /// Execute the execution `event` (an executogram) for the case `root` on
+    /// `on` (`YYYY-MM-DD`), recorded at `now` (RFC 3339): the gram if the
+    /// law says one arises, otherwise `null`. See `Cell::execute`.
+    pub fn execute(
+        &mut self,
+        engine: &WasmEngine,
+        event: &str,
+        root: &str,
+        on: &str,
+        now: &str,
+    ) -> Result<JsValue, JsValue> {
+        let gram = self
+            .cell
+            .execute(engine.service(), event, root, day(on)?, moment(now)?)
+            .map_err(error)?;
+        match gram {
+            Some(gram) => to_js(&gram),
+            None => Ok(JsValue::NULL),
+        }
     }
 
     /// Every gram, to keep between sessions and to show.

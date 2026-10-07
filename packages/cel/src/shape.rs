@@ -20,7 +20,8 @@ use serde::Serialize;
 
 use crate::error::{setup, Result};
 use crate::extension::{
-    self, EffectiveAt, Establishment, Extends, Fields, PeriodParameter, Reference,
+    self, EffectiveAt, Establishment, ExecutedOn, Extends, Fields, PeriodParameter, Reference,
+    Until,
 };
 
 /// One field of a gram, as the law declares it.
@@ -60,6 +61,15 @@ pub struct Shape {
     pub decision_type: Option<String>,
     /// The outputs of the establishing article.
     pub outputs: Vec<String>,
+    /// The parameters of the establishing article.
+    pub parameters: Vec<String>,
+    /// For an execution: the parameter the day goes into (see
+    /// [`crate::Cell::execute`]).
+    pub executed_on: Option<ExecutedOn>,
+    /// For an execution: the boolean output that says whether a gram arises.
+    pub record_when: Option<String>,
+    /// For an execution: the stage whose gram ends it.
+    pub until: Option<Until>,
 }
 
 impl Shape {
@@ -137,6 +147,37 @@ fn declared_parameters(article: &Article) -> Vec<Parameter> {
         .unwrap_or_default()
 }
 
+/// Derive the shape of `event` from the law as it applies on `day`, or, if
+/// the version in force does not establish it yet, from the first later
+/// version that does: the law already enacted for a coming period. A
+/// voorschot is granted before the year it concerns begins (Awir 16 lid 2,
+/// 22 lid 1), under the law of that year.
+pub fn derive_for(
+    service: &LawExecutionService,
+    event: &str,
+    establishes: &str,
+    day: NaiveDate,
+) -> Result<Shape> {
+    let first = match derive(service, event, establishes, day) {
+        Ok(shape) => return Ok(shape),
+        Err(e) => e,
+    };
+    let (law_id, _) = split_reference(establishes)?;
+    let mut later: Vec<NaiveDate> = service
+        .resolver()
+        .all_law_versions()
+        .filter(|l| l.id == law_id)
+        .filter_map(|l| l.valid_from.as_deref())
+        .filter_map(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
+        .filter(|d| *d > day)
+        .collect();
+    later.sort();
+    later
+        .into_iter()
+        .find_map(|d| derive(service, event, establishes, d).ok())
+        .ok_or(first)
+}
+
 /// Derive the shape of `event`, which `establishes` establishes, from the
 /// law as it applies on `day`.
 pub fn derive(
@@ -169,7 +210,20 @@ pub fn derive(
         legal_character: produces.and_then(|p| p.legal_character.clone()),
         decision_type: produces.and_then(|p| p.decision_type.clone()),
         outputs: outputs(article),
+        parameters: declared_parameters(article)
+            .into_iter()
+            .map(|p| p.name)
+            .collect(),
+        executed_on: entry.executed_on.clone(),
+        record_when: entry.record_when.clone(),
+        until: entry.until.clone(),
     };
+    for (name, reference) in &shape.refers_to {
+        reference
+            .check(name)
+            .map_err(|e| setup(format!("{establishes}: {e}")))?;
+    }
+    check_execution(&shape, article)?;
     match produces.and_then(|p| p.submission.as_ref()) {
         Some(submission) => {
             // What the application is a TOETS of is not what the gram is:
@@ -200,8 +254,10 @@ pub fn derive(
             // A decision taken at a stage of its procedure is the article
             // with the hooks that fire at that stage: Awb 3:46 and 6:7 on
             // every besluit, Awir 16 on the voorschot. What they produce is
-            // part of the decision too.
-            if let Some(stage) = &entry.stage {
+            // part of the decision too, unless the law names the fields one
+            // by one.
+            let named = matches!(entry.fields, Some(Fields::Named(_)));
+            if let (Some(stage), false) = (&entry.stage, named) {
                 let at = stage_inputs(service, &shape, stage, day)?;
                 for part in at.articles.iter().filter(|a| a.hook.is_some()) {
                     let reference = format!("{}#{}", part.law_id, part.article_number);
@@ -214,6 +270,48 @@ pub fn derive(
         }
     }
     Ok(shape)
+}
+
+/// An execution says on which parameter its day goes, and when a gram
+/// arises: a parameter of type date, and a boolean output of the article.
+fn check_execution(shape: &Shape, article: &Article) -> Result<()> {
+    let at = |what: String| setup(format!("{}: {what}", shape.establishes));
+    if let Some(on) = &shape.executed_on {
+        let declared = declared_parameters(article);
+        let p = declared
+            .iter()
+            .find(|p| p.name == on.parameter)
+            .ok_or_else(|| {
+                at(format!(
+                    "executed_on: the article has no parameter '{}'",
+                    on.parameter
+                ))
+            })?;
+        if p.param_type != ParameterType::Date {
+            return Err(at(format!(
+                "executed_on: parameter '{}' is not a date",
+                on.parameter
+            )));
+        }
+    }
+    if let Some(when) = &shape.record_when {
+        let declared = declared_outputs(article);
+        let o = declared
+            .iter()
+            .find(|o| &o.name == when)
+            .ok_or_else(|| at(format!("record_when: the article has no output '{when}'")))?;
+        if o.output_type != ParameterType::Boolean {
+            return Err(at(format!("record_when: output '{when}' is not a boolean")));
+        }
+    }
+    let execution = shape.executed_on.is_some() || shape.record_when.is_some();
+    if execution && (shape.executed_on.is_none() || shape.stage.is_some()) {
+        return Err(at(format!(
+            "'{}' is an execution (record_when): it needs executed_on, and is taken at no stage",
+            shape.event
+        )));
+    }
+    Ok(())
 }
 
 /// What executing the decision `shape` describes at `stage` of its procedure
@@ -384,7 +482,7 @@ fn part_fields(
         declared_by: reference.to_string(),
         fixed: None,
     };
-    Ok(match entry.fields {
+    Ok(match &entry.fields {
         None => Vec::new(),
         // Only what the applicant or the channel supplies is content of the
         // application.
@@ -404,6 +502,21 @@ fn part_fields(
             .iter()
             .map(|o| def(&o.name, Some(o.output_type), vec![reference.to_string()]))
             .collect(),
+        Some(Fields::Named(names)) => names
+            .iter()
+            .map(|name| {
+                let o = outputs.iter().find(|o| &o.name == name).ok_or_else(|| {
+                    setup(format!(
+                        "{reference}: fields: the article has no output '{name}'"
+                    ))
+                })?;
+                Ok(def(
+                    &o.name,
+                    Some(o.output_type),
+                    vec![reference.to_string()],
+                ))
+            })
+            .collect::<Result<_>>()?,
     })
 }
 

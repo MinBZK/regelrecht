@@ -12,6 +12,13 @@
 //!       - extends: {submission: AANVRAAG} # a hook on every application
 //!         effective_at:
 //!           legal_basis: [algemene_wet_bestuursrecht#4:13 lid 1]
+//!       - event: termijn_betaald         # an execution, on a day
+//!         type: executogram
+//!         refers_to: {voorschot: {stage: VOORSCHOT, required: true}}
+//!         fields: [termijnbedrag]
+//!         executed_on: {parameter: maand, once_per: month}
+//!         record_when: termijn_in_maand
+//!         until: {stage: TOEKENNING}
 //! ```
 
 use std::collections::BTreeMap;
@@ -63,6 +70,44 @@ pub struct Establishment {
     /// cell applies the law of that period, not of the day it records.
     #[serde(default)]
     pub period: Option<PeriodParameter>,
+    /// For an execution (an executogram): the parameter the day it is
+    /// executed on goes into, and how often it may arise.
+    #[serde(default)]
+    pub executed_on: Option<ExecutedOn>,
+    /// For an execution: the boolean output of the article that says whether
+    /// the fact arises. The cell executes the article and records a gram only
+    /// if it is true: the law says when a gram arises, not the cell.
+    #[serde(default)]
+    pub record_when: Option<String>,
+    /// For an execution: no gram arises once the case has a gram of this
+    /// stage (what follows from it is derived, not recorded).
+    #[serde(default)]
+    pub until: Option<Until>,
+}
+
+/// The day an execution is executed on: the parameter of the article it goes
+/// into, and how often the fact may arise per reference.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExecutedOn {
+    pub parameter: String,
+    #[serde(default)]
+    pub once_per: Option<Every>,
+}
+
+/// How often an execution may arise for the gram it refers to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Every {
+    /// Once per calendar month.
+    Month,
+}
+
+/// The stage whose gram ends an execution.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Until {
+    pub stage: String,
 }
 
 /// The period a fact concerns: the one the parameter `parameter` gives, in
@@ -82,13 +127,49 @@ pub enum PeriodUnit {
     Year,
 }
 
-/// A reference to another gram: the article that establishes it.
+/// A reference to another gram: the article that establishes it (`to`), or
+/// the stage of the procedure it belongs to (`stage`), so a regulation can
+/// refer to "the voorschot" without naming the law that grants it. One of
+/// the two.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Reference {
-    pub to: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stage: Option<String>,
     #[serde(default)]
     pub required: bool,
+}
+
+impl Reference {
+    /// Whether `gram` is what the reference refers to.
+    pub fn admits(&self, gram: &crate::chronicle::Gram) -> bool {
+        match (&self.to, &self.stage) {
+            (Some(to), None) => &gram.establishes == to,
+            (None, Some(stage)) => gram.stage.as_deref() == Some(stage.as_str()),
+            _ => false,
+        }
+    }
+
+    /// What it refers to, as a person reads it.
+    pub fn target(&self) -> String {
+        match (&self.to, &self.stage) {
+            (Some(to), None) => to.clone(),
+            (None, Some(stage)) => format!("stage {stage}"),
+            _ => "nothing (it names both `to` and `stage`, or neither)".to_string(),
+        }
+    }
+
+    /// One of `to` and `stage`.
+    pub fn check(&self, name: &str) -> Result<(), String> {
+        if self.to.is_some() == self.stage.is_some() {
+            return Err(format!(
+                "refers_to.{name}: names `to` or `stage`, one of the two"
+            ));
+        }
+        Ok(())
+    }
 }
 
 /// The provision that makes the moment of recording the moment that counts
@@ -100,14 +181,36 @@ pub struct EffectiveAt {
 }
 
 /// The fields a part contributes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Fields {
     /// What the applicant or the channel supplies (origin BELANGHEBBENDE or
     /// KANAAL).
     Parameters,
     /// The outputs of the article.
     Outputs,
+    /// These outputs of the article (a list of names).
+    Named(Vec<String>),
+}
+
+impl<'de> Deserialize<'de> for Fields {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Raw {
+            Kind(String),
+            Names(Vec<String>),
+        }
+        match Raw::deserialize(d)? {
+            Raw::Kind(kind) => match kind.as_str() {
+                "parameters" => Ok(Fields::Parameters),
+                "outputs" => Ok(Fields::Outputs),
+                other => Err(serde::de::Error::custom(format!(
+                    "fields: '{other}' is not `parameters`, `outputs` or a list of outputs"
+                ))),
+            },
+            Raw::Names(names) => Ok(Fields::Named(names)),
+        }
+    }
 }
 
 /// The chronolex block of an article, if it has one. A block this crate

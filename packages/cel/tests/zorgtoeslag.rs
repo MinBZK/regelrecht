@@ -247,7 +247,11 @@ fn toeslagen_decides_on_the_application_and_records_the_decision() {
 
     // 1. The cell reads the application back from its chronicle.
     let read = cell
-        .read("aanvraag", &object(json!({"root": application.id})))
+        .read(
+            "aanvraag",
+            &object(json!({"root": application.id})),
+            received,
+        )
         .unwrap();
     assert_eq!(
         serde_json::Value::Object(read.clone()),
@@ -286,12 +290,7 @@ fn toeslagen_decides_on_the_application_and_records_the_decision() {
     // voorschot) and the berekeningsjaar it concerns. `decision_inputs` shows
     // what `decide` will read.
     let inputs = cell
-        .decision_inputs(
-            &service,
-            "zorgtoeslag_toegekend",
-            &application.id,
-            decided.date_naive(),
-        )
+        .decision_inputs(&service, "zorgtoeslag_toegekend", &application.id, decided)
         .unwrap_or_else(|e| panic!("{e}"));
     let from_case = |name: &str| {
         (
@@ -424,7 +423,11 @@ fn toeslagen_decides_on_the_application_and_records_the_decision() {
     drop(cell);
     let cell = self::cell(&service, data.path(), decided);
     let read_again = cell
-        .read("aanvraag", &object(json!({"root": application.id})))
+        .read(
+            "aanvraag",
+            &object(json!({"root": application.id})),
+            decided,
+        )
         .unwrap();
     assert_eq!(read_again, read);
 }
@@ -664,7 +667,7 @@ fn a_chronicle_in_memory_reads_back_what_it_was_given() {
     )
     .unwrap();
     let read = again
-        .read("aanvraag", &object(json!({"root": gram.id})))
+        .read("aanvraag", &object(json!({"root": gram.id})), received)
         .unwrap();
     assert_eq!(read["bsn"], BSN);
 
@@ -712,12 +715,7 @@ fn the_voorschot_rests_on_the_estimate_and_the_toekenning_on_the_income() {
     // The voorschot asks the estimate; the toekenning does not.
     let decided = at("2025-04-15T09:00:00+02:00");
     let voorschot_inputs = cell
-        .decision_inputs(
-            &service,
-            "voorschot_verleend",
-            &application.id,
-            decided.date_naive(),
-        )
+        .decision_inputs(&service, "voorschot_verleend", &application.id, decided)
         .unwrap();
     assert_eq!(
         voorschot_inputs.keys().collect::<Vec<_>>(),
@@ -728,12 +726,7 @@ fn the_voorschot_rests_on_the_estimate_and_the_toekenning_on_the_income() {
         ]
     );
     let toekenning_inputs = cell
-        .decision_inputs(
-            &service,
-            "zorgtoeslag_toegekend",
-            &application.id,
-            decided.date_naive(),
-        )
+        .decision_inputs(&service, "zorgtoeslag_toegekend", &application.id, decided)
         .unwrap();
     assert!(!toekenning_inputs.contains_key("vermoedelijk_toetsingsinkomen"));
 
@@ -850,7 +843,7 @@ fn a_decision_reads_several_lexostatuses() {
         .record_submission(&service, "aanvraag_ontvangen", &application(), received)
         .unwrap();
     let inputs = cell
-        .decision_inputs(&service, "voorschot_verleend", &aanvraag.id, day)
+        .decision_inputs(&service, "voorschot_verleend", &aanvraag.id, received)
         .unwrap();
     assert_eq!(inputs["bsn"].provenance["lexostatus"], "aanvraag");
     assert_eq!(
@@ -867,7 +860,7 @@ fn a_decision_reads_several_lexostatuses() {
         .record_submission(&service, "aanvraag_ontvangen", &application(), received)
         .unwrap();
     let e = cell
-        .decision_inputs(&service, "voorschot_verleend", &aanvraag.id, day)
+        .decision_inputs(&service, "voorschot_verleend", &aanvraag.id, received)
         .unwrap_err();
     assert!(matches!(e, Error::Setup(_)), "{e}");
     assert!(e.to_string().contains("'bsn'"), "{e}");
