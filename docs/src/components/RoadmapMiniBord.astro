@@ -18,9 +18,15 @@ import { BELEGGING_STANDEN, getOnderzoek, type MiniTicket } from '~/lib/roadmap'
 
 interface Props {
   tickets: MiniTicket[];
+  /**
+   * Als dit gezet is, zijn de tickets knoppen die het werkpakket openen in
+   * het paneel van RoadmapWerkpakketPaneel; het script daar zoekt op
+   * `data-open-werkpakket`.
+   */
+  werkpakketId?: string;
 }
 
-const { tickets } = Astro.props;
+const { tickets, werkpakketId } = Astro.props;
 
 const lanes = BELEGGING_STANDEN.map((stand) => ({
   ...stand,
@@ -41,7 +47,12 @@ const lanes = BELEGGING_STANDEN.map((stand) => ({
             lane.tickets.map((ticket) => {
               const status = getOnderzoek(ticket.status);
               return (
-                <nldd-card background={lane.id === 'opgepakt' ? 'tinted' : undefined}>
+                <nldd-card
+                  background={lane.id === 'opgepakt' ? 'tinted' : undefined}
+                  button={werkpakketId ? true : undefined}
+                  accessible-label={werkpakketId ? `${ticket.tekst}, werkpakket openen` : undefined}
+                  data-open-werkpakket={werkpakketId}
+                >
                   <nldd-container padding="8" gap="4">
                     <nldd-text size="sm">{ticket.tekst}</nldd-text>
                     {(status || !ticket.eigen || ticket.onder) && (

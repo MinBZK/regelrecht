@@ -1,0 +1,181 @@
+---
+/*
+ * Eén paneel per pagina waarin een werkpakket opent, over de helft van het
+ * scherm, zonder van pagina te wisselen. Op het bord opent het via een
+ * vraagticket in het mini-bord, op de vragenpagina via het werkpakketveld op
+ * een vraagkaart; beide dragen `data-open-werkpakket="<id>"`.
+ *
+ * Alle werkpakketten staan bij de build in het paneel, verborgen; het script
+ * onderaan toont er één en opent de sheet. Zo is er geen tweede bron voor de
+ * inhoud en niets dat nageladen hoeft te worden. De volledige pagina van het
+ * werkpakket is in het paneel één link verder.
+ *
+ * Wat erin staat is de kern van de werkpakketpagina: de standen als tags, de
+ * toelichting, de onderzoeksvragen op het mini-bord, de RFC's en de
+ * afhankelijkheden. Geen koppen: de titelbalk van de sheet draagt de kop en
+ * staat in een shadow root, en een h3 hier zou voor check-heading-order een
+ * sprong vanaf de h1 van de pagina zijn. De onderdelen zijn gelabelde blokken,
+ * zoals de kerngegevens op de werkpakketpagina.
+ */
+import RoadmapMiniBord from '~/components/RoadmapMiniBord.astro';
+import { renderMarkdown } from '~/lib/roadmap-markdown';
+import {
+  getBelegging,
+  getOnderzoek,
+  getBouw,
+  werkpakketTags,
+  werkpakketTickets,
+  kaartOndertitel,
+  sindsTekst,
+  rfcVerwijzingen,
+  type WerkpakketData,
+} from '~/lib/roadmap';
+
+interface Props {
+  werkpakketten: { data: WerkpakketData }[];
+}
+
+const { werkpakketten } = Astro.props;
+const titelVan = new Map(werkpakketten.map((w) => [w.data.id, w.data.titel]));
+
+const panelen = werkpakketten.map(({ data }) => {
+  const belegging = getBelegging(data.belegging.stand);
+  const onderzoek = getOnderzoek(data.onderzoek);
+  const bouw = getBouw(data.bouw);
+  return {
+    data,
+    ondertitel: kaartOndertitel(data),
+    standen: [
+      belegging && {
+        color: belegging.tagColor,
+        text:
+          belegging.label +
+          (data.belegging.sinds ? `, sinds ${sindsTekst(data.belegging.sinds)}` : ''),
+        icon: belegging.id === 'klaar' ? 'done' : belegging.id === 'opgepakt' ? 'user' : undefined,
+      },
+      onderzoek && { color: onderzoek.tagColor, text: `Onderzoek: ${onderzoek.label.toLowerCase()}` },
+      bouw && { color: bouw.tagColor, text: bouw.label },
+    ].filter(Boolean) as { color: string; text: string; icon?: string }[],
+    tags: werkpakketTags(data),
+    toelichting: renderMarkdown(data.toelichting),
+    tickets: werkpakketTickets(data),
+    rfcs: rfcVerwijzingen(data.rfcs),
+    wachtOp: data.afhankelijkVan.map((id) => ({ id, titel: titelVan.get(id) ?? id })),
+  };
+});
+---
+
+<nldd-sheet placement="right" width="50vw" accessible-label="Werkpakket" data-werkpakket-sheet>
+  <nldd-top-title-bar text="Werkpakket" heading-level="2" back-text="" dismiss-text="Sluiten" />
+  <nldd-container padding="24" sm-padding="16">
+    {
+      panelen.map((p) => (
+        <nldd-container gap="20" data-werkpakket-paneel={p.data.id} hidden>
+          <nldd-container gap="4">
+            <nldd-title size="3">
+              <p>{p.data.titel}</p>
+            </nldd-title>
+            <nldd-text size="sm" color="secondary">{p.ondertitel}</nldd-text>
+          </nldd-container>
+
+          {(p.standen.length > 0 || p.tags.length > 0) && (
+            <nldd-container layout="wrap" gap="4" vertical-alignment="center">
+              {p.standen.map((s) => (
+                <nldd-tag size="sm" color={s.color} text={s.text} icon={s.icon} />
+              ))}
+              {p.tags.map((tag) => (
+                <nldd-tag
+                  size="sm"
+                  color={tag.color}
+                  text={tag.text}
+                  icon={tag.icon}
+                  accessible-label={tag.label}
+                />
+              ))}
+            </nldd-container>
+          )}
+
+          {p.toelichting && (
+            <nldd-container gap="4">
+              <nldd-text size="xs" weight="medium" color="secondary">Toelichting</nldd-text>
+              <nldd-rich-text>
+                <Fragment set:html={p.toelichting} />
+              </nldd-rich-text>
+            </nldd-container>
+          )}
+
+          <nldd-container gap="4">
+            <nldd-text size="xs" weight="medium" color="secondary">Onderzoeksvragen</nldd-text>
+            <RoadmapMiniBord tickets={p.tickets} />
+          </nldd-container>
+
+          {p.rfcs.length > 0 && (
+            <nldd-container gap="4">
+              <nldd-text size="xs" weight="medium" color="secondary">Ontwerp en implementatie</nldd-text>
+              <nldd-list type="navigation" appearance="box-tinted">
+                {p.rfcs.map((rfc) => (
+                  <nldd-list-item href={rfc.link}>
+                    <nldd-text-cell overline={rfc.id} text={rfc.title} supporting-text={rfc.implementation} width="full" />
+                    <nldd-spacer-cell />
+                    <nldd-icon-cell size="20" icon="chevron-right" />
+                  </nldd-list-item>
+                ))}
+              </nldd-list>
+            </nldd-container>
+          )}
+
+          {p.wachtOp.length > 0 && (
+            <nldd-container gap="4">
+              <nldd-text size="xs" weight="medium" color="secondary">Kan pas beginnen als dit opgeleverd is</nldd-text>
+              <nldd-container layout="wrap" gap="4">
+                {p.wachtOp.map((w) => (
+                  <nldd-tag size="sm" color="neutral" text={w.titel} />
+                ))}
+              </nldd-container>
+            </nldd-container>
+          )}
+
+          <nldd-link
+            size="sm"
+            href={`/roadmap/werkpakket/${p.data.id}`}
+            end-icon="arrow-right"
+            text="Volledige pagina van dit werkpakket"
+          />
+        </nldd-container>
+      ))
+    }
+  </nldd-container>
+</nldd-sheet>
+
+{/*
+  Een element met `data-open-werkpakket` opent het paneel van dat werkpakket.
+  Eén luisteraar op het document, zodat ook een ticket binnen een uitgeklapte
+  rij meedoet. Gebonden op astro:page-load, om dezelfde reden als het
+  zoekscript in RoadmapKop.astro; de vlag voorkomt dat een tweede page-load
+  een tweede luisteraar op hetzelfde document zet.
+*/}
+<script>
+  let gebonden = false;
+
+  function wirePaneel() {
+    if (gebonden) return;
+    gebonden = true;
+    document.addEventListener('click', (event) => {
+      const knop = (event.target as HTMLElement).closest<HTMLElement>(
+        '[data-open-werkpakket]',
+      );
+      if (!knop) return;
+      const sheet = document.querySelector<HTMLElement & { show(): void }>(
+        'nldd-sheet[data-werkpakket-sheet]',
+      );
+      if (!sheet) return;
+      const id = knop.dataset.openWerkpakket;
+      for (const paneel of sheet.querySelectorAll<HTMLElement>('[data-werkpakket-paneel]')) {
+        paneel.hidden = paneel.dataset.werkpakketPaneel !== id;
+      }
+      sheet.show();
+    });
+  }
+
+  document.addEventListener('astro:page-load', wirePaneel);
+</script>

@@ -22,6 +22,7 @@ import RoadmapSectie from '~/components/RoadmapSectie.astro';
 import RoadmapKop from '~/components/RoadmapKop.astro';
 import RoadmapVraagRij from '~/components/RoadmapVraagRij.astro';
 import RoadmapUitklap from '~/components/RoadmapUitklap.astro';
+import RoadmapWerkpakketPaneel from '~/components/RoadmapWerkpakketPaneel.astro';
 import {
   vragenOpVolgorde,
   verwantIndex,
@@ -107,4 +108,5 @@ const pathname = '/roadmap/onderzoeksvragen';
     </nldd-container>
   </RoadmapSectie>
   <RoadmapUitklap />
+  <RoadmapWerkpakketPaneel werkpakketten={werkpakketten} />
 </Base>

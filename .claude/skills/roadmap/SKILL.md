@@ -270,6 +270,12 @@ de titel om ertussen te wisselen:
   (ook als dat nog leeg is); een deelvraag zonder eigen status volgt zijn
   vraag.
 
+Een werkpakket opent op beide pagina's in een paneel over de helft van het
+scherm, zonder paginawissel: op het bord via een vraagticket in het
+mini-bord, op de vragenpagina via het werkpakketveld op een kaart
+(`RoadmapWerkpakketPaneel.astro`, met de toelichting, de vragen op het
+mini-bord, de RFC's en een link naar de volledige pagina).
+
 Beide borden zijn een `nldd-list` van het type `tree` per kaart
 (`RoadmapWerkpakketRij.astro`, `RoadmapVraagRij.astro`) met het bordje in
 `RoadmapMiniBord.astro`; `RoadmapUitklap.astro` zet `expanded` om bij een

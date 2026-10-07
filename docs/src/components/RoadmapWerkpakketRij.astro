@@ -16,7 +16,9 @@
  * hier hetzelfde uitziet als daar.
  *
  * Onder de rij staat een mini-kanbanbord (RoadmapMiniBord) met de vragen in
- * de lanes vrij, opgepakt en klaar, zoals vraagLane() ze afleidt. Op de
+ * de lanes vrij, opgepakt en klaar, zoals vraagLane() ze afleidt. Een druk op
+ * een vraagticket opent het werkpakket in een paneel over de helft van het
+ * scherm (RoadmapWerkpakketPaneel), zonder van pagina te wisselen. Op de
  * vragenpagina zijn dezelfde vragen te filteren en uit te klappen tot hun
  * deelvragen; hier zie je ze per werkpakket.
  */
@@ -31,8 +33,7 @@ import {
   sindsTekst,
   zoektekst,
   onderzoeksvraagLijst,
-  vraagLane,
-  type MiniTicket,
+  werkpakketTickets,
   type WerkpakketData,
 } from '~/lib/roadmap';
 
@@ -47,26 +48,8 @@ const tags = werkpakketTags(data);
 const rfcs = rfcTekst(data);
 const vragen = onderzoeksvraagLijst(data.onderzoeksvragen);
 
-// De vragen als tickets voor het mini-bord: de stand uit de eigen status, of
-// uit de belegging van dit werkpakket.
-const tickets: MiniTicket[] = vragen.map((vraag) => {
-  const { lane, eigen } = vraagLane(vraag, data);
-  return {
-    tekst: vraag.vraag,
-    lane,
-    eigen,
-    bron: 'werkpakket',
-    status: vraag.status,
-    onder:
-      [
-        vraag.paper && `§ ${vraag.paper.nummer}`,
-        vraag.deelvragen.length > 0 &&
-          `${vraag.deelvragen.length} ${vraag.deelvragen.length === 1 ? 'deelvraag' : 'deelvragen'}`,
-      ]
-        .filter(Boolean)
-        .join(' · ') || undefined,
-  };
-});
+// De vragen als tickets voor het mini-bord; zie werkpakketTickets().
+const tickets = werkpakketTickets(data);
 
 const supporting = [
   kaartOndertitel(data),
@@ -122,7 +105,7 @@ const supporting = [
   <nldd-list-item slot="children">
     <nldd-spacer-cell />
     <nldd-cell width="full" vertical-alignment="top">
-      <RoadmapMiniBord tickets={tickets} />
+      <RoadmapMiniBord tickets={tickets} werkpakketId={data.id} />
     </nldd-cell>
   </nldd-list-item>
 </nldd-list-item>

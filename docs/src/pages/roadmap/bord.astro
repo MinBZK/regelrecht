@@ -26,6 +26,7 @@ import RoadmapSectie from '~/components/RoadmapSectie.astro';
 import RoadmapKop from '~/components/RoadmapKop.astro';
 import RoadmapWerkpakketRij from '~/components/RoadmapWerkpakketRij.astro';
 import RoadmapUitklap from '~/components/RoadmapUitklap.astro';
+import RoadmapWerkpakketPaneel from '~/components/RoadmapWerkpakketPaneel.astro';
 import {
   werkpakketVolgorde,
   assertReferencesResolve,
@@ -71,4 +72,5 @@ const pathname = '/roadmap/bord';
     </nldd-container>
   </RoadmapSectie>
   <RoadmapUitklap />
+  <RoadmapWerkpakketPaneel werkpakketten={werkpakketten} />
 </Base>

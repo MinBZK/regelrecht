@@ -42,7 +42,6 @@ const belegging = getBelegging(werkpakket.belegging.stand);
 const tags = werkpakketTags(werkpakket);
 const rfcs = rfcTekst(werkpakket);
 const verwant = vraag.id ? (verwanten.get(vraag.id) ?? []) : [];
-const werkpakketHref = `/roadmap/werkpakket/${werkpakket.id}${vraag.anker ? `#${vraag.anker}` : ''}`;
 
 // De papersectie als kopregel boven de vraag, want daar is de lijst op
 // gesorteerd. Zonder sectie zegt de kopregel dat.
@@ -71,8 +70,10 @@ const tickets: MiniTicket[] = vraag.deelvragen.map((d) => {
   data-zoek={vraagZoektekst(vraag, werkpakket)}
 >
 <nldd-list-item data-uitklap>
-  {/* Een gesegmenteerde rij: eerst twee links, naar het paper en naar het
-      werkpakket, en dan de vraag met zijn tags als de knop die uitklapt. De
+  {/* Een gesegmenteerde rij: eerst de link naar het paper, dan een knop die
+      het werkpakket opent in een paneel over de helft van het scherm
+      (RoadmapWerkpakketPaneel), en dan de vraag met zijn tags als de knop die
+      uitklapt. De
       plek in het paper en het werkpakket staan vooraan omdat ze zeggen waar
       de vraag bij hoort, en de lijst is op het paper gesorteerd. Zo is alles in de kaart klikbaar zonder een link in een
       knop te stoppen; het ontwerpsysteem geeft elk segment zijn eigen
@@ -91,7 +92,7 @@ const tickets: MiniTicket[] = vraag.deelvragen.map((d) => {
       <nldd-text-cell overline="Position paper" text={`Rules as Executed § ${vraag.paper.nummer}`} />
     </nldd-list-item-segment>
   )}
-  <nldd-list-item-segment class="rr-vraag__veld rr-vraag__veld--werkpakket" href={werkpakketHref} accessible-label={`Werkpakket ${werkpakket.titel}`}>
+  <nldd-list-item-segment class="rr-vraag__veld rr-vraag__veld--werkpakket" button data-open-werkpakket={werkpakket.id} accessible-label={`Werkpakket ${werkpakket.titel} openen`}>
     <nldd-text-cell overline="Werkpakket" text={werkpakket.titel} />
   </nldd-list-item-segment>
   <nldd-list-item-segment button disclosure width="full" accessible-label={`${vraag.vraag}, deelvragen tonen`}>

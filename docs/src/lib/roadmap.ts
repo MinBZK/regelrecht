@@ -966,6 +966,32 @@ export function deelvraagLane(
   return { lane: ouderLane, eigen: false };
 }
 
+/**
+ * De onderzoeksvragen van een werkpakket als tickets voor het mini-bord: de
+ * stand uit de eigen status, of uit de belegging van het werkpakket. Gedeeld
+ * door het bord en het werkpakketpaneel, zodat beide hetzelfde laten zien.
+ */
+export function werkpakketTickets(data: WerkpakketData): MiniTicket[] {
+  return onderzoeksvraagLijst(data.onderzoeksvragen).map((vraag) => {
+    const { lane, eigen } = vraagLane(vraag, data);
+    return {
+      tekst: vraag.vraag,
+      lane,
+      eigen,
+      bron: 'werkpakket',
+      status: vraag.status,
+      onder:
+        [
+          vraag.paper && `§ ${vraag.paper.nummer}`,
+          vraag.deelvragen.length > 0 &&
+            `${vraag.deelvragen.length} ${vraag.deelvragen.length === 1 ? 'deelvraag' : 'deelvragen'}`,
+        ]
+          .filter(Boolean)
+          .join(' · ') || undefined,
+    };
+  });
+}
+
 /** Eén klein ticket op een mini-bord onder een uitgeklapte rij. */
 export interface MiniTicket {
   tekst: string;
