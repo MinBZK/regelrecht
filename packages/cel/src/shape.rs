@@ -148,10 +148,17 @@ fn declared_parameters(article: &Article) -> Vec<Parameter> {
 }
 
 /// Derive the shape of `event` from the law as it applies on `day`, or, if
-/// the version in force does not establish it yet, from the first later
+/// the version in force does not establish it at all, from the first later
 /// version that does: the law already enacted for a coming period. A
 /// voorschot is granted before the year it concerns begins (Awir 16 lid 2,
 /// 22 lid 1), under the law of that year.
+///
+/// Only the absence of the event falls through to a later version: no
+/// version in force, no such article, or an article that names no such
+/// event in its `extensions.chronolex`. A version in force that does name
+/// the event but cannot give it a shape (a reference it cannot resolve, an
+/// execution without `executed_on`) is an error in the law that applies, and
+/// a later version must not hide it.
 pub fn derive_for(
     service: &LawExecutionService,
     event: &str,
@@ -162,6 +169,9 @@ pub fn derive_for(
         Ok(shape) => return Ok(shape),
         Err(e) => e,
     };
+    if establishes_event(service, event, establishes, day) {
+        return Err(first);
+    }
     let (law_id, _) = split_reference(establishes)?;
     let mut later: Vec<NaiveDate> = service
         .resolver()
@@ -174,8 +184,31 @@ pub fn derive_for(
     later.sort();
     later
         .into_iter()
-        .find_map(|d| derive(service, event, establishes, d).ok())
-        .ok_or(first)
+        .find(|d| establishes_event(service, event, establishes, *d))
+        .map_or(Err(first), |d| derive(service, event, establishes, d))
+}
+
+/// Whether the version of the law in force on `day` establishes `event`:
+/// it has the article, and the article names the event in its
+/// `extensions.chronolex`. An extension that cannot be read counts as
+/// establishing it, so its error is the one reported.
+fn establishes_event(
+    service: &LawExecutionService,
+    event: &str,
+    establishes: &str,
+    day: NaiveDate,
+) -> bool {
+    let Ok((_, article)) = article_on(service, establishes, day) else {
+        return false;
+    };
+    match extension::of_article(article, establishes) {
+        Ok(Some(chronolex)) => chronolex
+            .establishes
+            .iter()
+            .any(|e| e.event.as_deref() == Some(event)),
+        Ok(None) => false,
+        Err(_) => true,
+    }
 }
 
 /// Derive the shape of `event`, which `establishes` establishes, from the
@@ -554,4 +587,94 @@ pub fn fits(type_: Option<ParameterType>, value: &serde_json::Value) -> bool {
 /// An engine value as JSON.
 pub fn to_json(value: &Value) -> serde_json::Value {
     serde_json::to_value(value).unwrap_or(serde_json::Value::Null)
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    use super::*;
+
+    /// A version of `testwet` valid from `valid_from`, whose article 1 holds
+    /// `chronolex` as its `extensions.chronolex` (or none).
+    fn version(valid_from: &str, chronolex: Option<&str>) -> String {
+        let extensions = chronolex.map_or(String::new(), |c| {
+            format!(
+                "        produces:\n          extensions:\n            chronolex:\n{}",
+                c.lines()
+                    .map(|l| format!("              {l}\n"))
+                    .collect::<String>()
+            )
+        });
+        format!(
+            "$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.8.0/schema/v0.8.0/schema.json
+$id: testwet
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '{valid_from}'
+name: Testwet
+url: https://example.org/testwet
+articles:
+  - number: '1'
+    text: Test.
+    url: https://example.org/testwet#1
+    machine_readable:
+      execution:
+{extensions}        parameters:
+          - name: x
+            type: number
+            required: true
+        output:
+          - name: y
+            type: number
+        actions:
+          - output: y
+            value: $x
+"
+        )
+    }
+
+    const ESTABLISHES: &str =
+        "establishes:\n  - event: gebeurd\n    type: decretogram\n    fields: outputs";
+
+    fn service(versions: &[String]) -> LawExecutionService {
+        let mut service = LawExecutionService::new();
+        for v in versions {
+            service.load_law(v).unwrap_or_else(|e| panic!("{e}"));
+        }
+        service
+    }
+
+    fn day(s: &str) -> NaiveDate {
+        s.parse().unwrap()
+    }
+
+    #[test]
+    fn a_version_that_does_not_establish_the_event_falls_through_to_a_later_one() {
+        let service = service(&[
+            version("2024-01-01", None),
+            version("2025-01-01", Some(ESTABLISHES)),
+        ]);
+        let shape = derive_for(&service, "gebeurd", "testwet#1", day("2024-11-20")).unwrap();
+        assert_eq!(shape.outputs, vec!["y".to_string()]);
+    }
+
+    #[test]
+    fn a_version_that_establishes_the_event_but_fails_does_not_fall_through() {
+        // The version in force names the event, with an output that is not
+        // there: an error in the law that applies, not an absence.
+        let broken = format!("{ESTABLISHES}\n    record_when: bestaat_niet");
+        let service = service(&[
+            version("2024-01-01", Some(&broken)),
+            version("2025-01-01", Some(ESTABLISHES)),
+        ]);
+        let e = derive_for(&service, "gebeurd", "testwet#1", day("2024-11-20")).unwrap_err();
+        assert!(e.to_string().contains("bestaat_niet"), "{e}");
+    }
+
+    #[test]
+    fn without_any_version_that_establishes_the_event_the_first_error_stands() {
+        let service = service(&[version("2024-01-01", None), version("2025-01-01", None)]);
+        let e = derive_for(&service, "gebeurd", "testwet#1", day("2024-11-20")).unwrap_err();
+        assert!(e.to_string().contains("no extensions.chronolex"), "{e}");
+    }
 }
