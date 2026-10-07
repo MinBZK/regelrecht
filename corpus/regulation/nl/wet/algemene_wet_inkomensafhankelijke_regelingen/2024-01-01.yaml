@@ -1389,6 +1389,78 @@ articles:
         artikel: '38'
         hoofdstuk: '2'
         paragraaf: '5'
+    machine_readable:
+      # De beslistermijn van de toekenning: een haak na de beschikking in de
+      # fase TOEKENNING van de procedure tegemoetkoming, zodat de toekenning
+      # zegt tot wanneer zij had mogen duren. De Awir noemt geen toeslag.
+      # - lid 1, eerste volzin: binnen zes maanden na de vaststelling van de
+      #   aanslag inkomstenbelasting. Eigen keuze: de datum van de laatste van
+      #   belang zijnde aanslag is een gegeven uit het dossier van de Dienst
+      #   Toeslagen. Is er geen aanslag, dan is die datum leeg (null) en geldt
+      #   lid 2; een datum die niemand doorgeeft, is onbekend (RFC-036), en
+      #   dan is de uiterste datum het ook.
+      # - lid 2: is er geen aanslag, dan uiterlijk 31 december van het jaar
+      #   volgend op het berekeningsjaar.
+      # Niet gemodelleerd: lid 1, tweede en derde volzin (niet in Nederland
+      # belastbaar inkomen), lid 3 (verlenging) en lid 4 (kennisgeving).
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: TOEKENNING
+      execution:
+        parameters:
+          - name: aangevraagd_berekeningsjaar
+            type: number
+            required: false
+            description: >-
+              Het berekeningsjaar waarop de aanvraag betrekking heeft (art. 15
+              lid 1); de toekenning gaat over dat jaar.
+            origin:
+              waarde: BELANGHEBBENDE
+              grondslag: algemene_wet_inkomensafhankelijke_regelingen#15 lid 1
+          - name: datum_vaststelling_aanslag
+            type: date
+            required: false
+            nullable: true
+            description: >-
+              De dag waarop de laatste van belang zijnde aanslag
+              inkomstenbelasting over het berekeningsjaar is vastgesteld (lid 1).
+            origin:
+              waarde: DOSSIER
+              grondslag: algemene_wet_inkomensafhankelijke_regelingen#19 lid 1
+        output:
+          - name: uiterste_toekenningsdatum
+            type: date
+            description: >-
+              De dag waarop de Dienst Toeslagen de tegemoetkoming uiterlijk
+              toekent, zonder verlenging.
+        actions:
+          - output: uiterste_toekenningsdatum
+            value:
+              operation: IF
+              cases:
+                # Lid 1: zes maanden na de vaststelling van de aanslag.
+                - when:
+                    operation: NOT
+                    value:
+                      operation: EQUALS
+                      subject: $datum_vaststelling_aanslag
+                      value: null
+                  then:
+                    operation: DATE_ADD
+                    date: $datum_vaststelling_aanslag
+                    months: 6
+              # Lid 2: uiterlijk 31 december van het jaar na het berekeningsjaar.
+              default:
+                operation: DATE
+                year:
+                  operation: ADD
+                  values:
+                    - $aangevraagd_berekeningsjaar
+                    - 1
+                month: 12
+                day: 31
   - number: '20'
     text: |-
       1 Indien na de toekenning van de tegemoetkoming uit een eerste vaststelling, eerste bepaling of
@@ -1675,6 +1747,120 @@ articles:
 
       3 De in het tweede lid bedoelde verrekening kan leiden tot een terug te vorderen bedrag.
     url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel24
+    machine_readable:
+      # De uitbetaling en de verrekening bij de toekenning: een haak na de
+      # beschikking in de fase TOEKENNING van de procedure tegemoetkoming. De
+      # Awir noemt geen toeslag.
+      # - lid 2: de verleende voorschotten worden verrekend met de
+      #   tegemoetkoming. Verrekend wordt wat is uitbetaald, niet wat is
+      #   verleend: een termijn die nooit is betaald, valt niet te verrekenen
+      #   (eigen keuze, zoals de ontwerpnotitie
+      #   packages/cel/ONTWERP-proces-zorgtoeslag.md par. 5). Wat is uitbetaald
+      #   is een gegeven uit het dossier: de cel telt de betaalde termijnen.
+      # - lid 1: wat er na de verrekening nog uit te betalen is, binnen vier
+      #   weken na de dagtekening van de beschikking.
+      # - lid 3: de verrekening kan leiden tot een terug te vorderen bedrag.
+      #   Nabetaling en terugvordering zijn twee uitkomsten, niet één saldo:
+      #   de terugvordering is een eigen beschikking (art. 26, 26a).
+      # De tegemoetkoming is het bedrag van art. 14 lid 4 en 5 (afgerond, niet
+      # onder € 24), zoals bij het voorschot (art. 16).
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: TOEKENNING
+      execution:
+        parameters:
+          - name: tegemoetkoming
+            type: amount
+            required: false
+            description: >-
+              De tegemoetkoming die de inkomensafhankelijke regeling in de fase
+              TOEKENNING berekent. De beschikking waarop dit artikel haakt geeft
+              haar mee.
+          - name: uitbetaalde_voorschotten
+            type: amount
+            required: false
+            description: >-
+              Wat er op de voorschotten met betrekking tot het berekeningsjaar is
+              uitbetaald op de dag van de toekenning (lid 2).
+            origin:
+              waarde: DOSSIER
+              grondslag: algemene_wet_inkomensafhankelijke_regelingen#24 lid 2
+          - name: dagtekening_toekenning
+            type: date
+            required: false
+            description: De dagtekening van de beschikking tot toekenning (lid 1).
+        input:
+          - name: afgeronde_tegemoetkoming
+            type: amount
+            source:
+              regulation: algemene_wet_inkomensafhankelijke_regelingen
+              output: afgeronde_tegemoetkoming
+              parameters:
+                berekende_tegemoetkoming: $tegemoetkoming
+            type_spec:
+              unit: eurocent
+          - name: tegemoetkoming_wordt_toegekend
+            type: boolean
+            source:
+              regulation: algemene_wet_inkomensafhankelijke_regelingen
+              output: tegemoetkoming_wordt_toegekend
+              parameters:
+                berekende_tegemoetkoming: $tegemoetkoming
+        output:
+          - name: toegekende_tegemoetkoming
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: De tegemoetkoming zoals zij wordt toegekend (art. 14 lid 4 en 5).
+          - name: nog_uit_te_betalen
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: terug_te_vorderen_na_verrekening
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: uiterste_uitbetaaldatum
+            type: date
+        actions:
+          - output: toegekende_tegemoetkoming
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $tegemoetkoming_wordt_toegekend
+                    value: true
+                  then: $afgeronde_tegemoetkoming
+              default: 0
+          # Lid 1 en 2: wat na de verrekening nog uit te betalen is.
+          - output: nog_uit_te_betalen
+            value:
+              operation: MAX
+              values:
+                - 0
+                - operation: SUBTRACT
+                  values:
+                    - $toegekende_tegemoetkoming
+                    - $uitbetaalde_voorschotten
+          # Lid 3: wat de verrekening terug te vorderen laat.
+          - output: terug_te_vorderen_na_verrekening
+            value:
+              operation: MAX
+              values:
+                - 0
+                - operation: SUBTRACT
+                  values:
+                    - $uitbetaalde_voorschotten
+                    - $toegekende_tegemoetkoming
+          # Lid 1: binnen vier weken na dagtekening van de beschikking.
+          - output: uiterste_uitbetaaldatum
+            value:
+              operation: DATE_ADD
+              date: $dagtekening_toekenning
+              weeks: 4
   - number: 24a
     text: >-
       De Dienst Toeslagen kan afzien van het uitbetalen van een tegemoetkoming:
@@ -1772,6 +1958,74 @@ articles:
       - id: ref3
         bwb_id: BWBR0011353
         artikel: '10.2'
+    machine_readable:
+      # Geen terugvordering van een klein bedrag: een haak na de beschikking
+      # in de fase TOEKENNING, op wat de verrekening van art. 24 lid 3 terug
+      # te vorderen laat. Lid 1, eerste en tweede volzin: niet meer dan
+      # € 116, dan wordt het niet teruggevorderd en de beschikking tot
+      # terugvordering op nihil vastgesteld. Het bedrag staat zo in de tekst
+      # van deze versie; lid 2 (indexering volgens art. 10.1 en 10.2 Wet IB
+      # 2001) is daarin al verwerkt. Lid 1, derde volzin (na een verlaging
+      # volgens art. 26 lid 2), en de herziening zijn niet gemodelleerd.
+      definitions:
+        terugvorderingsgrens:
+          value: 11600
+          type: amount
+          type_spec:
+            unit: eurocent
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: TOEKENNING
+      execution:
+        parameters:
+          - name: tegemoetkoming
+            type: amount
+            required: false
+            description: >-
+              De tegemoetkoming die de inkomensafhankelijke regeling in de fase
+              TOEKENNING berekent. De beschikking waarop dit artikel haakt geeft
+              haar mee.
+          - name: uitbetaalde_voorschotten
+            type: amount
+            required: false
+            description: >-
+              Wat er op de voorschotten met betrekking tot het berekeningsjaar is
+              uitbetaald op de dag van de toekenning (lid 2).
+            origin:
+              waarde: DOSSIER
+              grondslag: algemene_wet_inkomensafhankelijke_regelingen#24 lid 2
+        input:
+          - name: terug_te_vorderen_na_verrekening
+            type: amount
+            source:
+              regulation: algemene_wet_inkomensafhankelijke_regelingen
+              output: terug_te_vorderen_na_verrekening
+              parameters:
+                tegemoetkoming: $tegemoetkoming
+                uitbetaalde_voorschotten: $uitbetaalde_voorschotten
+            type_spec:
+              unit: eurocent
+        output:
+          - name: terug_te_vorderen
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: >-
+              Het bedrag van de beschikking tot terugvordering bij de
+              toekenning: nihil tot en met € 116.
+        actions:
+          - output: terug_te_vorderen
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: LESS_THAN_OR_EQUAL
+                    subject: $terug_te_vorderen_na_verrekening
+                    value: $terugvorderingsgrens
+                  then: 0
+              default: $terug_te_vorderen_na_verrekening
   - number: 26b
     text: |-
       1 Voordat de Dienst Toeslagen de beschikking tot toekenning van de tegemoetkoming, bedoeld in [artikel 14][ref1],
