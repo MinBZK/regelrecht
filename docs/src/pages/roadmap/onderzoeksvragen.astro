@@ -76,7 +76,7 @@ const pathname = '/roadmap/onderzoeksvragen';
   <RoadmapSectie>
     <RoadmapKop
       huidig="onderzoeksvragen"
-      ondertitel="Alle onderzoeksvragen van de werkpakketten. Druk op een vraag voor het doel, de deelvragen en de verwante vragen. Een vraag volgt zijn eigen status, en anders de belegging van zijn werkpakket."
+      ondertitel="Alle onderzoeksvragen van de werkpakketten, in de volgorde van het position paper. Druk op een vraag voor het doel, de deelvragen en de verwante vragen. Een vraag volgt zijn eigen status, en anders de belegging van zijn werkpakket."
       zoek={{ placeholder: 'Zoek in onderzoeksvragen', noun: 'vragen' }}
       filters={['stand']}
     />
@@ -99,8 +99,10 @@ const pathname = '/roadmap/onderzoeksvragen';
       </nldd-text>
     </nldd-container>
 
-    {/* Dezelfde kolomopbouw als het bord, zodat de kaarten even breed zijn. */}
-    <nldd-container layout="grid" column-count="3" sm-column-count="1" gap="8">
+    {/* Eén kolom, de volle breedte: een vraag is een zin of twee, en in drie
+        kolommen brak elke vraag in vier regels. De lijst loopt het paper af,
+        sectie voor sectie; de kopregel op elke kaart zegt waar je bent. */}
+    <nldd-container gap="8">
       {
         vragen.map(({ vraag, werkpakket, sleutel }) => (
           <RoadmapVraagKaart vraag={vraag} werkpakket={werkpakket} sleutel={sleutel} />

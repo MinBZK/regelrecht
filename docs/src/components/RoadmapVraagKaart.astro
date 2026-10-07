@@ -53,13 +53,6 @@ const tags: KaartTag[] = [
         label: `Werkpakket ${belegging.label.toLowerCase()}`,
       }
     : undefined,
-  vraag.paper
-    ? {
-        color: 'neutral',
-        text: `§ ${vraag.paper.nummer}`,
-        label: `Rules as Executed § ${vraag.paper.nummer}`,
-      }
-    : undefined,
   // Daarna de tags van het werkpakket (prioriteit, omvang, categorie,
   // capability), dezelfde als op de werkpakketkaart: een vraag erft ze van
   // het pakket waar hij in staat, en zo leest een vraagkaart als een
@@ -78,7 +71,14 @@ const onder = [
   .filter(Boolean)
   .join(' · ');
 
-const accessibleLabel = [vraag.vraag, werkpakket.titel, ...tags.map((t) => t.label), rfcs, onder]
+// De papersectie als kopregel boven de vraag, want daar is de lijst op
+// gesorteerd: wie door de kaarten loopt, loopt door het paper. Zonder sectie
+// zegt de kopregel dat, zodat die kaarten niet lezen als een vergissing.
+const kopregel = vraag.paper
+  ? `§ ${vraag.paper.nummer} ${vraag.paper.titel}`
+  : 'Zonder sectie in het paper';
+
+const accessibleLabel = [kopregel, vraag.vraag, werkpakket.titel, ...tags.map((t) => t.label), rfcs, onder]
   .filter(Boolean)
   .join(', ');
 ---
@@ -95,6 +95,14 @@ const accessibleLabel = [vraag.vraag, werkpakket.titel, ...tags.map((t) => t.lab
 >
   <nldd-container padding="12" gap="8">
     <nldd-container gap="2">
+      {/* lang="en" op de sectietitel: die is Engels op een Nederlandse pagina. */}
+      <nldd-text size="xs" weight="medium" color={vraag.paper ? 'accent' : 'secondary'}>
+        {vraag.paper ? (
+          <>§ {vraag.paper.nummer} <span lang="en">{vraag.paper.titel}</span></>
+        ) : (
+          kopregel
+        )}
+      </nldd-text>
       <nldd-text size="sm" weight="medium">{vraag.vraag}</nldd-text>
       <nldd-text size="xs" color="secondary">{werkpakket.titel}</nldd-text>
     </nldd-container>

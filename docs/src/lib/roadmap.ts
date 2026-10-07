@@ -969,29 +969,45 @@ export function vraagLane(
 }
 
 /**
- * Alle bovenliggende onderzoeksvragen in de leesvolgorde van de matrix en
- * daarbinnen in de volgorde van het bestand, elk met een sleutel waar de
- * kaart en zijn detailpaneel elkaar op vinden: het id als de vraag er een
- * heeft, anders het werkpakket met het volgnummer. Deelvragen staan in het
- * paneel van hun ouder, niet los in de lijst.
+ * Alle bovenliggende onderzoeksvragen in de volgorde van het position paper:
+ * eerst op sectie (§ 4.1, § 4.2, … zoals het paper ze nummert), daarbinnen
+ * in de leesvolgorde van de matrix en dan de volgorde van het bestand. Vragen
+ * zonder sectie komen achteraan, want het paper is de agenda en die lijst is
+ * wat er nog niet aan hangt.
+ *
+ * Elke vraag krijgt een sleutel waar de kaart en zijn detailpaneel elkaar op
+ * vinden: het id als de vraag er een heeft, anders het werkpakket met het
+ * volgnummer. Deelvragen staan in het paneel van hun ouder, niet los in de
+ * lijst.
  */
 export function vragenOpVolgorde(
   werkpakketten: { data: WerkpakketData }[],
 ): (VraagMetWerkpakket & { sleutel: string })[] {
-  const uit: (VraagMetWerkpakket & { sleutel: string })[] = [];
+  const sectieRang = new Map(paperSectieLijst.map((s, i) => [s.slug, i]));
+  const uit: (VraagMetWerkpakket & { sleutel: string; rang: number[] })[] = [];
   const gesorteerd = [...werkpakketten].sort((a, b) =>
     werkpakketVolgorde(a.data, b.data),
   );
-  for (const { data } of gesorteerd) {
+  gesorteerd.forEach(({ data }, w) => {
     onderzoeksvraagLijst(data.onderzoeksvragen).forEach((vraag, i) => {
       uit.push({
         vraag,
         werkpakket: data,
         sleutel: vraag.id ?? `${data.id}-${i + 1}`,
+        rang: [vraag.paper ? (sectieRang.get(vraag.paper.slug) ?? Infinity) : Infinity, w, i],
       });
     });
-  }
-  return uit;
+  });
+  // Stabiel en op drie sleutels: een gelijke sectie valt terug op de
+  // werkpakketvolgorde, en die op de plek in het bestand.
+  uit.sort((a, b) => {
+    for (let k = 0; k < 3; k++) {
+      const d = a.rang[k] - b.rang[k];
+      if (d) return d;
+    }
+    return 0;
+  });
+  return uit.map(({ rang: _rang, ...rest }) => rest);
 }
 
 /**
