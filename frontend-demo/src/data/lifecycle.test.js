@@ -7,7 +7,7 @@
  * besluit, want daar zat het verschil dat de demo eerder niet liet zien.
  */
 import { describe, expect, it } from 'vitest';
-import { awbOutcomes, decisionDates, objectionOpen, procedureStages, reachedStage, statusOf } from './lifecycle.js';
+import { announced, awbOutcomes, carriedInputs, decisionDates, objectionOpen, procedureStages, reachedStage, statusOf } from './lifecycle.js';
 
 const atStage = (stage, extra = {}) => ({
   stageState: { current_stage: stage, accumulated_outputs: {} },
@@ -59,7 +59,13 @@ describe('een procedure met eigen fasen', () => {
     procedure: [
       {
         id: 'tegemoetkoming',
-        stages: [{ name: 'AANVRAAG' }, { name: 'VOORSCHOT', is: 'BESLUIT' }, { name: 'TOEKENNING', is: 'BESLUIT' }],
+        stages: [
+          { name: 'AANVRAAG' },
+          { name: 'VOORSCHOT', is: 'BESLUIT', requires: [{ name: 'dagtekening_voorschot', type: 'date' }] },
+          { name: 'VOORSCHOT_BEKENDMAKING', is: 'BEKENDMAKING', requires: [{ name: 'bekendmaking_datum', type: 'date' }] },
+          { name: 'TOEKENNING', is: 'BESLUIT', requires: [{ name: 'dagtekening_toekenning', type: 'date' }] },
+          { name: 'TOEKENNING_BEKENDMAKING', is: 'BEKENDMAKING', requires: [{ name: 'bekendmaking_datum', type: 'date' }] },
+        ],
       },
     ],
   };
@@ -68,9 +74,11 @@ describe('een procedure met eigen fasen', () => {
 
   it('leest de fasen uit de wet die de procedure vastlegt', () => {
     expect(stages).toEqual([
-      { name: 'AANVRAAG', is: null },
-      { name: 'VOORSCHOT', is: 'BESLUIT' },
-      { name: 'TOEKENNING', is: 'BESLUIT' },
+      { name: 'AANVRAAG', is: null, requires: [] },
+      { name: 'VOORSCHOT', is: 'BESLUIT', requires: ['dagtekening_voorschot'] },
+      { name: 'VOORSCHOT_BEKENDMAKING', is: 'BEKENDMAKING', requires: ['bekendmaking_datum'] },
+      { name: 'TOEKENNING', is: 'BESLUIT', requires: ['dagtekening_toekenning'] },
+      { name: 'TOEKENNING_BEKENDMAKING', is: 'BEKENDMAKING', requires: ['bekendmaking_datum'] },
     ]);
     expect(procedureStages([awir], 'beschikking')).toBeNull();
     expect(procedureStages([awir], undefined)).toBeNull();
@@ -79,6 +87,24 @@ describe('een procedure met eigen fasen', () => {
   it('leest een zaak die op het voorschot wacht niet als besloten', () => {
     expect(statusOf(at('AANVRAAG'))).toBe('SUBMITTED');
     expect(statusOf(at('VOORSCHOT'))).toBe('IN_REVIEW');
+  });
+
+  it('opent bezwaar per besluit: na elke bekendmaking, en niet tussen een besluit en zijn bekendmaking', () => {
+    expect(objectionOpen(at('VOORSCHOT_BEKENDMAKING'))).toBe(false);
+    expect(objectionOpen(at('TOEKENNING'))).toBe(true);
+    expect(announced(at('TOEKENNING_BEKENDMAKING'))).toBe(false);
+    expect(objectionOpen(at('BEZWAAR'))).toBe(true);
+    const out = { bezwaartermijn_einddatum: '2025-01-02' };
+    const naToekenning = { stageState: { current_stage: 'TOEKENNING_BEKENDMAKING', accumulated_outputs: out }, procedureStages: stages };
+    expect(awbOutcomes(naToekenning).bezwaartermijnEinde).toBeNull();
+  });
+
+  it('geeft een bekendmakingsdatum niet mee aan een volgende bekendmaking', () => {
+    const inputs = { dagtekening_voorschot: '2024-11-20', bekendmaking_datum: '2024-11-20' };
+    expect(carriedInputs(inputs, stages, 'TOEKENNING')).toEqual({ dagtekening_voorschot: '2024-11-20' });
+    expect(carriedInputs(inputs, stages, 'VOORSCHOT')).toEqual({});
+    // Zonder bekende fasen: alles, zoals voorheen.
+    expect(carriedInputs(inputs, null, 'BESLUIT')).toEqual(inputs);
   });
 
   it('leest een zaak na het voorschot als besloten, ook al komt de toekenning nog', () => {

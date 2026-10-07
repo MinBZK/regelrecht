@@ -68,12 +68,25 @@ export function momentOn(date, now = new Date()) {
   return `${date}T${time}${sign}${pad(Math.trunc(offset / 60))}:${pad(offset % 60)}`;
 }
 
-/** De grammen van één zaak: de aanvraag en alles wat ernaar verwijst. */
+/**
+ * De grammen van één zaak: de aanvraag en alles wat er, direct of via een
+ * andere gram van de zaak, naar verwijst. Een betaalde termijn verwijst naar
+ * het voorschot, en het voorschot naar de aanvraag.
+ */
 export function gramsOfCase(grams, applicationId) {
   if (!applicationId) return [];
-  return (grams ?? []).filter(
-    (g) => g.id === applicationId || Object.values(g.refers_to ?? {}).includes(applicationId),
-  );
+  const ids = new Set([applicationId]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const g of grams ?? []) {
+      if (!ids.has(g.id) && Object.values(g.refers_to ?? {}).some((id) => ids.has(id))) {
+        ids.add(g.id);
+        grew = true;
+      }
+    }
+  }
+  return (grams ?? []).filter((g) => ids.has(g.id));
 }
 
 /**

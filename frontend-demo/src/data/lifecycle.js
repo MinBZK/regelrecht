@@ -85,16 +85,56 @@ function stageKind(stage) {
 
 /**
  * De fasen van procedure `procedureId`, uit de wet die haar vastlegt
- * (`procedure:` in de YAML): per fase de naam en wat ze `is`. `null` als geen
- * wet in `lawDocs` die procedure kent.
+ * (`procedure:` in de YAML): per fase de naam, wat ze `is` en welke gegevens
+ * ze vraagt (`requires`). `null` als geen wet in `lawDocs` die procedure kent.
  */
 export function procedureStages(lawDocs, procedureId) {
   if (!procedureId) return null;
   for (const doc of lawDocs ?? []) {
     const procedure = (doc?.procedure ?? []).find((p) => p.id === procedureId);
-    if (procedure) return procedure.stages.map((s) => ({ name: s.name, is: s.is ?? null }));
+    if (procedure) {
+      return procedure.stages.map((s) => ({
+        name: s.name,
+        is: s.is ?? null,
+        requires: (s.requires ?? []).map((r) => r.name),
+      }));
+    }
   }
   return null;
+}
+
+/**
+ * Wat de demo eerder aan de levensloop leverde en nu weer mag meegeven: alles,
+ * behalve wat een fase vraagt die nog moet komen.
+ *
+ * Een gegeven dat een fase vraagt, bestaat op het moment van die fase. Twee
+ * fasen kunnen hetzelfde vragen: in de procedure van de Awir wordt het
+ * voorschot bekendgemaakt en later de toekenning, en beide vragen een
+ * bekendmakingsdatum (Awb 6:8). De datum van de eerste bekendmaking zou de
+ * tweede anders meteen laten gebeuren.
+ */
+export function carriedInputs(inputs, stages, currentStage) {
+  const at = (stages ?? []).findIndex((s) => s.name === currentStage);
+  if (at < 0) return { ...(inputs ?? {}) };
+  const coming = new Set(stages.slice(at).flatMap((s) => s.requires ?? []));
+  return Object.fromEntries(Object.entries(inputs ?? {}).filter(([name]) => !coming.has(name)));
+}
+
+/**
+ * Of het laatste besluit van de zaak is bekendgemaakt: de laatste fase die de
+ * zaak voorbij is en een besluit of een bekendmaking `is`, is een
+ * bekendmaking. Per besluit, dus na een tweede besluit (de toekenning na het
+ * voorschot) weer niet, tot ook dat is bekendgemaakt.
+ */
+export function announced(caseRecord) {
+  const stage = caseRecord?.stageState?.current_stage;
+  if (!stage) return false;
+  const stages = caseRecord.procedureStages ?? STAGES.map((name) => ({ name }));
+  const at = stages.findIndex((s) => s.name === stage);
+  // Een fase buiten de procedure: de levensloop is klaar, alles is voorbij.
+  const passed = at < 0 ? stages : stages.slice(0, at);
+  const last = [...passed].reverse().find((s) => ['BESLUIT', 'BEKENDMAKING'].includes(stageKind(s)));
+  return stageKind(last) === 'BEKENDMAKING';
 }
 
 /**
@@ -116,7 +156,7 @@ export function decisionDates(caseRecord, date) {
  * niet eens meegedeeld.
  */
 export function objectionOpen(caseRecord) {
-  return reachedStage(caseRecord, 'BEZWAAR') && !caseRecord?.objection;
+  return announced(caseRecord) && !caseRecord?.objection;
 }
 
 /**
@@ -131,10 +171,13 @@ export function objectionOpen(caseRecord) {
  */
 export function awbOutcomes(caseRecord) {
   const out = caseRecord?.stageState?.accumulated_outputs ?? {};
+  // De termijn hoort bij het besluit dat is bekendgemaakt. Is er daarna een
+  // nieuw besluit genomen, dan is de termijn van het vorige niet die van dit.
+  const current = announced(caseRecord);
   return {
     motiveringVereist: out.motivering_vereist ?? null,
     bezwaartermijnWeken: out.bezwaartermijn_weken ?? null,
-    bezwaartermijnStart: out.bezwaartermijn_startdatum ?? null,
-    bezwaartermijnEinde: out.bezwaartermijn_einddatum ?? null,
+    bezwaartermijnStart: current ? out.bezwaartermijn_startdatum ?? null : null,
+    bezwaartermijnEinde: current ? out.bezwaartermijn_einddatum ?? null : null,
   };
 }

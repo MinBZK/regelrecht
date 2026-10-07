@@ -1,0 +1,192 @@
+/**
+ * De tijd in de demo: welke dagen de cel nog moet uitvoeren, en welk moment
+ * de wet als volgende geeft.
+ *
+ * De demo heeft één klok, de peildatum (`state.referenceDate`). Die loopt
+ * alleen vooruit: een gram ligt nooit in de toekomst (RFC-044), dus terug kan
+ * alleen door opnieuw te beginnen. Wat het volgende moment is, staat niet in
+ * een kalender hier, maar komt uit de wet en de kroniek: de cel voert de wet
+ * uit zonder vast te leggen (een voorbeeld), en wat daar als datum uitkomt is
+ * een moment. Dit bestand rekent alleen met datums en met wat de cel
+ * teruggeeft; welke gebeurtenis, fase of welk veld het is, weet het niet.
+ *
+ * Datums zijn `JJJJ-MM-DD`, zonder tijdzone: de wet rekent in dagen.
+ */
+
+/** `JJJJ-MM-DD` als middernacht in UTC, om mee te rekenen. */
+function utc(date) {
+  const [y, m, d] = String(date).slice(0, 10).split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d));
+}
+
+function iso(d) {
+  return d.toISOString().slice(0, 10);
+}
+
+/** De dag `days` dagen na `date`. */
+export function addDays(date, days) {
+  const d = utc(date);
+  d.setUTCDate(d.getUTCDate() + days);
+  return iso(d);
+}
+
+/** De eerste dag van de maand van `date`, `months` maanden verder. */
+export function monthStart(date, months = 0) {
+  const d = utc(date);
+  return iso(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + months, 1)));
+}
+
+/** De dag van een moment (RFC 3339) of een datum. */
+export function dayOf(moment) {
+  return String(moment ?? '').slice(0, 10);
+}
+
+/**
+ * Per kalendermaand van `from` tot en met `to` de dag waarop de cel die maand
+ * uitvoert: de eerste van de maand, of `from` als die later valt. Leeg als
+ * `from` na `to` ligt.
+ */
+export function executionDays(from, to) {
+  const days = [];
+  if (!from || !to || from > to) return days;
+  for (let m = monthStart(from); m <= to; m = monthStart(m, 1)) {
+    days.push(m < from ? from : m);
+  }
+  return days;
+}
+
+/** De eerste dagen van de `count` maanden na de maand van `date`. */
+export function monthsAfter(date, count) {
+  return Array.from({ length: count }, (_, i) => monthStart(date, i + 1));
+}
+
+/**
+ * De laatste dag van een periode zoals een gram haar draagt (`{unit, value}`,
+ * RFC-045): het eind van een kalenderjaar. `null` voor een eenheid die de
+ * demo niet kent.
+ */
+export function periodEnd(period) {
+  if (period?.unit === 'year' && Number.isInteger(period.value)) return `${period.value}-12-31`;
+  return null;
+}
+
+/** Het vroegste moment na `date`, of null. */
+export function nextMoment(moments, date) {
+  return (
+    [...(moments ?? [])]
+      .filter((m) => m?.date && m.date > date)
+      .sort((a, b) => a.date.localeCompare(b.date))[0] ?? null
+  );
+}
+
+/**
+ * De gram van de zaak waarnaar een verwijzing van de wet wijst (`refers_to`
+ * in de vorm van een gebeurtenis): op het artikel dat hem vestigt (`to`) of
+ * op zijn fase (`stage`). De laatste, zoals de cel hem kiest.
+ */
+export function referredGram(caseGrams, reference) {
+  const admits = (g) =>
+    reference?.to ? g.establishes === reference.to : reference?.stage ? g.stage === reference.stage : false;
+  return [...(caseGrams ?? [])].reverse().find(admits) ?? null;
+}
+
+/**
+ * Of een uitvoering (een executogram) in deze zaak nog kan ontstaan, en zo ja
+ * vanaf welke dag: de vorm zegt waarnaar ze verwijst en welke fase haar
+ * beëindigt (`until`). Null als een verplichte verwijzing nog geen gram heeft,
+ * of als de zaak al een gram van de eindfase heeft.
+ *
+ * De dag is die van de gram waarnaar ze verwijst. Een uitvoering op een
+ * eerdere dag dan vandaag geldt vanaf het begin van die dag, en mag niet vóór
+ * die gram liggen; daarom telt een gram van een andere dag dan vandaag pas de
+ * dag erna.
+ */
+export function executionStart(shape, caseGrams, today) {
+  if (shape?.until?.stage && (caseGrams ?? []).some((g) => g.stage === shape.until.stage)) return null;
+  let start = null;
+  for (const reference of Object.values(shape?.refers_to ?? {})) {
+    const gram = referredGram(caseGrams, reference);
+    if (!gram) {
+      if (reference.required) return null;
+      continue;
+    }
+    const day = dayOf(gram.effective_at);
+    const from = day === today ? day : addDays(day, 1);
+    if (!start || from > start) start = from;
+  }
+  return start;
+}
+
+/**
+ * De dagen waarop de cel een uitvoering van de zaak nog moet uitvoeren, tot en
+ * met `today`: één per kalendermaand vanaf `start`, behalve de maanden waarin
+ * de zaak al een gram van die gebeurtenis heeft (de wet staat er één per
+ * maand toe, `executed_on.once_per`) en de dagen die al zijn gevraagd
+ * (`checkedThrough`).
+ */
+export function pendingExecutionDays({ shape, event, caseGrams, start, checkedThrough, today }) {
+  if (!start) return [];
+  const perMonth = shape?.executed_on?.once_per === 'month';
+  const done = new Set(
+    (caseGrams ?? []).filter((g) => g.name === event).map((g) => dayOf(g.effective_at).slice(0, 7)),
+  );
+  return executionDays(start, today).filter(
+    (day) => (!checkedThrough || day > checkedThrough) && !(perMonth && done.has(day.slice(0, 7))),
+  );
+}
+
+/**
+ * De eerstvolgende maand na `today` waarin de wet zegt dat een uitvoering
+ * ontstaat, gevraagd met `preview(day)` (de cel, zonder vast te leggen): de
+ * dag en wat ze zou vastleggen. Hoogstens `horizon` maanden vooruit; een
+ * weigering van de cel (de uitvoering is beëindigd) is geen volgende maand.
+ */
+export function nextExecution(preview, today, horizon = 13) {
+  for (const day of monthsAfter(today, horizon)) {
+    let gram;
+    try {
+      gram = preview(day);
+    } catch {
+      return null;
+    }
+    if (gram) return { date: day, gram };
+  }
+  return null;
+}
+
+/**
+ * De datumvelden die de wet een besluit geeft, los van de dag waarop het
+ * wordt genomen: hetzelfde in twee voorbeelden op opeenvolgende dagen. Een
+ * datum die met de besluitdag meeschuift (vier weken na de dagtekening) is nog
+ * geen moment; een datum die vaststaat (zes maanden na de aanslag) wel. Alleen
+ * wat na `today` ligt.
+ */
+export function fixedDates(first, second, fields, today) {
+  const out = [];
+  for (const [name, field] of Object.entries(fields ?? {})) {
+    if (field?.type !== 'date') continue;
+    const value = first?.fields?.[name];
+    if (typeof value !== 'string' || value !== second?.fields?.[name]) continue;
+    if (value > today) out.push({ name, date: value });
+  }
+  return out;
+}
+
+/** De datumvelden van een gram die na `today` liggen: wat de wet nog geeft. */
+export function comingDates(gram, fields, today) {
+  return Object.entries(fields ?? {})
+    .filter(([name, field]) => field?.type === 'date' && typeof gram?.fields?.[name] === 'string')
+    .map(([name]) => ({ name, date: gram.fields[name] }))
+    .filter((m) => m.date > today);
+}
+
+/**
+ * Of het besluit van een fase genomen kan worden: elke datum die het dossier
+ * ervoor geeft, ligt op of vóór `today`. Een besluit dat op zo'n datum wacht
+ * (de aanslag van Awir 19) kan er niet eerder zijn; een besluit zonder zo'n
+ * datum heeft geen moment dat de demo kent, en komt dus niet vanzelf.
+ */
+export function decisionDue(dossierDates, today) {
+  const dates = Object.values(dossierDates ?? {});
+  return dates.length > 0 && dates.every((d) => typeof d === 'string' && d <= today);
+}

@@ -80,6 +80,16 @@ describe('gramsOfCase', () => {
     expect(gramsOfCase(grams, 'a').map((g) => g.id)).toEqual(['a', 'b']);
     expect(gramsOfCase(grams, null)).toEqual([]);
   });
+
+  it('geeft ook wat via een andere gram van de zaak verwijst, in de volgorde van de kroniek', () => {
+    const grams = [
+      { id: 'a' },
+      { id: 't', refers_to: { voorschot: 'v' } },
+      { id: 'v', refers_to: { on_application: 'a' } },
+      { id: 'u', refers_to: { voorschot: 'w' } },
+    ];
+    expect(gramsOfCase(grams, 'a').map((g) => g.id)).toEqual(['a', 't', 'v']);
+  });
 });
 
 describe('provisionLabel', () => {
