@@ -112,6 +112,7 @@ describe('generateBusinesses', () => {
       expect(pop.tables.GEMEENTE_ROTTERDAM.terrassenbeleid.some((b) => b.adres === v.adres)).toBe(true);
     }
     for (const s of pop.subjects) if (s.terras) expect(s.type).toBe('horecabedrijf');
+    for (const b of pop.tables.GEMEENTE_ROTTERDAM.terrassenbeleid) expect(b).toMatchObject({ max_sluitingstijd_doordeweeks: 23, max_sluitingstijd_weekend: 23 });
   });
 
   it('follows the type and size knobs', () => {

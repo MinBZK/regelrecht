@@ -481,7 +481,10 @@ export function generateBusinesses(userParams, referenceDate, templateRow = () =
     T('GEMEENTE_ROTTERDAM', 'horecagebiedsplannen', { adres: address, categorie: 'licht', gebied: 'Rotterdam West', categorie_toegestaan: rng.chance(0.9), ontwikkelruimte: rng.chance(0.85) });
     T('GEMEENTE_ROTTERDAM', 'omgevingsplan_toetsingen', { adres: address, categorie: 'licht', horeca_toegestaan: rng.chance(0.9) });
     T('GEMEENTE_ROTTERDAM', 'bgt_terraslocaties', { adres: address, locatie: 'voor', beschikbare_oppervlakte: Math.round(rng.uniform(10, 120)), functie_oppervlak: 'voetpad', is_openbare_weg: true });
-    T('GEMEENTE_ROTTERDAM', 'terrassenbeleid', { adres: address, seizoen: 'jaarrond', gebied: 'Rotterdam West' });
+    // Categorie licht (aangevraagde_categorie): terras tot 23.00 uur. De APV
+    // noemt geen terrastijden; het horecabeleid vult art. 2:29 in
+    // (Horecagebiedsplannen 2024-2027).
+    T('GEMEENTE_ROTTERDAM', 'terrassenbeleid', { adres: address, seizoen: 'jaarrond', gebied: 'Rotterdam West', max_sluitingstijd_doordeweeks: 23, max_sluitingstijd_weekend: 23 });
     T('GEMEENTE_ROTTERDAM', 'precario_tarieven', { adres: address, gebruik: 'terras' });
 
     // The business at the municipality.
@@ -527,7 +530,7 @@ export function generateBusinesses(userParams, referenceDate, templateRow = () =
       seizoen: 'jaarrond',
       gewenste_openingstijd: 8,
       gewenste_sluitingstijd_doordeweeks: 23,
-      gewenste_sluitingstijd_weekend: 24,
+      gewenste_sluitingstijd_weekend: 23,
       activiteitsdatum: isoDate(refYear, 12, 31),
       activiteitsstarttijd: 20,
     };
