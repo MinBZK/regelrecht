@@ -160,6 +160,22 @@ function sleep(ms = 0) {
 }
 
 /**
+ * Of een onderwerp een aanvraagwet niet aanvroeg. Zo'n wet krijgt voor hem
+ * geen uitkomst: wie geen terras vraagt, valt buiten art. 2:30b APV en heeft
+ * geen recht en geen weigering. Doorrekenen gaf "recht op een terras van
+ * 0 m²" en telde hem mee als iemand met recht. Een ontbrekende uitkomst telt
+ * in de samenvatting niet mee, net als op het portaal, waar een
+ * terrasvergunning pas verschijnt als je hem aanvraagt.
+ *
+ * @param {object} law
+ * @param {object} form            de formulierwaarden van het onderwerp
+ * @param {Set<string>} applicationPaths  de law_paths waarvoor aangevraagd wordt (caseSourceLaws)
+ */
+export function notAppliedFor(law, form, applicationPaths) {
+  return applicationPaths.has(law.law_path) && !(form.aanvragen ?? []).includes(law.law_path);
+}
+
+/**
  * @param {object} args
  * @param {object} args.engine       the WASM engine
  * @param {object} args.corpus       loaded corpus
@@ -288,13 +304,14 @@ export async function runSimulation({ engine, corpus, kind, params, overrides = 
     // population says apply (`aanvragen`), and what it grants becomes a case,
     // as a granted application does on the portal: the precario tax reads the
     // terrace permit that way. Then the sources are registered again with them.
-    const applicationLaws = laws.filter((law) => caseSourceLaws(corpus.bindings).has(law.law_path));
+    const applicationPaths = caseSourceLaws(corpus.bindings);
+    const applicationLaws = laws.filter((law) => applicationPaths.has(law.law_path));
     if (applicationLaws.length) {
       const granted = [];
       for (const subject of population.subjects) {
         const form = population.formValues?.[subject.id] ?? {};
         for (const law of applicationLaws) {
-          if (!(form.aanvragen ?? []).includes(law.law_path)) continue;
+          if (notAppliedFor(law, form, applicationPaths)) continue;
           const callParams = callParamsFor(law, subject, form);
           const evaluation = evaluateLaw(engine, law, callParams, referenceDate);
           const outcome = reduceOutcome(law, null, evaluation);
@@ -314,6 +331,7 @@ export async function runSimulation({ engine, corpus, kind, params, overrides = 
       const form = population.formValues?.[subject.id] ?? {};
       const outcome = { subject, laws: {} };
       for (const law of laws) {
+        if (notAppliedFor(law, form, applicationPaths)) continue;
         const callParams = callParamsFor(law, subject, form);
         outcome.laws[law.id] = reduceOutcome(law, primaries.get(law.id), evaluateLaw(engine, law, callParams, referenceDate));
       }

@@ -8,7 +8,7 @@
  * op nul wetten.
  */
 import { describe, expect, it } from 'vitest';
-import { caseSourceLaws, simulationLaws, supportingLaws } from './runner.js';
+import { caseSourceLaws, notAppliedFor, simulationLaws, supportingLaws } from './runner.js';
 
 const law = (id, legalCharacter, params = ['bsn'], outputs = ['bedrag']) => ({
   id,
@@ -87,6 +87,25 @@ describe('caseSourceLaws', () => {
       awb: { zaak: { kind: 'cases' } },
     };
     expect([...caseSourceLaws(bindings)]).toEqual(['apv/terrassen']);
+  });
+});
+
+describe('notAppliedFor', () => {
+  const terras = { law_path: 'apv/terrassen' };
+  const precario = { law_path: 'precario' };
+  const paths = new Set(['apv/terrassen']);
+
+  it('laat een aanvraagwet weg voor wie hem niet aanvroeg', () => {
+    expect(notAppliedFor(terras, { aanvragen: [] }, paths)).toBe(true);
+    expect(notAppliedFor(terras, {}, paths)).toBe(true);
+  });
+
+  it('rekent een aanvraagwet door voor wie hem aanvroeg', () => {
+    expect(notAppliedFor(terras, { aanvragen: ['apv/terrassen'] }, paths)).toBe(false);
+  });
+
+  it('rekent een wet die geen aanvraag kent voor iedereen door', () => {
+    expect(notAppliedFor(precario, { aanvragen: [] }, paths)).toBe(false);
   });
 });
 
