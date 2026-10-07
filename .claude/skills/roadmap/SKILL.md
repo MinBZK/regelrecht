@@ -260,7 +260,9 @@ de titel om ertussen te wisselen:
   opgepakt, klaar. Geen afhankelijkheden, want die ordenen binnen een cel
   van de matrix.
 - `/roadmap/onderzoeksvragen`, de **vragen**: alle onderzoeksvragen als
-  kaarten in de volgorde van het paper, met een filter op hun stand. Een
+  kaarten in de volgorde van het paper, per paragraaf onder een kop met het
+  aantal vragen en deelvragen (de schakelaar "Per paragraaf" laat de koppen
+  weg), met een filter op hun stand. Een
   vraag heeft een stand zoals een werkpakket een belegging heeft: zijn eigen
   status (open is vrij, loopt is opgepakt, beantwoord is klaar) en zonder
   eigen status die van de belegging van zijn werkpakket; de kaart zegt welke

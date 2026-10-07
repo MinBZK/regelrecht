@@ -131,7 +131,14 @@ const pathname = '/roadmap';
       ondertitel="Werkpakketten per fase en discipline. Deze weergave is read-only; wijzigen gaat via een pull request op GitHub."
       zoek={{ placeholder: 'Zoek in werkpakketten', noun: 'werkpakketten' }}
       filters={['categorie', 'belegging']}
-      weergave
+      weergaven={[
+        {
+          id: 'afhankelijkheden',
+          text: 'Afhankelijkheden',
+          icon: 'arrow-right',
+          accessibleLabel: 'Afhankelijkheden tonen',
+        },
+      ]}
     />
 
     {/* tabindex + role make the horizontally scrolling matrix reachable by

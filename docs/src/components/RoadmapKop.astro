@@ -42,11 +42,21 @@ interface Props {
   zoek: { placeholder: string; noun: string };
   /** Welke filtergroepen de balk toont, in deze volgorde. */
   filters: FilterGroepId[];
-  /** De afhankelijkhedenschakelaar erbij; alleen de matrix heeft er iets aan. */
-  weergave?: boolean;
+  /**
+   * Weergaveschakelaars rechts van de filters: knoppen die niets wegnemen
+   * maar dezelfde items anders tonen (afhankelijkheden op de matrix,
+   * paragraafkoppen op de vragen). `aan` zet de knop bij het laden aan.
+   */
+  weergaven?: {
+    id: string;
+    text: string;
+    icon: string;
+    accessibleLabel: string;
+    aan?: boolean;
+  }[];
 }
 
-const { huidig, ondertitel, zoek, filters, weergave = false } = Astro.props;
+const { huidig, ondertitel, zoek, filters, weergaven = [] } = Astro.props;
 const groepen = filters.map((id) => FILTERGROEPEN[id]);
 ---
 
@@ -234,32 +244,33 @@ const groepen = filters.map((id) => FILTERGROEPEN[id]);
 
     {
       /*
-       * De weergaveschakelaar, achter een scheidslijn: dit filtert niets, het
-       * legt een tweede lezing over dezelfde matrix — de pijlen, het
-       * inspringen en het pakken van de rijen. Uit is de standaard, want de
-       * matrix is eerst een beeld van wat er te doen is en deze lezing kost
-       * een flink bredere kolom.
+       * De weergaveschakelaars, achter een scheidslijn: die filteren niets,
+       * ze leggen een andere lezing over dezelfde items. Op de matrix de
+       * afhankelijkheden (uit, want die lezing kost een bredere kolom), op de
+       * vragenpagina de paragraafkoppen (aan, want de lijst staat toch al in
+       * die volgorde).
        *
        * Een nldd-toggle-button en geen vinkje: een ingedrukte knop leest als
-       * een stand waar je in staat, en dat is wat dit is.
-       *
-       * De id blijft `rr-afhankelijkheden`, want de :has()-regels in
-       * roadmap.css en het script in pages/roadmap/index.astro hangen eraan.
-       * Een toggle-button reflecteert `selected`, geen `checked`; beide
-       * plekken lezen dat attribuut, en assertFilterRules() bewaakt het.
+       * een stand waar je in staat, en dat is wat dit is. De knop
+       * reflecteert `selected`, geen `checked`; de :has()-regels in
+       * roadmap.css lezen dat attribuut, en assertFilterRules() bewaakt het
+       * voor de afhankelijkheden.
        */
-      weergave && (
+      weergaven.length > 0 && (
         <div class="rr-controls__groep rr-controls__groep--weergave">
-          <nldd-toggle-button
-            id="rr-afhankelijkheden"
-            class="rr-weergave__option"
-            type="button"
-            size="sm"
-            icon="arrow-right"
-            text="Afhankelijkheden"
-            variant="icon-and-text"
-            accessible-label="Afhankelijkheden tonen"
-          />
+          {weergaven.map((w) => (
+            <nldd-toggle-button
+              id={`rr-${w.id}`}
+              class="rr-weergave__option"
+              type="button"
+              size="sm"
+              icon={w.icon}
+              text={w.text}
+              variant="icon-and-text"
+              accessible-label={w.accessibleLabel}
+              selected={w.aan ? true : undefined}
+            />
+          ))}
         </div>
       )
     }

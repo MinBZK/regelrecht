@@ -640,3 +640,27 @@
     max-width: 27%;
   }
 }
+
+/*
+ * De paragraafkoppen op de vragenpagina, achter de schakelaar "Per
+ * paragraaf". `selected` en niet `checked`, om dezelfde reden als bij
+ * #rr-afhankelijkheden: een nldd-toggle-button reflecteert `selected`.
+ * Uit laat de koppen weg, maar de kaarten houden hun volgorde en hun
+ * ruimte; de groep blijft als blok staan.
+ */
+.rr-roadmap:not(:has(#rr-paragrafen[selected])) .rr-paragraaf-kop {
+  display: none;
+}
+
+/*
+ * Een groep waarvan het zoeken of het standfilter alle kaarten heeft
+ * weggehaald verdwijnt mee, kop en al. Anders bleven bij een smal filter
+ * tientallen kopjes staan met niets eronder. Alleen de kaarten tellen (die
+ * dragen `data-zoek`); de deelvragen zitten in de kaart van hun vraag.
+ */
+.rr-roadmap
+  .rr-vragen__groep:not(
+    :has([data-zoek]:not(.rr-geen-treffer, .rr-vraag--geen-stand))
+  ) {
+  display: none;
+}

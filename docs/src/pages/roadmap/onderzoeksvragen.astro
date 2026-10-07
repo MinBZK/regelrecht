@@ -44,8 +44,51 @@ assertPaperSections(werkpakketten);
 assertOnderzoeksvragen(werkpakketten);
 assertFilterRules(roadmapCss);
 
+const meervoud = (n: number, een: string, meer: string) =>
+  `${n} ${n === 1 ? een : meer}`;
+
 const vragen = vragenOpVolgorde(werkpakketten);
 const verwanten = verwantIndex(werkpakketten);
+
+/*
+ * De vragen per paragraaf van het paper, in de volgorde waarin ze al staan.
+ * De kop per groep telt de vragen en de deelvragen eronder, zodat te zien is
+ * hoeveel werk er aan elke paragraaf hangt. Wat geen paragraaf heeft komt als
+ * laatste groep, "Zonder sectie in het paper".
+ */
+const groepen: {
+  sleutel: string;
+  kop: string;
+  titel?: string;
+  href?: string;
+  items: typeof vragen;
+}[] = [];
+for (const item of vragen) {
+  const sleutel = item.vraag.paper?.slug ?? 'geen';
+  let groep = groepen.at(-1);
+  if (!groep || groep.sleutel !== sleutel) {
+    groep = item.vraag.paper
+      ? {
+          sleutel,
+          kop: `§ ${item.vraag.paper.nummer}`,
+          titel: item.vraag.paper.titel,
+          href: item.vraag.paper.href,
+          items: [],
+        }
+      : { sleutel, kop: 'Zonder sectie in het paper', items: [] };
+    groepen.push(groep);
+  }
+  groep.items.push(item);
+}
+const groepTelling = (items: typeof vragen) => {
+  const deel = items.reduce((n, { vraag }) => n + vraag.deelvragen.length, 0);
+  return [
+    meervoud(items.length, 'vraag', 'vragen'),
+    deel > 0 && meervoud(deel, 'deelvraag', 'deelvragen'),
+  ]
+    .filter(Boolean)
+    .join(', ');
+};
 const telling = telStatussen(werkpakketten);
 
 // "14 open, 10 loopt, 0 beantwoord, 25 niet bepaald", in de volgorde van de
@@ -55,9 +98,6 @@ const standenTekst = (per: Record<string, number>) =>
     ...ONDERZOEK_STANDEN.map((s) => `${per[s.id] ?? 0} ${s.label.toLowerCase()}`),
     `${per[GEEN_STATUS] ?? 0} niet bepaald`,
   ].join(', ');
-
-const meervoud = (n: number, een: string, meer: string) =>
-  `${n} ${n === 1 ? een : meer}`;
 
 const pathname = '/roadmap/onderzoeksvragen';
 ---
@@ -76,6 +116,15 @@ const pathname = '/roadmap/onderzoeksvragen';
       ondertitel="Alle onderzoeksvragen van de werkpakketten, in de volgorde van het position paper. Druk op een vraag en zijn deelvragen schuiven eruit, elk met de stand: vrij, opgepakt of klaar."
       zoek={{ placeholder: 'Zoek in onderzoeksvragen', noun: 'vragen' }}
       filters={['stand']}
+      weergaven={[
+        {
+          id: 'paragrafen',
+          text: 'Per paragraaf',
+          icon: 'list',
+          accessibleLabel: 'Koppen per paragraaf van het paper tonen',
+          aan: true,
+        },
+      ]}
     />
 
     {/*
@@ -96,13 +145,30 @@ const pathname = '/roadmap/onderzoeksvragen';
       </nldd-text>
     </nldd-container>
 
-    {/* Eén kolom, de volle breedte, losse kaarten met ruimte ertussen; de
-        lijst loopt het paper af, sectie voor sectie, en de kopregel op elke
-        kaart zegt waar je bent. */}
-    <nldd-container gap="8">
+    {/* Eén kolom, de volle breedte, losse kaarten met ruimte ertussen,
+        gegroepeerd per paragraaf van het paper. De kop per groep verdwijnt
+        met de schakelaar "Per paragraaf" (roadmap.css) en de hele groep
+        verdwijnt als het zoeken of het filter al zijn kaarten weghaalt. */}
+    <nldd-container gap="24">
       {
-        vragen.map(({ vraag, werkpakket }) => (
-          <RoadmapVraagRij vraag={vraag} werkpakket={werkpakket} verwanten={verwanten} />
+        groepen.map((groep) => (
+          <nldd-container class="rr-vragen__groep" gap="8">
+            <nldd-title size="4" class="rr-paragraaf-kop">
+              <h2>
+                {groep.href ? (
+                  <a href={groep.href}>
+                    {groep.kop} <span lang="en">{groep.titel}</span>
+                  </a>
+                ) : (
+                  groep.kop
+                )}
+              </h2>
+              <p slot="supporting-text">{groepTelling(groep.items)}</p>
+            </nldd-title>
+            {groep.items.map(({ vraag, werkpakket }) => (
+              <RoadmapVraagRij vraag={vraag} werkpakket={werkpakket} verwanten={verwanten} />
+            ))}
+          </nldd-container>
         ))
       }
     </nldd-container>
