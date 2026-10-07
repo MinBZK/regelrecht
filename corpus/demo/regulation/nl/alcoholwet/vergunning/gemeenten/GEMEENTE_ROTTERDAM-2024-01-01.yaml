@@ -49,7 +49,7 @@ articles:
             type: boolean
             nullable: true
             source: {}
-          - name: levensgedrag_onbekend
+          - name: slecht_levensgedrag_bij_verlening
             type: boolean
             nullable: true
             source: {}
@@ -113,7 +113,7 @@ articles:
                 is_onder_curatele: $is_onder_curatele_exploitant
                 vloeroppervlakte: $vloeroppervlakte_horecalokaliteit
                 type_bedrijf: $type_bedrijf
-            # is_van_slecht_levensgedrag komt uit levensgedrag_onbekend, niet uit
+            # is_van_slecht_levensgedrag komt uit slecht_levensgedrag_bij_verlening, niet uit
             # de constante `geen_slecht_levensgedrag`: er is in de demo geen
             # levensgedrag-register op gemeenteniveau, en een constante false
             # liet de art. 8 lid 1 onder b-toets bij VWS altijd slagen. Voor een
@@ -123,7 +123,7 @@ articles:
             # is_ingeschreven_svh_register blijft gebonden aan het register
             # dat deze wet al resolvet.
                 is_ingeschreven_svh_register: $svh_registratie_geldig
-                is_van_slecht_levensgedrag: $levensgedrag_onbekend
+                is_van_slecht_levensgedrag: $slecht_levensgedrag_bij_verlening
           - name: weigeringsgrond_nationaal
             type: string
             nullable: true
@@ -136,10 +136,10 @@ articles:
                 vloeroppervlakte: $vloeroppervlakte_horecalokaliteit
                 type_bedrijf: $type_bedrijf
             # Zie de toelichting bij voldoet_aan_nationale_eisen hierboven:
-            # is_van_slecht_levensgedrag komt uit levensgedrag_onbekend, niet
+            # is_van_slecht_levensgedrag komt uit slecht_levensgedrag_bij_verlening, niet
             # uit de constante `geen_slecht_levensgedrag`.
                 is_ingeschreven_svh_register: $svh_registratie_geldig
-                is_van_slecht_levensgedrag: $levensgedrag_onbekend
+                is_van_slecht_levensgedrag: $slecht_levensgedrag_bij_verlening
           - name: bibob_mate_van_gevaar
             type: string
             nullable: true

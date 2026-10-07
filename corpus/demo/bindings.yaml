@@ -96,7 +96,7 @@ alcoholwet/vergunning/rotterdam:
   # de verlening getoetst (art. 8 lid 1 onder b); die uitkomst staat bij de
   # vergunning. Een aanvrager zonder vergunning heeft dat veld niet en blijft
   # onbekend: geen vergunning, geen toets, geen "voldoet".
-  levensgedrag_onbekend:
+  slecht_levensgedrag_bij_verlening:
     table: vergunningen
     field: is_van_slecht_levensgedrag
     select_on:
