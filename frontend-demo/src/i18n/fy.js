@@ -839,4 +839,5 @@ export default {
   "sheet.application.payments.count.one": "{n} betelling",
   "sheet.application.payments.count.other": "{n} betellingen",
   "sheet.application.payments.coming": "Wat der noch komt",
+  "zaak.moments.with_value": "{text}: {value}",
 };

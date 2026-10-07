@@ -965,4 +965,5 @@ export default {
   'sheet.application.payments.count.one': '{n} betaling',
   'sheet.application.payments.count.other': '{n} betalingen',
   'sheet.application.payments.coming': 'Wat er nog komt',
+  'zaak.moments.with_value': '{text}: {value}',
 };

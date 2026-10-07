@@ -125,14 +125,21 @@ export function executionStart(shape, caseGrams, today) {
  * (`checkedThrough`).
  */
 export function pendingExecutionDays({ shape, event, caseGrams, start, checkedThrough, today }) {
-  if (!start) return [];
-  const perMonth = shape?.executed_on?.once_per === 'month';
+  if (!start || !executesMonthly(shape)) return [];
   const done = new Set(
     (caseGrams ?? []).filter((g) => g.name === event).map((g) => dayOf(g.effective_at).slice(0, 7)),
   );
-  return executionDays(start, today).filter(
-    (day) => (!checkedThrough || day > checkedThrough) && !(perMonth && done.has(day.slice(0, 7))),
-  );
+  const checked = checkedThrough ? checkedThrough.slice(0, 7) : null;
+  return executionDays(start, today).filter((day) => (!checked || day.slice(0, 7) > checked) && !done.has(day.slice(0, 7)));
+}
+
+/**
+ * Of de wet een uitvoering eens per kalendermaand laat ontstaan
+ * (`executed_on.once_per: month`). Dat is het enige ritme dat de demo kent;
+ * een uitvoering met een ander ritme vraagt zij niet.
+ */
+export function executesMonthly(shape) {
+  return shape?.executed_on?.once_per === 'month';
 }
 
 /**
@@ -158,16 +165,16 @@ export function nextExecution(preview, today, horizon = 13) {
  * De datumvelden die de wet een besluit geeft, los van de dag waarop het
  * wordt genomen: hetzelfde in twee voorbeelden op opeenvolgende dagen. Een
  * datum die met de besluitdag meeschuift (vier weken na de dagtekening) is nog
- * geen moment; een datum die vaststaat (zes maanden na de aanslag) wel. Alleen
- * wat na `today` ligt.
+ * geen moment; een datum die vaststaat (zes maanden na de aanslag) wel. Met
+ * `today` alleen wat daarna ligt.
  */
-export function fixedDates(first, second, fields, today) {
+export function fixedDates(first, second, fields, today = null) {
   const out = [];
   for (const [name, field] of Object.entries(fields ?? {})) {
     if (field?.type !== 'date') continue;
     const value = first?.fields?.[name];
     if (typeof value !== 'string' || value !== second?.fields?.[name]) continue;
-    if (value > today) out.push({ name, date: value });
+    if (!today || value > today) out.push({ name, date: value });
   }
   return out;
 }
@@ -181,12 +188,20 @@ export function comingDates(gram, fields, today) {
 }
 
 /**
- * Of het besluit van een fase genomen kan worden: elke datum die het dossier
- * ervoor geeft, ligt op of vóór `today`. Een besluit dat op zo'n datum wacht
- * (de aanslag van Awir 19) kan er niet eerder zijn; een besluit zonder zo'n
- * datum heeft geen moment dat de demo kent, en komt dus niet vanzelf.
+ * Of het besluit van een fase genomen kan worden.
+ *
+ * - Geeft het dossier er datums voor (de aanslag van Awir 19), dan als elk
+ *   daarvan op of vóór `today` ligt: eerder kan het besluit er niet zijn.
+ * - Vraagt het besluit zo'n datum maar heeft het dossier er geen (geen
+ *   aanslag), dan op de vaste datum die de wet het besluit geeft (`lawDates`,
+ *   uit `fixedDates`; Awir 19 lid 2: uiterlijk 31 december van het jaar erna).
+ * - Een besluit dat geen datum uit het dossier vraagt, heeft geen moment dat
+ *   de demo kent en komt niet vanzelf.
  */
-export function decisionDue(dossierDates, today) {
-  const dates = Object.values(dossierDates ?? {});
-  return dates.length > 0 && dates.every((d) => typeof d === 'string' && d <= today);
+export function decisionDue(dossierDates, today, lawDates = []) {
+  const asked = Object.values(dossierDates ?? {});
+  if (asked.length === 0) return false;
+  const known = asked.filter((d) => typeof d === 'string');
+  if (known.length) return known.every((d) => d <= today);
+  return lawDates.some((d) => d <= today);
 }

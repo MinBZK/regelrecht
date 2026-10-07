@@ -43,6 +43,7 @@ const IDENTICAL_BY_DESIGN = new Set([
   // sjabloon zelf. Er valt hier niets te vertalen.
   'wet.tree.law_state',
   'wet.tile.outcome.missing',
+  'zaak.moments.with_value',
 ]);
 
 /** The `{placeholder}` names in a string, sorted. */

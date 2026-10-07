@@ -29,6 +29,9 @@
 /** De fasen van de beschikkingsprocedure, in de volgorde van de Awb. */
 export const STAGES = ['AANVRAAG', 'BEHANDELING', 'BESLUIT', 'BEKENDMAKING', 'BEZWAAR'];
 
+/** De fase waarop de demo een afgeronde levensloop zet (`advanceLifecycle`). */
+export const COMPLETE = 'BEZWAAR';
+
 /**
  * Welke fase eerder komt dan welke. Alleen voor "is deze zaak al voorbij X",
  * nooit om zelf een volgende fase te kiezen: dat doet de engine, uit de wet.
@@ -131,7 +134,10 @@ export function announced(caseRecord) {
   if (!stage) return false;
   const stages = caseRecord.procedureStages ?? STAGES.map((name) => ({ name }));
   const at = stages.findIndex((s) => s.name === stage);
-  // Een fase buiten de procedure: de levensloop is klaar, alles is voorbij.
+  // Buiten de procedure staat alleen een afgeronde levensloop (de demo zet
+  // hem dan op BEZWAAR): alles is voorbij. Een andere onbekende fase zegt
+  // niets, en dan is er niets bekendgemaakt.
+  if (at < 0 && stage !== COMPLETE) return false;
   const passed = at < 0 ? stages : stages.slice(0, at);
   const last = [...passed].reverse().find((s) => ['BESLUIT', 'BEKENDMAKING'].includes(stageKind(s)));
   return stageKind(last) === 'BEKENDMAKING';

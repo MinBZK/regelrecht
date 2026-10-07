@@ -944,4 +944,5 @@ export default {
   'sheet.application.payments.count.one': '{n} payment',
   'sheet.application.payments.count.other': '{n} payments',
   'sheet.application.payments.coming': 'Still to come',
+  'zaak.moments.with_value': '{text}: {value}',
 };

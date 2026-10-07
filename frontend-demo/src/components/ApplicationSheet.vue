@@ -293,7 +293,8 @@ const payments = computed(() => {
   void dataVersion.value;
   void demo.state.referenceDate;
   const c = currentCase.value;
-  if (!c?.applicationGramId) return null;
+  // Alleen als het blad open is: de momenten vragen de cel om voorbeelden.
+  if (!props.open || !c?.applicationGramId) return null;
   const grams = demo.gramsOfCase(c).filter((g) => g.id !== c.applicationGramId);
   if (!grams.length) return null;
   const executions = grams.filter((g) => g.type === 'executogram');
@@ -501,7 +502,7 @@ function claimStatus(cl) {
                 <nldd-title size="6"><h4>{{ t('sheet.application.payments.coming') }}</h4></nldd-title>
                 <nldd-list appearance="box-tinted" :accessible-label="t('sheet.application.payments.coming')">
                   <nldd-list-item v-for="m in payments.coming" :key="`${m.kind}-${m.name}-${m.date}`" size="sm">
-                    <nldd-text-cell size="sm" :text="m.value ? `${m.text}: ${m.value}` : m.text" :supporting-text="m.supporting"></nldd-text-cell>
+                    <nldd-text-cell size="sm" :text="m.value ? t('zaak.moments.with_value', { text: m.text, value: m.value }) : m.text" :supporting-text="m.supporting"></nldd-text-cell>
                     <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="formatValue(m.date, null)"></nldd-text-cell>
                   </nldd-list-item>
                 </nldd-list>

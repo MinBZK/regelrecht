@@ -18,7 +18,7 @@ import {
   registerClaims,
   registerPersonaData,
 } from '../engine/useDemoEngine.js';
-import { carriedInputs, decisionDates, procedureStages, statusOf } from '../data/lifecycle.js';
+import { COMPLETE, carriedInputs, decisionDates, procedureStages, statusOf } from '../data/lifecycle.js';
 import { delegationKey, delegationTypeLabel, delegationsFor, maySubmitClaims } from '../data/delegation.js';
 import { verdictOf } from '../data/format.js';
 import { driftOf } from '../data/caseDrift.js';
@@ -29,7 +29,9 @@ import { materialiseRecord, tablesFromProfiles } from '../data/materialize.js';
 import {
   addDays,
   comingDates,
+  dayOf,
   decisionDue,
+  executesMonthly,
   executionStart,
   fixedDates,
   nextExecution,
@@ -161,9 +163,21 @@ function newId(prefix) {
  * elkaar: de grammen op de peildatum, de rest op de wandklok. Het tijdstip
  * van de dag komt van de wandklok, zodat wat na elkaar gebeurt ook na elkaar
  * staat.
+ *
+ * Nooit vóór wat de kroniek al heeft vastgelegd: wie de demo een dag later
+ * opnieuw opent, op een vroeger uur en met dezelfde peildatum, zou anders een
+ * moment krijgen dat vóór de laatste gram ligt. Dan gaat de klok vanaf die
+ * gram een seconde verder.
  */
 function nowMoment() {
-  return momentOn(state.referenceDate);
+  const now = momentOn(state.referenceDate);
+  let last = null;
+  for (const g of state.grams) {
+    if (dayOf(g.recorded_at) === state.referenceDate && (!last || Date.parse(g.recorded_at) > Date.parse(last))) last = g.recorded_at;
+  }
+  if (!last || Date.parse(now) > Date.parse(last)) return now;
+  const later = momentOn(state.referenceDate, new Date(Date.parse(last) + 1000));
+  return Date.parse(later) > Date.parse(last) ? later : last;
 }
 
 /** Cases in the shape the materialiser's `kind: cases` bindings expect. */
@@ -489,7 +503,7 @@ function executionsOf(chrono) {
     if (e.name === chrono.application.name || chrono.decisions.some((d) => d.name === e.name)) continue;
     try {
       const shape = chrono.wasmCell.shape(engine.value, e.name, state.referenceDate);
-      if (shape.executed_on) out.push({ event: e.name, shape });
+      if (executesMonthly(shape)) out.push({ event: e.name, shape });
     } catch (err) {
       console.warn(`Vorm van ${e.name} niet af te leiden:`, err);
     }
@@ -549,8 +563,18 @@ function dueDecision(c) {
   try {
     const found = decisionAt(chrono, c.stageState?.current_stage);
     if (!found || c.decisionGrams?.[found.event]) return null;
-    const { dates } = dossierInputs(chrono.wasmCell, found.event, c.applicationGramId, nowMoment());
-    return decisionDue(dates, state.referenceDate) ? found : null;
+    const now = nowMoment();
+    const { inputs, dates } = dossierInputs(chrono.wasmCell, found.event, c.applicationGramId, now);
+    // Zonder datum uit het dossier: de vaste datum die de wet het besluit
+    // geeft (Awir 19 lid 2), uit twee voorbeelden op opeenvolgende dagen.
+    let lawDates = [];
+    if (Object.keys(dates).length && !Object.values(dates).some((d) => typeof d === 'string')) {
+      const refersTo = applicationReference(found.event, found.shape, c);
+      const preview = (at) => chrono.wasmCell.previewDecision(engine.value, found.event, refersTo, at, inputs);
+      const fields = Object.fromEntries(found.shape.fields.map((f) => [f.name, f]));
+      lawDates = fixedDates(preview(now), preview(momentOn(addDays(state.referenceDate, 1))), fields).map((m) => m.date);
+    }
+    return decisionDue(dates, state.referenceDate, lawDates) ? found : null;
   } catch (e) {
     c.chronicleError = String(e?.message ?? e);
     return null;
@@ -631,21 +655,26 @@ function nextMoments(c) {
  */
 function advanceTo(date) {
   if (!date || date <= state.referenceDate) return;
-  state.referenceDate = date;
-  reregister();
-  for (const c of state.cases) {
-    if (statusOf(c) === 'WITHDRAWN' || !c.applicationGramId) continue;
-    executeDue(c);
-    const due = dueDecision(c);
-    if (!due) continue;
-    if (state.manualReview) {
-      if (c.dueStage !== due.shape.stage) {
+  const open = () => state.cases.filter((c) => statusOf(c) !== 'WITHDRAWN' && c.applicationGramId);
+  for (const c of open()) c.chronicleError = null;
+  // Langs elk moment van elke zaak tot `date`, niet in één sprong: een zaak
+  // waarvan de toekenning eerder valt, krijgt haar besluit op die dag, en
+  // daarna geen termijnen meer.
+  while (state.referenceDate < date) {
+    const step = nextMoment(open().flatMap((c) => nextMoments(c)), state.referenceDate)?.date;
+    state.referenceDate = step && step < date ? step : date;
+    reregister();
+    for (const c of open()) {
+      executeDue(c);
+      const due = dueDecision(c);
+      if (!due || c.dueStage) continue;
+      if (state.manualReview) {
         c.dueStage = due.shape.stage;
         c.events.push({ at: nowMoment(), type: 'IN_REVIEW', key: 'case.event.decision_due' });
+        continue;
       }
-      continue;
+      decideByLaw(c, due.shape.stage);
     }
-    decideByLaw(c, due.shape.stage);
   }
   reregister();
 }
@@ -1103,7 +1132,7 @@ function advanceLifecycle(c, supplied = {}) {
     // die eruit kwam zichtbaar blijft.
     c.stageState = {
       ...(c.stageState ?? {}),
-      current_stage: 'BEZWAAR',
+      current_stage: COMPLETE,
       accumulated_outputs: { ...(c.stageState?.accumulated_outputs ?? {}), ...step.outputs },
     };
     c.pendingInputs = [];

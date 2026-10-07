@@ -80,10 +80,15 @@ describe('wanneer de cel een uitvoering uitvoert', () => {
       checkedThrough: '2024-11-20',
       today: '2025-02-01',
     });
-    expect(days).toEqual(['2024-11-21', '2025-01-01', '2025-02-01']);
+    expect(days).toEqual(['2025-01-01', '2025-02-01']);
     expect(
       pendingExecutionDays({ shape: termijnShape, event: 'termijn', caseGrams: [], start: '2025-01-01', checkedThrough: '2025-01-01', today: '2025-01-20' }),
     ).toEqual([]);
+  });
+
+  it('vraagt niets voor een ritme dat de demo niet kent', () => {
+    const shape = { ...termijnShape, executed_on: { parameter: 'dag' } };
+    expect(pendingExecutionDays({ shape, event: 'x', caseGrams: [], start: '2025-01-01', today: '2025-03-01' })).toEqual([]);
   });
 });
 
@@ -112,6 +117,7 @@ describe('de datums die de wet een besluit geeft', () => {
     const morgen = { fields: { uiterste: '2026-10-15', uitbetalen: '2026-05-14', bedrag: 1 } };
     expect(fixedDates(vandaag, morgen, fields, '2026-04-15')).toEqual([{ name: 'uiterste', date: '2026-10-15' }]);
     expect(fixedDates(vandaag, morgen, fields, '2026-10-15')).toEqual([]);
+    expect(fixedDates(vandaag, morgen, fields)).toEqual([{ name: 'uiterste', date: '2026-10-15' }]);
   });
 
   it('geeft van een gram de datums die nog komen', () => {
@@ -129,8 +135,13 @@ describe('of een besluit zijn moment heeft', () => {
     expect(decisionDue({ aanslag: '2026-04-15' }, '2026-04-14')).toBe(false);
   });
 
-  it('heeft het niet zonder datum', () => {
-    expect(decisionDue({}, '2030-01-01')).toBe(false);
+  it('heeft het niet als het besluit geen datum uit het dossier vraagt', () => {
+    expect(decisionDue({}, '2030-01-01', ['2026-12-31'])).toBe(false);
+  });
+
+  it('heeft het zonder datum uit het dossier op de vaste datum die de wet geeft', () => {
+    expect(decisionDue({ aanslag: null }, '2026-12-30', ['2026-12-31'])).toBe(false);
+    expect(decisionDue({ aanslag: null }, '2026-12-31', ['2026-12-31'])).toBe(true);
     expect(decisionDue({ aanslag: null }, '2030-01-01')).toBe(false);
   });
 });

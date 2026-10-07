@@ -771,6 +771,7 @@ export default {
   "zaak.moments.period_end.supporting": "8e1e",
   "zaak.moments.title": "c75d",
   "zaak.moments.today": "e36b",
+  "zaak.moments.with_value": "8726",
   "zaak.motivation": "f838",
   "zaak.motivation.placeholder": "6db5",
   "zaak.objection.dismiss": "d810",

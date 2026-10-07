@@ -397,7 +397,7 @@ function claimLawName(cl) {
                 <nldd-list-item v-for="(m, i) in moments" :key="`${m.kind}-${m.name}-${m.date}`" size="sm">
                   <nldd-timeline-track-cell status="future" :position="i === moments.length - 1 ? 'last' : 'between'"></nldd-timeline-track-cell>
                   <nldd-spacer-cell size="8"></nldd-spacer-cell>
-                  <nldd-text-cell size="sm" :text="m.value ? `${m.text}: ${m.value}` : m.text" :supporting-text="m.supporting"></nldd-text-cell>
+                  <nldd-text-cell size="sm" :text="m.value ? t('zaak.moments.with_value', { text: m.text, value: m.value }) : m.text" :supporting-text="m.supporting"></nldd-text-cell>
                   <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="formatValue(m.date, null)"></nldd-text-cell>
                 </nldd-list-item>
               </nldd-list>
