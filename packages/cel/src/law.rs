@@ -72,6 +72,14 @@ pub const NAMESPACE: &str = "chronolex";
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Chronolex {
+    /// True when the runtime derived this block from what the law says in
+    /// its own words (`produces.submission`, `decides_on`, `moment`, the
+    /// hooks, `origin` and `specifies` on the parameters) because the
+    /// article carries no `produces.extensions.chronolex`. The law then
+    /// knows nothing of chronolexography; how a fact is recorded is the
+    /// runtime's. See [`derive_chronolex`].
+    #[serde(skip)]
+    pub derived: bool,
     #[serde(default)]
     pub establishes: Vec<Establishment>,
     #[serde(default)]
@@ -623,10 +631,139 @@ fn version<'s>(
         .or_else(|| resolver.get_law(id))
 }
 
-/// Every article in the corpus with a chronolex block, by reference, in the
-/// version that applies on `date` (the newest without one). Every block is
-/// validated against `schema/chronolex/v0.3.0/law-extension.json`; a block
-/// that does not validate or cannot be read is an error naming the article.
+/// What the law says about a fact in its own words, as the block the runtime
+/// would otherwise read from `produces.extensions.chronolex`. None if the
+/// article establishes nothing and hooks onto no submission.
+///
+/// - `produces.submission`: the article lets a submission arise. Its fields
+///   are the parameters the applicant supplies (origin BELANGHEBBENDE or
+///   KANAAL, RFC-048); a parameter that `specifies` a parameter of a general
+///   law (Wpp 102 lid 3 onder a is Awb 4:2 lid 1 onder a for a party) is
+///   one field under the name of the special law.
+/// - `produces.legal_character: BESCHIKKING` with `decides_on`: the article
+///   takes the decision on that submission (RFC-022 §1.2: a decretogram, in
+///   the stage BESLUIT of the procedure, referring to the application); its
+///   fields are its outputs.
+/// - a hook with `applies_to.submission`: the general law applies itself to
+///   every such submission (RFC-046); what it asks of the applicant joins
+///   the fields of the submission.
+/// - `produces.moment`: the moment that counts in law for the fact.
+///
+/// The event name is not the law's: the stream gives it. A derived block has
+/// no event name, and establishes the event of every stream that names the
+/// article under `establishes`.
+pub fn derive_chronolex(article: &Article) -> Option<Chronolex> {
+    let produces = article
+        .get_execution_spec()
+        .and_then(|e| e.produces.as_ref());
+    let moment = produces
+        .and_then(|p| p.moment.as_ref())
+        .map(|m| EffectiveAtLaw {
+            parameter: m.parameter.clone(),
+            field: None,
+            legal_basis: m.legal_basis.clone(),
+            only: None,
+        });
+    let params = article.get_parameters();
+    let supplied = params.iter().any(|p| {
+        p.origin
+            .as_ref()
+            .and_then(Declared::as_valid)
+            .is_some_and(|o| matches!(o.waarde, OriginValue::Belanghebbende | OriginValue::Kanaal))
+    });
+    let mut establishes = Vec::new();
+    if let Some(kind) = produces.and_then(|p| p.submission.as_ref()) {
+        let _ = kind;
+        let aliases: BTreeMap<String, String> = params
+            .iter()
+            .filter_map(|p| {
+                p.specifies
+                    .as_ref()
+                    .map(|q| (q.parameter.clone(), p.name.clone()))
+            })
+            .collect();
+        establishes.push(Establishment {
+            event: None,
+            extends: None,
+            type_: None,
+            subtype: None,
+            stage: None,
+            refers_to: BTreeMap::new(),
+            legal_basis: None,
+            effective_at: moment.clone(),
+            fields: Some(Fields::Keyword("parameters".into())),
+            aliases,
+            prefill: BTreeMap::new(),
+        });
+    } else if let Some(targets) = produces
+        .filter(|p| p.legal_character.as_deref() == Some("BESCHIKKING"))
+        .and_then(|p| p.decides_on.as_ref())
+        .filter(|t| !t.is_empty())
+    {
+        let mut refers_to = BTreeMap::new();
+        refers_to.insert(
+            "on_application".to_string(),
+            Reference {
+                to: crate::stream::To::Article(targets[0].clone()),
+                required: true,
+            },
+        );
+        establishes.push(Establishment {
+            event: None,
+            extends: None,
+            type_: Some("decretogram".into()),
+            subtype: None,
+            stage: Some(crate::stream::DECISION.into()),
+            refers_to,
+            legal_basis: None,
+            effective_at: moment.clone(),
+            fields: Some(Fields::Keyword("outputs".into())),
+            aliases: BTreeMap::new(),
+            prefill: BTreeMap::new(),
+        });
+    }
+    let mut kinds: Vec<String> = Vec::new();
+    for h in article.get_hooks().into_iter().flatten() {
+        if let Some(k) = &h.applies_to.submission {
+            if !kinds.contains(k) {
+                kinds.push(k.clone());
+            }
+        }
+    }
+    for kind in kinds {
+        establishes.push(Establishment {
+            event: None,
+            extends: Some(Extends::Submission { submission: kind }),
+            type_: None,
+            subtype: None,
+            stage: None,
+            refers_to: BTreeMap::new(),
+            legal_basis: None,
+            effective_at: moment.clone(),
+            fields: supplied.then(|| Fields::Keyword("parameters".into())),
+            aliases: BTreeMap::new(),
+            prefill: BTreeMap::new(),
+        });
+    }
+    if establishes.is_empty() {
+        return None;
+    }
+    Some(Chronolex {
+        derived: true,
+        establishes,
+        reads: None,
+        channels: BTreeMap::new(),
+        supplies: BTreeMap::new(),
+        mandates: Vec::new(),
+    })
+}
+
+/// Every article in the corpus with a chronolex block, or with what the law
+/// says in its own words about a fact ([`derive_chronolex`]), by reference,
+/// in the version that applies on `date` (the newest without one). Every
+/// block is validated against `schema/chronolex/v0.3.0/law-extension.json`;
+/// a block that does not validate or cannot be read is an error naming the
+/// article.
 pub fn articles(
     service: &LawExecutionService,
     date: Option<NaiveDate>,
@@ -639,8 +776,21 @@ pub fn articles(
             continue;
         };
         for article in &law.articles {
-            let Some(b) = block(article) else { continue };
             let reference = format!("{id}#{}", article.number);
+            let Some(b) = block(article) else {
+                if let Some(chronolex) = derive_chronolex(article) {
+                    out.insert(
+                        reference.clone(),
+                        LawArticle {
+                            reference,
+                            regulation: law,
+                            article,
+                            chronolex,
+                        },
+                    );
+                }
+                continue;
+            };
             if let Err(f) = schema::validate(Kind::LawExtension, b) {
                 errors.extend(
                     f.into_iter()
@@ -1470,13 +1620,16 @@ fn establish_event(
     for r in &listed {
         let Some(wa) = law.get(r) else {
             errors.push(format!(
-                "article '{r}' is not loaded or has no produces.extensions.{NAMESPACE}"
+                "article '{r}' is not loaded, or it neither lets a fact arise (produces.submission, a decision with decides_on) nor carries produces.extensions.{NAMESPACE}"
             ));
             continue;
         };
         let mut found = false;
         for v in &wa.chronolex.establishes {
-            if v.event.as_deref() == Some(name.as_str()) {
+            // A derived block names no event: the stream that lists the
+            // article under `establishes` gives the fact its name.
+            let derived_basis = wa.chronolex.derived && v.event.is_none() && v.extends.is_none();
+            if v.event.as_deref() == Some(name.as_str()) || derived_basis {
                 parts.push(Part {
                     law: wa,
                     establishment: v,

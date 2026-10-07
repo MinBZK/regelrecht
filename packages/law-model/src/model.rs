@@ -150,6 +150,17 @@ pub struct Source {
     pub description: Option<String>,
 }
 
+/// A parameter of a special law that is the specific form of a parameter of
+/// a general law (lex specialis): Wpp 102 lid 3 onder a "de statutaire naam
+/// van de politieke partij" is what Awb 4:2 lid 1 onder a "de naam van de
+/// aanvrager" means for this applicant. One datum, two legal bases.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Specifies {
+    pub regulation: String,
+    pub article: String,
+    pub parameter: String,
+}
+
 /// Parameter definition in execution spec
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Parameter {
@@ -183,6 +194,9 @@ pub struct Parameter {
     /// reports it with the file and the parameter.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origin: Option<Declared<Origin>>,
+    /// The parameter of a general law this parameter is the specific form of.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub specifies: Option<Specifies>,
 }
 
 /// A field a law declares for a process runtime and not for the engine
@@ -378,6 +392,21 @@ impl Output {
     }
 }
 
+/// The moment that counts in law for what an article produces: the day the
+/// decision is taken (Wpp 107 lid 1 "besluit vóór 1 juli": `parameter`
+/// names the date), or, without a parameter, the moment the receiving body
+/// establishes (Awb 4:13 lid 1: the receipt of an application). The runtime
+/// that records the fact binds it to the record's moment.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct Moment {
+    /// The parameter of this article that is the moment.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parameter: Option<String>,
+    /// The provisions that say why this moment counts (`<regulation>#<article> lid <n>`).
+    #[serde(default)]
+    pub legal_basis: Vec<String>,
+}
+
 /// Produces specification for execution.
 ///
 /// Describes the legal character of what an article produces.
@@ -402,6 +431,9 @@ pub struct Produces {
     /// is not silently dropped.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub extensions: Option<serde_json::Value>,
+    /// The moment that counts in law for what this article produces.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub moment: Option<Moment>,
     /// The article establishes something a belanghebbende submits, such as
     /// an application (Awb 1:3 lid 3), that the general law can hook onto
     /// (RFC-046). Next to the legal character of the article's own outputs.
