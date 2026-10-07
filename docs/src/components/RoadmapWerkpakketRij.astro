@@ -2,15 +2,18 @@
 /*
  * Eén werkpakket als rij op het bord, met zijn onderzoeksvragen eronder.
  *
- * Een nldd-list-item in een nldd-list van het type `tree`: de rij is de knop
- * (`button`), `expanded` is de stand, en de vragen staan in de `children`-slot
- * als rijen van een tak. Het ontwerpsysteem regelt daarmee het uitklappen,
- * de pijltoetsen en aria-expanded; de chevron draait mee op `disclosure`.
+ * Elk werkpakket is zijn eigen omlijste nldd-list van het type `tree` met
+ * één tak: de rij is de knop (`button`), `expanded` is de stand, en de vragen
+ * staan in de `children`-slot als rijen van die tak. Zo staat elk werkpakket
+ * als losse kaart met ruimte eromheen, net als de vragen op de vragenpagina,
+ * terwijl het ontwerpsysteem het uitklappen, de pijltoetsen en aria-expanded
+ * regelt; de chevron draait mee op `disclosure`.
  *
- * De rij draagt dezelfde data-attributen als de kaart op de matrix, zodat
- * het zoekveld en de filters in de kop hem op dezelfde manier vinden, en
- * dezelfde tags (werkpakketTags) zodat een werkpakket er hier hetzelfde
- * uitziet als daar.
+ * De data-attributen voor zoeken en filteren staan op de lijst, niet op de
+ * rij: de filters verbergen het element dat ze dragen, en een verborgen rij
+ * in een zichtbare lijst zou een leeg kader achterlaten. De tags zijn
+ * dezelfde als op de matrixkaart (werkpakketTags), zodat een werkpakket er
+ * hier hetzelfde uitziet als daar.
  *
  * Per vraag staat de stand (vrij, opgepakt, klaar) zoals vraagLane() hem
  * afleidt, en de eigen status als die er is. Op de vragenpagina zijn
@@ -53,13 +56,15 @@ const supporting = [
   .join(' · ');
 ---
 
-<nldd-list-item
-  button
-  data-wp-id={data.id}
+<nldd-list
+  type="tree"
+  appearance="box-tinted"
+  accessible-label={data.titel}
   data-categorie={data.categorie || GEEN_CATEGORIE}
   data-belegging={beleggingStand(data.belegging.stand)}
   data-zoek={zoektekst(data)}
 >
+<nldd-list-item button data-wp-id={data.id}>
   <nldd-text-cell text={data.titel} supporting-text={supporting} width="full">
     {(belegging?.id !== 'vrij' || tags.length > 0 || rfcs) && (
       <nldd-container slot="supporting-text" gap="4">
@@ -136,3 +141,4 @@ const supporting = [
     )
   }
 </nldd-list-item>
+</nldd-list>

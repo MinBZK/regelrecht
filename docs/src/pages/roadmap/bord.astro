@@ -14,8 +14,8 @@
  * eronder leesbaar zijn. Geen afhankelijkhedenschakelaar: die ordent kaarten
  * binnen een cel van de matrix, en hier is geen cel.
  *
- * Een nldd-list van het type `tree` met RoadmapWerkpakketRij.astro per
- * werkpakket; het ontwerpsysteem regelt de pijltoetsen, aria-expanded en het
+ * Per werkpakket een eigen nldd-list van het type `tree`
+ * (RoadmapWerkpakketRij.astro), als losse kaart; het ontwerpsysteem regelt de pijltoetsen, aria-expanded en het
  * tonen van de kinderen op `expanded`. Wat het niet doet is `expanded`
  * omzetten bij een klik op de rij: die stand is van de pagina, en het script
  * onderaan zet hem. Geen eigen CSS.
@@ -63,9 +63,11 @@ const pathname = '/roadmap/bord';
       filters={['categorie', 'belegging']}
     />
 
-    <nldd-list type="tree" appearance="box-tinted" accessible-label="Werkpakketten met hun onderzoeksvragen">
+    {/* Elke rij is een eigen kaart met ruimte ertussen, zoals op de
+        vragenpagina; de omlijsting komt uit RoadmapWerkpakketRij. */}
+    <nldd-container gap="8">
       {rijen.map((wp) => <RoadmapWerkpakketRij wp={wp} />)}
-    </nldd-list>
+    </nldd-container>
   </RoadmapSectie>
 </Base>
 
