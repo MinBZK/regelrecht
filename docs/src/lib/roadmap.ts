@@ -300,7 +300,7 @@ export const FILTERGROEPEN: Record<FilterGroepId, FilterGroep> = {
     optieKlasse: 'rr-filter__belegging-option',
     opties: BELEGGING_FILTER_OPTIES,
     attribuut: 'belegging',
-    verbergKlasse: 'rr-wp-card--geen-belegging',
+    verbergKlasse: 'rr-geen-belegging',
   },
   /*
    * De stand van een onderzoeksvraag: vrij, opgepakt of klaar, zoals
@@ -364,7 +364,7 @@ export function assertFilterRules(css: string): void {
       `roadmap.css mist een toon-regel voor filteroptie(s) ${missing
         .map((id) => `"${id}"`)
         .join(', ')}. Voeg een ` +
-        `\`.rr-roadmap:has(#rr-cat-<id>[checked]) .rr-wp-card[data-categorie='<id>']\`-regel toe, ` +
+        `\`.rr-roadmap:has(#rr-cat-<id>[checked]) [data-categorie='<id>']\`-regel toe, ` +
         'anders blijven die kaarten verborgen zodra er gefilterd wordt.',
     );
   }
@@ -647,23 +647,6 @@ export function kaartOndertitel(data: WerkpakketData): string {
     .join(' · ');
 }
 
-/**
- * De lanes van het bord op /roadmap/bord: de drie beleggingsstanden, elk met
- * de tekst die de lane toont als er geen werkpakket in staat.
- *
- * Die tekst staat hier en niet in de pagina omdat hij per stand iets anders
- * zegt. Een lege lane Vrij is goed nieuws, een lege lane Klaar is de stand
- * van vandaag, en een lege lane Opgepakt is een uitnodiging; "Geen
- * werkpakketten" zou alle drie hetzelfde laten klinken.
- */
-export const BORD_LANES = BELEGGING_STANDEN.map((stand) => ({
-  ...stand,
-  leeg: {
-    vrij: 'Alles is opgepakt of klaar.',
-    opgepakt: 'Nog niemand heeft een werkpakket opgepakt.',
-    klaar: 'Nog geen werkpakket is klaar.',
-  }[stand.id],
-}));
 
 /**
  * Everything of a werkpakket that the zoekfilter on /roadmap matches against,

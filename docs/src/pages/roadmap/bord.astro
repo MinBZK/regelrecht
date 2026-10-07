@@ -1,37 +1,32 @@
 ---
 /*
- * /roadmap/bord — dezelfde werkpakketten als de matrix, in drie lanes op
- * belegging: vrij, opgepakt, klaar.
+ * /roadmap/bord — dezelfde werkpakketten als de matrix, als brede rijen
+ * onder elkaar, elk uit te klappen tot de onderzoeksvragen die erin staan.
  *
  * Waar de matrix laat zien wát er te doen is (per fase en discipline), laat
- * het bord zien óf er iemand op zit. Dat is de derde as naast onderzoek en
- * bouw (zie BELEGGING_STANDEN in lib/roadmap.ts), en de enige die een vraag
- * beantwoordt waar de matrix geen kolom voor heeft: wat ligt er open.
+ * het bord per werkpakket zien hoe ver de vragen erin zijn. Druk op een rij
+ * en de vragen schuiven eronder uit, elk met zijn stand: vrij, opgepakt of
+ * klaar, uit de eigen status van de vraag of anders uit de belegging van het
+ * werkpakket (vraagLane() in lib/roadmap.ts).
  *
- * Geen nldd-collection met layout="lanes": dat is een masonry-raster dat
- * items op breedte over kolommen verdeelt, niet op een eigenschap, en het
- * verbergt alles voorbij `max-items` (24) zonder knop om het terug te halen.
- * Een nldd-box per lane in een grid-container is wat het ontwerpsysteem wél
- * heeft voor drie gelijke kolommen, en het kost geen eigen CSS.
+ * Geen lanes, met opzet: de belegging is hier een filter naast categorie,
+ * net als op de matrix, en de rij houdt zijn volle breedte zodat de vragen
+ * eronder leesbaar zijn. Geen afhankelijkhedenschakelaar: die ordent kaarten
+ * binnen een cel van de matrix, en hier is geen cel.
  *
- * Geen beleggingsfilter: de lanes zíjn de belegging, en een vinkje dat een
- * hele lane leegmaakt zegt niets wat de kop van de lane niet al zei. Geen
- * afhankelijkhedenschakelaar: die ordent kaarten binnen een cel van de
- * matrix, en hier is geen cel. Zoeken en het categoriefilter werken wel,
- * want de kaarten dragen dezelfde data-attributen als op de matrix en de
- * CSS-regels hangen aan `.rr-roadmap`, die RoadmapSectie hier ook zet.
+ * Een nldd-list van het type `tree` met RoadmapWerkpakketRij.astro per
+ * werkpakket; het ontwerpsysteem regelt de pijltoetsen, aria-expanded en het
+ * tonen van de kinderen op `expanded`. Wat het niet doet is `expanded`
+ * omzetten bij een klik op de rij: die stand is van de pagina, en het script
+ * onderaan zet hem. Geen eigen CSS.
  */
 import { getCollection } from 'astro:content';
 import Base from '~/layouts/Base.astro';
 import RoadmapSectie from '~/components/RoadmapSectie.astro';
 import RoadmapKop from '~/components/RoadmapKop.astro';
-import RoadmapKaart from '~/components/RoadmapKaart.astro';
+import RoadmapWerkpakketRij from '~/components/RoadmapWerkpakketRij.astro';
 import {
-  BORD_LANES,
-  beleggingStand,
   werkpakketVolgorde,
-  kaartOndertitel,
-  sindsTekst,
   assertReferencesResolve,
   assertBelegging,
   assertFilterRules,
@@ -42,22 +37,12 @@ import roadmapCss from '~/styles/roadmap.css?raw';
 
 const werkpakketten = await getCollection('werkpakketten');
 assertReferencesResolve(werkpakketten);
-// Een belegging die zichzelf tegenspreekt zou hier in de verkeerde lane
-// staan; dezelfde controle als op de werkpakketpagina.
 assertBelegging(werkpakketten);
 assertFilterRules(roadmapCss);
 
-/*
- * Per lane de werkpakketten in de leesvolgorde van de matrix, zodat wie van
- * de ene weergave naar de andere gaat ze op dezelfde plek terugvindt. Een
- * leeg veld is 'vrij', via beleggingStand(), net als op de kaart.
- */
-const lanes = BORD_LANES.map((lane) => ({
-  ...lane,
-  kaarten: werkpakketten
-    .filter((w) => beleggingStand(w.data.belegging.stand) === lane.id)
-    .sort((a, b) => werkpakketVolgorde(a.data, b.data)),
-}));
+// In de leesvolgorde van de matrix, zodat wie van de ene weergave naar de
+// andere gaat de werkpakketten op dezelfde plek terugvindt.
+const rijen = [...werkpakketten].sort((a, b) => werkpakketVolgorde(a.data, b.data));
 
 const pathname = '/roadmap/bord';
 ---
@@ -68,60 +53,40 @@ const pathname = '/roadmap/bord';
   pathname={pathname}
   noSearchIndex
   title="Bord · Roadmap · RegelRecht"
-  description="Werkpakketten van RegelRecht op belegging: vrij, opgepakt en klaar."
+  description="Werkpakketten van RegelRecht met per werkpakket de stand van zijn onderzoeksvragen."
 >
   <RoadmapSectie>
     <RoadmapKop
       huidig="bord"
-      ondertitel="Werkpakketten op belegging: wat open ligt, wat iemand heeft opgepakt, en wat klaar is."
+      ondertitel="Werkpakketten onder elkaar. Druk op een werkpakket en zijn onderzoeksvragen schuiven eruit, elk met de stand: vrij, opgepakt of klaar."
       zoek={{ placeholder: 'Zoek in werkpakketten', noun: 'werkpakketten' }}
-      filters={['categorie']}
+      filters={['categorie', 'belegging']}
     />
 
-    {/*
-      Drie gelijke kolommen die op een smal scherm onder elkaar komen; de
-      container regelt dat zelf op zijn eigen breedte. De telling in de kop
-      van een lane is de stand bij de build: zoeken en het categoriefilter
-      verbergen kaarten zonder die telling bij te werken, en de teller onder
-      het zoekveld zegt dan hoeveel er over is.
-    */}
-    <nldd-container layout="grid" column-count="3" sm-column-count="1" gap="16">
-      {
-        lanes.map((lane) => (
-          <nldd-box background="tinted">
-            <nldd-container padding="12" gap="12">
-              <nldd-container gap="2">
-                <nldd-title size="5">
-                  <h2>{lane.label}</h2>
-                </nldd-title>
-                <nldd-text size="sm" color="secondary">
-                  {lane.kaarten.length}{' '}
-                  {lane.kaarten.length === 1 ? 'werkpakket' : 'werkpakketten'}
-                </nldd-text>
-              </nldd-container>
-              {lane.kaarten.length ? (
-                <nldd-container gap="8">
-                  {lane.kaarten.map((wp) => (
-                    <RoadmapKaart
-                      wp={wp}
-                      ondertitel={kaartOndertitel(wp.data)}
-                      onder={
-                        wp.data.belegging.sinds
-                          ? `sinds ${sindsTekst(wp.data.belegging.sinds)}`
-                          : undefined
-                      }
-                    />
-                  ))}
-                </nldd-container>
-              ) : (
-                <nldd-text size="sm" color="secondary">
-                  {lane.leeg}
-                </nldd-text>
-              )}
-            </nldd-container>
-          </nldd-box>
-        ))
-      }
-    </nldd-container>
+    <nldd-list type="tree" appearance="box-tinted" accessible-label="Werkpakketten met hun onderzoeksvragen">
+      {rijen.map((wp) => <RoadmapWerkpakketRij wp={wp} />)}
+    </nldd-list>
   </RoadmapSectie>
 </Base>
+
+{/*
+  Een klik op een werkpakketrij klapt zijn vragen uit of in. Alleen de rij
+  zelf: een klik in een uitgeklapte vraag bubbelt naar de ouder en zou hem
+  anders weer dichtklappen. Gebonden op astro:page-load, om dezelfde reden als
+  het zoekscript in RoadmapKop.astro.
+*/}
+<script>
+  function wireUitklappen() {
+    for (const rij of document.querySelectorAll<HTMLElement>(
+      '.rr-roadmap nldd-list-item[button][data-wp-id]',
+    )) {
+      rij.addEventListener('click', (event) => {
+        const bron = (event.target as HTMLElement).closest('nldd-list-item');
+        if (bron !== rij) return;
+        rij.toggleAttribute('expanded');
+      });
+    }
+  }
+
+  document.addEventListener('astro:page-load', wireUitklappen);
+</script>

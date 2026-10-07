@@ -253,10 +253,12 @@ de titel om ertussen te wisselen:
 
 - `/roadmap`, de **matrix**: fase × discipline, met zoeken, het categorie- en
   beleggingsfilter en de afhankelijkhedenschakelaar hierboven.
-- `/roadmap/bord`, het **bord**: dezelfde werkpakketten in drie lanes op
-  belegging (vrij, opgepakt, klaar), in de leesvolgorde van de matrix. Zoeken
-  en het categoriefilter werken; het beleggingsfilter niet, want de lanes zíjn
-  de belegging, en de afhankelijkheden niet, want die ordenen binnen een cel.
+- `/roadmap/bord`, het **bord**: dezelfde werkpakketten als brede rijen
+  onder elkaar, in de leesvolgorde van de matrix, met zoeken en het
+  categorie- en beleggingsfilter. Druk op een rij en zijn onderzoeksvragen
+  schuiven eruit, elk met de stand (vrij, opgepakt, klaar; zie de vragen
+  hieronder) en de eigen status. Geen afhankelijkheden, want die ordenen
+  binnen een cel van de matrix.
 - `/roadmap/onderzoeksvragen`, de **vragen**: alle onderzoeksvragen als
   kaarten, met een filter op hun stand. Een vraag heeft een stand zoals een
   werkpakket een belegging heeft: zijn eigen status (open is vrij, loopt is
@@ -266,8 +268,8 @@ de titel om ertussen te wisselen:
   vragen, zonder van scherm te wisselen; de werkpakketpagina is daar één
   link verder.
 
-De weergaven delen één kop (`RoadmapKop.astro`) en één kaart
-(`RoadmapKaart.astro`). Een nieuwe weergave is een regel in `WEERGAVEN` in
+De weergaven delen één kop (`RoadmapKop.astro`) en dezelfde tags per
+werkpakket (`werkpakketTags()` in `lib/roadmap.ts`). Een nieuwe weergave is een regel in `WEERGAVEN` in
 `docs/src/lib/roadmap.ts` plus een pagina onder `pages/roadmap/`.
 
 ## Onderzoeksvragen
