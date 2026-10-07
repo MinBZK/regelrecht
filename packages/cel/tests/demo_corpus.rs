@@ -375,3 +375,70 @@ fn the_demo_cell_pays_the_voorschot_in_termijnen() {
     assert_eq!(total, amount(&voorschot, "voorschotbedrag"));
     assert!(amount(&paid[0], "termijnbedrag") > amount(&paid[1], "termijnbedrag"));
 }
+
+/// The toekenning on the demo corpus sets off what was paid on the
+/// voorschot (Awir 24): a nabetaling when the income is lower than the
+/// estimate, a terugvordering when it is higher, nothing to recover up to
+/// € 118 (Awir 26a). After it no termijn is paid.
+#[test]
+fn the_demo_toekenning_sets_off_the_paid_termijnen() {
+    // (registered income, nabetaling?, recovered?)
+    for (income, pays_out, recovers) in [(79547, true, false), (6_000_000, false, true)] {
+        let data = tempfile::tempdir().unwrap();
+        let mut service = regulations();
+        let (mut cell, application, voorschot) = with_voorschot(
+            &mut service,
+            data.path(),
+            "2025-02-27T10:15:00+01:00",
+            "2025-03-01T09:00:00+01:00",
+            income,
+        );
+        let paid: i64 = (3..=6)
+            .map(|m| {
+                let gram = pay(&mut cell, &service, &application.id, 2025, m).unwrap();
+                amount(&gram, "termijnbedrag")
+            })
+            .sum();
+        assert!(paid < amount(&voorschot, "voorschotbedrag"));
+        let toekenning = cell
+            .decide(
+                &service,
+                "zorgtoeslag_toegekend",
+                BTreeMap::from([("on_application".to_string(), application.id.clone())]),
+                BTreeMap::from([(
+                    "datum_vaststelling_aanslag".to_string(),
+                    regelrecht_cel::Input {
+                        value: json!(null),
+                        provenance: json!({"source": "dossier"}),
+                    },
+                )]),
+                at("2026-06-01T09:00:00+02:00"),
+            )
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(toekenning.inputs["uitbetaalde_voorschotten"]["value"], paid);
+        let toegekend = amount(&toekenning, "toegekende_tegemoetkoming");
+        let hoogte = hoogte_on(income, "2025-01-01").as_i64().unwrap();
+        assert_eq!(toegekend, (hoogte + 50) / 100 * 100);
+        let nog = amount(&toekenning, "nog_uit_te_betalen");
+        let terug = amount(&toekenning, "terug_te_vorderen");
+        assert_eq!(nog > 0, pays_out, "{income}");
+        assert_eq!(terug > 0, recovers, "{income}");
+        assert_eq!(
+            nog - amount(&toekenning, "terug_te_vorderen_na_verrekening"),
+            toegekend - paid
+        );
+        // Awir 19 lid 2: no aanslag, so at the latest 31 December 2026.
+        assert_eq!(toekenning.fields["uiterste_toekenningsdatum"], "2026-12-31");
+        // The termijnen still open are not paid.
+        let e = cell
+            .execute(
+                &service,
+                "voorschottermijn_betaald",
+                &application.id,
+                "2025-07-01".parse().unwrap(),
+                at("2026-06-02T10:00:00+02:00"),
+            )
+            .unwrap_err();
+        assert!(e.to_string().contains("TOEKENNING"), "{e}");
+    }
+}

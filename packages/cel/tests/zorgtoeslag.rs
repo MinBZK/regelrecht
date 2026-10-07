@@ -306,9 +306,21 @@ fn toeslagen_decides_on_the_application_and_records_the_decision() {
             },
         )
     };
+    // Awir 24 asks what was paid on the voorschot: nothing yet.
+    let paid = (
+        "uitbetaalde_voorschotten".to_string(),
+        Input {
+            value: json!(0),
+            provenance: json!({"source": "lexostatus", "lexostatus": "uitbetaald"}),
+        },
+    );
     assert_eq!(
         inputs,
-        BTreeMap::from([from_case("bsn"), from_case("aangevraagd_berekeningsjaar")])
+        BTreeMap::from([
+            from_case("bsn"),
+            from_case("aangevraagd_berekeningsjaar"),
+            paid
+        ])
     );
     let refers_to = BTreeMap::from([("on_application".to_string(), application.id.clone())]);
 
@@ -825,17 +837,21 @@ fn a_decision_reads_several_lexostatuses() {
             lexostatuses.replace(estimate, "").trim_end()
         )
     };
-    let decisions = read("streams/zorgtoeslag_besluiten.yaml")
-        .replacen("reads: [aanvraag]", "reads: [aanvraag, schatting]", 1)
-        // One name is a list of one.
-        .replacen("reads: [aanvraag]", "reads: aanvraag", 1);
+    let decisions = read("streams/zorgtoeslag_besluiten.yaml").replacen(
+        "reads: [aanvraag]",
+        "reads: [aanvraag, schatting]",
+        1,
+    );
+    // One name is a list of one.
+    let payments = read("streams/zorgtoeslag_betalingen.yaml")
+        .replace("reads: [voorschot]", "reads: voorschot");
     let config = |lexostatuses: &str| {
         CellConfig::from_yaml(
             &read("cell.yaml"),
             &[
                 &read("streams/zorgtoeslag_aanvragen.yaml"),
                 &decisions,
-                &read("streams/zorgtoeslag_betalingen.yaml"),
+                &payments,
             ],
             Some(lexostatuses),
         )
@@ -847,7 +863,9 @@ fn a_decision_reads_several_lexostatuses() {
 
     let split = config(&schatting(estimate));
     let (_, toekenning) = split.event("zorgtoeslag_toegekend").unwrap();
-    assert_eq!(toekenning.reads, ["aanvraag"]);
+    assert_eq!(toekenning.reads, ["aanvraag", "uitbetaald"]);
+    let (_, termijn) = split.event("voorschottermijn_betaald").unwrap();
+    assert_eq!(termijn.reads, ["voorschot"]);
     let mut cell = Cell::in_memory(split, Vec::new(), &service, day).unwrap();
     let aanvraag = cell
         .record_submission(&service, "aanvraag_ontvangen", &application(), received)
@@ -884,12 +902,27 @@ fn with_voorschot(
     received: &str,
     decided: &str,
 ) -> (Cell, Gram, Gram) {
+    with_voorschot_on(service, data, received, decided, ESTIMATE, 79547)
+}
+
+/// The same, with the citizen expecting `estimate` and the registers knowing
+/// `income` as the wages over the year.
+fn with_voorschot_on(
+    service: &mut LawExecutionService,
+    data: &Path,
+    received: &str,
+    decided: &str,
+    estimate: i64,
+    income: i64,
+) -> (Cell, Gram, Gram) {
     let received = at(received);
     let mut cell = cell(service, data, received);
+    let mut submitted = application();
+    submitted.insert("vermoedelijk_toetsingsinkomen".into(), json!(estimate));
     let application = cell
-        .record_submission(service, "aanvraag_ontvangen", &application(), received)
+        .record_submission(service, "aanvraag_ontvangen", &submitted, received)
         .unwrap_or_else(|e| panic!("{e}"));
-    register_sources(service);
+    register_sources_with_income(service, income);
     let voorschot = cell
         .decide(
             service,
@@ -1181,4 +1214,169 @@ fn a_sum_goes_with_pick_all() {
         assert!(matches!(e, Error::Setup(_)), "{to}: {e}");
         assert!(e.to_string().contains("uitbetaalde_voorschotten"), "{e}");
     }
+}
+
+/// The application, the voorschot in March on `estimate`, every termijn of
+/// it paid, and a year later the toekenning on `income`: the toekenning
+/// gram, with what was paid.
+fn toekenning_after_termijnen(estimate: i64, income: i64) -> (Gram, Gram, i64) {
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    let (mut cell, application, voorschot) = with_voorschot_on(
+        &mut service,
+        data.path(),
+        "2025-03-04T10:15:00+01:00",
+        "2025-03-10T09:00:00+01:00",
+        estimate,
+        income,
+    );
+    let paid: i64 = ["2025-03-20".to_string()]
+        .into_iter()
+        .chain(months(2025, 4, 8))
+        .map(|day| {
+            amount(
+                &pay(&mut cell, &service, &application.id, &day).unwrap(),
+                "termijnbedrag",
+            )
+        })
+        .sum();
+    assert_eq!(paid, amount(&voorschot, "voorschotbedrag"));
+    let toekenning = cell
+        .decide(
+            &service,
+            "zorgtoeslag_toegekend",
+            BTreeMap::from([("on_application".to_string(), application.id.clone())]),
+            // Awir 19 lid 1: the aanslag over 2025, from the dossier.
+            BTreeMap::from([(
+                "datum_vaststelling_aanslag".to_string(),
+                Input {
+                    value: json!("2026-03-15"),
+                    provenance: json!({"source": "dossier"}),
+                },
+            )]),
+            at("2026-06-01T09:00:00+02:00"),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+    (voorschot, toekenning, paid)
+}
+
+/// The rounded tegemoetkoming (Awir 14 lid 4) the law gives on `income`.
+fn awarded(income: i64) -> i64 {
+    let hoogte = hoogte_on(income, "2025-01-01").as_i64().unwrap();
+    (hoogte + 50) / 100 * 100
+}
+
+/// Awir 19, 24 lid 1 and 2: the toekenning on a definitive income higher
+/// than the estimate sets off what was paid on the voorschot and pays out
+/// the rest within four weeks. Nothing is recovered.
+#[test]
+fn a_toekenning_above_the_voorschot_pays_out_the_rest() {
+    let (_, toekenning, paid) = toekenning_after_termijnen(ESTIMATE, 79547);
+    assert_eq!(toekenning.stage.as_deref(), Some("TOEKENNING"));
+    // What was paid, read from the chronicle at the moment of the decision.
+    assert_eq!(
+        toekenning.inputs["uitbetaalde_voorschotten"],
+        json!({
+            "value": paid,
+            "provenance": {"source": "lexostatus", "lexostatus": "uitbetaald"},
+        })
+    );
+    let toegekend = awarded(79547);
+    assert_eq!(toekenning.fields["toegekende_tegemoetkoming"], toegekend);
+    assert!(toegekend > paid);
+    assert_eq!(toekenning.fields["nog_uit_te_betalen"], toegekend - paid);
+    assert_eq!(toekenning.fields["terug_te_vorderen_na_verrekening"], 0);
+    assert_eq!(toekenning.fields["terug_te_vorderen"], 0);
+    assert_eq!(toekenning.fields["uiterste_uitbetaaldatum"], "2026-06-29");
+    assert_eq!(toekenning.fields["uiterste_toekenningsdatum"], "2026-09-15");
+    for basis in ["19", "24", "26a"] {
+        let basis = format!("{AWIR}#{basis}");
+        assert!(toekenning.legal_basis.contains(&basis), "{basis}");
+    }
+}
+
+/// Awir 24 lid 3 and 26a: on a definitive income higher than the estimate
+/// the voorschot was too high, and the set-off leaves an amount to recover;
+/// above € 118 it is recovered.
+#[test]
+fn a_toekenning_below_the_voorschot_recovers_the_difference() {
+    let income = 3_000_000;
+    let (_, toekenning, paid) = toekenning_after_termijnen(79547, income);
+    let toegekend = awarded(income);
+    assert!(paid - toegekend > 11_800, "{paid} - {toegekend}");
+    assert_eq!(toekenning.fields["nog_uit_te_betalen"], 0);
+    assert_eq!(
+        toekenning.fields["terug_te_vorderen_na_verrekening"],
+        paid - toegekend
+    );
+    assert_eq!(toekenning.fields["terug_te_vorderen"], paid - toegekend);
+}
+
+/// Awir 26a lid 1 (text of 2025): an amount to recover of at most € 118 is
+/// not recovered; the terugvordering is nihil.
+#[test]
+fn a_small_amount_to_recover_is_not_recovered() {
+    // Both on the slope of the zorgtoeslag: € 500 more income is about € 69
+    // less zorgtoeslag.
+    let (estimate, income) = (3_000_000, 3_050_000);
+    let (_, toekenning, paid) = toekenning_after_termijnen(estimate, income);
+    let difference = paid - awarded(income);
+    assert!(
+        difference > 0 && difference <= 11_800,
+        "pick incomes whose difference is at most € 118, not {difference}"
+    );
+    assert_eq!(
+        toekenning.fields["terug_te_vorderen_na_verrekening"],
+        difference
+    );
+    assert_eq!(toekenning.fields["terug_te_vorderen"], 0);
+    assert_eq!(toekenning.fields["nog_uit_te_betalen"], 0);
+}
+
+/// After the toekenning the voorschot is set off (Awir 24 lid 2): a termijn
+/// not paid by then is not paid any more, and that follows from the
+/// toekenning, not from a gram of its own. What the toekenning reads is what
+/// was paid at its moment.
+#[test]
+fn after_the_toekenning_no_termijn_is_paid() {
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    let (mut cell, application, _) = with_voorschot(
+        &mut service,
+        data.path(),
+        "2025-03-04T10:15:00+01:00",
+        "2025-03-10T09:00:00+01:00",
+    );
+    let paid: i64 = ["2025-03-20", "2025-04-01"]
+        .iter()
+        .map(|day| {
+            amount(
+                &pay(&mut cell, &service, &application.id, day).unwrap(),
+                "termijnbedrag",
+            )
+        })
+        .sum();
+    let toekenning = cell
+        .decide(
+            &service,
+            "zorgtoeslag_toegekend",
+            BTreeMap::from([("on_application".to_string(), application.id.clone())]),
+            BTreeMap::new(),
+            at("2025-04-15T09:00:00+02:00"),
+        )
+        .unwrap();
+    assert_eq!(toekenning.inputs["uitbetaalde_voorschotten"]["value"], paid);
+    let before = cell.grams().count();
+    let e = cell
+        .execute(
+            &service,
+            "voorschottermijn_betaald",
+            &application.id,
+            "2025-05-01".parse().unwrap(),
+            at("2025-05-01T10:00:00+02:00"),
+        )
+        .unwrap_err();
+    assert!(matches!(e, Error::Refused(_)), "{e}");
+    assert!(e.to_string().contains("TOEKENNING"), "{e}");
+    assert_eq!(cell.grams().count(), before);
 }
