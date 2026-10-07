@@ -106,11 +106,64 @@ it calls into, a module above the modules of its crate it calls into, a public
 method of a type above the methods it calls. Layer 0 calls nothing else at
 its level. Nodes that call each other share a layer and are marked as a cycle.
 
-On a type, the graph shows the methods that can be called from outside it:
-`pub`, `pub(crate)` and the like, and trait implementations. Private methods
-are helpers and are folded away: `a` calling private `h` calling `b` is the
-edge `a -> b`, drawn dashed and labelled with the helpers (the shortest chain).
-The modules outside the type that call its methods are drawn above it.
+## The call graph
+
+The Graph view draws the calls around what is open, one node per function and
+one edge per call, with [Cytoscape.js](https://js.cytoscape.org/). The server
+sends every function and call once (`/api/calls`); the app takes the part it needs
+(`src/lib/callgraph.js`), so changing what is shown needs no request.
+
+- **Centred on what is open**: a function, a method, a type's methods or a
+  module's functions. Calls can also be lifted to modules or crates
+  ("Show"): a crate's page shows its modules, the page of all crates the crates.
+- **Callers, callees or both, to a depth** of 0 to 6 steps. Past 400 nodes the
+  farthest are left out, and the app says how many.
+- **The functions behind a module's or crate's calls**: at those levels an
+  edge stands for many calls. Selecting a node lists, below the graph, the
+  functions in it that make or receive the calls drawn to and from it, busiest
+  first, with the call sites each way. "Add to graph" adds one of them inside
+  its node, which becomes a box: that function's own calls then run through
+  it, while the node's other calls stay on the node. The added function is
+  selected, so its paths and its source show; the same button takes it out
+  again, and "Remove all" takes out every added function. "Open its graph"
+  goes to that function's own call graph. Selecting never changes the graph
+  by itself.
+- **Selecting** a node shows its source in the source pane (a module or crate
+  shows the top of its file); clearing the selection brings back the page's own.
+- **Highlighting**: click a node for the paths between it and what is open;
+  Shift-click a second node for the paths between the two. A path is every
+  node and call on some route from one to the other, cycles included.
+  "All callers" and "All callees" highlight all
+  callers or callees of the selection instead. "Hide the rest" hides what is
+  not highlighted. These choices appear below the graph once a node is
+  selected, with a hint there until then; below, so that the graph does not
+  move between the two clicks of a double-click. The highlighted nodes are
+  also listed as links under the graph, nearest first.
+- **Layout**: layered left to right (the default) or top to bottom (dagre:
+  callers left of or above what they call; a rank too long to read at the opening zoom wraps
+  into several rows or columns, and a node that would land inside a box it is
+  not part of moves out to the right), force-directed (fcose), or rings around what is
+  open; spacing compact, normal or roomy. Nodes can be dragged; "Lay out
+  again" puts them back. A new graph opens with everything in view (a small one no larger than 120%); a
+  function added from the list is centred at the zoom you were at. "Show
+  everything" fits the graph again.
+- Double-click a node to centre the graph on it. Nodes are coloured per crate
+  and name their crate and module; private functions have a dashed border. A
+  legend beside the graph names the crates in it, each as a tag in its colour
+  (the design system's tags take the same category colours as the nodes), and
+  shows the other marks as a small example graph drawn with the graph's own
+  stylesheet (`LegendGraph.vue`): what is open, private, selected, a box, a
+  call, a busier call, the arrows of a hovered node, a highlighted path. Its
+  accessible description says the same in words.
+- A method belongs to the module its `impl` is written in, as on the module
+  pages, and is addressed under its type's module, as its page is.
+
+What is shown and how (level, direction, depth, layout, spacing) is in the
+address, so a graph can be shared; the selection is not. Direction, layout and
+spacing stay as chosen on other pages; level and depth stay while you follow
+the graph and return to the page's default when you open another page. The
+app fetches the calls again when `/api/status` reports a new `generation`, a
+rebuilt model, since node numbers from an older build name other functions.
 
 ## The app
 
@@ -119,33 +172,39 @@ root npm workspace), built from the NLDD design system like the other
 frontends. Addresses hold everything that is open: `#/` (all crates),
 `#/engine`, `#/engine/service`, `#/engine/service/LawExecutionService` and
 `…/evaluate_law`, with `~` for the crate root and for the `:` of a binary root
-(`bin~evaluate`). After `?`: `view=graph`, `scope=…` and `source=wide`.
+(`bin~evaluate`). After `?`: `view=graph` with the graph's options
+(`level`, `calls`, `depth`, `layout`, `spacing`), and `source=wide`.
 
 - **Sidebar:** the crate switcher, search over the open crate, and its modules,
   as a tree or in reading order.
 - **Middle:** the page for what is open (all crates, a crate, a module, a type,
-  a function), or its graph. A button in the title bar leads one level up.
+  a function), or its call graph. Breadcrumbs above the title lead back up
+  through every level: the crate, each module of a nested path, the type.
 - **Right:** the source of what is selected, read from the working tree;
   "Widen" gives it the middle pane.
 
 The server (`src/serve.rs`) answers `/api/status`, `/api/workspace`,
-`/api/crate`, `/api/type`, `/api/function` and `/api/source`. The model is built
+`/api/crate`, `/api/type`, `/api/function`, `/api/calls` and `/api/source`. The model is built
 from the index on the first request and rebuilt when the index is rebuilt or a
 source file is changed, added, removed or renamed. `/api/source` takes a path from the URL, so it reads only `.rs` files
 inside the workspace (not under `target/`), refuses `..`, absolute and
 drive-prefixed paths, and checks again after symlinks are resolved.
 
-**What is not the design system.** The graph canvas is Vue Flow; its nodes are
-`nldd-card`s with an `href`, so a click, the keyboard and "open in a new tab"
-work as ordinary links. `src/graph.css` imports Vue Flow's stylesheets, gives the
-canvas an explicit height (a section's height is not definite, and Vue Flow
-draws nothing into a box without one) and switches off Vue Flow's own node box.
-Node width is set inline: enough for the longest label, between 180 and 360px.
-A call through helpers gets an inline `stroke-dasharray`. Each method entry has
-an inline `scroll-margin-top`, so one that is scrolled to is not hidden under
-the sticky header. Two Vue Flow behaviours are worked around in
-`GraphPane.vue`, each with a comment: its fit runs before the cards have a size,
-and it turns pointer events off on nodes nobody listens to.
+**What is not the design system.** The graph is drawn by Cytoscape on a
+canvas; every control around it is a design-system component. Cytoscape cannot
+read CSS custom properties, so `src/lib/theme.js` resolves the design system's
+colour tokens (per crate a category palette, plus content, divider and accent
+colours) to plain `rgb()` values and builds the stylesheet from those, again
+when the colour scheme changes. `src/graph.css` gives the canvas's container a
+height, border and background (Cytoscape needs a definite size). The toolbars
+get English texts for their overflow button, which defaults to Dutch. Two
+Cytoscape behaviours are worked around in `CallGraph.vue`, each with a comment:
+it caches where its canvas is and never sees the design system's page scroll
+(it stops looking at a shadow root), so the cache is dropped before each
+pointer event; and the instance is put on its container element, so a browser
+test can find the nodes, which are pixels. The canvas is not keyboard
+accessible; the list of highlighted nodes and the Details view carry the same
+calls as links.
 
 Doc comments are rendered as Markdown with `marked` and sanitised with
 `DOMPurify` (`src/lib/markdown.js`). A rustdoc link to a method of the same type
@@ -163,8 +222,11 @@ loses the link.
   ambiguous symbols, changed files, generics); the layering (including a 20,000-node
   chain); and the source endpoint's path checks.
 - UI (`vitest`): the pure logic in `src/lib/` (addresses, search, source
-  ranges, the graph builders and layout, the Markdown rendering) and the whole
-  app against a mocked API (`src/App.test.js`). The Markdown tests run under
+  ranges, the call graph's levels, neighbourhoods, paths and highlighting, the
+  Markdown rendering, adding functions to a module graph, wrapping long ranks), every layout run in
+  headless Cytoscape (force-directed without boxes: headless, fcose fails on a
+  compound node, so the browser suite checks that case), and the whole
+  app against a mocked API with the canvas stubbed (`src/App.test.js`). The Markdown tests run under
   jsdom, because happy-dom 20 has a `NodeIterator` bug that makes DOMPurify drop
   elements.
 

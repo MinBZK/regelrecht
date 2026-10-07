@@ -12,8 +12,20 @@ export const CONTEXT_STEP = 40;
 export const MAX_RESULTS = 60;
 
 export const VIEWS = ['details', 'graph'];
-/** What the graph can show, from the widest to the narrowest. */
-export const SCOPES = ['workspace', 'crate', 'module', 'type'];
+
+/**
+ * The graph's options as they appear in the address, each with its allowed
+ * values; the first is the default and is left out of the address. `level` and
+ * `depth` have no fixed default (it depends on what is open), so `null` stands
+ * for "the default here".
+ */
+export const GRAPH_OPTIONS = {
+  level: [null, 'functions', 'modules', 'crates'],
+  calls: ['both', 'in', 'out'],
+  depth: [null, '0', '1', '2', '3', '4', '5', '6'],
+  layout: ['right', 'down', 'force', 'rings'],
+  spacing: ['normal', 'compact', 'roomy'],
+};
 
 /**
  * A module path as one address segment. Rust's `::` becomes `.`, the crate root
@@ -33,9 +45,9 @@ export function segmentToModule(segment) {
 /**
  * Addresses: `#/` (all crates), `#/engine` (a crate), `#/engine/service` (a
  * module), `#/engine/service/LawExecutionService` (a type or function) and
- * `…/evaluate_law` (a method, by its key). After `?`: `view=graph`,
- * `scope=workspace|crate|module|type` and `source=wide`, each left out when it
- * is the default.
+ * `…/evaluate_law` (a method, by its key). After `?`: `view=graph` with the
+ * graph's options ({@link GRAPH_OPTIONS}), and `source=wide`, each left out
+ * when it is the default.
  */
 export function parseHash(hash) {
   const [path, query = ''] = String(hash || '').replace(/^#\/?/, '').split('?');
@@ -52,20 +64,25 @@ export function parseHash(hash) {
   const [crate, module, item, method] = parts;
   const params = new URLSearchParams(query);
   const view = params.get('view');
-  const scope = params.get('scope');
+  const options = Object.fromEntries(
+    Object.entries(GRAPH_OPTIONS).map(([k, allowed]) => {
+      const v = params.get(k);
+      return [k, allowed.includes(v) ? v : allowed[0]];
+    }),
+  );
   return {
     crate: crate ?? null,
     module: module === undefined ? null : segmentToModule(module),
     item: item ?? null,
     method: method ?? null,
     view: VIEWS.includes(view) ? view : 'details',
-    scope: SCOPES.includes(scope) ? scope : null,
+    ...options,
     wide: params.get('source') === 'wide',
   };
 }
 
 /** The inverse of {@link parseHash}. */
-export function formatHash({ crate, module, item, method, view, scope, wide }) {
+export function formatHash({ crate, module, item, method, view, wide, ...options }) {
   const parts = [];
   if (crate) {
     parts.push(crate);
@@ -81,7 +98,10 @@ export function formatHash({ crate, module, item, method, view, scope, wide }) {
   const params = new URLSearchParams();
   if (view === 'graph') {
     params.set('view', 'graph');
-    if (scope && SCOPES.includes(scope)) params.set('scope', scope);
+    for (const [k, allowed] of Object.entries(GRAPH_OPTIONS)) {
+      const v = options[k] === undefined || options[k] === null ? null : String(options[k]);
+      if (v !== null && v !== allowed[0] && allowed.includes(v)) params.set(k, v);
+    }
   }
   if (wide) params.set('source', 'wide');
   const q = params.toString();
@@ -191,4 +211,59 @@ export function widen(range, total, step = CONTEXT_STEP) {
 /** Items that are `pub`, unless all are asked for. */
 export function visibleItems(items, includePrivate) {
   return items.filter((i) => includePrivate || i.vis === 'pub');
+}
+
+/**
+ * The trail from all crates down to what is open, for the breadcrumbs: each
+ * step `{ text, target }`, where `target` is the address to go to (for
+ * `hrefFor`) and is `null` for the last step, the page itself. A nested
+ * module gets a step per level (`annotation` › `resolver`); a level that is not
+ * a module of its own (no file, no items: `crateView` does not list it) is
+ * shown without a link rather than as one that leads nowhere.
+ */
+export function breadcrumbs(route, crateView) {
+  const r = route;
+  const steps = [{ text: 'All crates', target: { crate: null } }];
+  if (!r.crate) return [{ text: 'All crates', target: null }];
+  steps.push({ text: r.crate, target: { crate: r.crate } });
+  if (r.module !== null && r.module !== undefined) {
+    if (r.module === '') {
+      steps.push({ text: 'crate root', target: { crate: r.crate, module: '' } });
+    } else if (r.module.startsWith('bin:')) {
+      steps.push({ text: `binary ${r.module.slice(4)}`, target: { crate: r.crate, module: r.module } });
+    } else {
+      const parts = r.module.split('::');
+      parts.forEach((part, i) => {
+        const path = parts.slice(0, i + 1).join('::');
+        const known = !crateView || crateView.modules.some((m) => m.path === path);
+        steps.push({ text: part, target: known || path === r.module ? { crate: r.crate, module: path } : undefined });
+      });
+    }
+    if (r.item) steps.push({ text: r.item, target: { crate: r.crate, module: r.module, item: r.item } });
+    if (r.item && r.method) {
+      steps.push({ text: r.method, target: { crate: r.crate, module: r.module, item: r.item, method: r.method } });
+    }
+  }
+  // The last step is where you are: no link. `undefined` marks a level that
+  // is no page of its own; it has no link either.
+  const last = steps.at(-1);
+  last.target = null;
+  return steps;
+}
+
+/** Longest cycle tag that still names its partner; a longer one says only that. */
+const CYCLE_TAG_MAX = 22;
+
+/**
+ * The tag for a module or crate that calls in a cycle with `names`, for a list
+ * row where the tag must stay short: a tag does not wrap, and a long one
+ * squeezes the row's name and description into a narrow column. One short
+ * partner is named ("cycle with context"); otherwise the tag says "in a cycle".
+ * `label` always names them all, for a screen reader; the module's own page
+ * shows the full list.
+ */
+export function cycleTag(names) {
+  const label = `calls in a cycle with ${names.join(', ')}`;
+  const named = `cycle with ${names[0]}`;
+  return { text: names.length === 1 && named.length <= CYCLE_TAG_MAX ? named : 'in a cycle', label };
 }

@@ -33,6 +33,9 @@ const DEFAULT_PORT: u16 = 7190;
 struct Loaded {
     stamp: (Option<SystemTime>, Option<SystemTime>, u64),
     model: Arc<Model>,
+    /// Counts up with every rebuild of the model. The app keys its copy of the
+    /// call graph on it: indexes into a rebuilt model mean other functions.
+    generation: u64,
 }
 
 struct AppState {
@@ -69,6 +72,7 @@ pub fn run(ws: Workspace, port: Option<u16>, ui_dir: Option<PathBuf>) -> Result<
             .route("/api/crate", get(krate))
             .route("/api/type", get(type_view))
             .route("/api/function", get(function_view))
+            .route("/api/calls", get(calls))
             .route("/api/source", get(source))
             .with_state(state)
             .fallback_service(ServeDir::new(&ui_dir).not_found_service(ServeFile::new(index)));
@@ -144,9 +148,12 @@ async fn model(state: &Arc<AppState>) -> Result<Arc<Model>, Response> {
         .map_err(|e| error(StatusCode::INTERNAL_SERVER_ERROR, format!("{e}")))?
         .map_err(|e| error(StatusCode::INTERNAL_SERVER_ERROR, e))?;
     let model = Arc::new(built);
-    *state.loaded.lock().unwrap_or_else(PoisonError::into_inner) = Some(Loaded {
+    let mut guard = state.loaded.lock().unwrap_or_else(PoisonError::into_inner);
+    let generation = guard.as_ref().map_or(1, |l| l.generation + 1);
+    *guard = Some(Loaded {
         stamp,
         model: model.clone(),
+        generation,
     });
     Ok(model)
 }
@@ -157,6 +164,8 @@ struct Status {
     index: IndexState,
     command: &'static str,
     counts: Option<crate::model::Counts>,
+    /// Which build of the model the counts are from; see [`Loaded::generation`].
+    generation: Option<u64>,
     message: Option<String>,
 }
 
@@ -184,10 +193,15 @@ async fn status(State(state): State<Arc<AppState>>) -> Response {
         IndexState::Missing => None,
         _ => model(&state).await.ok().map(|m| m.counts.clone()),
     };
+    let generation = counts.as_ref().and_then(|_| {
+        let guard = state.loaded.lock().unwrap_or_else(PoisonError::into_inner);
+        guard.as_ref().map(|l| l.generation)
+    });
     json(&Status {
         index: index_state,
         command: index::REBUILD_COMMAND,
         counts,
+        generation,
         message,
     })
 }
@@ -235,6 +249,13 @@ async fn type_view(State(state): State<Arc<AppState>>, Query(q): Query<ItemQuery
                 format!("no type `{}` in `{}::{}`", q.name, q.krate, q.module),
             ),
         },
+        Err(r) => r,
+    }
+}
+
+async fn calls(State(state): State<Arc<AppState>>) -> Response {
+    match model(&state).await {
+        Ok(m) => json(&Views::new(&m).call_graph()),
         Err(r) => r,
     }
 }

@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue';
-import { moduleLabel, moduleLeaf } from '../lib/guide.js';
+import { cycleTag, moduleLabel, moduleLeaf } from '../lib/guide.js';
 
 // One module of the open crate as a row of a list. A nested module is indented
 // one step per level with a spacer cell, so the list stays flat and every row is
@@ -18,6 +18,7 @@ const label = computed(() => {
 });
 const selected = computed(() => props.g.route.module === props.module.path);
 const indent = computed(() => String(props.depth * 16));
+const cycle = computed(() => cycleTag(props.module.cycleWith));
 const visibility = computed(() => (props.module.vis === 'pub' ? null : props.module.vis));
 </script>
 
@@ -26,7 +27,7 @@ const visibility = computed(() => (props.module.vis === 'pub' ? null : props.mod
     <nldd-spacer-cell v-if="depth > 0" :size="indent" />
     <nldd-text-cell :text="label" :supporting-text="module.doc || 'No module documentation'" />
     <nldd-cell v-if="module.cycleWith.length">
-      <nldd-tag size="sm" color="warning" :text="`calls in a cycle with ${module.cycleWith.join(', ')}`" />
+      <nldd-tag size="sm" color="warning" :text="cycle.text" :accessible-label="cycle.label" />
     </nldd-cell>
     <nldd-cell v-if="visibility">
       <nldd-tag size="sm" :text="visibility" />

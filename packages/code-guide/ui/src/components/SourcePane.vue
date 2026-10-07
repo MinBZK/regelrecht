@@ -5,6 +5,7 @@ const props = defineProps({ g: { type: Object, required: true } });
 
 const title = computed(() => {
   const g = props.g;
+  if (g.sourceTitle) return g.sourceTitle;
   if (g.method) return g.method.key;
   if (g.route.item) return g.route.item;
   if (g.module) return g.module.path || 'crate root';

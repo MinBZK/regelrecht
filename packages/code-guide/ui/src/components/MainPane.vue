@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue';
-import { moduleLabel } from '../lib/guide.js';
+import { breadcrumbs, moduleLabel } from '../lib/guide.js';
 import CratePage from './CratePage.vue';
 import FunctionPage from './FunctionPage.vue';
 import GraphPane from './GraphPane.vue';
@@ -8,8 +8,8 @@ import ModulePage from './ModulePage.vue';
 import TypePage from './TypePage.vue';
 import WorkspacePage from './WorkspacePage.vue';
 
-// The middle pane: a title bar with a way back up, the index's state when it is
-// not fresh, a Details/Graph switch, and the page for what is open.
+// The middle pane: breadcrumbs leading back up, a title bar, the index's state
+// when it is not fresh, a Details/Graph switch, and the open page.
 const props = defineProps({ g: { type: Object, required: true } });
 
 const title = computed(() => {
@@ -28,14 +28,16 @@ const subtitle = computed(() => {
   if (g.page === 'crate') return g.crateView?.dir ?? '';
   return g.workspace ? `${g.workspace.crates.length} crates` : '';
 });
-/** One level up: item -> module -> crate -> all crates. */
-const back = computed(() => {
-  const r = props.g.route;
-  if (!r.crate) return null;
-  if (r.module === null) return { href: props.g.hrefFor({ crate: null }), text: 'Back to all crates' };
-  if (!r.item) return { href: props.g.hrefFor({}), text: `Back to ${r.crate}` };
-  return { href: props.g.hrefFor({ module: r.module }), text: `Back to ${moduleLabel(r.module, r.crate)}` };
-});
+/** The way here, every level a link; see `breadcrumbs`. */
+const crumbs = computed(() =>
+  breadcrumbs(props.g.route, props.g.crateView).map((step) => ({
+    text: step.text,
+    href: step.target ? props.g.hrefFor(step.target) : undefined,
+    current: step.target === null,
+  })),
+);
+// The trail's own label defaults to Dutch; this page is in English.
+const CRUMBS_TEXT = { 'components.breadcrumbs.accessible-label': 'Where you are' };
 
 const index = computed(() => props.g.status?.index?.state ?? null);
 const staleFiles = computed(() => props.g.status?.counts?.staleFiles ?? []);
@@ -63,10 +65,17 @@ const onView = (event) => {
 <template>
   <nldd-page sticky-header accessible-label="Details">
     <nldd-container slot="header" padding="16">
-      <nldd-top-title-bar :text="title" :supporting-text="subtitle" heading-level="1">
-        <!-- The title bar's own back button only shows when the panes stack. -->
-        <nldd-button v-if="back" slot="toolbar" :href="back.href" start-icon="back" :text="back.text" />
-      </nldd-top-title-bar>
+      <nldd-breadcrumbs accessible-label="Where you are" :translations="CRUMBS_TEXT">
+        <nldd-breadcrumbs-item
+          v-for="(c, i) in crumbs"
+          :key="i"
+          :text="c.text"
+          :href="c.href"
+          :current="c.current || undefined"
+        />
+      </nldd-breadcrumbs>
+      <nldd-spacer size="4" />
+      <nldd-top-title-bar :text="title" :supporting-text="subtitle" heading-level="1" />
       <nldd-spacer size="8" />
       <nldd-segmented-control accessible-label="How to show it" :value="g.route.view" @change="onView">
         <nldd-segmented-control-item value="details" text="Details" :selected="g.route.view === 'details'" />

@@ -2,6 +2,55 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import App from './App.vue';
 
+// Cytoscape needs a canvas, which happy-dom does not have. The canvas is
+// replaced by a stub that shows what it was given and can raise its events;
+// the canvas itself is tested in lib/callgraph.test.js (headless) and in the
+// browser.
+vi.mock('./components/LegendGraph.vue', async () => {
+  const { defineComponent, h } = await import('vue');
+  return {
+    default: defineComponent({
+      name: 'LegendGraph',
+      props: ['boxes', 'boxNoun', 'focusName', 'description'],
+      setup(props) {
+        return () =>
+          h('div', {
+            class: 'legend-stub',
+            'data-boxes': String(props.boxes),
+            'data-focus': props.focusName,
+            'aria-label': props.description,
+          });
+      },
+    }),
+  };
+});
+vi.mock('./components/CallGraph.vue', async () => {
+  const { defineComponent, h } = await import('vue');
+  return {
+    default: defineComponent({
+      name: 'CallGraph',
+      props: ['elements', 'layout', 'highlight', 'hideRest', 'selected'],
+      emits: ['select', 'clear', 'open', 'hover'],
+      setup(props) {
+        return () =>
+          h('div', {
+            class: 'call-graph-stub',
+            'data-nodes': props.elements
+              .filter((e) => e.group === 'nodes')
+              .map((e) => e.data.id)
+              .join(' '),
+            'data-edges': props.elements
+              .filter((e) => e.group === 'edges')
+              .map((e) => e.data.id)
+              .join(' '),
+            'data-layout': `${props.layout.name}:${props.layout.rankDir ?? ''}`,
+            'data-highlight': props.highlight ? [...props.highlight.nodes].sort().join(' ') : '',
+          });
+      },
+    }),
+  };
+});
+
 // The design system's elements are not defined under happy-dom, so they render
 // as plain unknown elements with the attributes and text the app gives them:
 // enough to test what the app decides (links, requests, what it shows when).
@@ -98,11 +147,47 @@ const typeView = {
     }),
     method('step', { callers: [fnRef('engine', 'service', 'Service', 'run')], extent: [32, 40] }),
   ],
-  graph: {
-    edges: [{ from: 'run', to: 'step', via: [] }],
-    layers: [[['step']], [['run']]],
-    external: [{ crate: 'app', module: 'main', targets: { run: 3 } }],
-  },
+};
+
+// The call graph: app::main -> Service::run -> Service::step -> parse, and
+// Service::run -> parse; model::law::load is called by parse.
+const callGraph = {
+  nodes: [
+    { crate: 'app', module: 'main', type: null, key: 'main', name: 'main', vis: 'pub', doc: null, stale: false },
+    { crate: 'engine', module: 'service', type: 'Service', key: 'run', name: 'run', vis: 'pub', doc: 'Run.', stale: false },
+    {
+      crate: 'engine',
+      module: 'service',
+      type: 'Service',
+      key: 'step',
+      name: 'step',
+      vis: 'private',
+      doc: null,
+      stale: false,
+      place: place('engine/src/service.rs', 33),
+      extent: [32, 40],
+    },
+    {
+      crate: 'engine',
+      module: 'types',
+      type: null,
+      key: 'parse',
+      name: 'parse',
+      vis: 'pub',
+      doc: 'Parses.',
+      stale: false,
+      place: place('engine/src/types.rs', 3),
+      extent: [2, 6],
+    },
+    { crate: 'model', module: 'law', type: null, key: 'load', name: 'load', vis: 'pub', doc: null, stale: false },
+  ],
+  edges: [
+    [0, 1, 3],
+    [1, 2, 1],
+    [2, 3, 1],
+    [1, 3, 1],
+    [3, 4, 4],
+  ],
 };
 
 const fnView = {
@@ -133,6 +218,7 @@ function install(overrides = {}) {
     if (route === 'api/crate') return params(u).name === 'engine' ? json(crateView) : failure(404, 'no crate');
     if (route === 'api/type') return json(typeView);
     if (route === 'api/function') return json(fnView);
+    if (route === 'api/calls') return json(callGraph);
     if (route === 'api/source') {
       const p = params(u);
       return json({ path: p.path, from: Number(p.from), to: Number(p.to), total: 500, text: `// ${p.from}-${p.to}` });
@@ -157,7 +243,12 @@ async function goto(hash) {
 }
 const pane = (slot) => wrapper.find(`nldd-split-view-pane[slot="${slot}"]`);
 const hrefs = (el) => el.findAll('nldd-list-item').map((r) => r.attributes('href'));
-const back = () => pane('main').find('nldd-top-title-bar nldd-button[slot="toolbar"]');
+/** The breadcrumbs as `text -> href`, the current page as `[text]`. */
+const crumbs = () =>
+  pane('main')
+    .find('nldd-breadcrumbs')
+    .findAll('nldd-breadcrumbs-item')
+    .map((c) => (c.attributes('current') !== undefined ? `[${c.attributes('text')}]` : `${c.attributes('text')} -> ${c.attributes('href')}`));
 
 beforeEach(() => install());
 afterEach(() => {
@@ -185,9 +276,9 @@ describe('all crates', () => {
     expect(hrefs(pane('main'))).toEqual(['#/model', '#/engine']);
   });
 
-  it('offers no back button at the top', async () => {
+  it('shows only where you are in the breadcrumbs', async () => {
     await open('#/');
-    expect(back().exists()).toBe(false);
+    expect(crumbs()).toEqual(['[All crates]']);
   });
 });
 
@@ -218,7 +309,7 @@ describe('a crate', () => {
     expect(hrefs(pane('primary-sidebar'))).toEqual(['#/engine/service', '#/engine/types']);
     const into = pane('main').find('nldd-list[accessible-label="Modules of other crates this crate calls into"]');
     expect(hrefs(into)).toEqual(['#/model/law']);
-    expect(back().attributes('href')).toBe('#/');
+    expect(crumbs()).toEqual(['All crates -> #/', '[engine]']);
   });
 
   it('groups modules by reading order on request', async () => {
@@ -253,7 +344,7 @@ describe('a module', () => {
 
   it('leads back to its crate and asks for the top of its file', async () => {
     await open('#/engine/service');
-    expect(back().attributes('href')).toBe('#/engine');
+    expect(crumbs()).toEqual(['All crates -> #/', 'engine -> #/engine', '[service]']);
     expect(params(sourceCalls().at(-1))).toMatchObject({ path: 'engine/src/service.rs', from: '1', to: '80' });
   });
 });
@@ -262,7 +353,7 @@ describe('a type', () => {
   it('opens its own page, a level below its module', async () => {
     await open('#/engine/service/Service');
     expect(calls().some((u) => u.startsWith('api/type') && params(u).name === 'Service')).toBe(true);
-    expect(back().attributes('href')).toBe('#/engine/service');
+    expect(crumbs()).toEqual(['All crates -> #/', 'engine -> #/engine', 'service -> #/engine/service', '[Service]']);
     expect(pane('main').find('nldd-title[text="struct Service"]').exists()).toBe(true);
   });
 
@@ -350,25 +441,218 @@ describe('search', () => {
 });
 
 describe('the graph', () => {
-  const scopes = () => pane('main').findAll('nldd-segmented-control-item').map((i) => i.attributes('value'));
+  const stub = () => pane('main').find('.call-graph-stub');
+  const nodes = () => stub().attributes('data-nodes').split(' ').sort();
+  const values = (label) => {
+    const control = pane('main').find(`nldd-segmented-control[accessible-label="${label}"]`);
+    return control.exists() ? control.findAll('nldd-segmented-control-item').map((i) => i.attributes('value')) : [];
+  };
 
-  it('offers the levels down to what is open', async () => {
-    await open('#/?view=graph');
-    expect(scopes()).toEqual(['details', 'graph', 'workspace']);
-    await goto('#/engine/service?view=graph');
-    expect(scopes()).toEqual(['details', 'graph', 'workspace', 'crate', 'module']);
+  it('loads the calls only once the graph is opened', async () => {
+    await open('#/engine/service/Service');
+    expect(calls().length).toBeGreaterThan(0);
+    expect(fetchMock.mock.calls.some(([u]) => String(u) === 'api/calls')).toBe(false);
     await goto('#/engine/service/Service?view=graph');
-    expect(scopes()).toEqual(['details', 'graph', 'workspace', 'crate', 'module', 'type']);
+    expect(fetchMock.mock.calls.filter(([u]) => String(u) === 'api/calls')).toHaveLength(1);
   });
 
-  it('draws a type\'s methods and its outside callers, each a link that keeps the graph', async () => {
-    await open('#/engine/service/Service?view=graph');
-    const cards = pane('main').findAll('nldd-card');
-    expect(cards.map((c) => [c.attributes('accessible-label'), c.attributes('href')]).sort()).toEqual([
-      ['app::main', '#/app/main?view=graph'],
-      ['run', '#/engine/service/Service/run?view=graph'],
-      ['step', '#/engine/service/Service/step?view=graph'],
+  it('centres on the open page, at the finest level it offers', async () => {
+    await open('#/?view=graph');
+    expect(nodes()).toEqual(['c:app', 'c:engine', 'c:model']);
+    expect(values('Show')).toEqual([]);
+    await goto('#/engine?view=graph');
+    expect(values('Show')).toEqual(['modules', 'crates']);
+    expect(nodes()).toEqual(['m:engine|service', 'm:engine|types']);
+    await goto('#/engine/service/Service/run?view=graph');
+    expect(values('Show')).toEqual(['functions', 'modules', 'crates']);
+    // A method: two steps either way.
+    expect(nodes()).toEqual(['f0', 'f1', 'f2', 'f3', 'f4']);
+  });
+
+  it('follows only callers or callees, to the chosen depth, from the address', async () => {
+    await open('#/engine/service/Service/run?view=graph&calls=out&depth=1');
+    expect(nodes()).toEqual(['f1', 'f2', 'f3']);
+    await goto('#/engine/service/Service/run?view=graph&calls=in&depth=1');
+    expect(nodes()).toEqual(['f0', 'f1']);
+    await goto('#/engine/service/Service/run?view=graph&depth=0');
+    expect(nodes()).toEqual(['f1']);
+  });
+
+  it('puts every choice in the address, so a graph can be shared', async () => {
+    await open('#/engine/service/Service/run?view=graph');
+    const control = pane('main').find('nldd-segmented-control[accessible-label="Calls"]');
+    control.element.value = 'in';
+    await control.trigger('change');
+    expect(globalThis.location.hash).toBe('#/engine/service/Service/run?view=graph&calls=in');
+    await goto(globalThis.location.hash);
+    // Left to right is the default, so it is not in the address.
+    expect(stub().attributes('data-layout')).toBe('dagre:LR');
+    const layout = pane('main').find('nldd-dropdown[accessible-label="Layout"]');
+    layout.find('select').element.value = 'down';
+    await layout.trigger('change');
+    expect(globalThis.location.hash).toBe('#/engine/service/Service/run?view=graph&calls=in&layout=down');
+    await goto(globalThis.location.hash);
+    expect(stub().attributes('data-layout')).toBe('dagre:TB');
+  });
+
+  it('highlights the paths to a selected node and lists them as links', async () => {
+    await open('#/engine/service/Service/run?view=graph');
+    await wrapper.findComponent({ name: 'CallGraph' }).vm.$emit('select', 'f3', false);
+    await flushPromises();
+    expect(stub().attributes('data-highlight')).toBe('f1 f2 f3');
+    const list = pane('main').find('nldd-list[accessible-label="Highlighted in the graph"]');
+    // Nearest the focus first, then by name.
+    expect(hrefs(list)).toEqual([
+      '#/engine/service/Service/run?view=graph',
+      '#/engine/types/parse?view=graph',
+      '#/engine/service/Service/step?view=graph',
     ]);
+    expect(pane('main').text()).toContain('3 functions and 3 calls on the paths between parse and this method');
+    expect(pane('main').find('nldd-button[text="Open its page"]').attributes('href')).toBe('#/engine/types/parse');
+    // The centre is named after the page, in the list and in the depth choice.
+    expect(list.find('nldd-tag').attributes('text')).toBe('this method');
+    expect(pane('main').find('nldd-dropdown[accessible-label="Depth"] option').text()).toBe('Only this method');
+  });
+
+  it('offers the highlight choices only once something is selected, and says so before', async () => {
+    await open('#/engine/service/Service/run?view=graph');
+    expect(pane('main').find('nldd-segmented-control[accessible-label="Highlight"]').exists()).toBe(false);
+    expect(pane('main').find('nldd-banner[text="Select a node to highlight its paths"]').exists()).toBe(true);
+    wrapper.findComponent({ name: 'CallGraph' }).vm.$emit('select', 'f3', false);
+    await flushPromises();
+    expect(pane('main').find('nldd-segmented-control[accessible-label="Highlight"]').exists()).toBe(true);
+    expect(pane('main').find('nldd-banner[text="Select a node to highlight its paths"]').exists()).toBe(false);
+  });
+
+  it('shows the selected node\'s source, and the page\'s own again when cleared', async () => {
+    await open('#/engine/service/Service/run?view=graph');
+    const graph = wrapper.findComponent({ name: 'CallGraph' });
+    graph.vm.$emit('select', 'f3', false);
+    await flushPromises();
+    expect(params(sourceCalls().at(-1))).toMatchObject({ path: 'engine/src/types.rs', from: '2', to: '6' });
+    expect(pane('inspector').find('nldd-top-title-bar').attributes('text')).toBe('parse');
+    graph.vm.$emit('clear');
+    await flushPromises();
+    expect(params(sourceCalls().at(-1))).toMatchObject({ path: 'engine/src/service.rs', from: '18', to: '30' });
+    expect(pane('inspector').find('nldd-top-title-bar').attributes('text')).toBe('run');
+  });
+
+  it('keeps a chosen depth while following the graph, not when opening another page', async () => {
+    await open('#/engine/service/Service/run?view=graph&depth=3&layout=down');
+    // Another page: what is drawn how is kept, the depth is not.
+    expect(crumbs()[2]).toBe('service -> #/engine/service?view=graph&layout=down');
+    wrapper.findComponent({ name: 'CallGraph' }).vm.$emit('open', 'f3');
+    await flushPromises();
+    expect(globalThis.location.hash).toBe('#/engine/types/parse?view=graph&depth=3&layout=down');
+  });
+
+  it('lists a selected module\'s functions, and adds one to the graph only when asked', async () => {
+    await open('#/engine?view=graph&depth=1');
+    const before = ['m:app|main', 'm:engine|service', 'm:engine|types', 'm:model|law'];
+    expect(nodes()).toEqual(before);
+    const graph = wrapper.findComponent({ name: 'CallGraph' });
+    graph.vm.$emit('select', 'm:engine|service', false);
+    await flushPromises();
+    // Selecting does not change the graph.
+    expect(nodes()).toEqual(before);
+    const list = pane('main').find('nldd-list[accessible-label="Functions behind the calls of engine::service"]');
+    const rows = list.findAll('nldd-list-item');
+    // run: 3 sites in from main, 1 out to parse; step: 1 out to parse.
+    expect(rows.map((r) => r.find('nldd-text-cell').attributes('text'))).toEqual(['Service::run', 'Service::step']);
+    expect(rows[0].find('nldd-icon-button[text="Open the graph of Service::run"]').attributes('href')).toBe(
+      '#/engine/service/Service/run?view=graph',
+    );
+    await rows[1].find('nldd-icon-button[text="Add Service::step to the graph"]').trigger('click');
+    await flushPromises();
+    expect(nodes()).toEqual([...before, 'f2'].sort());
+    expect(stub().attributes('data-edges').split(' ').sort()).toEqual([
+      'f2>m:engine|types',
+      'm:app|main>m:engine|service',
+      'm:engine|service>m:engine|types',
+      'm:engine|types>m:model|law',
+    ]);
+    // The added function is selected: its source shows, and its row offers to take it out.
+    expect(pane('inspector').find('nldd-top-title-bar').attributes('text')).toBe('Service::step');
+    const again = pane('main').findAll('nldd-list[accessible-label="Functions behind the calls of engine::service"] nldd-list-item');
+    await again[1].find('nldd-icon-button[text="Remove Service::step from the graph"]').trigger('click');
+    await flushPromises();
+    expect(nodes()).toEqual(before);
+  });
+
+  it('removes every added function at once', async () => {
+    await open('#/engine?view=graph&depth=1');
+    wrapper.findComponent({ name: 'CallGraph' }).vm.$emit('select', 'm:engine|service', false);
+    await flushPromises();
+    for (const b of pane('main').findAll('nldd-icon-button[text^="Add "]')) await b.trigger('click');
+    await flushPromises();
+    expect(nodes()).toContain('f1');
+    await pane('main').find('nldd-button[text="Remove all"]').trigger('click');
+    await flushPromises();
+    expect(nodes().some((n) => n.startsWith('f'))).toBe(false);
+  });
+
+  it('lets go of a selected node clicked again, but not when it is a double-click', async () => {
+    await open('#/engine/service/Service/run?view=graph');
+    const graph = wrapper.findComponent({ name: 'CallGraph' });
+    graph.vm.$emit('select', 'f3', false);
+    await flushPromises();
+    graph.vm.$emit('select', 'f3', false);
+    await flushPromises();
+    // Still selected until a double-click could have happened.
+    expect(stub().attributes('data-highlight')).toBe('f1 f2 f3');
+    await new Promise((r) => setTimeout(r, 350));
+    await flushPromises();
+    expect(stub().attributes('data-highlight')).toBe('');
+    graph.vm.$emit('select', 'f3', false);
+    graph.vm.$emit('select', 'f3', false);
+    graph.vm.$emit('open', 'f3');
+    await new Promise((r) => setTimeout(r, 350));
+    await flushPromises();
+    expect(globalThis.location.hash).toBe('#/engine/types/parse?view=graph');
+  });
+
+  it('draws the legend with a box only where boxes exist, and describes it in words', async () => {
+    await open('#/engine/service/Service/run?view=graph');
+    const legend = () => pane('main').find('.legend-stub');
+    expect(legend().attributes('data-boxes')).toBe('false');
+    expect(legend().attributes('data-focus')).toBe('this method');
+    expect(legend().attributes('aria-label')).toContain('A thick blue border marks this method');
+    expect(legend().attributes('aria-label')).toContain('Each colour is a crate');
+    expect(legend().attributes('aria-label')).not.toContain('box');
+    await goto('#/engine?view=graph');
+    expect(legend().attributes('data-boxes')).toBe('true');
+    expect(legend().attributes('data-focus')).toBe("this crate's modules");
+    expect(legend().attributes('aria-label')).toContain('a box is a module with functions added to it');
+  });
+
+  it('names the crates in the graph in the legend, each in its colour', async () => {
+    await open('#/engine/service/Service/run?view=graph');
+    const tags = pane('main').findAll('nldd-container nldd-tag[size="sm"]').filter((t) => t.attributes('color'));
+    // Crates in name order get the palette in order: app, engine, model.
+    expect(tags.map((t) => [t.attributes('text'), t.attributes('color')])).toEqual([
+      ['app', 'hemelblauw'],
+      ['engine', 'oranje'],
+      ['model', 'mintgroen'],
+    ]);
+  });
+
+  it('highlights between two nodes with Shift, and clears on the background', async () => {
+    await open('#/engine/service/Service/run?view=graph');
+    const graph = wrapper.findComponent({ name: 'CallGraph' });
+    graph.vm.$emit('select', 'f0', false);
+    graph.vm.$emit('select', 'f2', true);
+    await flushPromises();
+    expect(stub().attributes('data-highlight')).toBe('f0 f1 f2');
+    graph.vm.$emit('clear');
+    await flushPromises();
+    expect(stub().attributes('data-highlight')).toBe('');
+  });
+
+  it('centres the graph on a node when it is double-clicked, keeping the choices', async () => {
+    await open('#/engine/service/Service/run?view=graph&calls=out');
+    wrapper.findComponent({ name: 'CallGraph' }).vm.$emit('open', 'f3');
+    await flushPromises();
+    expect(globalThis.location.hash).toBe('#/engine/types/parse?view=graph&calls=out');
   });
 });
 

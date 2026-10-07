@@ -1,6 +1,15 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { fetchCrate, fetchFunction, fetchSource, fetchStatus, fetchType, fetchWorkspace } from '../lib/api.js';
-import { buildGraph, defaultScope } from '../lib/graph.js';
+import { fetchCalls, fetchCrate, fetchFunction, fetchSource, fetchStatus, fetchType, fetchWorkspace } from '../lib/api.js';
+import {
+  defaultDepth,
+  focusOf,
+  itemKind,
+  layoutOptions,
+  levelFor,
+  levelsFor,
+  lift,
+  neighbourhood,
+} from '../lib/callgraph.js';
 import { findModule, formatHash, isType, parseHash, search, sourceRange, widen } from '../lib/guide.js';
 
 /** How often the index status is checked again while the page is open, in ms. */
@@ -57,39 +66,80 @@ export function useGuide() {
    * unless `sel` says otherwise, so following a link does not undo the reader's
    * choice of view.
    */
-  const hrefFor = (sel = {}) =>
-    formatHash({
-      crate: route.value.crate,
-      module: null,
-      item: null,
+  // How the graph is drawn (direction, layout, spacing) follows the reader
+  // everywhere; what it shows (level, depth) has a default per page, so it is
+  // kept only while the same item stays open (another method of the same type).
+  const hrefFor = (sel = {}) => {
+    const r = route.value;
+    const target = { crate: r.crate, module: null, item: null, ...sel };
+    const samePage = target.crate === r.crate && target.module === r.module && target.item === r.item;
+    return formatHash({
+      ...r,
+      ...(samePage ? {} : { level: null, depth: null }),
       method: null,
-      view: route.value.view,
-      scope: route.value.scope,
-      wide: route.value.wide,
-      ...sel,
+      ...target,
     });
+  };
   /** The address of what is open now, with `overrides` applied. */
   const hrefHere = (overrides = {}) => formatHash({ ...route.value, ...overrides });
 
-  const scope = computed(() => route.value.scope ?? defaultScope(route.value, page.value === 'type'));
-  const graph = computed(() =>
-    buildGraph({
-      scope: scope.value,
-      workspace: workspace.value,
-      crateView: crateView.value,
-      typeView: typeView.value,
-      route: route.value,
-      // A node keeps the graph open, but at the node's own level.
-      hrefFor: (target) =>
-        formatHash({
-          item: null,
-          method: null,
-          ...target,
-          view: 'graph',
-          wide: route.value.wide,
-          scope: null,
-        }),
-    }),
+  // The call graph: every function and call, fetched once the graph is opened
+  // and again when the server has rebuilt its model (its `generation` moved):
+  // node numbers from an older build mean other functions.
+  const calls = ref(null);
+  const callsError = ref(null);
+  let callsGeneration;
+  let callsToken = 0;
+  async function loadCalls() {
+    // Without a status yet, wait for it rather than fetch twice.
+    if (!status.value) return;
+    const generation = status.value.generation ?? null;
+    if (calls.value && generation === callsGeneration) return;
+    const token = ++callsToken;
+    try {
+      const data = await fetchCalls();
+      if (token !== callsToken) return;
+      calls.value = data;
+      callsGeneration = generation;
+      callsError.value = null;
+    } catch (e) {
+      // A failed refetch keeps the graph that is there; the next status poll
+      // tries again, because the generation still differs.
+      if (token === callsToken && !calls.value) callsError.value = e.message;
+    }
+  }
+  // On an item address, whether it is a type or a function is read from the
+  // calls, so the graph does not wait for (or trust a stale) crate view.
+  const graphPage = computed(() =>
+    (page.value === 'type' || page.value === 'function') && calls.value
+      ? itemKind(calls.value, route.value)
+      : page.value,
+  );
+  const levels = computed(() => levelsFor(graphPage.value));
+  const level = computed(() => levelFor(graphPage.value, route.value.level));
+  // One selected method is centred on like one function: it reaches as far.
+  const depth = computed(() =>
+    route.value.depth === null
+      ? defaultDepth(level.value, route.value.method ? 'function' : graphPage.value)
+      : Number(route.value.depth),
+  );
+  const lifted = computed(() => (calls.value ? lift(calls.value, level.value) : null));
+  const focus = computed(() => (lifted.value ? focusOf(lifted.value, route.value, graphPage.value) : new Set()));
+  const part = computed(() =>
+    lifted.value ? neighbourhood(lifted.value, focus.value, { calls: route.value.calls, depth: depth.value }) : null,
+  );
+  const crateOrder = computed(() => [...new Set((calls.value?.nodes ?? []).map((n) => n.crate))].sort());
+  // The functions, for opening a module or crate node up into them.
+  const fnGraph = computed(() =>
+    !calls.value ? null : level.value === 'functions' ? lifted.value : lift(calls.value, 'functions'),
+  );
+  const layout = computed(() => layoutOptions(route.value.layout, route.value.spacing));
+  watch(
+    [() => route.value.view, status],
+    () => {
+      if (route.value.view === 'graph') loadCalls();
+    },
+    { immediate: true },
   );
 
   // Responses can arrive out of order; a token per kind of request makes a
@@ -212,19 +262,30 @@ export function useGuide() {
   );
   watch([crateView, () => route.value.module, () => route.value.item], () => loadItem());
 
-  // A new selection resets the viewer to that selection's own range.
+  // What the source viewer shows for the page itself.
+  const pageRange = () => {
+    const p = page.value;
+    return p === 'type'
+      ? sourceRange({ type: typeView.value, method: method.value })
+      : p === 'function'
+        ? sourceRange({ fn: fnView.value })
+        : p === 'module'
+          ? sourceRange({ module: module.value })
+          : null;
+  };
+  // A node selected in the graph shows its own source instead; `sourceTitle`
+  // names it, since the page's title no longer does.
+  const sourceTitle = ref(null);
+  function showInSource(node) {
+    sourceTitle.value = node?.source ? node.label : null;
+    range.value = node?.source ? { ...node.source } : pageRange();
+  }
+  // A new page resets the viewer to that page's own range.
   watch(
     [module, typeView, fnView, method, page],
     () => {
-      const p = page.value;
-      range.value =
-        p === 'type'
-          ? sourceRange({ type: typeView.value, method: method.value })
-          : p === 'function'
-            ? sourceRange({ fn: fnView.value })
-            : p === 'module'
-              ? sourceRange({ module: module.value })
-              : null;
+      sourceTitle.value = null;
+      range.value = pageRange();
     },
     { immediate: true },
   );
@@ -248,13 +309,25 @@ export function useGuide() {
     results,
     hrefFor,
     hrefHere,
-    scope,
-    graph,
+    graphPage,
+    calls,
+    callsError,
+    levels,
+    level,
+    depth,
+    lifted,
+    focus,
+    part,
+    fnGraph,
+    crateOrder,
+    layout,
     range,
     source,
     sourceError,
     sourceLoading,
     showMoreContext,
+    showInSource,
+    sourceTitle,
     canShowMoreAbove,
     canShowMoreBelow,
   };

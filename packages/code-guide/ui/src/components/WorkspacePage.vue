@@ -1,4 +1,5 @@
 <script setup>
+import { cycleTag } from '../lib/guide.js';
 // All crates, in reading order: layer 0 calls into no other crate of the
 // workspace, each later layer calls into the ones below it.
 defineProps({ g: { type: Object, required: true } });
@@ -23,7 +24,12 @@ const callsOut = (g, name) => g.workspace.edges.filter((e) => e.from === name);
           :supporting-text="byName(g, name).description || 'No description'"
         />
         <nldd-cell v-if="byName(g, name).cycleWith.length">
-          <nldd-tag size="sm" color="warning" :text="`calls in a cycle with ${byName(g, name).cycleWith.join(', ')}`" />
+          <nldd-tag
+            size="sm"
+            color="warning"
+            :text="cycleTag(byName(g, name).cycleWith).text"
+            :accessible-label="cycleTag(byName(g, name).cycleWith).label"
+          />
         </nldd-cell>
         <nldd-cell>
           <nldd-tag size="sm" :text="`calls into ${callsOut(g, name).length} ${callsOut(g, name).length === 1 ? 'crate' : 'crates'}`" />

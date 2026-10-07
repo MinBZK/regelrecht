@@ -3,6 +3,8 @@ import {
   CONTEXT_STEP,
   MAX_RESULTS,
   MODULE_PREVIEW_LINES,
+  breadcrumbs,
+  cycleTag,
   findModule,
   formatHash,
   isType,
@@ -19,7 +21,19 @@ import {
   widen,
 } from './guide.js';
 
-const none = { crate: null, module: null, item: null, method: null, view: 'details', scope: null, wide: false };
+const none = {
+  crate: null,
+  module: null,
+  item: null,
+  method: null,
+  view: 'details',
+  level: null,
+  calls: 'both',
+  depth: null,
+  layout: 'right',
+  spacing: 'normal',
+  wide: false,
+};
 
 describe('module segments', () => {
   it('round-trips nested modules, the crate root and binary roots', () => {
@@ -58,17 +72,29 @@ describe('addresses', () => {
     expect(formatHash({ crate: 'engine', module: null })).toBe('#/engine');
   });
 
-  it('carries view, scope and wide only when they are not the default', () => {
+  it('carries view, the graph options and wide only when they are not the default', () => {
     const sel = { crate: 'engine', module: 'service' };
     expect(formatHash({ ...sel, view: 'details' })).toBe('#/engine/service');
-    expect(formatHash({ ...sel, view: 'graph', scope: 'module' })).toBe('#/engine/service?view=graph&scope=module');
-    expect(formatHash({ ...sel, scope: 'module' })).toBe('#/engine/service');
+    expect(formatHash({ ...sel, view: 'graph', level: 'modules', calls: 'in', depth: 3, layout: 'right' })).toBe(
+      '#/engine/service?view=graph&level=modules&calls=in&depth=3',
+    );
+    expect(formatHash({ ...sel, view: 'graph', depth: 0 })).toBe('#/engine/service?view=graph&depth=0');
+    // Graph options mean nothing in the details view, so they are not carried.
+    expect(formatHash({ ...sel, calls: 'in' })).toBe('#/engine/service');
+    const h = '#/engine/service?view=graph&level=functions&calls=out&depth=2&layout=force&spacing=roomy';
+    expect(formatHash(parseHash(h))).toBe(h);
     expect(formatHash({ ...sel, wide: true })).toBe('#/engine/service?source=wide');
     expect(formatHash({ crate: null, view: 'graph' })).toBe('#/?view=graph');
   });
 
   it('falls back to the defaults for values it does not know', () => {
-    expect(parseHash('#/x?view=3d&scope=galaxy&source=huge')).toMatchObject({ view: 'details', scope: null, wide: false });
+    expect(parseHash('#/x?view=3d&calls=sideways&depth=99&layout=x&source=huge')).toMatchObject({
+      view: 'details',
+      calls: 'both',
+      depth: null,
+      layout: 'right',
+      wide: false,
+    });
   });
 
   it('survives a malformed escape', () => {
@@ -185,5 +211,59 @@ describe('widen and visibleItems', () => {
     const items = [{ vis: 'pub' }, { vis: 'private' }, { vis: 'trait' }];
     expect(visibleItems(items, false)).toHaveLength(1);
     expect(visibleItems(items, true)).toHaveLength(3);
+  });
+});
+
+describe('breadcrumbs', () => {
+  const crateView = { modules: [{ path: '' }, { path: 'annotation' }, { path: 'annotation::resolver' }, { path: 'bin:evaluate' }] };
+  const route = (crate, module = null, item = null, method = null) => ({ crate, module, item, method });
+  const trail = (r, cv = crateView) => breadcrumbs(r, cv).map((s) => (s.target ? `${s.text}>` : s.target === null ? `[${s.text}]` : s.text));
+
+  it('is just where you are on the page of all crates', () => {
+    expect(trail(route(null))).toEqual(['[All crates]']);
+  });
+
+  it('runs from all crates through every module level to the method', () => {
+    expect(trail(route('engine', 'annotation::resolver', 'Resolver', 'resolve'))).toEqual([
+      'All crates>',
+      'engine>',
+      'annotation>',
+      'resolver>',
+      'Resolver>',
+      '[resolve]',
+    ]);
+    const steps = breadcrumbs(route('engine', 'annotation::resolver', 'Resolver', 'resolve'), crateView);
+    expect(steps[3].target).toEqual({ crate: 'engine', module: 'annotation::resolver' });
+    expect(steps[4].target).toEqual({ crate: 'engine', module: 'annotation::resolver', item: 'Resolver' });
+  });
+
+  it('names the crate root and a binary, and ends on the page itself', () => {
+    expect(trail(route('engine', ''))).toEqual(['All crates>', 'engine>', '[crate root]']);
+    expect(trail(route('engine', 'bin:evaluate', 'main'))).toEqual(['All crates>', 'engine>', 'binary evaluate>', '[main]']);
+    expect(trail(route('engine'))).toEqual(['All crates>', '[engine]']);
+  });
+
+  it('does not link a level that is no module of its own', () => {
+    // `wasm` holds only `wasm::bindings`, so it has no page.
+    const cv = { modules: [{ path: 'wasm::bindings' }] };
+    expect(trail(route('engine', 'wasm::bindings', 'Engine'), cv)).toEqual([
+      'All crates>',
+      'engine>',
+      'wasm',
+      'bindings>',
+      '[Engine]',
+    ]);
+  });
+});
+
+describe('cycleTag', () => {
+  it('names one short partner, and otherwise only says it is in a cycle', () => {
+    expect(cycleTag(['operations'])).toEqual({ text: 'cycle with operations', label: 'calls in a cycle with operations' });
+    expect(cycleTag(['bezwaar', 'handlers', 'machtiging']).text).toBe('in a cycle');
+    expect(cycleTag(['annotation::resolver::types']).text).toBe('in a cycle');
+  });
+
+  it('always names them all for a screen reader', () => {
+    expect(cycleTag(['bezwaar', 'handlers']).label).toBe('calls in a cycle with bezwaar, handlers');
   });
 });

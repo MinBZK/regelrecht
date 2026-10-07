@@ -22,11 +22,14 @@ export const fetchWorkspace = () => getJson('api/workspace');
 /** One crate: its modules, layered by the calls between them. */
 export const fetchCrate = (name) => getJson(`api/crate?${q({ name })}`);
 
-/** One type: its methods with callers and callees, and its call graph. */
+/** One type: its methods with their callers and callees. */
 export const fetchType = ({ crate, module, name }) => getJson(`api/type?${q({ crate, module, name })}`);
 
 /** One free function: its callers and callees. */
 export const fetchFunction = ({ crate, module, name }) => getJson(`api/function?${q({ crate, module, name })}`);
+
+/** Every function of the workspace and every call between them. */
+export const fetchCalls = () => getJson('api/calls');
 
 /** A 1-based, inclusive line range of a Rust source file. */
 export const fetchSource = ({ path, from, to }) =>

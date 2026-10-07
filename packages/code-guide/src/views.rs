@@ -5,7 +5,7 @@
 //! on another when it calls it. Layers (the reading order) are computed from
 //! those calls at each level.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use serde::Serialize;
 
@@ -155,33 +155,6 @@ pub struct FnDetail {
     pub callees: Vec<FnRef>,
 }
 
-/// A call among a type's non-private methods, folded over private helpers.
-#[derive(Debug, Serialize, PartialEq, Eq)]
-pub struct CallEdge {
-    pub from: String,
-    pub to: String,
-    pub via: Vec<String>,
-}
-
-/// A module outside the type that calls its non-private methods.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ExternalCaller {
-    #[serde(rename = "crate")]
-    pub krate: String,
-    pub module: String,
-    /// Method key -> call sites from this module.
-    pub targets: BTreeMap<String, usize>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TypeGraph {
-    pub edges: Vec<CallEdge>,
-    pub layers: Vec<Vec<Vec<String>>>,
-    pub external: Vec<ExternalCaller>,
-}
-
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TypeView {
@@ -196,7 +169,54 @@ pub struct TypeView {
     pub docs: Option<String>,
     pub place: Place,
     pub methods: Vec<FnDetail>,
-    pub graph: TypeGraph,
+}
+
+/// One function in the call graph: where the app finds its page, and what to
+/// show on its node.
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CallNode {
+    #[serde(rename = "crate")]
+    pub krate: String,
+    pub module: String,
+    /// The type it belongs to, when the guide knows it.
+    #[serde(rename = "type")]
+    pub type_name: Option<String>,
+    /// Its address within the module or type (see [`FnRef::key`]).
+    pub key: String,
+    /// The module whose source defines it. For a method this can differ from
+    /// `module` (its type's module, part of the address): an `impl` may sit in
+    /// another file. Calls between modules are counted by this one.
+    pub impl_module: String,
+    pub name: String,
+    pub vis: Vis,
+    pub doc: Option<String>,
+    pub stale: bool,
+    /// Where it is defined, and its lines (doc comment through closing brace)
+    /// when the source scan has them: what the source viewer shows for it.
+    pub place: Place,
+    pub extent: Option<(usize, usize)>,
+}
+
+/// The file a module's source starts in, for the source viewer.
+#[derive(Debug, Serialize, PartialEq, Eq)]
+pub struct ModuleFile {
+    #[serde(rename = "crate")]
+    pub krate: String,
+    pub module: String,
+    pub file: String,
+}
+
+/// Every function of the workspace and every call between them. The app picks
+/// the part around what is open itself, so following callers and callees,
+/// changing the depth or highlighting a path needs no further request.
+#[derive(Debug, Serialize)]
+pub struct CallGraph {
+    pub nodes: Vec<CallNode>,
+    /// `[caller, callee, call sites]`, indexes into `nodes`.
+    pub edges: Vec<(usize, usize, usize)>,
+    /// Modules with a file of their own (an inline `mod x { .. }` has none).
+    pub modules: Vec<ModuleFile>,
 }
 
 #[derive(Debug, Serialize)]
@@ -554,8 +574,7 @@ impl<'m> Views<'m> {
         v
     }
 
-    /// One type: its methods with their callers and callees, and the calls
-    /// among its public methods.
+    /// One type: its methods with their callers and callees.
     pub fn type_view(&self, krate: &str, module: &str, name: &str) -> Option<TypeView> {
         let ti = self
             .m
@@ -575,93 +594,47 @@ impl<'m> Views<'m> {
             docs: t.docs.clone(),
             place: t.place.clone(),
             methods: methods.iter().map(|&i| self.detail(i)).collect(),
-            graph: self.type_graph(ti, &methods),
         })
     }
 
-    /// The calls among a type's non-private methods (those callable from
-    /// outside it), private helpers folded away
-    /// (breadth first, so `via` is a shortest chain), plus the modules outside
-    /// the type that call those methods.
-    fn type_graph(&self, ti: usize, methods: &[usize]) -> TypeGraph {
-        let m = self.m;
-        let public: BTreeSet<usize> = methods
-            .iter()
-            .copied()
-            .filter(|&i| m.functions[i].vis != Vis::Private)
+    /// The whole call graph, in the model's order: node `i` is function `i`.
+    pub fn call_graph(&self) -> CallGraph {
+        let nodes = (0..self.m.functions.len())
+            .map(|i| {
+                let f = &self.m.functions[i];
+                let r = self.fn_ref(i, 0);
+                CallNode {
+                    krate: r.krate,
+                    module: r.module,
+                    type_name: r.type_name,
+                    key: r.key,
+                    impl_module: f.module.clone(),
+                    name: f.name.clone(),
+                    vis: f.vis,
+                    doc: first_line(&f.docs),
+                    stale: f.stale,
+                    place: f.place.clone(),
+                    extent: f.extent,
+                }
+            })
             .collect();
-        let own: BTreeSet<usize> = methods.iter().copied().collect();
-        let key = |i: usize| method_key(&m.functions[i]);
-
-        let mut edges = Vec::new();
-        for &start in &public {
-            let mut prev: BTreeMap<usize, usize> = BTreeMap::new();
-            let mut queue: VecDeque<usize> = VecDeque::new();
-            for &(c, _) in &self.callees[start] {
-                if own.contains(&c) && !prev.contains_key(&c) {
-                    prev.insert(c, start);
-                    queue.push_back(c);
-                }
-            }
-            while let Some(x) = queue.pop_front() {
-                if x == start {
-                    continue;
-                }
-                if public.contains(&x) {
-                    let mut via = Vec::new();
-                    let mut cur = prev[&x];
-                    while cur != start {
-                        via.push(key(cur));
-                        cur = prev[&cur];
-                    }
-                    via.reverse();
-                    edges.push(CallEdge {
-                        from: key(start),
-                        to: key(x),
-                        via,
-                    });
-                    continue;
-                }
-                for &(c, _) in &self.callees[x] {
-                    if own.contains(&c) && c != start && !prev.contains_key(&c) {
-                        prev.insert(c, x);
-                        queue.push_back(c);
-                    }
-                }
-            }
-        }
-        edges.sort_by(|a, b| (&a.from, &a.to).cmp(&(&b.from, &b.to)));
-
-        let deps = deps_of(
-            public.iter().map(|&i| key(i)),
-            edges.iter().map(|e| (e.from.clone(), e.to.clone())),
-        );
-
-        let mut external: BTreeMap<(String, String), BTreeMap<String, usize>> = BTreeMap::new();
-        for &target in &public {
-            for &(c, n) in &self.callers[target] {
-                if self.owner_type[c] == Some(ti) {
-                    continue;
-                }
-                let f = &m.functions[c];
-                *external
-                    .entry((f.krate.clone(), f.module.clone()))
-                    .or_default()
-                    .entry(key(target))
-                    .or_insert(0) += n;
-            }
-        }
-        TypeGraph {
-            edges,
-            layers: layers(&deps),
-            external: external
-                .into_iter()
-                .map(|((krate, module), targets)| ExternalCaller {
-                    krate,
-                    module,
-                    targets,
+        let edges = self.m.calls.iter().map(|(&(a, b), &n)| (a, b, n)).collect();
+        let modules = self
+            .m
+            .modules
+            .values()
+            .filter_map(|md| {
+                Some(ModuleFile {
+                    krate: md.krate.clone(),
+                    module: md.path.clone(),
+                    file: md.file.clone()?,
                 })
-                .collect(),
+            })
+            .collect();
+        CallGraph {
+            nodes,
+            edges,
+            modules,
         }
     }
 
@@ -715,4 +688,100 @@ fn cycles(ls: &[Vec<Vec<String>>]) -> BTreeMap<String, Vec<String>> {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{Function, TypeItem};
+
+    fn place() -> Place {
+        Place {
+            file: "x/src/lib.rs".to_string(),
+            line: 1,
+        }
+    }
+
+    fn function(owner: Option<&str>, name: &str, vis: Vis, docs: Option<&str>) -> Function {
+        Function {
+            id: format!("x::m::{name}"),
+            krate: "x".to_string(),
+            module: "m".to_string(),
+            owner: owner.map(str::to_string),
+            trait_name: None,
+            name: name.to_string(),
+            signature: format!("fn {name}()"),
+            docs: docs.map(str::to_string),
+            vis,
+            place: place(),
+            stale: false,
+            extent: None,
+        }
+    }
+
+    #[test]
+    fn a_method_implemented_in_another_module_keeps_both_modules() {
+        let mut impl_elsewhere = function(Some("S"), "extra", Vis::Pub, None);
+        impl_elsewhere.module = "m::more".to_string();
+        let m = Model {
+            types: vec![TypeItem {
+                krate: "x".to_string(),
+                module: "m".to_string(),
+                name: "S".to_string(),
+                kind: TypeKind::Struct,
+                signature: "pub struct S".to_string(),
+                docs: None,
+                vis: Vis::Pub,
+                place: place(),
+                extent: None,
+            }],
+            functions: vec![impl_elsewhere],
+            ..Default::default()
+        };
+        let n = &Views::new(&m).call_graph().nodes[0];
+        assert_eq!(
+            (n.module.as_str(), n.impl_module.as_str()),
+            ("m", "m::more")
+        );
+    }
+
+    #[test]
+    fn the_call_graph_has_every_function_addressed_like_its_page_and_every_call() {
+        let m = Model {
+            types: vec![TypeItem {
+                krate: "x".to_string(),
+                module: "m".to_string(),
+                name: "S".to_string(),
+                kind: TypeKind::Struct,
+                signature: "pub struct S".to_string(),
+                docs: None,
+                vis: Vis::Pub,
+                place: place(),
+                extent: None,
+            }],
+            functions: vec![
+                function(Some("S"), "run", Vis::Pub, Some("Runs it.\n\nMore.")),
+                function(None, "helper", Vis::Private, None),
+                // A method on a type the guide does not have.
+                function(Some("Foreign"), "fmt", Vis::Trait, None),
+            ],
+            calls: [((0, 1), 2), ((1, 2), 1)].into(),
+            ..Default::default()
+        };
+        let g = Views::new(&m).call_graph();
+        let keys: Vec<(Option<&str>, &str)> = g
+            .nodes
+            .iter()
+            .map(|n| (n.type_name.as_deref(), n.key.as_str()))
+            .collect();
+        assert_eq!(
+            keys,
+            [(Some("S"), "run"), (None, "helper"), (None, "Foreign::fmt")]
+        );
+        assert_eq!(g.nodes[0].doc.as_deref(), Some("Runs it."));
+        assert_eq!(g.nodes[1].vis, Vis::Private);
+        assert_eq!(g.edges, [(0, 1, 2), (1, 2, 1)]);
+        assert_eq!(g.nodes[0].place, place());
+        assert!(g.modules.is_empty());
+    }
 }
