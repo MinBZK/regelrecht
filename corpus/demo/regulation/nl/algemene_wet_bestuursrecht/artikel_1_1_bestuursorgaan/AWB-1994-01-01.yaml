@@ -458,12 +458,6 @@ articles:
         produces:
           legal_character: TOETS
           decision_type: GEEN_BESLUIT
-          extensions:
-            chronolex:
-              establishes:
-                - extends:
-                    submission: AANVRAAG
-                  fields: parameters
         parameters:
           - name: naam_aanvrager
             type: string
@@ -530,15 +524,11 @@ articles:
         produces:
           legal_character: TOETS
           decision_type: GEEN_BESLUIT
-          extensions:
-            chronolex:
-              establishes:
-                - extends:
-                    submission: AANVRAAG
-                  effective_at:
-                    legal_basis:
-                      - algemene_wet_bestuursrecht#4:13 lid 1
-
+          # Het moment dat rechtens telt voor de aanvraag: de ontvangst (lid 1).
+          # Geen parameter: het bestuursorgaan stelt het vast.
+          moment:
+            legal_basis:
+              - algemene_wet_bestuursrecht#4:13 lid 1
   - number: '6:7'
     text: |-
       De termijn voor het indienen van een bezwaar- of

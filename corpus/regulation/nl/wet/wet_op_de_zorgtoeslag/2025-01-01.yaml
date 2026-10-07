@@ -143,42 +143,6 @@ articles:
           # verwijst naar de aanvraag.
           decides_on:
             - algemene_wet_inkomensafhankelijke_regelingen#15
-          extensions:
-            chronolex:
-              establishes:
-                # Awir art. 14 jo. 15: "een tegemoetkoming met betrekking tot
-                # een berekeningsjaar". Elk besluit rekent met de wet van dat
-                # jaar, niet van de dag waarop het wordt genomen.
-                - event: voorschot_verleend
-                  type: decretogram
-                  stage: VOORSCHOT
-                  refers_to:
-                    on_application:
-                      to: algemene_wet_inkomensafhankelijke_regelingen#15
-                      required: true
-                  fields: outputs
-                  period:
-                    parameter: aangevraagd_berekeningsjaar
-                    unit: year
-                  # De beschikking draagt de dagtekening die de fase van de
-                  # procedure vraagt (Awir art. 16): de dag waarop het besluit
-                  # wordt genomen.
-                  dated_by: dagtekening_voorschot
-                - event: zorgtoeslag_toegekend
-                  type: decretogram
-                  stage: TOEKENNING
-                  refers_to:
-                    on_application:
-                      to: algemene_wet_inkomensafhankelijke_regelingen#15
-                      required: true
-                  fields: outputs
-                  period:
-                    parameter: aangevraagd_berekeningsjaar
-                    unit: year
-                  # De beschikking draagt de dagtekening die de fase van de
-                  # procedure vraagt (Awir art. 19): de dag waarop het besluit
-                  # wordt genomen.
-                  dated_by: dagtekening_toekenning
         parameters:
           - name: bsn
             type: string

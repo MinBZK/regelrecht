@@ -1235,13 +1235,6 @@ articles:
             submission: AANVRAAG
             established_by: algemene_wet_inkomensafhankelijke_regelingen#15
       execution:
-        produces:
-          extensions:
-            chronolex:
-              establishes:
-                - extends:
-                    submission: AANVRAAG
-                  fields: parameters
         parameters:
           - name: vermoedelijk_toetsingsinkomen
             type: amount
@@ -1269,6 +1262,9 @@ articles:
             origin:
               waarde: BELANGHEBBENDE
               grondslag: algemene_wet_inkomensafhankelijke_regelingen#15 lid 1
+              # Art. 14 jo. 15: de tegemoetkoming betreft een berekeningsjaar; het
+              # besluit rekent met de wet van dat jaar (RFC-048, TIJDVAK).
+              rol: TIJDVAK
           - name: datum_ontvangst
             type: date
             required: false
@@ -1488,6 +1484,7 @@ articles:
             origin:
               waarde: BELANGHEBBENDE
               grondslag: algemene_wet_inkomensafhankelijke_regelingen#15 lid 1
+              rol: TIJDVAK
           - name: datum_vaststelling_aanslag
             type: date
             required: false

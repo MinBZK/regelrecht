@@ -42,7 +42,7 @@ Zorgtoeslagwet art. 2 lid 5: de aanspraak wordt **per kalendermaand** bepaald. H
 | verrekening | Awir 24 | decretogram | `decision` → toekenning | nog te betalen, onverschuldigd betaald |
 | terugvordering | Awir 26 | decretogram | `decision` → toekenning | het bedrag (na 26a) |
 
-Wat de cel vastlegt, blijft wat de wet zegt (`produces.extensions.chronolex.establishes`), zoals nu bij de aanvraag.
+Wat de cel vastlegt, blijft wat de wet zegt, zoals nu bij de aanvraag. Sinds 7 oktober 2026 zegt de wet dat in eigen woorden en niet meer in een blok `produces.extensions.chronolex`: `produces.submission` (hier ontstaat een aanvraag), `produces: BESCHIKKING` met `decides_on` (hierop wordt besloten, in elke fase van de procedure die `is: BESLUIT`), de haken met `applies_to.submission`, `origin` op de parameters (met `rol: TIJDVAK` voor het berekeningsjaar) en `produces.moment` (Awb 4:13: de ontvangst telt). De cel leidt de vastlegging daaruit af (`extension::derive`); een stroom die een artikel met twee besluitfasen vastlegt zegt per event de `stage`. Alleen het fictieve uitvoeringsbeleid (een executogram) draagt nog een eigen blok.
 
 **Wijziging ten opzichte van #1679:** het huidige besluit "zorgtoeslag toegekend" (Zorgtoeslagwet art. 2, vastgelegd op de besluitdag) splitst in een **voorschot** (Awir 16) en een **toekenning** (Awir 19). Zorgtoeslagwet art. 2 blijft het bedrag uitrekenen; de Awir zegt welk besluit het draagt.
 
@@ -122,7 +122,7 @@ Eén knop zet de peildatum op het eerstvolgende moment. De cel legt vast wat dan
 
 **Na de review (7 oktober 2026).** Wat de demo nog zelf uitrekende, komt nu uit de wet en de cel:
 
-- **De dagtekening van een besluit** noemt de wet bij het besluit: `dated_by` in `extensions.chronolex` (Zorgtoeslagwet 2: `dagtekening_voorschot` bij het voorschot, `dagtekening_toekenning` bij de toekenning). De cel vult alleen die parameter met de besluitdag; wat de fase verder vraagt en niemand geeft, weigert ze.
+- **De dagtekening van een besluit** zegt de procedure van de Awir: de ene datum die de fase vraagt (`requires` van VOORSCHOT: `dagtekening_voorschot`; van TOEKENNING: `dagtekening_toekenning`). De cel leidt daar `dated_by` uit af; een wet die het anders zegt, zegt het met `produces.moment.parameter`. De cel vult alleen die parameter met de besluitdag; wat de fase verder vraagt en niemand geeft, weigert ze.
 - **Op welke dagen een termijn valt**, zegt de cel (`Cell::due_executions`) uit `executed_on` (met `once_per` en `day`) en `until`. De dag in de maand (`day: 1`) is een keuze van het fictieve uitvoeringsbeleid en staat daar, gemarkeerd; de demo heeft geen eigen kalender meer. Eens per maand telt per zaak, ook na een herziening van het voorschot.
 - **Wat er is ontvangen**, leest de demo met de lexostatus die de toekenning ook leest (`received` in `demo-config.yaml` wijst haar aan); de demo telt niet zelf op.
 - **Vaste datums van een besluit dat nog komt** (de uiterste toekenningsdatum) vindt de demo met een heuristiek: een datum die gelijk is in twee voorbeelden van het besluit in verschillende kalendermaanden (vandaag en een maand later) telt als vast. Dat is een keuze van de demo, geen regel van de wet; dat de wet zelf een datum als vast markeert, is een latere stap.

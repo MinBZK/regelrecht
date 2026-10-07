@@ -3,11 +3,12 @@
 //! For an application the cell executes the article that establishes it with
 //! an empty application. The engine fires the hooks on it and yields with the
 //! model of the application ([`regelrecht_engine::Submission`]): the articles
-//! that take part and what each asks. Every part that marks itself in
-//! `extensions.chronolex` contributes its fields; Awb 4:2 on every
-//! application for a beschikking, the establishing article with what is its
-//! own. For a decision the fields are what the article says, usually its
-//! outputs.
+//! that take part and what each asks. Every part contributes what it asks of
+//! the belanghebbende; Awb 4:2 on every application for a beschikking, the
+//! establishing article with what is its own. For a decision the fields are
+//! its outputs. What each article establishes or extends is read from what
+//! the law says in its own words ([`extension::derive`]), or from an explicit
+//! `extensions.chronolex` block if the article has one.
 
 use std::collections::BTreeMap;
 
@@ -15,13 +16,16 @@ use chrono::NaiveDate;
 use regelrecht_engine::{
     Article, ExecutionOutcome, LawExecutionService, StageInputs, Submission, Value,
 };
-use regelrecht_law_model::{Origin, OriginRole, OriginValue, Output, Parameter, ParameterType};
+use regelrecht_law_model::{
+    Origin, OriginRole, OriginValue, Output, Parameter, ParameterType, Stage,
+};
 use serde::Serialize;
 
+use crate::config::Event;
 use crate::error::{setup, Result};
 use crate::extension::{
-    self, EffectiveAt, Establishment, Every, ExecutedOn, Extends, Fields, PeriodParameter,
-    Reference, Until,
+    self, Chronolex, EffectiveAt, Establishment, Every, ExecutedOn, Extends, Fields,
+    PeriodParameter, PeriodUnit, Reference, Until,
 };
 
 /// One field of a gram, as the law declares it.
@@ -162,20 +166,15 @@ fn declared_parameters(article: &Article) -> Vec<Parameter> {
 /// the event but cannot give it a shape (a reference it cannot resolve, an
 /// execution without `executed_on`) is an error in the law that applies, and
 /// a later version must not hide it.
-pub fn derive_for(
-    service: &LawExecutionService,
-    event: &str,
-    establishes: &str,
-    day: NaiveDate,
-) -> Result<Shape> {
-    let first = match derive(service, event, establishes, day) {
+pub fn derive_for(service: &LawExecutionService, event: &Event, day: NaiveDate) -> Result<Shape> {
+    let first = match derive(service, event, day) {
         Ok(shape) => return Ok(shape),
         Err(e) => e,
     };
-    if establishes_event(service, event, establishes, day) {
+    if establishes_event(service, event, day) {
         return Err(first);
     }
-    let (law_id, _) = split_reference(establishes)?;
+    let (law_id, _) = split_reference(&event.establishes)?;
     let mut later: Vec<NaiveDate> = service
         .resolver()
         .all_law_versions()
@@ -187,53 +186,118 @@ pub fn derive_for(
     later.sort();
     later
         .into_iter()
-        .find(|d| establishes_event(service, event, establishes, *d))
-        .map_or(Err(first), |d| derive(service, event, establishes, d))
+        .find(|d| establishes_event(service, event, *d))
+        .map_or(Err(first), |d| derive(service, event, d))
 }
 
 /// Whether the version of the law in force on `day` establishes `event`:
-/// it has the article, and the article names the event in its
-/// `extensions.chronolex`. An extension that cannot be read counts as
-/// establishing it, so its error is the one reported.
-fn establishes_event(
-    service: &LawExecutionService,
-    event: &str,
-    establishes: &str,
-    day: NaiveDate,
-) -> bool {
-    let Ok((_, article)) = article_on(service, establishes, day) else {
+/// it has the article, and the article establishes what the event names.
+/// A block that cannot be read counts as establishing it, so its error is
+/// the one reported.
+fn establishes_event(service: &LawExecutionService, event: &Event, day: NaiveDate) -> bool {
+    let Ok((_, article)) = article_on(service, &event.establishes, day) else {
         return false;
     };
-    match extension::of_article(article, establishes) {
-        Ok(Some(chronolex)) => chronolex
-            .establishes
-            .iter()
-            .any(|e| e.event.as_deref() == Some(event)),
+    match chronolex_of(service, article, &event.establishes) {
+        Ok(Some(chronolex)) => entry_of(&chronolex, event).is_ok(),
         Ok(None) => false,
         Err(_) => true,
     }
 }
 
-/// Derive the shape of `event`, which `establishes` establishes, from the
-/// law as it applies on `day`.
-pub fn derive(
+/// What an article establishes or extends: its explicit chronolex block, or
+/// what the law says in its own words ([`extension::derive`]). For a
+/// decision, the stages of its procedure that are a decision say where it
+/// is taken.
+fn chronolex_of(
     service: &LawExecutionService,
-    event: &str,
-    establishes: &str,
-    day: NaiveDate,
-) -> Result<Shape> {
+    article: &Article,
+    reference: &str,
+) -> Result<Option<Chronolex>> {
+    if let Some(explicit) = extension::of_article(article, reference).map_err(setup)? {
+        return Ok(Some(explicit));
+    }
+    let produces = article.get_produces();
+    let procedure = produces
+        .and_then(|p| p.legal_character.as_deref())
+        .and_then(|lc| {
+            service
+                .resolver()
+                .find_procedure(lc, produces.and_then(|p| p.procedure_id.as_deref()))
+        });
+    let decision_stages: Vec<&Stage> = procedure
+        .map(|p| {
+            p.stages
+                .iter()
+                .filter(|s| s.name == "BESLUIT" || s.is.as_deref() == Some("BESLUIT"))
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(extension::derive(article, &decision_stages))
+}
+
+/// The establishment of `chronolex` that `event` records. In an explicit
+/// block it is the one named after the event; in a derived one it is the
+/// article's own establishment, at the stage the stream names if the
+/// article decides at more than one.
+fn entry_of<'c>(chronolex: &'c Chronolex, event: &Event) -> Result<&'c Establishment> {
+    let establishes = &event.establishes;
+    if !chronolex.derived {
+        return chronolex
+            .establishes
+            .iter()
+            .find(|e| e.event.as_deref() == Some(event.name.as_str()))
+            .ok_or_else(|| {
+                setup(format!(
+                    "{establishes}: establishes no event '{}'",
+                    event.name
+                ))
+            });
+    }
+    let own: Vec<&Establishment> = chronolex.own().collect();
+    match (&event.stage, own.as_slice()) {
+        (Some(stage), _) => own
+            .iter()
+            .find(|e| e.stage.as_deref() == Some(stage.as_str()))
+            .copied()
+            .ok_or_else(|| {
+                setup(format!(
+                    "{establishes}: takes no decision at stage {stage}; it decides at {}",
+                    own.iter()
+                        .filter_map(|e| e.stage.as_deref())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ))
+            }),
+        (None, [one]) => Ok(one),
+        (None, []) => Err(setup(format!(
+            "{establishes}: establishes nothing of its own; it only extends a submission"
+        ))),
+        (None, more) => Err(setup(format!(
+            "{establishes}: decides at {} stages ({}); the event '{}' must say which (`stage`)",
+            more.len(),
+            more.iter()
+                .filter_map(|e| e.stage.as_deref())
+                .collect::<Vec<_>>()
+                .join(", "),
+            event.name
+        ))),
+    }
+}
+
+/// Derive the shape of `event` from the law as it applies on `day`.
+pub fn derive(service: &LawExecutionService, event: &Event, day: NaiveDate) -> Result<Shape> {
+    let establishes = event.establishes.as_str();
     let (law, article) = article_on(service, establishes, day)?;
-    let chronolex = extension::of_article(article, establishes)
-        .map_err(setup)?
-        .ok_or_else(|| setup(format!("{establishes}: no extensions.chronolex")))?;
-    let entry = chronolex
-        .establishes
-        .iter()
-        .find(|e| e.event.as_deref() == Some(event))
-        .ok_or_else(|| setup(format!("{establishes}: establishes no event '{event}'")))?;
+    let chronolex = chronolex_of(service, article, establishes)?.ok_or_else(|| {
+        setup(format!(
+            "{establishes}: establishes nothing: no produces.submission, no BESCHIKKING with decides_on, no hook on a submission, and no extensions.chronolex"
+        ))
+    })?;
+    let entry = entry_of(&chronolex, event)?;
     let produces = article.get_produces();
     let mut shape = Shape {
-        event: event.to_string(),
+        event: event.name.clone(),
         establishes: establishes.to_string(),
         law_id: law.id.clone(),
         type_: String::new(),
@@ -280,7 +344,8 @@ pub fn derive(
         None => {
             shape.type_ = entry.type_.clone().ok_or_else(|| {
                 setup(format!(
-                    "{establishes}: event '{event}' has no type, and the article establishes no submission"
+                    "{establishes}: event '{}' has no type, and the article establishes no submission",
+                    event.name
                 ))
             })?;
             shape.fields = part_fields(
@@ -289,6 +354,15 @@ pub fn derive(
                 &declared_parameters(article),
                 &declared_outputs(article),
             )?;
+            // What the decision concerns, if the law says it concerns a
+            // period: the parameter with origin role TIJDVAK among what the
+            // decision asks at its stage (Awir 14 jo. 15: "een tegemoetkoming
+            // met betrekking tot een berekeningsjaar").
+            if chronolex.derived {
+                if let Some(stage) = &entry.stage {
+                    shape.period = tijdvak(service, &shape, stage, day)?;
+                }
+            }
             // A decision taken at a stage of its procedure is the article
             // with the hooks that fire at that stage (a general law that hooks
             // onto every besluit, or onto one stage). What they produce is
@@ -308,6 +382,48 @@ pub fn derive(
         }
     }
     Ok(shape)
+}
+
+/// The period a decision at `stage` concerns: the one parameter with origin
+/// role TIJDVAK among what the decision asks there (RFC-048), as a calendar
+/// year when it is a number. The applicant chooses it as part of the
+/// decision requested (Awb 4:2 lid 1), so it is in the application.
+fn tijdvak(
+    service: &LawExecutionService,
+    shape: &Shape,
+    stage: &str,
+    day: NaiveDate,
+) -> Result<Option<PeriodParameter>> {
+    let inputs = stage_inputs(service, shape, stage, day)?;
+    let mut names: Vec<(&str, ParameterType)> = Vec::new();
+    for input in &inputs.inputs {
+        let reference = format!("{}#{}", input.law_id, input.article_number);
+        let Some(o) = origin(&input.parameter, &reference)? else {
+            continue;
+        };
+        if o.rol == Some(OriginRole::Tijdvak)
+            && !names.iter().any(|(n, _)| *n == input.parameter.name)
+        {
+            names.push((&input.parameter.name, input.parameter.param_type));
+        }
+    }
+    match names.as_slice() {
+        [] => Ok(None),
+        [(name, ParameterType::Number)] => Ok(Some(PeriodParameter {
+            parameter: name.to_string(),
+            unit: PeriodUnit::Year,
+        })),
+        [(name, other)] => Err(setup(format!(
+            "{}: the TIJDVAK '{name}' at stage {stage} is a {other:?}; only a year (a number) is a period the cell knows",
+            shape.establishes
+        ))),
+        more => Err(setup(format!(
+            "{}: stage {stage} asks {} parameters with role TIJDVAK ({}); a decision concerns one period",
+            shape.establishes,
+            more.len(),
+            more.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(", ")
+        ))),
+    }
 }
 
 /// An execution says on which parameter its day goes, and when a gram
@@ -475,7 +591,7 @@ fn submission_fields(
     for part in &model.articles {
         let reference = format!("{}#{}", part.law_id, part.article_number);
         let (_, article) = article_on(service, &reference, day)?;
-        let Some(chronolex) = extension::of_article(article, &reference).map_err(setup)? else {
+        let Some(chronolex) = chronolex_of(service, article, &reference)? else {
             continue;
         };
         let entries: Vec<&Establishment> = chronolex
@@ -483,7 +599,9 @@ fn submission_fields(
             .iter()
             .filter(|e| match (&part.hook, &e.extends) {
                 // The establishing article: its own event.
-                (None, None) => e.event.as_deref() == Some(shape.event.as_str()),
+                (None, None) => {
+                    chronolex.derived || e.event.as_deref() == Some(shape.event.as_str())
+                }
                 // A hook: what extends every submission of this kind.
                 (Some(_), Some(Extends { submission })) => {
                     Some(submission.to_lowercase()) == shape.subtype
@@ -687,13 +805,22 @@ articles:
         s.parse().unwrap()
     }
 
+    fn gebeurd() -> Event {
+        Event {
+            name: "gebeurd".into(),
+            establishes: "testwet#1".into(),
+            stage: None,
+            reads: Vec::new(),
+        }
+    }
+
     #[test]
     fn a_version_that_does_not_establish_the_event_falls_through_to_a_later_one() {
         let service = service(&[
             version("2024-01-01", None),
             version("2025-01-01", Some(ESTABLISHES)),
         ]);
-        let shape = derive_for(&service, "gebeurd", "testwet#1", day("2024-11-20")).unwrap();
+        let shape = derive_for(&service, &gebeurd(), day("2024-11-20")).unwrap();
         assert_eq!(shape.outputs, vec!["y".to_string()]);
     }
 
@@ -706,14 +833,14 @@ articles:
             version("2024-01-01", Some(&broken)),
             version("2025-01-01", Some(ESTABLISHES)),
         ]);
-        let e = derive_for(&service, "gebeurd", "testwet#1", day("2024-11-20")).unwrap_err();
+        let e = derive_for(&service, &gebeurd(), day("2024-11-20")).unwrap_err();
         assert!(e.to_string().contains("bestaat_niet"), "{e}");
     }
 
     #[test]
     fn without_any_version_that_establishes_the_event_the_first_error_stands() {
         let service = service(&[version("2024-01-01", None), version("2025-01-01", None)]);
-        let e = derive_for(&service, "gebeurd", "testwet#1", day("2024-11-20")).unwrap_err();
+        let e = derive_for(&service, &gebeurd(), day("2024-11-20")).unwrap_err();
         assert!(e.to_string().contains("no extensions.chronolex"), "{e}");
     }
 }

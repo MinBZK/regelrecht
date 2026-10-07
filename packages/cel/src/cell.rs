@@ -131,13 +131,12 @@ impl Cell {
         let mut fields: BTreeMap<&str, Vec<String>> = BTreeMap::new();
         for stream in &cell.config.streams {
             for event in &stream.events {
-                let shape = shape::derive_for(service, &event.name, &event.establishes, today)
-                    .map_err(|e| {
-                        setup(format!(
-                            "stream '{}', event '{}': {e}",
-                            stream.id, event.name
-                        ))
-                    })?;
+                let shape = shape::derive_for(service, event, today).map_err(|e| {
+                    setup(format!(
+                        "stream '{}', event '{}': {e}",
+                        stream.id, event.name
+                    ))
+                })?;
                 fields
                     .entry(stream.chronicle.as_str())
                     .or_default()
@@ -186,7 +185,7 @@ impl Cell {
             ))
         })?;
         Ok((
-            shape::derive_for(service, &e.name, &e.establishes, day)?,
+            shape::derive_for(service, e, day)?,
             stream.chronicle.clone(),
         ))
     }
@@ -1257,13 +1256,13 @@ articles:
 ",
             )
             .unwrap();
-        let shape = shape::derive(
-            &service,
-            "gebeurd",
-            "testwet#1",
-            "2024-06-01".parse().unwrap(),
-        )
-        .unwrap();
+        let event = crate::config::Event {
+            name: "gebeurd".into(),
+            establishes: "testwet#1".into(),
+            stage: None,
+            reads: Vec::new(),
+        };
+        let shape = shape::derive(&service, &event, "2024-06-01".parse().unwrap()).unwrap();
         let e = fields_of(&shape, &BTreeMap::new()).unwrap_err();
         assert!(matches!(e, crate::Error::Refused(_)), "{e}");
         assert!(e.to_string().contains("'y'"), "{e}");

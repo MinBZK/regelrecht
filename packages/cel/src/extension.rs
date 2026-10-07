@@ -1,5 +1,13 @@
-//! The `produces.extensions.chronolex` block of an article (RFC-022 §3.2):
-//! which facts it establishes, or which fact it extends.
+//! What an article establishes in a chronicle, or which fact it extends.
+//!
+//! The law does not know chronolexography: it says in its own words that an
+//! application arises (`produces.submission`), that a decision is taken on it
+//! (`produces: BESCHIKKING` with `decides_on`), which general articles hook
+//! onto it (`applies_to.submission`), who supplies each parameter (`origin`)
+//! and when the fact counts (`produces.moment`). [`derive`] reads the
+//! recording out of that. An article may still carry an explicit
+//! `produces.extensions.chronolex` block (RFC-022 §3.2), which then wins: a
+//! policy that records an execution says so itself.
 //!
 //! ```yaml
 //! extensions:
@@ -25,6 +33,7 @@
 use std::collections::BTreeMap;
 
 use regelrecht_engine::Article;
+use regelrecht_law_model::{OriginValue, ParameterType, Stage, StageRequirement};
 use serde::{Deserialize, Serialize};
 
 /// The namespace in `produces.extensions`.
@@ -35,6 +44,19 @@ pub const NAMESPACE: &str = "chronolex";
 pub struct Chronolex {
     #[serde(default)]
     pub establishes: Vec<Establishment>,
+    /// Derived from what the law says in its own words, not written as a
+    /// block: its establishments have no event name, the stream gives them
+    /// one (and, for an article that decides at more than one stage, says
+    /// the stage).
+    #[serde(skip)]
+    pub derived: bool,
+}
+
+impl Chronolex {
+    /// The establishments that are the article's own (not what it extends).
+    pub fn own(&self) -> impl Iterator<Item = &Establishment> {
+        self.establishes.iter().filter(|e| e.extends.is_none())
+    }
 }
 
 /// What an extension extends: the submission (such as an application) that
@@ -228,9 +250,9 @@ impl<'de> Deserialize<'de> for Fields {
     }
 }
 
-/// The chronolex block of an article, if it has one. A block this crate
-/// cannot read is an error, with the article named: a typo must not make a
-/// field silently disappear from the gram.
+/// The explicit chronolex block of an article, if it has one. A block this
+/// crate cannot read is an error, with the article named: a typo must not
+/// make a field silently disappear from the gram.
 pub fn of_article(article: &Article, reference: &str) -> Result<Option<Chronolex>, String> {
     let Some(block) = article
         .get_produces()
@@ -242,4 +264,103 @@ pub fn of_article(article: &Article, reference: &str) -> Result<Option<Chronolex
     serde_json::from_value(block.clone())
         .map(Some)
         .map_err(|e| format!("{reference}: extensions.{NAMESPACE}: {e}"))
+}
+
+/// What the law says in its own words, read as a chronolex block
+/// (RFC-022 §1.2), for an article without an explicit one:
+///
+/// - `produces.submission`: the article establishes a submission; its fields
+///   are the parameters the belanghebbende supplies (origin BELANGHEBBENDE
+///   or KANAAL), and `produces.moment` is the moment that counts.
+/// - `produces: BESCHIKKING` with `decides_on`: the article takes a decision
+///   on that submission, a decretogram at every stage of its procedure that
+///   is a decision (`is: BESLUIT`, or BESLUIT itself), referring to the
+///   submission as `on_application`; its fields are the outputs. The date
+///   the decision bears is the one date requirement of the stage (the
+///   dagtekening, Awir 16; `besluit_datum` in the Awb), or the parameter
+///   `produces.moment` names.
+/// - a hook with `applies_to.submission`: the article extends every
+///   submission of that kind with what it asks of the belanghebbende, and
+///   with `produces.moment` as the moment that counts (Awb 4:13 lid 1).
+///
+/// `None` if the law says none of this. What the law says the fact concerns
+/// (its period) is read where the decision is executed, from the parameter
+/// with origin role TIJDVAK ([`crate::shape`]).
+pub fn derive(article: &Article, decision_stages: &[&Stage]) -> Option<Chronolex> {
+    let produces = article.get_produces();
+    let moment = produces.and_then(|p| p.moment.as_ref());
+    let effective_at = moment.map(|m| EffectiveAt {
+        legal_basis: m.legal_basis.clone(),
+    });
+    let supplies = article.get_parameters().iter().any(|p| {
+        p.origin
+            .as_ref()
+            .and_then(|o| o.valid().ok())
+            .is_some_and(|o| matches!(o.waarde, OriginValue::Belanghebbende | OriginValue::Kanaal))
+    });
+    let mut establishes = Vec::new();
+    if produces.is_some_and(|p| p.submission.is_some()) {
+        establishes.push(Establishment {
+            fields: Some(Fields::Parameters),
+            effective_at: effective_at.clone(),
+            ..Default::default()
+        });
+    } else if let Some(on) = produces
+        .filter(|p| p.legal_character.as_deref() == Some("BESCHIKKING"))
+        .and_then(|p| p.decides_on.as_ref())
+        .and_then(|d| d.first())
+    {
+        for stage in decision_stages {
+            let dated_by = moment.and_then(|m| m.parameter.clone()).or_else(|| {
+                let dates: Vec<&StageRequirement> = stage
+                    .requires
+                    .iter()
+                    .flatten()
+                    .filter(|r| r.req_type == ParameterType::Date)
+                    .collect();
+                match dates.as_slice() {
+                    [one] => Some(one.name.clone()),
+                    _ => None,
+                }
+            });
+            establishes.push(Establishment {
+                type_: Some("decretogram".to_string()),
+                stage: Some(stage.name.clone()),
+                refers_to: BTreeMap::from([(
+                    "on_application".to_string(),
+                    Reference {
+                        to: Some(on.clone()),
+                        stage: None,
+                        required: true,
+                    },
+                )]),
+                effective_at: effective_at.clone(),
+                fields: Some(Fields::Outputs),
+                dated_by,
+                ..Default::default()
+            });
+        }
+    }
+    let mut kinds: Vec<&str> = Vec::new();
+    for hook in article.get_hooks().into_iter().flatten() {
+        let Some(kind) = hook.applies_to.submission.as_deref() else {
+            continue;
+        };
+        if kinds.contains(&kind) {
+            continue;
+        }
+        kinds.push(kind);
+        establishes.push(Establishment {
+            extends: Some(Extends {
+                submission: kind.to_string(),
+            }),
+            effective_at: effective_at.clone(),
+            fields: supplies.then_some(Fields::Parameters),
+            ..Default::default()
+        });
+    }
+    (!establishes.is_empty()).then_some(Chronolex {
+        establishes,
+        derived: true,
+    })
 }

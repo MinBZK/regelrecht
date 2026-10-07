@@ -23,10 +23,10 @@ pub use model::{
     Action, ActionOperation, ActionValue, Article, ArticleBasedLaw, ArticleReference,
     ArticleRequirement, AuthorityType, Case, CombineOp, CompetentAuthority, Declaration, Declared,
     DeclaredProperty, Definition, Execution, HookDeclaration, HookFilter, HookPoint,
-    ImplementsDeclaration, Input, LegalBasis, MachineReadable, Marking, MarkingResolution,
+    ImplementsDeclaration, Input, LegalBasis, MachineReadable, Marking, MarkingResolution, Moment,
     OpenTerm, OpenTermDefault, Origin, OriginOverride, OriginRole, OriginValue, Output,
     OverrideDeclaration, Parameter, Placement, PlacementContainer, Preamble, ProcedureAppliesTo,
-    ProcedureDefinition, Produces, ProvisionReference, ResolveSpec, Source, Stage,
+    ProcedureDefinition, Produces, ProvisionReference, ResolveSpec, Source, Specifies, Stage,
     StageRequirement, Submission, Temporal, TypeSpec, UntranslatableEntry,
 };
 pub use value::{MissingFact, MissingKind, Operation, ParameterType, RegulatoryLayer, Value};

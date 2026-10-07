@@ -52,6 +52,11 @@ pub struct Stream {
 pub struct Event {
     pub name: String,
     pub establishes: String,
+    /// For a decision of an article that decides at more than one stage of
+    /// its procedure (Awir: the voorschot and the toekenning): the stage
+    /// this event records. Not needed when the article decides at one.
+    #[serde(default)]
+    pub stage: Option<String>,
     /// For a decision: the lexostatuses the cell reads the parameters of the
     /// decision from (see [`crate::Cell::decision_inputs`]); one name or a
     /// list.
