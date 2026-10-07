@@ -51,6 +51,12 @@ export default {
 
   'app.demo.label': 'Demo',
   'app.demo.fullscreen': 'Full screen',
+  'app.demo.clock': 'Reference date: {date}…',
+  'app.clock.title': 'Reference date',
+  'app.clock.body': 'The date the demo calculates on. Moving forward runs the clock: whatever the law makes arise along the way, such as instalments or a grant, is recorded. Going back is only possible while nothing has been recorded yet.',
+  'app.clock.date': 'Date',
+  'app.clock.confirm': 'Set',
+  'app.clock.reset_needed': 'Cases have already been recorded, and a fact never lies in the future. Going back in time is only possible after resetting the demo.',
   'app.demo.reset': 'Reset the demo…',
 
   // ---- loading, errors, resetting -----------------------------------------

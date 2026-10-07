@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useColorScheme } from '@regelrecht/frontend-shared';
 import { FEATURES, useDemo } from './store/demoStore.js';
 import { delegationLabel } from './data/delegation.js';
+import { formatValue } from './data/format.js';
 import { LOCALES, useI18n } from './i18n/index.js';
 import { localeRouteName } from './router.js';
 import PresentationDeck from './presentation/PresentationDeck.vue';
@@ -277,6 +278,20 @@ function confirmReset() {
   router.push(pathFor('home'));
 }
 
+const clockDialog = ref(null);
+const clockInput = ref('');
+const clockStatus = ref(null);
+function askClock() {
+  clockInput.value = state.referenceDate;
+  clockStatus.value = null;
+  clockDialog.value?.show?.();
+}
+function confirmClock() {
+  const result = demo.setClock(clockInput.value);
+  if (result === 'ok') clockDialog.value?.hide?.();
+  else clockStatus.value = result;
+}
+
 function toggleManualReview() {
   state.manualReview = !state.manualReview;
 }
@@ -507,6 +522,7 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
           </nldd-menu-group>
           <nldd-menu-group slot="overflow" :text="t('app.demo.label')">
             <nldd-menu-item :text="t('app.demo.fullscreen')" icon="square-arrow-up" @select="toggleFullscreen"></nldd-menu-item>
+            <nldd-menu-item :text="t('app.demo.clock', { date: formatValue(state.referenceDate, null) })" icon="calendar" @select="askClock"></nldd-menu-item>
             <nldd-menu-item :text="t('app.demo.reset')" icon="refresh" @select="askReset"></nldd-menu-item>
             <!-- Only when a server answers /api/why; without one the feature
                  does not exist and the menu does not mention it. -->
@@ -557,6 +573,23 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
       </nldd-form-field>
       <nldd-button slot="actions" appearance="primary" :text="t('app.why.dialog.confirm')" :disabled="!whyInput || whyBusy || undefined" @click="confirmWhyPassword"></nldd-button>
       <nldd-button slot="actions" appearance="secondary" :text="t('app.why.dialog.cancel')" @click="whyDialog?.hide?.()"></nldd-button>
+    </nldd-modal-dialog>
+
+    <!-- De peildatum is de klok van de demo. Vooruit laat de cel vastleggen
+         wat er onderweg ontstaat; terug kan alleen zonder vastgelegde feiten. -->
+    <nldd-modal-dialog
+      ref="clockDialog"
+      :text="t('app.clock.title')"
+      :supporting-text="t('app.clock.body')"
+      :accessible-label="t('app.clock.title')"
+      horizontal-alignment="left"
+    >
+      <nldd-form-field :label="t('app.clock.date')">
+        <nldd-date-field :value="clockInput" width="full" @change="clockInput = $event.detail?.value || clockInput; clockStatus = null"></nldd-date-field>
+        <nldd-form-field-help-text v-if="clockStatus">{{ t(`app.clock.${clockStatus}`) }}</nldd-form-field-help-text>
+      </nldd-form-field>
+      <nldd-button slot="actions" appearance="primary" :text="t('app.clock.confirm')" :disabled="!clockInput || undefined" @click="confirmClock"></nldd-button>
+      <nldd-button slot="actions" appearance="secondary" :text="t('app.reset.cancel')" @click="clockDialog?.hide?.()"></nldd-button>
     </nldd-modal-dialog>
 
     <nldd-modal-dialog

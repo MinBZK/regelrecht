@@ -707,6 +707,25 @@ function decisionPreview(c) {
   }
 }
 
+/**
+ * De peildatum zetten vanuit het menu. Vooruit loopt de klok, met alles wat
+ * er onderweg ontstaat (advanceTo). Terug kan alleen zolang er nog niets is
+ * vastgelegd: een feit ligt nooit in de toekomst, dus wie terug wil met
+ * zaken of grammen, begint opnieuw. Geeft 'ok' of 'reset_needed'.
+ */
+function setClock(date) {
+  if (!date || date === state.referenceDate) return 'ok';
+  if (date > state.referenceDate) {
+    advanceTo(date);
+    return 'ok';
+  }
+  if (state.cases.length || state.grams.length) return 'reset_needed';
+  state.referenceDate = date;
+  reregister();
+  if (engine.value) startCells();
+  return 'ok';
+}
+
 /** Naar het eerstvolgende moment dat de wet voor deze zaak geeft. */
 function advanceToNextMoment(c) {
   advanceTo(nextMoment(nextMoments(c), state.referenceDate)?.date ?? null);
@@ -1518,6 +1537,7 @@ export function useDemo() {
     subjectBsn,
     setProfile,
     advanceTo,
+    setClock,
     advanceToNextMoment,
     nextMoments,
     momentsOf,

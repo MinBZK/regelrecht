@@ -48,6 +48,12 @@ export default {
 
   'app.demo.label': 'Demo',
   'app.demo.fullscreen': 'Volledig scherm',
+  'app.demo.clock': 'Peildatum: {date}…',
+  'app.clock.title': 'Peildatum',
+  'app.clock.body': 'De datum waarop de demo rekent. Vooruit loopt de klok: wat de wet onderweg laat ontstaan, zoals termijnen of een toekenning, wordt vastgelegd. Terug kan alleen zolang er nog niets is vastgelegd.',
+  'app.clock.date': 'Datum',
+  'app.clock.confirm': 'Instellen',
+  'app.clock.reset_needed': 'Er zijn al zaken vastgelegd: een feit ligt nooit in de toekomst. Terug in de tijd kan alleen na Demo resetten.',
   'app.demo.reset': 'Demo resetten…',
 
   // ---- laden, fouten, resetten --------------------------------------------
