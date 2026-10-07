@@ -23,11 +23,11 @@
 import {
   GEEN_CATEGORIE,
   beleggingStand,
-  getPrioriteit,
-  getCategorie,
-  getCapability,
   getBelegging,
+  werkpakketTags,
+  rfcTekst,
   zoektekst,
+  type KaartTag,
   type WerkpakketData,
 } from '~/lib/roadmap';
 
@@ -41,19 +41,9 @@ interface Props {
 
 const { wp, ondertitel, onder } = Astro.props;
 
-const prioriteit = getPrioriteit(wp.data.prioriteit);
-const categorie = getCategorie(wp.data.categorie);
-const capability = getCapability(wp.data.capability);
 const belegging = getBelegging(wp.data.belegging.stand);
 
-interface Tag {
-  color: string;
-  text: string;
-  label: string;
-  icon?: string;
-}
-
-const tags: Tag[] = [
+const tags: KaartTag[] = [
   /* Alleen 'opgepakt' en 'klaar' krijgen een tag, 'vrij' niet. Vrij is de
      stilzwijgende meerderheid — een leeg veld telt daarin mee, zie
      getBelegging() — en zesenveertig kaarten met een tag die zegt dat er
@@ -66,31 +56,20 @@ const tags: Tag[] = [
      titel concurreert, en deze tag staat vóór de andere omdat hij zegt of er
      iemand op zit. Loopt dit op, dan is de vraag welke van de vijf weg mag,
      niet deze. */
-  belegging && belegging.id !== 'vrij'
-    ? {
-        color: belegging.tagColor,
-        text: belegging.label,
-        icon: belegging.id === 'klaar' ? 'done' : 'user',
-        label: belegging.label,
-      }
-    : undefined,
-  prioriteit
-    ? { color: prioriteit.tagColor, text: prioriteit.label, label: prioriteit.label }
-    : undefined,
-  wp.data.omvang
-    ? { color: 'neutral', text: wp.data.omvang, label: `Omvang ${wp.data.omvang}` }
-    : undefined,
-  categorie
-    ? { color: 'neutral', text: categorie.label, label: categorie.label }
-    : undefined,
-  capability
-    ? { color: 'accent', text: capability.label.split(' ')[0], label: capability.label }
-    : undefined,
-].filter((t): t is Tag => t !== undefined);
+  ...(belegging && belegging.id !== 'vrij'
+    ? [
+        {
+          color: belegging.tagColor,
+          text: belegging.label,
+          icon: belegging.id === 'klaar' ? 'done' : 'user',
+          label: belegging.label,
+        },
+      ]
+    : []),
+  ...werkpakketTags(wp.data),
+];
 
-const rfcTekst = wp.data.rfcs.length
-  ? `${wp.data.rfcs.length} RFC${wp.data.rfcs.length > 1 ? "'s" : ''}`
-  : undefined;
+const rfcs = rfcTekst(wp.data);
 
 // De ondertitel en de stille regel horen in de toegankelijke naam: wie de
 // kaart niet ziet, mist anders juist de plek en de ouderdom die ze toevoegen.
@@ -98,7 +77,7 @@ const accessibleLabel = [
   wp.data.titel,
   ondertitel,
   ...tags.map((t) => t.label),
-  rfcTekst,
+  rfcs,
   onder,
 ]
   .filter(Boolean)
@@ -138,7 +117,7 @@ const accessibleLabel = [
         </nldd-text>
       )
     }
-    {(tags.length > 0 || rfcTekst) && (
+    {(tags.length > 0 || rfcs) && (
       <nldd-container layout="wrap" gap="4" vertical-alignment="center">
         {tags.map((tag) => (
           <nldd-tag
@@ -153,8 +132,8 @@ const accessibleLabel = [
             would make the title compete with its own metadata. This is a
             quiet count of the design behind the werkpakket — the detail
             page names them. */}
-        {rfcTekst && (
-          <nldd-text size="xs" color="secondary">{rfcTekst}</nldd-text>
+        {rfcs && (
+          <nldd-text size="xs" color="secondary">{rfcs}</nldd-text>
         )}
       </nldd-container>
     )}

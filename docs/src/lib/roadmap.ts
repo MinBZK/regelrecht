@@ -572,6 +572,56 @@ export function werkpakketVolgorde(a: WerkpakketData, b: WerkpakketData): number
   return a.volgorde - b.volgorde || a.id.localeCompare(b.id);
 }
 
+/** Een tag op een kaart, zoals nldd-tag hem rendert. */
+export interface KaartTag {
+  color: string;
+  text: string;
+  /** De toegankelijke naam; de zichtbare tekst is soms een afkorting. */
+  label: string;
+  icon?: string;
+}
+
+/**
+ * De tags van een werkpakket op een kaart: prioriteit, omvang, categorie en
+ * capability, in die volgorde, alleen de velden die ingevuld zijn. De
+ * belegging zit er niet bij: de werkpakketkaart zet die vooraan, de
+ * vraagkaart zegt er iets anders over (zie RoadmapVraagKaart.astro).
+ *
+ * Eén helper voor beide kaarten, zodat een vraag dezelfde tags draagt als
+ * het werkpakket waar hij in staat, met dezelfde kleuren en dezelfde
+ * afkortingen.
+ */
+export function werkpakketTags(data: WerkpakketData): KaartTag[] {
+  const prioriteit = getPrioriteit(data.prioriteit);
+  const categorie = getCategorie(data.categorie);
+  const capability = getCapability(data.capability);
+  return [
+    prioriteit
+      ? { color: prioriteit.tagColor, text: prioriteit.label, label: prioriteit.label }
+      : undefined,
+    data.omvang
+      ? { color: 'neutral', text: data.omvang, label: `Omvang ${data.omvang}` }
+      : undefined,
+    categorie
+      ? { color: 'neutral', text: categorie.label, label: categorie.label }
+      : undefined,
+    capability
+      ? {
+          color: 'accent',
+          text: capability.label.split(' ')[0],
+          label: capability.label,
+        }
+      : undefined,
+  ].filter((tag): tag is KaartTag => tag !== undefined);
+}
+
+/** "13 RFC's", of undefined zonder RFC's; de stille telling naast de tags. */
+export function rfcTekst(data: WerkpakketData): string | undefined {
+  return data.rfcs.length
+    ? `${data.rfcs.length} RFC${data.rfcs.length > 1 ? "'s" : ''}`
+    : undefined;
+}
+
 /**
  * "Fase I · Techniek & Architectuur": de cel van de matrix, in woorden, voor
  * een weergave waar die cel niet te zien is.

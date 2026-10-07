@@ -15,6 +15,9 @@ import {
   vraagLane,
   vraagZoektekst,
   telDeelvragen,
+  werkpakketTags,
+  rfcTekst,
+  type KaartTag,
   type Onderzoeksvraag,
   type WerkpakketData,
 } from '~/lib/roadmap';
@@ -31,14 +34,7 @@ const status = getOnderzoek(vraag.status);
 const belegging = getBelegging(werkpakket.belegging.stand);
 const deel = telDeelvragen(vraag);
 
-interface Tag {
-  color: string;
-  text: string;
-  label: string;
-  icon?: string;
-}
-
-const tags: Tag[] = [
+const tags: KaartTag[] = [
   // De eigen status van de vraag als tag; zonder eigen status de belegging
   // van het werkpakket, met "werkpakket" ervoor, want dat is waar de lane
   // dan vandaan komt. Vrij krijgt geen tag, net als op de werkpakketkaart.
@@ -60,7 +56,14 @@ const tags: Tag[] = [
         label: `Rules as Executed § ${vraag.paper.nummer}`,
       }
     : undefined,
-].filter((t): t is Tag => t !== undefined);
+  // Daarna de tags van het werkpakket (prioriteit, omvang, categorie,
+  // capability), dezelfde als op de werkpakketkaart: een vraag erft ze van
+  // het pakket waar hij in staat, en zo leest een vraagkaart als een
+  // werkpakketkaart.
+  ...werkpakketTags(werkpakket),
+].filter((t): t is KaartTag => t !== undefined);
+
+const rfcs = rfcTekst(werkpakket);
 
 const onder = [
   deel.totaal > 0 &&
@@ -73,7 +76,7 @@ const onder = [
 
 const href = `/roadmap/werkpakket/${werkpakket.id}${vraag.anker ? `#${vraag.anker}` : ''}`;
 
-const accessibleLabel = [vraag.vraag, werkpakket.titel, ...tags.map((t) => t.label), onder]
+const accessibleLabel = [vraag.vraag, werkpakket.titel, ...tags.map((t) => t.label), rfcs, onder]
   .filter(Boolean)
   .join(', ');
 ---
@@ -92,7 +95,7 @@ const accessibleLabel = [vraag.vraag, werkpakket.titel, ...tags.map((t) => t.lab
       <nldd-text size="sm" weight="medium">{vraag.vraag}</nldd-text>
       <nldd-text size="xs" color="secondary">{werkpakket.titel}</nldd-text>
     </nldd-container>
-    {tags.length > 0 && (
+    {(tags.length > 0 || rfcs) && (
       <nldd-container layout="wrap" gap="4" vertical-alignment="center">
         {tags.map((tag) => (
           <nldd-tag
@@ -103,6 +106,7 @@ const accessibleLabel = [vraag.vraag, werkpakket.titel, ...tags.map((t) => t.lab
             size="sm"
           />
         ))}
+        {rfcs && <nldd-text size="xs" color="secondary">{rfcs}</nldd-text>}
       </nldd-container>
     )}
     {onder && <nldd-text size="xs" color="secondary">{onder}</nldd-text>}
