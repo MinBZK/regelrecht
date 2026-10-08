@@ -538,15 +538,24 @@ function transport(cellId, gram, now) {
   });
 }
 
-/** De cel van een wet zoals de klok haar aanspreekt: met de engine erbij. */
-function celOf(chrono) {
+/**
+ * De cel van een wet zoals de klok haar aanspreekt: met de engine erbij.
+ * `onTransportError` krijgt een fout van het transport na een uitvoering: de
+ * uitvoering zelf is dan al vastgelegd en telt als gedaan, zodat de klok die
+ * dag niet opnieuw vraagt.
+ */
+function celOf(chrono, onTransportError = () => {}) {
   const cell = chrono.wasmCell;
   return {
     dueExecutions: (event, root, after, through, now) => cell.dueExecutions(engine.value, event, root, after, through, now),
     // Wat de cel vastlegt, gaat meteen over de kanalen verder.
     execute: (event, root, day, now) => {
       const gram = cell.execute(engine.value, event, root, day, now);
-      transport(chrono.cell.id, gram, now);
+      try {
+        transport(chrono.cell.id, gram, now);
+      } catch (e) {
+        onTransportError(e);
+      }
       return gram;
     },
     previewExecution: (event, root, day, now) => cell.previewExecution(engine.value, event, root, day, now),
@@ -564,7 +573,12 @@ function executeDue(c) {
   const chrono = chronolexFor(corpus.value?.lawById(c.lawId));
   if (!chrono) return;
   const events = executionsOf(chrono).map((x) => x.event);
-  if (executeDueOn(c, celOf(chrono), events, { today: state.referenceDate, now: nowMoment() })) syncGrams();
+  const failed = (e) => {
+    c.chronicleError = String(e?.message ?? e);
+  };
+  executeDueOn(c, celOf(chrono, failed), events, { today: state.referenceDate, now: nowMoment() });
+  // Ook wat de kanalen in andere cellen vastlegden, en wat er vóór een fout lukte.
+  syncGrams();
 }
 
 /**

@@ -934,10 +934,19 @@ impl Cell {
         now: DateTime<FixedOffset>,
     ) -> Result<Vec<(Gram, String)>> {
         let today = now.date_naive();
+        // What the message is about decides the law: the receipt of an
+        // answer to a gram that concerns a period is judged under the law of
+        // that period, as that gram was; otherwise under the law of today.
+        // The shapes and the execution both use that day.
+        let period = refers_to
+            .values()
+            .filter_map(|id| self.chronicles.values().find_map(|c| c.find(id)))
+            .find_map(|g| g.period);
+        let day = period.and_then(|p| p.first_day()).unwrap_or(today);
         let mut shapes: Vec<(Shape, String)> = Vec::new();
         for stream in &self.config.streams {
             for event in stream.events.iter().filter(|e| e.establishes == article) {
-                let (shape, chronicle) = self.shape(service, &event.name, today)?;
+                let (shape, chronicle) = self.shape(service, &event.name, day)?;
                 if shape.is_receipt() {
                     shapes.push((shape, chronicle));
                 }
@@ -950,14 +959,6 @@ impl Cell {
             )));
         };
         let law_id = first.law_id.clone();
-        // What the message is about decides the law: the receipt of an
-        // answer to a gram that concerns a period is judged under the law of
-        // that period, as that gram was; otherwise under the law of today.
-        let period = refers_to
-            .values()
-            .filter_map(|id| self.chronicles.values().find_map(|c| c.find(id)))
-            .find_map(|g| g.period);
-        let day = period.and_then(|p| p.first_day()).unwrap_or(today);
         for name in refers_to.keys() {
             if !shapes.iter().any(|(s, _)| s.refers_to.contains_key(name)) {
                 return Err(refused(format!(
