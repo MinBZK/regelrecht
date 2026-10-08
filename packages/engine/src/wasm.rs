@@ -1051,6 +1051,18 @@ articles:
         assert!(engine.service().resolver().get_law("test_law").is_some());
     }
 
+    /// Wat de cel via `service_mut` registreert (haar kroniek als bron),
+    /// moet in dezelfde service landen die de pagina gebruikt, niet in een
+    /// losse kopie.
+    #[test]
+    fn test_wasm_engine_service_mut_changes_the_loaded_service() {
+        let mut engine = WasmEngine::new();
+        load_law(&mut engine, MINIMAL_LAW_YAML);
+
+        assert!(engine.service_mut().unload_law("test_law"));
+        assert!(engine.service().resolver().get_law("test_law").is_none());
+    }
+
     /// `loadLaw()` is de enige weg waarlangs JavaScript een wet de engine in
     /// krijgt, en het is het contract dat de aanroeper het `$id` terugkrijgt om
     /// mee verder te werken (`execute(lawId, ...)`). De andere tests laden via
