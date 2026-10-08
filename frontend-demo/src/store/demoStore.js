@@ -652,6 +652,20 @@ function nextDecisionOf(c, chrono) {
 }
 
 /**
+ * De datums die de wet het besluit `decision` (`{event, shape}`) op de zaak
+ * `c` geeft, los van de dag waarop het wordt genomen (`fixedDates`): uit een
+ * voorbeeld nu en een voorbeeld een maand later. Met `after` alleen wat
+ * daarna ligt. Elke datum met zijn veld (`field`).
+ */
+function lawFixedDates(chrono, decision, c, inputs, now, after = null) {
+  const refersTo = applicationReference(decision.event, decision.shape, c);
+  const preview = (at) => chrono.wasmCell.previewDecision(engine.value, decision.event, refersTo, at, inputs);
+  const fields = Object.fromEntries(decision.shape.fields.map((f) => [f.name, f]));
+  const later = momentOn(addMonths(state.referenceDate, 1));
+  return fixedDates(preview(now), preview(later), fields, after).map((m) => ({ ...m, field: fields[m.name] }));
+}
+
+/**
  * Het besluit waarop de zaak nu wacht, als zijn moment er is: de levensloop
  * staat in zijn fase, en elke datum die het dossier ervoor geeft (de aanslag
  * van Awir 19) ligt op of vóór de peildatum. `null` anders.
@@ -668,10 +682,7 @@ function dueDecision(c) {
     // geeft, uit twee voorbeelden in verschillende maanden (`fixedDates`).
     let lawDates = [];
     if (Object.keys(dates).length && !Object.values(dates).some((d) => typeof d === 'string')) {
-      const refersTo = applicationReference(found.event, found.shape, c);
-      const preview = (at) => chrono.wasmCell.previewDecision(engine.value, found.event, refersTo, at, inputs);
-      const fields = Object.fromEntries(found.shape.fields.map((f) => [f.name, f]));
-      lawDates = fixedDates(preview(now), preview(momentOn(addMonths(state.referenceDate, 1))), fields).map((m) => m.date);
+      lawDates = lawFixedDates(chrono, found, c, inputs, now).map((m) => m.date);
     }
     return decisionDue(dates, state.referenceDate, lawDates) ? found : null;
   } catch (e) {
@@ -733,12 +744,8 @@ function momentsOf(c) {
       for (const [name, date] of Object.entries(dates)) {
         if (typeof date === 'string' && date > today) moments.push({ date, kind: 'dossier', name, event: next.event });
       }
-      const refersTo = applicationReference(next.event, next.shape, c);
-      const preview = (at) => chrono.wasmCell.previewDecision(engine.value, next.event, refersTo, at, inputs);
-      const fields = Object.fromEntries(next.shape.fields.map((f) => [f.name, f]));
-      const later = momentOn(addMonths(today, 1));
-      for (const m of fixedDates(preview(now), preview(later), fields, today)) {
-        moments.push({ ...m, kind: 'law', event: next.event, provision: fields[m.name]?.declared_by ?? null });
+      for (const { field, ...m } of lawFixedDates(chrono, next, c, inputs, now, today)) {
+        moments.push({ ...m, kind: 'law', event: next.event, provision: field?.declared_by ?? null });
       }
     }
   } catch (e) {

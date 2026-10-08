@@ -22,13 +22,6 @@ function iso(d) {
   return d.toISOString().slice(0, 10);
 }
 
-/** De dag `days` dagen na `date`. */
-export function addDays(date, days) {
-  const d = utc(date);
-  d.setUTCDate(d.getUTCDate() + days);
-  return iso(d);
-}
-
 /**
  * Dezelfde dag `months` kalendermaanden verder, of de laatste dag van die
  * maand als hij korter is. Rekenen met een datum, geen regel van de wet.

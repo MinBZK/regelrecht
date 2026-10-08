@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { addDays, addMonths, comingDates, decisionDue, fixedDates, isEnded, nextExecution, nextMoment, periodEnd } from './moments.js';
+import { addMonths, comingDates, decisionDue, fixedDates, isEnded, nextExecution, nextMoment, periodEnd } from './moments.js';
 
 describe('datums', () => {
-  it('telt dagen en maanden over de grens van een jaar', () => {
-    expect(addDays('2024-12-31', 1)).toBe('2025-01-01');
-    expect(addDays('2024-02-28', 1)).toBe('2024-02-29');
+  it('telt maanden over de grens van een jaar', () => {
     expect(addMonths('2024-11-20', 2)).toBe('2025-01-20');
     expect(addMonths('2025-01-31', 1)).toBe('2025-02-28');
   });
