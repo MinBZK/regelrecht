@@ -30,8 +30,8 @@ profiles:
     # demo aan via Features in het menu. De vlaggen stonden hier eerder aan
     # omdat de features net gebouwd waren, wat geen reden is om ze aan een
     # presentator op te dringen.
-    # Claudia (ondernemer) houdt haar eigen vlaggen, dus de features blijven
-    # vindbaar zonder dat je iets hoeft om te zetten.
+    # Claudia (ondernemer) heeft dezelfde vlaggen: dat ze namens Café Noon B.V.
+    # begint, volgt uit haar profiel en de Machtigingenwet, niet uit een vlag.
     feature_flags:
       DELEGATION: false
       AUTO_APPROVE_CLAIMS: false
@@ -66,6 +66,12 @@ profiles:
     type: ondernemer
     bsn: '999999990'
     kvk: '85234567'
+    # Claudia's verhaal gaat over haar zaak, dus ze komt binnen namens Café Noon
+    # B.V. (KvK-nummer), waarvan ze bestuurder is. Of dat mag zegt de
+    # Machtigingenwet (art. 2:240 BW). Met DELEGATION aan is ook "Mezelf" te
+    # kiezen, en dan is ze een burger zoals Merijn; zonder de vlag is er geen
+    # wisselknop en blijft ze namens de zaak.
+    start_namens: '85234567'
     default_law:
       law_path: verordening_precariobelasting/gemeenten
       service: GEMEENTE_ROTTERDAM
@@ -80,14 +86,36 @@ profiles:
       - wet_bag
       - handelsregisterwet
       - handelsregisterwet/bedrijfsgegevens
+    # Graaf: the law in focus when this persona is chosen; the graph zooms in
+    # on it instead of the whole horeca chain.
+    graph_focus: verordening_precariobelasting
     zaaksysteem_service: GEMEENTE_ROTTERDAM
-    portal_tab_label: Mijn onderneming
-    portal_heading: Welke regelingen passen bij mijn bedrijf?
+    # Deze teksten horen bij "Mezelf"; namens Café Noon kopt het portaal met de naam
+    # van de zaak.
+    portal_tab_label: Mijn overheid
+    portal_heading: Waar heb ik recht op? Wat zijn mijn plichten?
     portal_subtitle: >-
-      Bekijk beschikbare subsidies, rapportageverplichtingen, vergunningen, wetten en andere
-      ondernemersregelingen.
-    feature_flags: {DELEGATION: true, AUTO_APPROVE_CLAIMS: true}
+      Bekijk hier je toeslagen, uitkeringen, aangiften, en andere regelingen van de overheid.
+    # Alles uit, zoals bij Merijn. Ze begint toch namens Café Noon
+    # (start_namens), want die machtiging volgt uit de wet; DELEGATION voegt
+    # alleen de wisselknop in de werkbalk toe.
+    feature_flags:
+      DELEGATION: false
+      AUTO_APPROVE_CLAIMS: false
+      CHANGE_WIZARD: false
+      HARMONIZE: false
     sidebar_laws: [verordening_precariobelasting/gemeenten]
+    # Wat Café Noon in zijn accijnsaangifte opgaf: het huisbier dat de eigen
+    # brouwerij verliet. De accijnswet vraagt dat als parameters; hiermee rekent
+    # de tegel meteen (data/declarations.js). Een kleine brouwerij produceerde
+    # in het vorige jaar niet meer dan 200.000 hl (art. 7 lid 2).
+    declarations:
+      wet_op_de_accijns/accijnsplicht_alcohol:
+        activiteit: productie
+        type_product: bier
+        alcoholpercentage: 5.5
+        hoeveelheid_hectoliter: 24
+        is_kleine_brouwerij: true
     disabled_laws:
       BELASTINGDIENST: [zorgverzekeringswet/bijdrage, zvw, zvw/werkgeversbijdrage]
       DUO: [wet_studiefinanciering]
@@ -118,6 +146,13 @@ profiles:
         - wet_structuur_uitvoeringsorganisatie_werk_en_inkomen
         - wet_inkomstenbelasting
 
+# Applications under these laws always go to a caseworker of the service,
+# whatever the law concludes: Rotterdam grants a terrasvergunning after
+# assessing it, so the demo does not decide it on its own. Precario follows
+# only once the municipality has granted it.
+review_laws:
+  GEMEENTE_ROTTERDAM: [algemene_plaatselijke_verordening/terrassen]
+
 # Laws that never appear on a portal: infrastructure, procedural or helper
 # laws that other laws consume (the POC's FeatureFlags.LAW_DEFAULTS).
 hidden_laws:
@@ -130,9 +165,12 @@ hidden_laws:
     - besluit_kerninstallaties
     - kernenergiewet
   AWB: [algemene_wet_bestuursrecht/artikel_1_1_bestuursorgaan]
-  RVO: [omgevingswet/werkgebonden_personenmobiliteit/gegevens]
+  # De WPM-rapportageverplichting en de werkgeversbijdrage Zvw staan niet in de
+  # demo: de simulatie kan de werkgeversbijdrage niet rekenen (geen loongegevens)
+  # en geen van beide draagt het verhaal van Merijn of Claudia.
+  RVO: [omgevingswet/werkgebonden_personenmobiliteit]
   RvIG: [wet_brp, wet_brp/laa]
-  BELASTINGDIENST: [wet_brp/terugmelding, belastingdienst_vermogen]
+  BELASTINGDIENST: [wet_brp/terugmelding, belastingdienst_vermogen, zvw/werkgeversbijdrage]
   CJIB: [wet_brp/terugmelding]
   TOESLAGEN: [wet_brp/terugmelding]
   JenV: [awb/bezwaar, awb/beroep]
@@ -174,10 +212,18 @@ dashboard_outputs:
   KIESRAAD/kieswet: heeft_stemrecht
   GEMEENTE_ROTTERDAM/verordening_precariobelasting/gemeenten: belasting_per_jaar
   GEMEENTE_ROTTERDAM/algemene_plaatselijke_verordening/terrassen: heeft_recht_op_terrasvergunning
-  GEMEENTE_ROTTERDAM/alcoholwet/vergunning/gemeenten: heeft_recht_op_vergunning
+  # Café Noon heeft deze vergunning al; de tegel kopt dat, net als bij de
+  # exploitatievergunning hieronder.
+  GEMEENTE_ROTTERDAM/alcoholwet/vergunning/gemeenten: heeft_actieve_vergunning
+  # Claudia heeft deze vergunning al; zonder regel hier kopte de tegel de
+  # bezwaartermijn (6 weken) als uitkomst.
+  GEMEENTE_ROTTERDAM/algemene_plaatselijke_verordening/exploitatievergunning/gemeenten: heeft_actieve_vergunning
   NVWA/warenwet/haccp: heeft_haccp_verplichting
   RVO/omgevingswet/energiebesparing/informatieplicht: heeft_informatieplicht
   NVWA/warenwet/meldplicht: heeft_meldplicht
+  # Café Noon is een BV en moet zijn jaarrekening deponeren; zonder regel hier
+  # kopte de tegel de bezwaartermijn (6 weken) als uitkomst.
+  KVK/handelsregisterwet/jaarrekening: heeft_deponeringsplicht
   IND/vreemdelingenwet: heeft_verblijfsrecht
   DOUANE/wet_op_de_accijns/accijnsplicht_alcohol: verschuldigde_accijns
 
@@ -197,6 +243,14 @@ dashboard_outputs:
 # lege lijst betekent: alleen de uitkomst, verder niets. Een wet die hier niet
 # in staat houdt de oude weergave, dus dit kan wet voor wet groeien.
 tile_details:
+  # Waarom het niet mag en wat er vergund wordt. De precario-uitvoer van deze
+  # wet blijft weg: die rekent de precarioverordening, en hier stond hij als
+  # "verschuldigd: Ja" naast een afgewezen terras.
+  GEMEENTE_ROTTERDAM/algemene_plaatselijke_verordening/terrassen:
+    - weigeringsgrond
+    - vergunde_oppervlakte
+    - vergunde_sluitingstijd_doordeweeks
+    - vergunde_sluitingstijd_weekend
   # De uitspraak is het hele antwoord; het uitzonderingsvinkje is een tussenstap.
   KIESRAAD/kieswet: []
   # Het bedrag is het antwoord. Waar het uit is opgebouwd staat in de berekening.
@@ -348,8 +402,8 @@ outcome_phrasing:
     'no': GEEN recht op een vergunning
   GEMEENTE_ROTTERDAM/alcoholwet/vergunning/gemeenten:
     lead: Voor alcoholverkoop heb je
-    'yes': RECHT OP EEN VERGUNNING
-    'no': GEEN recht op een vergunning
+    'yes': EEN ACTIEVE VERGUNNING
+    'no': GEEN actieve vergunning
   NVWA/warenwet/haccp:
     lead: Voor voedselveiligheid heb je
     'yes': EEN HACCP-VERPLICHTING
@@ -362,6 +416,10 @@ outcome_phrasing:
     lead: Voor energiebesparing heb je
     'yes': EEN INFORMATIEPLICHT
     'no': GEEN informatieplicht
+  KVK/handelsregisterwet/jaarrekening:
+    lead: Voor je jaarrekening heb je
+    'yes': EEN DEPONERINGSPLICHT
+    'no': GEEN deponeringsplicht
 
 # Which YAML paths the law viewer opens by default for a law, so the audience
 # sees the branch that matters (the POC's DEMO_COLLAPSE_CONFIG, trimmed to the
@@ -527,6 +585,8 @@ folded_paths:
 # screen (title, statement, closing); a slide with `route` puts the deck on the
 # left and opens that tab, optionally switching the persona (`profile`) and
 # pulsing a part of the screen (`highlight`, a CSS selector). `**text**` is bold.
+# A slide with `decks` belongs to that persona's story; the others are shared.
+# The deck is picked when the presentation starts, from the chosen persona.
 slides:
   - kind: title
     title: RegelRecht
@@ -563,8 +623,9 @@ slides:
       - 'Elk artikel heeft een **machine_readable**-deel: welke gegevens erin gaan, wat eruit komt en hoe.'
       - Een verwijzing naar een andere wet is expliciet, geen kopie van een bedrag.
       - Hetzelfde regelwerk draait in de editor, in dit portaal en in de simulatie.
-    # with the law in the path: a bare /regelwerken reopens whatever law was left open
-    route: /regelwerken/zorgtoeslagwet
+    # without a law in the path the deck opens the chosen persona's default_law
+    # (zorgtoeslag for Merijn, precario for Claudia), not whatever was left open
+    route: /regelwerken
     highlight: .yaml-tree
   - kind: demo
     overline: Samenhang
@@ -575,6 +636,17 @@ slides:
       - Elke lijn is een echte verwijzing uit de wet, met de waarde voor deze persoon erbij.
       - Wijzigt een wet, dan zie je meteen wie dat raakt.
     route: /graaf
+    decks: [merijn]
+  - kind: demo
+    overline: Samenhang
+    title: Wetten hangen samen
+    lead: Of Claudia precario betaalt, hangt af van haar terrasvergunning; die hangt af van haar exploitatievergunning.
+    bullets:
+      - 'Per wet: welke gegevens uit registers, welke uit andere wetten, wat eruit komt.'
+      - Handelsregister, BAG en gemeentelijke verordeningen staan in één graaf.
+      - Wijzigt de verordening, dan zie je meteen welke ondernemers dat raakt.
+    route: /graaf
+    decks: [claudia]
   - kind: demo
     overline: Toetsen
     title: De wet getoetst, in gewone taal
@@ -584,6 +656,17 @@ slides:
       - Dezelfde scenario's draaien hier in de browser en in de bouwstraat.
       - Wie de wet wijzigt, ziet welk scenario omvalt.
     route: /scenarios
+    decks: [merijn]
+  - kind: demo
+    overline: Toetsen
+    title: De verordening getoetst, in gewone taal
+    lead: Scenario's beschrijven een onderneming en wat de verordening voor die onderneming moet opleveren.
+    bullets:
+      - Gegeven een terras van 20 m², dan geen precario. Gegeven een terras van 80 m², dan belasting over 30 m².
+      - Dezelfde scenario's draaien hier in de browser en in de bouwstraat.
+      - Wie de verordening wijzigt, ziet welk scenario omvalt.
+    route: /scenarios
+    decks: [claudia]
   - kind: demo
     overline: Beleid
     title: Wat doet het met tweeduizend mensen?
@@ -604,6 +687,7 @@ slides:
     route: /portaal
     profile: merijn
     highlight: nldd-card
+    decks: [merijn]
   - kind: demo
     overline: Aanvragen
     title: Alleen vragen wat de overheid niet weet
@@ -614,6 +698,7 @@ slides:
       - Controleren, verklaren, indienen. Zonder formulier van tien pagina's.
     route: /portaal
     highlight: '[data-highlight="complete-data"]'
+    decks: [merijn]
   - kind: demo
     overline: De behandelaar
     title: Hetzelfde recht, andere kant van de balie
@@ -623,16 +708,49 @@ slides:
       - Correcties van de burger staan klaar ter beoordeling.
       - Toekennen of afwijzen, met motivering; bezwaar komt via het portaal terug.
     route: /zaaksysteem
+    decks: [merijn]
   - kind: demo
     overline: De ondernemer
     title: Een ondernemer, Claudia
-    lead: Eigenaar van koffiezaak Noon in Rotterdam-West, met een terras.
+    lead: Bestuurder van Café Noon in Rotterdam-West, een café met een eigen kleine brouwerij en een terras.
     bullets:
-      - 'Dezelfde engine, andere wetten: APV, Alcoholwet, Warenwet, precario.'
-      - De terrasvergunning vraagt om locatie en oppervlakte; de precariobelasting rekent er meteen mee.
+      - 'Dezelfde engine, andere wetten: APV, Alcoholwet, Warenwet, accijns, precario.'
+      - De terrasvergunning vraagt om locatie en oppervlakte; is die verleend, dan rekent de precariobelasting ermee.
       - Gemeente, NVWA en RVO in één overzicht, zonder dat zij iets aan elkaar hoeven te vragen.
     route: /portaal
     profile: claudia
+  - kind: demo
+    overline: Aanvragen
+    title: Een terras aanvragen
+    lead: De gemeente weet al veel over Café Noon. De aanvraag vraagt alleen naar het terras zelf.
+    bullets:
+      - Locatie, oppervlakte, seizoen en sluitingstijden staan in geen register.
+      - Na elk antwoord rekent de APV opnieuw, met de weigeringsgronden erbij.
+      - Na het indienen gaat de aanvraag naar de gemeente ter beoordeling.
+    route: /portaal
+    highlight: nldd-card[accessible-label^="Terrasvergunning"]
+    decks: [claudia]
+  - kind: demo
+    overline: De gemeente
+    title: De gemeente beoordeelt
+    lead: Gemeente Rotterdam verleent een terrasvergunning na beoordeling door een behandelaar.
+    bullets:
+      - De aanvraag komt binnen met de berekening die Claudia zag.
+      - De behandelaar kent toe of wijst af, met motivering.
+      - Met de toekenning bestaat de vergunning waarover precario wordt geheven.
+    route: /zaaksysteem
+    decks: [claudia]
+  - kind: demo
+    overline: De aanslag
+    title: Precario volgt uit de vergunning
+    lead: De gemeente legt precariobelasting op over het verleende terras.
+    bullets:
+      - De verordening leest de oppervlakte uit de verleende terrasvergunning.
+      - De eerste 50 m² zijn vrijgesteld; daarboven € 36,10 per m² per jaar.
+      - Elk bedrag is herleidbaar tot het artikel en de vergunning waarop het rust.
+    route: /portaal
+    highlight: nldd-card[accessible-label^="Verordening Precariobelasting"]
+    decks: [claudia]
   - kind: closing
     overline: Demo RegelRecht
     title: Van wet naar digitale werking

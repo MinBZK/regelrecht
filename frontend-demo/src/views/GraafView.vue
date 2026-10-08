@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, onActivated, onDeactivated, ref, watch } from 'vue';
 import { VueFlow, useVueFlow } from '@vue-flow/core';
 import { Background } from '@vue-flow/background';
 import '@vue-flow/core/dist/style.css';
@@ -66,11 +66,28 @@ function withDependencies(laws) {
 }
 
 // ---- selection ----------------------------------------------------------------
+const focus = ref(null);
+// Staat de focus er omdat het profiel hem koos (`graph_focus`), dan zoomt de
+// graaf op die wet in plaats van op het hele verhaal:
+// Claudia's verhaal telt zeventien wetten, en uitgezoomd daarop is de
+// precariobelasting niet meer te lezen. Een klik van de presentator neemt het
+// over.
+const focusFromProfile = ref(false);
+
+function focusProfileLaw() {
+  const id = profile.value?.graph_focus;
+  const law = id && corpus.value?.latestById.has(id) ? id : null;
+  focus.value = law;
+  focusFromProfile.value = !!law;
+}
+
 const selected = ref(new Set());
 const preset = ref('verhaal'); // 'verhaal' | 'portaal' | 'alles' | '' (hand-picked)
 
 function applyPreset(name) {
   if (!corpus.value || !profile.value) return;
+  // Bij een profielwissel zet focusProfileLaw hem direct daarna weer aan.
+  focusFromProfile.value = false;
   preset.value = name;
   if (name === 'alles') {
     selected.value = new Set(allLaws.value.map((l) => l.id));
@@ -86,9 +103,34 @@ function applyPreset(name) {
     }
   }
 }
-watch([profile, corpus], () => applyPreset('verhaal'), { immediate: true });
+// Een wissel terwijl een ander tabblad open staat (<keep-alive>) past de graaf
+// aan terwijl hij onzichtbaar is; fitView meet dan niets. Bij terugkomst dus
+// nog één keer passend maken, maar alleen dan: wie op de graaf zelf wisselt en
+// daarna rondkijkt, wil zijn beeld terug als hij even weg is geweest.
+let active = false;
+let refitOnActivate = false;
+// Op de profielsleutel en niet op het profielobject: een taalwissel levert
+// een nieuw corpus en dus een nieuw profielobject, en dan hoort de keuze van
+// de presentator (wetten, focus, zoom) te blijven staan.
+watch([() => demo.profileKey.value, () => !!corpus.value], () => {
+  applyPreset('verhaal');
+  focusProfileLaw();
+  if (!active) refitOnActivate = true;
+}, { immediate: true });
+onActivated(() => {
+  active = true;
+  if (!refitOnActivate) return;
+  refitOnActivate = false;
+  refit();
+});
+onDeactivated(() => {
+  active = false;
+});
 
+// Wie zelf wetten kiest, neemt het beeld over van de profielfocus: anders zoomt
+// elke herberekening van de graaf terug naar die ene wet (zie refit).
 function toggle(lawId) {
+  focusFromProfile.value = false;
   const next = new Set(selected.value);
   if (next.has(lawId)) next.delete(lawId);
   else next.add(lawId);
@@ -96,6 +138,7 @@ function toggle(lawId) {
   preset.value = '';
 }
 function only(lawId) {
+  focusFromProfile.value = false;
   selected.value = new Set([lawId]);
   preset.value = '';
 }
@@ -139,8 +182,11 @@ const values = computed(() => {
   for (const law of shownLaws.value) {
     for (const input of lawShape(law).inputs) {
       const key = `${input.ref.regulation}#${input.ref.output}`;
+      // Leest de wet dit uit een besloten zaak (caseRefs), dan telt wat zij
+      // daar las: een losse run van de andere wet kent de aanvraag niet.
+      const viaCase = (law.caseRefs ?? []).some((r) => r.name === input.name) ? sources[law.id]?.[input.name] : undefined;
       const fromOutputs = outputs[input.ref.regulation]?.[input.ref.output];
-      const v = fromOutputs ?? (refs.has(key) ? fmt(input.ref.regulation, input.ref.output, refs.get(key)) : undefined);
+      const v = viaCase ?? fromOutputs ?? (refs.has(key) ? fmt(input.ref.regulation, input.ref.output, refs.get(key)) : undefined);
       if (v !== undefined) {
         inputs[law.id] ??= {};
         inputs[law.id][input.name] = v;
@@ -151,12 +197,12 @@ const values = computed(() => {
 });
 
 // ---- the graph ------------------------------------------------------------------
-const focus = ref(null);
 // Every law is laid out so the picture never shifts when "Alles" comes on;
 // only the neighbourhood of the selection is visible.
 const graph = computed(() => buildGraph(allLaws.value, values.value, focus.value, shownIds.value));
 
 function onNodeClick({ node }) {
+  focusFromProfile.value = false;
   if (node.type === 'law') focus.value = focus.value === node.id ? null : node.id;
   else if (node.type === 'item' && node.data.ref && selected.value.has(node.data.ref.regulation)) focus.value = node.data.ref.regulation;
 }
@@ -165,9 +211,23 @@ function onNodeDoubleClick({ node }) {
 }
 function onPaneClick() {
   focus.value = null;
+  focusFromProfile.value = false;
 }
+/**
+ * Everything shown, or only the profile's focus law. Not the focus law plus its
+ * neighbours: the layout runs left to right along the chain, so a law and its
+ * neighbours can sit at opposite ends, and their bounds are nearly the whole
+ * graph again.
+ */
 function refit() {
-  setTimeout(() => fitView({ padding: 0.1, nodes: [...shownIds.value] }), 50);
+  const onFocus = focusFromProfile.value && focus.value && shownIds.value.has(focus.value);
+  const options = onFocus ? { padding: 0.2, maxZoom: 1, nodes: [focus.value] } : { padding: 0.1, nodes: [...shownIds.value] };
+  setTimeout(() => fitView(options), 50);
+}
+/** "Passend maken": always the whole picture. */
+function fitAll() {
+  focusFromProfile.value = false;
+  refit();
 }
 // vue-flow's fit-view-on-init runs before the nodes exist (the corpus arrives
 // async); refit whenever the set of laws changes.

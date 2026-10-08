@@ -193,6 +193,15 @@ function project(row, binding) {
   return row;
 }
 
+/**
+ * An unknown outcome as the engine reports it (RFC-036), e.g. in a decided
+ * case's results. Same test as `isUnknown` in @regelrecht/frontend-shared,
+ * kept here because this module has no dependencies.
+ */
+function isUnknown(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) && value.__unknown === true;
+}
+
 /** What a missing row means for this binding: OMIT (unknown) or a literal. */
 function absentValue(binding) {
   if (!('absent' in binding) || binding.absent === 'unknown' || binding.absent === undefined) return OMIT;
@@ -242,7 +251,16 @@ export function materialiseRecord(shape, lawBindings, params, rowsFor, context =
         if (wanted === UNRESOLVED) continue;
         // A case list keyed on nothing usable is simply empty.
         const matched = Array.isArray(wanted) ? (context.cases ?? []).filter((c) => rowMatches(c, wanted)) : [];
-        set(name, matched, binding.service);
+        // With a `field` the binding reads one value from the latest matching
+        // case, like a register row: the permit the municipality granted and the
+        // area it granted it for. The case store keeps the newest first. No such
+        // case follows `absent`.
+        // Een onbekende uitkomst in de zaak (RFC-036) blijft onbekend; het
+        // marker-object is geen waarde die de andere wet kan gebruiken.
+        if (binding.field || binding.fields) {
+          const value = matched.length ? project(matched[0], binding) : absentValue(binding);
+          set(name, isUnknown(value) ? OMIT : value, binding.service);
+        } else set(name, matched, binding.service);
         progressed = true;
       } else if (binding.kind === 'table') {
         const wanted = resolveSelector(binding.select_on, params, record, pending, context, shape);

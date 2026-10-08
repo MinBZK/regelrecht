@@ -32,6 +32,11 @@ const demo = useDemo();
 const { corpus, engine, ready, state, profile, features } = demo;
 
 const kind = ref('burgers');
+// Een ondernemer opent op de bedrijven: wie naar Claudia wisselt wil haar
+// soort populatie zien, niet die van Merijn. Daarna blijft de keuze vrij.
+watch(() => profile.value?.type, (type) => {
+  if (type) kind.value = type === 'ondernemer' ? 'ondernemers' : 'burgers';
+}, { immediate: true });
 const citizenParams = reactive(JSON.parse(JSON.stringify(CITIZEN_DEFAULTS)));
 const businessParams = reactive(JSON.parse(JSON.stringify(BUSINESS_DEFAULTS)));
 const params = computed(() => (kind.value === 'ondernemers' ? businessParams : citizenParams));

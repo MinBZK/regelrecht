@@ -33,7 +33,12 @@ export function askedInputsFor(corpus, law, claimFor) {
       if (IDENTITY.has(p.name) || out.some((o) => o.name === p.name)) continue;
       // `required` defaults to true (schema v0.5.8): a required parameter the
       // caller omits is an error, not an unknown, so it has to be asked first.
-      out.push({ name: p.name, spec: p, claim: claimFor(law.id, p.name), isParameter: true, required: p.required !== false });
+      // The register inputs this answer is the lookup key for (`select_on: $name`
+      // in the bindings): the terrace location finds the row with the available
+      // area. The engine never reads such a parameter itself, so it misses the
+      // register input instead, and that is when this question is due.
+      const feeds = Object.entries(bindings).filter(([, b]) => (b.select_on ?? []).some((s) => s.value === `$${p.name}`)).map(([n]) => n);
+      out.push({ name: p.name, spec: p, claim: claimFor(law.id, p.name), isParameter: true, required: p.required !== false, feeds });
     }
   }
   return out;
@@ -119,7 +124,8 @@ export function missingFactsOf(evaluation) {
  * parameters the outcome names as missing for this law, in the order the
  * engine reached them. A register input is asked when the outcome misses it
  * as `no_data` and the citizen is the one who can supply it (a `kind: claim`
- * binding); a form parameter when the outcome misses it as `not_passed`. A
+ * binding); a form parameter when the outcome misses it as `not_passed`, or
+ * misses as `no_data` a register input it is the lookup key for. A
  * required parameter is asked before anything else: without it the engine
  * cannot run at all, so no outcome could name it.
  */
@@ -128,7 +134,8 @@ export function nextQuestions(asked, evaluation, lawId) {
   if (!unanswered.length) return [];
   const required = unanswered.filter((a) => a.isParameter && a.required);
   const missing = missingFactsOf(evaluation).filter((f) => f.law === lawId);
-  const reached = unanswered.filter((a) => missing.some((f) => f.name === a.name && f.kind === (a.isParameter ? 'not_passed' : 'no_data')));
-  reached.sort((a, b) => missing.findIndex((f) => f.name === a.name) - missing.findIndex((f) => f.name === b.name));
+  const hit = (a) => (f) => (f.name === a.name && f.kind === (a.isParameter ? 'not_passed' : 'no_data')) || (f.kind === 'no_data' && !!a.feeds?.includes(f.name));
+  const reached = unanswered.filter((a) => missing.some(hit(a)));
+  reached.sort((a, b) => missing.findIndex(hit(a)) - missing.findIndex(hit(b)));
   return [...required, ...reached.filter((a) => !required.includes(a))];
 }
