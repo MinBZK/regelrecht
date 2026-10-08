@@ -7,6 +7,10 @@
 //! recording_actor: belastingdienst_toeslagen
 //! streams: [streams/zorgtoeslag_aanvragen.yaml]
 //! lexostatuses: lexostatuses.yaml
+//! # The chronicle a policy of the holder reads back (`source: {}`), bound to
+//! # it as a register (`<policy>#<name of the register>`, RFC-045 §1).
+//! registers:
+//!   fictief_beleid_kroniek_toeslagen#kroniek: {chronicle: toeslagen}
 //! ```
 //!
 //! A stream only registers an event and the article that establishes it;
@@ -32,6 +36,33 @@ pub struct CellFile {
     /// The lexostatus file, relative to `cell.yaml`.
     #[serde(default)]
     pub lexostatuses: Option<PathBuf>,
+    /// The chronicles of this cell that a policy reads as a register, per
+    /// `<policy>#<name of the register>` (see [`crate::register`]).
+    #[serde(default)]
+    pub registers: BTreeMap<String, RegisterBinding>,
+}
+
+/// Which chronicle of the cell a register is.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RegisterBinding {
+    pub chronicle: String,
+}
+
+/// A register of the cell: the policy that reads it (its one input without a
+/// source, `source: {}`), the name the binding gives it, and the chronicle.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Register {
+    pub policy: String,
+    pub name: String,
+    pub chronicle: String,
+}
+
+impl Register {
+    /// `<policy>#<name>`, as the binding and a provenance name it.
+    pub fn key(&self) -> String {
+        format!("{}#{}", self.policy, self.name)
+    }
 }
 
 /// A stream file: the events a cell records in one chronicle.
@@ -57,26 +88,56 @@ pub struct Event {
     /// this event records. Not needed when the article decides at one.
     #[serde(default)]
     pub stage: Option<String>,
-    /// For a decision: the lexostatuses the cell reads the parameters of the
-    /// decision from (see [`crate::Cell::decision_inputs`]); one name or a
+    /// What the cell reads the parameters of the decision or execution from
+    /// for its case (see [`crate::Cell::decision_inputs`]): a lexostatus, or
+    /// a policy of the holder that reads a register of the cell; one or a
     /// list.
     #[serde(default, deserialize_with = "one_or_more")]
-    pub reads: Vec<String>,
+    pub reads: Vec<Read>,
 }
 
-/// A name or a list of names.
-fn one_or_more<'de, D: serde::Deserializer<'de>>(
-    d: D,
-) -> std::result::Result<Vec<String>, D::Error> {
+/// One source of the parameters of an event's case.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(untagged)]
+pub enum Read {
+    /// A lexostatus of the cell, by name.
+    Lexostatus(String),
+    /// A policy of the holder (in the law format) that reads a register of
+    /// the cell: the cell executes it with the case's `root` as parameter and
+    /// takes its outputs (`{regulation: <policy>}`).
+    Regulation { regulation: String },
+}
+
+impl Read {
+    /// The lexostatus it names, if it names one.
+    pub fn lexostatus(&self) -> Option<&str> {
+        match self {
+            Read::Lexostatus(name) => Some(name),
+            Read::Regulation { .. } => None,
+        }
+    }
+}
+
+impl std::fmt::Display for Read {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Read::Lexostatus(name) => write!(f, "lexostatus '{name}'"),
+            Read::Regulation { regulation } => write!(f, "policy '{regulation}'"),
+        }
+    }
+}
+
+/// One read or a list of them.
+fn one_or_more<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result<Vec<Read>, D::Error> {
     #[derive(Deserialize)]
     #[serde(untagged)]
     enum OneOrMore {
-        One(String),
-        More(Vec<String>),
+        More(Vec<Read>),
+        One(Read),
     }
     Ok(match OneOrMore::deserialize(d)? {
-        OneOrMore::One(name) => vec![name],
-        OneOrMore::More(names) => names,
+        OneOrMore::One(read) => vec![read],
+        OneOrMore::More(reads) => reads,
     })
 }
 
@@ -206,6 +267,7 @@ pub struct CellConfig {
     pub recording_actor: String,
     pub streams: Vec<Stream>,
     pub lexostatuses: Vec<LexostatusDefinition>,
+    pub registers: Vec<Register>,
 }
 
 fn read_text(path: &Path) -> Result<String> {
@@ -284,9 +346,46 @@ impl CellConfig {
                 )));
             }
         }
+        let mut registers = Vec::new();
+        for (key, binding) in &file.registers {
+            let Some((policy, name)) = key.split_once('#') else {
+                return Err(setup(format!(
+                    "register '{key}' is not <policy>#<name of the register>"
+                )));
+            };
+            if !streams.iter().any(|s| s.chronicle == binding.chronicle) {
+                return Err(setup(format!(
+                    "register '{key}' is chronicle '{}', which no stream of cell '{}' records in",
+                    binding.chronicle, file.id
+                )));
+            }
+            if registers.iter().any(|r: &Register| r.policy == policy) {
+                return Err(setup(format!(
+                    "policy '{policy}' reads more than one register of cell '{}'; it reads one",
+                    file.id
+                )));
+            }
+            registers.push(Register {
+                policy: policy.to_string(),
+                name: name.to_string(),
+                chronicle: binding.chronicle.clone(),
+            });
+        }
         for s in &streams {
             for e in &s.events {
-                for name in &e.reads {
+                for read in &e.reads {
+                    let name = match read {
+                        Read::Lexostatus(name) => name,
+                        Read::Regulation { regulation } => {
+                            if !registers.iter().any(|r| &r.policy == regulation) {
+                                return Err(setup(format!(
+                                    "stream '{}', event '{}' reads policy '{regulation}', which reads no register of the cell (`registers` in cell.yaml)",
+                                    s.id, e.name
+                                )));
+                            }
+                            continue;
+                        }
+                    };
                     let Some(l) = lexostatuses.iter().find(|l| &l.name == name) else {
                         return Err(setup(format!(
                         "stream '{}', event '{}' reads lexostatus '{name}', which the cell does not define",
@@ -309,6 +408,7 @@ impl CellConfig {
             recording_actor: file.recording_actor,
             streams,
             lexostatuses,
+            registers,
         })
     }
 

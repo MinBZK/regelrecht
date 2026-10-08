@@ -64,10 +64,12 @@ pub struct WasmCell {
 impl WasmCell {
     /// A cell from its configuration texts (`cell.yaml`, its streams and its
     /// lexostatuses), with the grams the page kept, checked against the law
-    /// the engine has loaded as it applies on `today` (`YYYY-MM-DD`).
+    /// the engine has loaded as it applies on `today` (`YYYY-MM-DD`). Its
+    /// registers are bound with the engine as data sources (see
+    /// `bindRegisters`).
     #[wasm_bindgen(constructor)]
     pub fn new(
-        engine: &WasmEngine,
+        engine: &mut WasmEngine,
         cell_yaml: &str,
         streams: Vec<String>,
         lexostatuses: Option<String>,
@@ -82,9 +84,18 @@ impl WasmCell {
         } else {
             from_js(grams)?
         };
+        crate::register::bind(engine.service_mut(), &config).map_err(cell_error)?;
         let cell =
             Cell::in_memory(config, grams, engine.service(), day(today)?).map_err(cell_error)?;
         Ok(WasmCell { cell })
+    }
+
+    /// Bind the registers of the cell with the engine again: after the page
+    /// cleared the engine's data sources (`clearDataSources`), a policy that
+    /// reads a chronicle of the cell would otherwise read nothing.
+    #[wasm_bindgen(js_name = bindRegisters)]
+    pub fn bind_registers(&self, engine: &mut WasmEngine) -> Result<(), JsValue> {
+        crate::register::bind(engine.service_mut(), self.cell.config()).map_err(cell_error)
     }
 
     /// What a gram of `event` holds on `day`: per field its name, type,

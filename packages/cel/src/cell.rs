@@ -5,15 +5,16 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use chrono::{DateTime, Datelike, FixedOffset, NaiveDate};
-use regelrecht_engine::{LawExecutionService, StageInputs, Value};
+use regelrecht_engine::{LawExecutionService, OutputProvenance, StageInputs, Value};
 use serde::{Deserialize, Serialize};
 use serde_json::Map;
 
 use crate::chronicle::{Chronicle, Gram, Period};
-use crate::config::{CellConfig, Derivation};
+use crate::config::{CellConfig, Derivation, Read};
 use crate::error::{refused, setup, Result};
 use crate::extension::{Every, ExecutedOn};
 use crate::lexostatus;
+use crate::register;
 use crate::shape::{self, Shape};
 
 /// A parameter of a decision: its value, and where it came from.
@@ -123,6 +124,17 @@ impl Cell {
                 "the law names stages no procedure has: {}",
                 unknown.join("; ")
             )));
+        }
+        // A policy that reads a register must be bound with the engine, or
+        // its input reads as unknown at the first decision.
+        for r in &config.registers {
+            if !register::is_bound(service, &config.id, r) {
+                return Err(setup(format!(
+                    "register '{}' of cell '{}' is not bound with the engine (register::bind)",
+                    r.key(),
+                    config.id
+                )));
+            }
         }
         let cell = Self { config, chronicles };
         // Every event must take its shape from the law now, not at the first
@@ -386,15 +398,20 @@ impl Cell {
         Ok(out)
     }
 
-    /// What the lexostatuses `event` reads give for the case `root` at
-    /// `as_of`, per parameter with the lexostatus it came from. A parameter
-    /// two of them give is ambiguous.
-    fn read_case(
+    /// What the reads of `event` give for the case `root` at `as_of`, per
+    /// parameter with where it came from: each lexostatus it names, and each
+    /// policy of the holder it names, executed on the day of `as_of` with
+    /// `{root}` over the register of the cell as it holds then. A parameter
+    /// two of them give is ambiguous; an output a policy leaves empty (null)
+    /// is no parameter. Read-only: what a decision or an execution of
+    /// `event` reads, before it keeps what its article asks.
+    pub fn read_case(
         &self,
+        service: &LawExecutionService,
         event: &str,
         root: &str,
         as_of: DateTime<FixedOffset>,
-    ) -> Result<BTreeMap<String, (serde_json::Value, String)>> {
+    ) -> Result<BTreeMap<String, Input>> {
         let (_, e) = self.config.event(event).ok_or_else(|| {
             refused(format!(
                 "cell '{}' records no event '{event}'",
@@ -403,23 +420,120 @@ impl Cell {
         })?;
         if e.reads.is_empty() {
             return Err(refused(format!(
-                "event '{event}' reads no lexostatus (`reads` in its stream)"
+                "event '{event}' reads nothing for its case (`reads` in its stream)"
             )));
         }
         let mut inputs = Map::new();
         inputs.insert("root".into(), serde_json::Value::String(root.into()));
-        let mut read: BTreeMap<String, (serde_json::Value, String)> = BTreeMap::new();
-        for lexostatus in &e.reads {
-            for (name, value) in self.read(lexostatus, &inputs, as_of)? {
-                if let Some((_, first)) = read.get(&name) {
+        let mut read: BTreeMap<String, Input> = BTreeMap::new();
+        let mut from: BTreeMap<String, String> = BTreeMap::new();
+        for source in &e.reads {
+            let values: Vec<(String, Input)> = match source {
+                Read::Lexostatus(lexostatus) => self
+                    .read(lexostatus, &inputs, as_of)?
+                    .into_iter()
+                    .map(|(name, value)| (name, from_lexostatus(value, lexostatus)))
+                    .collect(),
+                Read::Regulation { regulation } => {
+                    self.read_policy(service, regulation, root, as_of)?
+                }
+            };
+            for (name, input) in values {
+                if let Some(first) = from.get(&name) {
                     return Err(setup(format!(
-                        "event '{event}' reads '{name}' from both lexostatus '{first}' and '{lexostatus}'"
+                        "event '{event}' reads '{name}' from both {first} and {source}"
                     )));
                 }
-                read.insert(name, (value, lexostatus.clone()));
+                from.insert(name.clone(), source.to_string());
+                read.insert(name, input);
             }
         }
         Ok(read)
+    }
+
+    /// Execute the policy `policy`, which reads a register of the cell, for
+    /// the case `root`: every output it has, on the day of `as_of`, over the
+    /// grams of the register that hold at `as_of`. Per output its value and
+    /// where it came from (the register and the article, as the engine says).
+    fn read_policy(
+        &self,
+        service: &LawExecutionService,
+        policy: &str,
+        root: &str,
+        as_of: DateTime<FixedOffset>,
+    ) -> Result<Vec<(String, Input)>> {
+        let register = self
+            .config
+            .registers
+            .iter()
+            .find(|r| r.policy == policy)
+            .ok_or_else(|| setup(format!("policy '{policy}' reads no register of the cell")))?;
+        if !register::is_bound(service, &self.config.id, register) {
+            return Err(setup(format!(
+                "register '{}' of cell '{}' is not bound with the engine (register::bind)",
+                register.key(),
+                self.config.id
+            )));
+        }
+        let chronicle = self.chronicles.get(&register.chronicle).ok_or_else(|| {
+            setup(format!(
+                "register '{}' is chronicle '{}', which the cell does not keep",
+                register.key(),
+                register.chronicle
+            ))
+        })?;
+        let outputs = service
+            .get_law_info(policy)
+            .map(|i| i.outputs)
+            .unwrap_or_default();
+        let asked: Vec<&str> = outputs.iter().map(String::as_str).collect();
+        if asked.is_empty() {
+            return Err(setup(format!("policy '{policy}' has no outputs")));
+        }
+        let rows = register::rows(chronicle, as_of)?;
+        let result = register::with_rows(
+            &register::source_name(&self.config.id, register),
+            rows,
+            || {
+                service.evaluate_law(
+                    policy,
+                    &asked,
+                    BTreeMap::from([("root".to_string(), Value::String(root.to_string()))]),
+                    &as_of.date_naive().to_string(),
+                )
+            },
+        )?;
+        let mut out = Vec::new();
+        for (name, value) in result.outputs {
+            if value.is_null() {
+                continue;
+            }
+            let article = match result.output_provenance.get(&name) {
+                Some(
+                    OutputProvenance::Direct { law_id, article }
+                    | OutputProvenance::Reactive {
+                        law_id, article, ..
+                    }
+                    | OutputProvenance::Override { law_id, article }
+                    | OutputProvenance::Voided {
+                        law_id, article, ..
+                    },
+                ) => format!("{law_id}#{article}"),
+                None => format!("{}#{}", result.law_id, result.article_number),
+            };
+            out.push((
+                name,
+                Input {
+                    value: shape::to_json(&value),
+                    provenance: serde_json::json!({
+                        "source": "lexostatus",
+                        "lexostatus": register.key(),
+                        "article": article,
+                    }),
+                },
+            ));
+        }
+        Ok(out)
     }
 
     /// The parameters of the decision `event` on the gram `root`: the
@@ -480,11 +594,7 @@ impl Cell {
         let today = now.date_naive();
         let (shape, chronicle) = self.shape(service, event, today)?;
         let read: BTreeMap<String, Input> = match root {
-            Some(root) => self
-                .read_case(event, root, now)?
-                .into_iter()
-                .map(|(name, (value, lexostatus))| (name, from_lexostatus(value, &lexostatus)))
-                .collect(),
+            Some(root) => self.read_case(service, event, root, now)?,
             None => BTreeMap::new(),
         };
         let mut merged = read.clone();
@@ -935,10 +1045,9 @@ impl Cell {
         }
 
         let mut inputs: BTreeMap<String, Input> = self
-            .read_case(event, root, now)?
+            .read_case(service, event, root, now)?
             .into_iter()
             .filter(|(name, _)| shape.parameters.contains(name))
-            .map(|(name, (value, lexostatus))| (name, from_lexostatus(value, &lexostatus)))
             .collect();
         if inputs.contains_key(&executed_on.parameter) {
             return Err(setup(format!(

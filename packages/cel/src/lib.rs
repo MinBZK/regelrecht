@@ -11,11 +11,13 @@
 //! of the article that takes it.
 //!
 //! The cell itself only says which facts it records (its streams) and how it
-//! reads them back from its chronicle (its lexostatuses): "the reduction
-//! belongs to the source".
+//! reads them back from its chronicle: "the reduction belongs to the source".
+//! It reads them back with a lexostatus, or with an article in the policy of
+//! the holder that reads a chronicle of the cell as a register
+//! ([`register`]), in the same language as the law.
 //!
 //! This is the compact core of `poc/chronolex`: no channels, forms,
-//! synthesis, registers, implementing policy or HTTP.
+//! synthesis or HTTP.
 
 pub mod cell;
 pub mod chronicle;
@@ -23,6 +25,7 @@ pub mod config;
 pub mod error;
 pub mod extension;
 pub mod lexostatus;
+pub mod register;
 pub mod shape;
 #[cfg(feature = "wasm")]
 pub mod wasm;

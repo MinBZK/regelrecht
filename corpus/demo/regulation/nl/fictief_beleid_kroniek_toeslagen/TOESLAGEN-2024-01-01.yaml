@@ -1,0 +1,150 @@
+---
+# Beleid van de Dienst Toeslagen over het teruglezen van haar eigen kroniek:
+# hoe zij een vastgelegd voorschot weer leest als de gegevens die art. 22
+# Awir en het beleid over het termijnbedrag vragen. Dit is de reductie van de
+# kroniek zoals RFC-045 die plaatst: een artikel in het beleid van de houder,
+# in het wetsformaat, door de engine uitgevoerd. Welke kroniek de invoer
+# `grams` is, zegt de configuratie van de cel (`registers:` in cell.yaml), niet
+# dit beleid.
+#
+# AANNAME (RFC-045 §4). De Dienst Toeslagen heeft dit beleid niet vastgesteld;
+# het is in deze modellering namens haar geschreven, zodat het niet voor beleid
+# met een eigenaar kan doorgaan. Elke keuze erin die niet uit de wet volgt, is
+# als aanname gemarkeerd.
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.8.0/schema/v0.8.0/schema.json
+$id: fictief_beleid_kroniek_toeslagen
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+# Er is geen bekendgemaakt beleid hierover. De url wijst daarom naar het
+# artikel waarop het voorschot rust, niet naar een bekendmaking.
+url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel16
+name: Teruglezen van de kroniek van Toeslagen (fictief uitvoeringsbeleid, aanname)
+competent_authority:
+  name: Dienst Toeslagen
+legal_basis:
+  - law_id: algemene_wet_inkomensafhankelijke_regelingen
+    article: '16'
+  - law_id: algemene_wet_inkomensafhankelijke_regelingen
+    article: '22'
+articles:
+  - number: '1'
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel16
+    text: >-
+      FICTIEF, aanname namens de Dienst Toeslagen: geen bekendgemaakt beleid.
+      1. Het voorschot op een aanvraag is het laatste besluit in de fase
+      VOORSCHOT van de procedure van de Algemene wet inkomensafhankelijke
+      regelingen dat Toeslagen op die aanvraag vastlegde. Het laatste is het
+      besluit dat het laatst rechtens geldt, en bij gelijk moment het besluit
+      dat het laatst is vastgelegd. [Aanname: een herziening vervangt het
+      eerdere voorschot; het eerdere blijft in de kroniek.]
+      2. Het voorschotbedrag is het bedrag dat dat besluit verleent (artikel 16,
+      eerste lid, van die wet).
+      3. De dagtekening van het voorschot is de dag waarop dat besluit is
+      genomen (artikel 22, eerste lid, van die wet). [Aanname: de dagtekening
+      is de dag van het besluit.]
+      4. Het berekeningsjaar is het jaar waarop dat besluit betrekking heeft
+      (artikel 2, eerste lid, onder b, van die wet).
+    machine_readable:
+      execution:
+        parameters:
+          - name: root
+            type: string
+            required: true
+            description: >-
+              Het kenmerk van de aanvraag: het gram waarmee Toeslagen de
+              ontvangst vastlegde.
+        input:
+          # De kroniek van Toeslagen; de configuratie van de cel bindt haar.
+          - name: grams
+            type: array
+            source: {}
+        output:
+          # Lid 1. Hulpuitvoer: de plaats in de tijd van het voorschot dat
+          # geldt; null als er op deze aanvraag geen voorschot is.
+          - name: laatste_voorschot
+            type: number
+            nullable: true
+            description: De plaats in de kroniek van het laatste voorschot op deze aanvraag; null als er geen is.
+          - name: voorschotbedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+            nullable: true
+            description: Het bedrag van het voorschot.
+            legal_basis:
+              law: Algemene wet inkomensafhankelijke regelingen
+              article: '16'
+              paragraph: '1'
+          - name: dagtekening_voorschot
+            type: date
+            nullable: true
+            description: De dagtekening van de beschikking die het voorschot verleent.
+            legal_basis:
+              law: Algemene wet inkomensafhankelijke regelingen
+              article: '22'
+              paragraph: '1'
+          - name: berekeningsjaar
+            type: number
+            nullable: true
+            description: Het kalenderjaar waarop het voorschot betrekking heeft.
+            legal_basis:
+              law: Algemene wet inkomensafhankelijke regelingen
+              article: '2'
+              paragraph: '1'
+        actions:
+          # Lid 1. Het wetsformaat kent geen LAST: het laatste besluit is het
+          # besluit met de hoogste plaats in de tijd.
+          - output: laatste_voorschot
+            value:
+              operation: FOREACH
+              collection: $grams
+              as: g
+              filter:
+                operation: AND
+                conditions:
+                  - {operation: EQUALS, subject: $g.stage, value: VOORSCHOT}
+                  - {operation: EQUALS, subject: $g.root, value: $root}
+              body: $g.sequence
+              combine: MAX
+          # Lid 2 tot en met 4. Eén besluit: ADD over één waarde geeft die
+          # waarde (ook een datum als tekst).
+          - output: voorschotbedrag
+            value:
+              operation: IF
+              cases:
+                - when: {operation: EQUALS, subject: $laatste_voorschot, value: null}
+                  then: null
+              default:
+                operation: FOREACH
+                collection: $grams
+                as: g
+                filter: {operation: EQUALS, subject: $g.sequence, value: $laatste_voorschot}
+                body: $g.voorschotbedrag
+                combine: ADD
+          - output: dagtekening_voorschot
+            value:
+              operation: IF
+              cases:
+                - when: {operation: EQUALS, subject: $laatste_voorschot, value: null}
+                  then: null
+              default:
+                operation: FOREACH
+                collection: $grams
+                as: g
+                filter: {operation: EQUALS, subject: $g.sequence, value: $laatste_voorschot}
+                body: $g.effective_date
+                combine: ADD
+          - output: berekeningsjaar
+            value:
+              operation: IF
+              cases:
+                - when: {operation: EQUALS, subject: $laatste_voorschot, value: null}
+                  then: null
+              default:
+                operation: FOREACH
+                collection: $grams
+                as: g
+                filter: {operation: EQUALS, subject: $g.sequence, value: $laatste_voorschot}
+                body: $g.period
+                combine: ADD

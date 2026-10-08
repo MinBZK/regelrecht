@@ -12,3 +12,9 @@ streams:
   - streams/zorgtoeslag_besluiten.yaml
   - streams/zorgtoeslag_betalingen.yaml
 lexostatuses: lexostatuses.yaml
+# De kroniek die het beleid van Toeslagen terugleest (RFC-045 §1): het
+# beleidsartikel leest haar als invoer zonder bron (`source: {}`); alleen deze
+# regel zegt dat die invoer de kroniek `toeslagen` van deze cel is.
+registers:
+  fictief_beleid_kroniek_toeslagen#kroniek:
+    chronicle: toeslagen

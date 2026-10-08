@@ -213,6 +213,9 @@ function reregister() {
   if (!engine.value || !corpus.value) return;
   registerPersonaData(engine.value, corpus.value, state.referenceDate, casesForMaterialiser(), claimsForEngine());
   registerClaims(engine.value, claimsForEngine());
+  // Het registreren wist alle gegevensbronnen van de engine, ook de kroniek
+  // die het beleid van een cel terugleest (`registers:` in cell.yaml).
+  for (const wasmCell of Object.values(cells.value)) wasmCell.bindRegisters(engine.value);
   dataVersion.value += 1;
 }
 

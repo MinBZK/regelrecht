@@ -14,8 +14,9 @@ use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, FixedOffset};
 use regelrecht_cel::cell::load_regulations;
-use regelrecht_cel::config::CellConfig;
+use regelrecht_cel::config::{CellConfig, Read};
 use regelrecht_cel::extension::PeriodUnit;
+use regelrecht_cel::register;
 use regelrecht_cel::{Cell, Error, Gram, Input, Period};
 use regelrecht_engine::{LawExecutionService, Value};
 use serde_json::{json, Map};
@@ -35,8 +36,14 @@ fn cell_yaml() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/toeslagen/cell.yaml")
 }
 
+/// The corpus, with the registers of the fixture cell bound: the policy of
+/// Toeslagen that reads its chronicle back.
 fn regulations() -> LawExecutionService {
-    load_regulations(&root().join("corpus/regulation")).unwrap_or_else(|e| panic!("{e}"))
+    let mut service =
+        load_regulations(&root().join("corpus/regulation")).unwrap_or_else(|e| panic!("{e}"));
+    let config = CellConfig::load(&cell_yaml()).unwrap_or_else(|e| panic!("{e}"));
+    register::bind(&mut service, &config).unwrap_or_else(|e| panic!("{e}"));
+    service
 }
 
 fn at(moment: &str) -> DateTime<FixedOffset> {
@@ -845,9 +852,11 @@ fn a_decision_reads_several_lexostatuses() {
         "reads: [aanvraag, schatting]",
         1,
     );
-    // One name is a list of one.
+    // One read is a list of one.
+    let policy = "{regulation: fictief_beleid_kroniek_toeslagen}";
     let payments = read("streams/zorgtoeslag_betalingen.yaml")
-        .replace("reads: [voorschot]", "reads: voorschot");
+        .replace(&format!("reads: [{policy}]"), &format!("reads: {policy}"));
+    assert_ne!(payments, read("streams/zorgtoeslag_betalingen.yaml"));
     let config = |lexostatuses: &str| {
         CellConfig::from_yaml(
             &read("cell.yaml"),
@@ -866,9 +875,20 @@ fn a_decision_reads_several_lexostatuses() {
 
     let split = config(&schatting(estimate));
     let (_, toekenning) = split.event("zorgtoeslag_toegekend").unwrap();
-    assert_eq!(toekenning.reads, ["aanvraag", "uitbetaald"]);
+    assert_eq!(
+        toekenning.reads,
+        [
+            Read::Lexostatus("aanvraag".into()),
+            Read::Lexostatus("uitbetaald".into())
+        ]
+    );
     let (_, termijn) = split.event("voorschottermijn_betaald").unwrap();
-    assert_eq!(termijn.reads, ["voorschot"]);
+    assert_eq!(
+        termijn.reads,
+        [Read::Regulation {
+            regulation: "fictief_beleid_kroniek_toeslagen".into()
+        }]
+    );
     let mut cell = Cell::in_memory(split, Vec::new(), &service, day).unwrap();
     let aanvraag = cell
         .record_submission(&service, "aanvraag_ontvangen", &application(), received)
@@ -1174,17 +1194,76 @@ fn a_reading_counts_only_what_holds_at_its_moment() {
     // Before the first termijn: nothing paid.
     assert_eq!(paid(&cell, "2024-11-30T12:00:00+01:00"), 0);
 
-    // The voorschot read before it was granted is not there.
-    let e = cell
-        .read("voorschot", &root, at("2024-11-19T12:00:00+01:00"))
-        .unwrap_err();
-    assert!(matches!(e, Error::Refused(_)), "{e}");
-    let read = cell
-        .read("voorschot", &root, at("2024-11-20T12:00:00+01:00"))
-        .unwrap();
-    assert_eq!(read["voorschotbedrag"], voorschot.fields["voorschotbedrag"]);
-    assert_eq!(read["dagtekening_voorschot"], "2024-11-20");
-    assert_eq!(read["berekeningsjaar"], 2025);
+    // The voorschot, as the policy of Toeslagen reads it back: before it
+    // was granted it is not there (the policy leaves it empty).
+    let read = |moment: &str| {
+        cell.read_case(
+            &service,
+            "voorschottermijn_betaald",
+            &application.id,
+            at(moment),
+        )
+        .unwrap()
+    };
+    let before = read("2024-11-19T12:00:00+01:00");
+    assert!(!before.contains_key("voorschotbedrag"), "{before:?}");
+    assert!(!before.contains_key("dagtekening_voorschot"), "{before:?}");
+    let after = read("2024-11-20T12:00:00+01:00");
+    assert_eq!(
+        after["voorschotbedrag"].value,
+        voorschot.fields["voorschotbedrag"]
+    );
+    assert_eq!(after["dagtekening_voorschot"].value, "2024-11-20");
+    assert_eq!(after["berekeningsjaar"].value, 2025);
+    // Where it came from: the register, and the article of the policy that
+    // read it (the engine says which).
+    assert_eq!(
+        after["voorschotbedrag"].provenance,
+        json!({
+            "source": "lexostatus",
+            "lexostatus": "fictief_beleid_kroniek_toeslagen#kroniek",
+            "article": "fictief_beleid_kroniek_toeslagen#1",
+        })
+    );
+}
+
+/// The register a policy reads must be bound with the engine: a cell over a
+/// service without it does not start, rather than read nothing.
+#[test]
+fn a_cell_whose_register_is_not_bound_does_not_start() {
+    let data = tempfile::tempdir().unwrap();
+    let service =
+        load_regulations(&root().join("corpus/regulation")).unwrap_or_else(|e| panic!("{e}"));
+    let e = Cell::open(
+        &cell_yaml(),
+        &service,
+        data.path(),
+        "2025-03-04".parse().unwrap(),
+    )
+    .err()
+    .expect("a cell with an unbound register must not start");
+    assert!(matches!(e, Error::Setup(_)), "{e}");
+    assert!(e.to_string().contains("not bound"), "{e}");
+}
+
+/// An event can only read a policy that reads a register of the cell.
+#[test]
+fn an_event_reading_a_policy_without_register_is_refused() {
+    let fixture = cell_yaml().parent().unwrap().to_path_buf();
+    let read = |f: &str| std::fs::read_to_string(fixture.join(f)).unwrap();
+    let cell = read("cell.yaml");
+    let without = &cell[..cell.find("registers:").unwrap()];
+    let e = CellConfig::from_yaml(
+        without,
+        &[
+            &read("streams/zorgtoeslag_aanvragen.yaml"),
+            &read("streams/zorgtoeslag_besluiten.yaml"),
+            &read("streams/zorgtoeslag_betalingen.yaml"),
+        ],
+        Some(&read("lexostatuses.yaml")),
+    )
+    .unwrap_err();
+    assert!(e.to_string().contains("reads no register"), "{e}");
 }
 
 /// A sum reads many grams, so it goes with `pick: all`; `pick: all` reads
@@ -1595,8 +1674,8 @@ fn a_lexostatus_says_which_field_it_reads() {
     assert_eq!(def.type_, Some(regelrecht_law_model::ParameterType::Amount));
     // A moment reads no field.
     let fields = cell
-        .lexostatus_fields(&service, "voorschot", "2025-06-01".parse().unwrap())
+        .lexostatus_fields(&service, "aanvraag", "2025-06-01".parse().unwrap())
         .unwrap();
-    assert!(!fields.contains_key("dagtekening_voorschot"));
-    assert!(fields.contains_key("voorschotbedrag"));
+    assert!(!fields.contains_key("datum_ontvangst"));
+    assert!(fields.contains_key("bsn"));
 }

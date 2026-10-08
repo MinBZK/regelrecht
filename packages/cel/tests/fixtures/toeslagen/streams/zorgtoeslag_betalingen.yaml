@@ -4,11 +4,12 @@
 # art. 22 Awir en het (fictieve) uitvoeringsbeleid van Toeslagen over het
 # termijnbedrag. De cel voert het beleid per maand uit en legt alleen een gram
 # vast als er in die maand een termijn valt. Het voorschot leest de cel uit
-# haar eigen kroniek: de lexostatus `voorschot`.
+# haar eigen kroniek met het beleid van Toeslagen daarover
+# (fictief_beleid_kroniek_toeslagen art. 1), met de aanvraag als `root`.
 $id: zorgtoeslag_betalingen
 recording_actor: belastingdienst_toeslagen
 chronicle: toeslagen
 events:
   - name: voorschottermijn_betaald
     establishes: fictief_beleid_termijnbedrag_voorschot#1
-    reads: [voorschot]
+    reads: [{regulation: fictief_beleid_kroniek_toeslagen}]

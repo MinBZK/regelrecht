@@ -9,7 +9,9 @@ use std::path::{Path, PathBuf};
 
 use chrono::DateTime;
 use regelrecht_cel::cell::load_regulations;
+use regelrecht_cel::config::CellConfig;
 use regelrecht_cel::extension::{PeriodParameter, PeriodUnit};
+use regelrecht_cel::register;
 use regelrecht_cel::{Cell, Gram};
 use regelrecht_engine::{LawExecutionService, Value};
 use serde_json::json;
@@ -23,8 +25,15 @@ fn demo() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/demo")
 }
 
+/// The demo corpus, with the registers of the demo cell bound, as the page
+/// binds them when it starts the cell.
 fn regulations() -> LawExecutionService {
-    load_regulations(&demo().join("regulation")).unwrap_or_else(|e| panic!("{e}"))
+    let mut service =
+        load_regulations(&demo().join("regulation")).unwrap_or_else(|e| panic!("{e}"));
+    let config = CellConfig::load(&demo().join("cells/toeslagen/cell.yaml"))
+        .unwrap_or_else(|e| panic!("{e}"));
+    register::bind(&mut service, &config).unwrap_or_else(|e| panic!("{e}"));
+    service
 }
 
 /// What the registers know of the citizen, as the demo scenario "Persoon

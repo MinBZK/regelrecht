@@ -307,6 +307,11 @@ impl WasmEngine {
     pub fn service(&self) -> &LawExecutionService {
         &self.service
     }
+
+    /// The service to register a data source with (a register of the cell).
+    pub fn service_mut(&mut self) -> &mut LawExecutionService {
+        &mut self.service
+    }
 }
 
 #[wasm_bindgen]

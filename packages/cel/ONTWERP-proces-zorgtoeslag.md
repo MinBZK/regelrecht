@@ -86,6 +86,14 @@ Art. 22 spreekt dus niet van een lijst of van betalingsopdrachten. Het zegt per 
 
 **Wat de lexostatus daarvoor nodig heeft:** optellen over meerdere grammen (een `sum` naast `pick: latest`) en lezen **op een moment**: `peilmoment` (effective_at ≤ t) en `bekend_op` (recorded_at ≤ t), gesorteerd op effective_at en daarna recorded_at (RFC-044 en RFC-045 §7). De compacte cel kent dat nog niet.
 
+**Gebouwd (8 oktober 2026): het voorschot leest de cel terug met een beleidsartikel.** Besloten op 6 en 7 oktober: de reductie is bedrijfslogica van de houder en staat in dezelfde regeltaal als de wet, als artikel in het beleid van de houder (RFC-045); wat nergens staat, schrijven we namens de houder en markeren we als **aanname**. De lexostatus `voorschot` is daarom vervangen door `fictief_beleid_kroniek_toeslagen` art. 1, een fictief uitvoeringsbeleid van de Dienst Toeslagen, gemarkeerd als aanname. Het artikel krijgt de aanvraag als parameter `root` en de kroniek als invoer zonder bron (`source: {}`), en geeft het voorschotbedrag (Awir 16 lid 1), de dagtekening van het voorschot (Awir 22 lid 1) en het berekeningsjaar. Het wetsformaat kent geen LAST: het laatste voorschot is het besluit met de hoogste `sequence` (MAX), en één waarde lees je met ADD over dat ene besluit.
+
+- **Welke kroniek** die invoer is, zegt alleen de celconfiguratie: `registers: {fictief_beleid_kroniek_toeslagen#kroniek: {chronicle: toeslagen}}` in `cell.yaml` (zoals `deployment/registers.yaml` in het NAPP-corpus). Het beleid noemt geen systeem.
+- **De cel** registreert per register een gegevensbron bij de engine (`register::bind`), met het beleid als scope. Bij het lezen geeft ze de grammen die op het leesmoment gelden, in de volgorde waarin ze gelden (`effective_at`, dan `recorded_at`), één rij per gram: de velden plat, met `id`, `event`, `type`, `stage`, `root`, `sequence`, `effective_at`, `effective_date`, `recorded_at`, `period` en een paar andere ernaast. Een gram dat pas later geldt, staat er niet in.
+- **Een stroom** leest zo'n beleid met `reads: [{regulation: fictief_beleid_kroniek_toeslagen}]`, naast of in plaats van een lexostatus. De cel voert dan elke uitvoer van het beleid uit met `{root}` en neemt wat het artikel vraagt. De herkomst zegt het register en het artikel dat de engine uitvoerde (`{source: lexostatus, lexostatus: fictief_beleid_kroniek_toeslagen#kroniek, article: fictief_beleid_kroniek_toeslagen#1}`).
+- **Eigen keuze:** het beleid geldt vanaf 1 januari 2024, zodat een voorschot dat in december vóór het berekeningsjaar wordt betaald, het kan lezen.
+- **Nog lexostatus:** `aanvraag` en `uitbetaald` staan nog in `lexostatuses.yaml`. Die volgen hetzelfde patroon in een volgende stap.
+
 ## 6. Het berekeningsjaar en de geldende wet
 
 Dit is nu het grootste gat. Het staat in `Cell::decide` en in de review van #1683, en de oude PoC vond het al (#1472).
