@@ -927,9 +927,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Dezelfde inputs als build-pipeline-api in deploy.yml, op push na. Lopen
-      # die twee uiteen, dan bewijst deze baan iets anders dan er gedeployd
-      # wordt; script/dockerfile-consistency.test.mjs bewaakt de namen.
       # Zelfde namespace als build-image.yml: de eigenaar van de repo, in
       # kleine letters.
       - name: Resolve registry namespace
@@ -937,6 +934,9 @@ jobs:
         id: ns
         run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
 
+      # Dezelfde inputs als build-pipeline-api in deploy.yml, op push na. Lopen
+      # die twee uiteen, dan bewijst deze baan iets anders dan er gedeployd
+      # wordt; script/dockerfile-consistency.test.mjs bewaakt de namen.
       - name: Build pipeline-api image
         if: needs.changes.outputs.rust-image == 'true'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
