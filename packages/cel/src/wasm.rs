@@ -273,6 +273,38 @@ impl WasmCell {
         }
     }
 
+    /// Record what arises on receipt of a message from another party:
+    /// execute `article` (`<regulation>#<article>`) with `inputs`
+    /// (`{name: {value, provenance}}`) at `now` (RFC 3339), referring to the
+    /// grams of this cell in `refersTo` (`{name: id}`). Returns the grams
+    /// recorded (none, one, or more). See `Cell::receive`.
+    pub fn receive(
+        &mut self,
+        engine: &WasmEngine,
+        article: &str,
+        refers_to: JsValue,
+        inputs: JsValue,
+        now: &str,
+    ) -> Result<JsValue, JsValue> {
+        let refers_to: BTreeMap<String, String> = if refers_to.is_null() || refers_to.is_undefined()
+        {
+            BTreeMap::new()
+        } else {
+            from_js(refers_to)?
+        };
+        let grams = self
+            .cell
+            .receive(
+                engine.service(),
+                article,
+                refers_to,
+                extra(inputs)?,
+                moment(now)?,
+            )
+            .map_err(cell_error)?;
+        to_js(&grams)
+    }
+
     /// The days up to `through` (`YYYY-MM-DD`) on which the execution
     /// `event` is executed for the case `root`, after `after` (a day, or
     /// `null`), as the case holds at `now` (RFC 3339): `["YYYY-MM-DD", ...]`.

@@ -161,7 +161,14 @@ pub fn is_bound(service: &LawExecutionService, cell: &str, register: &Register) 
 }
 
 /// The grams of `chronicle` that hold at `as_of`, as rows (see the module).
-pub fn rows(chronicle: &Chronicle, as_of: DateTime<FixedOffset>) -> Result<Value> {
+/// A field the law gives the grams of an event (`event_fields`) and a gram
+/// does not have is null in its row: asked and left empty (RFC-036), so a
+/// policy can test for it rather than fail on a missing property.
+pub fn rows(
+    chronicle: &Chronicle,
+    as_of: DateTime<FixedOffset>,
+    event_fields: &BTreeMap<String, Vec<String>>,
+) -> Result<Value> {
     let mut out = Vec::new();
     for (sequence, gram) in lexostatus::in_force(chronicle, as_of)?
         .into_iter()
@@ -176,6 +183,11 @@ pub fn rows(chronicle: &Chronicle, as_of: DateTime<FixedOffset>) -> Result<Value
                 )));
             }
             row.insert(name.clone(), value.clone());
+        }
+        for name in event_fields.get(&gram.name).into_iter().flatten() {
+            if !GRAM_KEYS.contains(&name.as_str()) {
+                row.entry(name.clone()).or_insert(serde_json::Value::Null);
+            }
         }
         let date = |moment: &str| moment.chars().take(10).collect::<String>();
         row.insert("id".into(), json!(gram.id));

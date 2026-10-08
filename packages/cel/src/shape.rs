@@ -84,6 +84,13 @@ impl Shape {
         self.fields.iter().find(|f| f.name == name)
     }
 
+    /// Whether a gram of the event arises on receipt of what another party
+    /// sends: an execution that says when it arises (`record_when`) but on
+    /// no day (`executed_on`). See [`crate::Cell::receive`].
+    pub fn is_receipt(&self) -> bool {
+        self.record_when.is_some() && self.executed_on.is_none()
+    }
+
     /// The establishing article, then every provision a field rests on, each
     /// once.
     pub fn legal_basis(&self) -> Vec<String> {
@@ -472,10 +479,13 @@ fn check_execution(shape: &Shape, article: &Article) -> Result<()> {
             }
         }
     }
+    // An execution is executed on a day (`executed_on`), or on receipt of
+    // what another party sends (no `executed_on`, see `Cell::receive`); it
+    // says when a gram arises, and is taken at no stage of a procedure.
     let execution = shape.executed_on.is_some() || shape.record_when.is_some();
-    if execution && (shape.executed_on.is_none() || shape.stage.is_some()) {
+    if execution && (shape.record_when.is_none() || shape.stage.is_some()) {
         return Err(at(format!(
-            "'{}' is an execution (record_when): it needs executed_on, and is taken at no stage",
+            "'{}' is an execution: it needs record_when, and is taken at no stage",
             shape.event
         )));
     }
@@ -692,19 +702,26 @@ fn part_fields(
             .iter()
             .map(|o| def(&o.name, Some(o.output_type), vec![reference.to_string()]))
             .collect(),
+        // An output, or a parameter of the article: what it was given (the
+        // reference a channel delivered with, say).
         Some(Fields::Named(names)) => names
             .iter()
             .map(|name| {
-                let o = outputs.iter().find(|o| &o.name == name).ok_or_else(|| {
+                if let Some(o) = outputs.iter().find(|o| &o.name == name) {
+                    return Ok(def(
+                        &o.name,
+                        Some(o.output_type),
+                        vec![reference.to_string()],
+                    ));
+                }
+                let p = parameters.iter().find(|p| &p.name == name).ok_or_else(|| {
                     setup(format!(
-                        "{reference}: fields: the article has no output '{name}'"
+                        "{reference}: fields: the article has no output or parameter '{name}'"
                     ))
                 })?;
-                Ok(def(
-                    &o.name,
-                    Some(o.output_type),
-                    vec![reference.to_string()],
-                ))
+                let basis = origin(p, reference)?
+                    .map_or_else(|| reference.to_string(), |o| o.grondslag.clone());
+                Ok(def(&p.name, Some(p.param_type), vec![basis]))
             })
             .collect::<Result<_>>()?,
     })

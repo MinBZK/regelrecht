@@ -31,6 +31,9 @@ pub struct Input {
 pub struct Cell {
     config: CellConfig,
     chronicles: BTreeMap<String, Chronicle>,
+    /// Per event, the fields the law gives its grams (on the day the cell
+    /// started): a register row carries each, null where a gram has none.
+    event_fields: BTreeMap<String, Vec<String>>,
 }
 
 /// Load every regulation under `dir` into a new service. A file the engine
@@ -136,11 +139,16 @@ impl Cell {
                 )));
             }
         }
-        let cell = Self { config, chronicles };
+        let mut cell = Self {
+            config,
+            chronicles,
+            event_fields: BTreeMap::new(),
+        };
         // Every event must take its shape from the law now, not at the first
         // application; and every field a lexostatus reads must be a field of
         // a gram in its chronicle, or a typo reads as a fact nobody has.
         let mut fields: BTreeMap<&str, Vec<String>> = BTreeMap::new();
+        let mut event_fields: BTreeMap<String, Vec<String>> = BTreeMap::new();
         for stream in &cell.config.streams {
             for event in &stream.events {
                 let shape = shape::derive_for(service, event, today).map_err(|e| {
@@ -149,10 +157,12 @@ impl Cell {
                         stream.id, event.name
                     ))
                 })?;
+                let names: Vec<String> = shape.fields.into_iter().map(|f| f.name).collect();
                 fields
                     .entry(stream.chronicle.as_str())
                     .or_default()
-                    .extend(shape.fields.into_iter().map(|f| f.name));
+                    .extend(names.iter().cloned());
+                event_fields.insert(event.name.clone(), names);
             }
         }
         for l in &cell.config.lexostatuses {
@@ -171,6 +181,7 @@ impl Cell {
                 }
             }
         }
+        cell.event_fields = event_fields;
         Ok(cell)
     }
 
@@ -490,7 +501,7 @@ impl Cell {
         if asked.is_empty() {
             return Err(setup(format!("policy '{policy}' has no outputs")));
         }
-        let rows = register::rows(chronicle, as_of)?;
+        let rows = register::rows(chronicle, as_of, &self.event_fields)?;
         let result = register::with_rows(
             &register::source_name(&self.config.id, register),
             rows,
@@ -804,7 +815,7 @@ impl Cell {
         gram.regulation_valid_from = result.regulation_valid_from.clone();
         gram.period = period;
         gram.refers_to = refers_to;
-        gram.fields = fields_of(&shape, &result.outputs)?;
+        gram.fields = fields_of(&shape, &result.outputs, &inputs)?;
         gram.inputs = recorded_inputs(inputs);
         Ok((gram, chronicle))
     }
@@ -870,6 +881,145 @@ impl Cell {
         Ok(self
             .execution(service, event, root, on, now)?
             .map(|(gram, _)| gram))
+    }
+
+    /// Record what arises on receipt of what another party sends (a channel,
+    /// RFC-022): execute `article` once with `inputs`, and record a gram of
+    /// every event of the cell that establishes it on receipt (an execution
+    /// with `record_when` and no `executed_on`) whose `record_when` is true.
+    /// `refers_to` names the grams of this cell the received message is
+    /// about (a payment order this cell gave); each event takes the
+    /// references its law declares, a required one must be there, and a name
+    /// no event declares is refused. The grams hold and are recorded at
+    /// `now`. Which article receives what, is for the caller (the transport
+    /// between cells) to say; what arises, says the law.
+    pub fn receive(
+        &mut self,
+        service: &LawExecutionService,
+        article: &str,
+        refers_to: BTreeMap<String, String>,
+        inputs: BTreeMap<String, Input>,
+        now: DateTime<FixedOffset>,
+    ) -> Result<Vec<Gram>> {
+        let grams = self.receipt(service, article, &refers_to, &inputs, now)?;
+        grams
+            .into_iter()
+            .map(|(gram, chronicle)| self.append(&chronicle, gram))
+            .collect()
+    }
+
+    /// The grams [`Self::receive`] would record, without recording them.
+    pub fn preview_receipt(
+        &self,
+        service: &LawExecutionService,
+        article: &str,
+        refers_to: BTreeMap<String, String>,
+        inputs: BTreeMap<String, Input>,
+        now: DateTime<FixedOffset>,
+    ) -> Result<Vec<Gram>> {
+        Ok(self
+            .receipt(service, article, &refers_to, &inputs, now)?
+            .into_iter()
+            .map(|(gram, _)| gram)
+            .collect())
+    }
+
+    /// Execute a receipt: the grams that arise, with their chronicle.
+    fn receipt(
+        &self,
+        service: &LawExecutionService,
+        article: &str,
+        refers_to: &BTreeMap<String, String>,
+        inputs: &BTreeMap<String, Input>,
+        now: DateTime<FixedOffset>,
+    ) -> Result<Vec<(Gram, String)>> {
+        let today = now.date_naive();
+        let mut shapes: Vec<(Shape, String)> = Vec::new();
+        for stream in &self.config.streams {
+            for event in stream.events.iter().filter(|e| e.establishes == article) {
+                let (shape, chronicle) = self.shape(service, &event.name, today)?;
+                if shape.is_receipt() {
+                    shapes.push((shape, chronicle));
+                }
+            }
+        }
+        let Some((first, _)) = shapes.first() else {
+            return Err(refused(format!(
+                "cell '{}' records nothing on receipt for {article}",
+                self.config.id
+            )));
+        };
+        let law_id = first.law_id.clone();
+        // What the message is about decides the law: the receipt of an
+        // answer to a gram that concerns a period is judged under the law of
+        // that period, as that gram was; otherwise under the law of today.
+        let period = refers_to
+            .values()
+            .filter_map(|id| self.chronicles.values().find_map(|c| c.find(id)))
+            .find_map(|g| g.period);
+        let day = period.and_then(|p| p.first_day()).unwrap_or(today);
+        for name in refers_to.keys() {
+            if !shapes.iter().any(|(s, _)| s.refers_to.contains_key(name)) {
+                return Err(refused(format!(
+                    "{article} refers to nothing as '{name}' in cell '{}'",
+                    self.config.id
+                )));
+            }
+        }
+        // One execution of the article: every output that says whether a
+        // gram arises, and every output a gram holds.
+        let mut asked: Vec<&str> = Vec::new();
+        for (shape, _) in &shapes {
+            for name in shape.record_when.iter().chain(
+                shape
+                    .fields
+                    .iter()
+                    .map(|f| &f.name)
+                    .filter(|n| shape.outputs.contains(n)),
+            ) {
+                if !asked.contains(&name.as_str()) {
+                    asked.push(name);
+                }
+            }
+        }
+        let result = service.evaluate_law(
+            &law_id,
+            &asked,
+            inputs
+                .iter()
+                .map(|(k, i)| (k.clone(), Value::from(&i.value)))
+                .collect(),
+            &day.to_string(),
+        )?;
+        let mut out = Vec::new();
+        for (shape, chronicle) in shapes {
+            let when = shape.record_when.clone().unwrap_or_default();
+            match result.outputs.get(&when) {
+                Some(Value::Bool(true)) => {}
+                Some(Value::Bool(false)) => continue,
+                other => {
+                    return Err(setup(format!(
+                        "{}: '{when}' says whether '{}' arises, and is {other:?}",
+                        shape.establishes, shape.event
+                    )))
+                }
+            }
+            let mine: BTreeMap<String, String> = refers_to
+                .iter()
+                .filter(|(name, _)| shape.refers_to.contains_key(*name))
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+            self.check_references(&shape, &chronicle, &mine)?;
+            let mut gram = self.gram(&shape, &chronicle, now);
+            gram.regulation = Some(shape.law_id.clone());
+            gram.regulation_valid_from = result.regulation_valid_from.clone();
+            gram.period = period;
+            gram.refers_to = mine;
+            gram.fields = fields_of(&shape, &result.outputs, inputs)?;
+            gram.inputs = recorded_inputs(inputs.clone());
+            out.push((gram, chronicle));
+        }
+        Ok(out)
     }
 
     /// The days up to `through` on which the execution `event` is executed
@@ -1110,7 +1260,7 @@ impl Cell {
         gram.regulation_valid_from = result.regulation_valid_from.clone();
         gram.period = period.map(|(p, _)| p);
         gram.refers_to = refers_to;
-        gram.fields = fields_of(&shape, &result.outputs)?;
+        gram.fields = fields_of(&shape, &result.outputs, &inputs)?;
         gram.inputs = recorded_inputs(inputs);
         Ok(Some((gram, chronicle)))
     }
@@ -1176,19 +1326,29 @@ struct Prepared {
 }
 
 /// The fields of a gram of `shape`: each from the outputs of executing the
-/// law. An output the law does not give is refused, not recorded as
-/// nothing: a gram holds what the law decided, and a null is no decision.
+/// law, or, for a field the article declares as a parameter (and not as an
+/// output), the value it was given. An output the law does not give is
+/// refused, not recorded as nothing: a gram holds what the law decided, and
+/// a null is no decision.
 fn fields_of(
     shape: &Shape,
     outputs: &BTreeMap<String, Value>,
+    inputs: &BTreeMap<String, Input>,
 ) -> Result<Map<String, serde_json::Value>> {
     shape
         .fields
         .iter()
         .map(|f| {
+            let given = || {
+                (shape.parameters.contains(&f.name) && !shape.outputs.contains(&f.name))
+                    .then(|| inputs.get(&f.name).map(|i| i.value.clone()))
+                    .flatten()
+            };
             outputs
                 .get(&f.name)
-                .map(|v| (f.name.clone(), shape::to_json(v)))
+                .map(shape::to_json)
+                .or_else(given)
+                .map(|v| (f.name.clone(), v))
                 .ok_or_else(|| {
                     refused(format!(
                         "'{}': the law gives no '{}' ({})",
@@ -1372,11 +1532,15 @@ articles:
             reads: Vec::new(),
         };
         let shape = shape::derive(&service, &event, "2024-06-01".parse().unwrap()).unwrap();
-        let e = fields_of(&shape, &BTreeMap::new()).unwrap_err();
+        let e = fields_of(&shape, &BTreeMap::new(), &BTreeMap::new()).unwrap_err();
         assert!(matches!(e, crate::Error::Refused(_)), "{e}");
         assert!(e.to_string().contains("'y'"), "{e}");
-        let fields =
-            fields_of(&shape, &BTreeMap::from([("y".to_string(), Value::Int(1))])).unwrap();
+        let fields = fields_of(
+            &shape,
+            &BTreeMap::from([("y".to_string(), Value::Int(1))]),
+            &BTreeMap::new(),
+        )
+        .unwrap();
         assert_eq!(fields["y"], 1);
     }
 }
