@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildGraph, colourIndex, itemId, lawShape, lawSize, layout, neighbourhood, LAW_W } from './lawGraph.js';
+import { caseRefsFor } from '../data/caseRefs.js';
 
 const law = (id, { sources = [], inputs = [], outputs = [] } = {}) => ({
   id,
@@ -126,5 +127,31 @@ describe('edge direction classes', () => {
     const { edges } = buildGraph([brp, zvw, zt], {}, 'zvw');
     expect(edges.find((e) => e.data.from === 'zvw').class).toBe('graph-edge--out');
     expect(edges.find((e) => e.data.to === 'zvw').class).toBe('graph-edge--in');
+  });
+});
+
+describe('verwijzingen via besloten zaken', () => {
+  const terras = { id: 'apv_terrassen', law_path: 'algemene_plaatselijke_verordening/terrassen', doc: { articles: [{ machine_readable: { execution: { output: [{ name: 'vergunde_oppervlakte' }] } } }] } };
+  const precario = {
+    id: 'precario',
+    law_path: 'verordening_precariobelasting/gemeenten',
+    doc: { articles: [{ machine_readable: { execution: { input: [{ name: 'vergunde_oppervlakte', source: {} }, { name: 'heeft_actieve_vergunning', source: {} }], output: [{ name: 'belasting_per_jaar' }] } } }] },
+  };
+  const bindings = {
+    precario: {
+      vergunde_oppervlakte: { kind: 'cases', field: 'vergunde_oppervlakte', select_on: [{ name: 'law', value: 'algemene_plaatselijke_verordening/terrassen' }] },
+      heeft_actieve_vergunning: { kind: 'cases', field: 'approved', select_on: [{ name: 'law', value: 'algemene_plaatselijke_verordening/terrassen' }] },
+    },
+  };
+  const byPath = (p) => [terras, precario].find((l) => l.law_path === p) ?? null;
+
+  it('ziet een veld uit de besloten zaak van een andere wet als verwijzing naar die wet', () => {
+    const law = { ...precario, caseRefs: caseRefsFor(precario, bindings, byPath) };
+    expect(lawShape(law).inputs).toContainEqual({ name: 'vergunde_oppervlakte', ref: { regulation: 'apv_terrassen', output: 'vergunde_oppervlakte' } });
+    expect(neighbourhood(new Set(['precario']), [terras, law]).has('apv_terrassen')).toBe(true);
+  });
+
+  it('laat een feit van de zaak zelf (approved) een gewone invoer', () => {
+    expect(caseRefsFor(precario, bindings, byPath).map((r) => r.name)).toEqual(['vergunde_oppervlakte']);
   });
 });

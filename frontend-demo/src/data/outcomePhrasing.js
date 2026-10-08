@@ -25,12 +25,17 @@ export function phrasingFor(config, service, lawPath) {
  * @param {object} outcome
  * @param {boolean} outcome.met        did the law's conditions hold
  * @param {string|null} outcome.value  the formatted amount, already in euros
+ * @param {boolean} outcome.unknown    the amount is unknown (RFC-036): facts are missing
  * @param {boolean} outcome.isYesNo    is the primary output a yes/no
  * @param {string|null} outcome.date   formatted date for `{date}` in the lead
  * @returns {{lead: string, headline: string, unit: string|null}|null}
  */
-export function phraseOutcome(phrasing, { met, value, isYesNo = false, date = null } = {}) {
+export function phraseOutcome(phrasing, { met, value, unknown = false, isYesNo = false, date = null } = {}) {
   if (!phrasing) return null;
+  // An unknown amount is not "nothing": the general rendering names what is
+  // missing. Read as `none`, Claudia's precario tile said she probably owed no
+  // precariobelasting while only the terrace area was not known yet.
+  if (met && unknown) return null;
 
   // A yes/no law states the verdict itself; there is no amount to show.
   if (isYesNo || phrasing.yes || phrasing.no) {

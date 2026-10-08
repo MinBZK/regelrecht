@@ -36,6 +36,20 @@ describe('askedInputsFor', () => {
     expect(asked[2]).toMatchObject({ isParameter: true, required: true });
   });
 
+  it('knows which register inputs a parameter is the lookup key for', () => {
+    const keyed = {
+      bindings: {
+        terras: {
+          beschikbare_oppervlakte: { kind: 'table', service: 'GEMEENTE', table: 'bgt', select_on: [{ name: 'adres', value: '$adres' }, { name: 'oppervlakte', value: '$terras_oppervlakte' }] },
+          huurprijs: { kind: 'claim', service: 'TOESLAGEN' },
+        },
+      },
+    };
+    const asked = askedInputsFor(keyed, law, () => null);
+    expect(asked.find((a) => a.name === 'terras_oppervlakte').feeds).toEqual(['beschikbare_oppervlakte']);
+    expect(asked.find((a) => a.name === 'bereidt_voedsel').feeds).toEqual([]);
+  });
+
   it('builds evaluation parameters from the answered form parameters and leaves the rest out', () => {
     const asked = askedInputsFor(corpus, law, (lawId, name) => (name === 'terras_oppervlakte' ? { newValue: 18 } : null));
     expect(evaluationParamsFor({ bsn: '1', kvk_nummer: '2' }, asked)).toEqual({ bsn: '1', kvk_nummer: '2', terras_oppervlakte: 18 });
@@ -96,6 +110,12 @@ describe('nextQuestions / claimKeyFor', () => {
     // A parameter missing as no_data is a register input somewhere, not this question.
     const wrongKind = { ok: true, outputs: { voldoet: unknown(['terras_locatie', 'no_data']) } };
     expect(nextQuestions(asked, wrongKind, 'terras')).toEqual([]);
+  });
+
+  it('asks a form parameter when a register input it is the lookup key for is missing', () => {
+    const keyed = asked.map((a) => (a.name === 'terras_locatie' ? { ...a, feeds: ['beschikbare_oppervlakte'] } : a));
+    const evaluation = { ok: true, outputs: { voldoet: unknown(['beschikbare_oppervlakte', 'no_data']) } };
+    expect(nextQuestions(keyed, evaluation, 'terras').map((a) => a.name)).toEqual(['terras_locatie']);
   });
 
   it('ignores facts another law misses', () => {

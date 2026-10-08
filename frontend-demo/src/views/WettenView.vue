@@ -22,7 +22,7 @@ const router = useRouter();
 // in duwen.
 const { localePath } = useLocalePath();
 const { t, locale } = useI18n();
-const { corpus, profile } = useDemo();
+const { corpus, profile, profileKey } = useDemo();
 // The law list is a sheet (primary-sidebar-as-sheet): closed by default so the
 // law itself has the room, opened from the toolbar.
 const splitView = ref(null);
@@ -110,10 +110,21 @@ watch(
   // deze watcher onder /en/ruleworks meteen terugkeren. Het tabblad opent dan geen
   // enkele wet, ook niet de standaardwet van het profiel, en toont een leeg
   // paneel zonder dat er iets faalt.
-  () => [route.meta?.page, route.params.lawId, corpus.value, profile.value],
-  ([page, lawId]) => {
+  () => [route.meta?.page, route.params.lawId, corpus.value, profileKey.value],
+  ([page, lawId, , key], old) => {
+    // Een ander persona begint bij zijn eigen wet. <keep-alive> houdt dit
+    // tabblad gemount, dus zonder deze reset bleef na de wissel naar Claudia
+    // de zorgtoeslag van Merijn open staan. Van `null` naar het standaard-
+    // profiel (het corpus is net geladen) is geen wissel: dan moet een deeplink
+    // gewoon openen. Net zo een link die tegelijk met het profiel verandert
+    // (een dia met `profile` en een wet in `route`); alleen de oude link wijkt.
+    const switched = old?.[3] != null && old[3] !== key;
+    if (switched) {
+      trail.splice(0);
+      activeId.value = null;
+    }
     if (page !== 'wetten' || !corpus.value) return;
-    if (lawId && typeof lawId === 'string') {
+    if (lawId && typeof lawId === 'string' && !(switched && lawId === old[1])) {
       openLaw(decodeURIComponent(lawId), { replaceRoute: true });
     } else if (!activeId.value && profile.value?.default_law) {
       const d = profile.value.default_law;

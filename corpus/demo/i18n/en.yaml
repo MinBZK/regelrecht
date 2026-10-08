@@ -20,11 +20,10 @@ profiles.merijn.portal_tab_label: My government
 profiles.merijn.portal_heading: What am I entitled to? What do I owe?
 profiles.merijn.portal_subtitle: >-
   Your allowances, benefits, tax returns and other government schemes, in one place.
-profiles.claudia.portal_tab_label: My business
-profiles.claudia.portal_heading: Which schemes apply to my business?
+profiles.claudia.portal_tab_label: My government
+profiles.claudia.portal_heading: What am I entitled to? What do I owe?
 profiles.claudia.portal_subtitle: >-
-  Available subsidies, reporting duties, permits, laws and other schemes for
-  entrepreneurs.
+  Your allowances, benefits, tax returns and other government schemes, in one place.
 
 # ---- wat een tegel over zijn uitkomst zegt ----------------------------------
 # De aanhef loopt door in het bedrag eronder ("Your healthcare allowance is
@@ -105,8 +104,8 @@ outcome_phrasing.GEMEENTE_ROTTERDAM/algemene_plaatselijke_verordening/terrassen.
 outcome_phrasing.GEMEENTE_ROTTERDAM/algemene_plaatselijke_verordening/terrassen.yes: THE RIGHT TO A PERMIT
 outcome_phrasing.GEMEENTE_ROTTERDAM/algemene_plaatselijke_verordening/terrassen.no: NO right to a permit
 outcome_phrasing.GEMEENTE_ROTTERDAM/alcoholwet/vergunning/gemeenten.lead: To sell alcohol you have
-outcome_phrasing.GEMEENTE_ROTTERDAM/alcoholwet/vergunning/gemeenten.yes: THE RIGHT TO A PERMIT
-outcome_phrasing.GEMEENTE_ROTTERDAM/alcoholwet/vergunning/gemeenten.no: NO right to a permit
+outcome_phrasing.GEMEENTE_ROTTERDAM/alcoholwet/vergunning/gemeenten.yes: AN ACTIVE PERMIT
+outcome_phrasing.GEMEENTE_ROTTERDAM/alcoholwet/vergunning/gemeenten.no: NO active permit
 outcome_phrasing.NVWA/warenwet/haccp.lead: For food safety you have
 outcome_phrasing.NVWA/warenwet/haccp.yes: A HACCP OBLIGATION
 outcome_phrasing.NVWA/warenwet/haccp.no: NO HACCP obligation
@@ -115,6 +114,9 @@ outcome_phrasing.NVWA/warenwet/meldplicht.yes: A DUTY TO REPORT
 outcome_phrasing.NVWA/warenwet/meldplicht.no: NO duty to report
 outcome_phrasing.RVO/omgevingswet/energiebesparing/informatieplicht.lead: For energy saving you have
 outcome_phrasing.RVO/omgevingswet/energiebesparing/informatieplicht.yes: A DUTY TO REPORT
+outcome_phrasing.KVK/handelsregisterwet/jaarrekening.lead: For your annual accounts you have
+outcome_phrasing.KVK/handelsregisterwet/jaarrekening.yes: A DUTY TO FILE
+outcome_phrasing.KVK/handelsregisterwet/jaarrekening.no: NO duty to file
 outcome_phrasing.RVO/omgevingswet/energiebesparing/informatieplicht.no: NO duty to report
 
 # ---- de grafiek van het besteedbaar inkomen ---------------------------------
@@ -174,61 +176,91 @@ slides.6.bullets.0: 'Per law: which data from registers, which from other laws, 
 slides.6.bullets.1: Every line is a real reference from the law, with this person's value on it.
 slides.6.bullets.2: Change a law and you see at once who it touches.
 
-slides.7.overline: Testing
-slides.7.title: The law tested, in plain language
-slides.7.lead: A scenario describes a person and what the law should produce for them.
-slides.7.bullets.0: >-
+slides.8.overline: Testing
+slides.8.title: The law tested, in plain language
+slides.8.lead: A scenario describes a person and what the law should produce for them.
+slides.8.bullets.0: >-
   Given a 17-year-old, no healthcare allowance. Given a single person on a low
   income, yes.
-slides.7.bullets.1: The same scenarios run here in the browser and in the build pipeline.
-slides.7.bullets.2: Change the law and you see which scenario falls over.
+slides.8.bullets.1: The same scenarios run here in the browser and in the build pipeline.
+slides.8.bullets.2: Change the law and you see which scenario falls over.
 
-slides.8.overline: Policy
-slides.8.title: What does it do to two thousand people?
-slides.8.lead: A generated population through every scheme, with the real laws.
-slides.8.bullets.0: >-
+slides.10.overline: Policy
+slides.10.title: What does it do to two thousand people?
+slides.10.lead: A generated population through every scheme, with the real laws.
+slides.10.bullets.0: >-
   Who meets the conditions, for how much, broken down by age, income and
   household.
-slides.8.bullets.1: Turn a threshold in the law and see the difference, before it takes effect.
-slides.8.bullets.2: 'For businesses too: permits, reporting duties, precario tax.'
+slides.10.bullets.1: Turn a threshold in the law and see the difference, before it takes effect.
+slides.10.bullets.2: 'For businesses too: permits, reporting duties, precario tax.'
 
-slides.9.overline: The citizen
-slides.9.title: One citizen, Merijn
-slides.9.lead: Self-employed in home care, a single parent with two young children.
-slides.9.bullets.0: Everything he is entitled to, computed live by the law itself.
-slides.9.bullets.1: Every fact traces back to the register that supplied it.
-slides.9.bullets.2: A fact wrong? He corrects it, a case officer assesses it.
+slides.11.overline: The citizen
+slides.11.title: One citizen, Merijn
+slides.11.lead: Self-employed in home care, a single parent with two young children.
+slides.11.bullets.0: Everything he is entitled to, computed live by the law itself.
+slides.11.bullets.1: Every fact traces back to the register that supplied it.
+slides.11.bullets.2: A fact wrong? He corrects it, a case officer assesses it.
 
-slides.10.overline: Applying
-slides.10.title: Asking only what government does not know
-slides.10.lead: The law computes with what is already there, and asks only when it gets stuck.
-slides.10.bullets.0: Housing benefit does not know the rent. That is the only question, at that moment.
-slides.10.bullets.1: After every answer the law computes again.
-slides.10.bullets.2: Check, declare, submit. Without a ten-page form.
+slides.12.overline: Applying
+slides.12.title: Asking only what government does not know
+slides.12.lead: The law computes with what is already there, and asks only when it gets stuck.
+slides.12.bullets.0: Housing benefit does not know the rent. That is the only question, at that moment.
+slides.12.bullets.1: After every answer the law computes again.
+slides.12.bullets.2: Check, declare, submit. Without a ten-page form.
 
-slides.11.overline: The case officer
-slides.11.title: The same right, the other side of the desk
-slides.11.lead: The application arrives with the calculation the citizen saw.
-slides.11.bullets.0: The engine recomputes it against the registered data.
-slides.11.bullets.1: The citizen's corrections are waiting to be assessed.
-slides.11.bullets.2: Grant or refuse, with reasons; an objection comes back through the portal.
+slides.13.overline: The case officer
+slides.13.title: The same right, the other side of the desk
+slides.13.lead: The application arrives with the calculation the citizen saw.
+slides.13.bullets.0: The engine recomputes it against the registered data.
+slides.13.bullets.1: The citizen's corrections are waiting to be assessed.
+slides.13.bullets.2: Grant or refuse, with reasons; an objection comes back through the portal.
 
-slides.12.overline: The entrepreneur
-slides.12.title: An entrepreneur, Claudia
-slides.12.lead: Owner of the coffee bar Noon in Rotterdam West, with a terrace.
-slides.12.bullets.0: 'The same engine, other laws: local by-laws, alcohol, food safety, precario tax.'
-slides.12.bullets.1: >-
-  The terrace permit asks for location and area; the precario tax computes with
-  it straight away.
-slides.12.bullets.2: >-
+slides.14.overline: The entrepreneur
+slides.14.title: An entrepreneur, Claudia
+slides.14.lead: Director of Café Noon in Rotterdam West, a café with its own small brewery and a terrace.
+slides.14.bullets.0: 'The same engine, other laws: local by-laws, alcohol, food safety, excise duty, precario tax.'
+slides.14.bullets.1: >-
+  The terrace permit asks for location and area; once it is granted, the
+  precario tax computes with it.
+slides.14.bullets.2: >-
   The municipality, the food authority and the enterprise agency in one
   overview, without having to ask each other anything.
 
-slides.13.overline: RegelRecht demo
-slides.13.title: From law to digital effect
-slides.13.lines.0: A complete story, **not a finished product**
-slides.13.lines.1: We make policy **by doing**
-slides.13.link.label: regelrecht.rijks.app
+slides.18.overline: RegelRecht demo
+slides.18.title: From law to digital effect
+slides.18.lines.0: A complete story, **not a finished product**
+slides.18.lines.1: We make policy **by doing**
+slides.18.link.label: regelrecht.rijks.app
+slides.7.overline: Coherence
+slides.7.title: Laws hang together
+slides.7.lead: Whether Claudia pays precario depends on her terrace permit, which depends on her operating licence.
+slides.7.bullets.0: 'Per law: which data come from registers, which from other laws, and what comes out.'
+slides.7.bullets.1: The trade register, the BAG and municipal by-laws sit in one graph.
+slides.7.bullets.2: When the by-law changes, you see straight away which businesses it affects.
+slides.9.overline: Testing
+slides.9.title: The by-law tested, in plain language
+slides.9.lead: Scenarios describe a business and what the by-law should produce for it.
+slides.9.bullets.0: Given a 20 m² terrace, no precario. Given an 80 m² terrace, tax on 30 m².
+slides.9.bullets.1: The same scenarios run here in the browser and in the build pipeline.
+slides.9.bullets.2: Whoever changes the by-law sees which scenario breaks.
+slides.15.overline: Applying
+slides.15.title: Applying for a terrace
+slides.15.lead: The municipality already knows a lot about Café Noon. The application only asks about the terrace itself.
+slides.15.bullets.0: Location, area, season and closing times are in no register.
+slides.15.bullets.1: After each answer the by-law recalculates, including the grounds for refusal.
+slides.15.bullets.2: Once submitted, the application goes to the municipality for assessment.
+slides.16.overline: The municipality
+slides.16.title: The municipality assesses
+slides.16.lead: Rotterdam grants a terrace permit after a caseworker has assessed it.
+slides.16.bullets.0: The application arrives with the calculation Claudia saw.
+slides.16.bullets.1: The caseworker grants or refuses, with reasons.
+slides.16.bullets.2: The grant creates the permit on which precario is levied.
+slides.17.overline: The assessment
+slides.17.title: Precario follows from the permit
+slides.17.lead: The municipality levies precario on the terrace it granted.
+slides.17.bullets.0: The by-law reads the area from the granted terrace permit.
+slides.17.bullets.1: The first 50 m² are exempt; above that, € 36.10 per m² per year.
+slides.17.bullets.2: Every amount traces back to the article and the permit it rests on.
 
 # ---- de persona's -----------------------------------------------------------
 # De beschrijving onder de kop van het portaal, en de enige tekst daar die uit
@@ -345,5 +377,5 @@ profiles.999993660.description: >-
 profiles.999993670.description: Partner of Maria Pietersen, has not reached pension age yet
 profiles.999993872.description: Father of two young children, owns his home
 profiles.999999990.description: >-
-  Owner of the coffee bar Noon in Rotterdam West; runs a hospitality business
-  with an operating licence
+  Director of Café Noon B.V. in Rotterdam West, a café with its own small brewery, a
+  terrace and an operating licence

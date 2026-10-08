@@ -42,7 +42,8 @@ scenario-runner, simulatie, burger-/ondernemersportaal en zaaksysteem. Opvolger 
   bronnen, invoer en uitvoer, lijnen van invoer naar de leverende uitvoer, de waarden van
   de persona uit een evaluatie plus de trace. Alle wetten worden gelegd, alleen de
   selectie (profiel: `graph_laws`) met haar directe buren is zichtbaar, zodat "Alles"
-  niets verschuift. `LawGroupTree.vue` is de lijst per organisatie die Regelwerken en
+  niets verschuift. Een profiel met `graph_focus` zet die wet bij de wissel in focus
+  en zoomt erop in; Regelwerken en Scenario's openen dan `default_law` en `default_feature`. `LawGroupTree.vue` is de lijst per organisatie die Regelwerken en
   Graaf delen; de lijsten zijn zijpanelen (`primary-sidebar-as-sheet`), standaard dicht.
 - **Scenario's** draaien met de gedeelde Gherkin-runner uit
   `@regelrecht/frontend-shared/gherkin` (canonieke grammar); `src/data/gherkinNl.js`
@@ -54,7 +55,10 @@ scenario-runner, simulatie, burger-/ondernemersportaal en zaaksysteem. Opvolger 
   `definitions` van een wet zijn per run aan te passen (`lawParameters.js`): de
   wet wordt met gewijzigde waarden herladen en na de run teruggezet. De
   simulatie vervangt tijdelijk de persona-data in de engine en zet die daarna
-  terug. Grafieken met echarts, zoals in de editor.
+  terug. Een wet die een andere wet als besloten zaak leest (`kind: cases`,
+  zoals precario de terrasvergunning), krijgt eerst de aanvragen van de
+  populatie (`aanvragen` in de formulierwaarden); wat die wet toekent, wordt een
+  zaak. Grafieken met echarts, zoals in de editor.
 
 ## Draaien
 
