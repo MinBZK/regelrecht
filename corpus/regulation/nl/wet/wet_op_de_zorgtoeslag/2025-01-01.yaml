@@ -138,9 +138,9 @@ articles:
           procedure_id: tegemoetkoming
           # De zorgtoeslag wordt op aanvraag toegekend (Awir art. 14 lid 1): deze
           # beschikking wordt genomen op de aanvraag van Awir art. 15 (RFC-046).
-          # Elk besluit is een decretogram (RFC-022 par. 1.2): zijn velden zijn
-          # de uitkomsten van dit artikel en van de haken in zijn fase, en het
-          # verwijst naar de aanvraag.
+          # Elke beschikking in een fase van die procedure is een besluit op
+          # die aanvraag; wat zij vaststelt, zijn de uitkomsten van dit artikel
+          # en van de haken in haar fase.
           decides_on:
             - algemene_wet_inkomensafhankelijke_regelingen#15
         parameters:

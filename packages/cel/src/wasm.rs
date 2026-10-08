@@ -276,8 +276,11 @@ impl WasmCell {
     /// Record what arises on receipt of a message from another party:
     /// execute `article` (`<regulation>#<article>`) with `inputs`
     /// (`{name: {value, provenance}}`) at `now` (RFC 3339), referring to the
-    /// grams of this cell in `refersTo` (`{name: id}`). Returns the grams
-    /// recorded (none, one, or more). See `Cell::receive`.
+    /// grams of this cell in `refersTo` (`{name: id}`). `at` (RFC 3339, or
+    /// absent for `now`) is when the message arrived; the grams hold from
+    /// then. Returns the grams recorded (none, one, or more). A message about
+    /// a gram that already has its answer fails with name `answered`. See
+    /// `Cell::receive_at`.
     pub fn receive(
         &mut self,
         engine: &WasmEngine,
@@ -285,6 +288,7 @@ impl WasmCell {
         refers_to: JsValue,
         inputs: JsValue,
         now: &str,
+        at: Option<String>,
     ) -> Result<JsValue, JsValue> {
         let refers_to: BTreeMap<String, String> = if refers_to.is_null() || refers_to.is_undefined()
         {
@@ -292,14 +296,16 @@ impl WasmCell {
         } else {
             from_js(refers_to)?
         };
+        let now = moment(now)?;
         let grams = self
             .cell
-            .receive(
+            .receive_at(
                 engine.service(),
                 article,
                 refers_to,
                 extra(inputs)?,
-                moment(now)?,
+                at.as_deref().map(moment).transpose()?.unwrap_or(now),
+                now,
             )
             .map_err(cell_error)?;
         to_js(&grams)

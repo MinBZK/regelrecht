@@ -20,7 +20,9 @@ articles:
       FICTIEF, geen bestaande voorwaarden. Een overboeking wordt op de
       uitvoerdatum bijgeschreven op de rekening van de begunstigde, tenzij de
       rekening bij de bank onbekend is of geblokkeerd is. Een overboeking die
-      niet wordt bijgeschreven, wordt geweigerd, met de reden.
+      niet wordt bijgeschreven, wordt geweigerd, met de reden. Een overboeking
+      met een betaalkenmerk dat de bank al heeft verwerkt, voert zij niet
+      nogmaals uit.
     machine_readable:
       execution:
         # De bank legt elke ontvangen overboeking vast in haar kroniek
@@ -29,7 +31,10 @@ articles:
         # uitvoert: zij voert het uit als de overboeking binnenkomt (geen
         # `executed_on`). Het kenmerk van de opdrachtgever reist mee als veld,
         # niet als verwijzing: het gram van de opdracht ligt in een andere
-        # kroniek.
+        # kroniek. Dat kenmerk identificeert de overboeking
+        # (`identified_by`): een tweede overboeking met hetzelfde kenmerk
+        # verwerkt de bank niet (laatste zin van het artikel), ook niet als
+        # de opdrachtgever haar opnieuw aanbiedt.
         produces:
           extensions:
             chronolex:
@@ -38,10 +43,12 @@ articles:
                   type: executogram
                   fields: [betaalkenmerk, rekeningnummer, uitvoerdatum, bedrag, bijgeschreven, bijgeschreven_bedrag, reden]
                   record_when: bijgeschreven
+                  identified_by: betaalkenmerk
                 - event: overboeking_geweigerd
                   type: executogram
                   fields: [betaalkenmerk, rekeningnummer, uitvoerdatum, bedrag, bijgeschreven, bijgeschreven_bedrag, reden]
                   record_when: geweigerd
+                  identified_by: betaalkenmerk
         parameters:
           - name: rekeningnummer
             type: string

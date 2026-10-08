@@ -53,6 +53,36 @@ describe('de kroniek vanaf de achterkant', () => {
     const q = gram('q', 'b', '', { op: 'p' });
     expect(['p', 'q']).toContain(rootOf(p, new Map([['p', p], ['q', q]])));
   });
+
+  it('volgt bij twee verwijzingen de alfabetisch eerste, zoals de cel (Chronicle::root_of)', () => {
+    const r1 = gram('r1', 'a', '');
+    const r2 = gram('r2', 'a', '');
+    const byId = new Map([['r1', r1], ['r2', r2]]);
+    // In de volgorde van het object staat `zaak` eerst; de cel kiest `besluit`.
+    expect(rootOf(gram('x', 'b', '', { zaak: 'r1', besluit: 'r2' }), byId)).toBe('r2');
+    // Wijst die eerste naar een gram die er niet is, dan stopt de weg: de
+    // tweede verwijzing telt niet.
+    expect(rootOf(gram('y', 'b', '', { besluit: 'weg', zaak: 'r1' }), byId)).toBe('y');
+  });
+});
+
+describe('de zaak binnen één kroniek', () => {
+  it('volgt een verwijzing niet naar een andere kroniek van dezelfde cel, zoals de cel', () => {
+    const twee = {
+      id: 'c',
+      events: [
+        { name: 'a', chronicle: 'k' },
+        { name: 'b', chronicle: 'l' },
+      ],
+    };
+    const a1 = gram('a1', 'a', '2025-01-01T10:00:00+01:00');
+    const b1 = gram('b1', 'b', '2025-01-02T10:00:00+01:00', { op: 'a1' }, 'l');
+    const entries = storedChronicle(twee, [a1, b1]);
+    expect(entries.map((e) => [e.gram.id, e.root])).toEqual([
+      ['a1', 'a1'],
+      ['b1', 'b1'],
+    ]);
+  });
 });
 
 describe('wat de wet over de velden zegt', () => {

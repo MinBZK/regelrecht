@@ -288,6 +288,7 @@ export default {
   'zaak.view.chronicle': 'Chronicle',
   'zaak.chronicle.hint': 'The facts of this case as the administrative body records them: each fact names the article that establishes it and the moment that counts in law.',
   'zaak.chronicle.failed': 'The chronicle could not record this',
+  'zaak.chronicle.undelivered': 'A message to another party has not arrived yet. The demo offers it again at every step of the clock.',
   'chronicle.read_failed': 'The chronicle could not read this',
   'zaak.chronicle.application': 'Application, established by {law}',
   'zaak.chronicle.decision': 'Decision, established by {law}',

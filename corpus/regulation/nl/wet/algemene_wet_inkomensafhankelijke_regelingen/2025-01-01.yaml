@@ -1134,8 +1134,8 @@ articles:
           # Dienst Toeslagen, dus dit artikel vestigt de aanvraag
           # (RFC-046). Op die aanvraag wordt een beschikking genomen (de
           # zorgtoeslag, Zorgtoeslagwet art. 2), zodat Awb 4:2 en 4:13 erop
-          # haken. Wat de aanvrager hier invult, wordt een veld van de aanvraag
-          # (chronolex).
+          # haken. Wat de aanvrager hier invult, is een gegeven van de
+          # aanvraag.
           submission:
             kind: AANVRAAG
           legal_character: TOETS
@@ -1279,7 +1279,7 @@ articles:
       #   Vóór de beschikking is die er nog niet en is het bedrag onbekend; de
       #   engine neemt dan de uitkomst van na de beschikking.
       # - op de aanvraag van art. 15: zo vraagt de aanvraag om de schatting
-      #   (chronolex: een veld van de aanvraag).
+      #   (een gegeven van de aanvraag).
       # Lid 1 verleent het voorschot alleen wie de aanvraag indient "vóór 1
       # april van het jaar volgend op het berekeningsjaar". Wanneer de
       # aanvraag is ingediend, is de dag van ontvangst (Awb 4:13 lid 1, zoals
@@ -1893,7 +1893,7 @@ articles:
       #   verleend: een termijn die nooit is betaald, valt niet te verrekenen
       #   (eigen keuze, zoals de ontwerpnotitie
       #   packages/cel/ONTWERP-proces-zorgtoeslag.md par. 5). Wat is uitbetaald
-      #   is een gegeven uit het dossier: de cel telt de betaalde termijnen.
+      #   is een gegeven uit het dossier van de uitvoerder.
       # - lid 1: wat er na de verrekening nog uit te betalen is, binnen vier
       #   weken na de dagtekening van de beschikking.
       # - lid 3: de verrekening kan leiden tot een terug te vorderen bedrag.

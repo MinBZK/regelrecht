@@ -780,6 +780,7 @@ export default {
   "zaak.chronicle.refusal": "9d9b",
   "zaak.chronicle.stored": "e08d",
   "zaak.chronicle.undecided": "dc10",
+  "zaak.chronicle.undelivered": "142c",
   "zaak.claims.heading": "f831",
   "zaak.claims.label": "64b0",
   "zaak.corrections": "353c",

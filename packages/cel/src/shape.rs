@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 
 use chrono::NaiveDate;
 use regelrecht_engine::{
-    Article, ExecutionOutcome, LawExecutionService, StageInputs, Submission, Value,
+    Article, ExecutionOutcome, LawExecutionService, ProcedureMiss, StageInputs, Submission, Value,
 };
 use regelrecht_law_model::{
     Origin, OriginRole, OriginValue, Output, Parameter, ParameterType, Stage,
@@ -72,6 +72,9 @@ pub struct Shape {
     pub executed_on: Option<ExecutedOn>,
     /// For an execution: the boolean output that says whether a gram arises.
     pub record_when: Option<String>,
+    /// For a receipt: the parameter whose value identifies the message;
+    /// one gram of the article per value.
+    pub identified_by: Option<String>,
     /// For an execution: the stage whose gram ends it.
     pub until: Option<Until>,
     /// For a decision: the parameter that is the date it bears, which the
@@ -205,7 +208,7 @@ fn establishes_event(service: &LawExecutionService, event: &Event, day: NaiveDat
     let Ok((_, article)) = article_on(service, &event.establishes, day) else {
         return false;
     };
-    match chronolex_of(service, article, &event.establishes) {
+    match chronolex_of(service, article, &event.establishes, day) {
         Ok(Some(chronolex)) => entry_of(&chronolex, event).is_ok(),
         Ok(None) => false,
         Err(_) => true,
@@ -215,23 +218,40 @@ fn establishes_event(service: &LawExecutionService, event: &Event, day: NaiveDat
 /// What an article establishes or extends: its explicit chronolex block, or
 /// what the law says in its own words ([`extension::derive`]). For a
 /// decision, the stages of its procedure that are a decision say where it
-/// is taken.
+/// is taken, as the procedure reads on `day`. A procedure the article names
+/// and no loaded law defines is an error, not a decision without stages: the
+/// article would silently establish nothing.
 fn chronolex_of(
     service: &LawExecutionService,
     article: &Article,
     reference: &str,
+    day: NaiveDate,
 ) -> Result<Option<Chronolex>> {
     if let Some(explicit) = extension::of_article(article, reference).map_err(setup)? {
         return Ok(Some(explicit));
     }
     let produces = article.get_produces();
-    let procedure = produces
-        .and_then(|p| p.legal_character.as_deref())
-        .and_then(|lc| {
-            service
+    let procedure = match produces.and_then(|p| p.legal_character.as_deref()) {
+        None => None,
+        Some(lc) => {
+            let id = produces.and_then(|p| p.procedure_id.as_deref());
+            match service
                 .resolver()
-                .find_procedure(lc, produces.and_then(|p| p.procedure_id.as_deref()))
-        });
+                .find_procedure_reported_at(lc, id, Some(day))
+            {
+                Ok(p) => Some(p),
+                Err(ProcedureMiss::NoneForCharacter) => None,
+                Err(ProcedureMiss::NamedNotFound(id)) => {
+                    let why = format!("names the procedure '{id}' for {lc}, and no law defines it");
+                    return Err(setup(format!("{reference}: {why}")));
+                }
+                Err(ProcedureMiss::DefaultDangling(id)) => {
+                    let why = format!("the default procedure '{id}' for {lc} is not defined");
+                    return Err(setup(format!("{reference}: {why}")));
+                }
+            }
+        }
+    };
     let decision_stages: Vec<&Stage> = procedure
         .map(|p| {
             p.stages
@@ -240,7 +260,7 @@ fn chronolex_of(
                 .collect()
         })
         .unwrap_or_default();
-    Ok(extension::derive(article, &decision_stages))
+    extension::derive(article, &decision_stages).map_err(|e| setup(format!("{reference}: {e}")))
 }
 
 /// The establishment of `chronolex` that `event` records. In an explicit
@@ -250,7 +270,7 @@ fn chronolex_of(
 fn entry_of<'c>(chronolex: &'c Chronolex, event: &Event) -> Result<&'c Establishment> {
     let establishes = &event.establishes;
     if !chronolex.derived {
-        return chronolex
+        let entry = chronolex
             .establishes
             .iter()
             .find(|e| e.event.as_deref() == Some(event.name.as_str()))
@@ -259,7 +279,19 @@ fn entry_of<'c>(chronolex: &'c Chronolex, event: &Event) -> Result<&'c Establish
                     "{establishes}: establishes no event '{}'",
                     event.name
                 ))
-            });
+            })?;
+        // The block names the stage itself; a stream that names another
+        // contradicts it, and is not silently overruled.
+        if let Some(stage) = &event.stage {
+            if entry.stage.as_deref() != Some(stage.as_str()) {
+                return Err(setup(format!(
+                    "{establishes}: the stream records '{}' at stage {stage}, the article at {}",
+                    event.name,
+                    entry.stage.as_deref().unwrap_or("no stage")
+                )));
+            }
+        }
+        return Ok(entry);
     }
     let own: Vec<&Establishment> = chronolex.own().collect();
     match (&event.stage, own.as_slice()) {
@@ -296,7 +328,7 @@ fn entry_of<'c>(chronolex: &'c Chronolex, event: &Event) -> Result<&'c Establish
 pub fn derive(service: &LawExecutionService, event: &Event, day: NaiveDate) -> Result<Shape> {
     let establishes = event.establishes.as_str();
     let (law, article) = article_on(service, establishes, day)?;
-    let chronolex = chronolex_of(service, article, establishes)?.ok_or_else(|| {
+    let chronolex = chronolex_of(service, article, establishes, day)?.ok_or_else(|| {
         setup(format!(
             "{establishes}: establishes nothing: no produces.submission, no BESCHIKKING with decides_on, no hook on a submission, and no extensions.chronolex"
         ))
@@ -323,6 +355,7 @@ pub fn derive(service: &LawExecutionService, event: &Event, day: NaiveDate) -> R
             .collect(),
         executed_on: entry.executed_on.clone(),
         record_when: entry.record_when.clone(),
+        identified_by: entry.identified_by.clone(),
         until: entry.until.clone(),
         dated_by: entry.dated_by.clone(),
     };
@@ -386,6 +419,16 @@ pub fn derive(service: &LawExecutionService, event: &Event, day: NaiveDate) -> R
                     }
                 }
             }
+        }
+    }
+    // The value that identifies a received message is what the cell compares
+    // a second message against, so every gram of the event holds it.
+    if let Some(key) = &shape.identified_by {
+        if shape.field(key).is_none() {
+            return Err(setup(format!(
+                "{establishes}: identified_by: '{key}' is not a field of '{}'",
+                shape.event
+            )));
         }
     }
     Ok(shape)
@@ -478,6 +521,47 @@ fn check_execution(shape: &Shape, article: &Article) -> Result<()> {
                 ))
             }
         }
+    }
+    // The value that identifies a received message comes with the message:
+    // a parameter it must carry, not something the article computes.
+    if let Some(key) = &shape.identified_by {
+        if !shape.is_receipt() {
+            return Err(at(format!(
+                "identified_by: '{}' is no receipt (record_when, no executed_on)",
+                shape.event
+            )));
+        }
+        if declared_outputs(article).iter().any(|o| &o.name == key) {
+            return Err(at(format!(
+                "identified_by: '{key}' is an output of the article, not what the message carries"
+            )));
+        }
+        let p = declared_parameters(article)
+            .into_iter()
+            .find(|p| &p.name == key)
+            .ok_or_else(|| {
+                at(format!(
+                    "identified_by: the article has no parameter '{key}'"
+                ))
+            })?;
+        if p.required != Some(true) {
+            return Err(at(format!(
+                "identified_by: parameter '{key}' is not required; a message without it could not be told from another"
+            )));
+        }
+    }
+    // A sender that did not hear its message land delivers it again. Only a
+    // receipt that recognises a message it already answered records nothing
+    // twice: by a required reference to the gram it answers, or by the value
+    // that identifies it.
+    if shape.is_receipt()
+        && shape.identified_by.is_none()
+        && !shape.refers_to.values().any(|r| r.required)
+    {
+        return Err(at(format!(
+            "'{}' is a receipt: it needs a required refers_to or identified_by, so a message delivered again is not recorded twice",
+            shape.event
+        )));
     }
     // An execution is executed on a day (`executed_on`), or on receipt of
     // what another party sends (no `executed_on`, see `Cell::receive`); it
@@ -601,7 +685,7 @@ fn submission_fields(
     for part in &model.articles {
         let reference = format!("{}#{}", part.law_id, part.article_number);
         let (_, article) = article_on(service, &reference, day)?;
-        let Some(chronolex) = chronolex_of(service, article, &reference)? else {
+        let Some(chronolex) = chronolex_of(service, article, &reference, day)? else {
             continue;
         };
         let entries: Vec<&Establishment> = chronolex
@@ -859,5 +943,180 @@ articles:
         let service = service(&[version("2024-01-01", None), version("2025-01-01", None)]);
         let e = derive_for(&service, &gebeurd(), day("2024-11-20")).unwrap_err();
         assert!(e.to_string().contains("no extensions.chronolex"), "{e}");
+    }
+    /// A decision on an application of `testwet#1`, in a law with its own
+    /// procedure `eigen`; `produces` is the rest of its `produces` block.
+    fn decision(produces: &str) -> String {
+        format!(
+            "$id: testbesluit
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+procedure:
+  - id: eigen
+    applies_to: {{legal_character: BESCHIKKING}}
+    stages:
+      - name: BESLUIT
+articles:
+  - number: '1'
+    text: Test.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+{produces}
+        output: [{{name: y, type: number}}]
+        actions: [{{output: y, value: 1}}]
+"
+        )
+    }
+
+    fn besloten(stage: Option<&str>) -> Event {
+        Event {
+            name: "besloten".into(),
+            establishes: "testbesluit#1".into(),
+            stage: stage.map(str::to_string),
+            reads: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_decision_takes_its_stages_from_the_procedure_it_names() {
+        let service = service(&[
+            version("2024-01-01", None),
+            decision("          procedure_id: eigen\n          decides_on: [testwet#1]"),
+        ]);
+        let shape = derive(&service, &besloten(None), day("2024-06-01")).unwrap();
+        assert_eq!(shape.stage.as_deref(), Some("BESLUIT"));
+    }
+
+    #[test]
+    fn a_procedure_the_article_names_and_no_law_defines_is_an_error() {
+        let service = service(&[
+            version("2024-01-01", None),
+            decision("          procedure_id: bestaat_niet\n          decides_on: [testwet#1]"),
+        ]);
+        let e = derive(&service, &besloten(None), day("2024-06-01")).unwrap_err();
+        assert!(matches!(e, crate::Error::Setup(_)), "{e}");
+        assert!(e.to_string().contains("'bestaat_niet'"), "{e}");
+    }
+
+    #[test]
+    fn a_decision_on_more_than_one_submission_is_an_error() {
+        let service = service(&[
+            version("2024-01-01", None),
+            decision("          procedure_id: eigen\n          decides_on: [testwet#1, testwet#2]"),
+        ]);
+        let e = derive(&service, &besloten(None), day("2024-06-01")).unwrap_err();
+        assert!(
+            e.to_string().contains("decides_on names 2 submissions"),
+            "{e}"
+        );
+    }
+
+    #[test]
+    fn a_stream_stage_must_match_the_stage_of_an_explicit_block() {
+        let service = service(&[decision(
+            "          procedure_id: eigen
+          extensions:
+            chronolex:
+              establishes:
+                - {event: besloten, type: decretogram, stage: BESLUIT, fields: outputs}",
+        )]);
+        derive(&service, &besloten(Some("BESLUIT")), day("2024-06-01")).unwrap();
+        derive(&service, &besloten(None), day("2024-06-01")).unwrap();
+        let e = derive(&service, &besloten(Some("VOORSCHOT")), day("2024-06-01")).unwrap_err();
+        assert!(e.to_string().contains("stage VOORSCHOT"), "{e}");
+    }
+
+    /// A law whose article 1 is received (`record_when: ontvangen`, no
+    /// `executed_on`) as `gekregen`, with `entry` the rest of its entry;
+    /// parameter `kenmerk` is `required` as given, output `bedrag` is computed.
+    fn receipt(entry: &str, required: bool) -> String {
+        format!(
+            "$id: ontvangstwet
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+articles:
+  - number: '1'
+    text: Test.
+    machine_readable:
+      execution:
+        produces:
+          extensions:
+            chronolex:
+              establishes:
+                - event: gekregen
+                  type: executogram
+                  fields: [kenmerk, bedrag]
+                  record_when: ontvangen
+{entry}
+        parameters:
+          - name: kenmerk
+            type: string
+            required: {required}
+        output:
+          - {{name: ontvangen, type: boolean}}
+          - {{name: bedrag, type: number}}
+        actions:
+          - {{output: ontvangen, value: true}}
+          - {{output: bedrag, value: 1}}
+"
+        )
+    }
+
+    fn gekregen() -> Event {
+        Event {
+            name: "gekregen".into(),
+            establishes: "ontvangstwet#1".into(),
+            stage: None,
+            reads: Vec::new(),
+        }
+    }
+
+    fn derive_receipt(entry: &str, required: bool) -> Result<Shape> {
+        let service = service(&[receipt(entry, required)]);
+        derive(&service, &gekregen(), day("2024-06-01"))
+    }
+
+    #[test]
+    fn a_receipt_identified_by_a_required_parameter_is_a_shape() {
+        let shape = derive_receipt("                  identified_by: kenmerk", true).unwrap();
+        assert_eq!(shape.identified_by.as_deref(), Some("kenmerk"));
+    }
+
+    #[test]
+    fn a_receipt_that_cannot_tell_a_message_delivered_again_is_an_error() {
+        let e = derive_receipt("", true).unwrap_err();
+        assert!(matches!(e, crate::Error::Setup(_)), "{e}");
+        assert!(
+            e.to_string()
+                .contains("needs a required refers_to or identified_by"),
+            "{e}"
+        );
+        // A reference that is not required does not tell it either.
+        let optional =
+            "                  refers_to:\n                    opdracht: {to: ontvangstwet#1}";
+        let e = derive_receipt(optional, true).unwrap_err();
+        assert!(
+            e.to_string()
+                .contains("needs a required refers_to or identified_by"),
+            "{e}"
+        );
+        let required = "                  refers_to:\n                    opdracht: {to: ontvangstwet#1, required: true}";
+        derive_receipt(required, true).unwrap();
+    }
+
+    #[test]
+    fn a_receipt_identified_by_a_parameter_that_is_not_required_is_an_error() {
+        let e = derive_receipt("                  identified_by: kenmerk", false).unwrap_err();
+        assert!(e.to_string().contains("'kenmerk' is not required"), "{e}");
+    }
+
+    #[test]
+    fn a_receipt_identified_by_an_output_is_an_error() {
+        let e = derive_receipt("                  identified_by: bedrag", true).unwrap_err();
+        assert!(e.to_string().contains("'bedrag' is an output"), "{e}");
     }
 }

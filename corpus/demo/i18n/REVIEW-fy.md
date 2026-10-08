@@ -58,6 +58,10 @@ corrigeren.
   de achterkant in het zaaksysteem) zijn door een taalmodel vertaald. Twijfel
   bij `yntsjinning` voor "indiening", `rjochtskarakter` voor "rechtskarakter",
   `deitekene` voor "gedagtekend" en `Saken` als kop van het bord.
+- **`zaak.chronicle.undelivered`** (een bericht aan een andere partij dat nog
+  niet aankwam, de outbox) is door een taalmodel vertaald. Twijfel bij
+  `oankaam` voor "aangekomen" en bij `biedt ... opnij oan` voor "biedt opnieuw
+  aan" in de zin van opnieuw bezorgen.
 
 ## 3. De banner over de wettekst
 

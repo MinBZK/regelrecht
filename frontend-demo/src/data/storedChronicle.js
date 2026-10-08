@@ -12,20 +12,25 @@ export function streamEventOf(cell, gram) {
 }
 
 /**
- * De gram waar de zaak van `gram` mee begon: de gram waar zijn verwijzingen,
- * direct of via een andere gram, op uitkomen en die zelf nergens naar
- * verwijst. Een verwijzing naar een gram die er niet is, telt niet.
+ * De gram waar de zaak van `gram` mee begon: volg steeds de eerste
+ * verwijzing (op naam, alfabetisch) naar de gram zonder verwijzing. Wijst die
+ * eerste verwijzing naar een gram die er niet is, dan houdt de weg daar op.
+ * `byId` bevat de grammen van één kroniek, die van `gram`.
+ * Precies zoals de cel het doet (`Chronicle::root_of`), zodat de demo een
+ * gram bij dezelfde zaak zet als de cel; ook de grens op het aantal stappen
+ * is die van de cel.
  */
 export function rootOf(gram, byId) {
   let current = gram;
-  const seen = new Set();
-  while (current && !seen.has(current.id)) {
-    seen.add(current.id);
-    const next = Object.values(current.refers_to ?? {}).map((id) => byId.get(id)).find(Boolean);
-    if (!next) return current.id;
+  if (!current) return null;
+  for (let i = 0; i <= byId.size; i += 1) {
+    const refs = current.refers_to ?? {};
+    const first = Object.keys(refs).sort()[0];
+    const next = first === undefined ? undefined : byId.get(refs[first]);
+    if (!next) break;
     current = next;
   }
-  return current?.id ?? null;
+  return current.id;
 }
 
 /** Een moment (RFC 3339) als getal om op te sorteren; ongeldig achteraan. */
@@ -48,13 +53,20 @@ export function storedChronicle(cell, grams) {
     .filter(({ gram }) => chronicles.has(gram.chronicle))
     .sort((a, b) => instant(a.gram.recorded_at) - instant(b.gram.recorded_at) || a.i - b.i)
     .map(({ gram }) => gram);
-  const byId = new Map(own.map((g) => [g.id, g]));
+  // De weg naar de eerste gram van de zaak blijft binnen één kroniek, zoals
+  // bij de cel (`Chronicle::root_of`): een verwijzing naar een gram in een
+  // andere kroniek van dezelfde cel houdt daar op.
+  const byChronicle = new Map();
+  for (const g of own) {
+    if (!byChronicle.has(g.chronicle)) byChronicle.set(g.chronicle, new Map());
+    byChronicle.get(g.chronicle).set(g.id, g);
+  }
   const position = new Map(own.map((g, i) => [g.id, i + 1]));
   return own.map((gram, i) => ({
     gram,
     position: i + 1,
     event: streamEventOf(cell, gram),
-    root: rootOf(gram, byId),
+    root: rootOf(gram, byChronicle.get(gram.chronicle)),
     references: Object.entries(gram.refers_to ?? {}).map(([role, id]) => ({ role, id, position: position.get(id) ?? null })),
   }));
 }

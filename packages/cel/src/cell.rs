@@ -891,8 +891,9 @@ impl Cell {
     /// about (a payment order this cell gave); each event takes the
     /// references its law declares, a required one must be there, and a name
     /// no event declares is refused. The grams hold and are recorded at
-    /// `now`. Which article receives what, is for the caller (the transport
-    /// between cells) to say; what arises, says the law.
+    /// `now`; see [`Self::receive_at`] for a message that arrived earlier.
+    /// Which article receives what, is for the caller (the transport between
+    /// cells) to say; what arises, says the law.
     pub fn receive(
         &mut self,
         service: &LawExecutionService,
@@ -901,7 +902,33 @@ impl Cell {
         inputs: BTreeMap<String, Input>,
         now: DateTime<FixedOffset>,
     ) -> Result<Vec<Gram>> {
-        let grams = self.receipt(service, article, &refers_to, &inputs, now)?;
+        self.receive_at(service, article, refers_to, inputs, now, now)
+    }
+
+    /// [`Self::receive`] of a message that arrived at `at`, recorded at
+    /// `now`: the grams hold from `at`, under the law of that day. The
+    /// transport delivers the bank's answer to an order at the moment of
+    /// that order, so the next order (which reads the case as of its own
+    /// moment) sees it; a message delivered late holds from when it arrived.
+    /// `at` after `now` is refused (a future fact is never recorded), and so
+    /// is `at` before a gram the message refers to.
+    ///
+    /// One answer per message: a message about a gram that already has a
+    /// gram of `article` referring to it under the same required name, or
+    /// whose identifying value (`identified_by`) a gram of `article` already
+    /// holds, is refused as [`Error::Answered`](crate::Error::Answered), so a
+    /// sender that delivers again (it did not hear the first delivery land)
+    /// records nothing twice.
+    pub fn receive_at(
+        &mut self,
+        service: &LawExecutionService,
+        article: &str,
+        refers_to: BTreeMap<String, String>,
+        inputs: BTreeMap<String, Input>,
+        at: DateTime<FixedOffset>,
+        now: DateTime<FixedOffset>,
+    ) -> Result<Vec<Gram>> {
+        let grams = self.receipt(service, article, &refers_to, &inputs, at, now)?;
         grams
             .into_iter()
             .map(|(gram, chronicle)| self.append(&chronicle, gram))
@@ -918,30 +945,46 @@ impl Cell {
         now: DateTime<FixedOffset>,
     ) -> Result<Vec<Gram>> {
         Ok(self
-            .receipt(service, article, &refers_to, &inputs, now)?
+            .receipt(service, article, &refers_to, &inputs, now, now)?
             .into_iter()
             .map(|(gram, _)| gram)
             .collect())
     }
 
-    /// Execute a receipt: the grams that arise, with their chronicle.
+    /// Execute a receipt of a message that arrived at `at`: the grams that
+    /// arise, with their chronicle, recorded at `now`.
     fn receipt(
         &self,
         service: &LawExecutionService,
         article: &str,
         refers_to: &BTreeMap<String, String>,
         inputs: &BTreeMap<String, Input>,
+        at: DateTime<FixedOffset>,
         now: DateTime<FixedOffset>,
     ) -> Result<Vec<(Gram, String)>> {
-        let today = now.date_naive();
-        // What the message is about decides the law: the receipt of an
-        // answer to a gram that concerns a period is judged under the law of
-        // that period, as that gram was; otherwise under the law of today.
-        // The shapes and the execution both use that day.
-        let period = refers_to
+        if at > now {
+            return Err(refused(format!(
+                "{article}: a message that arrives at {at} is not yet received at {now}"
+            )));
+        }
+        let today = at.date_naive();
+        let referred: Vec<&Gram> = refers_to
             .values()
             .filter_map(|id| self.chronicles.values().find_map(|c| c.find(id)))
-            .find_map(|g| g.period);
+            .collect();
+        for gram in &referred {
+            if lexostatus::moment(gram, &gram.effective_at)? > at {
+                return Err(refused(format!(
+                    "{article}: a message at {at} about '{}', which holds from {}",
+                    gram.id, gram.effective_at
+                )));
+            }
+        }
+        // What the message is about decides the law: the receipt of an
+        // answer to a gram that concerns a period is judged under the law of
+        // that period, as that gram was; otherwise under the law of the day
+        // it arrived. The shapes and the execution both use that day.
+        let period = referred.iter().find_map(|g| g.period);
         let day = period.and_then(|p| p.first_day()).unwrap_or(today);
         let mut shapes: Vec<(Shape, String)> = Vec::new();
         for stream in &self.config.streams {
@@ -967,6 +1010,7 @@ impl Cell {
                 )));
             }
         }
+        self.check_answered(article, &shapes, refers_to, inputs)?;
         // One execution of the article: every output that says whether a
         // gram arises, and every output a gram holds.
         let mut asked: Vec<&str> = Vec::new();
@@ -1012,6 +1056,7 @@ impl Cell {
                 .collect();
             self.check_references(&shape, &chronicle, &mine)?;
             let mut gram = self.gram(&shape, &chronicle, now);
+            gram.effective_at = at.to_rfc3339();
             gram.regulation = Some(shape.law_id.clone());
             gram.regulation_valid_from = result.regulation_valid_from.clone();
             gram.period = period;
@@ -1021,6 +1066,68 @@ impl Cell {
             out.push((gram, chronicle));
         }
         Ok(out)
+    }
+
+    /// Whether the message already has its answer: a gram of `article` (one
+    /// of the receipt events in `shapes`) that refers to the same gram under
+    /// the same required name, or that holds the same value of the
+    /// parameter that identifies the message (`identified_by`). Refused as
+    /// [`Error::Answered`](crate::Error::Answered) if so; a message without
+    /// that identifying value is refused outright.
+    fn check_answered(
+        &self,
+        article: &str,
+        shapes: &[(Shape, String)],
+        refers_to: &BTreeMap<String, String>,
+        inputs: &BTreeMap<String, Input>,
+    ) -> Result<()> {
+        for (shape, chronicle) in shapes {
+            // A message without its identifying value could not be told
+            // from another: refused, not taken as new.
+            if let Some(key) = &shape.identified_by {
+                if !inputs.contains_key(key) {
+                    return Err(refused(format!(
+                        "{article}: the message has no '{key}', which identifies it"
+                    )));
+                }
+            }
+            let Some(grams) = self.chronicles.get(chronicle) else {
+                continue;
+            };
+            if let Some(key) = &shape.identified_by {
+                let Some(value) = inputs.get(key).map(|i| &i.value) else {
+                    continue;
+                };
+                let answered = grams.grams().iter().find(|g| {
+                    g.establishes == article
+                        && shapes.iter().any(|(s, _)| s.event == g.name)
+                        && g.fields.get(key) == Some(value)
+                });
+                if let Some(answer) = answered {
+                    return Err(crate::Error::Answered(format!(
+                        "{key} {value} already has its answer under {article} ('{}', {})",
+                        answer.id, answer.name
+                    )));
+                }
+            }
+            for (name, _) in shape.refers_to.iter().filter(|(_, r)| r.required) {
+                let Some(id) = refers_to.get(name) else {
+                    continue;
+                };
+                let answered = grams.grams().iter().find(|g| {
+                    g.establishes == article
+                        && shapes.iter().any(|(s, _)| s.event == g.name)
+                        && g.refers_to.get(name) == Some(id)
+                });
+                if let Some(answer) = answered {
+                    return Err(crate::Error::Answered(format!(
+                        "'{id}' already has its answer under {article} as '{name}' ('{}', {})",
+                        answer.id, answer.name
+                    )));
+                }
+            }
+        }
+        Ok(())
     }
 
     /// The days up to `through` on which the execution `event` is executed
@@ -1195,8 +1302,12 @@ impl Cell {
             }
         }
 
+        // The case as it holds at the moment of this execution, not at
+        // `now`: an execution of a day the clock passed (several missed
+        // months in one step) sees only what held before it, such as the
+        // answer to the order of the month before, never a later one.
         let mut inputs: BTreeMap<String, Input> = self
-            .read_case(service, event, root, now)?
+            .read_case(service, event, root, effective_at)?
             .into_iter()
             .filter(|(name, _)| shape.parameters.contains(name))
             .collect();

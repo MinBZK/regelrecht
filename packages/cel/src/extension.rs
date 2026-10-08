@@ -28,6 +28,11 @@
 //!         executed_on: {parameter: maand, once_per: month, day: 1}
 //!         record_when: betaling_in_maand
 //!         until: {stage: EINDE}
+//!       - event: bijgeschreven           # on receipt, once per reference
+//!         type: executogram
+//!         fields: [kenmerk, bedrag]
+//!         record_when: wordt_bijgeschreven
+//!         identified_by: kenmerk
 //! ```
 
 use std::collections::BTreeMap;
@@ -102,6 +107,15 @@ pub struct Establishment {
     /// if it is true: the law says when a gram arises, not the cell.
     #[serde(default)]
     pub record_when: Option<String>,
+    /// For a receipt (an execution with `record_when` and no
+    /// `executed_on`): the parameter whose value identifies the message,
+    /// such as the reference of a payment order. The cell records one
+    /// answer per value: a message whose value a gram of the article
+    /// already holds is refused as answered, so a sender that delivers again
+    /// records nothing twice, also when the message refers to no gram of
+    /// the receiving cell.
+    #[serde(default)]
+    pub identified_by: Option<String>,
     /// For an execution: no gram arises once the case has a gram of this
     /// stage (what follows from it is derived, not recorded).
     #[serde(default)]
@@ -283,10 +297,12 @@ pub fn of_article(article: &Article, reference: &str) -> Result<Option<Chronolex
 ///   submission of that kind with what it asks of the belanghebbende, and
 ///   with `produces.moment` as the moment that counts (Awb 4:13 lid 1).
 ///
-/// `None` if the law says none of this. What the law says the fact concerns
+/// `None` if the law says none of this; an error if it says something the
+/// cell cannot record, such as a decision on more than one submission. What
+/// the law says the fact concerns
 /// (its period) is read where the decision is executed, from the parameter
 /// with origin role TIJDVAK ([`crate::shape`]).
-pub fn derive(article: &Article, decision_stages: &[&Stage]) -> Option<Chronolex> {
+pub fn derive(article: &Article, decision_stages: &[&Stage]) -> Result<Option<Chronolex>, String> {
     let produces = article.get_produces();
     let moment = produces.and_then(|p| p.moment.as_ref());
     let effective_at = moment.map(|m| EffectiveAt {
@@ -308,7 +324,14 @@ pub fn derive(article: &Article, decision_stages: &[&Stage]) -> Option<Chronolex
     } else if let Some(on) = produces
         .filter(|p| p.legal_character.as_deref() == Some("BESCHIKKING"))
         .and_then(|p| p.decides_on.as_ref())
-        .and_then(|d| d.first())
+        .map(|d| match d.as_slice() {
+            [one] => Ok(one),
+            more => Err(format!(
+                "decides_on names {} submissions; a decision is taken on one",
+                more.len()
+            )),
+        })
+        .transpose()?
     {
         for stage in decision_stages {
             let dated_by = moment.and_then(|m| m.parameter.clone()).or_else(|| {
@@ -359,8 +382,8 @@ pub fn derive(article: &Article, decision_stages: &[&Stage]) -> Option<Chronolex
             ..Default::default()
         });
     }
-    (!establishes.is_empty()).then_some(Chronolex {
+    Ok((!establishes.is_empty()).then_some(Chronolex {
         establishes,
         derived: true,
-    })
+    }))
 }

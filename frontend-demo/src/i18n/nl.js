@@ -290,6 +290,7 @@ export default {
   'zaak.view.chronicle': 'Kroniek',
   'zaak.chronicle.hint': 'De feiten van deze zaak zoals de uitvoerder ze vastlegt: elk feit zegt welk artikel het vestigt en welk moment rechtens telt.',
   'zaak.chronicle.failed': 'De kroniek kon dit niet vastleggen',
+  'zaak.chronicle.undelivered': 'Een bericht aan een andere partij is nog niet aangekomen. De demo biedt het bij elke stap van de klok opnieuw aan.',
   'chronicle.read_failed': 'De kroniek kon dit niet lezen',
   'zaak.chronicle.application': 'Aanvraag, gevestigd door {law}',
   'zaak.chronicle.decision': 'Besluit, gevestigd door {law}',

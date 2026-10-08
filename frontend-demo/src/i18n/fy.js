@@ -246,6 +246,7 @@ export default {
   "zaak.view.chronicle": "Kronyk",
   "zaak.chronicle.hint": "De feiten fan dizze saak sa't de útfierder se fêstleit: elk feit seit hokker artikel it fêstiget en hokker momint rjochtlik telt.",
   "zaak.chronicle.failed": "De kronyk koe dit net fêstlizze",
+  "zaak.chronicle.undelivered": "In berjocht oan in oare partij is noch net oankaam. De demo biedt it by elke stap fan de klok opnij oan.",
   "chronicle.read_failed": "De kronyk koe dit net lêze",
   "zaak.chronicle.application": "Oanfraach, fêstige troch {law}",
   "zaak.chronicle.decision": "Beslút, fêstige troch {law}",

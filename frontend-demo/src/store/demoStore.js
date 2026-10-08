@@ -30,7 +30,7 @@ import { materialiseRecord, tablesFromProfiles } from '../data/materialize.js';
 import { addMonths, comingDates, dayOf, decisionDue, fixedDates, nextExecution, nextMoment, periodEnd } from '../data/moments.js';
 import { advanceTo as advanceClock, executeDue as executeDueOn } from '../data/clock.js';
 import { lexostatusRows } from '../data/chronicleView.js';
-import { deliver } from '../data/channels.js';
+import { deliver, deliveryErrors, redeliver } from '../data/channels.js';
 import { accountOf as accountFrom } from '../data/account.js';
 import { activeLocale, t } from '../i18n/index.js';
 
@@ -65,6 +65,11 @@ function defaultState() {
     // aanvraag zoals de wet haar vraagt, en het besluit erop. De cel leeft in
     // het geheugen van de WASM-module; dit is wat ervan bewaard blijft.
     grams: [],
+    // De berichten tussen de cellen die niet aankwamen (`deliver` in
+    // channels.js): de afzender, zijn gram en het kanaal, met de fout en de
+    // zaak (`tag.caseId`). Elke stap van de klok, en bij het laden, biedt de
+    // demo ze opnieuw aan; pas wat aankwam, verdwijnt eruit.
+    outbox: [],
     presenterName: '',
     // 'zaal' of 'zelfstandig'. Zaal is de standaard: daar staat een presentator
     // voor een publiek en is het scherm van de demo. De dia's met een route
@@ -267,6 +272,7 @@ async function boot() {
       engine.value = markRaw(await prepareEngine(corpus.value));
       reregister();
       startCells();
+      flushOutbox();
       ready.value = true;
     } catch (e) {
       loadError.value = e;
@@ -531,40 +537,88 @@ function executionsOf(chrono) {
 }
 
 /**
- * Breng wat cel `cellId` net vastlegde (`gram`) over de kanalen naar andere
- * cellen (`channels` in demo-config.yaml), en wat daar ontstaat weer verder:
- * de betaalopdracht naar de bank, het antwoord van de bank terug. Elke
- * ontvangende cel legt vast op `now`. Een fout van een cel gaat naar de
- * aanroeper, zoals bij het uitvoeren zelf.
+ * Hoe een cel een bericht over een kanaal ontvangt: op `now` vastgelegd, en
+ * geldend vanaf het moment waarop het vertrok (`sentAt`, het moment van de
+ * gram die het draagt), zodat het antwoord van de bank op een opdracht van
+ * een gepasseerde maand vóór de opdracht van de maand erna ligt. Zonder
+ * `sentAt` (opnieuw bezorgd uit de outbox) komt het nu aan. Nooit later dan
+ * nu: een feit ligt nooit in de toekomst.
  */
-function transport(cellId, gram, now) {
-  const channels = corpus.value?.config?.channels ?? [];
-  if (!gram || !channels.length) return [];
-  return deliver(gram, cellId, channels, (to, article, refersTo, inputs) => {
+function receiveOn(now) {
+  return (to, article, refersTo, inputs, sentAt) => {
     const wasmCell = cells.value[to];
     if (!wasmCell) throw new Error(`Kanaal naar cel ${to}, die niet is gestart`);
-    return wasmCell.receive(engine.value, article, refersTo, inputs, now);
-  });
+    const at = sentAt && Date.parse(sentAt) <= Date.parse(now) ? sentAt : now;
+    return wasmCell.receive(engine.value, article, refersTo, inputs, now, at);
+  };
+}
+
+/** Zet wat niet aankwam in de outbox, één keer per gram en kanaal. */
+function keepUndelivered(undelivered) {
+  for (const u of undelivered) {
+    const same = (x) => x.cellId === u.cellId && x.gramId === u.gramId && x.channel === u.channel;
+    state.outbox = [...(state.outbox ?? []).filter((x) => !same(x)), u];
+  }
+}
+
+/**
+ * Zet op elke zaak de fout van wat er voor haar nog in de outbox staat
+ * (`deliveryError`), en haal hem weg als er niets meer staat. De fout volgt
+ * zo de outbox: hij verdwijnt pas als het bericht aankwam, en een nieuw
+ * besluit of een stap van de klok wist hem niet zolang het er nog staat.
+ */
+function syncDeliveryErrors() {
+  const errors = deliveryErrors(state.outbox);
+  for (const c of state.cases) c.deliveryError = errors[c.id] ?? null;
+}
+
+/**
+ * Breng wat cel `cellId` net vastlegde (`gram`) over de kanalen naar andere
+ * cellen (`channels` in demo-config.yaml), en wat daar ontstaat weer verder:
+ * de betaalopdracht naar de bank, het antwoord van de bank terug. Wat niet
+ * aankomt, gaat in de outbox (met de zaak `caseId`), en de fout op de zaak.
+ */
+function transport(cellId, gram, now, caseId) {
+  const channels = corpus.value?.config?.channels ?? [];
+  if (!gram || !channels.length) return;
+  const { undelivered } = deliver(gram, cellId, channels, receiveOn(now), { caseId });
+  keepUndelivered(undelivered);
+  syncDeliveryErrors();
+}
+
+/**
+ * Bied de outbox opnieuw aan, nu (bij elke stap van de klok en bij het
+ * laden). Wat aankomt verdwijnt eruit, ook een antwoord dat de ontvanger al
+ * had; wat weer faalt, blijft staan met de fout op zijn zaak.
+ */
+function flushOutbox() {
+  if (!engine.value) return;
+  if (state.outbox?.length) {
+    const channels = corpus.value?.config?.channels ?? [];
+    const gramOf = (cellId, id) => cells.value[cellId]?.grams().find((g) => g.id === id);
+    state.outbox = redeliver(state.outbox, channels, gramOf, receiveOn(nowMoment())).undelivered;
+    syncGrams();
+  }
+  syncDeliveryErrors();
 }
 
 /**
  * De cel van een wet zoals de klok haar aanspreekt: met de engine erbij.
- * `onTransportError` krijgt een fout van het transport na een uitvoering: de
- * uitvoering zelf is dan al vastgelegd en telt als gedaan, zodat de klok die
- * dag niet opnieuw vraagt.
+ * Wat de cel bij een uitvoering vastlegt, gaat meteen over de kanalen naar
+ * de andere cellen, voor de zaak `caseId`. Een bericht dat niet aankomt, gaat
+ * in de outbox: de uitvoering zelf is dan al vastgelegd en telt als gedaan,
+ * zodat de klok die dag niet opnieuw vraagt, en het bericht wordt bij de
+ * volgende stap opnieuw aangeboden. Ook kanalen die rondlopen eindigen zo in
+ * de outbox, met die fout op de zaak.
  */
-function celOf(chrono, onTransportError = () => {}) {
+function celOf(chrono, caseId = null) {
   const cell = chrono.wasmCell;
   return {
     dueExecutions: (event, root, after, through, now) => cell.dueExecutions(engine.value, event, root, after, through, now),
     // Wat de cel vastlegt, gaat meteen over de kanalen verder.
     execute: (event, root, day, now) => {
       const gram = cell.execute(engine.value, event, root, day, now);
-      try {
-        transport(chrono.cell.id, gram, now);
-      } catch (e) {
-        onTransportError(e);
-      }
+      transport(chrono.cell.id, gram, now, caseId);
       return gram;
     },
     previewExecution: (event, root, day, now) => cell.previewExecution(engine.value, event, root, day, now),
@@ -582,10 +636,7 @@ function executeDue(c) {
   const chrono = chronolexFor(corpus.value?.lawById(c.lawId));
   if (!chrono) return;
   const events = executionsOf(chrono).map((x) => x.event);
-  const failed = (e) => {
-    c.chronicleError = String(e?.message ?? e);
-  };
-  executeDueOn(c, celOf(chrono, failed), events, { today: state.referenceDate, now: nowMoment() });
+  executeDueOn(c, celOf(chrono, c.id), events, { today: state.referenceDate, now: nowMoment() });
   // Ook wat de kanalen in andere cellen vastlegden, en wat er vóór een fout lukte.
   syncGrams();
 }
@@ -724,6 +775,9 @@ function advanceTo(date) {
     setToday: (day) => {
       state.referenceDate = day;
       reregister();
+      // Wat eerder niet aankwam, eerst: het antwoord op de opdracht van
+      // vorige maand hoort er te zijn vóór de opdracht van deze maand.
+      flushOutbox();
     },
     cases: open,
     momentsOf: nextMoments,

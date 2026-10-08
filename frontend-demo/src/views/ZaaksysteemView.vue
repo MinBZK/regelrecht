@@ -406,6 +406,7 @@ function claimLawName(cl) {
               <nldd-button appearance="secondary" size="sm" start-icon="code" :text="t('zaak.chronicle.stored')" @click="showStored(selected)"></nldd-button>
             </nldd-button-group>
             <nldd-banner v-if="selected.chronicleError" variant="warning" :text="t('zaak.chronicle.failed')" :supporting-text="selected.chronicleError"></nldd-banner>
+            <nldd-banner v-if="selected.deliveryError" variant="warning" :text="t('zaak.chronicle.undelivered')" :supporting-text="selected.deliveryError"></nldd-banner>
             <nldd-banner v-if="selected.chronicleNoteKey" variant="neutral" :text="t(selected.chronicleNoteKey)"></nldd-banner>
             <!-- De feiten: elke gram van de zaak op het moment dat rechtens
                  telt, de aanvraag, de besluiten en elke betaalde termijn. -->

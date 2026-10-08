@@ -61,6 +61,13 @@ articles:
             type: array
             source: {}
         output:
+          # Hulpuitvoer: het kenmerk van de aanvraag, buiten de FOREACH
+          # gelezen. Binnen de FOREACH is `$root` het veld `root` van de
+          # gram zelf (een veld van het element schaduwt een parameter met
+          # dezelfde naam, RFC-016), dus zou elke gram bij de aanvraag horen.
+          - name: aanvraag_van_het_voorschot
+            type: string
+            description: Het kenmerk van de aanvraag waarnaar gevraagd wordt.
           # Lid 1. Hulpuitvoer: de plaats in de tijd van het voorschot dat
           # geldt; null als er op deze aanvraag geen voorschot is.
           - name: laatste_voorschot
@@ -94,6 +101,8 @@ articles:
               article: '2'
               paragraph: '1'
         actions:
+          - output: aanvraag_van_het_voorschot
+            value: $root
           # Lid 1. Het wetsformaat kent geen LAST: het laatste besluit is het
           # besluit met de hoogste plaats in de tijd.
           - output: laatste_voorschot
@@ -105,7 +114,7 @@ articles:
                 operation: AND
                 conditions:
                   - {operation: EQUALS, subject: $g.stage, value: VOORSCHOT}
-                  - {operation: EQUALS, subject: $g.root, value: $root}
+                  - {operation: EQUALS, subject: $g.root, value: $aanvraag_van_het_voorschot}
               body: $g.sequence
               combine: MAX
           # Lid 2 tot en met 4. Eén besluit: ADD over één waarde geeft die
@@ -169,11 +178,20 @@ articles:
             type: array
             source: {}
         output:
+          # Hulpuitvoer: het kenmerk van de aanvraag, buiten de FOREACH
+          # gelezen. Binnen de FOREACH is `$root` het veld `root` van de
+          # gram zelf (een veld van het element schaduwt een parameter met
+          # dezelfde naam, RFC-016), dus zou elke gram bij de aanvraag horen.
+          - name: aanvraag_van_de_rekening
+            type: string
+            description: Het kenmerk van de aanvraag waarnaar gevraagd wordt.
           - name: rekeningnummer
             type: string
             nullable: true
             description: De rekening die de aanvrager in de aanvraag opgaf.
         actions:
+          - output: aanvraag_van_de_rekening
+            value: $root
           - output: rekeningnummer
             value:
               operation: IF
@@ -185,8 +203,8 @@ articles:
                       operation: FOREACH
                       collection: $grams
                       as: g
-                      filter: {operation: EQUALS, subject: $g.id, value: $root}
-                      body: {operation: EQUALS, subject: $g.id, value: $root}
+                      filter: {operation: EQUALS, subject: $g.id, value: $aanvraag_van_de_rekening}
+                      body: {operation: EQUALS, subject: $g.id, value: $aanvraag_van_de_rekening}
                       combine: OR
                   then: null
                 # Een aanvraag zonder rekening. ADD over één null is een
@@ -195,7 +213,7 @@ articles:
                     operation: FOREACH
                     collection: $grams
                     as: g
-                    filter: {operation: EQUALS, subject: $g.id, value: $root}
+                    filter: {operation: EQUALS, subject: $g.id, value: $aanvraag_van_de_rekening}
                     body: {operation: EQUALS, subject: $g.rekeningnummer, value: null}
                     combine: OR
                   then: null
@@ -203,7 +221,7 @@ articles:
                 operation: FOREACH
                 collection: $grams
                 as: g
-                filter: {operation: EQUALS, subject: $g.id, value: $root}
+                filter: {operation: EQUALS, subject: $g.id, value: $aanvraag_van_de_rekening}
                 body: $g.rekeningnummer
                 combine: ADD
 
@@ -226,12 +244,21 @@ articles:
             type: array
             source: {}
         output:
+          # Hulpuitvoer: het kenmerk van de aanvraag, buiten de FOREACH
+          # gelezen. Binnen de FOREACH is `$root` het veld `root` van de
+          # gram zelf (een veld van het element schaduwt een parameter met
+          # dezelfde naam, RFC-016), dus zou elke gram bij de aanvraag horen.
+          - name: aanvraag_van_de_achterstand
+            type: string
+            description: Het kenmerk van de aanvraag waarnaar gevraagd wordt.
           - name: achterstallig_bedrag
             type: amount
             type_spec:
               unit: eurocent
             description: Wat van eerdere betaalopdrachten niet is bijgeschreven en nog niet opnieuw is opgedragen.
         actions:
+          - output: aanvraag_van_de_achterstand
+            value: $root
           - output: achterstallig_bedrag
             value:
               operation: SUBTRACT
@@ -243,7 +270,7 @@ articles:
                     operation: AND
                     conditions:
                       - {operation: EQUALS, subject: $g.event, value: betaling_mislukt}
-                      - {operation: EQUALS, subject: $g.root, value: $root}
+                      - {operation: EQUALS, subject: $g.root, value: $aanvraag_van_de_achterstand}
                   body: $g.mislukt_bedrag
                   combine: ADD
                 - operation: FOREACH
@@ -253,6 +280,6 @@ articles:
                     operation: AND
                     conditions:
                       - {operation: EQUALS, subject: $g.event, value: betaalopdracht_gegeven}
-                      - {operation: EQUALS, subject: $g.root, value: $root}
+                      - {operation: EQUALS, subject: $g.root, value: $aanvraag_van_de_achterstand}
                   body: $g.meegenomen_achterstand
                   combine: ADD

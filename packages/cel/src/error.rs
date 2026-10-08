@@ -15,6 +15,11 @@ pub enum Error {
     /// as "nothing more to come", so it has its own variant.
     #[error("ended: {0}")]
     Ended(String),
+    /// A message about a gram that already has its answer (one answer per
+    /// reference). A refusal too, but a sender that delivers again may read
+    /// it as "delivered", so it has its own variant.
+    #[error("answered: {0}")]
+    Answered(String),
     /// The engine failed.
     #[error("engine: {0}")]
     Engine(#[from] regelrecht_engine::EngineError),
@@ -37,6 +42,7 @@ impl Error {
             Error::Setup(_) => "setup",
             Error::Refused(_) => "refused",
             Error::Ended(_) => "ended",
+            Error::Answered(_) => "answered",
             Error::Engine(_) => "engine",
             Error::Io(_) => "io",
         }

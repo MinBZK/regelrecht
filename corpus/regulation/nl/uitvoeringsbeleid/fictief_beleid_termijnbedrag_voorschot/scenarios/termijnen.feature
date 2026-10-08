@@ -150,3 +150,88 @@ Feature: Termijnen van het voorschot op een tegemoetkoming
       | maand                | 2025-04-01 |
     When I evaluate "termijn_wordt_betaald" of "fictief_beleid_termijnbedrag_voorschot"
     Then output "termijn_wordt_betaald" is true
+
+  # Art. 1, de betaalopdracht: in een maand met een termijn, of zolang er een
+  # mislukte termijn openstaat. Het bedrag is de termijn plus wat openstaat;
+  # de bank voert haar uit op de dag van de opdracht, op de rekening uit de
+  # aanvraag.
+  Scenario: In een termijnmaand zonder achterstand is de opdracht de termijn
+    Given the following parameters:
+      | voorschotbedrag       | 100001             |
+      | dagtekening_voorschot | 2024-11-20         |
+      | berekeningsjaar       | 2025               |
+      | maand                 | 2024-12-01         |
+      | rekeningnummer        | NL00TEST0123456789 |
+      | achterstallig_bedrag  | 0                  |
+    When I evaluate outputs "opdracht_wordt_gegeven, meegenomen_achterstand, bedrag, rekeningnummer_begunstigde, uitvoerdatum" of "fictief_beleid_termijnbedrag_voorschot"
+    Then output "opdracht_wordt_gegeven" is true
+    And output "meegenomen_achterstand" equals 0
+    And output "bedrag" equals 8333
+    And output "rekeningnummer_begunstigde" equals "NL00TEST0123456789"
+    And output "uitvoerdatum" equals "2024-12-01"
+
+  Scenario: Een mislukte termijn gaat mee met de opdracht van de volgende termijn
+    Given the following parameters:
+      | voorschotbedrag       | 100001             |
+      | dagtekening_voorschot | 2024-11-20         |
+      | berekeningsjaar       | 2025               |
+      | maand                 | 2025-01-01         |
+      | rekeningnummer        | NL00TEST0123456789 |
+      | achterstallig_bedrag  | 8333               |
+    When I evaluate outputs "opdracht_wordt_gegeven, meegenomen_achterstand, termijnbedrag, bedrag" of "fictief_beleid_termijnbedrag_voorschot"
+    Then output "opdracht_wordt_gegeven" is true
+    And output "termijnbedrag" equals 8333
+    And output "meegenomen_achterstand" equals 8333
+    And output "bedrag" equals 16666
+
+  Scenario: Zonder termijn maar met een achterstand is er toch een opdracht
+    Given the following parameters:
+      | voorschotbedrag       | 100001             |
+      | dagtekening_voorschot | 2024-11-20         |
+      | berekeningsjaar       | 2025               |
+      | maand                 | 2025-12-01         |
+      | rekeningnummer        | NL00TEST0123456789 |
+      | achterstallig_bedrag  | 8338               |
+    When I evaluate outputs "opdracht_wordt_gegeven, termijnbedrag, bedrag" of "fictief_beleid_termijnbedrag_voorschot"
+    Then output "opdracht_wordt_gegeven" is true
+    And output "termijnbedrag" equals 0
+    And output "bedrag" equals 8338
+
+  Scenario: Zonder termijn en zonder achterstand is er geen opdracht
+    Given the following parameters:
+      | voorschotbedrag       | 100001             |
+      | dagtekening_voorschot | 2024-11-20         |
+      | berekeningsjaar       | 2025               |
+      | maand                 | 2025-12-01         |
+      | rekeningnummer        | NL00TEST0123456789 |
+      | achterstallig_bedrag  | 0                  |
+    When I evaluate "opdracht_wordt_gegeven" of "fictief_beleid_termijnbedrag_voorschot"
+    Then output "opdracht_wordt_gegeven" is false
+
+  # Art. 2, het antwoord van de bank: pas wat zij bijschreef is betaald;
+  # weigert zij, dan is de betaling mislukt voor het bedrag van de opdracht.
+  Scenario: De bank schreef de opdracht bij
+    Given the following parameters:
+      | bijgeschreven        | true  |
+      | bijgeschreven_bedrag | 16666 |
+      | bedrag_opdracht      | 16666 |
+      | reden_weigering      | null  |
+    When I evaluate outputs "uitgevoerd, niet_uitgevoerd, betaald_bedrag, mislukt_bedrag, reden" of "fictief_beleid_termijnbedrag_voorschot"
+    Then output "uitgevoerd" is true
+    And output "niet_uitgevoerd" is false
+    And output "betaald_bedrag" equals 16666
+    And output "mislukt_bedrag" equals 0
+    And output "reden" is absent
+
+  Scenario: De bank weigerde de opdracht
+    Given the following parameters:
+      | bijgeschreven        | false                |
+      | bijgeschreven_bedrag | 0                    |
+      | bedrag_opdracht      | 16666                |
+      | reden_weigering      | rekening geblokkeerd |
+    When I evaluate outputs "uitgevoerd, niet_uitgevoerd, betaald_bedrag, mislukt_bedrag, reden" of "fictief_beleid_termijnbedrag_voorschot"
+    Then output "uitgevoerd" is false
+    And output "niet_uitgevoerd" is true
+    And output "betaald_bedrag" equals 0
+    And output "mislukt_bedrag" equals 16666
+    And output "reden" equals "rekening geblokkeerd"

@@ -638,54 +638,120 @@ fn transport(
     order: &Gram,
     now: &str,
 ) -> (Gram, Gram) {
-    let field = |g: &Gram, name: &str| channel(g.fields[name].clone());
-    let mut credited = bank
-        .receive(
-            service,
-            BANK_TRANSFER,
-            BTreeMap::new(),
-            BTreeMap::from([
-                ("betaalkenmerk".to_string(), channel(json!(order.id))),
-                (
-                    "rekeningnummer".to_string(),
-                    field(order, "rekeningnummer_begunstigde"),
-                ),
-                ("bedrag".to_string(), field(order, "bedrag")),
-                ("uitvoerdatum".to_string(), field(order, "uitvoerdatum")),
-            ]),
-            at(now),
-        )
-        .unwrap_or_else(|e| panic!("bank: {e}"));
+    transport_at(service, toeslagen, bank, order, now, now)
+}
+
+/// [`transport`] of a message that arrived at `arrived` and is recorded at
+/// `now`, as the demo delivers after a clock step over several days: the
+/// order at its own moment, the answer at the moment of the bank's gram.
+fn transport_at(
+    service: &LawExecutionService,
+    toeslagen: &mut Cell,
+    bank: &mut Cell,
+    order: &Gram,
+    arrived: &str,
+    now: &str,
+) -> (Gram, Gram) {
+    let mut credited =
+        to_bank(service, bank, order, arrived, now).unwrap_or_else(|e| panic!("bank: {e}"));
     assert_eq!(credited.len(), 1, "{credited:?}");
     let at_bank = credited.remove(0);
-    let mut answered = toeslagen
-        .receive(
-            service,
-            TOESLAGEN_ANSWER,
-            BTreeMap::from([(
-                "betaalopdracht".to_string(),
-                at_bank.fields["betaalkenmerk"]
-                    .as_str()
-                    .unwrap()
-                    .to_string(),
-            )]),
-            BTreeMap::from([
-                (
-                    "bijgeschreven".to_string(),
-                    field(&at_bank, "bijgeschreven"),
-                ),
-                (
-                    "bijgeschreven_bedrag".to_string(),
-                    field(&at_bank, "bijgeschreven_bedrag"),
-                ),
-                ("bedrag_opdracht".to_string(), field(&at_bank, "bedrag")),
-                ("reden_weigering".to_string(), field(&at_bank, "reden")),
-            ]),
-            at(now),
-        )
+    let mut answered = answer(service, toeslagen, &at_bank, &at_bank.effective_at, now)
         .unwrap_or_else(|e| panic!("toeslagen: {e}"));
     assert_eq!(answered.len(), 1, "{answered:?}");
     (at_bank, answered.remove(0))
+}
+
+/// The bank receives the order (the first channel), arrived at `arrived`
+/// and recorded at `now`.
+fn to_bank(
+    service: &LawExecutionService,
+    bank: &mut Cell,
+    order: &Gram,
+    arrived: &str,
+    now: &str,
+) -> Result<Vec<Gram>, regelrecht_cel::Error> {
+    let field = |g: &Gram, name: &str| channel(g.fields[name].clone());
+    bank.receive_at(
+        service,
+        BANK_TRANSFER,
+        BTreeMap::new(),
+        BTreeMap::from([
+            ("betaalkenmerk".to_string(), channel(json!(order.id))),
+            (
+                "rekeningnummer".to_string(),
+                field(order, "rekeningnummer_begunstigde"),
+            ),
+            ("bedrag".to_string(), field(order, "bedrag")),
+            ("uitvoerdatum".to_string(), field(order, "uitvoerdatum")),
+        ]),
+        at(arrived),
+        at(now),
+    )
+}
+
+/// Toeslagen receives the bank's gram `at_bank` (the second channel).
+fn answer(
+    service: &LawExecutionService,
+    toeslagen: &mut Cell,
+    at_bank: &Gram,
+    arrived: &str,
+    now: &str,
+) -> Result<Vec<Gram>, regelrecht_cel::Error> {
+    let field = |g: &Gram, name: &str| channel(g.fields[name].clone());
+    toeslagen.receive_at(
+        service,
+        TOESLAGEN_ANSWER,
+        BTreeMap::from([(
+            "betaalopdracht".to_string(),
+            at_bank.fields["betaalkenmerk"]
+                .as_str()
+                .unwrap()
+                .to_string(),
+        )]),
+        BTreeMap::from([
+            ("bijgeschreven".to_string(), field(at_bank, "bijgeschreven")),
+            (
+                "bijgeschreven_bedrag".to_string(),
+                field(at_bank, "bijgeschreven_bedrag"),
+            ),
+            ("bedrag_opdracht".to_string(), field(at_bank, "bedrag")),
+            ("reden_weigering".to_string(), field(at_bank, "reden")),
+        ]),
+        at(arrived),
+        at(now),
+    )
+}
+
+/// What is in arrears on the application at `moment`, as the policy of
+/// Toeslagen reads it back (art. 3).
+fn arrears(cell: &Cell, service: &LawExecutionService, root: &str, moment: &str) -> i64 {
+    cell.read_case(service, "betaalopdracht_gegeven", root, at(moment))
+        .unwrap_or_else(|e| panic!("{e}"))["achterstallig_bedrag"]
+        .value
+        .as_i64()
+        .unwrap()
+}
+
+/// The order of `year`-`month`, executed at `now` (a later moment: the
+/// clock passed that month in one step).
+fn order_late(
+    cell: &mut Cell,
+    service: &LawExecutionService,
+    root: &str,
+    year: i32,
+    month: u32,
+    now: &str,
+) -> Gram {
+    cell.execute(
+        service,
+        "betaalopdracht_gegeven",
+        root,
+        format!("{year}-{month:02}-01").parse().unwrap(),
+        at(now),
+    )
+    .unwrap_or_else(|e| panic!("{year}-{month}: {e}"))
+    .unwrap_or_else(|| panic!("{year}-{month}: no order"))
 }
 
 /// A betaalopdracht goes to the bank, the bank credits it to the persona's
@@ -856,4 +922,412 @@ fn the_bank_refuses_an_unknown_account() {
     assert_eq!(grams.len(), 1);
     assert_eq!(grams[0].name, "overboeking_geweigerd");
     assert_eq!(grams[0].fields["reden"], "rekening onbekend");
+}
+
+/// The bank's answer delivered twice (the sender did not hear the first
+/// delivery land): the second is refused as answered and records nothing,
+/// so a refusal does not double what is in arrears and a credit does not
+/// double what is paid.
+#[test]
+fn a_second_answer_to_the_same_order_is_refused_as_answered() {
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    register_bank(&mut service, true);
+    let (mut cell, application, _) = with_voorschot(
+        &mut service,
+        data.path(),
+        "2024-11-04T10:15:00+01:00",
+        "2024-11-20T09:00:00+01:00",
+        79547,
+    );
+    let mut bank_cell = bank(&service, data.path(), "2024-12-01");
+    let december = order(&mut cell, &service, &application.id, 2024, 12).unwrap();
+    let (at_bank, first) = transport(
+        &service,
+        &mut cell,
+        &mut bank_cell,
+        &december,
+        "2024-12-01T11:00:00+01:00",
+    );
+    assert_eq!(first.name, "betaling_mislukt");
+    let before = cell.grams().count();
+    let e = answer(
+        &service,
+        &mut cell,
+        &at_bank,
+        "2024-12-02T09:00:00+01:00",
+        "2024-12-02T09:00:00+01:00",
+    )
+    .unwrap_err();
+    assert!(matches!(e, regelrecht_cel::Error::Answered(_)), "{e}");
+    assert_eq!(e.code(), "answered");
+    assert_eq!(cell.grams().count(), before);
+    assert_eq!(
+        arrears(
+            &cell,
+            &service,
+            &application.id,
+            "2024-12-15T12:00:00+01:00"
+        ),
+        amount(&december, "bedrag")
+    );
+}
+
+/// The order delivered to the bank twice (the sender did not hear the first
+/// delivery land): the bank identifies a transfer by its betaalkenmerk
+/// (`identified_by`), so the second is refused as answered and nothing is
+/// credited twice, although the order is no gram of the bank's own. Another
+/// order is credited as usual.
+#[test]
+fn a_second_transfer_with_the_same_reference_is_refused_by_the_bank() {
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    register_bank(&mut service, false);
+    let (mut cell, application, _) = with_voorschot(
+        &mut service,
+        data.path(),
+        "2024-11-04T10:15:00+01:00",
+        "2024-11-20T09:00:00+01:00",
+        79547,
+    );
+    let mut bank_cell = bank(&service, data.path(), "2024-12-01");
+    let december = order(&mut cell, &service, &application.id, 2024, 12).unwrap();
+    let first = to_bank(
+        &service,
+        &mut bank_cell,
+        &december,
+        "2024-12-01T11:00:00+01:00",
+        "2024-12-01T11:00:00+01:00",
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(first[0].name, "overboeking_bijgeschreven");
+    let before = bank_cell.grams().count();
+    let e = to_bank(
+        &service,
+        &mut bank_cell,
+        &december,
+        "2024-12-02T09:00:00+01:00",
+        "2024-12-02T09:00:00+01:00",
+    )
+    .unwrap_err();
+    assert!(matches!(e, regelrecht_cel::Error::Answered(_)), "{e}");
+    assert_eq!(bank_cell.grams().count(), before);
+
+    let january = order(&mut cell, &service, &application.id, 2025, 1).unwrap();
+    let next = to_bank(
+        &service,
+        &mut bank_cell,
+        &january,
+        "2025-01-01T11:00:00+01:00",
+        "2025-01-01T11:00:00+01:00",
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(next[0].name, "overboeking_bijgeschreven");
+}
+
+/// A transfer without its betaalkenmerk could not be told from another one
+/// delivered again: the bank refuses it rather than take it as new.
+#[test]
+fn a_transfer_without_its_identifying_value_is_refused() {
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    register_bank(&mut service, false);
+    let (mut cell, application, _) = with_voorschot(
+        &mut service,
+        data.path(),
+        "2024-11-04T10:15:00+01:00",
+        "2024-11-20T09:00:00+01:00",
+        79547,
+    );
+    let mut bank_cell = bank(&service, data.path(), "2024-12-01");
+    let december = order(&mut cell, &service, &application.id, 2024, 12).unwrap();
+    let field = |name: &str| channel(december.fields[name].clone());
+    let e = bank_cell
+        .receive_at(
+            &service,
+            BANK_TRANSFER,
+            BTreeMap::new(),
+            BTreeMap::from([
+                (
+                    "rekeningnummer".to_string(),
+                    field("rekeningnummer_begunstigde"),
+                ),
+                ("bedrag".to_string(), field("bedrag")),
+                ("uitvoerdatum".to_string(), field("uitvoerdatum")),
+            ]),
+            at("2024-12-01T11:00:00+01:00"),
+            at("2024-12-01T11:00:00+01:00"),
+        )
+        .unwrap_err();
+    assert_eq!(e.code(), "refused", "{e}");
+    assert!(e.to_string().contains("'betaalkenmerk'"), "{e}");
+    assert_eq!(bank_cell.grams().count(), 0);
+}
+
+/// A message is never recorded before it arrived: one that arrives after
+/// the moment of recording is a future fact, and is refused.
+#[test]
+fn a_message_that_arrives_after_now_is_refused() {
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    register_bank(&mut service, false);
+    let (mut cell, application, _) = with_voorschot(
+        &mut service,
+        data.path(),
+        "2024-11-04T10:15:00+01:00",
+        "2024-11-20T09:00:00+01:00",
+        79547,
+    );
+    let mut bank_cell = bank(&service, data.path(), "2024-12-01");
+    let december = order(&mut cell, &service, &application.id, 2024, 12).unwrap();
+    let e = to_bank(
+        &service,
+        &mut bank_cell,
+        &december,
+        "2024-12-02T11:00:00+01:00",
+        "2024-12-01T11:00:00+01:00",
+    )
+    .unwrap_err();
+    assert_eq!(e.code(), "refused", "{e}");
+    assert!(e.to_string().contains("not yet received"), "{e}");
+    assert_eq!(bank_cell.grams().count(), 0);
+}
+
+/// An answer about an order cannot hold before that order: a message that
+/// arrived before the gram it refers to is refused, and nothing is
+/// recorded.
+#[test]
+fn a_message_that_arrives_before_the_gram_it_refers_to_is_refused() {
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    register_bank(&mut service, false);
+    let (mut cell, application, _) = with_voorschot(
+        &mut service,
+        data.path(),
+        "2024-11-04T10:15:00+01:00",
+        "2024-11-20T09:00:00+01:00",
+        79547,
+    );
+    let mut bank_cell = bank(&service, data.path(), "2024-12-01");
+    let december = order(&mut cell, &service, &application.id, 2024, 12).unwrap();
+    let at_bank = to_bank(
+        &service,
+        &mut bank_cell,
+        &december,
+        "2024-12-01T11:00:00+01:00",
+        "2024-12-01T11:00:00+01:00",
+    )
+    .unwrap_or_else(|e| panic!("{e}"))
+    .remove(0);
+    let before = cell.grams().count();
+    let e = answer(
+        &service,
+        &mut cell,
+        &at_bank,
+        "2024-11-30T09:00:00+01:00",
+        "2024-12-01T12:00:00+01:00",
+    )
+    .unwrap_err();
+    assert_eq!(e.code(), "refused", "{e}");
+    assert!(e.to_string().contains(&december.id), "{e}");
+    assert_eq!(cell.grams().count(), before);
+}
+
+/// The clock passes December to March in one step, and the bank refuses
+/// December. Each order is read as of its own moment and each answer holds
+/// from the moment of its order: January carries December, February
+/// carries nothing, and what is in arrears is never negative in between.
+#[test]
+fn missed_months_in_one_step_carry_a_refusal_into_the_next_order_only() {
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    register_bank(&mut service, true);
+    let (mut cell, application, _) = with_voorschot(
+        &mut service,
+        data.path(),
+        "2024-11-04T10:15:00+01:00",
+        "2024-11-20T09:00:00+01:00",
+        79547,
+    );
+    let now = "2025-03-01T10:00:00+01:00";
+    let mut bank_cell = bank(&service, data.path(), "2025-03-01");
+    let root = application.id.clone();
+
+    let december = order_late(&mut cell, &service, &root, 2024, 12, now);
+    assert_eq!(december.effective_at, "2024-12-01T00:00:00+01:00");
+    let (_, answer) = transport_at(
+        &service,
+        &mut cell,
+        &mut bank_cell,
+        &december,
+        &december.effective_at,
+        now,
+    );
+    assert_eq!(answer.name, "betaling_mislukt");
+    assert_eq!(answer.effective_at, december.effective_at);
+    assert_eq!(answer.recorded_at, "2025-03-01T10:00:00+01:00");
+
+    register_bank(&mut service, false);
+    let january = order_late(&mut cell, &service, &root, 2025, 1, now);
+    assert_eq!(
+        january.fields["meegenomen_achterstand"],
+        december.fields["bedrag"]
+    );
+    let (_, paid) = transport_at(
+        &service,
+        &mut cell,
+        &mut bank_cell,
+        &january,
+        &january.effective_at,
+        now,
+    );
+    assert_eq!(paid.name, "voorschottermijn_betaald");
+    let february = order_late(&mut cell, &service, &root, 2025, 2, now);
+    assert_eq!(february.fields["meegenomen_achterstand"], 0);
+    for moment in [
+        "2024-12-15T12:00:00+01:00",
+        "2025-01-15T12:00:00+01:00",
+        "2025-02-15T12:00:00+01:00",
+    ] {
+        assert!(arrears(&cell, &service, &root, moment) >= 0, "{moment}");
+    }
+    assert_eq!(
+        arrears(&cell, &service, &root, "2025-01-15T12:00:00+01:00"),
+        0
+    );
+}
+
+/// An answer delivered late holds from when it arrived: the orders of the
+/// days the clock passed before it do not carry it (they did not know),
+/// the first order after it does. A message from the future is refused.
+#[test]
+fn a_late_answer_is_carried_by_the_first_order_after_it() {
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    register_bank(&mut service, true);
+    let (mut cell, application, _) = with_voorschot(
+        &mut service,
+        data.path(),
+        "2024-11-04T10:15:00+01:00",
+        "2024-11-20T09:00:00+01:00",
+        79547,
+    );
+    let root = application.id.clone();
+    let mut bank_cell = bank(&service, data.path(), "2024-12-01");
+    let december = order(&mut cell, &service, &root, 2024, 12).unwrap();
+    let mut refused = bank_cell
+        .receive(
+            &service,
+            BANK_TRANSFER,
+            BTreeMap::new(),
+            BTreeMap::from([
+                ("betaalkenmerk".to_string(), channel(json!(december.id))),
+                (
+                    "rekeningnummer".to_string(),
+                    channel(december.fields["rekeningnummer_begunstigde"].clone()),
+                ),
+                (
+                    "bedrag".to_string(),
+                    channel(december.fields["bedrag"].clone()),
+                ),
+                (
+                    "uitvoerdatum".to_string(),
+                    channel(december.fields["uitvoerdatum"].clone()),
+                ),
+            ]),
+            at("2024-12-01T11:00:00+01:00"),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+    let at_bank = refused.remove(0);
+    // The answer is lost on the way, and arrives on 1 March.
+    let now = "2025-03-01T10:00:00+01:00";
+    let e = answer(
+        &service,
+        &mut cell,
+        &at_bank,
+        "2025-03-02T10:00:00+01:00",
+        now,
+    )
+    .unwrap_err();
+    assert!(matches!(e, regelrecht_cel::Error::Refused(_)), "{e}");
+    register_bank(&mut service, false);
+    let january = order_late(
+        &mut cell,
+        &service,
+        &root,
+        2025,
+        1,
+        "2025-03-01T09:00:00+01:00",
+    );
+    assert_eq!(january.fields["meegenomen_achterstand"], 0);
+    answer(&service, &mut cell, &at_bank, now, now).unwrap_or_else(|e| panic!("{e}"));
+    let february = order_late(&mut cell, &service, &root, 2025, 2, now);
+    assert_eq!(february.fields["meegenomen_achterstand"], 0);
+    let march = order_late(
+        &mut cell,
+        &service,
+        &root,
+        2025,
+        3,
+        "2025-03-01T10:30:00+01:00",
+    );
+    assert_eq!(
+        march.fields["meegenomen_achterstand"],
+        december.fields["bedrag"]
+    );
+}
+
+/// The amount carried forward fails again: what is in arrears is the
+/// termijn of the failed order plus what it carried, and the next order
+/// carries all of it.
+#[test]
+fn a_carried_amount_that_fails_again_stays_in_arrears() {
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    register_bank(&mut service, true);
+    let (mut cell, application, _) = with_voorschot(
+        &mut service,
+        data.path(),
+        "2024-11-04T10:15:00+01:00",
+        "2024-11-20T09:00:00+01:00",
+        79547,
+    );
+    let root = application.id.clone();
+    let mut bank_cell = bank(&service, data.path(), "2024-12-01");
+    let december = order(&mut cell, &service, &root, 2024, 12).unwrap();
+    transport(
+        &service,
+        &mut cell,
+        &mut bank_cell,
+        &december,
+        "2024-12-01T11:00:00+01:00",
+    );
+    let january = order(&mut cell, &service, &root, 2025, 1).unwrap();
+    assert_eq!(
+        january.fields["meegenomen_achterstand"],
+        december.fields["bedrag"]
+    );
+    let (_, failed) = transport(
+        &service,
+        &mut cell,
+        &mut bank_cell,
+        &january,
+        "2025-01-01T11:00:00+01:00",
+    );
+    assert_eq!(failed.name, "betaling_mislukt");
+    assert_eq!(failed.fields["mislukt_bedrag"], january.fields["bedrag"]);
+    assert_eq!(
+        arrears(&cell, &service, &root, "2025-01-15T12:00:00+01:00"),
+        amount(&january, "bedrag")
+    );
+    register_bank(&mut service, false);
+    let february = order(&mut cell, &service, &root, 2025, 2).unwrap();
+    assert_eq!(
+        february.fields["meegenomen_achterstand"],
+        january.fields["bedrag"]
+    );
+    assert_eq!(
+        amount(&february, "bedrag"),
+        amount(&february, "termijnbedrag") + amount(&january, "bedrag")
+    );
 }
