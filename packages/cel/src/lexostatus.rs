@@ -49,17 +49,7 @@ pub(crate) fn in_force(chronicle: &Chronicle, as_of: DateTime<FixedOffset>) -> R
 }
 
 /// Reduce `chronicle` by `definition` to its parameters, as it holds at
-/// `as_of`.
-pub fn read(
-    definition: &LexostatusDefinition,
-    inputs: &Map<String, Value>,
-    chronicle: &Chronicle,
-    as_of: DateTime<FixedOffset>,
-) -> Result<Map<String, Value>> {
-    reduce(definition, inputs, chronicle, as_of).map(|(values, _)| values)
-}
-
-/// [`read`], with the grams the parameters come from: the one picked gram
+/// `as_of`, with the grams the parameters come from: the one picked gram
 /// (`pick: latest`), or every gram summed (`pick: all`, none for a sum of
 /// nothing), in the order they hold.
 pub fn reduce<'c>(

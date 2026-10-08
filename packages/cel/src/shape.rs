@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 
 use chrono::NaiveDate;
 use regelrecht_engine::{
-    Article, ExecutionOutcome, LawExecutionService, ProcedureMiss, StageInputs, Submission, Value,
+    Article, ExecutionOutcome, LawExecutionService, StageInputs, Submission, Value,
 };
 use regelrecht_law_model::{
     Origin, OriginRole, OriginValue, Output, Parameter, ParameterType, Stage,
@@ -150,13 +150,6 @@ fn declared_outputs(article: &Article) -> Vec<Output> {
         .unwrap_or_default()
 }
 
-fn outputs(article: &Article) -> Vec<String> {
-    declared_outputs(article)
-        .into_iter()
-        .map(|o| o.name)
-        .collect()
-}
-
 fn declared_parameters(article: &Article) -> Vec<Parameter> {
     article
         .get_execution_spec()
@@ -230,28 +223,10 @@ fn chronolex_of(
     if let Some(explicit) = extension::of_article(article, reference).map_err(setup)? {
         return Ok(Some(explicit));
     }
-    let produces = article.get_produces();
-    let procedure = match produces.and_then(|p| p.legal_character.as_deref()) {
-        None => None,
-        Some(lc) => {
-            let id = produces.and_then(|p| p.procedure_id.as_deref());
-            match service
-                .resolver()
-                .find_procedure_reported_at(lc, id, Some(day))
-            {
-                Ok(p) => Some(p),
-                Err(ProcedureMiss::NoneForCharacter) => None,
-                Err(ProcedureMiss::NamedNotFound(id)) => {
-                    let why = format!("names the procedure '{id}' for {lc}, and no law defines it");
-                    return Err(setup(format!("{reference}: {why}")));
-                }
-                Err(ProcedureMiss::DefaultDangling(id)) => {
-                    let why = format!("the default procedure '{id}' for {lc} is not defined");
-                    return Err(setup(format!("{reference}: {why}")));
-                }
-            }
-        }
-    };
+    let (law_id, _) = split_reference(reference)?;
+    let procedure = service
+        .procedure_of(law_id, article, Some(day))
+        .map_err(|e| setup(format!("{reference}: {e}")))?;
     let decision_stages: Vec<&Stage> = procedure
         .map(|p| {
             p.stages
@@ -348,7 +323,10 @@ pub fn derive(service: &LawExecutionService, event: &Event, day: NaiveDate) -> R
         period: entry.period.clone(),
         legal_character: produces.and_then(|p| p.legal_character.clone()),
         decision_type: produces.and_then(|p| p.decision_type.clone()),
-        outputs: outputs(article),
+        outputs: declared_outputs(article)
+            .into_iter()
+            .map(|o| o.name)
+            .collect(),
         parameters: declared_parameters(article)
             .into_iter()
             .map(|p| p.name)

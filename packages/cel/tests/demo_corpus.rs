@@ -7,7 +7,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use chrono::DateTime;
+use chrono::{DateTime, FixedOffset};
 use regelrecht_cel::cell::load_regulations;
 use regelrecht_cel::config::CellConfig;
 use regelrecht_cel::extension::{PeriodParameter, PeriodUnit};
@@ -21,6 +21,22 @@ const BSN: &str = "999993653";
 /// What the citizen expects to earn over 2025 (Awir 16), in eurocent.
 const ESTIMATE: i64 = 2_500_000;
 
+/// The values the lexostatus `name` of `cell` gives at `as_of`.
+fn read(
+    cell: &Cell,
+    service: &LawExecutionService,
+    name: &str,
+    inputs: &serde_json::Map<String, serde_json::Value>,
+    as_of: DateTime<FixedOffset>,
+) -> serde_json::Map<String, serde_json::Value> {
+    let reading = cell.read_lexostatus(service, name, inputs, as_of);
+    let reading = reading.unwrap_or_else(|e| panic!("{e}"));
+    reading
+        .values
+        .into_iter()
+        .map(|(k, i)| (k, i.value))
+        .collect()
+}
 fn demo() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/demo")
 }
@@ -348,6 +364,7 @@ fn pay(
         BTreeMap::from([("betaalopdracht".to_string(), order.id.clone())]),
         answer,
         at(&format!("{year}-{month:02}-01T11:00:00+01:00")),
+        at(&format!("{year}-{month:02}-01T11:00:00+01:00")),
     )
     .unwrap_or_else(|e| panic!("{year}-{month}: {e}"));
     Some(order)
@@ -672,7 +689,7 @@ fn to_bank(
     now: &str,
 ) -> Result<Vec<Gram>, regelrecht_cel::Error> {
     let field = |g: &Gram, name: &str| channel(g.fields[name].clone());
-    bank.receive_at(
+    bank.receive(
         service,
         BANK_TRANSFER,
         BTreeMap::new(),
@@ -699,7 +716,7 @@ fn answer(
     now: &str,
 ) -> Result<Vec<Gram>, regelrecht_cel::Error> {
     let field = |g: &Gram, name: &str| channel(g.fields[name].clone());
-    toeslagen.receive_at(
+    toeslagen.receive(
         service,
         TOESLAGEN_ANSWER,
         BTreeMap::from([(
@@ -783,8 +800,13 @@ fn the_bank_credits_the_order_and_toeslagen_records_it_paid() {
     // Nothing is paid before the bank says so.
     let root = json!({"root": application.id});
     let paid = |cell: &Cell, moment: &str| {
-        cell.read("uitbetaald", root.as_object().unwrap(), at(moment))
-            .unwrap()["uitbetaalde_voorschotten"]
+        read(
+            cell,
+            &service,
+            "uitbetaald",
+            root.as_object().unwrap(),
+            at(moment),
+        )["uitbetaalde_voorschotten"]
             .as_i64()
             .unwrap()
     };
@@ -847,13 +869,18 @@ fn a_blocked_account_fails_the_payment_and_the_next_order_retries_it() {
     assert_eq!(answer.refers_to["betaalopdracht"], december.id);
     assert_eq!(answer.fields["mislukt_bedrag"], december.fields["bedrag"]);
     let root = json!({"root": application.id});
-    let paid = |cell: &Cell, moment: &str| {
-        cell.read("uitbetaald", root.as_object().unwrap(), at(moment))
-            .unwrap()["uitbetaalde_voorschotten"]
+    let paid = |cell: &Cell, service: &LawExecutionService, moment: &str| {
+        read(
+            cell,
+            service,
+            "uitbetaald",
+            root.as_object().unwrap(),
+            at(moment),
+        )["uitbetaalde_voorschotten"]
             .as_i64()
             .unwrap()
     };
-    assert_eq!(paid(&cell, "2024-12-15T12:00:00+01:00"), 0);
+    assert_eq!(paid(&cell, &service, "2024-12-15T12:00:00+01:00"), 0);
     // Once per month: no second order in December (decided: the retry goes
     // with the next execution day, see the fictitious policy, art. 1).
     assert!(cell
@@ -887,7 +914,7 @@ fn a_blocked_account_fails_the_payment_and_the_next_order_retries_it() {
     assert_eq!(at_bank.name, "overboeking_bijgeschreven");
     assert_eq!(answer.name, "voorschottermijn_betaald");
     assert_eq!(
-        paid(&cell, "2025-01-01T12:00:00+01:00"),
+        paid(&cell, &service, "2025-01-01T12:00:00+01:00"),
         amount(&january, "bedrag")
     );
     // Nothing is in arrears any more: February pays its own termijn.
@@ -916,6 +943,7 @@ fn the_bank_refuses_an_unknown_account() {
                 ("bedrag".to_string(), channel(json!(1000))),
                 ("uitvoerdatum".to_string(), channel(json!("2025-01-01"))),
             ]),
+            at("2025-01-01T10:00:00+01:00"),
             at("2025-01-01T10:00:00+01:00"),
         )
         .unwrap_or_else(|e| panic!("{e}"));
@@ -1043,7 +1071,7 @@ fn a_transfer_without_its_identifying_value_is_refused() {
     let december = order(&mut cell, &service, &application.id, 2024, 12).unwrap();
     let field = |name: &str| channel(december.fields[name].clone());
     let e = bank_cell
-        .receive_at(
+        .receive(
             &service,
             BANK_TRANSFER,
             BTreeMap::new(),
@@ -1235,6 +1263,7 @@ fn a_late_answer_is_carried_by_the_first_order_after_it() {
                     channel(december.fields["uitvoerdatum"].clone()),
                 ),
             ]),
+            at("2024-12-01T11:00:00+01:00"),
             at("2024-12-01T11:00:00+01:00"),
         )
         .unwrap_or_else(|e| panic!("{e}"));

@@ -127,18 +127,6 @@ impl WasmCell {
         to_js(&gram)
     }
 
-    /// Read a lexostatus: the chronicle reduced to parameters, as it holds
-    /// at `asOf` (RFC 3339): a gram that holds only later does not count.
-    pub fn read(&self, lexostatus: &str, inputs: JsValue, as_of: &str) -> Result<JsValue, JsValue> {
-        let inputs: serde_json::Map<String, serde_json::Value> = from_js(inputs)?;
-        to_js(
-            &self
-                .cell
-                .read(lexostatus, &inputs, moment(as_of)?)
-                .map_err(cell_error)?,
-        )
-    }
-
     /// The parameters of the decision `event` on the application `root`, as
     /// the cell reads them from its chronicle at `now` (RFC 3339):
     /// `{name: {value, provenance}}`, ready for `decide`.
@@ -280,7 +268,7 @@ impl WasmCell {
     /// absent for `now`) is when the message arrived; the grams hold from
     /// then. Returns the grams recorded (none, one, or more). A message about
     /// a gram that already has its answer fails with name `answered`. See
-    /// `Cell::receive_at`.
+    /// `Cell::receive`.
     pub fn receive(
         &mut self,
         engine: &WasmEngine,
@@ -299,7 +287,7 @@ impl WasmCell {
         let now = moment(now)?;
         let grams = self
             .cell
-            .receive_at(
+            .receive(
                 engine.service(),
                 article,
                 refers_to,

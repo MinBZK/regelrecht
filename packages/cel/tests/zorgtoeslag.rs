@@ -48,6 +48,23 @@ fn regulations() -> LawExecutionService {
     service
 }
 
+/// The values the lexostatus `name` of `cell` gives at `as_of`.
+fn read(
+    cell: &Cell,
+    service: &LawExecutionService,
+    name: &str,
+    inputs: &serde_json::Map<String, serde_json::Value>,
+    as_of: DateTime<FixedOffset>,
+) -> serde_json::Map<String, serde_json::Value> {
+    let reading = cell.read_lexostatus(service, name, inputs, as_of);
+    let reading = reading.unwrap_or_else(|e| panic!("{e}"));
+    reading
+        .values
+        .into_iter()
+        .map(|(k, i)| (k, i.value))
+        .collect()
+}
+
 fn at(moment: &str) -> DateTime<FixedOffset> {
     DateTime::parse_from_rfc3339(moment).unwrap()
 }
@@ -261,13 +278,8 @@ fn toeslagen_decides_on_the_application_and_records_the_decision() {
         .unwrap();
 
     // 1. The cell reads the application back from its chronicle.
-    let read = cell
-        .read(
-            "aanvraag",
-            &object(json!({"root": application.id})),
-            received,
-        )
-        .unwrap();
+    let root = object(json!({"root": application.id}));
+    let read = read(&cell, &service, "aanvraag", &root, received);
     assert_eq!(
         serde_json::Value::Object(read.clone()),
         json!({
@@ -449,13 +461,7 @@ fn toeslagen_decides_on_the_application_and_records_the_decision() {
     // The chronicle survives the cell: a new cell reads it back.
     drop(cell);
     let cell = self::cell(&service, data.path(), decided);
-    let read_again = cell
-        .read(
-            "aanvraag",
-            &object(json!({"root": application.id})),
-            decided,
-        )
-        .unwrap();
+    let read_again = self::read(&cell, &service, "aanvraag", &root, decided);
     assert_eq!(read_again, read);
 }
 
@@ -694,9 +700,8 @@ fn a_chronicle_in_memory_reads_back_what_it_was_given() {
         received.date_naive(),
     )
     .unwrap();
-    let read = again
-        .read("aanvraag", &object(json!({"root": gram.id})), received)
-        .unwrap();
+    let root = object(json!({"root": gram.id}));
+    let read = read(&again, &service, "aanvraag", &root, received);
     assert_eq!(read["bsn"], BSN);
 
     // A gram given twice is refused, not silently kept twice.
@@ -1021,6 +1026,7 @@ fn answer(
             BTreeMap::from([("betaalopdracht".to_string(), order.id.clone())]),
             inputs,
             at(&format!("{day}T11:00:00+01:00")),
+            at(&format!("{day}T11:00:00+01:00")),
         )
         .unwrap_or_else(|e| panic!("{day}: {e}"));
     assert_eq!(grams.len(), 1, "one answer: {grams:?}");
@@ -1236,7 +1242,7 @@ fn a_reading_counts_only_what_holds_at_its_moment() {
     );
     let root = object(json!({"root": application.id}));
     let paid = |cell: &Cell, moment: &str| {
-        cell.read("uitbetaald", &root, at(moment)).unwrap()["uitbetaalde_voorschotten"]
+        read(cell, &service, "uitbetaald", &root, at(moment))["uitbetaalde_voorschotten"]
             .as_i64()
             .unwrap()
     };

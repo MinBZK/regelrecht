@@ -108,16 +108,6 @@ pub enum Read {
     Regulation { regulation: String },
 }
 
-impl Read {
-    /// The lexostatus it names, if it names one.
-    pub fn lexostatus(&self) -> Option<&str> {
-        match self {
-            Read::Lexostatus(name) => Some(name),
-            Read::Regulation { .. } => None,
-        }
-    }
-}
-
 impl std::fmt::Display for Read {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

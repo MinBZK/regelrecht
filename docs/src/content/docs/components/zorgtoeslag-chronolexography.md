@@ -240,7 +240,7 @@ What has yet to happen is no fact. The Chronicle on a case shows, below the gram
 | `until: {stage: TOEKENNING}` | the cell | Any installment once the case has a toekenning (error kind `ended`) |
 | A required reference | the cell | An installment without a voorschot, or a bank answer without an order |
 | One answer per message | the cell (error kind `answered`): by the reference for Toeslagen, by `identified_by` (the betaalkenmerk) for the bank | A second answer to the same order, or a second transfer of it, when a message is offered again |
-| The moment of a received message | the cell (`receive_at`) | A message that holds after the moment of recording, or before the gram it refers to |
+| The moment of a received message | the cell (`receive`) | A message that holds after the moment of recording, or before the gram it refers to |
 | Recording order | the chronicle | A gram recorded before the chronicle's last one |
 | `on` not after `now` | the cell | Executing a day that has not come yet |
 | A decision already in the case | the demo (`decisionGrams`) | Recording the same decision twice |

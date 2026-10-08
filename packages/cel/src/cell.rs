@@ -10,7 +10,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Map;
 
 use crate::chronicle::{Chronicle, Gram, Period};
-use crate::config::{CellConfig, Derivation, LexostatusDefinition, Read, Reduction};
+use crate::config::{
+    CellConfig, Derivation, Event, LexostatusDefinition, Read, Reduction, Register, Stream,
+};
 use crate::error::{refused, setup, Result};
 use crate::extension::{Every, ExecutedOn};
 use crate::lexostatus;
@@ -184,13 +186,7 @@ impl Cell {
         // A policy that reads a register must be bound with the engine, or
         // its input reads as unknown at the first decision.
         for r in &config.registers {
-            if !register::is_bound(service, &config.id, r) {
-                return Err(setup(format!(
-                    "register '{}' of cell '{}' is not bound with the engine (register::bind)",
-                    r.key(),
-                    config.id
-                )));
-            }
+            check_bound(service, &config.id, r)?;
         }
         let mut cell = Self {
             config,
@@ -242,6 +238,35 @@ impl Cell {
         &self.config
     }
 
+    fn chronicle(&self, name: &str) -> Result<&Chronicle> {
+        self.chronicles
+            .get(name)
+            .ok_or_else(|| setup(format!("no chronicle '{name}'")))
+    }
+
+    fn event(&self, name: &str) -> Result<(&Stream, &Event)> {
+        self.config.event(name).ok_or_else(|| {
+            refused(format!(
+                "cell '{}' records no event '{name}'",
+                self.config.id
+            ))
+        })
+    }
+
+    /// The register policy `policy` reads, bound with the engine, and its
+    /// chronicle; `None` if the policy reads no register of the cell.
+    fn register(
+        &self,
+        service: &LawExecutionService,
+        policy: &str,
+    ) -> Result<Option<(&Register, &Chronicle)>> {
+        let Some(register) = self.config.registers.iter().find(|r| r.policy == policy) else {
+            return Ok(None);
+        };
+        check_bound(service, &self.config.id, register)?;
+        Ok(Some((register, self.chronicle(&register.chronicle)?)))
+    }
+
     /// Every gram, per chronicle in recording order.
     pub fn grams(&self) -> impl Iterator<Item = &Gram> {
         self.chronicles.values().flat_map(|c| c.grams())
@@ -254,12 +279,7 @@ impl Cell {
         event: &str,
         day: NaiveDate,
     ) -> Result<(Shape, String)> {
-        let (stream, e) = self.config.event(event).ok_or_else(|| {
-            refused(format!(
-                "cell '{}' records no event '{event}'",
-                self.config.id
-            ))
-        })?;
+        let (stream, e) = self.event(event)?;
         Ok((
             shape::derive_for(service, e, day)?,
             stream.chronicle.clone(),
@@ -352,37 +372,16 @@ impl Cell {
         self.append(&chronicle, gram)
     }
 
-    /// Read a lexostatus: the cell's chronicle reduced to parameters, as it
-    /// holds at `as_of` (the moment the cell reads; a gram that holds only
-    /// later does not count).
-    pub fn read(
-        &self,
-        lexostatus: &str,
-        inputs: &Map<String, serde_json::Value>,
-        as_of: DateTime<FixedOffset>,
-    ) -> Result<Map<String, serde_json::Value>> {
-        let (definition, chronicle) = self
-            .configured(lexostatus)?
-            .ok_or_else(|| refused(format!("no lexostatus '{lexostatus}'")))?;
-        lexostatus::read(definition, inputs, chronicle, as_of)
-    }
-
     /// The lexostatus `name` in the cell configuration with the chronicle it
     /// reads; `None` if the configuration has none of that name.
     fn configured(&self, name: &str) -> Result<Option<(&LexostatusDefinition, &Chronicle)>> {
         let Some(definition) = self.config.lexostatuses.iter().find(|l| l.name == name) else {
             return Ok(None);
         };
-        let chronicle = self
-            .chronicles
-            .get(&definition.reduction.chronicle)
-            .ok_or_else(|| {
-                setup(format!(
-                    "lexostatus '{name}' reads chronicle '{}', which the cell does not keep",
-                    definition.reduction.chronicle
-                ))
-            })?;
-        Ok(Some((definition, chronicle)))
+        Ok(Some((
+            definition,
+            self.chronicle(&definition.reduction.chronicle)?,
+        )))
     }
 
     /// Every lexostatus of the cell and how it reduces the chronicle: first
@@ -413,7 +412,7 @@ impl Cell {
                 name: l.name.clone(),
                 inputs: l.inputs.clone(),
                 reduction: l.reduction.clone(),
-                read_by: read_by(&|r| r.lexostatus() == Some(l.name.as_str())),
+                read_by: read_by(&|r| matches!(r, Read::Lexostatus(n) if *n == l.name)),
             });
         }
         for register in &self.config.registers {
@@ -482,7 +481,7 @@ impl Cell {
                 grams: grams.iter().map(|g| g.id.clone()).collect(),
             });
         }
-        let Some(register) = self.config.registers.iter().find(|r| r.policy == name) else {
+        let Some((_, chronicle)) = self.register(service, name)? else {
             return Err(refused(format!("no lexostatus '{name}'")));
         };
         let root = inputs
@@ -493,13 +492,6 @@ impl Cell {
             .read_policy(service, name, root, as_of)?
             .into_iter()
             .collect();
-        let chronicle = self.chronicles.get(&register.chronicle).ok_or_else(|| {
-            setup(format!(
-                "register '{}' is chronicle '{}', which the cell does not keep",
-                register.key(),
-                register.chronicle
-            ))
-        })?;
         let grams = lexostatus::in_force(chronicle, as_of)?
             .into_iter()
             .filter(|g| chronicle.root_of(g) == root)
@@ -605,12 +597,7 @@ impl Cell {
         root: &str,
         as_of: DateTime<FixedOffset>,
     ) -> Result<BTreeMap<String, Input>> {
-        let (_, e) = self.config.event(event).ok_or_else(|| {
-            refused(format!(
-                "cell '{}' records no event '{event}'",
-                self.config.id
-            ))
-        })?;
+        let (_, e) = self.event(event)?;
         if e.reads.is_empty() {
             return Err(refused(format!(
                 "event '{event}' reads nothing for its case (`reads` in its stream)"
@@ -622,11 +609,16 @@ impl Cell {
         let mut from: BTreeMap<String, String> = BTreeMap::new();
         for source in &e.reads {
             let values: Vec<(String, Input)> = match source {
-                Read::Lexostatus(lexostatus) => self
-                    .read(lexostatus, &inputs, as_of)?
-                    .into_iter()
-                    .map(|(name, value)| (name, from_lexostatus(value, lexostatus)))
-                    .collect(),
+                Read::Lexostatus(lexostatus) => {
+                    let (definition, chronicle) = self
+                        .configured(lexostatus)?
+                        .ok_or_else(|| refused(format!("no lexostatus '{lexostatus}'")))?;
+                    lexostatus::reduce(definition, &inputs, chronicle, as_of)?
+                        .0
+                        .into_iter()
+                        .map(|(name, value)| (name, from_lexostatus(value, lexostatus)))
+                        .collect()
+                }
                 Read::Regulation { regulation } => {
                     self.read_policy(service, regulation, root, as_of)?
                 }
@@ -655,26 +647,9 @@ impl Cell {
         root: &str,
         as_of: DateTime<FixedOffset>,
     ) -> Result<Vec<(String, Input)>> {
-        let register = self
-            .config
-            .registers
-            .iter()
-            .find(|r| r.policy == policy)
+        let (register, chronicle) = self
+            .register(service, policy)?
             .ok_or_else(|| setup(format!("policy '{policy}' reads no register of the cell")))?;
-        if !register::is_bound(service, &self.config.id, register) {
-            return Err(setup(format!(
-                "register '{}' of cell '{}' is not bound with the engine (register::bind)",
-                register.key(),
-                self.config.id
-            )));
-        }
-        let chronicle = self.chronicles.get(&register.chronicle).ok_or_else(|| {
-            setup(format!(
-                "register '{}' is chronicle '{}', which the cell does not keep",
-                register.key(),
-                register.chronicle
-            ))
-        })?;
         let outputs = service
             .get_law_info(policy)
             .map(|i| i.outputs)
@@ -801,13 +776,7 @@ impl Cell {
         }
 
         let period_parameter = shape.period.as_ref().map(|p| p.parameter.clone());
-        let period = period(
-            &shape,
-            period_parameter
-                .as_ref()
-                .and_then(|p| merged.get(p))
-                .map(|i| &i.value),
-        )?;
+        let period = period(&shape, &merged)?;
         let day = period.map_or(today, |(_, d)| d);
         let shape = if day == today {
             shape
@@ -864,10 +833,7 @@ impl Cell {
                 shape.event
             ))
         })?;
-        let grams = self
-            .chronicles
-            .get(chronicle)
-            .ok_or_else(|| setup(format!("no chronicle '{chronicle}'")))?;
+        let grams = self.chronicle(chronicle)?;
         let gram = grams
             .find(id)
             .ok_or_else(|| refused(format!("no gram '{id}' in chronicle '{chronicle}'")))?;
@@ -978,11 +944,10 @@ impl Cell {
         // but goes to the article only if the stage asks it.
         let period_parameter = shape.period.as_ref().map(|p| p.parameter.clone());
         let asked = asked(&at);
-        let parameters: BTreeMap<String, Value> = inputs
-            .iter()
-            .filter(|(k, _)| asked.contains(&k.as_str()) || Some(*k) != period_parameter.as_ref())
-            .map(|(k, i)| (k.clone(), Value::from(&i.value)))
-            .collect();
+        let parameters =
+            values(inputs.iter().filter(|(k, _)| {
+                asked.contains(&k.as_str()) || Some(*k) != period_parameter.as_ref()
+            }));
         let (_, article_number) = shape::split_reference(&shape.establishes)?;
         let result = service.execute_stage_at(
             &shape.law_id,
@@ -1072,23 +1037,11 @@ impl Cell {
     /// `refers_to` names the grams of this cell the received message is
     /// about (a payment order this cell gave); each event takes the
     /// references its law declares, a required one must be there, and a name
-    /// no event declares is refused. The grams hold and are recorded at
-    /// `now`; see [`Self::receive_at`] for a message that arrived earlier.
-    /// Which article receives what, is for the caller (the transport between
-    /// cells) to say; what arises, says the law.
-    pub fn receive(
-        &mut self,
-        service: &LawExecutionService,
-        article: &str,
-        refers_to: BTreeMap<String, String>,
-        inputs: BTreeMap<String, Input>,
-        now: DateTime<FixedOffset>,
-    ) -> Result<Vec<Gram>> {
-        self.receive_at(service, article, refers_to, inputs, now, now)
-    }
-
-    /// [`Self::receive`] of a message that arrived at `at`, recorded at
-    /// `now`: the grams hold from `at`, under the law of that day. The
+    /// no event declares is refused. Which article receives what, is for the
+    /// caller (the transport between cells) to say; what arises, says the law.
+    ///
+    /// The message arrived at `at` and is recorded at `now`: the grams hold
+    /// from `at`, under the law of that day. The
     /// transport delivers the bank's answer to an order at the moment of
     /// that order, so the next order (which reads the case as of its own
     /// moment) sees it; a message delivered late holds from when it arrived.
@@ -1101,7 +1054,7 @@ impl Cell {
     /// holds, is refused as [`Error::Answered`](crate::Error::Answered), so a
     /// sender that delivers again (it did not hear the first delivery land)
     /// records nothing twice.
-    pub fn receive_at(
+    pub fn receive(
         &mut self,
         service: &LawExecutionService,
         article: &str,
@@ -1115,22 +1068,6 @@ impl Cell {
             .into_iter()
             .map(|(gram, chronicle)| self.append(&chronicle, gram))
             .collect()
-    }
-
-    /// The grams [`Self::receive`] would record, without recording them.
-    pub fn preview_receipt(
-        &self,
-        service: &LawExecutionService,
-        article: &str,
-        refers_to: BTreeMap<String, String>,
-        inputs: BTreeMap<String, Input>,
-        now: DateTime<FixedOffset>,
-    ) -> Result<Vec<Gram>> {
-        Ok(self
-            .receipt(service, article, &refers_to, &inputs, now, now)?
-            .into_iter()
-            .map(|(gram, _)| gram)
-            .collect())
     }
 
     /// Execute a receipt of a message that arrived at `at`: the grams that
@@ -1209,27 +1146,16 @@ impl Cell {
                 }
             }
         }
-        let result = service.evaluate_law(
-            &law_id,
-            &asked,
-            inputs
-                .iter()
-                .map(|(k, i)| (k.clone(), Value::from(&i.value)))
-                .collect(),
-            &day.to_string(),
-        )?;
+        let result =
+            service.evaluate_law(&law_id, &asked, values(inputs.iter()), &day.to_string())?;
         let mut out = Vec::new();
         for (shape, chronicle) in shapes {
-            let when = shape.record_when.clone().unwrap_or_default();
-            match result.outputs.get(&when) {
-                Some(Value::Bool(true)) => {}
-                Some(Value::Bool(false)) => continue,
-                other => {
-                    return Err(setup(format!(
-                        "{}: '{when}' says whether '{}' arises, and is {other:?}",
-                        shape.establishes, shape.event
-                    )))
-                }
+            if !arises(
+                &shape,
+                &result.outputs,
+                shape.record_when.as_deref().unwrap_or_default(),
+            )? {
+                continue;
             }
             let mine: BTreeMap<String, String> = refers_to
                 .iter()
@@ -1405,10 +1331,7 @@ impl Cell {
         root: &str,
         now: DateTime<FixedOffset>,
     ) -> Result<(&Chronicle, Vec<&Gram>)> {
-        let grams = self
-            .chronicles
-            .get(chronicle)
-            .ok_or_else(|| setup(format!("no chronicle '{chronicle}'")))?;
+        let grams = self.chronicle(chronicle)?;
         if grams.find(root).is_none() {
             return Err(refused(format!(
                 "no gram '{root}' in chronicle '{chronicle}'"
@@ -1506,14 +1429,7 @@ impl Cell {
                 provenance: serde_json::json!({"source": "execution"}),
             },
         );
-        let period = period(
-            &shape,
-            shape
-                .period
-                .as_ref()
-                .and_then(|p| inputs.get(&p.parameter))
-                .map(|i| &i.value),
-        )?;
+        let period = period(&shape, &inputs)?;
         let day = period.map_or(on, |(_, d)| d);
         let shape = if day == today {
             shape
@@ -1531,21 +1447,11 @@ impl Cell {
         let result = service.evaluate_law(
             &shape.law_id,
             &asked,
-            inputs
-                .iter()
-                .map(|(k, i)| (k.clone(), Value::from(&i.value)))
-                .collect(),
+            values(inputs.iter()),
             &day.to_string(),
         )?;
-        match result.outputs.get(&when) {
-            Some(Value::Bool(true)) => {}
-            Some(Value::Bool(false)) => return Ok(None),
-            other => {
-                return Err(setup(format!(
-                    "{}: '{when}' says whether '{event}' arises, and is {other:?}",
-                    shape.establishes
-                )))
-            }
+        if !arises(&shape, &result.outputs, &when)? {
+            return Ok(None);
         }
 
         let mut gram = self.gram(&shape, &chronicle, now);
@@ -1575,10 +1481,7 @@ impl Cell {
                 )));
             }
         }
-        let grams = self
-            .chronicles
-            .get(chronicle)
-            .ok_or_else(|| setup(format!("no chronicle '{chronicle}'")))?;
+        let grams = self.chronicle(chronicle)?;
         for (name, reference) in &shape.refers_to {
             let Some(id) = refers_to.get(name) else {
                 if reference.required {
@@ -1651,6 +1554,36 @@ fn fields_of(
                 })
         })
         .collect()
+}
+
+/// The values of `inputs`, as the engine takes them.
+fn values<'a>(inputs: impl Iterator<Item = (&'a String, &'a Input)>) -> BTreeMap<String, Value> {
+    inputs
+        .map(|(k, i)| (k.clone(), Value::from(&i.value)))
+        .collect()
+}
+
+/// Whether the law says a gram of `shape` arises: its boolean output `when`.
+fn arises(shape: &Shape, outputs: &BTreeMap<String, Value>, when: &str) -> Result<bool> {
+    match outputs.get(when) {
+        Some(Value::Bool(b)) => Ok(*b),
+        other => Err(setup(format!(
+            "{}: '{when}' says whether '{}' arises, and is {other:?}",
+            shape.establishes, shape.event
+        ))),
+    }
+}
+
+/// Refused unless the register is bound with the engine ([`register::bind`]):
+/// a policy that reads it would read nothing.
+fn check_bound(service: &LawExecutionService, cell: &str, r: &Register) -> Result<()> {
+    if register::is_bound(service, cell, r) {
+        return Ok(());
+    }
+    Err(setup(format!(
+        "register '{}' of cell '{cell}' is not bound with the engine (register::bind)",
+        r.key()
+    )))
 }
 
 /// The inputs as a gram records them: per parameter its value and where it
@@ -1760,19 +1693,22 @@ fn asked(at: &StageInputs) -> Vec<&str> {
         .collect()
 }
 
-/// The period a decision of `shape` concerns, from `value` (the value of the
-/// parameter that gives it), with the day the law of that period is the law
-/// on; `None` if the law names no period.
-fn period(shape: &Shape, value: Option<&serde_json::Value>) -> Result<Option<(Period, NaiveDate)>> {
+/// The period a decision of `shape` concerns, from the parameter in `inputs`
+/// that gives it, with the day the law of that period is the law on; `None`
+/// if the law names no period.
+fn period(shape: &Shape, inputs: &BTreeMap<String, Input>) -> Result<Option<(Period, NaiveDate)>> {
     let Some(declared) = &shape.period else {
         return Ok(None);
     };
-    let value = value.ok_or_else(|| {
-        refused(format!(
-            "'{}' concerns the period '{}' gives ({}), and nothing gives it",
-            shape.event, declared.parameter, shape.establishes
-        ))
-    })?;
+    let value = inputs
+        .get(&declared.parameter)
+        .map(|i| &i.value)
+        .ok_or_else(|| {
+            refused(format!(
+                "'{}' concerns the period '{}' gives ({}), and nothing gives it",
+                shape.event, declared.parameter, shape.establishes
+            ))
+        })?;
     value
         .as_i64()
         .and_then(|v| i32::try_from(v).ok())

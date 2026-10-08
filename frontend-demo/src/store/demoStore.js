@@ -29,7 +29,6 @@ import { applicationValues, eventsForLaw, gramsOfCase as gramsFor, momentOn } fr
 import { materialiseRecord, tablesFromProfiles } from '../data/materialize.js';
 import { addMonths, comingDates, dayOf, decisionDue, fixedDates, nextExecution, nextMoment, periodEnd } from '../data/moments.js';
 import { advanceTo as advanceClock, executeDue as executeDueOn } from '../data/clock.js';
-import { lexostatusRows } from '../data/chronicleView.js';
 import { readingRows } from '../data/lexostatusView.js';
 import { deliver, deliveryErrors, redeliver } from '../data/channels.js';
 import { accountOf as accountFrom } from '../data/account.js';
@@ -901,15 +900,9 @@ function gramShape(gram) {
  */
 function receivedOf(c) {
   const chrono = c?.applicationGramId ? chronolexFor(corpus.value?.lawById(c.lawId)) : null;
-  const lexostatus = chrono ? corpus.value?.config?.received?.[chrono.cell.id] : null;
-  if (!lexostatus) return { rows: [], error: null };
-  try {
-    const values = chrono.wasmCell.read(lexostatus, { root: c.applicationGramId }, nowMoment());
-    const fields = chrono.wasmCell.lexostatusFields(engine.value, lexostatus, state.referenceDate);
-    return { rows: lexostatusRows(values, fields, corpus.value), error: null };
-  } catch (e) {
-    return { rows: [], error: String(e?.message ?? e) };
-  }
+  const name = chrono ? corpus.value?.config?.received?.[chrono.cell.id] : null;
+  if (!name) return { rows: [], error: null };
+  return readLexostatusOf(chrono.cell.id, { name, kind: 'configuration' }, c.applicationGramId);
 }
 
 /**
