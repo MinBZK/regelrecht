@@ -8,6 +8,7 @@
  */
 import * as yaml from 'js-yaml';
 import { DEFAULT_LOCALE, LOCALES } from '../i18n/index.js';
+import { caseRefsFor } from './caseRefs.js';
 
 let corpusPromise = null;
 
@@ -76,6 +77,11 @@ export function loadCorpus() {
       const cur = latestById.get(law.id);
       if (!cur || law.valid_from > cur.valid_from) latestById.set(law.id, law);
     }
+    // Wat een wet uit de besloten zaken van een andere wet leest, zodat de
+    // graaf die samenhang toont (data/caseRefs.js, graph/lawGraph.js).
+    const latestByPath = (lawPath, service) =>
+      [...latestById.values()].find((l) => l.law_path === lawPath && (!service || l.service === service)) ?? null;
+    for (const law of laws) law.caseRefs = caseRefsFor(law, bindings, latestByPath);
     return {
       laws,
       latestById,

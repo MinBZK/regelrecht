@@ -27,28 +27,25 @@ articles:
       execution:
         produces:
           legal_character: BESCHIKKING
-          decision_type: ANDERE_HANDELING
+          decision_type: AANSLAG
         parameters:
           - name: kvk_nummer
             type: string
             required: true
         input:
+          # De verleende terrasvergunning en de oppervlakte die ze vergunt, uit de
+          # vergunningenadministratie van de gemeente. Niet door de APV opnieuw
+          # laten uitrekenen: die kent alleen de voorwaarden voor een aanvraag, en
+          # wat er gevraagd is weet alleen de aanvrager. De belasting gaat over wat
+          # er verleend is.
           - name: heeft_actieve_vergunning
             type: boolean
-            source:
-              regulation: algemene_plaatselijke_verordening/terrassen
-              output: heeft_actieve_vergunning
-              parameters:
-                kvk_nummer: $kvk_nummer
+            source: {}
             temporal:
               type: point_in_time
           - name: vergunde_oppervlakte
             type: number
-            source:
-              regulation: algemene_plaatselijke_verordening/terrassen
-              output: vergunde_oppervlakte
-              parameters:
-                kvk_nummer: $kvk_nummer
+            source: {}
             temporal:
               type: point_in_time
           - name: vestigingsadres

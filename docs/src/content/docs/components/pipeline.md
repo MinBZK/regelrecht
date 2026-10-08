@@ -185,8 +185,27 @@ windows of at most `ENRICH_MAX_ARTICLES_PER_RUN` articles (default 15) and owns
 the cursor itself: it lives in `.enrichment.yaml` on the `enrich/{provider}`
 branch, each chunk pushes its own result, and the next chunk is queued in the
 same transaction that completes the current one. A law of N articles is done in
-at most `ceil(N / 15)` successful runs, whatever the model does. Task-flow
-enrichments (`deliver: task`) always take the whole law.
+at most `ceil(N / 15)` successful runs, whatever the model does.
+
+Task-flow enrichments (`deliver: task`) walk the same windows but push nothing.
+Each window is its own job with its own review tasks. The next job takes the
+current job's result as its input blobs: the proposal, so the next window
+builds on what this one enriched, and `.enrichment.yaml`, which carries the
+cursor. A window's review tasks cover the articles that window changed. The
+last window is wider: its closing reconcile pass and binding check run over the
+whole law, so it can also carry tasks for articles from earlier windows.
+
+A new law (`new_law`, from an upload or a harvest into a traject) is created as
+a whole, so its windows produce no review task along the way. Only the last
+window does, with the complete law as one proposal. If a window fails for good,
+the requester gets a failure task and the earlier windows' work is lost; the
+law has to be uploaded or harvested again.
+
+When an existing law takes more than one window, a window whose proposal cannot
+be compared article by article fails and is retried, the last window included.
+It does not fall back to one task for the whole law, because that proposal also
+contains the earlier windows' articles, and approving it would silently restore
+changes a reviewer had rejected.
 
 Within one window, `ENRICH_SESSION_REUSE` decides how the translation pass and
 the feedback rounds of the gates share an agent session: all of them (`window`,
@@ -269,6 +288,14 @@ translation pass, a feedback round per gate, the closing pass and the final
 schema gate. The worker lowers it when the job budget cannot hold that many,
 so raising `LLM_TIMEOUT_SECS` without raising `WORKER_JOB_TIMEOUT_SECS` buys
 nothing.
+
+The shares are not equal. The translation pass writes every
+`machine_readable` in its window and is capped at three shares of the job
+budget, less a 30 s reserve; each feedback round the run may make is capped at
+one, counted from `ENRICH_FEEDBACK_ROUNDS`. A lower `LLM_TIMEOUT_SECS` stays as
+it is. With `WORKER_JOB_TIMEOUT_SECS=3900` and one round per gate the caps are
+1290 s for the translation and 430 s per round, where an even split gave each
+call about 550 s. More rounds per gate make every share smaller.
 
 ## Database Schema
 

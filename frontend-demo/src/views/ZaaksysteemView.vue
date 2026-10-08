@@ -115,6 +115,14 @@ function personaName(bsn) {
   // changed) is stated as a fact, not passed off as a name.
   return corpus.value?.profiles?.profiles?.[bsn]?.name ?? t('zaak.unknown_person', { bsn });
 }
+// Wie de zaak betreft. Een aanvraag namens een onderneming gaat over die
+// onderneming en heeft geen BSN; dan staat haar naam er, of haar KvK-nummer.
+function subjectName(c) {
+  if (c.acting?.subjectType === 'BUSINESS') return c.acting.subjectName;
+  if (c.bsn) return personaName(c.bsn);
+  if (c.kvk) return t('zaak.portaal.kvk', { number: c.kvk });
+  return personaName(c.bsn);
+}
 function lawOf(c) {
   return corpus.value?.lawById(c.lawId) ?? null;
 }
@@ -156,7 +164,7 @@ function outputRows(c) {
   }));
 }
 
-const caseClaims = computed(() => (selected.value ? state.claims.filter((cl) => cl.caseId === selected.value.id || (cl.bsn === selected.value.bsn && cl.tileLawId === selected.value.lawId)) : []));
+const caseClaims = computed(() => (selected.value ? state.claims.filter((cl) => cl.caseId === selected.value.id || (cl.bsn === (selected.value.claimsBsn ?? selected.value.bsn) && cl.tileLawId === selected.value.lawId)) : []));
 const serviceClaims = computed(() => state.claims.filter((cl) => cl.status === 'PENDING' && (corpus.value?.lawById(cl.tileLawId)?.service === service.value || corpus.value?.lawById(cl.lawId)?.service === service.value)));
 
 const reason = ref('');
@@ -251,7 +259,7 @@ function claimLawName(cl) {
                     <!-- The status tag sits in the overline, not in an end cell: a lane is narrow
                          and an end cell never shrinks, so beside the tag the title would break
                          per letter. In the overline the title keeps the whole card width. -->
-                    <nldd-text-cell :text="c.lawName" :supporting-text="`${personaName(c.bsn)} · ${formatDateTime(c.submittedAt)}`">
+                    <nldd-text-cell :text="c.lawName" :supporting-text="`${subjectName(c)} · ${formatDateTime(c.submittedAt)}`">
                       <nldd-tag slot="overline" size="sm" :color="laneTag(c).color" :text="laneTag(c).text"></nldd-tag>
                       <!-- Er is een gegeven gewijzigd waarmee deze wet nu op iets
                            anders uitkomt dan waarop besloten is. Het besluit staat
@@ -296,7 +304,7 @@ function claimLawName(cl) {
     <nldd-sheet ref="caseSheet" placement="right" width="720px" :accessible-label="t('zaak.sheet.label')" @close="close">
       <nldd-page v-if="selected">
         <nldd-container slot="header" padding="12">
-          <nldd-top-title-bar :text="selected.lawName" :supporting-text="t('zaak.sheet.subtitle', { id: selected.id.slice(-5), person: personaName(selected.bsn) })" :dismiss-text="t('zaak.sheet.close')" @dismiss="close"></nldd-top-title-bar>
+          <nldd-top-title-bar :text="selected.lawName" :supporting-text="t('zaak.sheet.subtitle', { id: selected.id.slice(-5), person: subjectName(selected) })" :dismiss-text="t('zaak.sheet.close')" @dismiss="close"></nldd-top-title-bar>
         </nldd-container>
         <nldd-container padding="16" gap="16">
           <nldd-banner

@@ -15,13 +15,13 @@ Feature: Bepalen recht op Terrasvergunning horeca Rotterdam
       | 85234567   | 999999990    | true              | true            | {"gebied":null,"toegestane_categorieen":null,"maximaal_aantal":null,"ontwikkelruimte":null} | true                 | null                    | false                           | [{"bsn":null,"heeft_vog":null,"leeftijd":null,"is_onder_curatele":null,"heeft_svh_diploma":true}] | true            | true                  | true                | true              | true                        | middelzwaar | true              |
     And the following "GEMEENTE_ROTTERDAM" data with key "kvk_nummer" for law "algemene_plaatselijke_verordening/terrassen":
       | kvk_nummer | heeft_alcoholvergunning | terrassenbeleid_gebied                                                                                           | tarief_per_m2 |
-      | 85234567   | true                    | {"gebied":null,"max_oppervlakte":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 25            |
+      | 85234567   | true                    | {"gebied":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 25            |
     And the following "GEMEENTE_ROTTERDAM" data with key "seizoen" for law "algemene_plaatselijke_verordening/terrassen":
       | seizoen  | terrassenbeleid_gebied                                                                                           | max_sluitingstijd_doordeweeks | max_sluitingstijd_weekend | tarief_per_m2 |
-      | jaarrond | {"gebied":null,"max_oppervlakte":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 24                            | 24                        | 25            |
+      | jaarrond | {"gebied":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 24                            | 24                        | 25            |
     And the following "GEMEENTE_ROTTERDAM" data with key "terras_locatie" for law "algemene_plaatselijke_verordening/terrassen":
       | terras_locatie | beschikbare_oppervlakte | functie_oppervlak | is_openbare_weg | terrassenbeleid_gebied                                                                                           | tarief_per_m2 |
-      | voor           | 15                      | voetpad           | true            | {"gebied":null,"max_oppervlakte":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 25            |
+      | voor           | 15                      | voetpad           | true            | {"gebied":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 25            |
     And the following "RECHTSPRAAK" data with key "bsn" for law "burgerlijk_wetboek_handelingsonbekwaamheid":
       | bsn       | curatele_als_curandus                                                                                                                              |
       | 999999990 | [{"bsn_curator":null,"bsn_curandus":"999999990","naam_curandus":null,"datum_ingang":"2020-01-01","datum_einde":"2021-01-01","status":"BEËINDIGD"}] |
@@ -60,13 +60,13 @@ Feature: Bepalen recht op Terrasvergunning horeca Rotterdam
       | 85234567   | 999999990    | true              | true            | {"gebied":null,"toegestane_categorieen":null,"maximaal_aantal":null,"ontwikkelruimte":null} | true                 | null                    | false                           | [{"bsn":null,"heeft_vog":null,"leeftijd":null,"is_onder_curatele":null,"heeft_svh_diploma":true}] | true            | true                  | true                | true              | true                        | middelzwaar | true              |
     And the following "GEMEENTE_ROTTERDAM" data with key "kvk_nummer" for law "algemene_plaatselijke_verordening/terrassen":
       | kvk_nummer | heeft_alcoholvergunning | terrassenbeleid_gebied                                                                                           | tarief_per_m2 |
-      | 85234567   | true                    | {"gebied":null,"max_oppervlakte":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 25            |
+      | 85234567   | true                    | {"gebied":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 25            |
     And the following "GEMEENTE_ROTTERDAM" data with key "seizoen" for law "algemene_plaatselijke_verordening/terrassen":
       | seizoen  | terrassenbeleid_gebied                                                                                           | max_sluitingstijd_doordeweeks | max_sluitingstijd_weekend | tarief_per_m2 |
-      | jaarrond | {"gebied":null,"max_oppervlakte":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 24                            | 24                        | 25            |
+      | jaarrond | {"gebied":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 24                            | 24                        | 25            |
     And the following "GEMEENTE_ROTTERDAM" data with key "terras_locatie" for law "algemene_plaatselijke_verordening/terrassen":
       | terras_locatie | beschikbare_oppervlakte | functie_oppervlak | is_openbare_weg | terrassenbeleid_gebied                                                                                           | tarief_per_m2 |
-      | voor           | 15                      | voetpad           | true            | {"gebied":null,"max_oppervlakte":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 25            |
+      | voor           | 15                      | voetpad           | true            | {"gebied":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 25            |
     And the following "RECHTSPRAAK" data with key "bsn" for law "burgerlijk_wetboek_handelingsonbekwaamheid":
       | bsn       | curatele_als_curandus                                                                                                                              |
       | 999999990 | [{"bsn_curator":null,"bsn_curandus":"999999990","naam_curandus":null,"datum_ingang":"2020-01-01","datum_einde":"2021-01-01","status":"BEËINDIGD"}] |
@@ -100,13 +100,13 @@ Feature: Bepalen recht op Terrasvergunning horeca Rotterdam
       | 85234567   | 999999990    | true              | true            | {"gebied":null,"toegestane_categorieen":null,"maximaal_aantal":null,"ontwikkelruimte":null} | true                 | null                    | false                           | [{"bsn":null,"heeft_vog":null,"leeftijd":null,"is_onder_curatele":null,"heeft_svh_diploma":true}] | true            | true                  | true                | true              | false                       | middelzwaar | true              |
     And the following "GEMEENTE_ROTTERDAM" data with key "kvk_nummer" for law "algemene_plaatselijke_verordening/terrassen":
       | kvk_nummer | heeft_alcoholvergunning | terrassenbeleid_gebied                                                                                           | tarief_per_m2 |
-      | 85234567   | true                    | {"gebied":null,"max_oppervlakte":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 25            |
+      | 85234567   | true                    | {"gebied":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 25            |
     And the following "GEMEENTE_ROTTERDAM" data with key "seizoen" for law "algemene_plaatselijke_verordening/terrassen":
       | seizoen  | terrassenbeleid_gebied                                                                                           | max_sluitingstijd_doordeweeks | max_sluitingstijd_weekend | tarief_per_m2 |
-      | jaarrond | {"gebied":null,"max_oppervlakte":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 24                            | 24                        | 25            |
+      | jaarrond | {"gebied":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 24                            | 24                        | 25            |
     And the following "GEMEENTE_ROTTERDAM" data with key "terras_locatie" for law "algemene_plaatselijke_verordening/terrassen":
       | terras_locatie | beschikbare_oppervlakte | functie_oppervlak | is_openbare_weg | terrassenbeleid_gebied                                                                                           | tarief_per_m2 |
-      | voor           | 15                      | voetpad           | true            | {"gebied":null,"max_oppervlakte":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 25            |
+      | voor           | 15                      | voetpad           | true            | {"gebied":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 25            |
     And the following "RECHTSPRAAK" data with key "bsn" for law "burgerlijk_wetboek_handelingsonbekwaamheid":
       | bsn       | curatele_als_curandus                                                                                                                              |
       | 999999990 | [{"bsn_curator":null,"bsn_curandus":"999999990","naam_curandus":null,"datum_ingang":"2020-01-01","datum_einde":"2021-01-01","status":"BEËINDIGD"}] |
@@ -140,13 +140,13 @@ Feature: Bepalen recht op Terrasvergunning horeca Rotterdam
       | 85234567   | 999999990    | true              | true            | {"gebied":null,"toegestane_categorieen":null,"maximaal_aantal":null,"ontwikkelruimte":null} | true                 | null                    | false                           | [{"bsn":null,"heeft_vog":null,"leeftijd":null,"is_onder_curatele":null,"heeft_svh_diploma":true}] | true            | true                  | true                | true              | true                        | middelzwaar | true              |
     And the following "GEMEENTE_ROTTERDAM" data with key "kvk_nummer" for law "algemene_plaatselijke_verordening/terrassen":
       | kvk_nummer | heeft_alcoholvergunning | terrassenbeleid_gebied                                                                                           | tarief_per_m2 |
-      | 85234567   | true                    | {"gebied":null,"max_oppervlakte":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 25            |
+      | 85234567   | true                    | {"gebied":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 25            |
     And the following "GEMEENTE_ROTTERDAM" data with key "seizoen" for law "algemene_plaatselijke_verordening/terrassen":
       | seizoen  | terrassenbeleid_gebied                                                                                           | max_sluitingstijd_doordeweeks | max_sluitingstijd_weekend | tarief_per_m2 |
-      | jaarrond | {"gebied":null,"max_oppervlakte":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 24                            | 24                        | 25            |
+      | jaarrond | {"gebied":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 24                            | 24                        | 25            |
     And the following "GEMEENTE_ROTTERDAM" data with key "terras_locatie" for law "algemene_plaatselijke_verordening/terrassen":
       | terras_locatie | beschikbare_oppervlakte | functie_oppervlak | is_openbare_weg | terrassenbeleid_gebied                                                                                           | tarief_per_m2 |
-      | voor           | 15                      | voetpad           | true            | {"gebied":null,"max_oppervlakte":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 25            |
+      | voor           | 15                      | voetpad           | true            | {"gebied":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 25            |
     And the following "RECHTSPRAAK" data with key "bsn" for law "burgerlijk_wetboek_handelingsonbekwaamheid":
       | bsn       | curatele_als_curandus                                                                                                                              |
       | 999999990 | [{"bsn_curator":null,"bsn_curandus":"999999990","naam_curandus":null,"datum_ingang":"2020-01-01","datum_einde":"2021-01-01","status":"BEËINDIGD"}] |
@@ -180,13 +180,13 @@ Feature: Bepalen recht op Terrasvergunning horeca Rotterdam
       | 85234567   | 999999990    | true              | true            | {"gebied":null,"toegestane_categorieen":null,"maximaal_aantal":null,"ontwikkelruimte":null} | true                 | null                    | false                           | [{"bsn":null,"heeft_vog":null,"leeftijd":null,"is_onder_curatele":null,"heeft_svh_diploma":true}] | true            | true                  | true                | true              | true                        | middelzwaar | true              |
     And the following "GEMEENTE_ROTTERDAM" data with key "kvk_nummer" for law "algemene_plaatselijke_verordening/terrassen":
       | kvk_nummer | heeft_alcoholvergunning | terrassenbeleid_gebied                                                                                           | tarief_per_m2 |
-      | 85234567   | true                    | {"gebied":null,"max_oppervlakte":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 25            |
+      | 85234567   | true                    | {"gebied":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 25            |
     And the following "GEMEENTE_ROTTERDAM" data with key "seizoen" for law "algemene_plaatselijke_verordening/terrassen":
       | seizoen  | terrassenbeleid_gebied                                                                                           | max_sluitingstijd_doordeweeks | max_sluitingstijd_weekend | tarief_per_m2 |
-      | jaarrond | {"gebied":null,"max_oppervlakte":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 24                            | 24                        | 25            |
+      | jaarrond | {"gebied":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 24                            | 24                        | 25            |
     And the following "GEMEENTE_ROTTERDAM" data with key "terras_locatie" for law "algemene_plaatselijke_verordening/terrassen":
       | terras_locatie | beschikbare_oppervlakte | functie_oppervlak | is_openbare_weg | terrassenbeleid_gebied                                                                                           | tarief_per_m2 |
-      | voor           | 15                      | voetpad           | true            | {"gebied":null,"max_oppervlakte":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 25            |
+      | voor           | 15                      | voetpad           | true            | {"gebied":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 25            |
     And the following "RECHTSPRAAK" data with key "bsn" for law "burgerlijk_wetboek_handelingsonbekwaamheid":
       | bsn       | curatele_als_curandus                                                                                                                              |
       | 999999990 | [{"bsn_curator":null,"bsn_curandus":"999999990","naam_curandus":null,"datum_ingang":"2020-01-01","datum_einde":"2021-01-01","status":"BEËINDIGD"}] |
@@ -220,13 +220,13 @@ Feature: Bepalen recht op Terrasvergunning horeca Rotterdam
       | 85234567   | 999999990    | true              | true            | {"gebied":null,"toegestane_categorieen":null,"maximaal_aantal":null,"ontwikkelruimte":null} | true                 | null                    | false                           | [{"bsn":null,"heeft_vog":null,"leeftijd":null,"is_onder_curatele":null,"heeft_svh_diploma":true}] | true            | true                  | true                | true              | true                        | middelzwaar | true              |
     And the following "GEMEENTE_ROTTERDAM" data with key "kvk_nummer" for law "algemene_plaatselijke_verordening/terrassen":
       | kvk_nummer | heeft_alcoholvergunning | terrassenbeleid_gebied                                                                                           | tarief_per_m2 |
-      | 85234567   | true                    | {"gebied":null,"max_oppervlakte":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 25            |
+      | 85234567   | true                    | {"gebied":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 25            |
     And the following "GEMEENTE_ROTTERDAM" data with key "seizoen" for law "algemene_plaatselijke_verordening/terrassen":
       | seizoen  | terrassenbeleid_gebied                                                                                           | max_sluitingstijd_doordeweeks | max_sluitingstijd_weekend | tarief_per_m2 |
-      | jaarrond | {"gebied":null,"max_oppervlakte":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 24                            | 24                        | 25            |
+      | jaarrond | {"gebied":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 24                            | 24                        | 25            |
     And the following "GEMEENTE_ROTTERDAM" data with key "terras_locatie" for law "algemene_plaatselijke_verordening/terrassen":
       | terras_locatie | beschikbare_oppervlakte | functie_oppervlak | is_openbare_weg | terrassenbeleid_gebied                                                                                           | tarief_per_m2 |
-      | voor           | 15                      | rijbaan           | true            | {"gebied":null,"max_oppervlakte":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 25            |
+      | voor           | 15                      | rijbaan           | true            | {"gebied":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 25            |
     And the following "RECHTSPRAAK" data with key "bsn" for law "burgerlijk_wetboek_handelingsonbekwaamheid":
       | bsn       | curatele_als_curandus                                                                                                                              |
       | 999999990 | [{"bsn_curator":null,"bsn_curandus":"999999990","naam_curandus":null,"datum_ingang":"2020-01-01","datum_einde":"2021-01-01","status":"BEËINDIGD"}] |
@@ -260,13 +260,13 @@ Feature: Bepalen recht op Terrasvergunning horeca Rotterdam
       | 85234567   | 999999990    | true              | true            | {"gebied":null,"toegestane_categorieen":null,"maximaal_aantal":null,"ontwikkelruimte":null} | true                 | null                    | false                           | [{"bsn":null,"heeft_vog":null,"leeftijd":null,"is_onder_curatele":null,"heeft_svh_diploma":true}] | true            | true                  | true                | true              | true                        | middelzwaar | true              |
     And the following "GEMEENTE_ROTTERDAM" data with key "kvk_nummer" for law "algemene_plaatselijke_verordening/terrassen":
       | kvk_nummer | heeft_alcoholvergunning | terrassenbeleid_gebied                                                                                           | tarief_per_m2 |
-      | 85234567   | true                    | {"gebied":null,"max_oppervlakte":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 25            |
+      | 85234567   | true                    | {"gebied":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 25            |
     And the following "GEMEENTE_ROTTERDAM" data with key "seizoen" for law "algemene_plaatselijke_verordening/terrassen":
       | seizoen  | terrassenbeleid_gebied                                                                                           | max_sluitingstijd_doordeweeks | max_sluitingstijd_weekend | tarief_per_m2 |
-      | jaarrond | {"gebied":null,"max_oppervlakte":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 24                            | 23                        | 25            |
+      | jaarrond | {"gebied":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 24                            | 23                        | 25            |
     And the following "GEMEENTE_ROTTERDAM" data with key "terras_locatie" for law "algemene_plaatselijke_verordening/terrassen":
       | terras_locatie | beschikbare_oppervlakte | functie_oppervlak | is_openbare_weg | terrassenbeleid_gebied                                                                                           | tarief_per_m2 |
-      | voor           | 15                      | voetpad           | true            | {"gebied":null,"max_oppervlakte":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 25            |
+      | voor           | 15                      | voetpad           | true            | {"gebied":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 25            |
     And the following "RECHTSPRAAK" data with key "bsn" for law "burgerlijk_wetboek_handelingsonbekwaamheid":
       | bsn       | curatele_als_curandus                                                                                                                              |
       | 999999990 | [{"bsn_curator":null,"bsn_curandus":"999999990","naam_curandus":null,"datum_ingang":"2020-01-01","datum_einde":"2021-01-01","status":"BEËINDIGD"}] |
@@ -301,13 +301,13 @@ Feature: Bepalen recht op Terrasvergunning horeca Rotterdam
       | 85234567   | 999999990    | true              | true            | {"gebied":null,"toegestane_categorieen":null,"maximaal_aantal":null,"ontwikkelruimte":null} | true                 | null                    | false                           | [{"bsn":null,"heeft_vog":null,"leeftijd":null,"is_onder_curatele":null,"heeft_svh_diploma":true}] | true            | true                  | true                | true              | true                        | middelzwaar | true              |
     And the following "GEMEENTE_ROTTERDAM" data with key "kvk_nummer" for law "algemene_plaatselijke_verordening/terrassen":
       | kvk_nummer | heeft_alcoholvergunning | terrassenbeleid_gebied                                                                                           | tarief_per_m2 |
-      | 85234567   | true                    | {"gebied":null,"max_oppervlakte":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 25            |
+      | 85234567   | true                    | {"gebied":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 25            |
     And the following "GEMEENTE_ROTTERDAM" data with key "seizoen" for law "algemene_plaatselijke_verordening/terrassen":
       | seizoen  | terrassenbeleid_gebied                                                                                           | max_sluitingstijd_doordeweeks | max_sluitingstijd_weekend | tarief_per_m2 |
-      | jaarrond | {"gebied":null,"max_oppervlakte":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 23                            | 23                        | 25            |
+      | jaarrond | {"gebied":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 23                            | 23                        | 25            |
     And the following "GEMEENTE_ROTTERDAM" data with key "terras_locatie" for law "algemene_plaatselijke_verordening/terrassen":
       | terras_locatie | beschikbare_oppervlakte | functie_oppervlak | is_openbare_weg | terrassenbeleid_gebied                                                                                           | tarief_per_m2 |
-      | voor           | 15                      | voetpad           | true            | {"gebied":null,"max_oppervlakte":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 25            |
+      | voor           | 15                      | voetpad           | true            | {"gebied":null,"max_sluitingstijd":null,"seizoensregels":null,"toegestane_locaties":null} | 25            |
     And the following "RECHTSPRAAK" data with key "bsn" for law "burgerlijk_wetboek_handelingsonbekwaamheid":
       | bsn       | curatele_als_curandus                                                                                                                              |
       | 999999990 | [{"bsn_curator":null,"bsn_curandus":"999999990","naam_curandus":null,"datum_ingang":"2020-01-01","datum_einde":"2021-01-01","status":"BEËINDIGD"}] |
