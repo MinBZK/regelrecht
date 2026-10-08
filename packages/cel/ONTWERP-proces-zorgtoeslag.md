@@ -94,6 +94,17 @@ Art. 22 spreekt dus niet van een lijst of van betalingsopdrachten. Het zegt per 
 - **Eigen keuze:** het beleid geldt vanaf 1 januari 2024, zodat een voorschot dat in december vóór het berekeningsjaar wordt betaald, het kan lezen.
 - **Nog lexostatus:** `aanvraag` en `uitbetaald` staan nog in `lexostatuses.yaml`. Die volgen hetzelfde patroon in een volgende stap.
 
+**Gebouwd (8 oktober 2026): een rekening waarop de betalingen echt binnenkomen.** De betaalcel uit §9 is er, als fictieve bank in een tweede cel.
+
+- **Toeslagen geeft een betaalopdracht.** Het executogram van het fictieve beleid (art. 1) heet nu `betaalopdracht_gegeven`: het bedrag, de rekening van de aanvrager en de uitvoerdatum (de dag zelf), met een verwijzing naar het voorschot. De rekening vraagt het fictieve beleid van Toeslagen bij de aanvraag (art. 3, een haak op de aanvraag van Awir 15, origin BELANGHEBBENDE; niet de Awir). De cel leest haar terug met `fictief_beleid_kroniek_toeslagen` art. 2. De persona geeft een duidelijk verzonnen nummer op (`NL00TEST0123456789`, `application` in `demo-config.yaml`).
+- **De bank is een eigen cel** (`corpus/demo/cells/bank`, `recording_actor: fictieve_bank`, kroniek `rekeningen`) met eigen regels: `fictieve_bankvoorwaarden` art. 1, "op de uitvoerdatum bijgeschreven, tenzij de rekening onbekend of geblokkeerd is". Het schema kent geen laag voor regels van een private partij; het regelwerk staat als UITVOERINGSBELEID, met die markering. Het staat alleen in het democorpus. Wat de bank van een rekening weet (geblokkeerd, beginsaldo) staat bij de persona onder `BANK` in `profiles.yaml` en komt via `bindings.yaml` als gegevensbron binnen.
+- **Bij ontvangst** (eigen keuze, generiek): een executogram met `record_when` maar zonder `executed_on` ontstaat niet op een dag maar wanneer er iets binnenkomt. `Cell::receive` voert het ontvangende artikel één keer uit met wat er binnenkwam en legt elk event van de cel vast dat dat artikel vestigt en waarvan `record_when` waar is: bij de bank `overboeking_bijgeschreven` of `overboeking_geweigerd`, bij Toeslagen `voorschottermijn_betaald` of `betaling_mislukt` (art. 2 van het fictieve beleid, met het antwoord van de bank als parameters met origin KANAAL, en een verwijzing naar de betaalopdracht). Een veld van zo'n gram mag ook een parameter zijn (het kenmerk van de opdracht). Het antwoord op een gram die een periode betreft, rekent met de wet van die periode.
+- **Het transport** doet de demo, generiek: `channels` in `demo-config.yaml` zegt welke gram van welke cel naar welk artikel van welke cel gaat, welk veld welke parameter vult en welke verwijzing het antwoord krijgt. De wet zegt niet wie de bank is of hoe een bericht reist. In JavaScript staat geen eventnaam.
+- **De verrekening telt alleen wat de bank bijschreef.** `uitbetaald` telt `betaald_bedrag` van `voorschottermijn_betaald`, niet de opdrachten.
+- **Een mislukte termijn blijft open** (eigen keuze, gemarkeerd in het beleid). `once_per: month` blijft streng: één opdracht per maand. Wat de bank weigerde, gaat mee met de opdracht van de volgende uitvoeringsdag (`meegenomen_achterstand`), ook in een maand zonder termijn, tot de toekenning. Wat er achterstallig is, leest de cel met `fictief_beleid_kroniek_toeslagen` art. 3: geweigerd min al opnieuw opgedragen. Zo blokkeert `once_per` geen nieuwe poging, en hoeft de cel niets over mislukken te weten.
+- **In het portaal** staat "Mijn rekening (fictieve bank)": saldo en overboekingen uit de kroniek van de bankcel en het beginsaldo van de persona (`account` in `demo-config.yaml`). Het saldo is beginsaldo plus wat de bank bijschreef: een afschrift, geen wet. Een rekening blokkeren kan nu alleen in `profiles.yaml` (`geblokkeerd: true`).
+- **Open:** een rekening die de bank helemaal niet kent, geeft in de engine een onbekende waarde en dus een fout, tenzij de gegevens expliciet null zeggen; het antwoord van de bank geldt vanaf het moment van ontvangst, niet vanaf de uitvoerdatum.
+
 ## 6. Het berekeningsjaar en de geldende wet
 
 Dit is nu het grootste gat. Het staat in `Cell::decide` en in de review van #1683, en de oude PoC vond het al (#1472).
@@ -141,7 +152,7 @@ Eén knop zet de peildatum op het eerstvolgende moment. De cel legt vast wat dan
 - de aanspraak per kalendermaand (Zorgtoeslagwet 2 lid 5); eerst een jaarbedrag over de termijnen
 - herziening van het voorschot na een wijziging (Awir 16 lid 5, 17), herziening na de toekenning (20, 21, 21a)
 - rente (27, alleen 2025), invordering (28, 29) en verrekening over regelingen heen (30)
-- een aparte betaalcel en kanalen
+- kanalen buiten de demo (nu draagt de demo de berichten tussen de cellen)
 - de zienswijze bij terugvordering (26b)
 
 ## 10. Volgorde van bouwen
