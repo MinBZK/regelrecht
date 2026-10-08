@@ -930,6 +930,13 @@ jobs:
       # Dezelfde inputs als build-pipeline-api in deploy.yml, op push na. Lopen
       # die twee uiteen, dan bewijst deze baan iets anders dan er gedeployd
       # wordt; script/dockerfile-consistency.test.mjs bewaakt de namen.
+      # Zelfde namespace als build-image.yml: de eigenaar van de repo, in
+      # kleine letters.
+      - name: Resolve registry namespace
+        if: needs.changes.outputs.rust-image == 'true'
+        id: ns
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+
       - name: Build pipeline-api image
         if: needs.changes.outputs.rust-image == 'true'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
@@ -942,7 +949,7 @@ jobs:
           # om het artefact. Ook geen cache-to, want alleen main schrijft cache.
           push: false
           load: false
-          cache-from: type=registry,ref=ghcr.io/minbzk/regelrecht-buildcache:pipeline-api
+          cache-from: type=registry,ref=ghcr.io/${{ steps.ns.outputs.owner }}/regelrecht-buildcache:pipeline-api
 
       - name: Skip (no relevant changes)
         if: needs.changes.outputs.rust-image != 'true'

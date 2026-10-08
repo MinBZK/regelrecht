@@ -12,7 +12,7 @@ All components are deployed to ZAD (RIG/Quattro/rijksapps) via GitHub Actions. D
 A PR only builds and deploys when it carries the `deploy:preview` label. Without that label nothing is built, because a preview costs about half of the repository's runner budget and no required check depends on it. Add the label and the build starts, whether the PR was opened a minute or a month ago:
 
 1. Changed components are detected automatically
-2. Docker images are built and pushed to `ghcr.io/minbzk/regelrecht-{component}`, tagged `pr-{N}` and `sha-{commit}`
+2. Docker images are built and pushed to `ghcr.io/<owner>/regelrecht-{component}`, where `<owner>` is the repository owner in lowercase (now `minbzk`), tagged `pr-{N}` and `sha-{commit}`
 3. A preview deployment named `pr{N}` is created on ZAD
 4. The PR gets a comment with preview URLs
 
@@ -91,7 +91,7 @@ The docs image also serves `/roadmap`, a read-only rendering of the werkpakkette
 
 The demo (`frontend-demo/`) runs at `demo.regelrecht.rijks.app` as the ZAD component `demo` in the `regelrecht` deployment, with only `publish-on-web` on port 8000. It rolls out with `deploy-preview` and `deploy-production` when `script/deploy-filters.mjs` marks the `demo` component as changed. That happens for changes to the engine crate and the workspace crates it depends on, the workspace-wide Rust files (`packages/Cargo.toml`, `packages/Cargo.lock`, `rust-toolchain.toml`, `schema/`), `frontend-demo/`, `packages/frontend-shared/`, `corpus/demo/`, or `deploy/nginx/`.
 
-The build is the `build-demo` job in `deploy.yml` (`image-name: minbzk/regelrecht-demo`, `dockerfile: frontend-demo/Dockerfile`, `cache-scope: demo`). The image is covered by `scheduled-cleanup.yml`, which checks `sha-` tags against the running deployment before it deletes anything.
+The build is the `build-demo` job in `deploy.yml` (`image-name: regelrecht-demo`, `dockerfile: frontend-demo/Dockerfile`, `cache-scope: demo`). The image is covered by `scheduled-cleanup.yml`, which checks `sha-` tags against the running deployment before it deletes anything.
 
 What to check after a change is easiest on a preview (label the PR `deploy:preview`): that the WASM engine loads (network tab: `wasm/pkg/*.wasm` served as `application/wasm`), the slides, the portals of Merijn and Claudia, and one application followed all the way into the case system. The two things in `frontend-demo/nginx.conf` that can break are the SPA fallback to `index.html` and the MIME type for `.wasm`.
 
