@@ -1330,8 +1330,10 @@ impl Gate {
 /// The most agent calls one enrichment run can make, end to end.
 ///
 /// One translation pass, one feedback round per gate, the closing pass, the
-/// final binding gate and the final schema gate. Used to size the per-call timeout against the job
-/// timeout: bounding one call against the whole job budget assumes a run is
+/// final binding gate and the final schema gate, with the default one round
+/// per gate; the worker sizes the per-call timeouts from
+/// [`FeedbackRounds::max_calls`], which follows the configured rounds.
+/// Bounding one call against the whole job budget assumes a run is
 /// one call, which it stopped being when the gates gained a feedback round.
 /// With the defaults that assumption let a run ask for six times 600 s under
 /// a 1200 s ceiling, so a law needing more than two calls could never finish
@@ -1374,6 +1376,22 @@ impl FeedbackRounds {
             reconcile: rounds,
             binding: rounds,
         }
+    }
+
+    /// The most feedback rounds one run can spend over all gates: each window
+    /// gate, the closing pass, the binding gate, and the schema gate a second
+    /// time after the closing pass. With one round per gate this is
+    /// [`MAX_AGENT_CALLS_PER_RUN`] minus the translation.
+    #[must_use]
+    pub fn max_calls(self) -> u32 {
+        let total = self
+            .schema
+            .saturating_mul(2)
+            .saturating_add(self.checks)
+            .saturating_add(self.marking)
+            .saturating_add(self.reconcile)
+            .saturating_add(self.binding);
+        u32::try_from(total).unwrap_or(u32::MAX)
     }
 
     /// Budget for one gate.
@@ -1985,7 +2003,15 @@ impl RunSteps {
 #[derive(Debug, Clone)]
 pub struct EnrichConfig {
     pub provider: LlmProvider,
+    /// Ceiling for one agent call outside the feedback rounds: the
+    /// translation pass that reads the window and writes `machine_readable`,
+    /// by far the heaviest call of a run (and the convert jobs, which set it
+    /// themselves).
     pub timeout: Duration,
+    /// Ceiling for one feedback round (a gate, the closing pass). Starts equal
+    /// to [`Self::timeout`]; the worker lowers the two separately to fit the
+    /// job budget, see `bound_llm_timeout`.
+    pub feedback_timeout: Duration,
     pub code_commit: String,
     /// RSS ceiling (MB) for the LLM subprocess. When it is exceeded the worker
     /// kills the process and fails the job instead of letting the agent OOM the
@@ -2065,6 +2091,7 @@ impl EnrichConfig {
         EnrichConfig {
             provider,
             timeout: Duration::from_secs(600),
+            feedback_timeout: Duration::from_secs(600),
             code_commit: "abc123".to_string(),
             max_rss_mb: 3500,
             // Chunking off by default in tests; chunk tests opt in explicitly.
@@ -2102,6 +2129,7 @@ impl EnrichConfig {
         Self {
             provider,
             timeout,
+            feedback_timeout: timeout,
             code_commit: String::new(),
             max_rss_mb: 0,
             max_articles_per_run: max_articles,
@@ -2214,6 +2242,7 @@ impl EnrichConfig {
         Self {
             provider,
             timeout: Duration::from_secs(timeout),
+            feedback_timeout: Duration::from_secs(timeout),
             code_commit,
             max_rss_mb,
             max_articles_per_run,
@@ -2257,6 +2286,7 @@ impl EnrichConfig {
         Self {
             provider,
             timeout: self.timeout,
+            feedback_timeout: self.feedback_timeout,
             code_commit: self.code_commit.clone(),
             max_rss_mb: self.max_rss_mb,
             max_articles_per_run: self.max_articles_per_run,
@@ -3488,6 +3518,12 @@ async fn run_feedback_rounds(
         return Ok(progress);
     }
 
+    // A round answers findings and runs under its own ceiling, at most the
+    // translation's (see `bound_llm_timeout` in the worker).
+    let round_config = EnrichConfig {
+        timeout: config.feedback_timeout,
+        ..config.clone()
+    };
     for round in 1..=budget {
         let findings_before = findings.len();
         let markings_before = marking_count(yaml_abs).await;
@@ -3511,7 +3547,7 @@ async fn run_feedback_rounds(
             ..payload.clone()
         };
         runner
-            .run(&feedback_payload, yaml_abs, corpus_root, config)
+            .run(&feedback_payload, yaml_abs, corpus_root, &round_config)
             .await?;
 
         let reading = evaluate_gate(gate, yaml_abs, corpus_root, window).await?;
@@ -7118,6 +7154,27 @@ articles:
     }
 
     #[test]
+    fn feedback_rounds_count_every_call_they_allow() {
+        // One round per gate is the ceiling the constant names.
+        assert_eq!(
+            FeedbackRounds::default().max_calls(),
+            MAX_AGENT_CALLS_PER_RUN - 1
+        );
+        assert_eq!(FeedbackRounds::uniform(2).max_calls(), 12);
+        // The schema budget counts twice: per window and after the closing pass.
+        let schema_only = FeedbackRounds {
+            schema: 3,
+            ..FeedbackRounds::uniform(0)
+        };
+        assert_eq!(schema_only.max_calls(), 6);
+        let rest = FeedbackRounds {
+            schema: 0,
+            ..FeedbackRounds::uniform(1)
+        };
+        assert_eq!(rest.max_calls(), 4);
+    }
+
+    #[test]
     fn feedback_rounds_default_to_one_per_gate() {
         let rounds = FeedbackRounds::default();
         for gate in Gate::ALL {
@@ -8894,6 +8951,8 @@ articles:
         /// Text replacements applied when the schema gate asks for a repair.
         schema_fix: Vec<(&'static str, &'static str)>,
         passes: std::sync::Mutex<Vec<String>>,
+        /// The ceiling each call ran under, in call order.
+        ceilings: std::sync::Mutex<Vec<Duration>>,
     }
 
     impl ScriptedRunner {
@@ -8903,6 +8962,7 @@ articles:
                 binding_fix: None,
                 schema_fix: Vec::new(),
                 passes: std::sync::Mutex::new(Vec::new()),
+                ceilings: std::sync::Mutex::new(Vec::new()),
             }
         }
     }
@@ -8914,8 +8974,9 @@ articles:
             payload: &EnrichPayload,
             yaml_abs: &Path,
             _repo_path: &Path,
-            _config: &EnrichConfig,
+            config: &EnrichConfig,
         ) -> Result<()> {
+            self.ceilings.lock().unwrap().push(config.timeout);
             let mut text = tokio::fs::read_to_string(yaml_abs).await?;
             match &payload.pass {
                 Pass::Translate => {
@@ -9315,11 +9376,13 @@ articles:
         tokio::fs::write(dir.path().join(yaml_path), four_article_law())
             .await
             .unwrap();
-        let config = test_config(LlmProvider::OpenCode {
+        let mut config = test_config(LlmProvider::OpenCode {
             path: "fake".into(),
             model: None,
         });
         assert_eq!(config.feedback_rounds, FeedbackRounds::default());
+        config.timeout = Duration::from_secs(1290);
+        config.feedback_timeout = Duration::from_secs(430);
         let payload = chunk_test_payload(yaml_path);
         // Entry 1 reads a name nothing defines, and leaves open a term that
         // entry 3 produces (a reconcile lead). Entry 3 carries a schema error
@@ -9364,6 +9427,12 @@ articles:
         );
         let calls = runner.passes.lock().unwrap().len();
         assert_eq!(calls as u32, MAX_AGENT_CALLS_PER_RUN);
+        // The translation runs under its own ceiling, every round under the
+        // smaller one.
+        let ceilings = runner.ceilings.lock().unwrap().clone();
+        let mut expected = vec![Duration::from_secs(1290)];
+        expected.extend(std::iter::repeat_n(Duration::from_secs(430), calls - 1));
+        assert_eq!(ceilings, expected);
     }
 
     #[test]
