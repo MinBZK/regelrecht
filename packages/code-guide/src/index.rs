@@ -36,7 +36,7 @@ pub struct Paths {
     /// The cargo workspace root, `packages/`. rust-analyzer indexes this, and
     /// paths in the index are relative to it.
     pub workspace: PathBuf,
-    /// `<target dir>/code-guide/index.scip`.
+    /// `<target dir>/code-guide/<workspace id>/index.scip`; see [`workspace_id`].
     pub index_file: PathBuf,
     /// The key the index was built for, and a hash per input file, next to it
     /// (JSON, see [`Manifest`]). Written last: it marks a complete build.
@@ -47,7 +47,7 @@ pub struct Paths {
 
 impl Paths {
     pub fn new(workspace: PathBuf, target_dir: &Path) -> Self {
-        let dir = target_dir.join("code-guide");
+        let dir = target_dir.join("code-guide").join(workspace_id(&workspace));
         let repo_root = workspace
             .parent()
             .map(Path::to_path_buf)
@@ -60,6 +60,16 @@ impl Paths {
             sources_file: dir.join("index.sources.json"),
         }
     }
+}
+
+/// A short name for a workspace, from its absolute path. `just dev-setup` gives
+/// every worktree the same target directory, so the index of each worktree is
+/// kept in a folder of its own: otherwise one worktree would read, and
+/// overwrite, the index of another.
+pub fn workspace_id(workspace: &Path) -> String {
+    let path = std::fs::canonicalize(workspace).unwrap_or_else(|_| workspace.to_path_buf());
+    let digest = Sha256::digest(path.to_string_lossy().as_bytes());
+    digest.iter().take(6).map(|b| format!("{b:02x}")).collect()
 }
 
 /// What the cached index is worth right now.
@@ -201,7 +211,9 @@ pub fn ra_version() -> Result<String, String> {
 
 /// The state of the cached index against the current sources.
 pub fn state(paths: &Paths, ra_version: &str) -> std::io::Result<IndexState> {
-    if !paths.index_file.is_file() || !paths.sources_file.is_file() {
+    // The manifest is written last: without it a run was cut short, and the
+    // index and the scan next to it may not belong together.
+    if !paths.index_file.is_file() || !paths.sources_file.is_file() || !paths.key_file.is_file() {
         return Ok(IndexState::Missing);
     }
     let built = read_manifest(paths).map(|m| m.key).unwrap_or_default();
@@ -236,6 +248,13 @@ pub fn build(paths: &Paths, crate_dirs: &[String], force: bool) -> Result<bool, 
         .parent()
         .ok_or("index path has no directory")?;
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    // From here until the new index is complete there is no manifest, so a run
+    // cut short (Ctrl-C, a full disk) reads as no index, never as the old key
+    // next to a new index or the other way round.
+    match std::fs::remove_file(&paths.key_file) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.to_string()),
+        _ => {}
+    }
     let config = dir.join("rust-analyzer.json");
     std::fs::write(&config, RA_CONFIG).map_err(|e| e.to_string())?;
     let partial = dir.join("index.scip.partial");
@@ -253,13 +272,21 @@ pub fn build(paths: &Paths, crate_dirs: &[String], force: bool) -> Result<bool, 
     if !status.success() {
         return Err(format!("rust-analyzer scip failed ({status})"));
     }
-    // Swap in the new index only once it is complete, and write its key after,
-    // so an interrupted run leaves the old index and key consistent.
+    // Each file is swapped in whole, and the manifest last: it is what marks
+    // the index, the scan and the key as one complete build.
+    write_whole(&paths.sources_file, &sources_json)?;
     std::fs::rename(&partial, &paths.index_file).map_err(|e| e.to_string())?;
-    std::fs::write(&paths.sources_file, sources_json).map_err(|e| e.to_string())?;
     let json = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
-    std::fs::write(&paths.key_file, json).map_err(|e| e.to_string())?;
+    write_whole(&paths.key_file, &json)?;
     Ok(true)
+}
+
+/// Writes `text` to `path` through a temporary file next to it and a rename,
+/// so the file is either the old one or the new one, never half of it.
+fn write_whole(path: &Path, text: &str) -> Result<(), String> {
+    let partial = path.with_extension("partial");
+    std::fs::write(&partial, text).map_err(|e| e.to_string())?;
+    std::fs::rename(&partial, path).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -355,6 +382,33 @@ mod tests {
         assert_eq!(state(&paths, "ra").unwrap(), IndexState::Fresh);
         d.write("a/src/lib.rs", "pub fn changed() {}\n");
         assert_eq!(state(&paths, "ra").unwrap(), IndexState::Stale);
+    }
+
+    #[test]
+    fn without_its_manifest_an_index_counts_as_missing() {
+        // What a run cut short between the new index and its manifest leaves.
+        let d = workspace();
+        let target = Dir::new();
+        let paths = Paths::new(d.path().to_path_buf(), target.path());
+        std::fs::create_dir_all(paths.index_file.parent().unwrap()).unwrap();
+        std::fs::write(&paths.index_file, b"index").unwrap();
+        std::fs::write(&paths.sources_file, "{}").unwrap();
+        assert_eq!(state(&paths, "ra").unwrap(), IndexState::Missing);
+        assert_eq!(changed_files(&paths).unwrap(), None);
+    }
+
+    #[test]
+    fn each_workspace_keeps_its_index_apart_in_a_shared_target_dir() {
+        let (a, b) = (workspace(), workspace());
+        let target = Dir::new();
+        let pa = Paths::new(a.path().to_path_buf(), target.path());
+        let pb = Paths::new(b.path().to_path_buf(), target.path());
+        assert_ne!(pa.index_file, pb.index_file);
+        assert_eq!(
+            pa.index_file,
+            Paths::new(a.path().to_path_buf(), target.path()).index_file
+        );
+        assert!(pa.index_file.starts_with(target.path().join("code-guide")));
     }
 
     #[test]

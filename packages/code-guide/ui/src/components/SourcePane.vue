@@ -11,6 +11,10 @@ const title = computed(() => {
   if (g.module) return g.module.path || 'crate root';
   return 'Source';
 });
+const changedSince = computed(() => {
+  const path = props.g.source?.path;
+  return !!path && (props.g.status?.counts?.staleFiles ?? []).includes(path);
+});
 const subtitle = computed(() => {
   const s = props.g.source;
   if (!s) return props.g.range?.path ?? '';
@@ -43,6 +47,15 @@ const viewerKey = computed(() => (props.g.source ? `${props.g.source.path}:${pro
     </nldd-simple-section>
 
     <nldd-simple-section v-else-if="g.source">
+      <!-- The file is read as it is now; what the guide says about it is as indexed. -->
+      <template v-if="changedSince">
+        <nldd-banner
+          variant="warning"
+          text="This file changed after indexing"
+          supporting-text="The lines are found again by name in the current file; the calls the guide shows for it are still those from the index."
+        />
+        <nldd-spacer size="8" />
+      </template>
       <nldd-button
         v-if="g.canShowMoreAbove || g.canShowMoreBelow"
         text="Show more lines around it"

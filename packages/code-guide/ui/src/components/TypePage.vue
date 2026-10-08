@@ -9,7 +9,12 @@ import MethodEntry from './MethodEntry.vue';
 const props = defineProps({ g: { type: Object, required: true } });
 
 const t = computed(() => props.g.typeView);
-const methods = computed(() => visibleItems(t.value.methods, props.g.includePrivate));
+// The method the address names is always shown, public or not: a link from a
+// list of callers to a private method or a trait implementation must land on it.
+const methods = computed(() => {
+  const shown = new Set(visibleItems(t.value.methods, props.g.includePrivate));
+  return t.value.methods.filter((m) => shown.has(m) || m.key === props.g.route.method);
+});
 const hidden = computed(() => t.value.methods.length - methods.value.length);
 const documented = computed(() => methods.value.filter((m) => m.docs).length);
 const resolve = computed(() =>

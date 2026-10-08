@@ -170,7 +170,7 @@ silences logging.
 
 `just code-guide` builds and starts a guide to the Rust workspace on port 7190 (override with `CODE_GUIDE_PORT`). It shows how the code calls itself: crates and modules in reading order, the modules a module calls into and is called from, and for every type its methods with their signatures, doc comments, callers and callees, in any crate. The Graph view draws the call graph around what is open, one node per function: callers, callees or both to a chosen depth, with the paths between two functions highlighted and a choice of layouts.
 
-Every relation is a call as rust-analyzer resolved it, so the guide needs an index first: `just code-guide-index` builds one in about a minute and caches it until a source, a Cargo file or the toolchain changes. Test code is left out. When files change after indexing, the guide names them and leaves the calls made in them out until the index is rebuilt, rather than placing them in the wrong function. `packages/code-guide/README.md` says what counts as a call and what the index cannot see.
+Every relation is a call as rust-analyzer resolved it, so the guide needs an index first: `just code-guide-index` builds one in about a minute and caches it until a source, a Cargo file or the toolchain changes. Test code is left out. When files change after indexing, the guide names them and keeps showing their calls as indexed until the index is rebuilt, while the source viewer finds each function again in the current text. Every worktree keeps an index of its own. `packages/code-guide/README.md` says what counts as a call and what the index cannot see.
 
 ## Pre-commit Hooks
 

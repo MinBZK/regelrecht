@@ -382,6 +382,17 @@ describe('a type', () => {
   });
 });
 
+describe('a method that is not public', () => {
+  it('is on its type\'s page when the address names it, so a link to it lands', async () => {
+    const withPrivate = { ...typeView, methods: typeView.methods.map((m) => (m.key === 'step' ? { ...m, vis: 'private' } : m)) };
+    install({ 'api/type': () => json(withPrivate) });
+    await open('#/engine/service/Service');
+    expect(pane('main').find('#method-step').exists()).toBe(false);
+    await goto('#/engine/service/Service/step');
+    expect(pane('main').find('#method-step').exists()).toBe(true);
+  });
+});
+
 describe('a function', () => {
   it('opens as a function when the module has no type of that name', async () => {
     await open('#/engine/types/parse');
@@ -415,6 +426,45 @@ describe('the index', () => {
     const banner = pane('main').find('nldd-banner');
     expect(banner.attributes('supporting-text')).toContain('engine/src/a.rs');
     expect(banner.attributes('supporting-text')).toContain('just code-guide-index');
+  });
+
+  it('loads every view again once an index is built while the page is open', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval'] });
+    try {
+      const missing = { index: { state: 'missing' }, command: 'just code-guide-index', counts: null, generation: null };
+      install({
+        'api/status': () => json(missing),
+        'api/workspace': () => failure(503, 'No index yet. Run `just code-guide-index` to build it.'),
+        'api/crate': () => failure(503, 'No index yet.'),
+      });
+      await open('#/engine');
+      expect(pane('main').find('nldd-banner[variant="critical"]').exists()).toBe(true);
+      // The index is built; the next status poll reports the new model.
+      install({
+        'api/status': () =>
+          json({ index: { state: 'fresh' }, command: 'just code-guide-index', counts: { staleFiles: [] }, generation: 1 }),
+      });
+      vi.advanceTimersByTime(30_000);
+      await flushPromises();
+      await flushPromises();
+      expect(pane('main').find('nldd-banner[variant="critical"]').exists()).toBe(false);
+      expect(calls()).toContain('api/workspace');
+      expect(calls().some((u) => u.startsWith('api/crate'))).toBe(true);
+      expect(hrefs(pane('primary-sidebar'))).toEqual(['#/engine/service', '#/engine/types']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('says in the source viewer when the file shown changed after indexing', async () => {
+    install({
+      'api/status': () =>
+        json({ index: { state: 'stale' }, command: 'just code-guide-index', counts: { staleFiles: ['engine/src/service.rs'] } }),
+    });
+    await open('#/engine/service/Service/run');
+    expect(pane('inspector').find('nldd-banner[text="This file changed after indexing"]').exists()).toBe(true);
+    await goto('#/engine/types/parse');
+    expect(pane('inspector').find('nldd-banner[text="This file changed after indexing"]').exists()).toBe(false);
   });
 
   it('says how to build it when there is none', async () => {
@@ -634,6 +684,19 @@ describe('the graph', () => {
       ['engine', 'oranje'],
       ['model', 'mintgroen'],
     ]);
+  });
+
+  it('keeps the selection and what was highlighted when only the layout or spacing changes', async () => {
+    await open('#/engine/service/Service/run?view=graph');
+    wrapper.findComponent({ name: 'CallGraph' }).vm.$emit('select', 'f3', false);
+    await flushPromises();
+    expect(stub().attributes('data-highlight')).toBe('f1 f2 f3');
+    await goto('#/engine/service/Service/run?view=graph&layout=down');
+    await goto('#/engine/service/Service/run?view=graph&layout=down&spacing=roomy');
+    expect(stub().attributes('data-highlight')).toBe('f1 f2 f3');
+    // Another depth is another graph: that starts without a selection.
+    await goto('#/engine/service/Service/run?view=graph&layout=down&spacing=roomy&depth=1');
+    expect(stub().attributes('data-highlight')).toBe('');
   });
 
   it('highlights between two nodes with Shift, and clears on the background', async () => {

@@ -44,6 +44,11 @@ pub struct FileInfo {
     /// inside a function body included). A reference there imports a name; it
     /// does not call anything.
     pub use_ranges: Vec<(usize, usize)>,
+    /// Structs, enums, unions, traits and type aliases, at any module depth
+    /// (`test` unused). Used to find a type again in a file that changed after
+    /// indexing. Absent from a scan stored by an older build, hence `default`.
+    #[serde(default)]
+    pub types: Vec<FnSite>,
 }
 
 /// The functions of every scanned file, by workspace-relative path (`/`).
@@ -126,8 +131,10 @@ impl Sources {
                 fns: Vec::new(),
                 test_ranges: Vec::new(),
                 use_ranges: Vec::new(),
+                types: Vec::new(),
             };
             collect_fns(&ast.items, test, &mut info.fns);
+            collect_types(&ast.items, &mut info.types);
             collect_test_ranges(&ast.items, &mut info.test_ranges);
             let mut uses = UseRanges(&mut info.use_ranges);
             syn::visit::Visit::visit_file(&mut uses, &ast);
@@ -166,6 +173,41 @@ impl Sources {
             .fns
             .iter()
             .find(|f| f.name_line == name_line && f.name == name)
+    }
+
+    /// Where the function (`kind` `Fn`) or type (`Type`) named `name`, whose
+    /// name was at `old_line` in `old`, is in this scan: the same file, the
+    /// same name, and among same-named items the same position in the file;
+    /// if items of that name were added or removed, the one nearest the old
+    /// line. `None` when the file has none of that name (any more).
+    pub fn relocate(
+        &self,
+        old: &Sources,
+        kind: Kind,
+        file: &str,
+        name: &str,
+        old_line: usize,
+    ) -> Option<&FnSite> {
+        let before = old.sites(kind, file, name);
+        let now = self.sites(kind, file, name);
+        match before.iter().position(|site| site.name_line == old_line) {
+            Some(i) if before.len() == now.len() => now.get(i).copied(),
+            _ => now
+                .into_iter()
+                .min_by_key(|site| site.name_line.abs_diff(old_line)),
+        }
+    }
+
+    /// The functions or types named `name` in `file`, in file order.
+    fn sites(&self, kind: Kind, file: &str, name: &str) -> Vec<&FnSite> {
+        let Some(f) = self.files.get(file) else {
+            return Vec::new();
+        };
+        let all = match kind {
+            Kind::Fn => &f.fns,
+            Kind::Type => &f.types,
+        };
+        all.iter().filter(|site| site.name == name).collect()
     }
 
     /// The innermost function whose extent contains `line` (1-based) of `file`.
@@ -256,6 +298,41 @@ fn collect_fns(items: &[syn::Item], test: bool, out: &mut Vec<FnSite>) {
                 }
             }
             _ => {}
+        }
+    }
+}
+
+/// Which kind of item [`Sources::relocate`] looks for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    Fn,
+    Type,
+}
+
+fn collect_types(items: &[syn::Item], out: &mut Vec<FnSite>) {
+    for item in items {
+        let named = match item {
+            syn::Item::Struct(i) => Some(&i.ident),
+            syn::Item::Enum(i) => Some(&i.ident),
+            syn::Item::Union(i) => Some(&i.ident),
+            syn::Item::Trait(i) => Some(&i.ident),
+            syn::Item::Type(i) => Some(&i.ident),
+            syn::Item::Mod(m) => {
+                if let Some((_, inner)) = &m.content {
+                    collect_types(inner, out);
+                }
+                None
+            }
+            _ => None,
+        };
+        if let (Some(ident), Some((line, end_line))) = (named, extent(item)) {
+            out.push(FnSite {
+                name: ident.to_string(),
+                name_line: ident.span().start().line,
+                line,
+                end_line,
+                test: false,
+            });
         }
     }
 }
@@ -521,6 +598,51 @@ mod tests {
         )]);
         assert!(s.is_test_at("c/src/lib.rs", 3));
         assert!(!s.is_test_at("c/src/lib.rs", 4));
+    }
+
+    #[test]
+    fn a_function_or_type_is_found_again_after_lines_moved() {
+        let before = "pub struct S;\nimpl S {\n    pub fn new() {}\n}\nimpl T {\n    pub fn new() {}\n}\npub fn run() {}\n";
+        let (_a, old) = scan(&[("c/src/lib.rs", before)]);
+        let after = format!("// one\n// two\n{before}");
+        let (_b, now) = scan(&[("c/src/lib.rs", &after)]);
+        let file = "c/src/lib.rs";
+        // Two `new`s: each keeps its place among them.
+        assert_eq!(
+            now.relocate(&old, Kind::Fn, file, "new", 3)
+                .map(|f| f.name_line),
+            Some(5)
+        );
+        assert_eq!(
+            now.relocate(&old, Kind::Fn, file, "new", 6)
+                .map(|f| f.name_line),
+            Some(8)
+        );
+        assert_eq!(
+            now.relocate(&old, Kind::Fn, file, "run", 8)
+                .map(|f| (f.line, f.end_line)),
+            Some((10, 10))
+        );
+        assert_eq!(
+            now.relocate(&old, Kind::Type, file, "S", 1)
+                .map(|f| f.name_line),
+            Some(3)
+        );
+        assert!(now.relocate(&old, Kind::Fn, file, "gone", 1).is_none());
+    }
+
+    #[test]
+    fn with_a_same_named_item_added_the_nearest_is_taken() {
+        let (_a, old) = scan(&[("c/src/lib.rs", "fn new() {}\n\n\n\nfn x() {}\n")]);
+        let (_b, now) = scan(&[(
+            "c/src/lib.rs",
+            "fn new() {}\n\n\n\nfn x() {}\nmod m { fn new() {} }\n",
+        )]);
+        assert_eq!(
+            now.relocate(&old, Kind::Fn, "c/src/lib.rs", "new", 1)
+                .map(|f| f.name_line),
+            Some(1)
+        );
     }
 
     #[test]

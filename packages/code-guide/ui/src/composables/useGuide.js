@@ -12,6 +12,23 @@ import {
 } from '../lib/callgraph.js';
 import { findModule, formatHash, isType, parseHash, search, sourceRange, widen } from '../lib/guide.js';
 
+/**
+ * A computed value that is worked out again only when one of `inputs()` is
+ * different (by identity) from last time; otherwise it returns the same object,
+ * so nothing that depends on it is told it changed.
+ */
+function remember(inputs, compute) {
+  let last = null;
+  let value;
+  return computed(() => {
+    const now = inputs();
+    if (last && now.length === last.length && now.every((x, i) => x === last[i])) return value;
+    last = now;
+    value = compute();
+    return value;
+  });
+}
+
 /** How often the index status is checked again while the page is open, in ms. */
 const STATUS_INTERVAL = 30_000;
 
@@ -124,9 +141,22 @@ export function useGuide() {
       : Number(route.value.depth),
   );
   const lifted = computed(() => (calls.value ? lift(calls.value, level.value) : null));
-  const focus = computed(() => (lifted.value ? focusOf(lifted.value, route.value, graphPage.value) : new Set()));
-  const part = computed(() =>
-    lifted.value ? neighbourhood(lifted.value, focus.value, { calls: route.value.calls, depth: depth.value }) : null,
+  // What is drawn depends on the item, the level, the direction and the depth,
+  // not on the layout or spacing: those come from the same address, so without
+  // this every layout change would make a new graph, and the graph pane would
+  // drop its selection, highlights and added functions. A computed that returns
+  // the same object does not notify what depends on it.
+  const graphKey = computed(() => {
+    const r = route.value;
+    return [r.crate, r.module, r.item, r.method, graphPage.value, level.value, r.calls, depth.value].join('|');
+  });
+  const focus = remember(
+    () => [lifted.value, graphKey.value],
+    () => (lifted.value ? focusOf(lifted.value, route.value, graphPage.value) : new Set()),
+  );
+  const part = remember(
+    () => [lifted.value, graphKey.value],
+    () => (lifted.value ? neighbourhood(lifted.value, focus.value, { calls: route.value.calls, depth: depth.value }) : null),
   );
   const crateOrder = computed(() => [...new Set((calls.value?.nodes ?? []).map((n) => n.crate))].sort());
   // The functions, for opening a module or crate node up into them.
@@ -162,9 +192,10 @@ export function useGuide() {
     }
   }
 
-  async function loadCrate(name) {
+  /** `keep`: leave the crate on screen while it loads again (a new model). */
+  async function loadCrate(name, { keep = false } = {}) {
     const token = ++tokens.crate;
-    crateView.value = null;
+    if (!keep) crateView.value = null;
     if (!name) return;
     loading.value = true;
     loadError.value = null;
@@ -178,6 +209,7 @@ export function useGuide() {
     }
   }
 
+  let typeGeneration = null;
   async function loadItem() {
     const token = ++tokens.item;
     itemError.value = null;
@@ -188,15 +220,25 @@ export function useGuide() {
     if (kind !== 'type' && kind !== 'function') return;
     if (!crateView.value) return;
     const args = { crate: r.crate, module: r.module, name: r.item };
-    // The open item is kept while its own method changes: no refetch.
-    if (kind === 'type' && typeView.value?.name === r.item && typeView.value?.module === r.module && typeView.value?.crate === r.crate) {
+    // The open item is kept while its own method changes: no refetch, unless
+    // the server's model was rebuilt since it was loaded.
+    const generation = status.value?.generation ?? null;
+    if (
+      kind === 'type' &&
+      typeGeneration === generation &&
+      typeView.value?.name === r.item &&
+      typeView.value?.module === r.module &&
+      typeView.value?.crate === r.crate
+    ) {
       return;
     }
     try {
       const data = kind === 'type' ? await fetchType(args) : await fetchFunction(args);
       if (token !== tokens.item) return;
-      if (kind === 'type') typeView.value = data;
-      else fnView.value = data;
+      if (kind === 'type') {
+        typeView.value = data;
+        typeGeneration = generation;
+      } else fnView.value = data;
     } catch (e) {
       if (token !== tokens.item) return;
       // Never leave the previous item on screen under the failure.
@@ -251,6 +293,21 @@ export function useGuide() {
     globalThis.removeEventListener('hashchange', onHashChange);
     clearInterval(timer);
   });
+
+  // A new model on the server (an index built or rebuilt while the page is
+  // open): every view is loaded again, and an error from before, such as "no
+  // index yet", goes. The first status only says what the page already loads.
+  watch(
+    () => status.value?.generation,
+    (generation, before) => {
+      if (generation === undefined || generation === null || before === undefined || generation === before) return;
+      loadError.value = null;
+      itemError.value = null;
+      loadWorkspace();
+      if (route.value.crate) loadCrate(route.value.crate, { keep: true });
+      else loadItem();
+    },
+  );
 
   watch(
     () => route.value.crate,
@@ -310,6 +367,7 @@ export function useGuide() {
     hrefFor,
     hrefHere,
     graphPage,
+    graphKey,
     calls,
     callsError,
     levels,

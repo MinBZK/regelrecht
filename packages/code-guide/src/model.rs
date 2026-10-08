@@ -165,6 +165,50 @@ pub struct Model {
     pub counts: Counts,
 }
 
+impl Model {
+    /// Finds every function and type of a file changed since the index was
+    /// built (`changed`) again in the file as it is now (`now`), and moves its
+    /// place and extent there, so the source viewer shows its current lines.
+    /// `then` is the scan taken with the index. The calls are not touched: they
+    /// are the index's, placed by `then`. An item that cannot be found again
+    /// (renamed, removed, made by a macro) keeps its line and loses its extent.
+    pub fn relocate(&mut self, then: &Sources, now: &Sources, changed: &BTreeSet<String>) {
+        if changed.is_empty() {
+            return;
+        }
+        let find = |kind, place: &Place, name: &str| {
+            now.relocate(then, kind, &place.file, name, place.line)
+                .map(|site| (site.name_line, site.line, site.end_line))
+        };
+        for f in self
+            .functions
+            .iter_mut()
+            .filter(|f| changed.contains(&f.place.file))
+        {
+            match find(crate::source::Kind::Fn, &f.place, &f.name) {
+                Some((name_line, line, end_line)) => {
+                    f.place.line = name_line;
+                    f.extent = Some((line, end_line));
+                }
+                None => f.extent = None,
+            }
+        }
+        for t in self
+            .types
+            .iter_mut()
+            .filter(|t| changed.contains(&t.place.file))
+        {
+            match find(crate::source::Kind::Type, &t.place, &t.name) {
+                Some((name_line, line, end_line)) => {
+                    t.place.line = name_line;
+                    t.extent = Some((line, end_line));
+                }
+                None => t.extent = None,
+            }
+        }
+    }
+}
+
 /// What a workspace symbol is, from its descriptors.
 #[derive(Debug, PartialEq, Eq)]
 enum Shape {
@@ -871,6 +915,43 @@ mod tests {
         assert_eq!(m.calls.len(), 1);
         assert!(m.functions.iter().all(|f| f.stale && f.extent.is_some()));
         assert_eq!(m.counts.stale_files, ["x/src/lib.rs"]);
+    }
+
+    #[test]
+    fn items_in_a_changed_file_are_shown_where_they_are_now() {
+        // Indexed against LIB; then two lines are added at the top of the file.
+        let d = Dir::new();
+        d.write("x/src/lib.rs", LIB);
+        let mut doc = Document {
+            relative_path: "x/src/lib.rs".to_string(),
+            ..Default::default()
+        };
+        def(&mut doc, "S#", 2, ScipKind::Struct, "pub struct S");
+        def(
+            &mut doc,
+            "impl#[S]a().",
+            4,
+            ScipKind::Method,
+            "pub fn a(&self)",
+        );
+        def(&mut doc, "impl#[S]b().", 8, ScipKind::Method, "fn b(&self)");
+        reference(&mut doc, "impl#[S]b().", 5);
+        let index = Index {
+            documents: vec![doc],
+            ..Default::default()
+        };
+        let then = Sources::scan(d.path(), &["x".to_string()]);
+        d.write("x/src/lib.rs", &format!("// added\n// added\n{LIB}"));
+        let now = Sources::scan(d.path(), &["x".to_string()]);
+        let changed: BTreeSet<String> = ["x/src/lib.rs".to_string()].into();
+        let mut m = Model::build(&index, crate_x(), &then, &changed);
+        m.relocate(&then, &now, &changed);
+        let a = m.functions.iter().find(|f| f.name == "a").unwrap();
+        assert_eq!((a.place.line, a.extent), (6, Some((6, 9))));
+        let s = m.types.iter().find(|t| t.name == "S").unwrap();
+        assert_eq!((s.place.line, s.extent), (4, Some((4, 4))));
+        // The calls are the index's, unchanged.
+        assert_eq!(m.calls.len(), 1);
     }
 
     #[test]

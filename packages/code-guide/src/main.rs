@@ -50,12 +50,15 @@ pub fn build_model(ws: &workspace::Workspace) -> Result<model::Model, String> {
     let changed = index::changed_files(&ws.paths)
         .map_err(|e| e.to_string())?
         .ok_or_else(incomplete)?;
-    Ok(model::Model::build(
-        &index,
-        ws.crates.clone(),
-        &sources,
-        &changed,
-    ))
+    let mut model = model::Model::build(&index, ws.crates.clone(), &sources, &changed);
+    // The source viewer reads files as they are now: find what is in a changed
+    // file again there, so it shows the current lines of what was indexed.
+    if !changed.is_empty() {
+        let dirs: Vec<String> = ws.crates.iter().map(|c| c.dir.clone()).collect();
+        let now = source::Sources::scan(&ws.paths.workspace, &dirs);
+        model.relocate(&sources, &now, &changed);
+    }
+    Ok(model)
 }
 
 struct Args {

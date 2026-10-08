@@ -21,10 +21,13 @@ just code-guide         # build the UI and serve it on http://localhost:7190
 
 `code-guide index` runs `rust-analyzer scip` over the workspace and writes a
 [SCIP](https://github.com/scip-code/scip) index to
-`<target dir>/code-guide/index.scip`. Next to it go the source scan taken in
+`<target dir>/code-guide/<workspace id>/index.scip`, the id a hash of the
+workspace's path: `just dev-setup` gives every worktree the same target dir, and
+each worktree needs an index of its own. Next to it go the source scan taken in
 the same run (`index.sources.json`, see below) and a manifest (`index.json`): a
-cache key and a hash per input file. The manifest is written last, so an
-interrupted run leaves no index that looks complete. It needs the
+cache key and a hash per input file. A run removes the manifest first and writes
+it last, each file swapped in whole, so a run cut short leaves no index at all
+rather than one that looks complete. It needs the
 rust-analyzer component (`rustup component add rust-analyzer`).
 
 - **When it runs.** Only on request. A run takes about a minute and several GB
@@ -40,11 +43,14 @@ rust-analyzer component (`rustup component add rust-analyzer`).
   engine's `wasm` module exists only with its feature, and without it every call
   made from there would be missing.
 - **Stale sources.** The guide never reads the index's line numbers against an
-  edited file: it uses the source scan stored with the index, so after an edit
-  it still shows the code exactly as it was indexed. The manifest names which
-  files changed since, the app lists them in a banner and marks their
-  functions, and the source view (read from the working tree) may differ from
-  what the guide says about them until the index is rebuilt.
+  edited file: calls are placed with the source scan stored with the index, so
+  after an edit they are still the calls as indexed. The manifest names which
+  files changed since, and the app lists them in a banner. The source viewer
+  reads the files as they are now, so for a changed file the guide finds every
+  function and type again in the current text (same name, same place among
+  items of that name, otherwise the nearest) and shows those lines; one it
+  cannot find (renamed, removed) is shown without its extent, and the source
+  viewer says the file changed since indexing.
 
 ## What the guide reads where
 

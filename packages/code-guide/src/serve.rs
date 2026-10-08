@@ -1,10 +1,13 @@
 //! `serve` — the app and its data, on one port.
 //!
 //! The model is built from the cached index on the first request and rebuilt
-//! when the index file or any source changes (newest modification time), so a
-//! fresh `just code-guide-index`, or an edit, shows on the next request. A
-//! source edited after indexing is reported as stale rather than misread: the
-//! model leaves the references in such files out (see `model.rs`).
+//! when the index or any source file changes (a fingerprint of every path and
+//! its modification time, so a removed or renamed file counts too); a fresh
+//! `just code-guide-index`, or an edit, shows on the next request. Its
+//! `generation` in `/api/status` tells the app to load its views again. A
+//! source edited after indexing is reported as stale rather than misread: its
+//! calls stay as indexed, and its functions and types are found again in the
+//! current text for the source viewer (see `Model::relocate`).
 
 use std::hash::{Hash, Hasher};
 use std::net::SocketAddr;
