@@ -217,11 +217,6 @@ impl<T: serde::de::DeserializeOwned> Declared<T> {
             }),
         }
     }
-
-    /// The value if it is valid.
-    pub fn as_valid(&self) -> Option<&T> {
-        self.valid().ok()
-    }
 }
 
 /// Who supplies a parameter, per the law (RFC-043). Always with a
@@ -260,17 +255,6 @@ pub enum OriginRole {
     Besluit,
 }
 
-impl OriginRole {
-    /// The value as it is written in a law.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            OriginRole::Tijdvak => "TIJDVAK",
-            OriginRole::GevraagdBesluit => "GEVRAAGD_BESLUIT",
-            OriginRole::Besluit => "BESLUIT",
-        }
-    }
-}
-
 /// The five origins of a parameter (RFC-043).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
@@ -286,19 +270,6 @@ pub enum OriginValue {
     Register,
     /// What the intake channel says: who logs in, and on whose behalf.
     Kanaal,
-}
-
-impl OriginValue {
-    /// The value as it is written in a law.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            OriginValue::Belanghebbende => "BELANGHEBBENDE",
-            OriginValue::Dossier => "DOSSIER",
-            OriginValue::Oordeel => "OORDEEL",
-            OriginValue::Register => "REGISTER",
-            OriginValue::Kanaal => "KANAAL",
-        }
-    }
 }
 
 /// An implementing policy overriding the origin that a law gives one of its

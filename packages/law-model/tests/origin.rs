@@ -5,7 +5,7 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use regelrecht_law_model::{ArticleBasedLaw, Declared, OriginRole, OriginValue};
+use regelrecht_law_model::{ArticleBasedLaw, OriginRole, OriginValue};
 
 const WET: &str = r#"
 $id: een_regeling
@@ -61,7 +61,7 @@ fn origin_on_a_parameter() {
     let o = p[0]
         .origin
         .as_ref()
-        .and_then(Declared::as_valid)
+        .and_then(|o| o.valid().ok())
         .expect("origin");
     assert_eq!(o.waarde, OriginValue::Belanghebbende);
     assert_eq!(o.grondslag, "een_regeling#1 lid 1");
@@ -69,7 +69,7 @@ fn origin_on_a_parameter() {
     let r = p[1]
         .origin
         .as_ref()
-        .and_then(Declared::as_valid)
+        .and_then(|o| o.valid().ok())
         .expect("origin");
     assert_eq!(r.waarde, OriginValue::Register);
     assert_eq!(r.register.as_deref(), Some("een_registerwet"));
@@ -85,14 +85,14 @@ fn origins_on_an_article() {
         .and_then(|m| m.origins.as_ref())
         .expect("origins");
     assert_eq!(o.len(), 1);
-    let o = o[0].as_valid().expect("valid");
+    let o = o[0].valid().expect("valid");
     assert_eq!(o.regulation, "een_regeling");
     assert_eq!(o.parameter, "bevat_naam");
     assert_eq!(o.origin.waarde, OriginValue::Register);
 }
 
 /// An invalid origin does not stop the law from loading; the reason comes
-/// from [`Declared::valid`].
+/// from `Declared::valid`.
 #[test]
 fn an_invalid_origin_is_kept_with_its_reason() {
     let law = parse(&WET.replace("waarde: BELANGHEBBENDE", "waarde: KADER"));
@@ -131,10 +131,9 @@ fn the_role_of_a_period() {
     let o = law.articles[0].get_parameters()[0]
         .origin
         .as_ref()
-        .and_then(Declared::as_valid)
+        .and_then(|o| o.valid().ok())
         .expect("origin");
     assert_eq!(o.rol, Some(OriginRole::Tijdvak));
-    assert_eq!(OriginRole::Tijdvak.as_str(), "TIJDVAK");
 }
 
 #[test]
@@ -146,10 +145,9 @@ fn the_role_of_the_decision_requested() {
     let o = law.articles[0].get_parameters()[0]
         .origin
         .as_ref()
-        .and_then(Declared::as_valid)
+        .and_then(|o| o.valid().ok())
         .expect("origin");
     assert_eq!(o.rol, Some(OriginRole::GevraagdBesluit));
-    assert_eq!(OriginRole::GevraagdBesluit.as_str(), "GEVRAAGD_BESLUIT");
     let yaml = serde_yaml_ng::to_string(&law).expect("serialize");
     assert!(yaml.contains("rol: GEVRAAGD_BESLUIT"), "{yaml}");
 }
@@ -165,10 +163,9 @@ fn the_role_of_the_decision() {
     let o = law.articles[0].get_parameters()[0]
         .origin
         .as_ref()
-        .and_then(Declared::as_valid)
+        .and_then(|o| o.valid().ok())
         .expect("origin");
     assert_eq!(o.rol, Some(OriginRole::Besluit));
-    assert_eq!(OriginRole::Besluit.as_str(), "BESLUIT");
 }
 
 #[test]

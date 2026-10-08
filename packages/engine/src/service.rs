@@ -1308,7 +1308,9 @@ impl Submission {
     /// The names of the required inputs that were not supplied, each once.
     pub fn missing_required(&self) -> Vec<String> {
         let mut out: Vec<String> = Vec::new();
-        for i in self.inputs.iter().filter(|i| !i.supplied && i.required()) {
+        // A parameter is required unless it says `required: false` (RFC-036).
+        let required = |i: &&RequestedInput| i.parameter.required != Some(false);
+        for i in self.inputs.iter().filter(|i| !i.supplied).filter(required) {
             if !out.contains(&i.parameter.name) {
                 out.push(i.parameter.name.clone());
             }
@@ -1345,14 +1347,6 @@ pub struct RequestedInput {
     pub parameter: crate::article::Parameter,
     /// Whether the caller passed a value for it (an unknown value is not one).
     pub supplied: bool,
-}
-
-impl RequestedInput {
-    /// Whether the engine needs it: a parameter is required unless it says
-    /// `required: false` (RFC-036).
-    pub fn required(&self) -> bool {
-        self.parameter.required != Some(false)
-    }
 }
 
 /// What executing a decision article at one stage of its procedure involves
@@ -1861,15 +1855,7 @@ impl LawExecutionService {
         calculation_date: &str,
     ) -> Result<Option<Submission>> {
         let ref_date = Some(parse_calculation_date(calculation_date)?);
-        let law = self
-            .resolver
-            .get_law_for_date_reported(law_id, ref_date)
-            .map_err(|reason| selection_error(law_id, calculation_date, reason))?;
-        let article = law.find_article_by_number(article_number).ok_or_else(|| {
-            EngineError::ResolutionError(format!(
-                "the version of {law_id} in force on {calculation_date} has no article {article_number}"
-            ))
-        })?;
+        let (law, article) = self.article_in_force(law_id, article_number, calculation_date)?;
         let Some(kind) = article
             .get_produces()
             .and_then(|p| p.submission.as_ref())
@@ -2048,7 +2034,7 @@ impl LawExecutionService {
     /// it would drop the stages it imposes — the hearing, the notification,
     /// the objection period — and the decision would look complete while the
     /// person it is about never got what the procedure owes them.
-    fn procedure_of(
+    pub fn procedure_of(
         &self,
         law_id: &str,
         article: &Article,
@@ -12149,7 +12135,7 @@ articles:
                 (
                     format!("{}#{}", i.law_id, i.article_number),
                     i.parameter.name.clone(),
-                    i.required(),
+                    i.parameter.required != Some(false),
                 )
             })
             .collect();

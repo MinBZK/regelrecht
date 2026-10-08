@@ -246,11 +246,6 @@ struct WasmStageResult {
     /// Where the decision is now, e.g. "BEKENDMAKING". Absent when complete.
     #[serde(skip_serializing_if = "Option::is_none")]
     current_stage: Option<String>,
-    /// For an article that establishes a submission (RFC-046): the articles
-    /// that take part and what each asks, with per input whether it was
-    /// supplied. What an application form is made of.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    submission: Option<Box<crate::Submission>>,
 }
 
 /// Serializable result for executeWithTrace()
@@ -403,7 +398,7 @@ impl WasmEngine {
     /// layer owns the decision record.
     ///
     /// # Returns
-    /// * `Ok(JsValue)` — `{complete, outputs, state?, pending_inputs?, current_stage?, submission?}`
+    /// * `Ok(JsValue)` — `{complete, outputs, state?, pending_inputs?, current_stage?}`
     /// * `Err(JsValue)` — error message if execution fails
     #[wasm_bindgen(js_name = executeStage)]
     pub fn execute_stage(
@@ -438,13 +433,12 @@ impl WasmEngine {
                 state: None,
                 pending_inputs: Vec::new(),
                 current_stage: None,
-                submission: result.submission,
             },
             ExecutionOutcome::Yielded {
                 state,
                 outputs,
                 pending_inputs,
-                submission,
+                ..
             } => WasmStageResult {
                 complete: false,
                 outputs,
@@ -452,7 +446,6 @@ impl WasmEngine {
                 current_stage: Some(state.current_stage.clone()),
                 state: Some(state),
                 pending_inputs,
-                submission,
             },
         };
 
@@ -462,46 +455,6 @@ impl WasmEngine {
                 law_id, e
             ))
         })
-    }
-
-    /// Execute exactly one stage of the procedure article `articleNumber` of
-    /// `lawId` follows, on a fresh state (RFC-008). The article is named, not
-    /// found by an output: several articles may produce the same output.
-    ///
-    /// Where `executeStage()` walks the procedure and carries each stage's
-    /// outputs into the next, this runs the stage named and nothing else: the
-    /// article with the hooks of that stage. For a caller that keeps its own
-    /// record of the decision, such as a cell that takes a provisional
-    /// decision and later the final one, each from what is known when it is
-    /// taken.
-    ///
-    /// # Returns
-    /// * `Ok(JsValue)` — the same shape as `execute()`: `outputs`,
-    ///   `output_provenance`, `resolved_inputs`, ...
-    /// * `Err(JsValue)` — when the article follows no procedure, the procedure
-    ///   has no such stage, or a value the stage requires is missing
-    #[wasm_bindgen(js_name = executeStageAt)]
-    pub fn execute_stage_at(
-        &self,
-        law_id: &str,
-        article_number: &str,
-        stage_name: &str,
-        parameters: JsValue,
-        calculation_date: &str,
-    ) -> Result<JsValue, JsValue> {
-        let params = parse_parameters(parameters)?;
-        let result = self
-            .service
-            .execute_stage_at(law_id, article_number, stage_name, params, calculation_date)
-            .map_err(engine_error_to_wasm)?;
-        WasmExecuteResult::from(result)
-            .serialize(&js_serializer())
-            .map_err(|e| {
-                wasm_error(&format!(
-                    "Failed to serialize stage result for law '{}': {}",
-                    law_id, e
-                ))
-            })
     }
 
     /// Execute a law output with tracing enabled.
@@ -1410,64 +1363,6 @@ articles:
         // Verify box-drawing rendering works
         let text = trace.render_box_drawing();
         assert!(!text.is_empty(), "Box-drawing trace should not be empty");
-    }
-
-    /// `executeStageAt` geeft wat `LawExecutionService::execute_stage_at`
-    /// teruggeeft in de vorm van `execute()`. Het marshallen over de JS-grens
-    /// is native niet uit te voeren; de omzetting van het resultaat wel.
-    #[test]
-    fn test_wasm_engine_execute_stage_at() {
-        let mut engine = WasmEngine::new();
-        let procedure_law = r#"
-$id: stage_law
-regulatory_layer: WET
-publication_date: '2025-01-01'
-procedure:
-  - id: tegemoetkoming
-    applies_to: {legal_character: BESCHIKKING}
-    stages:
-      - name: VOORSCHOT
-        is: BESLUIT
-articles:
-  - number: '1'
-    text: Op aanvraag wordt een voorschot verleend.
-    machine_readable:
-      execution:
-        produces:
-          legal_character: BESCHIKKING
-          procedure_id: tegemoetkoming
-        output: [{name: voorschot, type: number}]
-        actions: [{output: voorschot, value: 100}]
-  - number: '2'
-    text: De termijn bedraagt zes weken.
-    machine_readable:
-      hooks:
-        - hook_point: post_actions
-          applies_to: {legal_character: BESCHIKKING, stage: BESLUIT}
-      execution:
-        output: [{name: bezwaartermijn_weken, type: number}]
-        actions: [{output: bezwaartermijn_weken, value: 6}]
-"#;
-        load_law(&mut engine, procedure_law);
-
-        let result = engine
-            .service
-            .execute_stage_at("stage_law", "1", "VOORSCHOT", BTreeMap::new(), "2025-01-01")
-            .unwrap();
-        let wasm = WasmExecuteResult::from(result);
-
-        assert_eq!(wasm.outputs.get("voorschot"), Some(&Value::Int(100)));
-        assert_eq!(
-            wasm.outputs.get("bezwaartermijn_weken"),
-            Some(&Value::Int(6))
-        );
-        assert!(matches!(
-            wasm.output_provenance.get("bezwaartermijn_weken"),
-            Some(OutputProvenance::Reactive { article, .. }) if article == "2"
-        ));
-        assert_eq!(wasm.article_number, "1");
-        assert_eq!(wasm.law_id, "stage_law");
-        assert_eq!(wasm.engine_version, env!("CARGO_PKG_VERSION"));
     }
 
     fn note_with_source(source: &str) -> serde_json::Value {
