@@ -68,8 +68,9 @@ profiles:
     kvk: '85234567'
     # Claudia's verhaal gaat over haar zaak, dus ze komt binnen namens Café Noon
     # B.V. (KvK-nummer), waarvan ze bestuurder is. Of dat mag zegt de
-    # Machtigingenwet (art. 2:240 BW); "Mezelf" blijft te kiezen en is dan een
-    # burger zoals Merijn.
+    # Machtigingenwet (art. 2:240 BW). Met DELEGATION aan is ook "Mezelf" te
+    # kiezen, en dan is ze een burger zoals Merijn; zonder de vlag is er geen
+    # wisselknop en blijft ze namens de zaak.
     start_namens: '85234567'
     default_law:
       law_path: verordening_precariobelasting/gemeenten

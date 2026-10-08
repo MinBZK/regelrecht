@@ -20,10 +20,10 @@ function makeContext({ delegations = [], profile, delegationEnabledFlag = true }
   const list = computed(() => (delegationEnabledFlag ? delegations : []));
   const active = computed(() => {
     const start = startDelegationKey(profile);
-    const k = key.value ?? start;
-    if (!k || k === 'SELF') return null;
     // De startmachtiging volgt uit het profiel en de wet; de vlag gaat alleen
     // over wat er in de werkbalk te kiezen is.
+    const k = (delegationEnabledFlag ? key.value : null) ?? start;
+    if (!k || k === 'SELF') return null;
     const pool = k === start ? delegations : list.value;
     const found = pool.find((d) => delegationKey(d) === k) ?? null;
     return found && found.subjectType !== 'SELF' ? found : null;
@@ -208,6 +208,13 @@ describe('een ondernemer die namens haar zaak begint', () => {
     expect(c.personaParams()).toEqual({ kvk_nummer: '85234567' });
     expect(c.wantedDiscoverable.value).toBe('BUSINESS');
     expect(c.list.value).toEqual([]);
+  });
+
+  it('negeert een opgeslagen "Mezelf" zolang DELEGATION uit staat', () => {
+    const c = makeContext({ delegations: [ZELF, NOON], profile: CLAUDIA, delegationEnabledFlag: false });
+    c.key.value = 'SELF';
+    expect(c.active.value).toEqual(NOON);
+    expect(c.personaParams()).toEqual({ kvk_nummer: '85234567' });
   });
 
   it('begint als zichzelf als de wet de startmachtiging niet geeft', () => {

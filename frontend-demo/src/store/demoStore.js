@@ -355,10 +355,12 @@ const delegations = computed(() => (delegationEnabled.value ? delegationResult.v
  */
 const activeDelegation = computed(() => {
   const start = startDelegationKey(profile.value);
-  const key = state.delegationKey ?? start;
-  if (!key || key === SELF_KEY) return null;
   // De startmachtiging volgt uit het profiel en de wet; de vlag gaat alleen
-  // over wat er in de werkbalk te kiezen is.
+  // over wat er in de werkbalk te kiezen is. Zonder de vlag telt een eerder
+  // gemaakte keuze dus niet: wie met de vlag aan "Mezelf" koos en hem daarna
+  // uitzette, begint weer namens de zaak.
+  const key = (delegationEnabled.value ? state.delegationKey : null) ?? start;
+  if (!key || key === SELF_KEY) return null;
   const pool = key === start ? delegationResult.value.delegations : delegations.value;
   const found = pool.find((d) => delegationKey(d) === key) ?? null;
   return found && found.subjectType !== 'SELF' ? found : null;
