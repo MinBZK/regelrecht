@@ -8,7 +8,7 @@ valid_from: '2025-01-01'
 # url wijst daarom naar het artikel dat dit beleid uitwerkt, niet naar een
 # bekendmaking.
 url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel22
-name: Termijnbedrag van het voorschot (fictief uitvoeringsbeleid)
+name: Uitbetaling van het voorschot (fictief uitvoeringsbeleid)
 competent_authority:
   name: Dienst Toeslagen
 articles:
@@ -28,22 +28,29 @@ articles:
       met het restant in de laatste termijn. Wordt een deel van het voorschot
       in één bedrag uitbetaald (artikel 22, vierde en vijfde lid), dan is dat
       deel het voorschotbedrag naar rato van de maanden waarop het betrekking
-      heeft, en wordt het met de eerste termijn uitbetaald.
+      heeft, en wordt het met de eerste termijn uitbetaald. Toeslagen betaalt
+      een termijn door een betaalopdracht aan de bank, op de rekening die de
+      aanvrager in de aanvraag opgaf (artikel 3). Een termijn die de bank niet
+      bijschrijft, blijft openstaan en gaat mee met de volgende betaalopdracht,
+      ook in een maand zonder termijn, tot de toekenning.
     machine_readable:
       execution:
-        # Een betaalde termijn is een feit in de kroniek van Toeslagen
+        # Een betaalopdracht is een feit in de kroniek van Toeslagen
         # (chronolex, een executogram: de uitvoering van het voorschot). Een
         # termijn die nog moet komen is geen feit (RFC-044): de cel voert dit
         # artikel uit op een dag (`executed_on`) en legt alleen een gram vast
-        # als er in die maand een termijn valt (`record_when`, art. 22 Awir).
+        # als er die maand iets te betalen is (`record_when`). Of de termijn
+        # ook betaald is, zegt pas de bank (artikel 2).
         # - refers_to: het voorschot, als het besluit in de fase VOORSCHOT
         #   van de procedure tegemoetkoming van de Awir. Zo noemt dit beleid
         #   geen toeslag.
         # - period: de termijnen rekenen met het beleid van het
         #   berekeningsjaar, ook de termijn in december ervoor (art. 22 lid 1).
-        # - once_per: per aanvraag ten hoogste één termijn per maand (art. 22
-        #   lid 1: "telkens een maand later"), ook na een herziening van het
-        #   voorschot.
+        # - once_per: per aanvraag ten hoogste één betaalopdracht per maand
+        #   (art. 22 lid 1: "telkens een maand later"), ook na een herziening
+        #   van het voorschot. Een mislukte termijn wacht niet op een nieuwe
+        #   opdracht in dezelfde maand: hij gaat mee met de opdracht van de
+        #   volgende uitvoeringsdag (eigen keuze van dit fictieve beleid).
         # - until: na de toekenning wordt geen termijn meer betaald. Eigen
         #   keuze, gelezen uit art. 24 lid 2 Awir: de voorschotten worden met
         #   de tegemoetkoming verrekend, dus wat dan nog niet betaald is, komt
@@ -52,13 +59,13 @@ articles:
           extensions:
             chronolex:
               establishes:
-                - event: voorschottermijn_betaald
+                - event: betaalopdracht_gegeven
                   type: executogram
                   refers_to:
                     voorschot:
                       stage: VOORSCHOT
                       required: true
-                  fields: [termijnbedrag]
+                  fields: [termijnbedrag, meegenomen_achterstand, bedrag, rekeningnummer_begunstigde, uitvoerdatum]
                   period:
                     parameter: berekeningsjaar
                     unit: year
@@ -70,7 +77,7 @@ articles:
                     # of op de dag van het voorschot als dat later in de maand
                     # valt. Art. 22 Awir zegt alleen in welke maand.
                     day: 1
-                  record_when: termijn_wordt_betaald
+                  record_when: opdracht_wordt_gegeven
                   until:
                     stage: TOEKENNING
         parameters:
@@ -88,6 +95,17 @@ articles:
             type: date
             required: true
             description: Een dag in de maand waarnaar gevraagd wordt.
+          - name: rekeningnummer
+            type: string
+            required: false
+            nullable: true
+            description: De rekening die de aanvrager in de aanvraag opgaf (artikel 3).
+          - name: achterstallig_bedrag
+            type: amount
+            required: false
+            description: >-
+              Wat van eerdere betaalopdrachten op deze aanvraag niet is
+              bijgeschreven en nog niet opnieuw is opgedragen.
         input:
           - name: termijn_in_maand
             type: boolean
@@ -151,6 +169,22 @@ articles:
             type: amount
             type_spec:
               unit: eurocent
+          # De betaalopdracht aan de bank.
+          - name: opdracht_wordt_gegeven
+            type: boolean
+          - name: meegenomen_achterstand
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: rekeningnummer_begunstigde
+            type: string
+            nullable: true
+          - name: uitvoerdatum
+            type: date
         actions:
           # Eigen keuze van dit fictieve beleid: een termijn van een
           # voorschot van nul wordt niet betaald (Awir 16 lid 1: geen
@@ -234,3 +268,158 @@ articles:
                                             - 1
                         default: $bedrag_per_termijn
               default: 0
+          # Een betaalopdracht in een maand met een termijn, of zolang er een
+          # mislukte termijn openstaat.
+          - output: opdracht_wordt_gegeven
+            value:
+              operation: OR
+              conditions:
+                - $termijn_wordt_betaald
+                - operation: GREATER_THAN
+                  subject: $achterstallig_bedrag
+                  value: 0
+          - output: meegenomen_achterstand
+            value: $achterstallig_bedrag
+          - output: bedrag
+            value:
+              operation: ADD
+              values:
+                - $termijnbedrag
+                - $achterstallig_bedrag
+          - output: rekeningnummer_begunstigde
+            value: $rekeningnummer
+          # De bank voert de opdracht uit op de dag waarop Toeslagen haar geeft.
+          - output: uitvoerdatum
+            value: $maand
+
+  # FICTIEF, eigen keuze in de modellering. De bank laat weten of zij een
+  # betaalopdracht heeft bijgeschreven; pas dan is de termijn betaald. Art. 24
+  # lid 2 Awir verrekent de uitbetaalde voorschotten, dus telt alleen wat de
+  # bank bijschreef.
+  - number: '2'
+    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel24
+    text: >-
+      FICTIEF, eigen keuze in de modellering: geen bekendgemaakt beleid. Een
+      betaalopdracht is uitgevoerd als de bank het bedrag heeft bijgeschreven
+      op de rekening van de begunstigde; de termijn is dan betaald voor het
+      bijgeschreven bedrag. Weigert de bank de overboeking, dan is de
+      betaling mislukt en blijft het bedrag van de opdracht openstaan
+      (artikel 1).
+    machine_readable:
+      execution:
+        # Het antwoord van de bank komt binnen over een kanaal (origin
+        # KANAAL). De cel legt het vast bij ontvangst (geen `executed_on`):
+        # betaald of mislukt, elk met een verwijzing naar de betaalopdracht.
+        produces:
+          extensions:
+            chronolex:
+              establishes:
+                - event: voorschottermijn_betaald
+                  type: executogram
+                  refers_to:
+                    betaalopdracht:
+                      to: fictief_beleid_termijnbedrag_voorschot#1
+                      required: true
+                  fields: [betaald_bedrag]
+                  record_when: uitgevoerd
+                - event: betaling_mislukt
+                  type: executogram
+                  refers_to:
+                    betaalopdracht:
+                      to: fictief_beleid_termijnbedrag_voorschot#1
+                      required: true
+                  fields: [mislukt_bedrag, reden]
+                  record_when: niet_uitgevoerd
+        parameters:
+          - name: bijgeschreven
+            type: boolean
+            required: true
+            description: Of de bank de overboeking heeft bijgeschreven.
+            origin:
+              waarde: KANAAL
+              grondslag: fictief_beleid_termijnbedrag_voorschot#2
+          - name: bijgeschreven_bedrag
+            type: amount
+            required: true
+            description: Het bedrag dat de bank bijschreef.
+            origin:
+              waarde: KANAAL
+              grondslag: fictief_beleid_termijnbedrag_voorschot#2
+          - name: bedrag_opdracht
+            type: amount
+            required: true
+            description: Het bedrag van de betaalopdracht.
+            origin:
+              waarde: KANAAL
+              grondslag: fictief_beleid_termijnbedrag_voorschot#2
+          - name: reden_weigering
+            type: string
+            required: false
+            nullable: true
+            description: Waarom de bank de overboeking weigerde.
+            origin:
+              waarde: KANAAL
+              grondslag: fictief_beleid_termijnbedrag_voorschot#2
+        output:
+          - name: uitgevoerd
+            type: boolean
+          - name: niet_uitgevoerd
+            type: boolean
+          - name: betaald_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: mislukt_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: reden
+            type: string
+            nullable: true
+        actions:
+          - output: uitgevoerd
+            value: $bijgeschreven
+          - output: niet_uitgevoerd
+            value:
+              operation: NOT
+              value: $bijgeschreven
+          - output: betaald_bedrag
+            value: $bijgeschreven_bedrag
+          - output: mislukt_bedrag
+            value:
+              operation: IF
+              cases:
+                - when: $bijgeschreven
+                  then: 0
+              default: $bedrag_opdracht
+          - output: reden
+            value: $reden_weigering
+
+  # FICTIEF, eigen keuze in de modellering. Om te kunnen betalen moet
+  # Toeslagen weten op welke rekening; de Awir zegt dat niet, dus vraagt dit
+  # beleid het bij de aanvraag van art. 15 Awir.
+  - number: '3'
+    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel15
+    text: >-
+      FICTIEF, eigen keuze in de modellering: geen bekendgemaakt beleid. De
+      aanvrager vermeldt in de aanvraag om een tegemoetkoming het nummer van
+      de rekening waarop het voorschot wordt betaald.
+    machine_readable:
+      hooks:
+        - hook_point: pre_actions
+          applies_to:
+            submission: AANVRAAG
+            established_by: algemene_wet_inkomensafhankelijke_regelingen#15
+      execution:
+        produces:
+          legal_character: TOETS
+          decision_type: GEEN_BESLUIT
+        parameters:
+          - name: rekeningnummer
+            type: string
+            nullable: true
+            required: false
+            description: Het nummer van de rekening waarop het voorschot wordt betaald.
+            origin:
+              waarde: BELANGHEBBENDE
+              grondslag: fictief_beleid_termijnbedrag_voorschot#3

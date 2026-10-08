@@ -1,7 +1,8 @@
 ---
 # Beleid van de Dienst Toeslagen over het teruglezen van haar eigen kroniek:
-# hoe zij een vastgelegd voorschot weer leest als de gegevens die art. 22
-# Awir en het beleid over het termijnbedrag vragen. Dit is de reductie van de
+# hoe zij een vastgelegd voorschot, de rekening uit de aanvraag en wat er
+# achterstallig is weer leest als de gegevens die art. 22 Awir en het beleid
+# over de uitbetaling van het voorschot vragen. Dit is de reductie van de
 # kroniek zoals RFC-045 die plaatst: een artikel in het beleid van de houder,
 # in het wetsformaat, door de engine uitgevoerd. Welke kroniek de invoer
 # `grams` is, zegt de configuratie van de cel (`registers:` in cell.yaml), niet
@@ -148,3 +149,110 @@ articles:
                 filter: {operation: EQUALS, subject: $g.sequence, value: $laatste_voorschot}
                 body: $g.period
                 combine: ADD
+
+  - number: '2'
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel15
+    text: >-
+      FICTIEF, aanname namens de Dienst Toeslagen: geen bekendgemaakt beleid.
+      De rekening waarop het voorschot op een aanvraag wordt betaald, is de
+      rekening die de aanvrager in die aanvraag opgaf. Gaf hij er geen op, dan
+      is er geen rekening.
+    machine_readable:
+      execution:
+        parameters:
+          - name: root
+            type: string
+            required: true
+            description: Het kenmerk van de aanvraag.
+        input:
+          - name: grams
+            type: array
+            source: {}
+        output:
+          - name: rekeningnummer
+            type: string
+            nullable: true
+            description: De rekening die de aanvrager in de aanvraag opgaf.
+        actions:
+          - output: rekeningnummer
+            value:
+              operation: IF
+              cases:
+                # Geen aanvraag met dit kenmerk.
+                - when:
+                    operation: NOT
+                    value:
+                      operation: FOREACH
+                      collection: $grams
+                      as: g
+                      filter: {operation: EQUALS, subject: $g.id, value: $root}
+                      body: {operation: EQUALS, subject: $g.id, value: $root}
+                      combine: OR
+                  then: null
+                # Een aanvraag zonder rekening. ADD over één null is een
+                # fout (RFC-036), daarom eerst de vraag of het veld leeg is.
+                - when:
+                    operation: FOREACH
+                    collection: $grams
+                    as: g
+                    filter: {operation: EQUALS, subject: $g.id, value: $root}
+                    body: {operation: EQUALS, subject: $g.rekeningnummer, value: null}
+                    combine: OR
+                  then: null
+              default:
+                operation: FOREACH
+                collection: $grams
+                as: g
+                filter: {operation: EQUALS, subject: $g.id, value: $root}
+                body: $g.rekeningnummer
+                combine: ADD
+
+  - number: '3'
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel22
+    text: >-
+      FICTIEF, aanname namens de Dienst Toeslagen: geen bekendgemaakt beleid.
+      Achterstallig op een aanvraag is wat de bank van betaalopdrachten op die
+      aanvraag niet bijschreef, verminderd met wat Toeslagen daarvan sindsdien
+      opnieuw opdroeg.
+    machine_readable:
+      execution:
+        parameters:
+          - name: root
+            type: string
+            required: true
+            description: Het kenmerk van de aanvraag.
+        input:
+          - name: grams
+            type: array
+            source: {}
+        output:
+          - name: achterstallig_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Wat van eerdere betaalopdrachten niet is bijgeschreven en nog niet opnieuw is opgedragen.
+        actions:
+          - output: achterstallig_bedrag
+            value:
+              operation: SUBTRACT
+              values:
+                - operation: FOREACH
+                  collection: $grams
+                  as: g
+                  filter:
+                    operation: AND
+                    conditions:
+                      - {operation: EQUALS, subject: $g.event, value: betaling_mislukt}
+                      - {operation: EQUALS, subject: $g.root, value: $root}
+                  body: $g.mislukt_bedrag
+                  combine: ADD
+                - operation: FOREACH
+                  collection: $grams
+                  as: g
+                  filter:
+                    operation: AND
+                    conditions:
+                      - {operation: EQUALS, subject: $g.event, value: betaalopdracht_gegeven}
+                      - {operation: EQUALS, subject: $g.root, value: $root}
+                  body: $g.meegenomen_achterstand
+                  combine: ADD

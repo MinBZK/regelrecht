@@ -1,0 +1,117 @@
+---
+# FICTIEF. De voorwaarden van een fictieve bank, geen overheidsregeling en
+# geen bestaande bank. Het wetsformaat kent geen laag voor regels van een
+# private partij; daarom staat dit regelwerk als UITVOERINGSBELEID, met deze
+# markering. Het dient alleen de demo: een rekening waarop betalingen van de
+# overheid werkelijk binnenkomen, in een eigen cel (corpus/demo/cells/bank).
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.8.0/schema/v0.8.0/schema.json
+$id: fictieve_bankvoorwaarden
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+url: https://github.com/MinBZK/regelrecht/blob/main/corpus/demo/regulation/nl/fictieve_bankvoorwaarden/BANK-2024-01-01.yaml
+name: Voorwaarden van de fictieve bank (fictief, geen overheidsregeling)
+competent_authority:
+  name: Fictieve bank
+articles:
+  - number: '1'
+    url: https://github.com/MinBZK/regelrecht/blob/main/corpus/demo/regulation/nl/fictieve_bankvoorwaarden/BANK-2024-01-01.yaml#artikel-1
+    text: >-
+      FICTIEF, geen bestaande voorwaarden. Een overboeking wordt op de
+      uitvoerdatum bijgeschreven op de rekening van de begunstigde, tenzij de
+      rekening bij de bank onbekend is of geblokkeerd is. Een overboeking die
+      niet wordt bijgeschreven, wordt geweigerd, met de reden.
+    machine_readable:
+      execution:
+        # De bank legt elke ontvangen overboeking vast in haar kroniek
+        # `rekeningen`: bijgeschreven of geweigerd. Welke van de twee, zegt
+        # dit artikel (`record_when`). Er is geen dag waarop de bank dit
+        # uitvoert: zij voert het uit als de overboeking binnenkomt (geen
+        # `executed_on`). Het kenmerk van de opdrachtgever reist mee als veld,
+        # niet als verwijzing: het gram van de opdracht ligt in een andere
+        # kroniek.
+        produces:
+          extensions:
+            chronolex:
+              establishes:
+                - event: overboeking_bijgeschreven
+                  type: executogram
+                  fields: [betaalkenmerk, rekeningnummer, uitvoerdatum, bedrag, bijgeschreven, bijgeschreven_bedrag, reden]
+                  record_when: bijgeschreven
+                - event: overboeking_geweigerd
+                  type: executogram
+                  fields: [betaalkenmerk, rekeningnummer, uitvoerdatum, bedrag, bijgeschreven, bijgeschreven_bedrag, reden]
+                  record_when: geweigerd
+        parameters:
+          - name: rekeningnummer
+            type: string
+            required: true
+            description: Het rekeningnummer van de begunstigde.
+            origin:
+              waarde: KANAAL
+              grondslag: fictieve_bankvoorwaarden#1
+          - name: bedrag
+            type: amount
+            required: true
+            description: Het bedrag van de overboeking, in eurocent.
+            origin:
+              waarde: KANAAL
+              grondslag: fictieve_bankvoorwaarden#1
+          - name: uitvoerdatum
+            type: date
+            required: true
+            description: De dag waarop de opdrachtgever de overboeking wil laten uitvoeren.
+            origin:
+              waarde: KANAAL
+              grondslag: fictieve_bankvoorwaarden#1
+          - name: betaalkenmerk
+            type: string
+            required: true
+            description: Het kenmerk dat de opdrachtgever aan de overboeking gaf.
+            origin:
+              waarde: KANAAL
+              grondslag: fictieve_bankvoorwaarden#1
+        input:
+          # Of de rekening bij de bank geblokkeerd is; null als de bank de
+          # rekening niet kent.
+          - name: rekening_geblokkeerd
+            type: boolean
+            nullable: true
+            source: {}
+        output:
+          - name: bijgeschreven
+            type: boolean
+          - name: geweigerd
+            type: boolean
+          - name: bijgeschreven_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: reden
+            type: string
+        actions:
+          - output: bijgeschreven
+            value:
+              operation: EQUALS
+              subject: $rekening_geblokkeerd
+              value: false
+          - output: geweigerd
+            value:
+              operation: NOT
+              value: $bijgeschreven
+          - output: bijgeschreven_bedrag
+            value:
+              operation: IF
+              cases:
+                - when: $bijgeschreven
+                  then: $bedrag
+              default: 0
+          - output: reden
+            value:
+              operation: IF
+              cases:
+                - when: {operation: EQUALS, subject: $rekening_geblokkeerd, value: null}
+                  then: rekening onbekend
+                - when: {operation: EQUALS, subject: $rekening_geblokkeerd, value: true}
+                  then: rekening geblokkeerd
+              default: ''

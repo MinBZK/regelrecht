@@ -1,0 +1,10 @@
+---
+# Cel van een fictieve bank (geen bestaande bank, geen overheid). Zij legt
+# elke overboeking die binnenkomt vast in haar kroniek `rekeningen`:
+# bijgeschreven of geweigerd, naar haar eigen (fictieve) voorwaarden
+# (fictieve_bankvoorwaarden art. 1). Wat er binnenkomt en van wie, zegt het
+# transport tussen de cellen van de demo (`channels` in demo-config.yaml).
+id: bank
+recording_actor: fictieve_bank
+streams:
+  - streams/overboekingen.yaml

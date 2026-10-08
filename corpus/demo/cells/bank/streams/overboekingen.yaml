@@ -1,0 +1,12 @@
+---
+# Een overboeking die bij de bank binnenkomt. De bank voert haar voorwaarden
+# uit bij ontvangst; die zeggen of de overboeking wordt bijgeschreven of
+# geweigerd (`record_when`), en wat het gram bevat.
+$id: overboekingen
+recording_actor: fictieve_bank
+chronicle: rekeningen
+events:
+  - name: overboeking_bijgeschreven
+    establishes: fictieve_bankvoorwaarden#1
+  - name: overboeking_geweigerd
+    establishes: fictieve_bankvoorwaarden#1

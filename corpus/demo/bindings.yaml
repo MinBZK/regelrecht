@@ -873,6 +873,18 @@ faillissementswet_wsnp_bewindvoerder:
         value: $bsn
     kind: table
     service: RECHTSPRAAK
+fictieve_bankvoorwaarden:
+  # Of de fictieve bank de rekening geblokkeerd heeft. Kent de bank de
+  # rekening niet, dan is er geen rij: null, en de bank weigert als onbekend.
+  rekening_geblokkeerd:
+    table: rekeningen
+    field: geblokkeerd
+    select_on:
+      - name: rekeningnummer
+        value: $rekeningnummer
+    kind: table
+    service: BANK
+    absent: null
 handelsregisterwet:
   inschrijvingen:
     table: inschrijvingen

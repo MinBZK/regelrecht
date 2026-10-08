@@ -34,9 +34,10 @@ lexostatus_definitions:
           moment: effective_at
           legal_basis: [algemene_wet_bestuursrecht#4:13 lid 1]
   # Wat er op het voorschot van de aanvraag `root` is uitbetaald: de som van
-  # de betaalde termijnen, zoals de kroniek die kent op het moment van lezen.
+  # wat de bank bijschreef, zoals de kroniek die kent op het moment van lezen.
   # Art. 24 lid 2 verrekent de uitbetaalde voorschotten, niet de verleende:
-  # een termijn die nooit is betaald, telt niet. Geen termijn is nul.
+  # een betaalopdracht die de bank niet bijschreef, telt niet. Geen termijn
+  # is nul.
   - name: uitbetaald
     inputs: [root]
     reduction:
@@ -45,5 +46,5 @@ lexostatus_definitions:
       pick: all
       derivations:
         uitbetaalde_voorschotten:
-          sum: termijnbedrag
+          sum: betaald_bedrag
           legal_basis: [algemene_wet_inkomensafhankelijke_regelingen#24 lid 2]

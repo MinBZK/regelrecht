@@ -11,6 +11,8 @@ services:
     logo: ANVS
   AWB:
     name: Algemene wet bestuursrecht
+  BANK:
+    name: Fictieve bank
   BELASTINGDIENST:
     name: Belastingdienst
     logo: BELASTINGDIENST
@@ -134,6 +136,7 @@ laws:
   faillissementswet_wsnp_bewindvoerder: RECHTSPRAAK
   fictief_beleid_kroniek_toeslagen: TOESLAGEN
   fictief_beleid_termijnbedrag_voorschot: TOESLAGEN
+  fictieve_bankvoorwaarden: BANK
   handelsregisterwet: KVK
   handelsregisterwet/bedrijfsgegevens: KVK
   handelsregisterwet/jaarrekening: KVK

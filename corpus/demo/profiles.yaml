@@ -130,6 +130,17 @@ profiles:
             datum_einde: null
             status: ACTIEF
             heeft_handlichting: false
+      # Een fictieve bank (geen bestaande bank) met de rekening waarop Merijn
+      # zijn toeslag ontvangt. `geblokkeerd: true` laat de bank elke
+      # overboeking weigeren (fictieve_bankvoorwaarden art. 1); het voorschot
+      # blijft dan openstaan tot de rekening weer vrij is.
+      BANK:
+        rekeningen:
+          - bsn: '999100001'
+            rekeningnummer: NL00TEST0123456789
+            rekeninghouder: Merijn van der Meer
+            beginsaldo: 42350
+            geblokkeerd: false
       BELASTINGDIENST:
         # De dag waarop de aanslag inkomstenbelasting over een jaar is vastgesteld
         # (Awir 19: de toekenning volgt binnen zes maanden).

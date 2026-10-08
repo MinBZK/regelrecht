@@ -1,8 +1,9 @@
 ---
 # Cel van de Belastingdienst/Toeslagen. Zij legt de ontvangst van een
 # aanvraag om zorgtoeslag (Awir art. 15), het voorschot en de toekenning erop
-# (Zorgtoeslagwet art. 2 in de procedure van de Awir) en de betaalde
-# voorschottermijnen (Awir art. 22) vast als gram in haar kroniek (RFC-022).
+# (Zorgtoeslagwet art. 2 in de procedure van de Awir), de
+# betaalopdrachten voor de voorschottermijnen (Awir art. 22) en het antwoord
+# van de bank erop vast als gram in haar kroniek (RFC-022).
 # Wat de aanvraag, de besluiten en de termijnen bevatten, zegt de wet; zie de
 # stromen.
 id: toeslagen

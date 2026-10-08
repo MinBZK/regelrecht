@@ -27,6 +27,8 @@ const ZORGTOESLAG: &str = "wet_op_de_zorgtoeslag";
 /// The toetsingsinkomen the citizen expects (Awir 16): 30.000 euro, far
 /// above what the registers will know of the year (795,47 euro).
 const ESTIMATE: i64 = 3_000_000;
+/// The account the citizen gives in the application (fictitious format).
+const ACCOUNT: &str = "NL00TEST0123456789";
 
 fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -82,6 +84,7 @@ fn application_for(year: i32) -> Map<String, serde_json::Value> {
         "dagtekening": "2025-03-03",
         "ondertekening": "J. Voorbeeld",
         "vermoedelijk_toetsingsinkomen": ESTIMATE,
+        "rekeningnummer": ACCOUNT,
     }))
 }
 
@@ -882,7 +885,7 @@ fn a_decision_reads_several_lexostatuses() {
             Read::Lexostatus("uitbetaald".into())
         ]
     );
-    let (_, termijn) = split.event("voorschottermijn_betaald").unwrap();
+    let (_, termijn) = split.event("betaalopdracht_gegeven").unwrap();
     assert_eq!(
         termijn.reads,
         [Read::Regulation {
@@ -958,17 +961,70 @@ fn with_voorschot_on(
     (cell, application, voorschot)
 }
 
-/// Pay the voorschottermijn of the month of `day`, on that day at ten.
+/// Pay the voorschottermijn of the month of `day`, on that day at ten: the
+/// betaalopdracht Toeslagen gives, and the bank's answer that it credited
+/// the amount. Returns the order (`None` if the law gives none that month).
 fn pay(cell: &mut Cell, service: &LawExecutionService, root: &str, day: &str) -> Option<Gram> {
+    let order = order(cell, service, root, day)?;
+    answer(cell, service, &order, true, day);
+    Some(order)
+}
+
+/// Only the betaalopdracht of the month of `day`, on that day at ten.
+fn order(cell: &mut Cell, service: &LawExecutionService, root: &str, day: &str) -> Option<Gram> {
     let now = at(&format!("{day}T10:00:00+01:00"));
     cell.execute(
         service,
-        "voorschottermijn_betaald",
+        "betaalopdracht_gegeven",
         root,
         now.date_naive(),
         now,
     )
     .unwrap_or_else(|e| panic!("{day}: {e}"))
+}
+
+/// The bank's answer to `order`, as the channel delivers it to Toeslagen on
+/// `day` at eleven: credited, or refused because the account is blocked.
+fn answer(
+    cell: &mut Cell,
+    service: &LawExecutionService,
+    order: &Gram,
+    credited: bool,
+    day: &str,
+) -> Gram {
+    let bank = json!({"source": "kanaal", "from": "bank"});
+    let bedrag = order.fields["bedrag"].clone();
+    let input = |v: serde_json::Value| Input {
+        value: v,
+        provenance: bank.clone(),
+    };
+    let inputs = BTreeMap::from([
+        ("bijgeschreven".to_string(), input(json!(credited))),
+        (
+            "bijgeschreven_bedrag".to_string(),
+            input(if credited { bedrag.clone() } else { json!(0) }),
+        ),
+        ("bedrag_opdracht".to_string(), input(bedrag)),
+        (
+            "reden_weigering".to_string(),
+            input(if credited {
+                serde_json::Value::Null
+            } else {
+                json!("rekening geblokkeerd")
+            }),
+        ),
+    ]);
+    let mut grams = cell
+        .receive(
+            service,
+            "fictief_beleid_termijnbedrag_voorschot#2",
+            BTreeMap::from([("betaalopdracht".to_string(), order.id.clone())]),
+            inputs,
+            at(&format!("{day}T11:00:00+01:00")),
+        )
+        .unwrap_or_else(|e| panic!("{day}: {e}"));
+    assert_eq!(grams.len(), 1, "one answer: {grams:?}");
+    grams.remove(0)
 }
 
 /// The first day of each month from `year`-`month`, `count` of them.
@@ -1020,7 +1076,7 @@ fn a_voorschot_before_the_year_is_paid_in_twelve_termijnen() {
     }
     let first = &paid[0];
     assert_eq!(first.type_, "executogram");
-    assert_eq!(first.name, "voorschottermijn_betaald");
+    assert_eq!(first.name, "betaalopdracht_gegeven");
     assert_eq!(first.stage, None);
     assert_eq!(
         first.establishes,
@@ -1034,7 +1090,13 @@ fn a_voorschot_before_the_year_is_paid_in_twelve_termijnen() {
     assert_eq!(first.effective_at, "2024-12-01T10:00:00+01:00");
     assert_eq!(
         first.fields.keys().collect::<Vec<_>>(),
-        ["termijnbedrag"],
+        [
+            "bedrag",
+            "meegenomen_achterstand",
+            "rekeningnummer_begunstigde",
+            "termijnbedrag",
+            "uitvoerdatum"
+        ],
         "only what the law names"
     );
     // What it was paid on: the voorschot read back, and the month.
@@ -1057,7 +1119,7 @@ fn a_voorschot_before_the_year_is_paid_in_twelve_termijnen() {
     );
     let termijnen = cell
         .grams()
-        .filter(|g| g.name == "voorschottermijn_betaald")
+        .filter(|g| g.name == "betaalopdracht_gegeven")
         .count();
     assert_eq!(termijnen, 12);
 }
@@ -1110,7 +1172,7 @@ fn a_termijn_is_paid_once_and_not_ahead_of_time() {
         let e = cell
             .execute(
                 &service,
-                "voorschottermijn_betaald",
+                "betaalopdracht_gegeven",
                 &application.id,
                 on.parse().unwrap(),
                 at(now),
@@ -1151,7 +1213,7 @@ fn a_termijn_is_paid_once_and_not_ahead_of_time() {
     let e = cell
         .execute(
             &service,
-            "voorschottermijn_betaald",
+            "betaalopdracht_gegeven",
             &other.id,
             "2025-04-15".parse().unwrap(),
             at("2025-04-15T10:00:00+02:00"),
@@ -1199,7 +1261,7 @@ fn a_reading_counts_only_what_holds_at_its_moment() {
     let read = |moment: &str| {
         cell.read_case(
             &service,
-            "voorschottermijn_betaald",
+            "betaalopdracht_gegeven",
             &application.id,
             at(moment),
         )
@@ -1282,8 +1344,8 @@ fn a_sum_goes_with_pick_all() {
     for (from, to) in [
         ("pick: all", "pick: latest"),
         (
-            "          sum: termijnbedrag",
-            "          field: termijnbedrag",
+            "          sum: betaald_bedrag",
+            "          field: betaald_bedrag",
         ),
     ] {
         assert!(lexostatuses.contains(from), "{from}");
@@ -1340,6 +1402,52 @@ fn toekenning_after_termijnen(estimate: i64, income: i64) -> (Gram, Gram, i64) {
         )
         .unwrap_or_else(|e| panic!("{e}"));
     (voorschot, toekenning, paid)
+}
+
+/// Awir 24 lid 2 sets off the voorschotten paid out: only what the bank
+/// credited (`voorschottermijn_betaald`), not an order without an answer and
+/// not an order the bank refused.
+#[test]
+fn the_verrekening_counts_only_what_the_bank_credited() {
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    let (mut cell, application, _) = with_voorschot(
+        &mut service,
+        data.path(),
+        "2025-03-04T10:15:00+01:00",
+        "2025-03-10T09:00:00+01:00",
+    );
+    let credited = pay(&mut cell, &service, &application.id, "2025-03-20").unwrap();
+    let refused = order(&mut cell, &service, &application.id, "2025-04-01").unwrap();
+    let failed = answer(&mut cell, &service, &refused, false, "2025-04-01");
+    assert_eq!(failed.name, "betaling_mislukt");
+    assert_eq!(failed.fields["mislukt_bedrag"], refused.fields["bedrag"]);
+    assert_eq!(failed.fields["reden"], "rekening geblokkeerd");
+    // May: the order carries April's failed amount, and has no answer yet.
+    let pending = order(&mut cell, &service, &application.id, "2025-05-01").unwrap();
+    assert_eq!(
+        pending.fields["meegenomen_achterstand"],
+        refused.fields["bedrag"]
+    );
+    let toekenning = cell
+        .decide(
+            &service,
+            "zorgtoeslag_toegekend",
+            BTreeMap::from([("on_application".to_string(), application.id.clone())]),
+            BTreeMap::from([(
+                "datum_vaststelling_aanslag".to_string(),
+                Input {
+                    value: json!("2026-03-15"),
+                    provenance: json!({"source": "dossier"}),
+                },
+            )]),
+            at("2026-06-01T09:00:00+02:00"),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(
+        toekenning.inputs["uitbetaalde_voorschotten"]["value"],
+        credited.fields["bedrag"]
+    );
 }
 
 /// The rounded tegemoetkoming (Awir 14 lid 4) the law gives on `income`.
@@ -1452,7 +1560,7 @@ fn after_the_toekenning_no_termijn_is_paid() {
     let e = cell
         .execute(
             &service,
-            "voorschottermijn_betaald",
+            "betaalopdracht_gegeven",
             &application.id,
             "2025-05-01".parse().unwrap(),
             at("2025-05-01T10:00:00+02:00"),
@@ -1482,7 +1590,7 @@ fn the_cell_says_which_days_a_termijn_is_due() {
                now: &str| {
         cell.due_executions(
             service,
-            "voorschottermijn_betaald",
+            "betaalopdracht_gegeven",
             &cell
                 .grams()
                 .find(|g| g.name == "aanvraag_ontvangen")
@@ -1547,7 +1655,7 @@ fn the_cell_says_which_days_a_termijn_is_due() {
     let late = cell
         .preview_execution(
             &service,
-            "voorschottermijn_betaald",
+            "betaalopdracht_gegeven",
             &application.id,
             "2025-03-10".parse().unwrap(),
             at("2025-04-20T10:00:00+02:00"),
@@ -1621,7 +1729,7 @@ fn a_herziening_does_not_pay_twice_in_a_month() {
     let e = cell
         .execute(
             &service,
-            "voorschottermijn_betaald",
+            "betaalopdracht_gegeven",
             &application.id,
             "2025-04-15".parse().unwrap(),
             at("2025-04-15T10:00:00+02:00"),
@@ -1660,7 +1768,7 @@ fn a_gram_is_not_recorded_before_the_last_one() {
 }
 
 /// What a lexostatus gives is read as the field it reads: the sum of the
-/// termijnen paid is an amount, as the law declares the termijnbedrag.
+/// termijnen paid is an amount, as the law declares what the bank credited.
 #[test]
 fn a_lexostatus_says_which_field_it_reads() {
     let data = tempfile::tempdir().unwrap();
@@ -1670,7 +1778,7 @@ fn a_lexostatus_says_which_field_it_reads() {
         .lexostatus_fields(&service, "uitbetaald", "2025-06-01".parse().unwrap())
         .unwrap();
     let def = &fields["uitbetaalde_voorschotten"];
-    assert_eq!(def.name, "termijnbedrag");
+    assert_eq!(def.name, "betaald_bedrag");
     assert_eq!(def.type_, Some(regelrecht_law_model::ParameterType::Amount));
     // A moment reads no field.
     let fields = cell
