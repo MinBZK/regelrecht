@@ -176,7 +176,7 @@ impl Cell {
     ) -> Result<Self> {
         // A stage that says it `is` a stage no procedure has would make the
         // hooks on that stage silently not fire: refuse to start instead.
-        let unknown = service.unknown_stage_aliases();
+        let unknown = service.resolver().unknown_stage_aliases();
         if !unknown.is_empty() {
             return Err(setup(format!(
                 "the law names stages no procedure has: {}",
@@ -186,7 +186,7 @@ impl Cell {
         // A policy that reads a register must be bound with the engine, or
         // its input reads as unknown at the first decision.
         for r in &config.registers {
-            check_bound(service, &config.id, r)?;
+            register::check_bound(service, &config.id, r)?;
         }
         let mut cell = Self {
             config,
@@ -263,7 +263,7 @@ impl Cell {
         let Some(register) = self.config.registers.iter().find(|r| r.policy == policy) else {
             return Ok(None);
         };
-        check_bound(service, &self.config.id, register)?;
+        register::check_bound(service, &self.config.id, register)?;
         Ok(Some((register, self.chronicle(&register.chronicle)?)))
     }
 
@@ -1572,18 +1572,6 @@ fn arises(shape: &Shape, outputs: &BTreeMap<String, Value>, when: &str) -> Resul
             shape.establishes, shape.event
         ))),
     }
-}
-
-/// Refused unless the register is bound with the engine ([`register::bind`]):
-/// a policy that reads it would read nothing.
-fn check_bound(service: &LawExecutionService, cell: &str, r: &Register) -> Result<()> {
-    if register::is_bound(service, cell, r) {
-        return Ok(());
-    }
-    Err(setup(format!(
-        "register '{}' of cell '{cell}' is not bound with the engine (register::bind)",
-        r.key()
-    )))
 }
 
 /// The inputs as a gram records them: per parameter its value and where it

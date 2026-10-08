@@ -4870,15 +4870,6 @@ impl LawExecutionService {
         self.resolver.unload_law(law_id)
     }
 
-    /// Every `is` of a stage of a loaded procedure that names no stage of the
-    /// default procedure for its legal character: the hooks meant for it
-    /// would silently not fire (see [`crate::resolver::unknown_stage_aliases`]).
-    /// Empty when every alias is known. A caller that loads a whole corpus
-    /// checks this once all laws are loaded.
-    pub fn unknown_stage_aliases(&self) -> Vec<String> {
-        self.resolver.unknown_stage_aliases()
-    }
-
     /// Get direct access to the resolver.
     pub fn resolver(&self) -> &RuleResolver {
         &self.resolver

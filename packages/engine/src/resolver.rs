@@ -1453,6 +1453,22 @@ impl RuleResolver {
         }
     }
 
+    /// Remove the entries `law_id` made in the implements, hook, decides_on
+    /// and override indexes.
+    fn forget_entries_of(&mut self, law_id: &str) {
+        fn retain<K, V>(index: &mut HashMap<K, Vec<V>>, keep: impl Fn(&V) -> bool) {
+            for entries in index.values_mut() {
+                entries.retain(&keep);
+            }
+            index.retain(|_, v| !v.is_empty());
+        }
+        retain(&mut self.implements_index, |r| r.law_id != law_id);
+        retain(&mut self.hooks_index, |e| e.law_id != law_id);
+        retain(&mut self.submission_hooks_index, |e| e.law_id != law_id);
+        retain(&mut self.decides_on_index, |d| d.law_id != law_id);
+        retain(&mut self.overrides_index, |r| r.law_id != law_id);
+    }
+
     /// Rebuild output, implements, hook, override, and procedure indexes for a specific law.
     fn rebuild_indexes_for_law(&mut self, law_id: &str) {
         // Record whether the newest version speaks for the older ones here.
@@ -1462,31 +1478,7 @@ impl RuleResolver {
         self.output_index
             .retain(|key, _| key.split_once('\0').is_none_or(|(id, _)| id != law_id));
 
-        // Remove old implements index entries where this law is an implementor
-        for candidates in self.implements_index.values_mut() {
-            candidates.retain(|r| r.law_id != law_id);
-        }
-        self.implements_index.retain(|_, v| !v.is_empty());
-
-        // Remove old hook index entries for this law
-        for entries in self.hooks_index.values_mut() {
-            entries.retain(|entry| entry.law_id != law_id);
-        }
-        self.hooks_index.retain(|_, v| !v.is_empty());
-        for entries in self.submission_hooks_index.values_mut() {
-            entries.retain(|entry| entry.law_id != law_id);
-        }
-        self.submission_hooks_index.retain(|_, v| !v.is_empty());
-        for entries in self.decides_on_index.values_mut() {
-            entries.retain(|d| d.law_id != law_id);
-        }
-        self.decides_on_index.retain(|_, v| !v.is_empty());
-
-        // Remove old override index entries for this law
-        for entries in self.overrides_index.values_mut() {
-            entries.retain(|r| r.law_id != law_id);
-        }
-        self.overrides_index.retain(|_, v| !v.is_empty());
+        self.forget_entries_of(law_id);
 
         // Remove old procedure index entries defined by this law
         self.procedure_index
@@ -1628,31 +1620,7 @@ impl RuleResolver {
         self.output_index
             .retain(|key, _| key.split_once('\0').is_none_or(|(id, _)| id != law_id));
 
-        // Remove from implements index (this law as implementor)
-        for candidates in self.implements_index.values_mut() {
-            candidates.retain(|r| r.law_id != law_id);
-        }
-        self.implements_index.retain(|_, v| !v.is_empty());
-
-        // Remove hook index entries for this law
-        for entries in self.hooks_index.values_mut() {
-            entries.retain(|entry| entry.law_id != law_id);
-        }
-        self.hooks_index.retain(|_, v| !v.is_empty());
-        for entries in self.submission_hooks_index.values_mut() {
-            entries.retain(|entry| entry.law_id != law_id);
-        }
-        self.submission_hooks_index.retain(|_, v| !v.is_empty());
-        for entries in self.decides_on_index.values_mut() {
-            entries.retain(|d| d.law_id != law_id);
-        }
-        self.decides_on_index.retain(|_, v| !v.is_empty());
-
-        // Remove override index entries for this law
-        for entries in self.overrides_index.values_mut() {
-            entries.retain(|r| r.law_id != law_id);
-        }
-        self.overrides_index.retain(|_, v| !v.is_empty());
+        self.forget_entries_of(law_id);
 
         // Remove procedure index entries defined by this law
         self.procedure_index

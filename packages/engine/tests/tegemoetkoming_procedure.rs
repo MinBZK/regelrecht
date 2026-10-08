@@ -974,11 +974,11 @@ articles:
 fn the_service_reports_a_stage_alias_that_names_no_stage() {
     let good = dated_procedure("2025-01-01", "BESLUIT");
     assert_eq!(
-        service(&[&good]).unknown_stage_aliases(),
+        service(&[&good]).resolver().unknown_stage_aliases(),
         Vec::<String>::new()
     );
     let typo = dated_procedure("2025-01-01", "BESLUT");
-    let problems = service(&[&typo]).unknown_stage_aliases();
+    let problems = service(&[&typo]).resolver().unknown_stage_aliases();
     assert_eq!(problems.len(), 1, "{problems:?}");
     assert!(problems[0].contains("`is: BESLUT`"), "{}", problems[0]);
     assert!(problems[0].contains("dated_procedure"), "{}", problems[0]);

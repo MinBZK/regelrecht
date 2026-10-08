@@ -33,24 +33,6 @@ use crate::config::{CellConfig, Register};
 use crate::error::{setup, Result};
 use crate::lexostatus;
 
-/// The attributes of a gram in a row; a field with one of these names would
-/// be ambiguous.
-pub const GRAM_KEYS: &[&str] = &[
-    "id",
-    "event",
-    "type",
-    "subtype",
-    "stage",
-    "establishes",
-    "root",
-    "sequence",
-    "effective_at",
-    "effective_date",
-    "recorded_at",
-    "recorded_date",
-    "period",
-];
-
 thread_local! {
     /// The rows of each register source during a reading, by source name.
     static ROWS: RefCell<BTreeMap<String, Value>> = const { RefCell::new(BTreeMap::new()) };
@@ -150,14 +132,22 @@ pub fn bind(service: &mut LawExecutionService, config: &CellConfig) -> Result<()
     Ok(())
 }
 
-/// Whether the register is bound with the engine ([`bind`]).
-pub fn is_bound(service: &LawExecutionService, cell: &str, register: &Register) -> bool {
+/// An error unless the register is bound with the engine ([`bind`]): a
+/// policy that reads it would read nothing.
+pub fn check_bound(service: &LawExecutionService, cell: &str, register: &Register) -> Result<()> {
     let name = source_name(cell, register);
-    service
+    if service
         .data_registry()
         .list_sources()
         .iter()
         .any(|s| *s == name)
+    {
+        return Ok(());
+    }
+    Err(setup(format!(
+        "register '{}' of cell '{cell}' is not bound with the engine (register::bind)",
+        register.key()
+    )))
 }
 
 /// The grams of `chronicle` that hold at `as_of`, as rows (see the module).
@@ -174,9 +164,28 @@ pub fn rows(
         .into_iter()
         .enumerate()
     {
+        let date = |moment: &str| moment.chars().take(10).collect::<String>();
+        // The attributes of the gram; a field with one of these names would
+        // be ambiguous.
+        let attributes = [
+            ("id", json!(gram.id)),
+            ("event", json!(gram.name)),
+            ("type", json!(gram.type_)),
+            ("subtype", json!(gram.subtype)),
+            ("stage", json!(gram.stage)),
+            ("establishes", json!(gram.establishes)),
+            ("root", json!(chronicle.root_of(gram))),
+            ("sequence", json!(sequence)),
+            ("effective_at", json!(gram.effective_at)),
+            ("effective_date", json!(date(&gram.effective_at))),
+            ("recorded_at", json!(gram.recorded_at)),
+            ("recorded_date", json!(date(&gram.recorded_at))),
+            ("period", json!(gram.period.map(|p| p.value))),
+        ];
+        let attribute = |name: &str| attributes.iter().any(|(a, _)| *a == name);
         let mut row = Map::new();
         for (name, value) in &gram.fields {
-            if GRAM_KEYS.contains(&name.as_str()) {
+            if attribute(name) {
                 return Err(setup(format!(
                     "gram '{}' has a field '{name}', which a register row has as an attribute of the gram",
                     gram.id
@@ -185,24 +194,11 @@ pub fn rows(
             row.insert(name.clone(), value.clone());
         }
         for name in event_fields.get(&gram.name).into_iter().flatten() {
-            if !GRAM_KEYS.contains(&name.as_str()) {
+            if !attribute(name) {
                 row.entry(name.clone()).or_insert(serde_json::Value::Null);
             }
         }
-        let date = |moment: &str| moment.chars().take(10).collect::<String>();
-        row.insert("id".into(), json!(gram.id));
-        row.insert("event".into(), json!(gram.name));
-        row.insert("type".into(), json!(gram.type_));
-        row.insert("subtype".into(), json!(gram.subtype));
-        row.insert("stage".into(), json!(gram.stage));
-        row.insert("establishes".into(), json!(gram.establishes));
-        row.insert("root".into(), json!(chronicle.root_of(gram)));
-        row.insert("sequence".into(), json!(sequence));
-        row.insert("effective_at".into(), json!(gram.effective_at));
-        row.insert("effective_date".into(), json!(date(&gram.effective_at)));
-        row.insert("recorded_at".into(), json!(gram.recorded_at));
-        row.insert("recorded_date".into(), json!(date(&gram.recorded_at)));
-        row.insert("period".into(), json!(gram.period.map(|p| p.value)));
+        row.extend(attributes.map(|(k, v)| (k.to_string(), v)));
         out.push(serde_json::Value::Object(row));
     }
     Ok(Value::from(&serde_json::Value::Array(out)))
