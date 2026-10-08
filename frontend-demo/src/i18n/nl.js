@@ -325,6 +325,15 @@ export default {
     'De regelingen hieronder rekenen al met wat je hebt opgegeven. Een behandelaar beoordeelt de correctie; pas daarna staat de uitkomst vast.',
   'zaak.portaal.empty.title': 'Geen regelingen',
   'zaak.portaal.empty.body': 'Voor dit profiel zijn geen regelingen zichtbaar.',
+  'zaak.portaal.account.title': 'Mijn rekening (fictieve bank)',
+  'zaak.portaal.account.supporting': 'Rekening {number} bij een verzonnen bank. Wat de overheid overmaakt, komt hier binnen.',
+  'zaak.portaal.account.balance': 'Saldo',
+  'zaak.portaal.account.opening': 'Beginsaldo {amount}',
+  'zaak.portaal.account.credited': 'Bijgeschreven',
+  'zaak.portaal.account.refused': 'Geweigerd: {reason}',
+  'zaak.portaal.account.from': 'van {payer}',
+  'zaak.portaal.account.blocked': 'Deze rekening is geblokkeerd. De bank weigert elke overboeking.',
+  'zaak.portaal.account.empty': 'Nog geen overboekingen.',
 
   // ---- wetten: de wettenbrowser -------------------------------------------
   'wet.sidebar.label': 'Regelwerken',

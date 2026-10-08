@@ -29,6 +29,8 @@ import { materialiseRecord, tablesFromProfiles } from '../data/materialize.js';
 import { addMonths, comingDates, dayOf, decisionDue, fixedDates, nextExecution, nextMoment, periodEnd } from '../data/moments.js';
 import { advanceTo as advanceClock, executeDue as executeDueOn } from '../data/clock.js';
 import { lexostatusRows } from '../data/chronicleView.js';
+import { deliver } from '../data/channels.js';
+import { accountOf as accountFrom } from '../data/account.js';
 import { activeLocale, t } from '../i18n/index.js';
 
 // v2: de zaken dragen sinds de klok en de besluiten per fase andere velden
@@ -519,12 +521,34 @@ function executionsOf(chrono) {
   return out;
 }
 
+/**
+ * Breng wat cel `cellId` net vastlegde (`gram`) over de kanalen naar andere
+ * cellen (`channels` in demo-config.yaml), en wat daar ontstaat weer verder:
+ * de betaalopdracht naar de bank, het antwoord van de bank terug. Elke
+ * ontvangende cel legt vast op `now`. Een fout van een cel gaat naar de
+ * aanroeper, zoals bij het uitvoeren zelf.
+ */
+function transport(cellId, gram, now) {
+  const channels = corpus.value?.config?.channels ?? [];
+  if (!gram || !channels.length) return [];
+  return deliver(gram, cellId, channels, (to, article, refersTo, inputs) => {
+    const wasmCell = cells.value[to];
+    if (!wasmCell) throw new Error(`Kanaal naar cel ${to}, die niet is gestart`);
+    return wasmCell.receive(engine.value, article, refersTo, inputs, now);
+  });
+}
+
 /** De cel van een wet zoals de klok haar aanspreekt: met de engine erbij. */
 function celOf(chrono) {
   const cell = chrono.wasmCell;
   return {
     dueExecutions: (event, root, after, through, now) => cell.dueExecutions(engine.value, event, root, after, through, now),
-    execute: (event, root, day, now) => cell.execute(engine.value, event, root, day, now),
+    // Wat de cel vastlegt, gaat meteen over de kanalen verder.
+    execute: (event, root, day, now) => {
+      const gram = cell.execute(engine.value, event, root, day, now);
+      transport(chrono.cell.id, gram, now);
+      return gram;
+    },
     previewExecution: (event, root, day, now) => cell.previewExecution(engine.value, event, root, day, now),
   };
 }
@@ -808,6 +832,17 @@ function receivedOf(c) {
   } catch (e) {
     return { rows: [], error: String(e?.message ?? e) };
   }
+}
+
+/**
+ * De rekening van de persona (of van wie er namens gehandeld wordt) bij de
+ * fictieve bank: saldo en overboekingen, uit de gegevens van de persona en de
+ * kroniek van de bankcel (`account` in demo-config.yaml). `null` zonder
+ * rekening.
+ */
+function accountOf(bsn = subjectBsn()) {
+  const sources = corpus.value?.profiles?.profiles?.[bsn]?.sources;
+  return accountFrom(corpus.value?.config?.account, sources, state.grams, corpus.value?.cells ?? []);
 }
 
 /** De grammen van een zaak, in de volgorde van de kroniek. */
@@ -1557,6 +1592,7 @@ export function useDemo() {
     momentsOf,
     decisionPreview,
     receivedOf,
+    accountOf,
     reregister,
     portalLaws,
     isLawEnabled,

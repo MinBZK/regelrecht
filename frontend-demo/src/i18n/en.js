@@ -322,6 +322,15 @@ export default {
     'The schemes below already count what you entered. A case officer reviews the correction; only then is the outcome settled.',
   'zaak.portaal.empty.title': 'No schemes',
   'zaak.portaal.empty.body': 'No schemes are visible for this profile.',
+  'zaak.portaal.account.title': 'My account (fictional bank)',
+  'zaak.portaal.account.supporting': 'Account {number} at a made-up bank. What the government transfers arrives here.',
+  'zaak.portaal.account.balance': 'Balance',
+  'zaak.portaal.account.opening': 'Opening balance {amount}',
+  'zaak.portaal.account.credited': 'Credited',
+  'zaak.portaal.account.refused': 'Refused: {reason}',
+  'zaak.portaal.account.from': 'from {payer}',
+  'zaak.portaal.account.blocked': 'This account is blocked. The bank refuses every transfer.',
+  'zaak.portaal.account.empty': 'No transfers yet.',
 
   // ---- laws: the law browser -----------------------------------------------
   'wet.sidebar.label': 'Ruleworks',

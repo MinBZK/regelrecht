@@ -36,6 +36,10 @@ profiles:
       # eurocent. Het voorschot rekent ermee; de toekenning later met wat de
       # Belastingdienst over het jaar weet (24.150 euro).
       vermoedelijk_toetsingsinkomen: 2200000
+      # Het (fictieve) beleid van Toeslagen vraagt op welke rekening het
+      # voorschot wordt betaald. Een duidelijk verzonnen nummer, geen IBAN;
+      # de fictieve bank kent het (BANK in profiles.yaml).
+      rekeningnummer: NL00TEST0123456789
     portal_tab_label: Mijn overheid
     portal_heading: Waar heb ik recht op? Wat zijn mijn plichten?
     portal_subtitle: >-
@@ -164,6 +168,55 @@ dossier:
 # zelf niets op. Een cel zonder regel hier toont niets.
 received:
   toeslagen: uitbetaald
+
+# Het transport tussen de cellen (kanalen, RFC-022): welke gram van welke cel
+# naar welke cel gaat, en welk veld welke parameter van het ontvangende
+# artikel vult (`$id` is het kenmerk van de gram). Wat er bij de ontvanger
+# ontstaat, zegt haar wet: de cel voert het artikel uit en legt vast wat het
+# zegt. De wet zegt niet wie de bank is of hoe een bericht reist; dat is de
+# demo. Een gram kan zo een keten in gang zetten: de betaalopdracht van
+# Toeslagen gaat naar de bank, het antwoord van de bank terug naar Toeslagen.
+channels:
+  - from: {cell: toeslagen, event: betaalopdracht_gegeven}
+    to: {cell: bank, article: fictieve_bankvoorwaarden#1}
+    inputs:
+      betaalkenmerk: $id
+      rekeningnummer: rekeningnummer_begunstigde
+      bedrag: bedrag
+      uitvoerdatum: uitvoerdatum
+  - from: {cell: bank, article: fictieve_bankvoorwaarden#1}
+    to:
+      cell: toeslagen
+      article: fictief_beleid_termijnbedrag_voorschot#2
+      refers_to: {betaalopdracht: betaalkenmerk}
+    inputs:
+      bijgeschreven: bijgeschreven
+      bijgeschreven_bedrag: bijgeschreven_bedrag
+      bedrag_opdracht: bedrag
+      reden_weigering: reden
+
+# De rekening van de persona bij de fictieve bank, in het portaal ("Mijn
+# rekening"). Het rekeningnummer, het beginsaldo en of de rekening
+# geblokkeerd is staan in de gegevens van de persona (`data`); wat er op de
+# rekening gebeurde, in de kroniek van de bankcel (`cell`, per gram de velden
+# onder `gram`). Het saldo is het beginsaldo plus wat de bank bijschreef: een
+# afschrift, geen wet. Een rekening blokkeren kan nu alleen in profiles.yaml
+# (`geblokkeerd: true` bij de persona); een knop in het demomenu volgt later.
+account:
+  cell: bank
+  data:
+    service: BANK
+    table: rekeningen
+    number: rekeningnummer
+    opening_balance: beginsaldo
+    blocked: geblokkeerd
+  gram:
+    account: rekeningnummer
+    amount: bedrag
+    credited: bijgeschreven_bedrag
+    date: uitvoerdatum
+    reason: reden
+    reference: betaalkenmerk
 
 # Laws that never appear on a portal: infrastructure, procedural or helper
 # laws that other laws consume (the POC's FeatureFlags.LAW_DEFAULTS).
