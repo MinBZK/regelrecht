@@ -37,6 +37,21 @@ export function eventsForLaw(cells, lawDoc) {
 }
 
 /**
+ * De cellen die een wet van organisatie `service` uitvoeren, elk één keer, in
+ * de volgorde van de wetten in het corpus.
+ */
+export function cellsOfService(corpus, service) {
+  if (!corpus || !service) return [];
+  const found = new Map();
+  for (const law of corpus.latestById.values()) {
+    if (law.service !== service) continue;
+    const cell = eventsForLaw(corpus.cells, law.doc)?.cell;
+    if (cell) found.set(cell.id, cell);
+  }
+  return [...found.values()];
+}
+
+/**
  * Wat de persona op de aanvraag invult, per veld dat de wet vraagt. Welke
  * waarde bij welk veld hoort, staat in de configuratie van het profiel
  * (`application` in demo-config.yaml); een waarde `$<naam>` vult de demo in

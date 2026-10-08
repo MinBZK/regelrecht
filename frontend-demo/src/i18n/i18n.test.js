@@ -44,6 +44,11 @@ const IDENTICAL_BY_DESIGN = new Set([
   'wet.tree.law_state',
   'wet.tile.outcome.missing',
   'zaak.moments.with_value',
+  'lexo.filter.value',
+  // Zelfde woord in beide talen: wat een lexostatus uit de kroniek filtert,
+  // en het register dat een beleid van de houder leest (RFC-045).
+  'lexo.filter',
+  'lexo.register',
 ]);
 
 /** The `{placeholder}` names in a string, sorted. */

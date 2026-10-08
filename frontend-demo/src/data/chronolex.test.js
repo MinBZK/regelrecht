@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applicationValues, eventsForLaw, gramsOfCase, momentOn, provisionLabel, provisionTarget, fieldText } from './chronolex.js';
+import { applicationValues, cellsOfService, eventsForLaw, gramsOfCase, momentOn, provisionLabel, provisionTarget, fieldText } from './chronolex.js';
 
 const cell = {
   id: 'toeslagen',
@@ -26,6 +26,24 @@ describe('eventsForLaw', () => {
   it('geeft niets voor een wet zonder besluit in een kroniek', () => {
     expect(eventsForLaw([cell], { $id: 'huurtoeslag', articles: [] })).toBeNull();
     expect(eventsForLaw([cell], null)).toBeNull();
+  });
+});
+
+describe('cellsOfService', () => {
+  it('geeft elke cel die een wet van de organisatie uitvoert, één keer', () => {
+    const law = (id, service, doc) => ({ id, service, doc });
+    const corpus = {
+      cells: [cell],
+      latestById: new Map([
+        ['zorgtoeslagwet', law('zorgtoeslagwet', 'toeslagen', zorgtoeslag)],
+        ['nog_een', law('nog_een', 'toeslagen', zorgtoeslag)],
+        ['huurtoeslag', law('huurtoeslag', 'toeslagen', { $id: 'huurtoeslag', articles: [] })],
+        ['elders', law('elders', 'ander', zorgtoeslag)],
+      ]),
+    };
+    expect(cellsOfService(corpus, 'toeslagen')).toEqual([cell]);
+    expect(cellsOfService(corpus, 'niemand')).toEqual([]);
+    expect(cellsOfService(null, 'toeslagen')).toEqual([]);
   });
 });
 

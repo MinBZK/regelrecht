@@ -19,7 +19,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::error::{setup, Result};
 use crate::extension::PeriodUnit;
@@ -151,7 +151,7 @@ pub struct LexostatusFile {
 
 /// One lexostatus: a reduction of the chronicle to the parameters an article
 /// reads.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct LexostatusDefinition {
     pub name: String,
@@ -161,7 +161,7 @@ pub struct LexostatusDefinition {
     pub reduction: Reduction,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Reduction {
     pub chronicle: String,
@@ -171,27 +171,27 @@ pub struct Reduction {
 }
 
 /// Which grams take part. A value `$<input>` is the input of the lexostatus.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Filter {
-    #[serde(rename = "type", default)]
+    #[serde(rename = "type", default, skip_serializing_if = "Option::is_none")]
     pub type_: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subtype: Option<String>,
     /// The event of the gram (its name in the stream).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub event: Option<String>,
     /// The stage of the procedure the gram belongs to.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stage: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub root: Option<String>,
 }
 
 /// Which of the grams that pass the filter the derivations read, in the
 /// order of the chronicle at the moment of reading (`effective_at`, then
 /// `recorded_at`; RFC-044).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Pick {
     /// The last one: the state at the moment of reading. None is an error.
@@ -201,7 +201,7 @@ pub enum Pick {
 }
 
 /// How one parameter follows from the picked gram.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(untagged, deny_unknown_fields)]
 pub enum Derivation {
     /// The value of a field.
@@ -254,7 +254,7 @@ impl Derivation {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Moment {
     EffectiveAt,

@@ -30,6 +30,6 @@ pub mod shape;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
-pub use cell::{Cell, Input};
+pub use cell::{Cell, Input, LexostatusDescription, PolicyArticle, ReadBy, Reading};
 pub use chronicle::{Gram, Period};
 pub use error::{Error, Result};

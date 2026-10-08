@@ -1,12 +1,13 @@
 <script setup>
-import { computed, nextTick, reactive } from 'vue';
+import { computed, nextTick, reactive, watch } from 'vue';
 import { formatDate, humanize } from '../data/format.js';
 import { inputRows } from '../data/chronicleView.js';
-import { eventsForLaw, provisionLabel, provisionTarget } from '../data/chronolex.js';
+import { cellsOfService } from '../data/chronolex.js';
 import { fieldsByArticle, onlyCase, provenanceText, storedChronicle } from '../data/storedChronicle.js';
 import { useDemo } from '../store/demoStore.js';
 import { useI18n } from '../i18n/index.js';
 import { useLocalePath } from '../i18n/useLocalePath.js';
+import { useProvisionLinks } from '../useProvisionLinks.js';
 
 // De kroniek vanaf de achterkant: elke gram die de cel van deze organisatie
 // heeft opgeslagen, in de volgorde van vastleggen, met wat de wet in haar
@@ -20,6 +21,8 @@ const props = defineProps({
   service: { type: String, default: null },
   /** Alleen de zaak die met deze gram begon; leeg = de hele kroniek. */
   root: { type: String, default: null },
+  /** De gram die opengeklapt in beeld komt (een link vanuit een andere weergave). */
+  focus: { type: String, default: null },
 });
 const emit = defineEmits(['clear-root']);
 
@@ -29,16 +32,7 @@ const demo = useDemo();
 const { corpus, state, dataVersion } = demo;
 
 /** De cellen die een wet van deze organisatie uitvoeren, elk één keer. */
-const cells = computed(() => {
-  if (!corpus.value || !props.service) return [];
-  const found = new Map();
-  for (const law of corpus.value.latestById.values()) {
-    if (law.service !== props.service) continue;
-    const cell = eventsForLaw(corpus.value.cells, law.doc)?.cell;
-    if (cell) found.set(cell.id, cell);
-  }
-  return [...found.values()];
-});
+const cells = computed(() => cellsOfService(corpus.value, props.service));
 
 const chronicles = computed(() => {
   void dataVersion.value;
@@ -51,15 +45,7 @@ const chronicles = computed(() => {
 const caseOfRoot = (root) => state.cases.find((c) => c.applicationGramId === root) ?? null;
 const caseText = (c) => (c ? t('kroniek.case', { law: c.lawName, id: c.id.slice(-5) }) : t('kroniek.case.unknown'));
 const filteredCase = computed(() => (props.root ? caseText(caseOfRoot(props.root)) : ''));
-const label = (provision) => provisionLabel(corpus.value, provision);
-/** Of een bepaling in de demo te openen is: alleen een wet uit het corpus. */
-const linkable = (provision) => !!provisionTarget(corpus.value, provision);
-/** Naar het artikel van een bepaling in Regelwerken; een lid opent zijn artikel. */
-function openProvision(provision) {
-  const target = provisionTarget(corpus.value, provision);
-  if (!target) return;
-  goTo('wetten', { lawId: target.lawId }, target.article ? { artikel: target.article } : undefined);
-}
+const { label, linkable, openProvision } = useProvisionLinks(corpus);
 
 /** Een moment uit een gram, met datum en tijd zoals de cel het schreef. */
 function moment(iso) {
@@ -119,6 +105,7 @@ async function show(id) {
   await nextTick();
   document.getElementById(`gram-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
+watch(() => props.focus, (id) => { if (id) show(id); }, { immediate: true });
 </script>
 
 <template>

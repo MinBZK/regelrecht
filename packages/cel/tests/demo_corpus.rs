@@ -1331,3 +1331,138 @@ fn a_carried_amount_that_fails_again_stays_in_arrears() {
         amount(&february, "termijnbedrag") + amount(&january, "bedrag")
     );
 }
+
+/// The cell describes every lexostatus it reads its chronicle back with, in
+/// its configuration or in a policy of the holder, and reads each one with
+/// the grams it came from: the application, the paid termijnen, and the
+/// grams of the case in the register the policy reads.
+#[test]
+fn the_demo_cell_describes_and_reads_its_lexostatuses_with_their_grams() {
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    let (mut cell, application, voorschot) = with_voorschot(
+        &mut service,
+        data.path(),
+        "2024-11-04T10:15:00+01:00",
+        "2024-11-20T09:00:00+01:00",
+        79547,
+    );
+    let order = pay(&mut cell, &service, &application.id, 2024, 12).unwrap();
+    let paid: Vec<String> = cell
+        .grams()
+        .filter(|g| g.name == "voorschottermijn_betaald")
+        .map(|g| g.id.clone())
+        .collect();
+    assert_eq!(paid.len(), 1);
+
+    let described = serde_json::to_value(
+        cell.lexostatuses(&service, "2024-12-01".parse().unwrap())
+            .unwrap_or_else(|e| panic!("{e}")),
+    )
+    .unwrap();
+    let by_name = |name: &str| {
+        described
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|l| l["name"] == name)
+            .unwrap_or_else(|| panic!("no '{name}' in {described}"))
+            .clone()
+    };
+    let aanvraag = by_name("aanvraag");
+    assert_eq!(aanvraag["kind"], "configuration");
+    assert_eq!(aanvraag["inputs"], json!(["root"]));
+    assert_eq!(aanvraag["reduction"]["pick"], "latest");
+    assert_eq!(aanvraag["reduction"]["filter"]["root"], "$root");
+    assert_eq!(
+        aanvraag["reduction"]["derivations"]["datum_ontvangst"]["moment"],
+        "effective_at"
+    );
+    let readers: Vec<&str> = aanvraag["read_by"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["event"].as_str().unwrap())
+        .collect();
+    assert_eq!(readers, ["voorschot_verleend", "zorgtoeslag_toegekend"]);
+    assert_eq!(aanvraag["read_by"][0]["stage"], "VOORSCHOT");
+    assert_eq!(
+        by_name("uitbetaald")["reduction"]["derivations"]["uitbetaalde_voorschotten"]["sum"],
+        "betaald_bedrag"
+    );
+    let policy = by_name("fictief_beleid_kroniek_toeslagen");
+    assert_eq!(policy["kind"], "policy");
+    assert_eq!(policy["register"], "kroniek");
+    assert_eq!(policy["chronicle"], "toeslagen");
+    assert_eq!(policy["register_input"], "grams");
+    assert_eq!(policy["inputs"], json!(["root"]));
+    assert_eq!(policy["articles"][0]["number"], "1");
+    assert!(policy["articles"][0]["outputs"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("voorschotbedrag")));
+    assert_eq!(policy["read_by"][0]["event"], "betaalopdracht_gegeven");
+
+    let root = json!({"root": application.id});
+    let read = |name: &str| {
+        cell.read_lexostatus(
+            &service,
+            name,
+            root.as_object().unwrap(),
+            at("2024-12-02T09:00:00+01:00"),
+        )
+        .unwrap_or_else(|e| panic!("{name}: {e}"))
+    };
+    let aanvraag = read("aanvraag");
+    assert_eq!(aanvraag.grams, std::slice::from_ref(&application.id));
+    assert_eq!(aanvraag.values["bsn"].value, BSN);
+    assert_eq!(aanvraag.values["datum_ontvangst"].value, "2024-11-04");
+    assert_eq!(
+        aanvraag.values["bsn"].provenance,
+        json!({"source": "lexostatus", "lexostatus": "aanvraag"})
+    );
+    let uitbetaald = read("uitbetaald");
+    assert_eq!(uitbetaald.grams, paid);
+    assert_eq!(
+        uitbetaald.values["uitbetaalde_voorschotten"].value,
+        order.fields["bedrag"]
+    );
+    let policy = read("fictief_beleid_kroniek_toeslagen");
+    assert_eq!(
+        policy.values["voorschotbedrag"].value,
+        voorschot.fields["voorschotbedrag"]
+    );
+    assert_eq!(
+        policy.values["voorschotbedrag"].provenance["article"],
+        "fictief_beleid_kroniek_toeslagen#1"
+    );
+    assert!(policy.grams.contains(&application.id));
+    assert!(policy.grams.contains(&voorschot.id));
+    assert!(policy.grams.contains(&order.id));
+
+    // Before the application holds, there is nothing to read it from.
+    assert!(cell
+        .read_lexostatus(
+            &service,
+            "aanvraag",
+            root.as_object().unwrap(),
+            at("2024-11-01T09:00:00+01:00"),
+        )
+        .is_err());
+    assert!(cell
+        .read_lexostatus(
+            &service,
+            "fictief_beleid_kroniek_toeslagen",
+            &serde_json::Map::new(),
+            at("2024-12-02T09:00:00+01:00"),
+        )
+        .is_err());
+    assert!(cell
+        .read_lexostatus(
+            &service,
+            "onbekend",
+            root.as_object().unwrap(),
+            at("2024-12-02T09:00:00+01:00"),
+        )
+        .is_err());
+}

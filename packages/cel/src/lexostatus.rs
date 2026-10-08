@@ -56,6 +56,18 @@ pub fn read(
     chronicle: &Chronicle,
     as_of: DateTime<FixedOffset>,
 ) -> Result<Map<String, Value>> {
+    reduce(definition, inputs, chronicle, as_of).map(|(values, _)| values)
+}
+
+/// [`read`], with the grams the parameters come from: the one picked gram
+/// (`pick: latest`), or every gram summed (`pick: all`, none for a sum of
+/// nothing), in the order they hold.
+pub fn reduce<'c>(
+    definition: &LexostatusDefinition,
+    inputs: &Map<String, Value>,
+    chronicle: &'c Chronicle,
+    as_of: DateTime<FixedOffset>,
+) -> Result<(Map<String, Value>, Vec<&'c Gram>)> {
     for name in &definition.inputs {
         if !inputs.contains_key(name) {
             return Err(refused(format!(
@@ -92,9 +104,9 @@ pub fn read(
                     definition.name, definition.reduction.chronicle
                 ))
             })?;
-            Ok(derive_one(definition, gram))
+            Ok((derive_one(definition, gram), vec![*gram]))
         }
-        Pick::All => derive_all(definition, &picked),
+        Pick::All => Ok((derive_all(definition, &picked)?, picked)),
     }
 }
 

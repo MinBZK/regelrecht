@@ -58,6 +58,12 @@ corrigeren.
   de achterkant in het zaaksysteem) zijn door een taalmodel vertaald. Twijfel
   bij `yntsjinning` voor "indiening", `rjochtskarakter` voor "rechtskarakter",
   `deitekene` voor "gedagtekend" en `Saken` als kop van het bord.
+- **`lexo.*`, `zaak.board.lexostatuses`** (de lexostatussen in het
+  zaaksysteem: hoe de cel haar kroniek terugleest) zijn door een taalmodel
+  vertaald. Twijfel bij `Leksostatussen` voor de term "lexostatussen" (de x als
+  ks, zoals in `tekst`; de term zelf komt uit de chronolexografie en kan ook
+  onvertaald blijven), `werombringt ta` voor "reduceert tot", `Oflieding` voor
+  "afleiding" en `hâlder` voor "houder" (van het beleid).
 - **`zaak.chronicle.undelivered`** (een bericht aan een andere partij dat nog
   niet aankwam, de outbox) is door een taalmodel vertaald. Twijfel bij
   `oankaam` voor "aangekomen" en bij `biedt ... opnij oan` voor "biedt opnieuw

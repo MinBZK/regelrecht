@@ -78,7 +78,7 @@ Both cells and the engine run in the browser as one WebAssembly module, `regelre
 What each zone does, in the order a fact passes through them:
 
 - The **engine** executes. It knows procedures and their stages (RFC-008), fires hooks (RFC-007), builds the model of a submission (which articles take part in an application and what each asks), and runs a single stage of a procedure on a fresh state with `execute_stage_at`. It records nothing and keeps no state between calls.
-- The **cell** decides what is recorded. It derives the shape of every gram from the law (`extension::derive` and `shape` in `packages/cel/src`), executes the article or the stage through the engine, checks the guards (references, `until`, `once_per`, the order of time), and appends the gram to its chronicle. It reads back with a lexostatus or with an article in the policy of the holder, which the engine executes over the chronicle as a data source.
+- The **cell** decides what is recorded. It derives the shape of every gram from the law (`extension::derive` and `shape` in `packages/cel/src`), executes the article or the stage through the engine, checks the guards (references, `until`, `once_per`, the order of time), and appends the gram to its chronicle. It reads back with a lexostatus or with an article in the policy of the holder, which the engine executes over the chronicle as a data source. `Cell::lexostatuses` describes both kinds and `Cell::read_lexostatus` reads either by name, with the grams the values came from; the "Lexostatuses" view in the case system shows them.
 - The **demo** decides when. It holds the clock, asks the cell which days an installment is due, takes a decision when its moment has come, and carries a gram from one cell to the other along the configured channels. It knows no event, field or article by name; those come from the configuration and the law.
 
 ## Where regelrecht stops and chronolex begins
@@ -291,7 +291,7 @@ To follow Merijn's case:
 2. Apply for zorgtoeslag on "My government". "What the law asks" shows the fields with their articles.
 3. Open the case in the case system and its Chronicle: the application, the voorschot and the first payment order with the bank's answer.
 4. Press "To the next moment" to move through the installments, the end of the year and the assessment, until the toekenning.
-5. "Chronicle" next to "Cases" on the board shows every gram the cell stores; "See how the cell stores this" on a case filters it. "My account" on the portal shows the bank's side.
+5. "Chronicle" next to "Cases" on the board shows every gram the cell stores; "See how the cell stores this" on a case filters it. "Lexostatuses" next to it shows `aanvraag`, `uitbetaald` and `fictief_beleid_kroniek_toeslagen`, how each reduces the chronicle, and what each gives for the case now, with links to the grams it read. "My account" on the portal shows the bank's side.
 
 ## Further reading
 

@@ -101,7 +101,7 @@ impl DataSource for RegisterSource {
 
 /// The input without a source (`source: {}`) of the policy: what it reads
 /// of its register. Exactly one, or the binding is refused.
-fn register_input(service: &LawExecutionService, policy: &str) -> Result<String> {
+pub fn register_input(service: &LawExecutionService, policy: &str) -> Result<String> {
     let law = service.resolver().get_law(policy).ok_or_else(|| {
         setup(format!(
             "register of policy '{policy}': no regulation '{policy}'"

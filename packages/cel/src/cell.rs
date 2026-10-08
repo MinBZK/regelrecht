@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Map;
 
 use crate::chronicle::{Chronicle, Gram, Period};
-use crate::config::{CellConfig, Derivation, Read};
+use crate::config::{CellConfig, Derivation, LexostatusDefinition, Read, Reduction};
 use crate::error::{refused, setup, Result};
 use crate::extension::{Every, ExecutedOn};
 use crate::lexostatus;
@@ -22,6 +22,59 @@ use crate::shape::{self, Shape};
 pub struct Input {
     pub value: serde_json::Value,
     pub provenance: serde_json::Value,
+}
+
+/// An event of the cell that reads a lexostatus for its case (`reads` in its
+/// stream): the event, its stream, and the stage of the decision it records.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ReadBy {
+    pub event: String,
+    pub stream: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stage: Option<String>,
+}
+
+/// An article of a policy of the holder, with the outputs it gives.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PolicyArticle {
+    pub number: String,
+    pub outputs: Vec<String>,
+}
+
+/// A lexostatus of the cell as it reduces its chronicle: in the cell
+/// configuration (`lexostatuses.yaml`), or in an article in the policy of the
+/// holder that reads a chronicle of the cell as a register (`registers:` in
+/// `cell.yaml`). Either is read with [`Cell::read_lexostatus`] by its `name`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum LexostatusDescription {
+    /// A reduction in the cell configuration: filter, pick, derivations.
+    Configuration {
+        name: String,
+        inputs: Vec<String>,
+        reduction: Reduction,
+        read_by: Vec<ReadBy>,
+    },
+    /// A policy of the holder: `name` is the policy, `register` the name the
+    /// binding gives the register, `register_input` the input without a
+    /// source (`source: {}`) the chronicle is given as.
+    Policy {
+        name: String,
+        register: String,
+        chronicle: String,
+        register_input: String,
+        inputs: Vec<String>,
+        articles: Vec<PolicyArticle>,
+        read_by: Vec<ReadBy>,
+    },
+}
+
+/// A reading of a lexostatus: per parameter its value and where it came
+/// from, and the grams it was read from, by id, in the order they hold.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Reading {
+    pub values: BTreeMap<String, Input>,
+    pub grams: Vec<String>,
 }
 
 /// A cell. It holds its configuration and its chronicles, not the law: every
@@ -308,22 +361,151 @@ impl Cell {
         inputs: &Map<String, serde_json::Value>,
         as_of: DateTime<FixedOffset>,
     ) -> Result<Map<String, serde_json::Value>> {
-        let definition = self
-            .config
-            .lexostatuses
-            .iter()
-            .find(|l| l.name == lexostatus)
+        let (definition, chronicle) = self
+            .configured(lexostatus)?
             .ok_or_else(|| refused(format!("no lexostatus '{lexostatus}'")))?;
+        lexostatus::read(definition, inputs, chronicle, as_of)
+    }
+
+    /// The lexostatus `name` in the cell configuration with the chronicle it
+    /// reads; `None` if the configuration has none of that name.
+    fn configured(&self, name: &str) -> Result<Option<(&LexostatusDefinition, &Chronicle)>> {
+        let Some(definition) = self.config.lexostatuses.iter().find(|l| l.name == name) else {
+            return Ok(None);
+        };
         let chronicle = self
             .chronicles
             .get(&definition.reduction.chronicle)
             .ok_or_else(|| {
                 setup(format!(
-                    "lexostatus '{lexostatus}' reads chronicle '{}', which the cell does not keep",
+                    "lexostatus '{name}' reads chronicle '{}', which the cell does not keep",
                     definition.reduction.chronicle
                 ))
             })?;
-        lexostatus::read(definition, inputs, chronicle, as_of)
+        Ok(Some((definition, chronicle)))
+    }
+
+    /// Every lexostatus of the cell and how it reduces the chronicle: first
+    /// those in the cell configuration, then each policy of the holder that
+    /// reads a register of the cell, with its articles as they hold on `day`.
+    /// Per lexostatus the events that read it for their case.
+    pub fn lexostatuses(
+        &self,
+        service: &LawExecutionService,
+        day: NaiveDate,
+    ) -> Result<Vec<LexostatusDescription>> {
+        let read_by = |read: &dyn Fn(&Read) -> bool| -> Vec<ReadBy> {
+            self.config
+                .streams
+                .iter()
+                .flat_map(|s| s.events.iter().map(move |e| (s, e)))
+                .filter(|(_, e)| e.reads.iter().any(read))
+                .map(|(s, e)| ReadBy {
+                    event: e.name.clone(),
+                    stream: s.id.clone(),
+                    stage: e.stage.clone(),
+                })
+                .collect()
+        };
+        let mut out = Vec::new();
+        for l in &self.config.lexostatuses {
+            out.push(LexostatusDescription::Configuration {
+                name: l.name.clone(),
+                inputs: l.inputs.clone(),
+                reduction: l.reduction.clone(),
+                read_by: read_by(&|r| r.lexostatus() == Some(l.name.as_str())),
+            });
+        }
+        for register in &self.config.registers {
+            let policy = &register.policy;
+            let law = service
+                .resolver()
+                .get_law_for_date(policy, Some(day))
+                .ok_or_else(|| setup(format!("policy '{policy}' has no version on {day}")))?;
+            let mut inputs: Vec<String> = Vec::new();
+            let mut articles = Vec::new();
+            for article in &law.articles {
+                let Some(execution) = article.get_execution_spec() else {
+                    continue;
+                };
+                for p in execution.parameters.iter().flatten() {
+                    if !inputs.contains(&p.name) {
+                        inputs.push(p.name.clone());
+                    }
+                }
+                articles.push(PolicyArticle {
+                    number: article.number.clone(),
+                    outputs: execution
+                        .output
+                        .iter()
+                        .flatten()
+                        .map(|o| o.name.clone())
+                        .collect(),
+                });
+            }
+            out.push(LexostatusDescription::Policy {
+                name: policy.clone(),
+                register: register.name.clone(),
+                chronicle: register.chronicle.clone(),
+                register_input: register::register_input(service, policy)?,
+                inputs,
+                articles,
+                read_by: read_by(
+                    &|r| matches!(r, Read::Regulation { regulation } if regulation == policy),
+                ),
+            });
+        }
+        Ok(out)
+    }
+
+    /// Read the lexostatus `name` as it holds at `as_of`, with where each
+    /// parameter came from and the grams it was read from. `name` is a
+    /// lexostatus in the cell configuration, or a policy of the holder that
+    /// reads a register of the cell (see [`Self::lexostatuses`]); a policy
+    /// is executed for the case `root` of `inputs`, as [`Self::read_case`]
+    /// executes it, and its grams are those of that case in the register.
+    /// An output the policy leaves empty is no parameter.
+    pub fn read_lexostatus(
+        &self,
+        service: &LawExecutionService,
+        name: &str,
+        inputs: &Map<String, serde_json::Value>,
+        as_of: DateTime<FixedOffset>,
+    ) -> Result<Reading> {
+        if let Some((definition, chronicle)) = self.configured(name)? {
+            let (values, grams) = lexostatus::reduce(definition, inputs, chronicle, as_of)?;
+            return Ok(Reading {
+                values: values
+                    .into_iter()
+                    .map(|(n, v)| (n, from_lexostatus(v, name)))
+                    .collect(),
+                grams: grams.iter().map(|g| g.id.clone()).collect(),
+            });
+        }
+        let Some(register) = self.config.registers.iter().find(|r| r.policy == name) else {
+            return Err(refused(format!("no lexostatus '{name}'")));
+        };
+        let root = inputs
+            .get("root")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| refused(format!("policy '{name}' needs input 'root'")))?;
+        let values = self
+            .read_policy(service, name, root, as_of)?
+            .into_iter()
+            .collect();
+        let chronicle = self.chronicles.get(&register.chronicle).ok_or_else(|| {
+            setup(format!(
+                "register '{}' is chronicle '{}', which the cell does not keep",
+                register.key(),
+                register.chronicle
+            ))
+        })?;
+        let grams = lexostatus::in_force(chronicle, as_of)?
+            .into_iter()
+            .filter(|g| chronicle.root_of(g) == root)
+            .map(|g| g.id.clone())
+            .collect();
+        Ok(Reading { values, grams })
     }
 
     /// Per parameter the lexostatus `lexostatus` gives, the field of a gram

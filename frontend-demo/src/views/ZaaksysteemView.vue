@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router';
 import CorrectionRows from '../components/CorrectionRows.vue';
 import DataLineage from '../components/DataLineage.vue';
 import EditValueSheet from '../components/EditValueSheet.vue';
+import LexostatusView from '../components/LexostatusView.vue';
 import StoredChronicle from '../components/StoredChronicle.vue';
 import { fieldSpec, formatDate, formatDateTime, formatValue, humanize } from '../data/format.js';
 import { lineageFromTrace } from '../data/lineage.js';
@@ -143,10 +144,20 @@ function open(c) {
 // Zaken of kroniek: het bord met de zaken, of de kroniek van de cel vanaf de
 // achterkant, elke gram zoals hij is opgeslagen. Vanuit een zaak opent die
 // kroniek op de grammen van die zaak (`chronicleRoot`).
+// Ernaast de lexostatussen: hoe de cel die kroniek terugleest. Een gram
+// waaruit een lexostatus las, opent de kroniek op die gram
+// (`chronicleFocus`).
 const boardView = ref('zaken');
 const chronicleRoot = ref(null);
+const chronicleFocus = ref(null);
+function showGram({ id, root }) {
+  chronicleRoot.value = root;
+  chronicleFocus.value = id;
+  boardView.value = 'kroniek';
+}
 function showStored(c) {
   chronicleRoot.value = c.applicationGramId;
+  chronicleFocus.value = null;
   boardView.value = 'kroniek';
   close();
 }
@@ -311,17 +322,21 @@ function claimLawName(cl) {
           </nldd-top-title-bar>
         </nldd-container>
 
-        <!-- Het bord met de zaken, of de kroniek van de cel vanaf de achterkant. -->
+        <!-- Het bord met de zaken, de kroniek van de cel vanaf de achterkant, of hoe de cel die kroniek terugleest. -->
         <nldd-simple-section width="full" padding-bottom="0">
           <nldd-container layout="row">
-            <nldd-segmented-control size="sm" width="fit-content" :value="boardView" @change="boardView = $event.detail?.value ?? 'zaken'">
+            <nldd-segmented-control size="sm" width="fit-content" :value="boardView" @change="boardView = $event.detail?.value ?? 'zaken'; chronicleFocus = null">
               <nldd-segmented-control-item value="zaken" :text="t('zaak.board.cases')"></nldd-segmented-control-item>
               <nldd-segmented-control-item value="kroniek" :text="t('zaak.board.chronicle')"></nldd-segmented-control-item>
+              <nldd-segmented-control-item value="lexostatussen" :text="t('zaak.board.lexostatuses')"></nldd-segmented-control-item>
             </nldd-segmented-control>
           </nldd-container>
         </nldd-simple-section>
         <nldd-simple-section v-if="boardView === 'kroniek'" width="full">
-          <StoredChronicle :service="service" :root="chronicleRoot" @clear-root="chronicleRoot = null" />
+          <StoredChronicle :service="service" :root="chronicleRoot" :focus="chronicleFocus" @clear-root="chronicleRoot = null" />
+        </nldd-simple-section>
+        <nldd-simple-section v-else-if="boardView === 'lexostatussen'" width="full">
+          <LexostatusView :service="service" :root="chronicleRoot" @clear-root="chronicleRoot = null" @show-gram="showGram" />
         </nldd-simple-section>
         <template v-else>
         <nldd-simple-section width="full">

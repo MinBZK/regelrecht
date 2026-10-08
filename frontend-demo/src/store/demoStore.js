@@ -30,6 +30,7 @@ import { materialiseRecord, tablesFromProfiles } from '../data/materialize.js';
 import { addMonths, comingDates, dayOf, decisionDue, fixedDates, nextExecution, nextMoment, periodEnd } from '../data/moments.js';
 import { advanceTo as advanceClock, executeDue as executeDueOn } from '../data/clock.js';
 import { lexostatusRows } from '../data/chronicleView.js';
+import { readingRows } from '../data/lexostatusView.js';
 import { deliver, deliveryErrors, redeliver } from '../data/channels.js';
 import { accountOf as accountFrom } from '../data/account.js';
 import { activeLocale, t } from '../i18n/index.js';
@@ -912,6 +913,43 @@ function receivedOf(c) {
 }
 
 /**
+ * De lexostatussen van cel `cellId` en hoe elk de kroniek reduceert
+ * (`WasmCell.lexostatuses`), met de artikelen van een beleid zoals ze op de
+ * peildatum gelden: `{ lexostatuses, error }`.
+ */
+function lexostatusesOf(cellId) {
+  void dataVersion.value;
+  const wasmCell = cells.value[cellId];
+  if (!wasmCell) return { lexostatuses: [], error: cellErrors.value[cellId] ?? null };
+  try {
+    return { lexostatuses: wasmCell.lexostatuses(engine.value, state.referenceDate), error: null };
+  } catch (e) {
+    return { lexostatuses: [], error: String(e?.message ?? e) };
+  }
+}
+
+/**
+ * Lexostatus `description` (uit `lexostatusesOf`) van cel `cellId` voor de
+ * zaak die met gram `root` begon, gelezen op het moment van nu (de
+ * peildatum): `{ rows, grams, error }`, de waarden zoals een mens ze leest en
+ * de ids van de grammen waaruit de cel ze las. De cel leest, niet de demo.
+ */
+function readLexostatusOf(cellId, description, root) {
+  void dataVersion.value;
+  const wasmCell = cells.value[cellId];
+  if (!wasmCell) return { rows: [], grams: [], error: cellErrors.value[cellId] ?? null };
+  try {
+    const reading = wasmCell.readLexostatus(engine.value, description.name, { root }, nowMoment());
+    // Een reductie in de configuratie leest velden van grammen; een beleid
+    // geeft uitvoer van zijn artikelen, en die leest als dat artikel.
+    const fields = description.kind === 'configuration' ? wasmCell.lexostatusFields(engine.value, description.name, state.referenceDate) : {};
+    return { rows: readingRows(reading, fields, corpus.value), grams: reading.grams, error: null };
+  } catch (e) {
+    return { rows: [], grams: [], error: String(e?.message ?? e) };
+  }
+}
+
+/**
  * De rekening van de persona (of van wie er namens gehandeld wordt) bij de
  * fictieve bank: saldo en overboekingen, uit de gegevens van de persona en de
  * kroniek van de bankcel (`account` in demo-config.yaml). `null` zonder
@@ -1693,6 +1731,8 @@ export function useDemo() {
     momentsOf,
     decisionPreview,
     receivedOf,
+    lexostatusesOf,
+    readLexostatusOf,
     accountOf,
     reregister,
     portalLaws,

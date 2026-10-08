@@ -359,6 +359,41 @@ impl WasmCell {
         to_js(&fields)
     }
 
+    /// Every lexostatus of the cell and how it reduces the chronicle, with
+    /// the policy articles as they hold on `on` (`YYYY-MM-DD`): a list of
+    /// `{kind: "configuration", name, inputs, reduction, read_by}` and
+    /// `{kind: "policy", name, register, chronicle, register_input, inputs,
+    /// articles, read_by}`. See `Cell::lexostatuses`.
+    pub fn lexostatuses(&self, engine: &WasmEngine, on: &str) -> Result<JsValue, JsValue> {
+        to_js(
+            &self
+                .cell
+                .lexostatuses(engine.service(), day(on)?)
+                .map_err(cell_error)?,
+        )
+    }
+
+    /// Read the lexostatus `name` (in the configuration, or a policy that
+    /// reads a register) as it holds at `asOf` (RFC 3339):
+    /// `{values: {name: {value, provenance}}, grams: [id, ...]}`, the grams
+    /// it was read from. See `Cell::read_lexostatus`.
+    #[wasm_bindgen(js_name = readLexostatus)]
+    pub fn read_lexostatus(
+        &self,
+        engine: &WasmEngine,
+        name: &str,
+        inputs: JsValue,
+        as_of: &str,
+    ) -> Result<JsValue, JsValue> {
+        let inputs: serde_json::Map<String, serde_json::Value> = from_js(inputs)?;
+        to_js(
+            &self
+                .cell
+                .read_lexostatus(engine.service(), name, &inputs, moment(as_of)?)
+                .map_err(cell_error)?,
+        )
+    }
+
     /// Every gram, to keep between sessions and to show.
     pub fn grams(&self) -> Result<JsValue, JsValue> {
         to_js(&self.cell.grams().collect::<Vec<_>>())
