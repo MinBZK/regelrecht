@@ -93,6 +93,7 @@ export default {
   'format.items.one': '{n} item',
   'format.items.other': '{n} items',
   'format.missing': 'missing: {facts}',
+  'format.missing_from_law': 'details from {law}',
 
   // ---- simulation: dimensions and groups ----------------------------------
   // The group names themselves are keys in stats.js and stay Dutch; this is
@@ -154,6 +155,7 @@ export default {
   'case.event.objection': 'Objection lodged: {reason}',
   'case.event.objection_upheld': 'Objection upheld: {reason}',
   'case.event.objection_dismissed': 'Objection dismissed: {reason}',
+  'case.review.assessed_by_service': 'Manual review: the service always assesses this application itself.',
   'case.review.citizen_changed_data': 'Manual review: the citizen changed their data.',
   'case.review.law_needs_more_facts': 'Manual review: the law cannot reach an outcome yet, facts are missing.',
   'case.review.sample': 'Manual review (sample check).',

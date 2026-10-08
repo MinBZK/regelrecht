@@ -74,6 +74,10 @@ describe('an amount law', () => {
     );
   });
 
+  it('leaves an unknown amount to the general rendering instead of saying nothing is owed', () => {
+    expect(phraseOutcome(huurtoeslag, { met: true, value: 'onbekend', unknown: true })).toBeNull();
+  });
+
   it('falls back rather than showing half a sentence', () => {
     // Wording that is missing the piece it needs must not reach the screen; the
     // tile keeps its general rendering instead.

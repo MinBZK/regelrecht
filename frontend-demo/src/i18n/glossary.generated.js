@@ -51,7 +51,7 @@ export default {
       "land_verblijf": "Country of residence",
       "leeftijd_exploitant": "Age of operator",
       "leeftijd_leidinggevende": "Age of manager",
-      "levensgedrag_onbekend": "Conduct unknown",
+      "slecht_levensgedrag_bij_verlening": "Conduct assessed at licensing",
       "levensverwachting_65": "Life expectancy at 65",
       "maand_eerste_termijn": "Month of first instalment",
       "maand_laatste_termijn": "Month of last instalment",

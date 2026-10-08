@@ -18,8 +18,9 @@ import {
   registerClaims,
   registerPersonaData,
 } from '../engine/useDemoEngine.js';
-import { COMPLETE, carriedInputs, decisionDates, procedureStages, statusOf } from '../data/lifecycle.js';
-import { delegationKey, delegationTypeLabel, delegationsFor, maySubmitClaims } from '../data/delegation.js';
+import { COMPLETE, carriedInputs, decisionDates, procedureStages, reviewedByCaseworker, statusOf } from '../data/lifecycle.js';
+import { declaredClaim } from '../data/declarations.js';
+import { delegationKey, delegationTypeLabel, delegationsFor, maySubmitClaims, startDelegationKey } from '../data/delegation.js';
 import { verdictOf } from '../data/format.js';
 import { driftOf } from '../data/caseDrift.js';
 import { isEntrypointFor, subjectOf } from '../data/entrypoints.js';
@@ -74,6 +75,9 @@ function defaultState() {
     // Namens wie er gehandeld wordt: null is voor zichzelf. Bewaard als
     // sleutel (`BUSINESS:85234567`), niet als het hele object, want de
     // machtiging zelf komt uit de wet en wordt bij het laden opnieuw bepaald.
+    // null = de startmachtiging van het profiel (`start_namens`), 'SELF' =
+    // bewust Mezelf gekozen. Een eigen waarde voor Mezelf, want een opgeslagen
+    // staat van vóór `start_namens` heeft hier null, en die hoort bij de start.
     delegationKey: null,
     // Vlaggen die de presentator tijdens de demo heeft omgezet. Alleen wat
     // hij écht aanraakte staat hier; de rest volgt het profiel uit
@@ -174,9 +178,15 @@ function nowMoment() {
   return Date.parse(later) > Date.parse(last) ? later : last;
 }
 
-/** Cases in the shape the materialiser's `kind: cases` bindings expect. */
+/**
+ * Cases in the shape the materialiser's `kind: cases` bindings expect: what
+ * was decided (the outputs, so precario reads the area the APV granted, not
+ * the area applied for), what was asked, and the case's own facts on top.
+ */
 function casesForMaterialiser() {
   return state.cases.map((c) => ({
+    ...(c.verifiedResult ?? c.claimedResult ?? {}),
+    ...(c.parameters ?? {}),
     law: c.lawPath,
     service: c.service,
     status: c.status,
@@ -184,7 +194,6 @@ function casesForMaterialiser() {
     bsn: c.bsn,
     kvk_nummer: c.kvk ?? null,
     year: Number(c.submittedAt?.slice(0, 4)),
-    ...(c.parameters ?? {}),
   }));
 }
 
@@ -890,9 +899,10 @@ const persona = computed(() => {
  * dus wát er gebeurde; welke woorden daarbij horen is een vraag van het moment
  * van tonen.
  */
-function reviewReasonKey({ pendingClaims, undecided }) {
+function reviewReasonKey({ pendingClaims, undecided, assessed = false }) {
   if (pendingClaims.length) return 'case.review.citizen_changed_data';
   if (undecided) return 'case.review.law_needs_more_facts';
+  if (assessed) return 'case.review.assessed_by_service';
   return 'case.review.sample';
 }
 
@@ -986,8 +996,15 @@ const delegations = computed(() => (delegationEnabled.value ? delegationResult.v
  * vervalt stil naar 'voor zichzelf': dat is de veilige kant.
  */
 const activeDelegation = computed(() => {
-  if (!state.delegationKey) return null;
-  const found = delegations.value.find((d) => delegationKey(d) === state.delegationKey) ?? null;
+  const start = startDelegationKey(profile.value);
+  // De startmachtiging volgt uit het profiel en de wet; de vlag gaat alleen
+  // over wat er in de werkbalk te kiezen is. Zonder de vlag telt een eerder
+  // gemaakte keuze dus niet: wie met de vlag aan "Mezelf" koos en hem daarna
+  // uitzette, begint weer namens de zaak.
+  const key = (delegationEnabled.value ? state.delegationKey : null) ?? start;
+  if (!key || key === SELF_KEY) return null;
+  const pool = key === start ? delegationResult.value.delegations : delegations.value;
+  const found = pool.find((d) => delegationKey(d) === key) ?? null;
   return found && found.subjectType !== 'SELF' ? found : null;
 });
 
@@ -1003,10 +1020,14 @@ function subjectBsn() {
   return d?.subjectType === 'CITIZEN' ? d.subjectId : profile.value?.bsn;
 }
 
+/** De opgeslagen keuze voor Mezelf (zie `delegationKey` in defaultState). */
+const SELF_KEY = 'SELF';
+
 function setDelegation(delegation) {
   const key = delegationKey(delegation);
-  // 'Mezelf' is geen machtiging maar de afwezigheid ervan.
-  state.delegationKey = !delegation || delegation.subjectType === 'SELF' ? null : key;
+  // 'Mezelf' is geen machtiging maar de afwezigheid ervan, en wel een keuze:
+  // die wint van de startmachtiging van het profiel.
+  state.delegationKey = !delegation || delegation.subjectType === 'SELF' ? SELF_KEY : key;
 }
 
 /**
@@ -1015,21 +1036,20 @@ function setDelegation(delegation) {
  * Handelt iemand namens een ander, dan gaan de parameters over die ander: een
  * onderneming wordt op haar KvK-nummer bevraagd, een kind op zijn BSN. Dat is
  * het hele punt van machtigen — de wet rekent over het onderwerp, niet over
- * degene die de knop indrukt.
+ * degene die de knop indrukt. Wie voor zichzelf handelt is een burger, ook als
+ * zij een onderneming heeft: die bereikt ze via de machtiging.
  */
 function personaParams() {
   const d = activeDelegation.value;
   if (d?.subjectType === 'BUSINESS') return { kvk_nummer: d.subjectId };
   if (d?.subjectType === 'CITIZEN') return { bsn: d.subjectId };
-  const p = profile.value;
-  const params = { bsn: p.bsn };
-  if (p.kvk) params.kvk_nummer = p.kvk;
-  return params;
+  return { bsn: profile.value.bsn };
 }
 
 function setProfile(key) {
   state.profileKey = key;
-  // De machtigingen van het vorige profiel gelden niet voor dit profiel.
+  // De machtigingen van het vorige profiel gelden niet voor dit profiel; dit
+  // profiel begint weer bij zijn eigen startmachtiging.
   state.delegationKey = null;
 }
 
@@ -1057,15 +1077,14 @@ function isLawEnabled(lawEntry) {
  *
  * Namens een onderneming zijn dat de ondernemersregelingen, namens een kind de
  * burgerregelingen: waar de wet over gaat volgt het onderwerp, niet degene die
- * inlogt. Het profiel bepaalt nog wel wat verborgen blijft, want dat is een
- * keuze van de demo en niet van de wet.
+ * inlogt. Voor zichzelf ziet ook een ondernemer de burgerregelingen. Het
+ * profiel bepaalt nog wel wat verborgen blijft, want dat is een keuze van de
+ * demo en niet van de wet.
  */
 const portalLaws = computed(() => {
   if (!corpus.value || !profile.value) return [];
   const d = activeDelegation.value;
-  const wanted = d
-    ? d.subjectType === 'BUSINESS' ? 'BUSINESS' : 'CITIZEN'
-    : profile.value.type === 'ondernemer' ? 'BUSINESS' : 'CITIZEN';
+  const wanted = d?.subjectType === 'BUSINESS' ? 'BUSINESS' : 'CITIZEN';
   return [...corpus.value.latestById.values()].filter(
     (law) => isEntrypointFor(law.doc, wanted) && isLawEnabled(law),
   );
@@ -1123,24 +1142,33 @@ function actingOn() {
 
 /**
  * Submit an application. Goes to manual review when the citizen changed data
- * for this law or when the demo runs in "alles handmatig beoordelen" mode;
- * otherwise the decision follows the law's outcome directly.
+ * for this law, when the service always assesses it (`review_laws`, such as
+ * Rotterdam's terrasvergunning) or when the demo runs in "alles handmatig
+ * beoordelen" mode; otherwise the decision follows the law's outcome directly.
  */
 function submitCase(lawEntry, evaluation, params = personaParams()) {
   const bsn = params.bsn;
+  // Namens een onderneming heeft de aanvraag geen BSN in haar parameters, maar
+  // de correcties van de gemachtigde staan wel op diens BSN (subjectBsn). Zonder
+  // die terugval vond de zaak ze niet en werd ze op ongecontroleerde gegevens
+  // automatisch toegekend. De zaak zelf houdt het BSN van haar onderwerp: wie
+  // daarna voor zichzelf kijkt, ziet de zaak van de BV niet als de zijne.
+  const claimsBsn = bsn ?? subjectBsn();
   const acting = actingOn();
   const pendingClaims = state.claims.filter(
-    (c) => c.bsn === bsn && c.status === 'PENDING' && c.tileLawId === lawEntry.id,
+    (c) => c.bsn === claimsBsn && c.status === 'PENDING' && c.tileLawId === lawEntry.id,
   );
   // An unknown verdict (facts missing, RFC-036) is not a yes: the application
   // goes to a caseworker, who completes it (Awb art. 4:5) or decides.
   const verdict = verdictOf(evaluation.outputs);
   const undecided = verdict === 'unknown';
   const requirementsMet = verdict === null || verdict === true;
-  const needsReview = state.manualReview || pendingClaims.length > 0 || undecided;
+  const assessed = reviewedByCaseworker(lawEntry, corpus.value?.config);
+  const needsReview = state.manualReview || assessed || pendingClaims.length > 0 || undecided;
   const c = {
     id: newId('zaak'),
     bsn,
+    claimsBsn,
     kvk: params.kvk_nummer ?? null,
     lawId: lawEntry.id,
     lawPath: lawEntry.law_path,
@@ -1173,7 +1201,7 @@ function submitCase(lawEntry, evaluation, params = personaParams()) {
           : { key: 'case.event.submitted' }),
       },
       needsReview
-        ? { at: nowMoment(), type: 'IN_REVIEW', key: reviewReasonKey({ pendingClaims, undecided }) }
+        ? { at: nowMoment(), type: 'IN_REVIEW', key: reviewReasonKey({ pendingClaims, undecided, assessed }) }
         : { at: nowMoment(), type: 'DECIDED', key: requirementsMet ? 'case.event.granted_auto' : 'case.event.refused_auto' },
     ],
   };
@@ -1292,8 +1320,9 @@ function resubmitCase(caseId, evaluation, params = personaParams()) {
   const requirementsMet = verdict === null || verdict === true;
   // Per BSN, niet per wet: de wijziging die deze zaak raakt kan bij een
   // andere regeling zijn opgegeven. Dat is precies het geval waar dit voor is.
-  const pendingClaims = state.claims.filter((cl) => cl.bsn === c.bsn && cl.status === 'PENDING');
-  const needsReview = state.manualReview || pendingClaims.length > 0 || undecided;
+  const pendingClaims = state.claims.filter((cl) => cl.bsn === (c.claimsBsn ?? c.bsn) && cl.status === 'PENDING');
+  const assessed = reviewedByCaseworker({ service: c.service, law_path: c.lawPath }, corpus.value?.config);
+  const needsReview = state.manualReview || assessed || pendingClaims.length > 0 || undecided;
   c.parameters = params;
   c.claimedResult = evaluation.outputs ?? {};
   c.verifiedResult = null;
@@ -1303,7 +1332,7 @@ function resubmitCase(caseId, evaluation, params = personaParams()) {
   c.events.push({ at: nowMoment(), type: 'SUBMITTED', key: 'case.event.amended' });
   c.events.push(
     needsReview
-      ? { at: nowMoment(), type: 'IN_REVIEW', key: reviewReasonKey({ pendingClaims, undecided }) }
+      ? { at: nowMoment(), type: 'IN_REVIEW', key: reviewReasonKey({ pendingClaims, undecided, assessed }) }
       : { at: nowMoment(), type: 'DECIDED', key: requirementsMet ? 'case.event.granted_auto' : 'case.event.refused_auto' },
   );
   // De lijst hierboven is met opzet breder dan deze regeling — een wijziging
@@ -1566,7 +1595,11 @@ function decideClaim(claimId, approved, reason = '') {
 }
 
 function claimFor(lawId, input, bsn = subjectBsn()) {
-  return state.claims.find((c) => c.lawId === lawId && c.input === input && c.bsn === bsn && c.status !== 'REJECTED') ?? null;
+  return (
+    state.claims.find((c) => c.lawId === lawId && c.input === input && c.bsn === bsn && c.status !== 'REJECTED') ??
+    // Wat het profiel al eerder opgaf, zoals Café Noon in zijn accijnsaangifte.
+    declaredClaim(profile.value, lawId, input)
+  );
 }
 
 function resetState() {

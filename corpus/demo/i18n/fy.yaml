@@ -13,11 +13,10 @@ profiles.merijn.portal_tab_label: Myn oerheid
 profiles.merijn.portal_heading: Wêr haw ik rjocht op? Wat binne myn plichten?
 profiles.merijn.portal_subtitle: >-
   Besjoch hjir jo taslaggen, útkearingen, oanjeftes en oare regelingen fan de oerheid.
-profiles.claudia.portal_tab_label: Myn ûndernimming
-profiles.claudia.portal_heading: Hokker regelingen passe by myn bedriuw?
+profiles.claudia.portal_tab_label: Myn oerheid
+profiles.claudia.portal_heading: Wêr haw ik rjocht op? Wat binne myn plichten?
 profiles.claudia.portal_subtitle: >-
-  Besjoch beskikbere subsydzjes, rapportaazjeferplichtingen, fergunningen, wetten en oare
-  ûndernimmersregelingen.
+  Besjoch hjir jo taslaggen, útkearingen, oanjeftes en oare regelingen fan de oerheid.
 simulation.disposable_income.0.label: Ynkomstebelesting
 simulation.disposable_income.1.label: Bydrage Zvw
 simulation.disposable_income.2.label: Soarchtaslach
@@ -64,50 +63,81 @@ slides.6.lead: >-
 slides.6.bullets.0: 'Per wet: hokker gegevens út registers, hokker út oare wetten, wat derút komt.'
 slides.6.bullets.1: Eltse line is in echte ferwizing út 'e wet, mei de wearde foar dizze persoan derby.
 slides.6.bullets.2: Feroaret in wet, dan sjogge jo fuortendaliks wa't dat rekket.
-slides.7.overline: Toetse
-slides.7.title: De wet toetst, yn gewoane taal
-slides.7.lead: Senario's beskriuwe in persoan en wat de wet foar dy persoan opsmite moat.
-slides.7.bullets.0: >-
-  Jûn in 17-jierrige, dan gjin soarchtaslach. Jûn in allinnichsteande mei leech ynkommen, dan al.
-slides.7.bullets.1: Deselde senario's draaie hjir yn 'e browser en yn 'e boustrjitte.
-slides.7.bullets.2: Wa't de wet feroaret, sjocht hokker senario omfalt.
-slides.8.overline: Belied
-slides.8.title: Wat docht it mei twatûzen minsken?
-slides.8.lead: In generearre befolking troch alle regelingen hinne, mei de echte wetten.
+slides.8.overline: Toetse
+slides.8.title: De wet toetst, yn gewoane taal
+slides.8.lead: Senario's beskriuwe in persoan en wat de wet foar dy persoan opsmite moat.
 slides.8.bullets.0: >-
+  Jûn in 17-jierrige, dan gjin soarchtaslach. Jûn in allinnichsteande mei leech ynkommen, dan al.
+slides.8.bullets.1: Deselde senario's draaie hjir yn 'e browser en yn 'e boustrjitte.
+slides.8.bullets.2: Wa't de wet feroaret, sjocht hokker senario omfalt.
+slides.10.overline: Belied
+slides.10.title: Wat docht it mei twatûzen minsken?
+slides.10.lead: In generearre befolking troch alle regelingen hinne, mei de echte wetten.
+slides.10.bullets.0: >-
   Wa't oan 'e betingsten foldocht, foar hoefolle, útsplitst nei leeftyd, ynkommen, húshâlden.
-slides.8.bullets.1: Draai oan in drompel yn 'e wet en sjoch it ferskil, foar't de wet yngiet.
-slides.8.bullets.2: 'Ek foar ûndernimmers: fergunningen, meldplichten, prekario.'
-slides.9.overline: De boarger
-slides.9.title: Ien boarger, Merijn
-slides.9.lead: ZZP'er yn 'e thússoarch, allinnichsteande âlder mei twa jonge bern.
-slides.9.bullets.0: Alles dêr't er rjocht op hat, live berekkene troch de wet sels.
-slides.9.bullets.1: Elk gegeven is werom te fieren op it register dat it levere.
-slides.9.bullets.2: Kloppet in gegeven net? Hy korrizjearret it, in behanneler beoardielet.
-slides.10.overline: Oanfreegje
-slides.10.title: Allinne freegje wat de oerheid net wit
-slides.10.lead: De wet rekkenet mei wat der al is en freget pas wat as se fêstrint.
-slides.10.bullets.0: De hiertaslach ken de hier net. Dat is de iennige fraach, op dat stuit.
-slides.10.bullets.1: Nei elk antwurd rekkenet de wet opnij.
-slides.10.bullets.2: Kontrolearje, ferklearje, yntsjinje. Sûnder formulier fan tsien siden.
-slides.11.overline: De behanneler
-slides.11.title: Itselde rjocht, oare kant fan 'e baalje
-slides.11.lead: De oanfraach komt binnen mei de berekkening dy't de boarger seach.
-slides.11.bullets.0: De engine rekkenet it opnij nei mei de registrearre gegevens.
-slides.11.bullets.1: Korreksjes fan 'e boarger steane klear om beoardiele te wurden.
-slides.11.bullets.2: Takenne of ôfwize, mei motivearring; beswier komt fia it portaal werom.
-slides.12.overline: De ûndernimmer
-slides.12.title: In ûndernimmer, Claudia
-slides.12.lead: Eigener fan koffiesaak Noon yn Rotterdam-West, mei in terras.
-slides.12.bullets.0: 'Deselde engine, oare wetten: APV, Alcoholwet, Warenwet, prekario.'
-slides.12.bullets.1: >-
-  De terrasfergunning freget om lokaasje en oerflak; de prekariobelesting rekkenet der fuortendaliks mei.
-slides.12.bullets.2: Gemeente, NVWA en RVO yn ien oersjoch, sûnder dat sy inoar wat freegje hoege.
-slides.13.overline: Demo RegelRecht
-slides.13.title: Fan wet nei digitale wurking
-slides.13.lines.0: Folslein ferhaal, **gjin einprodukt**
-slides.13.lines.1: Wy meitsje belied **troch te dwaan**
-slides.13.link.label: regelrecht.rijks.app
+slides.10.bullets.1: Draai oan in drompel yn 'e wet en sjoch it ferskil, foar't de wet yngiet.
+slides.10.bullets.2: 'Ek foar ûndernimmers: fergunningen, meldplichten, prekario.'
+slides.11.overline: De boarger
+slides.11.title: Ien boarger, Merijn
+slides.11.lead: ZZP'er yn 'e thússoarch, allinnichsteande âlder mei twa jonge bern.
+slides.11.bullets.0: Alles dêr't er rjocht op hat, live berekkene troch de wet sels.
+slides.11.bullets.1: Elk gegeven is werom te fieren op it register dat it levere.
+slides.11.bullets.2: Kloppet in gegeven net? Hy korrizjearret it, in behanneler beoardielet.
+slides.12.overline: Oanfreegje
+slides.12.title: Allinne freegje wat de oerheid net wit
+slides.12.lead: De wet rekkenet mei wat der al is en freget pas wat as se fêstrint.
+slides.12.bullets.0: De hiertaslach ken de hier net. Dat is de iennige fraach, op dat stuit.
+slides.12.bullets.1: Nei elk antwurd rekkenet de wet opnij.
+slides.12.bullets.2: Kontrolearje, ferklearje, yntsjinje. Sûnder formulier fan tsien siden.
+slides.13.overline: De behanneler
+slides.13.title: Itselde rjocht, oare kant fan 'e baalje
+slides.13.lead: De oanfraach komt binnen mei de berekkening dy't de boarger seach.
+slides.13.bullets.0: De engine rekkenet it opnij nei mei de registrearre gegevens.
+slides.13.bullets.1: Korreksjes fan 'e boarger steane klear om beoardiele te wurden.
+slides.13.bullets.2: Takenne of ôfwize, mei motivearring; beswier komt fia it portaal werom.
+slides.14.overline: De ûndernimmer
+slides.14.title: In ûndernimmer, Claudia
+slides.14.lead: Bestjoerder fan Café Noon yn Rotterdam-West, in kafee mei in eigen lytse brouwerij en in terras.
+slides.14.bullets.0: 'Deselde engine, oare wetten: APV, Alcoholwet, Warenwet, aksyns, prekario.'
+slides.14.bullets.1: >-
+  De terrasfergunning freget om lokaasje en oerflak; is dy ferliend, dan rekkenet de prekariobelesting der mei.
+slides.14.bullets.2: Gemeente, NVWA en RVO yn ien oersjoch, sûnder dat sy inoar wat freegje hoege.
+slides.18.overline: Demo RegelRecht
+slides.18.title: Fan wet nei digitale wurking
+slides.18.lines.0: Folslein ferhaal, **gjin einprodukt**
+slides.18.lines.1: Wy meitsje belied **troch te dwaan**
+slides.18.link.label: regelrecht.rijks.app
+slides.7.overline: Gearhing
+slides.7.title: Wetten hingje gear
+slides.7.lead: >-
+  Oft Claudia prekario betellet, hinget ôf fan har terrasfergunning; dy hinget ôf fan har eksploitaasjefergunning.
+slides.7.bullets.0: 'Per wet: hokker gegevens út registers, hokker út oare wetten, wat der útkomt.'
+slides.7.bullets.1: Hannelsregister, BAG en gemeentlike feroarderingen steane yn ien graaf.
+slides.7.bullets.2: Wiziget de feroardering, dan sjogge jo daliks hokker ûndernimmers dat rekket.
+slides.9.overline: Toetse
+slides.9.title: De feroardering toetst, yn gewoane taal
+slides.9.lead: Senario's beskriuwe in ûndernimming en wat de feroardering foar dy ûndernimming opleverje moat.
+slides.9.bullets.0: Jûn in terras fan 20 m², dan gjin prekario. Jûn in terras fan 80 m², dan belesting oer 30 m².
+slides.9.bullets.1: Deselde senario's draaie hjir yn 'e browser en yn 'e boustrjitte.
+slides.9.bullets.2: Wa't de feroardering wiziget, sjocht hokker senario omfalt.
+slides.15.overline: Oanfreegje
+slides.15.title: In terras oanfreegje
+slides.15.lead: De gemeente wit al in soad oer Café Noon. De oanfraach freget allinne nei it terras sels.
+slides.15.bullets.0: Lokaasje, oerflak, seizoen en slutingstiden steane yn gjin register.
+slides.15.bullets.1: Nei elk antwurd rekkenet de APV op 'e nij, mei de wegeringsgrûnen derby.
+slides.15.bullets.2: Nei it yntsjinjen giet de oanfraach nei de gemeente om te beoardieljen.
+slides.16.overline: De gemeente
+slides.16.title: De gemeente beoardielet
+slides.16.lead: Gemeente Rotterdam ferleent in terrasfergunning nei beoardieling troch in behanneler.
+slides.16.bullets.0: De oanfraach komt binnen mei de berekkening dy't Claudia seach.
+slides.16.bullets.1: De behanneler kent ta of wiist ôf, mei motivearring.
+slides.16.bullets.2: Mei de tawizing bestiet de fergunning dêr't prekario oer heft wurdt.
+slides.17.overline: De oanslach
+slides.17.title: Prekario folget út de fergunning
+slides.17.lead: De gemeente leit prekariobelesting op oer it ferliene terras.
+slides.17.bullets.0: De feroardering lêst it oerflak út de ferliene terrasfergunning.
+slides.17.bullets.1: De earste 50 m² binne frijsteld; dêrboppe € 36,10 per m² per jier.
+slides.17.bullets.2: Elk bedrach is werom te lieden ta it artikel en de fergunning dêr't it op rêst.
 profiles.900253010.description: Persoan mei NL Wallet
 profiles.900253022.description: Persoan mei NL Wallet
 profiles.900253034.description: Persoan mei NL Wallet
@@ -185,7 +215,8 @@ profiles.999993660.description: >-
 profiles.999993670.description: Partner fan Maria Pietersen, noch gjin AOW-leeftyd
 profiles.999993872.description: Heit fan twa jonge bern, eigen wenning
 profiles.999999990.description: >-
-  Eigener fan koffiesaak Noon yn Rotterdam West, horeka-ûndernimmer mei eksploitaasjefergunning
+  Bestjoerder fan Café Noon B.V. yn Rotterdam West, in kafee mei in eigen lytse
+  brouwerij, in terras en in eksploitaasjefergunning
 outcome_phrasing.TOESLAGEN/zorgtoeslagwet.lead: Jo soarchtaslach is nei alle gedachten
 outcome_phrasing.TOESLAGEN/zorgtoeslagwet.unit: dit jier
 outcome_phrasing.TOESLAGEN/zorgtoeslagwet.none: Jo krije nei alle gedachten gjin soarchtaslach.
@@ -272,8 +303,8 @@ outcome_phrasing.GEMEENTE_ROTTERDAM/algemene_plaatselijke_verordening/terrassen.
 outcome_phrasing.GEMEENTE_ROTTERDAM/algemene_plaatselijke_verordening/terrassen.no: >-
   GJIN rjocht op in fergunning
 outcome_phrasing.GEMEENTE_ROTTERDAM/alcoholwet/vergunning/gemeenten.lead: Foar alkoholferkeap hawwe jo
-outcome_phrasing.GEMEENTE_ROTTERDAM/alcoholwet/vergunning/gemeenten.yes: RJOCHT OP IN FERGUNNING
-outcome_phrasing.GEMEENTE_ROTTERDAM/alcoholwet/vergunning/gemeenten.no: GJIN rjocht op in fergunning
+outcome_phrasing.GEMEENTE_ROTTERDAM/alcoholwet/vergunning/gemeenten.yes: IN AKTIVE FERGUNNING
+outcome_phrasing.GEMEENTE_ROTTERDAM/alcoholwet/vergunning/gemeenten.no: GJIN aktive fergunning
 outcome_phrasing.NVWA/warenwet/haccp.lead: Foar itenfeilichheid hawwe jo
 outcome_phrasing.NVWA/warenwet/haccp.yes: IN HACCP-FERPLICHTING
 outcome_phrasing.NVWA/warenwet/haccp.no: GJIN HACCP-ferplichting
@@ -282,4 +313,7 @@ outcome_phrasing.NVWA/warenwet/meldplicht.yes: IN MELDPLICHT
 outcome_phrasing.NVWA/warenwet/meldplicht.no: GJIN meldplicht
 outcome_phrasing.RVO/omgevingswet/energiebesparing/informatieplicht.lead: Foar enerzjybesparring hawwe jo
 outcome_phrasing.RVO/omgevingswet/energiebesparing/informatieplicht.yes: IN YNFORMAASJEPLICHT
+outcome_phrasing.KVK/handelsregisterwet/jaarrekening.lead: Foar jo jierrekken hawwe jo
+outcome_phrasing.KVK/handelsregisterwet/jaarrekening.yes: IN DEPONEARPLICHT
+outcome_phrasing.KVK/handelsregisterwet/jaarrekening.no: GJIN deponearplicht
 outcome_phrasing.RVO/omgevingswet/energiebesparing/informatieplicht.no: GJIN ynformaasjeplicht

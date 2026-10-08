@@ -154,6 +154,29 @@ Woorden die in het Fries werkelijk hetzelfde zijn blijven staan: "Ja", "Nee",
 "Titel", "Adres", "Totaal", "Seed", "Mediaan", "Partner", "Staffel", "Wetten",
 "Portaal", "Alles". Daar is per sleutel naar gevraagd; het is geen luiheid.
 
+## 7. Het dek van Claudia, nog niet nagelezen
+
+Deze dia's kwamen later, met het ondernemersverhaal van Claudia, en zijn door
+hetzelfde soort vertaler gemaakt. Niemand heeft ze nagelezen. Het hele blok
+verdient een lezing; de woorden hieronder zijn nieuw in de demo en komen nergens
+anders in de vertaling voor, dus er is ook geen eerdere keuze om op te leunen.
+
+- **`slides.7`** (Wetten hingje gear), **`slides.9`** (De feroardering
+  toetst), **`slides.15`** (In terras oanfreegje), **`slides.16`** (De gemeente
+  beoardielet) en **`slides.17`** (Prekario folget út de fergunning) zijn
+  nieuw. **`slides.14`** (In ûndernimmer, Claudia) is herschreven.
+- **"Verordening"** staat op `feroardering`. Of dat de gangbare Friese vorm is
+  voor een gemeentelijke verordening, is niet geverifieerd.
+- **"Aanslag"** (de belastingaanslag, `slides.17.overline`) staat op
+  `oanslach`. Het risico is dat het als "aanval" leest.
+- **"Vrijgesteld"** staat op `frijsteld` en **"geheven"** op `heft wurdt`
+  (`slides.17`). Belastingtaal; niet nagekeken tegen Friese
+  overheidsteksten.
+- **"Verleend"** staat op `ferliend`, en als bijvoeglijk naamwoord op
+  `ferliene` ("it ferliene terras"). Controleer of beide vormen kloppen.
+- **`profiles.claudia.portal_tab_label`** staat nu op `Myn oerheid`, gelijk
+  aan dat van Merijn.
+
 ## Hoe je een correctie doorvoert
 
 De schermteksten staan in `frontend-demo/src/i18n/fy.js`, één sleutel per regel.

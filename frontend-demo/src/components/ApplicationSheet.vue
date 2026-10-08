@@ -6,7 +6,7 @@ import { lineageFromTrace, leafValues } from '../data/lineage.js';
 import { askedInputsFor, claimKeyFor, evaluationParamsFor, inputKind, nextQuestions, parseAnswer } from '../data/askedInputs.js';
 import { caseReason, eventText, useDemo } from '../store/demoStore.js';
 import { t } from '../i18n/index.js';
-import { awbOutcomes, objectionOpen, statusOf } from '../data/lifecycle.js';
+import { awbOutcomes, canBeApplied, objectionOpen, statusOf } from '../data/lifecycle.js';
 import { driftRows, driftSentence } from '../data/caseDrift.js';
 import { fieldText, provisionLabel } from '../data/chronolex.js';
 import { citizenRows, momentView } from '../data/chronicleView.js';
@@ -86,6 +86,15 @@ const primaryName = computed(() => corpus.value?.config?.dashboard_outputs?.[`${
 const outcomeRows = computed(() => {
   const o = props.evaluation?.ok ? props.evaluation.outputs : {};
   const rows = Object.entries(o).filter(([k]) => k !== 'voldoet_aan_voorwaarden');
+  // Dezelfde keuze als de tegel (`tile_details`), anders hing het af van de
+  // volgorde van de uitvoer wat er in beeld kwam: bij de terrasvergunning viel
+  // de weigeringsgrond als zevende weg, en stond er "Aanvragen heeft geen zin"
+  // zonder te zeggen waarom. Een lege tekst is geen grond en blijft weg.
+  const wanted = corpus.value?.config?.tile_details?.[`${props.law?.service}/${props.law?.law_path}`];
+  if (wanted) {
+    const pick = (name) => rows.find(([k, v]) => k === name && v !== '');
+    return [primaryName.value, ...wanted].map(pick).filter(Boolean);
+  }
   rows.sort(([a], [b]) => (a === primaryName.value ? -1 : b === primaryName.value ? 1 : 0));
   return rows.slice(0, 6);
 });
@@ -198,7 +207,10 @@ watch(
 );
 
 // ---- step 2/3: check and submit --------------------------------------------------
-const canSubmit = computed(() => props.evaluation?.ok && verdict.value === true && declared.value && missing.value.length === 0);
+// Een aanslag vraag je niet aan: via "Aanvullen" komt ook de accijns hier, en
+// dan rekent de aanvraag mee maar dient niets in.
+const applicable = computed(() => canBeApplied((props.law?.doc?.articles ?? []).map((a) => a.machine_readable?.execution?.produces).find(Boolean) ?? null));
+const canSubmit = computed(() => applicable.value && props.evaluation?.ok && verdict.value === true && declared.value && missing.value.length === 0);
 function submitApplication() {
   const c = demo.submitCase(props.law, props.evaluation, evaluationParamsFor(personaParams(), asked.value));
   if (c) {
@@ -322,7 +334,7 @@ const claimedPrimary = computed(() => {
 const caseClaims = computed(() => {
   const c = currentCase.value;
   if (!c) return [];
-  return demo.state.claims.filter((cl) => cl.caseId === c.id || (cl.bsn === c.bsn && cl.tileLawId === c.lawId));
+  return demo.state.claims.filter((cl) => cl.caseId === c.id || (cl.bsn === (c.claimsBsn ?? c.bsn) && cl.tileLawId === c.lawId));
 });
 function claimSpec(cl) {
   return fieldSpec(corpus.value?.lawById(cl.lawId)?.doc, cl.input);
@@ -442,7 +454,7 @@ function claimStatus(cl) {
                 </nldd-list>
               </template>
 
-              <template v-if="requirementsMet">
+              <template v-if="requirementsMet && applicable">
                 <nldd-checkbox-field :label="t('sheet.application.declaration')" :checked="declared || undefined" @change="declared = !!($event.detail?.checked ?? $event.target?.checked)"></nldd-checkbox-field>
                 <nldd-form-actions>
                   <nldd-button appearance="primary" start-icon="paper-plane" :text="t('sheet.application.submit')" :disabled="!canSubmit || undefined" @click="submitApplication"></nldd-button>

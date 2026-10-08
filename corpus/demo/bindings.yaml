@@ -92,6 +92,19 @@ alcoholwet/vergunning/rotterdam:
     kind: table
     service: GEMEENTE_ROTTERDAM
     absent: null
+  # Er is geen register voor levensgedrag. Wie al een vergunning heeft, is bij
+  # de verlening getoetst (art. 8 lid 1 onder b); die uitkomst staat bij de
+  # vergunning. Een aanvrager zonder vergunning heeft dat veld niet en blijft
+  # onbekend: geen vergunning, geen toets, geen "voldoet".
+  slecht_levensgedrag_bij_verlening:
+    table: vergunningen
+    field: is_van_slecht_levensgedrag
+    select_on:
+      - name: kvk_nummer
+        value: $kvk_nummer
+    kind: table
+    service: GEMEENTE_ROTTERDAM
+    absent: null
 algemene_kinderbijslagwet:
   kinderen_data:
     table: algemene_kinderbijslagwet
@@ -304,8 +317,8 @@ algemene_plaatselijke_verordening/exploitatievergunning:
         value: $kvk_nummer
     kind: table
     service: GEMEENTE_ROTTERDAM
-    # art. 2:28 lid 5 onder h: geen register in de demo; absent betekent onbekend, niet "niet
-    # overtreden"
+    # art. 2:28 lid 5 onder h: Claudia's vergunning en de simulatie vullen het; absent
+    # betekent onbekend, niet "niet overtreden"
     absent: unknown
   kvk_inschrijving_geldig:
     table: vergunningen
@@ -315,7 +328,8 @@ algemene_plaatselijke_verordening/exploitatievergunning:
         value: $kvk_nummer
     kind: table
     service: GEMEENTE_ROTTERDAM
-    # art. 2:28 lid 5 onder i: geen register in de demo; absent betekent onbekend
+    # art. 2:28 lid 5 onder i: Claudia's vergunning en de simulatie vullen het; absent
+    # betekent onbekend
     absent: unknown
   feitelijke_toestand_conform_aanvraag:
     table: vergunningen
@@ -325,7 +339,8 @@ algemene_plaatselijke_verordening/exploitatievergunning:
         value: $kvk_nummer
     kind: table
     service: GEMEENTE_ROTTERDAM
-    # art. 2:28 lid 5 onder j: geen register in de demo; absent betekent onbekend
+    # art. 2:28 lid 5 onder j: Claudia's vergunning en de simulatie vullen het; absent
+    # betekent onbekend
     absent: unknown
   voldoet_aan_horecabeleid:
     table: vergunningen
@@ -335,7 +350,8 @@ algemene_plaatselijke_verordening/exploitatievergunning:
         value: $kvk_nummer
     kind: table
     service: GEMEENTE_ROTTERDAM
-    # art. 2:28 lid 5 onder k: geen register in de demo; absent betekent onbekend
+    # art. 2:28 lid 5 onder k: Claudia's vergunning en de simulatie vullen het; absent
+    # betekent onbekend
     absent: unknown
 algemene_plaatselijke_verordening/ontheffingspas_geluid:
   verleende_ontheffingen_dit_jaar:
@@ -416,7 +432,6 @@ algemene_plaatselijke_verordening/terrassen:
     table: terrassenbeleid
     fields:
       - gebied
-      - max_oppervlakte
       - max_sluitingstijd
       - seizoensregels
       - toegestane_locaties
@@ -1241,6 +1256,39 @@ uwv_werkgegevens:
     # unknown
     absent: unknown
 verordening_precariobelasting:
+  # De terrasvergunning die de gemeente verleende: een besloten, toegekende zaak
+  # in de demo. Geen verleende vergunning is geen vergunning en geen vergunde
+  # oppervlakte.
+  heeft_actieve_vergunning:
+    select_on:
+      - name: law
+        value: algemene_plaatselijke_verordening/terrassen
+      - name: status
+        value: DECIDED
+      - name: approved
+        value: true
+      - name: kvk_nummer
+        value: $kvk_nummer
+    field: approved
+    kind: cases
+    service: GEMEENTE_ROTTERDAM
+    absent: false
+  vergunde_oppervlakte:
+    select_on:
+      - name: law
+        value: algemene_plaatselijke_verordening/terrassen
+      - name: status
+        value: DECIDED
+      - name: approved
+        value: true
+      - name: kvk_nummer
+        value: $kvk_nummer
+    # De oppervlakte die de APV vergunde (MIN van gevraagd en beschikbaar), niet
+    # wat er in de aanvraag stond.
+    field: vergunde_oppervlakte
+    kind: cases
+    service: GEMEENTE_ROTTERDAM
+    absent: 0
   heeft_terras:
     table: vestigingen
     field: heeft_terras

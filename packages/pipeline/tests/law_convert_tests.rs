@@ -200,7 +200,7 @@ async fn test_finish_enrich_task_job_new_law_creates_law_create_task() {
         .unwrap();
     tokio::fs::write(&law_abs, "verrijkt: ja").await.unwrap();
 
-    finish_enrich_task_job(&db.pool, &job, dir.path(), &[law_abs], None)
+    finish_enrich_task_job(&db.pool, &job, dir.path(), &[law_abs], true, None)
         .await
         .unwrap();
 

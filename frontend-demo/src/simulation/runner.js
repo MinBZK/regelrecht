@@ -118,6 +118,23 @@ const FORM_PARAMETERS = [
   'activiteitsstarttijd',
 ];
 
+/**
+ * The laws another law reads decided cases of (the `law` criterion of a
+ * `kind: cases` binding). A law that reads its own cases, such as the
+ * ontheffingspas counting this year's exemptions, is not one: nobody else
+ * waits for it to be applied for.
+ */
+export function caseSourceLaws(bindings) {
+  const out = new Set();
+  for (const [owner, lawBindings] of Object.entries(bindings ?? {})) {
+    for (const b of Object.values(lawBindings)) {
+      const law = b.kind === 'cases' ? (b.select_on ?? []).find((c) => c.name === 'law')?.value : null;
+      if (typeof law === 'string' && !law.startsWith('$') && law !== owner) out.add(law);
+    }
+  }
+  return out;
+}
+
 function primaryOutputName(corpus, law) {
   const cfg = corpus.config?.dashboard_outputs ?? {};
   return cfg[`${law.service}/${law.law_path}`] ?? null;
@@ -145,6 +162,22 @@ export function reduceOutcome(law, primaryName, evaluation) {
 
 function sleep(ms = 0) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Of een onderwerp een aanvraagwet niet aanvroeg. Zo'n wet krijgt voor hem
+ * geen uitkomst: wie geen terras vraagt, valt buiten art. 2:30b APV en heeft
+ * geen recht en geen weigering. Doorrekenen gaf "recht op een terras van
+ * 0 m²" en telde hem mee als iemand met recht. Een ontbrekende uitkomst telt
+ * in de samenvatting niet mee, net als op het portaal, waar een
+ * terrasvergunning pas verschijnt als je hem aanvraagt.
+ *
+ * @param {object} law
+ * @param {object} form            de formulierwaarden van het onderwerp
+ * @param {Set<string>} applicationPaths  de law_paths waarvoor aangevraagd wordt (caseSourceLaws)
+ */
+export function notAppliedFor(law, form, applicationPaths) {
+  return applicationPaths.has(law.law_path) && !(form.aanvragen ?? []).includes(law.law_path);
 }
 
 /**
@@ -200,59 +233,99 @@ export async function runSimulation({ engine, corpus, kind, params, overrides = 
     // A business's application-form answers (terrace location and size) are
     // known here, unlike on the portal; bindings that select on them get them.
     const paramsFor = (keyField, keyValue) => (keyField === 'kvk_nummer' ? population.formValues?.[keyValue] ?? {} : {});
-    engine.clearDataSources();
-    const register = (sources) => {
-      for (const { law, service, keyField, records } of sources) {
+    const registerSources = (cases) => {
+      engine.clearDataSources();
+      const register = (sources) => {
+        for (const { law, service, keyField, records } of sources) {
+          try {
+            engine.registerDataSourceForLaw(law, service, keyField, records, REGISTER_PRIORITY);
+          } catch (e) {
+            console.warn(`Simulatie: databron ${service} voor ${law} niet geregistreerd:`, e);
+          }
+        }
+      };
+      register(materialiseAll(lawsById, corpus.bindings, rowsFor, keyValues, { referencedate: referenceDate, cases, paramsFor }));
+      // Second pass for bindings that select on a cross-law input (the KVK address).
+      const cache = new Map();
+      const resolveRef = (lawId, inputName, callerParams) => {
+        const doc = lawsById[lawId];
+        const input = (doc?.articles ?? []).flatMap((a) => a.machine_readable?.execution?.input ?? []).find((i) => i.name === inputName);
+        const src = input?.source;
+        if (!src?.regulation) return undefined;
+        const callParams = {};
+        for (const [name, ref] of Object.entries(src.parameters ?? {})) {
+          const v = typeof ref === 'string' && ref.startsWith('$') ? callerParams[ref.slice(1)] : ref;
+          if (v === undefined || v === null) return undefined;
+          callParams[name] = v;
+        }
+        const key = `${src.regulation}#${src.output ?? inputName}|${JSON.stringify(callParams)}`;
+        if (cache.has(key)) return cache.get(key);
+        let value;
         try {
-          engine.registerDataSourceForLaw(law, service, keyField, records, REGISTER_PRIORITY);
-        } catch (e) {
-          console.warn(`Simulatie: databron ${service} voor ${law} niet geregistreerd:`, e);
+          value = engine.execute(src.regulation, src.output ?? inputName, callParams, referenceDate)?.outputs?.[src.output ?? inputName];
+        } catch {
+          value = undefined;
+        }
+        cache.set(key, value);
+        return value;
+      };
+      const sources = materialiseAll(lawsById, corpus.bindings, rowsFor, keyValues, { referencedate: referenceDate, cases, resolveRef, paramsFor });
+      engine.clearDataSources();
+      register(sources);
+      // Form answers (`kind: claim` inputs) as a higher-priority source. A claim
+      // without a value is left out of the record: `undefined` would cross the
+      // WASM boundary as null and turn "not supplied" into "none" (RFC-036).
+      const grouped = new Map();
+      for (const c of population.claims) {
+        if (c.value === undefined) continue;
+        const key = JSON.stringify([c.lawId, c.keyField]);
+        if (!grouped.has(key)) grouped.set(key, new Map());
+        const records = grouped.get(key);
+        if (!records.has(c.keyValue)) records.set(c.keyValue, { [c.keyField]: c.keyValue });
+        records.get(c.keyValue)[c.input] = c.value;
+      }
+      for (const [key, records] of grouped) {
+        const [lawId, keyField] = JSON.parse(key);
+        engine.registerDataSourceForLaw(lawId, FORM_SOURCE, keyField, [...records.values()], FORM_PRIORITY);
+      }
+    };
+    registerSources([]);
+
+    // Only what the population states is passed. A form parameter the
+    // generator did not answer is left out, so the engine reports it as
+    // unknown (not passed) instead of receiving a null it would read as
+    // "none" (RFC-036).
+    const callParamsFor = (law, subject, form) => {
+      const callParams = {};
+      for (const p of lawShape(law.doc).parameters) {
+        const value = p === 'bsn' ? subject.bsn ?? form.bsn : p === 'kvk_nummer' ? subject.kvk_nummer : form[p];
+        if (value !== undefined) callParams[p] = value;
+      }
+      return callParams;
+    };
+
+    // Applications first. A law another law reads as a decided case (a
+    // `kind: cases` binding on `law`) is applied for by the subjects the
+    // population says apply (`aanvragen`), and what it grants becomes a case,
+    // as a granted application does on the portal: the precario tax reads the
+    // terrace permit that way. Then the sources are registered again with them.
+    const applicationPaths = caseSourceLaws(corpus.bindings);
+    const applicationLaws = laws.filter((law) => applicationPaths.has(law.law_path));
+    if (applicationLaws.length) {
+      const granted = [];
+      for (const subject of population.subjects) {
+        const form = population.formValues?.[subject.id] ?? {};
+        for (const law of applicationLaws) {
+          if (notAppliedFor(law, form, applicationPaths)) continue;
+          const callParams = callParamsFor(law, subject, form);
+          const evaluation = evaluateLaw(engine, law, callParams, referenceDate);
+          const outcome = reduceOutcome(law, null, evaluation);
+          // Zoals op het portaal: wat besloten is (de vergunde oppervlakte),
+          // wat gevraagd is, en de feiten van de zaak zelf erbovenop.
+          if (outcome.ok && outcome.met === true) granted.push({ ...(evaluation.outputs ?? {}), ...callParams, law: law.law_path, service: law.service, status: 'DECIDED', approved: true, bsn: subject.bsn ?? null, kvk_nummer: subject.kvk_nummer ?? null });
         }
       }
-    };
-    register(materialiseAll(lawsById, corpus.bindings, rowsFor, keyValues, { referencedate: referenceDate, paramsFor }));
-    // Second pass for bindings that select on a cross-law input (the KVK address).
-    const cache = new Map();
-    const resolveRef = (lawId, inputName, callerParams) => {
-      const doc = lawsById[lawId];
-      const input = (doc?.articles ?? []).flatMap((a) => a.machine_readable?.execution?.input ?? []).find((i) => i.name === inputName);
-      const src = input?.source;
-      if (!src?.regulation) return undefined;
-      const callParams = {};
-      for (const [name, ref] of Object.entries(src.parameters ?? {})) {
-        const v = typeof ref === 'string' && ref.startsWith('$') ? callerParams[ref.slice(1)] : ref;
-        if (v === undefined || v === null) return undefined;
-        callParams[name] = v;
-      }
-      const key = `${src.regulation}#${src.output ?? inputName}|${JSON.stringify(callParams)}`;
-      if (cache.has(key)) return cache.get(key);
-      let value;
-      try {
-        value = engine.execute(src.regulation, src.output ?? inputName, callParams, referenceDate)?.outputs?.[src.output ?? inputName];
-      } catch {
-        value = undefined;
-      }
-      cache.set(key, value);
-      return value;
-    };
-    const sources = materialiseAll(lawsById, corpus.bindings, rowsFor, keyValues, { referencedate: referenceDate, resolveRef, paramsFor });
-    engine.clearDataSources();
-    register(sources);
-    // Form answers (`kind: claim` inputs) as a higher-priority source. A claim
-    // without a value is left out of the record: `undefined` would cross the
-    // WASM boundary as null and turn "not supplied" into "none" (RFC-036).
-    const grouped = new Map();
-    for (const c of population.claims) {
-      if (c.value === undefined) continue;
-      const key = JSON.stringify([c.lawId, c.keyField]);
-      if (!grouped.has(key)) grouped.set(key, new Map());
-      const records = grouped.get(key);
-      if (!records.has(c.keyValue)) records.set(c.keyValue, { [c.keyField]: c.keyValue });
-      records.get(c.keyValue)[c.input] = c.value;
-    }
-    for (const [key, records] of grouped) {
-      const [lawId, keyField] = JSON.parse(key);
-      engine.registerDataSourceForLaw(lawId, FORM_SOURCE, keyField, [...records.values()], FORM_PRIORITY);
+      if (granted.length) registerSources(granted);
     }
 
     // Evaluate.
@@ -263,16 +336,8 @@ export async function runSimulation({ engine, corpus, kind, params, overrides = 
       const form = population.formValues?.[subject.id] ?? {};
       const outcome = { subject, laws: {} };
       for (const law of laws) {
-        const declared = lawShape(law.doc).parameters;
-        // Only what the population states is passed. A form parameter the
-        // generator did not answer is left out, so the engine reports it as
-        // unknown (not passed) instead of receiving a null it would read as
-        // "none" (RFC-036).
-        const callParams = {};
-        for (const p of declared) {
-          const value = p === 'bsn' ? subject.bsn ?? form.bsn : p === 'kvk_nummer' ? subject.kvk_nummer : form[p];
-          if (value !== undefined) callParams[p] = value;
-        }
+        if (notAppliedFor(law, form, applicationPaths)) continue;
+        const callParams = callParamsFor(law, subject, form);
         outcome.laws[law.id] = reduceOutcome(law, primaries.get(law.id), evaluateLaw(engine, law, callParams, referenceDate));
       }
       results.push(outcome);

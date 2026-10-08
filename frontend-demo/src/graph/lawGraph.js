@@ -25,7 +25,9 @@ function executions(law) {
 }
 
 /**
- * What a law reads and produces, deduplicated by name.
+ * What a law reads and produces, deduplicated by name. Inputs another law
+ * supplies through its decided cases (`law.caseRefs`, see caseRefsFor) count
+ * as references too, when that law has such an output.
  * @returns {{ sources: {name}[], inputs: {name, ref:{regulation, output}}[], outputs: {name}[] }}
  */
 export function lawShape(law) {
@@ -39,6 +41,11 @@ export function lawShape(law) {
       else sources.set(input.name, { name: input.name });
     }
     for (const output of ex.output ?? []) outputs.set(output.name, { name: output.name });
+  }
+  for (const r of law.caseRefs ?? []) {
+    if (!sources.has(r.name)) continue;
+    sources.delete(r.name);
+    inputs.set(r.name, { name: r.name, ref: { regulation: r.regulation, output: r.output } });
   }
   return { sources: [...sources.values()], inputs: [...inputs.values()], outputs: [...outputs.values()] };
 }
