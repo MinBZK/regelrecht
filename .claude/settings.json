@@ -19,14 +19,15 @@
     ]
   },
   "extraKnownMarketplaces": {
-    "nldd-plugins": {
+    "nldd": {
       "source": {
         "source": "github",
-        "repo": "MinBZK/storybook"
-      }
+        "repo": "NederlandseDigitaleDienst/ai-plugins"
+      },
+      "autoUpdate": true
     }
   },
   "enabledPlugins": {
-    "nldd@nldd-plugins": true
+    "nldd-design-system@nldd": true
   }
 }
