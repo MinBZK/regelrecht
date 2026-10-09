@@ -35,9 +35,9 @@ import { deliver, deliveryErrors, redeliver } from '../data/channels.js';
 import { accountOf as accountFrom } from '../data/account.js';
 import { activeLocale, t } from '../i18n/index.js';
 
-// v2: de zaken dragen sinds de klok en de besluiten per fase andere velden
-// (`decisionGrams`, `executedThrough`); een oude staat wordt niet omgezet.
-const STORAGE_KEY = 'rr-demo-state-v2';
+// v3: `executedThrough` houdt per uitvoering bij wat per periode (een
+// berekeningsjaar) al gevraagd is; een oude staat wordt niet omgezet.
+const STORAGE_KEY = 'rr-demo-state-v3';
 
 function today() {
   // Local calendar date, not UTC: in the evening the two differ.
