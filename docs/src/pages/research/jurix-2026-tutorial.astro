@@ -1,0 +1,226 @@
+---
+/*
+ * Webpage for the JURIX 2026 spotlight tutorial "Rules as Executed: When
+ * machine-executable laws are published". JURIX links to this page from its
+ * workshops-and-tutorials overview, so the address has to stay put.
+ *
+ * Unlike the paper next to it, this page is not frozen: the time slot, the
+ * room and the slides are added here as they become known. The program below
+ * follows the accepted proposal; the paper's own metadata (title, DOI) is read
+ * from the generated meta JSON so the reference cannot drift from the paper.
+ */
+import { Image } from 'astro:assets';
+import Base from '~/layouts/Base.astro';
+import DocsOutline from '~/components/DocsOutline.astro';
+import paper from '~/research/rules-as-executed.meta.json';
+import portalScreenshot from '~/assets/portaal-en-screenshot.png';
+
+const pathname = '/research/jurix-2026-tutorial';
+const tutorialTitle = 'Rules as Executed';
+const tutorialSubtitle = 'When machine-executable laws are published';
+const title = `${tutorialTitle}: JURIX 2026 tutorial · RegelRecht`;
+const description =
+  'Spotlight tutorial at JURIX 2026 in Toulouse, 8 December 2026: law ' +
+  'execution published as a machine-executable specification, run live.';
+
+const demoUrl = 'https://demo.regelrecht.rijks.app';
+const jurixUrl = 'https://www.irit.fr/jurix2026/workshops-and-tutorials/';
+const repoUrl = 'https://github.com/MinBZK/regelrecht';
+const paperHref = '/research/rules-as-executed';
+const paperDoiUrl = `https://doi.org/${paper.doi}`;
+const contactEmail = 'anne.schuth@rijksoverheid.nl';
+
+// The sidebar outline: the h2s of the page, in order. Kept by hand next to the
+// headings below, because the page is authored here and not rendered from
+// markdown.
+const headings = [
+  { depth: 2, slug: 'about', text: 'Run the rule yourself' },
+  { depth: 2, slug: 'program', text: 'Program' },
+  { depth: 2, slug: 'audience', text: 'Who it is for' },
+  { depth: 2, slug: 'materials', text: 'Materials' },
+  { depth: 2, slug: 'organizers', text: 'Organizers' },
+];
+---
+
+<Base
+  lang="en"
+  kind="docs"
+  pathname={pathname}
+  title={title}
+  description={description}
+>
+  <nldd-sidebar-section
+    no-collapse
+    sidebar-label="On this page"
+    sm-padding-bottom="32"
+    md-padding-bottom="64"
+    lg-padding-bottom="96"
+  >
+    <nldd-title slot="header" size="1">
+      <h1>{tutorialTitle}</h1>
+      <p slot="supporting-text">{tutorialSubtitle}</p>
+    </nldd-title>
+    <nldd-container slot="sidebar" padding="16">
+      <nldd-button-group orientation="vertical">
+        <nldd-button
+          href={demoUrl}
+          text="Open the demo"
+          end-icon="external-link"
+          target="_blank"
+          rel="noopener"
+          appearance="secondary"></nldd-button>
+        <nldd-button
+          href={jurixUrl}
+          text="JURIX 2026 tutorials"
+          end-icon="external-link"
+          target="_blank"
+          rel="noopener"
+          appearance="secondary"></nldd-button>
+      </nldd-button-group>
+      <nldd-spacer size="12"></nldd-spacer>
+      <DocsOutline headings={headings} />
+    </nldd-container>
+    <nldd-rich-text centered>
+      <p>
+        <strong>Anne Schuth and Eelco Hotting</strong><br />
+        <em>Dutch Digital Service, Ministry of Economic Affairs and Climate</em
+        ><br />
+        Spotlight tutorial at{' '}
+        <a href={jurixUrl}>JURIX 2026</a>, Toulouse<br />
+        8 December 2026, 90 minutes. Time and room follow once the program is
+        out.
+      </p>
+
+      <h2 id="about">Run the rule yourself</h2>
+      <p>
+        Somewhere in a government system, a rule decides whether you get a
+        benefit, a permit or a fine. The statute behind it is published. The
+        rule is not: it lives in databases, spreadsheets and bespoke software.
+        No branch of government sees it whole. Parliament cannot see what its
+        laws do in operation, and a court reviews decisions whose logic it
+        cannot inspect.
+      </p>
+      <p>
+        Our <a href={paperHref}>position paper</a> proposes to publish that rule
+        as a machine-executable specification: an interpretation of the
+        statute, article by article, in a format built to be read by legal
+        professionals. The organization decides cases with the specification it
+        publishes, so whoever receives a decision can run the rule again and
+        check the outcome.
+      </p>
+      <p>
+        RegelRecht is the reference implementation. In ninety minutes we open
+        real Dutch statutes next to their specification, change a threshold
+        and watch who loses an allowance. Then we follow one application from
+        the citizen's screen to the case worker's desk.
+      </p>
+      <p>
+        Open the <a href={demoUrl}>demo</a> on your own laptop and try to break
+        it. We expect to be argued with, and we have left room for it.
+      </p>
+    </nldd-rich-text>
+    <nldd-spacer size="24"></nldd-spacer>
+    {/*
+     * The English portal screenshot the landing page shows, processed by Astro's
+     * <Image> and slotted into nldd-image. It sits between two rich-texts
+     * because nldd-rich-text lays out prose, not media.
+     */}
+    <nldd-image>
+      <Image
+        src={portalScreenshot}
+        alt="Screenshot of the demo: a citizen's overview of allowances and benefits, each amount computed from the published specification."
+        widths={[600, 900, 1200, 1800]}
+        sizes="(min-width: 1024px) 900px, 100vw"
+        format="webp"
+        loading="lazy"
+      />
+    </nldd-image>
+    <nldd-spacer size="24"></nldd-spacer>
+    <nldd-rich-text centered>
+      <h2 id="program">Program</h2>
+      <p>
+        We follow the tabs of the demo and take the discussion as it comes.
+        Timings are indicative: where the room wants to stop is where we stop.
+      </p>
+      <ul>
+        <li>
+          <strong>The problem</strong> (10 min). Why the rule as executed must be
+          independently verifiable, and why today no branch of government sees
+          it whole.
+        </li>
+        <li>
+          <strong>Laws</strong> (20 min). A statute and its specification, article
+          by article. Then the graph: an allowance that depends on
+          being insured, which depends on whether you are detained.
+        </li>
+        <li>
+          <strong>Scenarios</strong> (10 min). "Someone under 18 gets no
+          allowance", written as a sentence and run as a test. Change the law
+          and see which sentences stop being true.
+        </li>
+        <li>
+          <strong>Simulation</strong> (5 min). A generated population through
+          the same laws. Turn a threshold and count who falls out, before the
+          amendment is passed.
+        </li>
+        <li>
+          <strong>Citizen and entrepreneur</strong> (10 min). Merijn, single
+          parent and self-employed, sees what he is entitled to, each figure
+          traceable to its source, and is asked only what no register knows. Claudia wants a terrace in front of her
+          coffee shop and meets three authorities in one view.
+        </li>
+        <li>
+          <strong>Case system</strong> (10 min). The other side of the counter:
+          the engine recomputes what the citizen saw. Where the law gives the
+          power, the case worker departs from the outcome, and the ground is
+          recorded.
+        </li>
+        <li>
+          <strong>The same article, four ways</strong> (15 min). One article in
+          our YAML, in Catala, as an OpenFisca-style formula and as
+          LegalRuleML. Come and tell us why we should have used yours.
+        </li>
+        <li>
+          <strong>Closing</strong> (10 min). What is built, what is not, and
+          the questions we cannot answer without this room.
+        </li>
+      </ul>
+
+      <h2 id="audience">Who it is for</h2>
+      <p>
+        For people who formalize law, and for people who worry about what that
+        does to it. There are no prerequisites and there is no programming.
+        Bring a laptop or phone, and your objections.
+      </p>
+
+      <h2 id="materials">Materials</h2>
+      <p>
+        The slides are published here two weeks before the conference. To
+        prepare, read the introduction and Section 4 of the{' '}
+        <a href={paperHref}>position paper</a>{' '}
+        (<a href={paperDoiUrl}>doi:{paper.doi}</a>).
+      </p>
+      <ul>
+        <li><a href={demoUrl}>The demo</a>, nothing to install</li>
+        <li><a href="/docs/">The documentation</a></li>
+        <li><a href="/rfcs/">The design RFCs</a></li>
+        <li><a href={repoUrl}>The source code</a>, under EUPL-1.2</li>
+      </ul>
+
+      <h2 id="organizers">Organizers</h2>
+      <p>
+        <strong>Anne Schuth</strong> is the technical lead of RegelRecht at the
+        Dutch Digital Service. He holds a PhD in information retrieval and
+        worked at Google, Microsoft Research and Spotify.
+      </p>
+      <p>
+        <strong>Eelco Hotting</strong> is a strategic adviser at the Dutch
+        Digital Service and co-author of the position paper.
+      </p>
+      <p>
+        Questions about the tutorial:{' '}
+        <a href={`mailto:${contactEmail}`}>{contactEmail}</a>.
+      </p>
+    </nldd-rich-text>
+  </nldd-sidebar-section>
+</Base>

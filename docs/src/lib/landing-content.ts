@@ -414,6 +414,13 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           href: '/research/rules-as-executed',
           linkLabel: 'position paper (Engels)',
         },
+        {
+          title: 'Rules as Executed: When machine-executable laws are published',
+          meta: 'Tutorial op JURIX 2026 • Anne Schuth & Eelco Hotting • 8 december 2026',
+          text: 'Negentig minuten met de demo voor een zaal vol onderzoekers in recht en informatica. We openen Nederlandse wetten naast het regelwerk dat ze uitvoerbaar maakt, draaien aan een drempel en kijken wie zijn toeslag verliest. Tegenspraak is de bedoeling.',
+          href: '/research/jurix-2026-tutorial',
+          linkLabel: 'over de tutorial (Engels)',
+        },
       ],
     },
     references: {
@@ -836,7 +843,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       lede: 'What could the RegelRecht ecosystem make possible? A handful of directions for transparent rule application, legislative testing, and the working environment of the legal experts themselves.',
       cases: [
         {
-          img: '/portaal-screenshot.png',
+          img: '/portaal-en-screenshot.png',
           alt: 'Screenshot of a personal rules dashboard: a list of benefits and allowances where each rule shows its origin in the law.',
           h: 'Personal rules dashboard',
           p: 'What if citizens could see all their benefits, allowances and obligations in one place? Every rule could then be traceable back to the machine-executable legislation, with full transparency about how decisions are reached.',
@@ -905,6 +912,13 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           text: 'The paper argues that government should publish its law execution as machine-executable specifications, with every decision recording the version that produced it. The recipient of a decision can then recompute it, and Parliament can analyze the rule itself.',
           href: '/research/rules-as-executed',
           linkLabel: 'position paper',
+        },
+        {
+          title: 'Rules as Executed: When machine-executable laws are published',
+          meta: 'JURIX 2026 tutorial • Anne Schuth & Eelco Hotting • 8 December 2026',
+          text: 'Ninety minutes with the demo in front of a room of researchers in law and computer science. We open Dutch statutes next to their executable specification, turn a threshold and watch who loses an allowance. Being argued with is the point.',
+          href: '/research/jurix-2026-tutorial',
+          linkLabel: 'about the tutorial',
         },
       ],
     },
