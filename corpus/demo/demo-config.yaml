@@ -187,7 +187,7 @@ dossier:
         - name: bsn
           value: $bsn
         - name: jaar
-          value: $aangevraagd_berekeningsjaar
+          value: $berekeningsjaar
       absent: null
 
 # Wat de burger in het portaal ziet als "ontvangen tot nu toe", per cel: de

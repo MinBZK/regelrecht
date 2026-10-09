@@ -12,7 +12,7 @@ use regelrecht_cel::cell::load_regulations;
 use regelrecht_cel::config::CellConfig;
 use regelrecht_cel::extension::{PeriodParameter, PeriodUnit};
 use regelrecht_cel::register;
-use regelrecht_cel::{Cell, Gram};
+use regelrecht_cel::{Cell, Error, Gram, Input, Period};
 use regelrecht_engine::{LawExecutionService, Value};
 use serde_json::json;
 
@@ -208,7 +208,7 @@ fn the_demo_cell_records_an_application_for_zorgtoeslag() {
         assert_eq!(
             decision.period,
             Some(PeriodParameter {
-                parameter: "aangevraagd_berekeningsjaar".into(),
+                parameter: "berekeningsjaar".into(),
                 unit: PeriodUnit::Year,
             })
         );
@@ -743,8 +743,14 @@ fn answer(
 /// What is in arrears on the application at `moment`, as the policy of
 /// Toeslagen reads it back (art. 3).
 fn arrears(cell: &Cell, service: &LawExecutionService, root: &str, moment: &str) -> i64 {
-    cell.read_case(service, "betaalopdracht_gegeven", root, at(moment))
-        .unwrap_or_else(|e| panic!("{e}"))["achterstallig_bedrag"]
+    cell.read_case(
+        service,
+        "betaalopdracht_gegeven",
+        root,
+        Some(("berekeningsjaar", 2025)),
+        at(moment),
+    )
+    .unwrap_or_else(|e| panic!("{e}"))["achterstallig_bedrag"]
         .value
         .as_i64()
         .unwrap()
@@ -798,7 +804,7 @@ fn the_bank_credits_the_order_and_toeslagen_records_it_paid() {
     );
 
     // Nothing is paid before the bank says so.
-    let root = json!({"root": application.id});
+    let root = json!({"root": application.id, "berekeningsjaar": 2025});
     let paid = |cell: &Cell, moment: &str| {
         read(
             cell,
@@ -868,7 +874,7 @@ fn a_blocked_account_fails_the_payment_and_the_next_order_retries_it() {
     assert_eq!(answer.name, "betaling_mislukt");
     assert_eq!(answer.refers_to["betaalopdracht"], december.id);
     assert_eq!(answer.fields["mislukt_bedrag"], december.fields["bedrag"]);
-    let root = json!({"root": application.id});
+    let root = json!({"root": application.id, "berekeningsjaar": 2025});
     let paid = |cell: &Cell, service: &LawExecutionService, moment: &str| {
         read(
             cell,
@@ -1415,24 +1421,39 @@ fn the_demo_cell_describes_and_reads_its_lexostatuses_with_their_grams() {
         .collect();
     assert_eq!(readers, ["voorschot_verleend", "zorgtoeslag_toegekend"]);
     assert_eq!(aanvraag["read_by"][0]["stage"], "VOORSCHOT");
+    let uitbetaald = by_name("uitbetaald");
     assert_eq!(
-        by_name("uitbetaald")["reduction"]["derivations"]["uitbetaalde_voorschotten"]["sum"],
+        uitbetaald["reduction"]["derivations"]["uitbetaalde_voorschotten"]["sum"],
         "betaald_bedrag"
     );
+    // Read per berekeningsjaar: the application holds for the years after
+    // it as well (Awir 15 lid 5).
+    assert_eq!(uitbetaald["inputs"], json!(["root", "berekeningsjaar"]));
+    assert_eq!(uitbetaald["period"], "berekeningsjaar");
+    assert!(aanvraag.get("period").is_none(), "{aanvraag}");
     let policy = by_name("fictief_beleid_kroniek_toeslagen");
     assert_eq!(policy["kind"], "policy");
     assert_eq!(policy["register"], "kroniek");
     assert_eq!(policy["chronicle"], "toeslagen");
     assert_eq!(policy["register_input"], "grams");
-    assert_eq!(policy["inputs"], json!(["root"]));
+    assert_eq!(policy["inputs"], json!(["root", "berekeningsjaar"]));
+    assert_eq!(policy["period"], "berekeningsjaar");
     assert_eq!(policy["articles"][0]["number"], "1");
     assert!(policy["articles"][0]["outputs"]
         .as_array()
         .unwrap()
         .contains(&json!("voorschotbedrag")));
-    assert_eq!(policy["read_by"][0]["event"], "betaalopdracht_gegeven");
+    // The voorschot reads one article of it (the estimate), the payment
+    // order all of it.
+    let readers: Vec<&str> = policy["read_by"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["event"].as_str().unwrap())
+        .collect();
+    assert_eq!(readers, ["voorschot_verleend", "betaalopdracht_gegeven"]);
 
-    let root = json!({"root": application.id});
+    let root = json!({"root": application.id, "berekeningsjaar": 2025});
     let read = |name: &str| {
         cell.read_lexostatus(
             &service,
@@ -1494,4 +1515,414 @@ fn the_demo_cell_describes_and_reads_its_lexostatuses_with_their_grams() {
             at("2024-12-02T09:00:00+01:00"),
         )
         .is_err());
+}
+
+fn year(value: i32) -> Period {
+    Period {
+        unit: PeriodUnit::Year,
+        value,
+    }
+}
+
+/// Every betaalopdracht the cell gives on the application `root` on the days
+/// it says are due after `after` through `through` (`YYYY-MM-DD`), each for
+/// its period, at `now`; the bank credits each at once. The orders, in the
+/// order the cell gave them.
+fn pay_due(
+    cell: &mut Cell,
+    service: &LawExecutionService,
+    root: &str,
+    after: Option<&str>,
+    through: &str,
+    now: &str,
+) -> Vec<Gram> {
+    let due = cell
+        .due_executions(
+            service,
+            "betaalopdracht_gegeven",
+            root,
+            after.map(|a| a.parse().unwrap()),
+            through.parse().unwrap(),
+            at(now),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+    let mut orders = Vec::new();
+    for d in due {
+        let order = cell
+            .execute_in(
+                service,
+                "betaalopdracht_gegeven",
+                root,
+                d.day,
+                d.period.map(|p| p.value),
+                at(now),
+            )
+            .unwrap_or_else(|e| panic!("{} {:?}: {e}", d.day, d.period));
+        let Some(order) = order else { continue };
+        let bedrag = order.fields["bedrag"].clone();
+        let answer = BTreeMap::from([
+            ("bijgeschreven".to_string(), channel(json!(true))),
+            ("bijgeschreven_bedrag".to_string(), channel(bedrag.clone())),
+            ("bedrag_opdracht".to_string(), channel(bedrag)),
+            ("reden_weigering".to_string(), channel(json!(""))),
+        ]);
+        cell.receive(
+            service,
+            TOESLAGEN_ANSWER,
+            BTreeMap::from([("betaalopdracht".to_string(), order.id.clone())]),
+            answer,
+            at(&order.effective_at),
+            at(now),
+        )
+        .unwrap_or_else(|e| panic!("{}: {e}", d.day));
+        orders.push(order);
+    }
+    orders
+}
+
+fn of_year(orders: &[Gram], value: i32) -> Vec<&Gram> {
+    orders
+        .iter()
+        .filter(|o| o.period == Some(year(value)))
+        .collect()
+}
+
+/// Awir 15 lid 5: an application counts for the berekeningsjaren after it
+/// too. On the same application Toeslagen grants the voorschot for the next
+/// year on 1 November before it (fictitious policy art. 4), its termijnen
+/// start in December (Awir 22 lid 1) while the year before is still being
+/// paid, and the toekenning over the first year sets off only what was paid
+/// on that year and ends only its termijnen.
+#[test]
+fn an_application_holds_for_the_next_berekeningsjaar() {
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    let (mut cell, application, voorschot) = with_voorschot(
+        &mut service,
+        data.path(),
+        "2025-01-02T10:00:00+01:00",
+        "2025-01-02T10:30:00+01:00",
+        79547,
+    );
+    let root = application.id.clone();
+    let on_application = || BTreeMap::from([("on_application".to_string(), root.clone())]);
+    assert_eq!(voorschot.period, Some(year(2025)));
+
+    // The next voorschot is that of 2026, on 1 November 2025.
+    let due = cell
+        .due_decision(
+            &service,
+            "voorschot_verleend",
+            &root,
+            at("2025-01-02T11:00:00+01:00"),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(due.period, Some(year(2026)));
+    assert_eq!(due.day, Some("2025-11-01".parse().unwrap()));
+    // Not before that day.
+    let e = cell
+        .decide(
+            &service,
+            "voorschot_verleend",
+            on_application(),
+            BTreeMap::new(),
+            at("2025-10-31T09:00:00+01:00"),
+        )
+        .unwrap_err();
+    assert!(matches!(e, Error::Refused(_)), "{e}");
+    assert!(e.to_string().contains("2025-11-01"), "{e}");
+
+    // The termijnen of 2025 through October: one per month.
+    let mut orders = pay_due(
+        &mut cell,
+        &service,
+        &root,
+        None,
+        "2025-10-31",
+        "2025-10-31T12:00:00+01:00",
+    );
+    assert_eq!(of_year(&orders, 2025).len(), 10);
+
+    // On 1 November 2025 the voorschot for 2026, on the same application.
+    let next = cell
+        .decide(
+            &service,
+            "voorschot_verleend",
+            on_application(),
+            BTreeMap::new(),
+            at("2025-11-01T09:00:00+01:00"),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(next.period, Some(year(2026)));
+    assert_eq!(next.refers_to["on_application"], root);
+    assert_eq!(
+        next.inputs["berekeningsjaar"],
+        json!({"value": 2026, "provenance": {"source": "period"}})
+    );
+    // The estimate in the application holds for 2026 too (an aanname in the
+    // policy of Toeslagen, art. 4).
+    assert_eq!(
+        next.inputs["vermoedelijk_toetsingsinkomen"]["value"],
+        ESTIMATE
+    );
+    assert_eq!(
+        next.inputs["vermoedelijk_toetsingsinkomen"]["provenance"]["article"],
+        "fictief_beleid_kroniek_toeslagen#4"
+    );
+    // The demo corpus has no Zorgtoeslagwet of 2026: the version in force on
+    // 1 January 2026 is that of 2025, so 2026 computes as 2025 did.
+    assert_eq!(next.regulation_valid_from.as_deref(), Some("2025-01-01"));
+    assert_eq!(
+        next.fields["voorschotbedrag"],
+        voorschot.fields["voorschotbedrag"]
+    );
+    // And the one after that: 2027, on 1 November 2026.
+    let due = cell
+        .due_decision(
+            &service,
+            "voorschot_verleend",
+            &root,
+            at("2025-11-01T10:00:00+01:00"),
+        )
+        .unwrap();
+    assert_eq!(due.period, Some(year(2027)));
+    assert_eq!(due.day, Some("2026-11-01".parse().unwrap()));
+
+    // November: the last termijn of 2025. December: the first of the twelve
+    // of 2026 (Awir 22 lid 1); 2025 has none left.
+    let days: Vec<(String, Option<i32>)> = cell
+        .due_executions(
+            &service,
+            "betaalopdracht_gegeven",
+            &root,
+            Some("2025-10-31".parse().unwrap()),
+            "2025-12-31".parse().unwrap(),
+            at("2025-12-01T12:00:00+01:00"),
+        )
+        .unwrap()
+        .into_iter()
+        .map(|d| (d.day.to_string(), d.period.map(|p| p.value)))
+        .collect();
+    let day = |d: &str, y: i32| (d.to_string(), Some(y));
+    assert_eq!(
+        days,
+        [
+            day("2025-11-01", 2025),
+            day("2025-11-01", 2026),
+            day("2025-12-01", 2025),
+            day("2025-12-01", 2026),
+        ]
+    );
+    let late = pay_due(
+        &mut cell,
+        &service,
+        &root,
+        Some("2025-10-31"),
+        "2025-12-31",
+        "2025-12-01T12:00:00+01:00",
+    );
+    let given: Vec<(String, Option<i32>)> = late
+        .iter()
+        .map(|o| (o.effective_at[..10].to_string(), o.period.map(|p| p.value)))
+        .collect();
+    assert_eq!(given, [day("2025-11-01", 2025), day("2025-12-01", 2026)]);
+    assert_eq!(late[1].refers_to["voorschot"], next.id);
+    orders.extend(late);
+    let paid_2025: i64 = of_year(&orders, 2025)
+        .iter()
+        .map(|o| amount(o, "termijnbedrag"))
+        .sum();
+    assert_eq!(paid_2025, amount(&voorschot, "voorschotbedrag"));
+
+    // January to April 2026: the termijnen of 2026 run on.
+    let spring = pay_due(
+        &mut cell,
+        &service,
+        &root,
+        Some("2025-12-31"),
+        "2026-04-14",
+        "2026-04-14T12:00:00+02:00",
+    );
+    assert_eq!(of_year(&spring, 2026).len(), 4);
+    assert!(of_year(&spring, 2025).is_empty());
+    orders.extend(spring);
+
+    // What was paid, per berekeningsjaar.
+    let uitbetaald = |value: i32| {
+        read(
+            &cell,
+            &service,
+            "uitbetaald",
+            json!({"root": root, "berekeningsjaar": value})
+                .as_object()
+                .unwrap(),
+            at("2026-04-14T13:00:00+02:00"),
+        )["uitbetaalde_voorschotten"]
+            .as_i64()
+            .unwrap()
+    };
+    assert_eq!(uitbetaald(2025), paid_2025);
+    let paid_2026: i64 = of_year(&orders, 2026)
+        .iter()
+        .map(|o| amount(o, "termijnbedrag"))
+        .sum();
+    assert_eq!(uitbetaald(2026), paid_2026);
+
+    // The toekenning over 2025, on the aanslag of 15 April 2026: it sets
+    // off what was paid on 2025, not the termijnen of 2026.
+    let toekenning = cell
+        .decide(
+            &service,
+            "zorgtoeslag_toegekend",
+            on_application(),
+            BTreeMap::from([(
+                "datum_vaststelling_aanslag".to_string(),
+                Input {
+                    value: json!("2026-04-15"),
+                    provenance: json!({"source": "dossier"}),
+                },
+            )]),
+            at("2026-04-15T09:00:00+02:00"),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(toekenning.period, Some(year(2025)));
+    assert_eq!(
+        toekenning.inputs["uitbetaalde_voorschotten"]["value"],
+        paid_2025
+    );
+
+    // It ends the termijnen of 2025 only: May has the termijn of 2026.
+    let may = pay_due(
+        &mut cell,
+        &service,
+        &root,
+        Some("2026-04-14"),
+        "2026-05-31",
+        "2026-05-01T12:00:00+02:00",
+    );
+    assert_eq!(may.len(), 1);
+    assert_eq!(may[0].period, Some(year(2026)));
+    let e = cell
+        .execute_in(
+            &service,
+            "betaalopdracht_gegeven",
+            &root,
+            "2026-05-01".parse().unwrap(),
+            Some(2025),
+            at("2026-05-01T13:00:00+02:00"),
+        )
+        .unwrap_err();
+    assert!(matches!(e, Error::Ended(_)), "{e}");
+    // With two years open the cell does not guess which one is meant.
+    let e = cell
+        .execute(
+            &service,
+            "betaalopdracht_gegeven",
+            &root,
+            "2026-05-01".parse().unwrap(),
+            at("2026-05-01T13:00:00+02:00"),
+        )
+        .unwrap_err();
+    assert!(e.to_string().contains("say which"), "{e}");
+
+    // The next toekenning concerns 2026; its day is the aanslag over 2026,
+    // which the dossier gives, not the policy.
+    let due = cell
+        .due_decision(
+            &service,
+            "zorgtoeslag_toegekend",
+            &root,
+            at("2026-05-01T13:00:00+02:00"),
+        )
+        .unwrap();
+    assert_eq!(due.period, Some(year(2026)));
+    assert_eq!(due.day, None);
+    // A decision on a year before the one applied for is refused.
+    let e = cell
+        .decide(
+            &service,
+            "zorgtoeslag_toegekend",
+            on_application(),
+            BTreeMap::from([(
+                "berekeningsjaar".to_string(),
+                Input {
+                    value: json!(2024),
+                    provenance: json!({"source": "caller"}),
+                },
+            )]),
+            at("2026-05-01T14:00:00+02:00"),
+        )
+        .unwrap_err();
+    assert!(matches!(e, Error::Refused(_)), "{e}");
+}
+
+/// The voorschot over a year granted in December of that year is paid in
+/// one amount that month (Awir 22 lid 5); the voorschot for the next year,
+/// granted the same day, starts its twelve termijnen in that same December
+/// (lid 1). Once a month is per berekeningsjaar: both are paid, and neither
+/// twice.
+#[test]
+fn two_voorschotten_are_both_paid_in_december() {
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    let (mut cell, application, voorschot) = with_voorschot(
+        &mut service,
+        data.path(),
+        "2025-12-10T10:00:00+01:00",
+        "2025-12-10T10:30:00+01:00",
+        79547,
+    );
+    let root = application.id.clone();
+    // 1 November 2025 has passed: the voorschot for 2026 is due at once.
+    let due = cell
+        .due_decision(
+            &service,
+            "voorschot_verleend",
+            &root,
+            at("2025-12-10T10:45:00+01:00"),
+        )
+        .unwrap();
+    assert_eq!(due.period, Some(year(2026)));
+    assert_eq!(due.day, Some("2025-11-01".parse().unwrap()));
+    let next = cell
+        .decide(
+            &service,
+            "voorschot_verleend",
+            BTreeMap::from([("on_application".to_string(), root.clone())]),
+            BTreeMap::new(),
+            at("2025-12-10T11:00:00+01:00"),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(next.period, Some(year(2026)));
+
+    let orders = pay_due(
+        &mut cell,
+        &service,
+        &root,
+        None,
+        "2025-12-31",
+        "2025-12-10T12:00:00+01:00",
+    );
+    assert_eq!(orders.len(), 2, "{orders:?}");
+    assert_eq!(orders[0].period, Some(year(2025)));
+    assert_eq!(
+        amount(&orders[0], "termijnbedrag"),
+        amount(&voorschot, "voorschotbedrag")
+    );
+    assert_eq!(orders[1].period, Some(year(2026)));
+    assert_eq!(orders[1].refers_to["voorschot"], next.id);
+    assert!(amount(&orders[1], "termijnbedrag") < amount(&next, "voorschotbedrag"));
+    for value in [2025, 2026] {
+        let e = cell
+            .execute_in(
+                &service,
+                "betaalopdracht_gegeven",
+                &root,
+                "2025-12-20".parse().unwrap(),
+                Some(value),
+                at("2025-12-20T12:00:00+01:00"),
+            )
+            .unwrap_err();
+        assert!(e.to_string().contains("already"), "{value}: {e}");
+    }
 }

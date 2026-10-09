@@ -94,6 +94,12 @@ pub struct Event {
     /// list.
     #[serde(default, deserialize_with = "one_or_more")]
     pub reads: Vec<Read>,
+    /// For a decision on a submission: the article (`<regulation>#<article>`)
+    /// that gives the day the holder takes it, for the period it concerns
+    /// (see [`crate::Cell::due_decision`]). Its one date output is that day;
+    /// null is no day of its own.
+    #[serde(default)]
+    pub decided_on: Option<String>,
 }
 
 /// One source of the parameters of an event's case.
@@ -103,16 +109,29 @@ pub enum Read {
     /// A lexostatus of the cell, by name.
     Lexostatus(String),
     /// A policy of the holder (in the law format) that reads a register of
-    /// the cell: the cell executes it with the case's `root` as parameter and
-    /// takes its outputs (`{regulation: <policy>}`).
-    Regulation { regulation: String },
+    /// the cell: the cell executes it with the case's `root` (and the period
+    /// the case is read for) as parameters and takes its outputs
+    /// (`{regulation: <policy>}`), or only those of one article
+    /// (`{regulation: <policy>, article: <number>}`).
+    Regulation {
+        regulation: String,
+        #[serde(default)]
+        article: Option<String>,
+    },
 }
 
 impl std::fmt::Display for Read {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Read::Lexostatus(name) => write!(f, "lexostatus '{name}'"),
-            Read::Regulation { regulation } => write!(f, "policy '{regulation}'"),
+            Read::Regulation {
+                regulation,
+                article: None,
+            } => write!(f, "policy '{regulation}'"),
+            Read::Regulation {
+                regulation,
+                article: Some(article),
+            } => write!(f, "policy '{regulation}#{article}'"),
         }
     }
 }
@@ -176,6 +195,18 @@ pub struct Filter {
     pub stage: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub root: Option<String>,
+    /// The value of the period the gram concerns (`$<input>`: the period the
+    /// case is read for, such as one berekeningsjaar of an application that
+    /// holds for several).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub period: Option<String>,
+}
+
+impl Filter {
+    /// The input that gives the period, if the filter reads one (`$<input>`).
+    pub fn period_input(&self) -> Option<&str> {
+        self.period.as_deref().and_then(|p| p.strip_prefix('$'))
+    }
 }
 
 /// Which of the grams that pass the filter the derivations read, in the
@@ -366,7 +397,7 @@ impl CellConfig {
                 for read in &e.reads {
                     let name = match read {
                         Read::Lexostatus(name) => name,
-                        Read::Regulation { regulation } => {
+                        Read::Regulation { regulation, .. } => {
                             if !registers.iter().any(|r| &r.policy == regulation) {
                                 return Err(setup(format!(
                                     "stream '{}', event '{}' reads policy '{regulation}', which reads no register of the cell (`registers` in cell.yaml)",
@@ -383,10 +414,17 @@ impl CellConfig {
                     )));
                     };
                     // A decision reads the case it is taken on: the cell passes
-                    // the root of the gram it refers to, and nothing else.
-                    if l.inputs != ["root"] || l.reduction.filter.root.as_deref() != Some("$root") {
+                    // the root of the gram it refers to, and the period it is
+                    // read for if the filter reads one; nothing else.
+                    let period = l.reduction.filter.period_input();
+                    let known = |i: &String| i == "root" || Some(i.as_str()) == period;
+                    if !l.inputs.iter().any(|i| i == "root")
+                        || !l.inputs.iter().all(known)
+                        || period.is_some_and(|p| !l.inputs.iter().any(|i| i == p))
+                        || l.reduction.filter.root.as_deref() != Some("$root")
+                    {
                         return Err(setup(format!(
-                        "stream '{}', event '{}' reads lexostatus '{name}', which must have `inputs: [root]` and filter on `root: $root`",
+                        "stream '{}', event '{}' reads lexostatus '{name}', which must have `inputs: [root]` (and the period input its filter reads) and filter on `root: $root`",
                         s.id, e.name
                     )));
                     }

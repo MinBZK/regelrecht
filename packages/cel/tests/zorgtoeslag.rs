@@ -285,7 +285,6 @@ fn toeslagen_decides_on_the_application_and_records_the_decision() {
         json!({
             "bsn": BSN,
             "aangevraagd_berekeningsjaar": 2025,
-            "vermoedelijk_toetsingsinkomen": ESTIMATE,
             "datum_ontvangst": "2025-03-04",
         })
     );
@@ -314,8 +313,9 @@ fn toeslagen_decides_on_the_application_and_records_the_decision() {
     // The decision reads its parameters from the lexostatus its event
     // `reads`, kept to what its stage asks (the bsn; not the day of receipt,
     // and at the toekenning not the estimate, which only Awir 16 asks at the
-    // voorschot) and the berekeningsjaar it concerns. `decision_inputs` shows
-    // what `decide` will read.
+    // voorschot). The berekeningsjaar it concerns is the cell's to give: the
+    // first decision of the event concerns the year the application asks
+    // for. `decision_inputs` shows what `decide` will read.
     let inputs = cell
         .decision_inputs(&service, "zorgtoeslag_toegekend", &application.id, decided)
         .unwrap_or_else(|e| panic!("{e}"));
@@ -336,14 +336,14 @@ fn toeslagen_decides_on_the_application_and_records_the_decision() {
             provenance: json!({"source": "lexostatus", "lexostatus": "uitbetaald"}),
         },
     );
-    assert_eq!(
-        inputs,
-        BTreeMap::from([
-            from_case("bsn"),
-            from_case("aangevraagd_berekeningsjaar"),
-            paid
-        ])
+    let period = (
+        "berekeningsjaar".to_string(),
+        Input {
+            value: json!(2025),
+            provenance: json!({"source": "period"}),
+        },
     );
+    assert_eq!(inputs, BTreeMap::from([from_case("bsn"), period, paid]));
     let refers_to = BTreeMap::from([("on_application".to_string(), application.id.clone())]);
 
     // What the cell reads from the case cannot be given as well.
@@ -513,13 +513,11 @@ fn a_decision_applies_the_law_of_the_berekeningsjaar() {
         decision.regulation_valid_from.as_deref(),
         Some("2025-01-01")
     );
-    // The year took part in the decision, from the case.
+    // The year took part in the decision: the year the application asks
+    // for, given by the cell.
     assert_eq!(
-        decision.inputs["aangevraagd_berekeningsjaar"],
-        json!({
-            "value": 2025,
-            "provenance": {"source": "lexostatus", "lexostatus": "aanvraag"},
-        })
+        decision.inputs["berekeningsjaar"],
+        json!({"value": 2025, "provenance": {"source": "period"}})
     );
 
     let direct = |day: &str| {
@@ -607,8 +605,8 @@ fn an_event_reading_an_unknown_lexostatus_is_refused() {
     let read = |f: &str| std::fs::read_to_string(fixture.join(f)).unwrap();
     // Every lexostatus of the list is checked, not only the first.
     let decisions = read("streams/zorgtoeslag_besluiten.yaml").replacen(
-        "reads: [aanvraag]",
-        "reads: [aanvraag, aanvragen]",
+        "reads: [aanvraag, uitbetaald]",
+        "reads: [aanvraag, uitbetaald, aanvragen]",
         1,
     );
     assert_ne!(decisions, read("streams/zorgtoeslag_besluiten.yaml"));
@@ -753,7 +751,10 @@ fn the_voorschot_rests_on_the_estimate_and_the_toekenning_on_the_income() {
     assert_eq!(
         voorschot_inputs.keys().collect::<Vec<_>>(),
         [
+            // Awir 15 lid 5 via Awir 16: the application holds for the
+            // berekeningsjaar of the voorschot, which the cell gives.
             "aangevraagd_berekeningsjaar",
+            "berekeningsjaar",
             "bsn",
             // Awir 16 lid 1: a voorschot only on an application received
             // before 1 April of the year after the berekeningsjaar.
@@ -840,40 +841,32 @@ fn the_voorschot_rests_on_the_estimate_and_the_toekenning_on_the_income() {
     assert_eq!(toekenning.fields["motivering_vereist"], json!(true));
 }
 
-/// A decision may read several lexostatuses; a parameter two of them give is
-/// ambiguous, and refused.
+/// A decision may read several lexostatuses and an article of a policy of
+/// the holder; a parameter two of them give is ambiguous, and refused.
 #[test]
 fn a_decision_reads_several_lexostatuses() {
     let fixture = cell_yaml().parent().unwrap().to_path_buf();
     let read = |f: &str| std::fs::read_to_string(fixture.join(f)).unwrap();
-    let estimate = "        vermoedelijk_toetsingsinkomen:\n          field: vermoedelijk_toetsingsinkomen\n          legal_basis: [algemene_wet_inkomensafhankelijke_regelingen#16 lid 1]\n";
-    let lexostatuses = read("lexostatuses.yaml");
-    assert!(lexostatuses.contains(estimate));
-    let schatting = |derivations: &str| {
-        format!(
-            "{}\n  - name: schatting\n    inputs: [root]\n    reduction:\n      chronicle: toeslagen\n      filter: {{type: submission, subtype: aanvraag, root: $root}}\n      pick: latest\n      derivations:\n{derivations}",
-            lexostatuses.replace(estimate, "").trim_end()
-        )
-    };
-    let decisions = read("streams/zorgtoeslag_besluiten.yaml").replacen(
-        "reads: [aanvraag]",
-        "reads: [aanvraag, schatting]",
-        1,
+    // A lexostatus that reads the estimate from the application as well.
+    let lexostatuses = format!(
+        "{}\n  - name: schatting\n    inputs: [root]\n    reduction:\n      chronicle: toeslagen\n      filter: {{type: submission, subtype: aanvraag, root: $root}}\n      pick: latest\n      derivations:\n        vermoedelijk_toetsingsinkomen:\n          field: vermoedelijk_toetsingsinkomen\n",
+        read("lexostatuses.yaml").trim_end()
     );
+    let decisions = read("streams/zorgtoeslag_besluiten.yaml");
     // One read is a list of one.
     let policy = "{regulation: fictief_beleid_kroniek_toeslagen}";
     let payments = read("streams/zorgtoeslag_betalingen.yaml")
         .replace(&format!("reads: [{policy}]"), &format!("reads: {policy}"));
     assert_ne!(payments, read("streams/zorgtoeslag_betalingen.yaml"));
-    let config = |lexostatuses: &str| {
+    let config = |decisions: &str| {
         CellConfig::from_yaml(
             &read("cell.yaml"),
             &[
                 &read("streams/zorgtoeslag_aanvragen.yaml"),
-                &decisions,
+                decisions,
                 &payments,
             ],
-            Some(lexostatuses),
+            Some(&lexostatuses),
         )
         .unwrap_or_else(|e| panic!("{e}"))
     };
@@ -881,7 +874,18 @@ fn a_decision_reads_several_lexostatuses() {
     let received = at("2025-03-04T10:15:00+01:00");
     let day = received.date_naive();
 
-    let split = config(&schatting(estimate));
+    let split = config(&decisions);
+    let (_, voorschot) = split.event("voorschot_verleend").unwrap();
+    assert_eq!(
+        voorschot.reads,
+        [
+            Read::Lexostatus("aanvraag".into()),
+            Read::Regulation {
+                regulation: "fictief_beleid_kroniek_toeslagen".into(),
+                article: Some("4".into()),
+            }
+        ]
+    );
     let (_, toekenning) = split.event("zorgtoeslag_toegekend").unwrap();
     assert_eq!(
         toekenning.reads,
@@ -894,7 +898,8 @@ fn a_decision_reads_several_lexostatuses() {
     assert_eq!(
         termijn.reads,
         [Read::Regulation {
-            regulation: "fictief_beleid_kroniek_toeslagen".into()
+            regulation: "fictief_beleid_kroniek_toeslagen".into(),
+            article: None,
         }]
     );
     let mut cell = Cell::in_memory(split, Vec::new(), &service, day).unwrap();
@@ -905,15 +910,23 @@ fn a_decision_reads_several_lexostatuses() {
         .decision_inputs(&service, "voorschot_verleend", &aanvraag.id, received)
         .unwrap();
     assert_eq!(inputs["bsn"].provenance["lexostatus"], "aanvraag");
+    // The estimate from the policy of Toeslagen (art. 4, an aanname): only
+    // that article is read.
     assert_eq!(
-        inputs["vermoedelijk_toetsingsinkomen"].provenance["lexostatus"],
-        "schatting"
+        inputs["vermoedelijk_toetsingsinkomen"].provenance,
+        json!({
+            "source": "lexostatus",
+            "lexostatus": "fictief_beleid_kroniek_toeslagen#kroniek",
+            "article": "fictief_beleid_kroniek_toeslagen#4",
+        })
     );
     assert_eq!(inputs["vermoedelijk_toetsingsinkomen"].value, ESTIMATE);
 
-    let twice = config(&schatting(&format!(
-        "{estimate}        bsn:\n          field: bsn\n"
-    )));
+    let twice = config(&decisions.replacen(
+        "      - aanvraag\n",
+        "      - aanvraag\n      - schatting\n",
+        1,
+    ));
     let mut cell = Cell::in_memory(twice, Vec::new(), &service, day).unwrap();
     let aanvraag = cell
         .record_submission(&service, "aanvraag_ontvangen", &application(), received)
@@ -922,7 +935,10 @@ fn a_decision_reads_several_lexostatuses() {
         .decision_inputs(&service, "voorschot_verleend", &aanvraag.id, received)
         .unwrap_err();
     assert!(matches!(e, Error::Setup(_)), "{e}");
-    assert!(e.to_string().contains("'bsn'"), "{e}");
+    assert!(
+        e.to_string().contains("'vermoedelijk_toetsingsinkomen'"),
+        "{e}"
+    );
 }
 
 /// An application received at `received`, the citizen's registers, and the
@@ -1240,7 +1256,7 @@ fn a_reading_counts_only_what_holds_at_its_moment() {
         "2024-11-04T10:15:00+01:00",
         "2024-11-20T09:00:00+01:00",
     );
-    let root = object(json!({"root": application.id}));
+    let root = object(json!({"root": application.id, "berekeningsjaar": 2025}));
     let paid = |cell: &Cell, moment: &str| {
         read(cell, &service, "uitbetaald", &root, at(moment))["uitbetaalde_voorschotten"]
             .as_i64()
@@ -1269,6 +1285,7 @@ fn a_reading_counts_only_what_holds_at_its_moment() {
             &service,
             "betaalopdracht_gegeven",
             &application.id,
+            Some(("berekeningsjaar", 2025)),
             at(moment),
         )
         .unwrap()
@@ -1282,7 +1299,8 @@ fn a_reading_counts_only_what_holds_at_its_moment() {
         voorschot.fields["voorschotbedrag"]
     );
     assert_eq!(after["dagtekening_voorschot"].value, "2024-11-20");
-    assert_eq!(after["berekeningsjaar"].value, 2025);
+    // The berekeningsjaar is the cell's to give: the case is read for it.
+    assert!(!after.contains_key("berekeningsjaar"), "{after:?}");
     // Where it came from: the register, and the article of the policy that
     // read it (the engine says which).
     assert_eq!(
@@ -1608,6 +1626,9 @@ fn the_cell_says_which_days_a_termijn_is_due() {
             at(now),
         )
         .unwrap_or_else(|e| panic!("{e}"))
+        .into_iter()
+        .map(|d| d.day)
+        .collect::<Vec<_>>()
     };
     // Before the voorschot there is nothing to execute.
     let received = at("2025-03-04T10:15:00+01:00");
@@ -1723,15 +1744,36 @@ fn a_herziening_does_not_pay_twice_in_a_month() {
     );
     let paid = pay(&mut cell, &service, &application.id, "2025-04-01").unwrap();
     assert_eq!(paid.refers_to["voorschot"], first.id);
+    // A herziening is a voorschot for the same berekeningsjaar: the caller
+    // says which. Without it, the next voorschot is that of the next year,
+    // which Toeslagen grants only on 1 November before it.
+    let on_application = BTreeMap::from([("on_application".to_string(), application.id.clone())]);
+    let e = cell
+        .decide(
+            &service,
+            "voorschot_verleend",
+            on_application.clone(),
+            BTreeMap::new(),
+            at("2025-04-10T09:00:00+02:00"),
+        )
+        .unwrap_err();
+    assert!(e.to_string().contains("2025-11-01"), "{e}");
     let second = cell
         .decide(
             &service,
             "voorschot_verleend",
-            BTreeMap::from([("on_application".to_string(), application.id.clone())]),
-            BTreeMap::new(),
+            on_application,
+            BTreeMap::from([(
+                "berekeningsjaar".to_string(),
+                Input {
+                    value: json!(2025),
+                    provenance: json!({"source": "caller"}),
+                },
+            )]),
             at("2025-04-10T09:00:00+02:00"),
         )
         .unwrap();
+    assert_eq!(second.period, Some(year(2025)));
     let e = cell
         .execute(
             &service,

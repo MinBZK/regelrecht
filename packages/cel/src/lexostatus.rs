@@ -27,6 +27,25 @@ fn resolve<'a>(value: &'a str, inputs: &'a Map<String, Value>) -> Result<&'a str
     }
 }
 
+/// The value of a period filter: a whole number, or `$<input>` for the
+/// input that gives it (a number, or a number as text).
+fn period_value(value: &str, inputs: &Map<String, Value>) -> Result<i64> {
+    let (given, what) = match value.strip_prefix('$') {
+        None => (Value::String(value.to_string()), "filter"),
+        Some(name) => (
+            inputs
+                .get(name)
+                .cloned()
+                .ok_or_else(|| refused(format!("input '{name}' is missing")))?,
+            name,
+        ),
+    };
+    given
+        .as_i64()
+        .or_else(|| given.as_str().and_then(|s| s.parse().ok()))
+        .ok_or_else(|| refused(format!("period '{what}' is {given}, not a whole number")))
+}
+
 /// A moment of a gram, as the chronicle holds it (RFC 3339).
 pub(crate) fn moment(gram: &Gram, value: &str) -> Result<DateTime<FixedOffset>> {
     DateTime::parse_from_rfc3339(value)
@@ -75,12 +94,18 @@ pub fn reduce<'c>(
     let event = value(&filter.event, inputs)?;
     let stage = value(&filter.stage, inputs)?;
     let root = value(&filter.root, inputs)?;
+    let period = filter
+        .period
+        .as_deref()
+        .map(|p| period_value(p, inputs))
+        .transpose()?;
     let matches = |g: &Gram| {
         type_.is_none_or(|t| g.type_ == t)
             && subtype.is_none_or(|s| g.subtype.as_deref() == Some(s))
             && event.is_none_or(|e| g.name == e)
             && stage.is_none_or(|s| g.stage.as_deref() == Some(s))
             && root.is_none_or(|r| chronicle.root_of(g) == r)
+            && period.is_none_or(|p| g.period.is_some_and(|gp| i64::from(gp.value) == p))
     };
     let picked: Vec<&Gram> = in_force(chronicle, as_of)?
         .into_iter()

@@ -3,10 +3,11 @@
 # de wet vraagt een gegeven (het burgerservicenummer, de dag van ontvangst);
 # dat Toeslagen het in een kroniek bewaart, is haar zaak.
 #
-# Het voorschot leest de cel al terug met een artikel in het beleid van
-# Toeslagen (fictief_beleid_kroniek_toeslagen, `registers:` in cell.yaml), in
-# dezelfde regeltaal als de wet. De aanvraag en wat er is uitbetaald volgen
-# later; tot dan staan ze hier.
+# Het voorschot, de schatting van het inkomen en de achterstand leest de cel
+# al terug met artikelen in het beleid van Toeslagen
+# (fictief_beleid_kroniek_toeslagen, `registers:` in cell.yaml), in dezelfde
+# regeltaal als de wet. De aanvraag en wat er is uitbetaald volgen later; tot
+# dan staan ze hier.
 cell: toeslagen
 lexostatus_definitions:
   # De aanvraag, zoals Toeslagen haar ontving. `root` is het id van het gram
@@ -24,25 +25,26 @@ lexostatus_definitions:
         aangevraagd_berekeningsjaar:
           field: aangevraagd_berekeningsjaar
           legal_basis: [algemene_wet_inkomensafhankelijke_regelingen#15 lid 1]
-        # Awir 16 lid 1: het toetsingsinkomen dat de aanvrager verwacht; het
-        # voorschot rekent ermee.
-        vermoedelijk_toetsingsinkomen:
-          field: vermoedelijk_toetsingsinkomen
-          legal_basis: [algemene_wet_inkomensafhankelijke_regelingen#16 lid 1]
         # Awb 4:13 lid 1: de aanvraag telt vanaf de ontvangst.
         datum_ontvangst:
           moment: effective_at
           legal_basis: [algemene_wet_bestuursrecht#4:13 lid 1]
-  # Wat er op het voorschot van de aanvraag `root` is uitbetaald: de som van
-  # wat de bank bijschreef, zoals de kroniek die kent op het moment van lezen.
-  # Art. 24 lid 2 verrekent de uitbetaalde voorschotten, niet de verleende:
-  # een betaalopdracht die de bank niet bijschreef, telt niet. Geen termijn
-  # is nul.
+  # Wat er op het voorschot van de aanvraag `root` voor het berekeningsjaar
+  # `berekeningsjaar` is uitbetaald: de som van wat de bank bijschreef, zoals
+  # de kroniek die kent op het moment van lezen. Art. 24 lid 2 verrekent de
+  # uitbetaalde voorschotten, niet de verleende: een betaalopdracht die de
+  # bank niet bijschreef, telt niet. Geen termijn is nul. Per berekeningsjaar:
+  # de aanvraag geldt ook voor de jaren erna (Awir 15 lid 5), en de
+  # toekenning over een jaar verrekent alleen het voorschot van dat jaar.
   - name: uitbetaald
-    inputs: [root]
+    inputs: [root, berekeningsjaar]
     reduction:
       chronicle: toeslagen
-      filter: {type: executogram, event: voorschottermijn_betaald, root: $root}
+      filter:
+        type: executogram
+        event: voorschottermijn_betaald
+        root: $root
+        period: $berekeningsjaar
       pick: all
       derivations:
         uitbetaalde_voorschotten:

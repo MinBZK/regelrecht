@@ -358,6 +358,11 @@ pub fn derive(service: &LawExecutionService, event: &Event, day: NaiveDate) -> R
             let model = execute_submission(service, &law.id, &shape.outputs, day)
                 .map_err(|e| setup(format!("{establishes}: {e}")))?;
             submission_fields(service, &mut shape, &model, day)?;
+            // The period the applicant asks for (Awb 4:2 lid 1; Awir 15 lid
+            // 1: "met betrekking tot een berekeningsjaar"): the parameter of
+            // the establishing article with origin role TIJDVAK. The first
+            // decision on the submission concerns it (see `Cell::decide`).
+            shape.period = submission_period(&shape, &declared_parameters(article))?;
         }
         None => {
             shape.type_ = entry.type_.clone().ok_or_else(|| {
@@ -450,6 +455,33 @@ fn tijdvak(
             shape.establishes,
             more.len(),
             more.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(", ")
+        ))),
+    }
+}
+
+/// The period a submission asks for: the one parameter of its establishing
+/// article with origin role TIJDVAK, as a calendar year when it is a number.
+fn submission_period(shape: &Shape, parameters: &[Parameter]) -> Result<Option<PeriodParameter>> {
+    let mut found = Vec::new();
+    for p in parameters {
+        if origin(p, &shape.establishes)?.and_then(|o| o.rol) == Some(OriginRole::Tijdvak) {
+            found.push(p);
+        }
+    }
+    match found.as_slice() {
+        [] => Ok(None),
+        [p] if p.param_type == ParameterType::Number => Ok(Some(PeriodParameter {
+            parameter: p.name.clone(),
+            unit: PeriodUnit::Year,
+        })),
+        [p] => Err(setup(format!(
+            "{}: the TIJDVAK '{}' is a {:?}; only a year (a number) is a period the cell knows",
+            shape.establishes, p.name, p.param_type
+        ))),
+        more => Err(setup(format!(
+            "{}: {} parameters with role TIJDVAK; a submission asks for one period",
+            shape.establishes,
+            more.len()
         ))),
     }
 }
@@ -681,12 +713,22 @@ fn submission_fields(
                 _ => false,
             })
             .collect();
-        let parameters: Vec<Parameter> = model
+        // A submission asks for one period, the one its establishing article
+        // asks (see `submission_period`). A hook's own period is the period
+        // of the decision it takes part in (Awir 16: the berekeningsjaar of
+        // the voorschot), not a field the applicant fills in.
+        let mut parameters: Vec<Parameter> = Vec::new();
+        for input in model
             .inputs
             .iter()
             .filter(|i| i.law_id == part.law_id && i.article_number == part.article_number)
-            .map(|i| i.parameter.clone())
-            .collect();
+        {
+            let period = origin(&input.parameter, &reference)?.and_then(|o| o.rol)
+                == Some(OriginRole::Tijdvak);
+            if !(period && part.hook.is_some()) {
+                parameters.push(input.parameter.clone());
+            }
+        }
         for entry in entries {
             for field in part_fields(entry, &reference, &parameters, &declared_outputs(article))? {
                 merge_field(&mut shape.fields, field);
@@ -890,6 +932,7 @@ articles:
             establishes: "testwet#1".into(),
             stage: None,
             reads: Vec::new(),
+            decided_on: None,
         }
     }
 
@@ -955,6 +998,7 @@ articles:
             establishes: "testbesluit#1".into(),
             stage: stage.map(str::to_string),
             reads: Vec::new(),
+            decided_on: None,
         }
     }
 
@@ -1050,6 +1094,7 @@ articles:
             establishes: "ontvangstwet#1".into(),
             stage: None,
             reads: Vec::new(),
+            decided_on: None,
         }
     }
 

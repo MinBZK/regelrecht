@@ -218,8 +218,10 @@ impl WasmCell {
     }
 
     /// Execute the execution `event` (an executogram) for the case `root` on
-    /// `on` (`YYYY-MM-DD`), recorded at `now` (RFC 3339): the gram if the
-    /// law says one arises, otherwise `null`. See `Cell::execute`.
+    /// `on` (`YYYY-MM-DD`), recorded at `now` (RFC 3339), for the period
+    /// `period` (its value, as `dueExecutions` gives it; absent if the case
+    /// has one): the gram if the law says one arises, otherwise `null`. See
+    /// `Cell::execute_in`.
     pub fn execute(
         &mut self,
         engine: &WasmEngine,
@@ -227,10 +229,18 @@ impl WasmCell {
         root: &str,
         on: &str,
         now: &str,
+        period: Option<i32>,
     ) -> Result<JsValue, JsValue> {
         let gram = self
             .cell
-            .execute(engine.service(), event, root, day(on)?, moment(now)?)
+            .execute_in(
+                engine.service(),
+                event,
+                root,
+                day(on)?,
+                period,
+                moment(now)?,
+            )
             .map_err(cell_error)?;
         match gram {
             Some(gram) => to_js(&gram),
@@ -250,10 +260,18 @@ impl WasmCell {
         root: &str,
         on: &str,
         now: &str,
+        period: Option<i32>,
     ) -> Result<JsValue, JsValue> {
         let gram = self
             .cell
-            .preview_execution(engine.service(), event, root, day(on)?, moment(now)?)
+            .preview_execution_in(
+                engine.service(),
+                event,
+                root,
+                day(on)?,
+                period,
+                moment(now)?,
+            )
             .map_err(cell_error)?;
         match gram {
             Some(gram) => to_js(&gram),
@@ -301,7 +319,8 @@ impl WasmCell {
 
     /// The days up to `through` (`YYYY-MM-DD`) on which the execution
     /// `event` is executed for the case `root`, after `after` (a day, or
-    /// `null`), as the case holds at `now` (RFC 3339): `["YYYY-MM-DD", ...]`.
+    /// `null`), as the case holds at `now` (RFC 3339), each with the period
+    /// it is executed for: `[{day: "YYYY-MM-DD", period: {unit, value}?}]`.
     /// See `Cell::due_executions`. The page executes or previews each day;
     /// it does not work out the days itself.
     #[wasm_bindgen(js_name = dueExecutions)]
@@ -326,7 +345,33 @@ impl WasmCell {
                 moment(now)?,
             )
             .map_err(cell_error)?;
-        to_js(&days.iter().map(ToString::to_string).collect::<Vec<_>>())
+        let days: Vec<serde_json::Value> = days
+            .iter()
+            .map(|d| serde_json::json!({"day": d.day.to_string(), "period": d.period}))
+            .collect();
+        to_js(&days)
+    }
+
+    /// The next decision of `event` on the case `root`, as the case holds at
+    /// `now` (RFC 3339): `{period: {unit, value}?, day: "YYYY-MM-DD"?}`, the
+    /// period it concerns and the day the holder's policy gives for it (the
+    /// stream's `decided_on`), if any. See `Cell::due_decision`.
+    #[wasm_bindgen(js_name = dueDecision)]
+    pub fn due_decision(
+        &self,
+        engine: &WasmEngine,
+        event: &str,
+        root: &str,
+        now: &str,
+    ) -> Result<JsValue, JsValue> {
+        let due = self
+            .cell
+            .due_decision(engine.service(), event, root, moment(now)?)
+            .map_err(cell_error)?;
+        to_js(&serde_json::json!({
+            "period": due.period,
+            "day": due.day.map(|d| d.to_string()),
+        }))
     }
 
     /// Per parameter a lexostatus gives, the field of a gram it reads, as
