@@ -37,7 +37,9 @@ import { activeLocale, t } from '../i18n/index.js';
 
 // v3: `executedThrough` houdt per uitvoering bij wat per periode (een
 // berekeningsjaar) al gevraagd is; een oude staat wordt niet omgezet.
-const STORAGE_KEY = 'rr-demo-state-v3';
+// v4: de toekenning rust op de aanslag van de cel van de Belastingdienst, niet
+// meer op een datum uit het dossier; een oude zaak heeft die aanslag niet.
+const STORAGE_KEY = 'rr-demo-state-v4';
 
 function today() {
   // Local calendar date, not UTC: in the evening the two differ.
@@ -444,7 +446,12 @@ function previewAt(c, stage) {
   if (!found) return null;
   const now = nowMoment();
   const refersTo = applicationReference(found.event, found.shape, c);
-  const { inputs } = dossierInputs(chrono.wasmCell, found.event, c.applicationGramId, now);
+  const { inputs: dossier } = dossierInputs(chrono.wasmCell, found.event, c.applicationGramId, now);
+  // Het besluit betreft de periode waarvoor de cel een dag gaf (de eerste
+  // periode met een dag, niet per se de aangevraagde).
+  const due = chrono.wasmCell.dueDecision(engine.value, found.event, c.applicationGramId, now);
+  const parameter = found.shape.period?.parameter;
+  const inputs = due.day && due.period && parameter ? { ...dossier, [parameter]: { value: due.period.value, provenance: { source: 'period' } } } : dossier;
   const gram = chrono.wasmCell.previewDecision(engine.value, found.event, refersTo, now, inputs);
   return { chrono, ...found, refersTo, inputs, now, gram };
 }
@@ -678,6 +685,11 @@ function dueDecision(c) {
     const found = decisionAt(chrono, c.stageState?.current_stage);
     if (!found || c.decisionGrams?.[found.event]) return null;
     const now = nowMoment();
+    // Geeft het beleid van de houder de dag van dit besluit (`decided_on`:
+    // de toekenning op de dag van de aanslag, zodra het inkomensgegeven er
+    // is), dan is dat zijn moment.
+    const day = chrono.wasmCell.dueDecision(engine.value, found.event, c.applicationGramId, now).day ?? null;
+    if (day) return day <= state.referenceDate ? found : null;
     const { inputs, dates } = dossierInputs(chrono.wasmCell, found.event, c.applicationGramId, now);
     // Zonder datum uit het dossier: de vaste datum die de wet het besluit
     // geeft, uit twee voorbeelden in verschillende maanden (`fixedDates`).
@@ -706,11 +718,39 @@ function dueDecision(c) {
  */
 function followingDecisionsOf(c, chrono, now) {
   const out = [];
-  for (const d of chrono.decisions) {
-    if (!c.decisionGrams?.[d.name]) continue;
+  const events = [
+    ...chrono.decisions.filter((d) => c.decisionGrams?.[d.name]),
+    ...clockDecisionsOf(chrono),
+  ];
+  for (const d of events) {
     const due = chrono.wasmCell.dueDecision(engine.value, d.name, c.applicationGramId, now);
     const { inputs, dates } = dossierInputs(chrono.wasmCell, d.name, c.applicationGramId, now);
     out.push({ event: d.name, period: due.period ?? null, day: due.day ?? null, decidedOn: d.decided_on ?? null, inputs, dates });
+  }
+  return out;
+}
+
+/**
+ * De besluiten van de cel op de aanvraag van deze wet die de levensloop van
+ * de zaak niet neemt: die een ander artikel vestigt, in een eigen procedure
+ * (de terugvordering van Awir 26 op de aanvraag om zorgtoeslag). De klok
+ * neemt ze op de dag die het beleid van de houder geeft (`decided_on`), ook
+ * het eerste. Herkend aan wat de wet zegt: een besluit (decretogram) dat
+ * naar de aanvraag van de wet verwijst.
+ */
+function clockDecisionsOf(chrono) {
+  const own = new Set([chrono.application.name, ...chrono.decisions.map((d) => d.name)]);
+  const out = [];
+  for (const e of chrono.cell.events) {
+    if (own.has(e.name) || !e.decided_on) continue;
+    let shape;
+    try {
+      shape = chrono.wasmCell.shape(engine.value, e.name, state.referenceDate);
+    } catch {
+      continue;
+    }
+    const onApplication = Object.values(shape.refers_to ?? {}).some((r) => r.required && r.to === chrono.application.establishes);
+    if (shape.type === 'decretogram' && onApplication) out.push(e);
   }
   return out;
 }
@@ -725,25 +765,37 @@ function followingDecisionsOf(c, chrono, now) {
  */
 function decideFollowing(c) {
   const chrono = c.applicationGramId ? chronolexFor(corpus.value?.lawById(c.lawId)) : null;
-  if (!chrono) return;
+  if (!chrono) return false;
   const now = nowMoment();
   const today = state.referenceDate;
   let decided = false;
+  // Eén besluit per ronde, en dan opnieuw kijken: een besluit kan het
+  // volgende zijn moment geven (de toekenning de terugvordering, op dezelfde
+  // dag).
   try {
-    for (const f of followingDecisionsOf(c, chrono, now)) {
-      const due = f.day ? f.day <= today : decisionDue(f.dates, today);
-      if (!due) continue;
-      const shape = chrono.wasmCell.shape(engine.value, f.event, today);
-      const refersTo = applicationReference(f.event, shape, c);
-      const preview = chrono.wasmCell.previewDecision(engine.value, f.event, refersTo, now, f.inputs);
-      const verdict = verdictOf(preview.fields);
-      if (verdict === 'unknown' || verdict === false) {
-        c.chronicleNoteKey = verdict === 'unknown' ? 'zaak.chronicle.undecided' : 'zaak.chronicle.refusal';
-        continue;
+    for (let round = 0; round < 10; round += 1) {
+      let took = false;
+      for (const f of followingDecisionsOf(c, chrono, now)) {
+        const due = f.day ? f.day <= today : decisionDue(f.dates, today);
+        if (!due) continue;
+        const shape = chrono.wasmCell.shape(engine.value, f.event, today);
+        const refersTo = applicationReference(f.event, shape, c);
+        // Het besluit betreft de periode die de cel gaf.
+        const inputs = shape.period && f.period ? { ...f.inputs, [shape.period.parameter]: { value: f.period.value, provenance: { source: 'period' } } } : f.inputs;
+        const preview = chrono.wasmCell.previewDecision(engine.value, f.event, refersTo, now, inputs);
+        const verdict = verdictOf(preview.fields);
+        if (verdict === 'unknown' || verdict === false) {
+          c.chronicleNoteKey = verdict === 'unknown' ? 'zaak.chronicle.undecided' : 'zaak.chronicle.refusal';
+          continue;
+        }
+        const gram = chrono.wasmCell.decide(engine.value, f.event, refersTo, now, inputs);
+        transport(chrono.cell.id, gram, now, c.id);
+        c.events.push({ at: now, type: 'DECIDED', approved: true, key: 'case.event.following_decision', vars: { period: f.period?.value ?? '' } });
+        decided = true;
+        took = true;
+        break;
       }
-      chrono.wasmCell.decide(engine.value, f.event, refersTo, now, f.inputs);
-      c.events.push({ at: now, type: 'DECIDED', approved: true, key: 'case.event.following_decision', vars: { period: f.period?.value ?? '' } });
-      decided = true;
+      if (!took) break;
     }
   } catch (e) {
     c.chronicleError = String(e?.message ?? e);
@@ -752,6 +804,7 @@ function decideFollowing(c) {
     syncGrams();
     executeDue(c);
   }
+  return decided;
 }
 
 /**
@@ -802,6 +855,8 @@ function momentsOf(c) {
   }
   try {
     const next = nextDecisionOf(c, chrono);
+    const nextDay = next ? (chrono.wasmCell.dueDecision(engine.value, next.event, c.applicationGramId, now).day ?? null) : null;
+    if (nextDay && nextDay > today) moments.push({ date: nextDay, kind: 'decision', event: next.event, provision: chrono.decisions.find((d) => d.name === next.event)?.decided_on ?? null });
     if (next) {
       const { inputs, dates } = dossierInputs(chrono.wasmCell, next.event, c.applicationGramId, now);
       for (const [name, date] of Object.entries(dates)) {
@@ -830,6 +885,15 @@ function momentsOf(c) {
       moments.push({ ...m, kind: 'law', event: g.name, provision: fields[m.name]?.declared_by ?? null });
     }
   }
+  // Wat een cel ambtshalve over de persoon van de zaak besluit (de aanslag
+  // waarop de toekenning wacht).
+  try {
+    for (const d of exOfficioDue([c.bsn])) {
+      if (d.day && d.day > today) moments.push({ date: d.day, kind: 'ex_officio', event: d.event, cell: d.cell, period: d.period, provision: d.decidedOn });
+    }
+  } catch (e) {
+    errors.push(String(e?.message ?? e));
+  }
   return { moments: moments.sort((a, b) => a.date.localeCompare(b.date)), error: errors.join('; ') || null };
 }
 
@@ -846,6 +910,83 @@ function momentViewsOf(c) {
 /** De momenten van `momentsOf`, zonder de fout: voor de klok. */
 function nextMoments(c) {
   return momentsOf(c).moments;
+}
+
+/**
+ * De personen over wie een cel ambtshalve besluit (`ex_officio` in
+ * demo-config.yaml): de persoon van elke open zaak met een aanvraag in een
+ * kroniek. Eigen keuze van de demo: zonder zo'n zaak besluit de cel over
+ * niemand, en merkt de rest van de demo niets van haar.
+ */
+function exOfficioSubjects() {
+  return [...new Set(state.cases.filter((c) => statusOf(c) !== 'WITHDRAWN' && c.applicationGramId && c.bsn).map((c) => c.bsn))];
+}
+
+/**
+ * Per ambtshalve besluit (`ex_officio` in demo-config.yaml) en per persoon
+ * in `bsns` het volgende besluit zoals de cel het geeft (`dueExOfficio`):
+ * `{cell, event, bsn, subject, period, day, decidedOn, periodParameter}`.
+ * Over welk jaar en op welke dag zegt de cel uit het beleid van de houder;
+ * de demo kent geen kalender. Een cel die niet gestart is, slaat de demo
+ * over. Lezen schrijft niets.
+ */
+function exOfficioDue(bsns) {
+  const out = [];
+  const now = nowMoment();
+  for (const entry of corpus.value?.config?.ex_officio ?? []) {
+    const wasmCell = cells.value[entry.cell];
+    if (!wasmCell) continue;
+    const cell = corpus.value.cells.find((x) => x.id === entry.cell);
+    const decidedOn = cell?.events.find((e) => e.name === entry.event)?.decided_on ?? null;
+    const shape = wasmCell.shape(engine.value, entry.event, state.referenceDate);
+    for (const bsn of bsns) {
+      const subject = {};
+      for (const [name, value] of Object.entries(entry.subject ?? {})) {
+        subject[name] = { value: value === '$bsn' ? bsn : value, provenance: { source: 'demo', subject: 'case' } };
+      }
+      const due = wasmCell.dueExOfficio(engine.value, entry.event, subject, now);
+      out.push({ cell: entry.cell, event: entry.event, bsn, subject, period: due.period ?? null, day: due.day ?? null, decidedOn, periodParameter: shape.period?.parameter ?? null });
+    }
+  }
+  return out;
+}
+
+/**
+ * Neem de ambtshalve besluiten waarvan de dag er is: per persoon elk jaar
+ * waarvoor de cel een dag op of vóór de peildatum geeft, en breng wat ze
+ * vastlegt over de kanalen verder (de aanslag naar Toeslagen). Een fout
+ * komt op de zaken van die persoon te staan.
+ */
+function decideExOfficio() {
+  if (!engine.value) return;
+  const now = nowMoment();
+  const today = state.referenceDate;
+  for (let round = 0; round < 10; round += 1) {
+    let decided = false;
+    let due;
+    try {
+      due = exOfficioDue(exOfficioSubjects());
+    } catch (e) {
+      // Op de zaken van wie de cel volgt, zodat het niet stil misgaat.
+      const error = String(e?.message ?? e);
+      for (const c of state.cases) if (c.applicationGramId && exOfficioSubjects().includes(c.bsn)) c.chronicleError = error;
+      return;
+    }
+    for (const d of due) {
+      if (!d.day || d.day > today || !d.period || !d.periodParameter) continue;
+      const caseOf = state.cases.find((c) => c.bsn === d.bsn && c.applicationGramId);
+      try {
+        const inputs = { ...d.subject, [d.periodParameter]: { value: d.period.value, provenance: { source: 'period' } } };
+        const gram = cells.value[d.cell].decide(engine.value, d.event, {}, now, inputs);
+        transport(d.cell, gram, now, caseOf?.id ?? null);
+        decided = true;
+      } catch (e) {
+        if (caseOf) caseOf.chronicleError = String(e?.message ?? e);
+      }
+    }
+    syncGrams();
+    if (!decided) return;
+  }
 }
 
 /**
@@ -868,6 +1009,9 @@ function advanceTo(date) {
       // Wat eerder niet aankwam, eerst: het antwoord op de opdracht van
       // vorige maand hoort er te zijn vóór de opdracht van deze maand.
       flushOutbox();
+      // Dan wat een cel ambtshalve besluit (de aanslag): de zaken lezen het
+      // op dezelfde dag (de toekenning op het inkomensgegeven).
+      decideExOfficio();
     },
     cases: open,
     momentsOf: nextMoments,
@@ -882,6 +1026,8 @@ function advanceTo(date) {
         return;
       }
       decideByLaw(c, due.shape.stage);
+      // Wat op dit besluit volgt op dezelfde dag (een terugvordering).
+      decideFollowing(c);
     },
   });
   reregister();

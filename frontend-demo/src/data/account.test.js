@@ -39,6 +39,41 @@ describe('accountOf', () => {
     expect(account.transactions[1].payer).toBe('belastingdienst_toeslagen');
   });
 
+  it('subtracts what the bank debited, reading a field under the first name a gram has', () => {
+    const listed = {
+      ...config,
+      gram: { ...config.gram, debited: 'afgeschreven_bedrag', reason: ['reden', 'reden_incasso'], reference: ['betaalkenmerk', 'incassokenmerk'] },
+    };
+    const incasso = (id, date, debited) => ({
+      id,
+      name: debited ? 'incasso_afgeschreven' : 'incasso_geweigerd',
+      chronicle: 'rekeningen',
+      recorded_at: `${date}T11:00:00+01:00`,
+      fields: {
+        rekeningnummer: 'NL00TEST0123456789',
+        bedrag: 300,
+        afgeschreven_bedrag: debited ? 300 : 0,
+        uitvoerdatum: date,
+        reden_incasso: debited ? '' : 'saldo ontoereikend',
+        incassokenmerk: 'i1',
+      },
+    });
+    const grams = [
+      { id: 'i1', name: 'incasso_opgedragen', chronicle: 'toeslagen', fields: {} },
+      bankGram('b1', '2025-01-01', true),
+      incasso('d1', '2025-02-01', false),
+      incasso('d2', '2025-03-01', true),
+    ];
+    const account = accountOf(listed, sources, grams, cells);
+    expect(account.balance).toBe(10000 + 500 - 300);
+    expect(account.transactions.map((t) => [t.id, t.credited, t.debited, t.reason, t.reference])).toEqual([
+      ['d2', 0, 300, null, 'i1'],
+      ['d1', 0, 0, 'saldo ontoereikend', 'i1'],
+      ['b1', 500, 0, null, 'o1'],
+    ]);
+    expect(account.transactions[0].payer).toBe('belastingdienst_toeslagen');
+  });
+
   it('is null without an account or a configuration', () => {
     expect(accountOf(config, {}, [], cells)).toBeNull();
     expect(accountOf(null, sources, [], cells)).toBeNull();

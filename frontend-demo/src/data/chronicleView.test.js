@@ -34,6 +34,16 @@ describe('wat een burger van een besluit ziet', () => {
 });
 
 describe('een moment als regel', () => {
+  it('noemt een ambtshalve besluit met zijn jaar en het beleid dat de dag geeft', () => {
+    const m = momentView(
+      { kind: 'ex_officio', event: 'aanslag_inkomstenbelasting_vastgesteld', date: '2026-04-15', period: { unit: 'year', value: 2025 }, provision: 'fictief_beleid_aanslagregeling#1' },
+      { corpus, fieldsOf },
+    );
+    expect(m.text).toContain('2025');
+    expect(m.text).toContain('zonder aanvraag');
+    expect(m.supporting).toContain('fictief_beleid_aanslagregeling');
+  });
+
   it('zegt van een uitvoering wat de cel dan zou vastleggen', () => {
     const m = momentView({ kind: 'execution', name: 'termijn_betaald', date: '2025-02-01', gram: { fields: { voldoet: true } } }, { corpus, fieldsOf });
     expect(m.text).toBe('Termijn betaald');

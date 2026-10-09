@@ -227,6 +227,18 @@ anders in de vertaling voor, dus er is ook geen eerdere keuze om op te leunen.
 - **"bûten de oerheid"** (`gevolgen.intro`, `gevolgen.none`) volgt
   `oerheid` elders in de demo.
 
+## 11. Aanslag, nabetaling en terugvordering, nog niet nagekeken
+
+- **"Afgeschreven"** staat op `Ôfskreaun` (`gevolgen.account.debited`), naar
+  `ôfskriuwe`. Of een bank in het Fries zo over een afschrijving praat, is
+  niet nagegaan.
+- **"int"** (geld innen) staat op `ynint` in `gevolgen.account.supporting`
+  (`Wat de oerheid oermakket of ynint, rint fia dit rekken.`). Of `ynine` het
+  gangbare werkwoord is, is niet nagegaan.
+- **"Ambtshalve"** is in `zaak.moments.ex_officio` onvertaald gebleven
+  (`Ambtshalve beslút oer {period}, sûnder oanfraach`): het is een
+  bestuursrechtelijke term, en een Fries equivalent is niet gevonden.
+
 ## Hoe je een correctie doorvoert
 
 De schermteksten staan in `frontend-demo/src/i18n/fy.js`, één sleutel per regel.

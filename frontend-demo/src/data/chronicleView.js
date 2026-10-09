@@ -113,6 +113,12 @@ export function momentView(m, { corpus, fieldsOf, decided = () => false }) {
     const text = `${humanize(m.event)} · ${t('zaak.moments.decision', { period: m.period?.value ?? '' })}`;
     return { ...m, text, supporting: t('zaak.moments.decision.supporting', { provision }) };
   }
+  // Een besluit dat een cel ambtshalve over de persoon van de zaak neemt (de
+  // aanslag van de inspecteur), op de dag die het beleid van de houder geeft.
+  if (m.kind === 'ex_officio') {
+    const text = `${humanize(m.event)} · ${t('zaak.moments.ex_officio', { period: m.period?.value ?? '' })}`;
+    return { ...m, text, supporting: t('zaak.moments.decision.supporting', { provision }) };
+  }
   const key = decided(m.event) ? 'zaak.moments.given' : 'zaak.moments.expected';
   return { ...m, text: humanize(m.name), supporting: t(key, { provision, event: humanize(m.event) }) };
 }

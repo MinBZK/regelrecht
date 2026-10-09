@@ -19,16 +19,21 @@ const EURO = { type: 'amount' };
 /** Wie het betreft: de persona, of namens wie er gehandeld wordt. */
 const subjectName = computed(() => activeDelegation.value?.subjectName ?? persona.value?.name ?? profile.value?.name ?? '');
 
-/** Een rekening zoals de pagina haar toont: saldo en elke overboeking. */
+/** Een rekening zoals de pagina haar toont: saldo en elke overboeking of afschrijving. */
 function accountView(a) {
   return {
     ...a,
     balanceText: formatValue(a.balance, EURO),
     transactions: a.transactions.map((tx) => ({
       id: tx.id,
-      text: tx.credited ? t('gevolgen.account.credited') : t('gevolgen.account.refused', { reason: tx.reason ?? '' }),
-      supporting: [formatValue(tx.date), tx.payer ? t('gevolgen.account.from', { payer: humanize(tx.payer) }) : null].filter(Boolean).join(' · '),
-      amount: formatValue(tx.credited || tx.amount, EURO),
+      text: tx.credited
+        ? t('gevolgen.account.credited')
+        : tx.debited
+          ? t('gevolgen.account.debited')
+          : t('gevolgen.account.refused', { reason: tx.reason ?? '' }),
+      supporting: [formatValue(tx.date), tx.payer ? t(tx.debited ? 'gevolgen.account.to' : 'gevolgen.account.from', { payer: humanize(tx.payer) }) : null].filter(Boolean).join(' · '),
+      // Een afschrijving staat er negatief: het saldo gaat erdoor omlaag.
+      amount: formatValue(tx.credited || (tx.debited ? -tx.debited : tx.amount), EURO),
     })),
   };
 }

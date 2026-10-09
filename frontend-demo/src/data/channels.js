@@ -17,6 +17,15 @@
  *   to: {cell: bank, article: fictieve_bankvoorwaarden#1, refers_to: {naam: veld}}
  *   inputs: {parameter: veld}   # `$id` is het kenmerk van de gram
  * ```
+ *
+ * Een bron is een veld van de gram, of `$id` (haar kenmerk), `$period` (de
+ * waarde van de periode die zij betreft) of `$input.<naam>` (de waarde
+ * waarmee de cel haar parameter `<naam>` vulde).
+ *
+ * Gaan er van één gram berichten naar meer artikelen (het antwoord van de
+ * bank op een termijn of op een nabetaling), dan zegt de ontvangende cel van
+ * elk bericht of het voor dat artikel is (`not_addressed`). Een bericht dat
+ * voor geen enkel artikel is, komt in de outbox.
  */
 
 /** Hoe diep een antwoord op een antwoord mag gaan voordat het een lus is. */
@@ -31,9 +40,14 @@ export function leaves(channel, cellId, gram) {
   return !!(from.event || from.article);
 }
 
-/** De waarde van `source` (een veldnaam of `$id`) in `gram`; undefined als die er niet is. */
-function valueOf(gram, source) {
+/**
+ * De waarde van `source` in `gram`: een veldnaam, `$id`, `$period` of
+ * `$input.<naam>`; undefined als die er niet is.
+ */
+export function valueOf(gram, source) {
   if (source === '$id') return gram.id;
+  if (source === '$period') return gram.period?.value;
+  if (typeof source === 'string' && source.startsWith('$input.')) return gram.inputs?.[source.slice('$input.'.length)]?.value;
   return gram.fields?.[source];
 }
 
@@ -68,6 +82,15 @@ export const ANSWERED = 'answered';
 /** De naam van de fout van kanalen die rondlopen: een fout in de configuratie. */
 export const LOOP = 'loop';
 
+/**
+ * De naam van een fout van een cel die zegt dat het bericht niet voor dit
+ * artikel is (`Error::NotAddressed` in de cel): het gaat over een gram die
+ * dit artikel niet beantwoordt. Een ander kanaal van dezelfde gram brengt
+ * het waar het hoort; alleen als geen enkel kanaal het kwijt kan, is het niet
+ * aangekomen.
+ */
+export const NOT_ADDRESSED = 'not_addressed';
+
 /** Een kanaal bij naam: van welke cel en welk feit, naar welke cel en welk artikel. */
 export function channelKey(channel) {
   const from = channel?.from ?? {};
@@ -94,12 +117,29 @@ export function channelKey(channel) {
  */
 export function deliver(gram, cellId, channels, receive, tag = {}) {
   const out = { recorded: [], undelivered: [] };
+  const missed = [];
+  let addressed = 0;
   for (const channel of channels ?? []) {
     if (!leaves(channel, cellId, gram)) continue;
     const entry = { cellId, gramId: gram.id, channel: channelKey(channel), tag };
-    attempt(out, entry, channels, () => over(channel, gram, cellId, channels, receive, 0, out, tag, gram.effective_at ?? null));
+    attempt(out, entry, channels, () => {
+      if (over(channel, gram, cellId, channels, receive, 0, out, tag, gram.effective_at ?? null)) addressed += 1;
+      else missed.push(entry);
+    });
   }
+  unaddressed(out, missed, addressed);
   return out;
+}
+
+/**
+ * Berichten van één gram die geen ontvanger voor zich hielden: is er geen
+ * enkel kanaal waarop het bericht wél aankwam, dan staat het bij wat niet
+ * aankwam (met de fout van het eerste kanaal); anders is het bezorgd.
+ */
+function unaddressed(out, missed, addressed) {
+  if (addressed > 0 || !missed.length) return;
+  const [first] = missed;
+  out.undelivered.push({ ...first, error: `Geen ontvanger voor dit bericht: ${missed.map((m) => m.channel).join(', ')}` });
 }
 
 /**
@@ -134,7 +174,12 @@ export function redeliver(outbox, channels, gramOf, receive) {
         const missing = channel ? `gram ${entry.gramId} van cel ${entry.cellId}` : `kanaal ${entry.channel}`;
         throw new Error(`Niet opnieuw te bezorgen: ${missing} bestaat niet`);
       }
-      over(channel, gram, entry.cellId, channels, receive, 0, out, entry.tag ?? {}, null);
+      // In de outbox staat een bericht dat geen enkel kanaal kwijt kon (een
+      // fout in de kanalen); zegt de ontvanger nog steeds dat het niet voor
+      // haar is, dan blijft het staan.
+      if (!over(channel, gram, entry.cellId, channels, receive, 0, out, entry.tag ?? {}, null)) {
+        throw new Error(`Geen ontvanger voor dit bericht: ${entry.channel}`);
+      }
     });
   }
   return out;
@@ -189,13 +234,22 @@ function send(gram, cellId, channels, receive, hops, out, tag) {
     e.name = LOOP;
     throw e;
   }
+  const missed = [];
+  let addressed = 0;
   for (const channel of channels ?? []) {
     if (!leaves(channel, cellId, gram)) continue;
-    over(channel, gram, cellId, channels, receive, hops, out, tag, gram.effective_at ?? null);
+    if (over(channel, gram, cellId, channels, receive, hops, out, tag, gram.effective_at ?? null)) addressed += 1;
+    else missed.push({ cellId, gramId: gram.id, channel: channelKey(channel), tag });
   }
+  unaddressed(out, missed, addressed);
 }
 
-/** Eén bericht over één kanaal, en wat daar ontstaat weer verder. */
+/**
+ * Eén bericht over één kanaal, en wat daar ontstaat weer verder. Geeft
+ * `false` als de ontvanger zegt dat het bericht niet voor dit artikel is
+ * (`not_addressed`), anders `true` (ook als het niet aankwam: dat staat dan
+ * bij wat niet aankwam).
+ */
 function over(channel, gram, cellId, channels, receive, hops, out, tag, sentAt) {
   const { inputs, refersTo } = messageFor(channel, cellId, gram);
   const to = channel.to.cell;
@@ -203,13 +257,15 @@ function over(channel, gram, cellId, channels, receive, hops, out, tag, sentAt) 
   try {
     grams = receive(to, channel.to.article, refersTo, inputs, sentAt) ?? [];
   } catch (e) {
+    if (e?.name === NOT_ADDRESSED) return false;
     if (e?.name !== ANSWERED) {
       out.undelivered.push({ cellId, gramId: gram.id, channel: channelKey(channel), error: String(e?.message ?? e), tag });
     }
-    return;
+    return true;
   }
   for (const g of grams) {
     out.recorded.push({ cellId: to, gram: g });
     send(g, to, channels, receive, hops + 1, out, tag);
   }
+  return true;
 }

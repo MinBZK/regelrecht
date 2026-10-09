@@ -167,6 +167,8 @@ words:
   aanloopperiode: start-up period
   aanmaakdatum: creation date
   aanmerking: consideration
+  aanslag: tax assessment
+  aanslaggegevens: assessment data
   aantal: number of
   aanvang: commencement
   aanvraag: application
@@ -190,6 +192,7 @@ words:
   advies: advice
   adviesplicht: duty to seek advice
   afgeronde: rounded
+  afgeschreven: debited
   afm: AFM
   aftrek: deduction
   afwezig: absent
@@ -224,6 +227,7 @@ words:
   bedrijfsinkomen: business income
   bedrijfskapitaal: business capital
   bedrijfsvoering: business operations
+  beginsaldo: opening balance
   begrensd: capped
   begunstigde: beneficiary
   beheerders: managers
@@ -231,6 +235,7 @@ words:
   belastbaar: taxable
   belasting: tax
   belastingdienst: Belastingdienst
+  belastingjaar: tax year
   belastingplichtig: liable to tax
   belastingschuld: tax debt
   beleggingen: investments
@@ -253,6 +258,7 @@ words:
   besluit: decision
   bestuursorgaan: administrative body
   betaald: paid
+  betaaldatum: payment date
   betaalkenmerk: payment reference
   beveiligingsplan: security plan
   bevestigd: confirmed
@@ -274,6 +280,7 @@ words:
   bijgeschreven: credited
   bijstand: social assistance
   binnen: within
+  boekingen: entries
   boekjaar: financial year
   box1: box 1
   box2: box 2
@@ -304,6 +311,7 @@ words:
   datum: date
   de: the
   deadline: deadline
+  debiteur: debtor
   deel: part
   delegaties: delegations
   delegation: delegation
@@ -374,6 +382,7 @@ words:
   geen: 'no'
   gegeven: given
   gegevens: data
+  geind: collected
   geldig: valid
   geldige: valid
   geldt: applies
@@ -423,14 +432,20 @@ words:
   id: id
   ids: ids
   in: in
+  incasso: direct debit
+  incassobedrag: direct debit amount
+  incassodatum: direct debit date
+  incassokenmerk: direct debit reference
   incident: incident
   ineens: lump-sum
   informatieplicht: information obligation
   ingeschreven: registered
   ingetrokken: withdrawn
+  ingevorderd: recovered
   ingezetenschapsduur: residence duration
   inkomen: income
   inkomensafhankelijke: income-dependent
+  inkomensgegeven: income figure
   inkomensgegevens: income data
   inkomenskorting: income reduction
   inrichting: establishment
@@ -445,6 +460,8 @@ words:
   jaren: years
   juridische: legal
   jurisdictie: jurisdiction
+  kalenderjaar: calendar year
+  kenmerk: reference
   kind: child
   kinderbijslag: child benefit
   kinderen: children
@@ -502,7 +519,10 @@ words:
   moet: must
   mogelijk: possible
   motivering: reasoning
+  mutaties: movements
   naam: name
+  nabetaald: paid afterwards
+  nabetaling: additional payment
   names: names
   nationaal: national
   nationale: national
@@ -532,6 +552,7 @@ words:
   onroerend: immovable
   ontheffing: exemption
   ontheffingen: exemptions
+  ontvangen: received
   ontvangst: receipt
   ontvangt: receives
   op: to
@@ -540,6 +561,8 @@ words:
   openbaar: public
   openbare: public
   openingstijd: opening time
+  openstaande: outstanding
+  opgedragen: ordered
   oppervlak: area
   oppervlakte: area
   opschortingsmachtiging: suspension authorisation
@@ -573,6 +596,7 @@ words:
   personeel: staff
   persoonsgebonden: personal
   persoonsgegevens: personal data
+  planning: planning
   polis: policy
   posities: positions
   postadres: postal address
@@ -615,6 +639,8 @@ words:
   root: application
   ruimte: space
   rvs: RvS
+  saldo: balance
+  saldomutaties: balance movements
   schatting: estimate
   schenkt: serves
   schriftelijke: written
@@ -656,6 +682,8 @@ words:
   terras: terrace
   terrassenbeleid: terrace policy
   terrasvergunning: terrace permit
+  terugvordering: recovery
+  terugvorderingsbedrag: recovery amount
   tib: TIB
   tijdig: in time
   titel: title
@@ -698,6 +726,7 @@ words:
   vanaf: from
   vast: permanent
   vastgesteld: adopted
+  vaststelling: assessment
   veelvuldig: frequent
   verblijf: residence
   verblijfsadres: residential address
@@ -733,6 +762,7 @@ words:
   vervreemdingsvoordelen: disposal gains
   verwachte: expected
   verwachting: expectancy
+  verzamelinkomen: aggregate income
   verzekerd: insured
   verzekerde: insured
   verzekering: insurance

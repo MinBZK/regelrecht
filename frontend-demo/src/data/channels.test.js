@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ANSWERED, LOOP, channelKey, deliver, deliveryErrors, leaves, messageFor, redeliver } from './channels.js';
+import { ANSWERED, LOOP, NOT_ADDRESSED, channelKey, deliver, deliveryErrors, leaves, messageFor, redeliver, valueOf } from './channels.js';
 
 const channels = [
   {
@@ -187,5 +187,52 @@ describe('channels', () => {
     expect(deliveryErrors(outbox)).toEqual({ z1: 'eerste; tweede', z2: 'andere' });
     expect(deliveryErrors([])).toEqual({});
     expect(deliveryErrors(undefined)).toEqual({});
+  });
+});
+
+describe('a message that is not for every article it is offered to', () => {
+  const notAddressed = () => {
+    const e = new Error('not for this article');
+    e.name = NOT_ADDRESSED;
+    return e;
+  };
+  const channels = [
+    { from: { cell: 'bank', event: 'bijgeschreven' }, to: { cell: 't', article: 'termijn#2' }, inputs: { bedrag: 'bedrag' } },
+    { from: { cell: 'bank', event: 'bijgeschreven' }, to: { cell: 't', article: 'nabetaling#5' }, inputs: { bedrag: 'bedrag' } },
+  ];
+  const answer = { id: 'b1', name: 'bijgeschreven', fields: { bedrag: 5 } };
+
+  it('goes where the receiver takes it, and is no error where it is not addressed', () => {
+    const receive = (to, article) => {
+      if (article === 'termijn#2') throw notAddressed();
+      return [{ id: 'n1', name: 'nabetaling_betaald' }];
+    };
+    const { recorded, undelivered } = deliver(answer, 'bank', channels, receive);
+    expect(recorded.map((r) => r.gram.id)).toEqual(['n1']);
+    expect(undelivered).toEqual([]);
+  });
+
+  it('did not arrive when no article takes it, and stays in the outbox', () => {
+    const receive = () => {
+      throw notAddressed();
+    };
+    const { undelivered } = deliver(answer, 'bank', channels, receive, { caseId: 'c1' });
+    expect(undelivered).toHaveLength(1);
+    expect(undelivered[0].error).toContain('Geen ontvanger');
+    const again = redeliver(undelivered, channels, () => answer, receive);
+    expect(again.undelivered).toHaveLength(1);
+  });
+});
+
+describe('valueOf', () => {
+  const gram = { id: 'g1', period: { unit: 'year', value: 2025 }, inputs: { bsn: { value: '999', provenance: {} } }, fields: { bedrag: 7 } };
+
+  it('reads a field, the id, the period and a parameter the cell filled', () => {
+    expect(valueOf(gram, 'bedrag')).toBe(7);
+    expect(valueOf(gram, '$id')).toBe('g1');
+    expect(valueOf(gram, '$period')).toBe(2025);
+    expect(valueOf(gram, '$input.bsn')).toBe('999');
+    expect(valueOf(gram, '$input.kvk')).toBeUndefined();
+    expect(valueOf({ id: 'x' }, '$period')).toBeUndefined();
   });
 });
