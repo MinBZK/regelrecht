@@ -154,8 +154,9 @@ const config = {
     //  - nldd-code-viewer: the component's inner scroll container
     //    (overflow-x: auto inside shadow) is not keyboard-focusable, which
     //    axe flags as scrollable-region-focusable. Fix belongs upstream in
-    //    the design-system (companion to MinBZK/storybook#114 for table
-    //    scrolling); hiding the subtree here until that lands.
+    //    the design-system (companion to
+    //    NederlandseDigitaleDienst/design-system#114 for table scrolling);
+    //    hiding the subtree here until that lands.
     hideElements:
       '.pagefind-ui, svg[id^="mermaid-"], pre.astro-code, nldd-code-viewer',
   },
