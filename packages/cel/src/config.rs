@@ -100,6 +100,14 @@ pub struct Event {
     /// null is no day of its own.
     #[serde(default)]
     pub decided_on: Option<String>,
+    /// For a decision on no submission (ex officio, such as the aanslag of
+    /// AWR 11): the parameter that gives the period it concerns. The law
+    /// names the period of a decision on an application with origin role
+    /// TIJDVAK, which the schema allows only for what the applicant
+    /// chooses; for a decision nobody applied for, the stream says it (own
+    /// choice). Refused when the law already names one.
+    #[serde(default)]
+    pub period: Option<crate::extension::PeriodParameter>,
 }
 
 /// One source of the parameters of an event's case.

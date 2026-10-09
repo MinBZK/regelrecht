@@ -20,6 +20,14 @@ pub enum Error {
     /// it as "delivered", so it has its own variant.
     #[error("answered: {0}")]
     Answered(String),
+    /// A message about a gram of the receiving cell that the receiving
+    /// article does not answer: it refers to a gram the article's references
+    /// do not admit (an answer of the bank to a nabetaling, offered to the
+    /// article that answers a voorschottermijn). A refusal too, but a sender
+    /// that offers one message to several articles may read it as "not for
+    /// this one", so it has its own variant.
+    #[error("not addressed: {0}")]
+    NotAddressed(String),
     /// The engine failed.
     #[error("engine: {0}")]
     Engine(#[from] regelrecht_engine::EngineError),
@@ -43,6 +51,7 @@ impl Error {
             Error::Refused(_) => "refused",
             Error::Ended(_) => "ended",
             Error::Answered(_) => "answered",
+            Error::NotAddressed(_) => "not_addressed",
             Error::Engine(_) => "engine",
             Error::Io(_) => "io",
         }

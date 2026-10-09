@@ -937,6 +937,7 @@ impl Cell {
         inputs.extend(extra_inputs);
         Ok(Prepared {
             inputs,
+            available: merged,
             shape,
             chronicle,
             day,
@@ -1063,6 +1064,11 @@ impl Cell {
                 .filter(|(name, _)| declared.contains(&name.as_str())),
         );
         let result = service.evaluate_law(law_id, &[output], parameters, &day.to_string())?;
+        // A day that rests on a fact nobody has yet (an inkomensgegeven that
+        // has not arrived) is no day yet.
+        if matches!(result.outputs.get(*output), Some(Value::Unknown(_))) {
+            return Ok(None);
+        }
         match result.outputs.get(*output).map(shape::to_json) {
             None | Some(serde_json::Value::Null) => Ok(None),
             Some(serde_json::Value::String(text)) => NaiveDate::parse_from_str(&text, "%Y-%m-%d")
@@ -1075,11 +1081,20 @@ impl Cell {
     }
 
     /// The next decision of `event` on the case `root`, as the case holds at
-    /// `now`: the period it concerns ([`Self::next_period`]), and the day the
-    /// holder takes it, if the stream names an article that gives it
-    /// (`decided_on`) and that article gives one for this case. Whether the
-    /// decision is due, is for the caller to compare with its clock; the
-    /// cell refuses to take it before that day. Read-only.
+    /// `now`: the period it concerns, and the day the holder takes it, if
+    /// the stream names an article that gives it (`decided_on`) and that
+    /// article gives one for this case. Whether the decision is due, is for
+    /// the caller to compare with its clock; the cell refuses to take it
+    /// before that day. Read-only.
+    ///
+    /// With `decided_on` and a period, every period of the case without a
+    /// decision of the event is a candidate, from the one the application
+    /// asks for through the latest period the case has a gram of (or the
+    /// one after the latest decision of the event): the first the article
+    /// gives a day for is the next decision. A period the holder gives no
+    /// day for (a year that leaves nothing to recover, an inkomensgegeven
+    /// that has not arrived) does not hold up a later one (own choice).
+    /// Without a day for any, the first candidate, without a day.
     pub fn due_decision(
         &self,
         service: &LawExecutionService,
@@ -1087,17 +1102,151 @@ impl Cell {
         root: &str,
         now: DateTime<FixedOffset>,
     ) -> Result<DueDecision> {
-        let Prepared {
-            inputs,
-            day,
-            period,
-            ..
-        } = self.prepare(service, event, Some(root), BTreeMap::new(), now)?;
-        let due = match self.event(event)?.1.decided_on.as_deref() {
-            Some(reference) => self.decided_on(service, reference, &inputs, day)?,
-            None => None,
+        let reference = self.event(event)?.1.decided_on.clone();
+        let (shape, chronicle) = self.shape(service, event, now.date_naive())?;
+        let (Some(reference), Some(declared)) = (reference.as_deref(), shape.period.as_ref())
+        else {
+            let Prepared {
+                available,
+                day,
+                period,
+                ..
+            } = self.prepare(service, event, Some(root), BTreeMap::new(), now)?;
+            let due = match reference.as_deref() {
+                Some(reference) => self.decided_on(service, reference, &available, day)?,
+                None => None,
+            };
+            return Ok(DueDecision { period, day: due });
         };
-        Ok(DueDecision { period, day: due })
+        let (_, case) = self.case_at(&chronicle, root, now)?;
+        let decided: Vec<i32> = case
+            .iter()
+            .filter(|g| g.name == event)
+            .filter_map(|g| g.period.map(|p| p.value))
+            .collect();
+        let first = match self.submission_period(service, &chronicle, root, now)? {
+            Some((_, value)) => value,
+            None => self.next_period(service, &shape, &chronicle, root, now)?,
+        };
+        let last = case
+            .iter()
+            .filter_map(|g| g.period.map(|p| p.value))
+            .chain(decided.iter().map(|p| p + 1))
+            .fold(first, i32::max);
+        let undecided: Vec<i32> = (first..=last).filter(|p| !decided.contains(p)).collect();
+        for &candidate in &undecided {
+            let extra = BTreeMap::from([(
+                declared.parameter.clone(),
+                Input {
+                    value: serde_json::Value::from(candidate),
+                    provenance: serde_json::json!({"source": "period"}),
+                },
+            )]);
+            let Prepared {
+                available,
+                day,
+                period,
+                ..
+            } = self.prepare(service, event, Some(root), extra, now)?;
+            if let Some(due) = self.decided_on(service, reference, &available, day)? {
+                return Ok(DueDecision {
+                    period,
+                    day: Some(due),
+                });
+            }
+        }
+        Ok(DueDecision {
+            period: undecided.first().map(|&value| Period {
+                unit: declared.unit,
+                value,
+            }),
+            day: None,
+        })
+    }
+
+    /// The next decision of the ex officio event `event` (a decision on no
+    /// submission, such as the aanslag of AWR 11) about the subject
+    /// `subject` (the parameters that say whom it concerns, such as the
+    /// BSN), as the cell holds at `now`: the period it concerns and the day
+    /// the holder takes it (`decided_on`, which such an event must have).
+    ///
+    /// The candidates are the periods after the latest decision of the
+    /// event about the subject, through the period of `now`; before the
+    /// first, from the period before the one of `now` (own choice: an
+    /// administrative body that decides over periods that have ended, such
+    /// as the inspecteur over a year, starts with the last one that ended).
+    /// The first the article gives a day for is the next decision; without a
+    /// day for any, the first candidate, without a day. Read-only.
+    pub fn due_ex_officio(
+        &self,
+        service: &LawExecutionService,
+        event: &str,
+        subject: &BTreeMap<String, Input>,
+        now: DateTime<FixedOffset>,
+    ) -> Result<DueDecision> {
+        let (_, e) = self.event(event)?;
+        let reference = e.decided_on.clone().ok_or_else(|| {
+            setup(format!(
+                "'{event}' is taken ex officio and says not on which day (`decided_on` in its stream)"
+            ))
+        })?;
+        let (shape, chronicle) = self.shape(service, event, now.date_naive())?;
+        if shape.refers_to.values().any(|r| r.required) {
+            return Err(refused(format!(
+                "'{event}' is taken on a submission ({}), not ex officio",
+                shape.establishes
+            )));
+        }
+        let declared = shape.period.clone().ok_or_else(|| {
+            setup(format!(
+                "'{event}' is taken ex officio and concerns no period ({}): the cell cannot tell one decision from the next",
+                shape.establishes
+            ))
+        })?;
+        if subject.contains_key(&declared.parameter) {
+            return Err(refused(format!(
+                "'{}' is the period of '{event}'; the cell gives it, the subject does not",
+                declared.parameter
+            )));
+        }
+        let decided: Vec<i32> = lexostatus::in_force(self.chronicle(&chronicle)?, now)?
+            .into_iter()
+            .filter(|g| g.name == event && about(g, subject))
+            .filter_map(|g| g.period.map(|p| p.value))
+            .collect();
+        let current = now.date_naive().year();
+        let first = decided.iter().max().map_or(current - 1, |p| p + 1);
+        let candidates: Vec<i32> = (first..=current.max(first)).collect();
+        for &candidate in &candidates {
+            let period = Period {
+                unit: declared.unit,
+                value: candidate,
+            };
+            let day = period
+                .first_day()
+                .ok_or_else(|| setup(format!("no first day of {candidate}")))?;
+            let mut inputs = subject.clone();
+            inputs.insert(
+                declared.parameter.clone(),
+                Input {
+                    value: serde_json::Value::from(candidate),
+                    provenance: serde_json::json!({"source": "period"}),
+                },
+            );
+            if let Some(due) = self.decided_on(service, &reference, &inputs, day)? {
+                return Ok(DueDecision {
+                    period: Some(period),
+                    day: Some(due),
+                });
+            }
+        }
+        Ok(DueDecision {
+            period: candidates.first().map(|&value| Period {
+                unit: declared.unit,
+                value,
+            }),
+            day: None,
+        })
     }
 
     /// The root of the case a decision is taken on: the root of the gram
@@ -1193,8 +1342,10 @@ impl Cell {
         } else {
             None
         };
+        let given: Vec<String> = extra_inputs.keys().cloned().collect();
         let Prepared {
             mut inputs,
+            available,
             shape,
             chronicle,
             day,
@@ -1203,9 +1354,32 @@ impl Cell {
         } = self.prepare(service, event, root.as_deref(), extra_inputs, now)?;
         self.check_references(&shape, &chronicle, &refers_to)?;
         // A decision the holder takes on a day of its own (`decided_on`) is
-        // not taken before that day.
+        // not taken before that day. Ex officio (no case to read), once per
+        // period for the subject the caller gives: on a case, a second
+        // decision for the same period is a revision (a herziening of the
+        // voorschot), which the cell does not refuse.
         if let Some(reference) = self.event(event)?.1.decided_on.as_deref() {
-            if let Some(due) = self.decided_on(service, reference, &inputs, day)? {
+            if let (Some(period), None) = (period, &root) {
+                let grams = self.chronicle(&chronicle)?;
+                let period_parameter = shape.period.as_ref().map(|p| p.parameter.as_str());
+                let subject: BTreeMap<String, Input> = available
+                    .iter()
+                    .filter(|(k, _)| given.contains(k) && Some(k.as_str()) != period_parameter)
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                let taken = grams.grams().iter().find(|g| {
+                    g.name == event
+                        && g.period.is_some_and(|p| p.value == period.value)
+                        && about(g, &subject)
+                });
+                if let Some(gram) = taken {
+                    return Err(refused(format!(
+                        "'{event}' for {} was already taken ('{}')",
+                        period.value, gram.id
+                    )));
+                }
+            }
+            if let Some(due) = self.decided_on(service, reference, &available, day)? {
                 if due > today {
                     return Err(refused(format!(
                         "'{event}' for {} is taken on {due} ({reference}), not on {today}",
@@ -1458,15 +1632,46 @@ impl Cell {
             )));
         };
         let law_id = first.law_id.clone();
-        for name in refers_to.keys() {
+        for (name, id) in refers_to {
             if !shapes.iter().any(|(s, _)| s.refers_to.contains_key(name)) {
                 return Err(refused(format!(
                     "{article} refers to nothing as '{name}' in cell '{}'",
                     self.config.id
                 )));
             }
+            // A gram of this cell that no event of the article answers: the
+            // message is for another article (the bank's answer to a
+            // nabetaling is no answer to a voorschottermijn).
+            if let Some(gram) = self.chronicles.values().find_map(|c| c.find(id)) {
+                if !shapes
+                    .iter()
+                    .any(|(s, _)| s.refers_to.get(name).is_some_and(|r| r.admits(gram)))
+                {
+                    return Err(crate::Error::NotAddressed(format!(
+                        "{article} answers no gram of {} as '{name}' ('{id}')",
+                        gram.establishes
+                    )));
+                }
+            }
         }
         self.check_answered(article, &shapes, refers_to, inputs)?;
+        // What the receiving events read besides the message: a policy of
+        // the holder over a register of the cell (the balance of an account
+        // at the bank), executed with the message as its parameters, at the
+        // moment the message arrived.
+        let read = self.read_on_receipt(service, &shapes, inputs, at)?;
+        let mut all: BTreeMap<String, Input> = inputs.clone();
+        for (name, input) in read {
+            if all.contains_key(&name) {
+                return Err(setup(format!(
+                    "{article}: '{name}' comes with the message and is read as well"
+                )));
+            }
+            if shapes.iter().any(|(s, _)| s.parameters.contains(&name)) {
+                all.insert(name, input);
+            }
+        }
+        let inputs = &all;
         // One execution of the article: every output that says whether a
         // gram arises, and every output a gram holds.
         let mut asked: Vec<&str> = Vec::new();
@@ -1509,6 +1714,50 @@ impl Cell {
             gram.fields = fields_of(&shape, &result.outputs, inputs)?;
             gram.inputs = recorded_inputs(inputs.clone());
             out.push((gram, chronicle));
+        }
+        Ok(out)
+    }
+
+    /// What the receipt events in `shapes` read (`reads` in their streams):
+    /// each policy of the holder, executed at `at` over its register, with
+    /// the message `inputs` as its parameters. A lexostatus needs a case,
+    /// which a receipt does not have, and is refused.
+    fn read_on_receipt(
+        &self,
+        service: &LawExecutionService,
+        shapes: &[(Shape, String)],
+        inputs: &BTreeMap<String, Input>,
+        at: DateTime<FixedOffset>,
+    ) -> Result<Vec<(String, Input)>> {
+        let parameters = values(inputs.iter());
+        let mut seen: Vec<&Read> = Vec::new();
+        let mut out = Vec::new();
+        for (shape, _) in shapes {
+            let (_, event) = self.event(&shape.event)?;
+            for source in &event.reads {
+                if seen.contains(&source) {
+                    continue;
+                }
+                seen.push(source);
+                match source {
+                    Read::Lexostatus(name) => {
+                        return Err(setup(format!(
+                            "'{}' is recorded on receipt and has no case; it cannot read the lexostatus '{name}'",
+                            shape.event
+                        )))
+                    }
+                    Read::Regulation {
+                        regulation,
+                        article,
+                    } => out.extend(self.read_policy(
+                        service,
+                        regulation,
+                        article.as_deref(),
+                        parameters.clone(),
+                        at,
+                    )?),
+                }
+            }
         }
         Ok(out)
     }
@@ -1929,6 +2178,10 @@ impl Cell {
 /// What [`Cell::prepare`] works out for a decision.
 struct Prepared {
     inputs: BTreeMap<String, Input>,
+    /// Everything the case reads, together with what the caller gives and
+    /// the period, before it is kept to what the stage asks: what the day
+    /// of the decision may depend on (`decided_on`).
+    available: BTreeMap<String, Input>,
     shape: Shape,
     chronicle: String,
     day: NaiveDate,
@@ -2007,6 +2260,17 @@ fn executed_on(shape: &Shape) -> Result<ExecutedOn> {
             "'{}' is not an execution: {} declares no executed_on",
             shape.event, shape.establishes
         ))
+    })
+}
+
+/// Whether the decision `gram` is about `subject`: the value it recorded for
+/// each of its parameters (`inputs`) is the one the subject gives.
+fn about(gram: &Gram, subject: &BTreeMap<String, Input>) -> bool {
+    subject.iter().all(|(name, input)| {
+        gram.inputs
+            .get(name)
+            .and_then(|recorded| recorded.get("value"))
+            == Some(&input.value)
     })
 }
 
@@ -2202,6 +2466,7 @@ articles:
             stage: None,
             reads: Vec::new(),
             decided_on: None,
+            period: None,
         };
         let shape = shape::derive(&service, &event, "2024-06-01".parse().unwrap()).unwrap();
         let e = fields_of(&shape, &BTreeMap::new(), &BTreeMap::new()).unwrap_err();

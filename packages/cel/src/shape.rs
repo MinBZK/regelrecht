@@ -305,7 +305,7 @@ pub fn derive(service: &LawExecutionService, event: &Event, day: NaiveDate) -> R
     let (law, article) = article_on(service, establishes, day)?;
     let chronolex = chronolex_of(service, article, establishes, day)?.ok_or_else(|| {
         setup(format!(
-            "{establishes}: establishes nothing: no produces.submission, no BESCHIKKING with decides_on, no hook on a submission, and no extensions.chronolex"
+            "{establishes}: establishes nothing: no produces.submission, no BESCHIKKING, no hook on a submission, and no extensions.chronolex"
         ))
     })?;
     let entry = entry_of(&chronolex, event)?;
@@ -385,6 +385,28 @@ pub fn derive(service: &LawExecutionService, event: &Event, day: NaiveDate) -> R
                 if let Some(stage) = &entry.stage {
                     shape.period = tijdvak(service, &shape, stage, day)?;
                 }
+            }
+            // A decision on no submission: the period the stream names.
+            if let Some(period) = &event.period {
+                if shape.period.is_some() {
+                    return Err(setup(format!(
+                        "{establishes}: the law names the period of '{}'; the stream does not name it too",
+                        event.name
+                    )));
+                }
+                if shape.refers_to.values().any(|r| r.required) {
+                    return Err(setup(format!(
+                        "{establishes}: '{}' is taken on a submission; its period is the one the law names (origin role TIJDVAK)",
+                        event.name
+                    )));
+                }
+                if !shape.parameters.contains(&period.parameter) {
+                    return Err(setup(format!(
+                        "{establishes}: the stream says '{}' gives the period of '{}', and the article declares no such parameter",
+                        period.parameter, event.name
+                    )));
+                }
+                shape.period = Some(period.clone());
             }
             // A decision taken at a stage of its procedure is the article
             // with the hooks that fire at that stage (a general law that hooks
@@ -663,8 +685,23 @@ fn submission_fields(
     day: NaiveDate,
 ) -> Result<()> {
     // The decision taken on the application: one legal character, or the
-    // general law would apply twice.
-    let decision = match model.decisions.as_slice() {
+    // general law would apply twice. A decision on the submission whose
+    // procedure has no stage for it (the terugvordering of Awir 26, in its
+    // own procedure without an AANVRAAG) is not one the applicant asks for:
+    // it follows another decision on the same case.
+    let kind = shape.subtype.as_deref().unwrap_or_default().to_uppercase();
+    let mut requested: Vec<&regelrecht_engine::DecisionOn> = Vec::new();
+    for decision in &model.decisions {
+        let reference = format!("{}#{}", decision.law_id, decision.article_number);
+        let (_, article) = article_on(service, &reference, day)?;
+        let procedure = service
+            .procedure_of(&decision.law_id, article, Some(day))
+            .map_err(|e| setup(format!("{reference}: {e}")))?;
+        if procedure.is_none_or(|p| p.stages.iter().any(|s| s.name == kind)) {
+            requested.push(decision);
+        }
+    }
+    let decision = match requested.as_slice() {
         [one] => one,
         [] => {
             return Err(setup(format!(
@@ -933,6 +970,7 @@ articles:
             stage: None,
             reads: Vec::new(),
             decided_on: None,
+            period: None,
         }
     }
 
@@ -999,6 +1037,7 @@ articles:
             stage: stage.map(str::to_string),
             reads: Vec::new(),
             decided_on: None,
+            period: None,
         }
     }
 
@@ -1095,6 +1134,7 @@ articles:
             stage: None,
             reads: Vec::new(),
             decided_on: None,
+            period: None,
         }
     }
 

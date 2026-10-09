@@ -374,6 +374,31 @@ impl WasmCell {
         }))
     }
 
+    /// The next decision of the ex officio event `event` (a decision on no
+    /// submission, such as the aanslag of AWR 11) about `subject`
+    /// (`{name: {value, provenance}}`: whom it concerns, such as the BSN), as
+    /// the cell holds at `now` (RFC 3339): `{period: {unit, value}?, day:
+    /// "YYYY-MM-DD"?}`. To take it, pass `subject` and the period (under the
+    /// parameter that gives it) as `extraInputs` of `decide`, with no
+    /// references. See `Cell::due_ex_officio`.
+    #[wasm_bindgen(js_name = dueExOfficio)]
+    pub fn due_ex_officio(
+        &self,
+        engine: &WasmEngine,
+        event: &str,
+        subject: JsValue,
+        now: &str,
+    ) -> Result<JsValue, JsValue> {
+        let due = self
+            .cell
+            .due_ex_officio(engine.service(), event, &extra(subject)?, moment(now)?)
+            .map_err(cell_error)?;
+        to_js(&serde_json::json!({
+            "period": due.period,
+            "day": due.day.map(|d| d.to_string()),
+        }))
+    }
+
     /// Per parameter a lexostatus gives, the field of a gram it reads, as
     /// the law declares that field on `on` (name, type, legal basis, the
     /// article): how to show what `read` returns. A parameter that reads no

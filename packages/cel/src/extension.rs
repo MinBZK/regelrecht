@@ -289,7 +289,9 @@ pub fn of_article(article: &Article, reference: &str) -> Result<Option<Chronolex
 /// - `produces: BESCHIKKING` with `decides_on`: the article takes a decision
 ///   on that submission, a decretogram at every stage of its procedure that
 ///   is a decision (`is: BESLUIT`, or BESLUIT itself), referring to the
-///   submission as `on_application`; its fields are the outputs. The date
+///   submission as `on_application`; its fields are the outputs. Without
+///   `decides_on` the decision is taken ex officio (the aanslag of AWR 11):
+///   the same decretogram, referring to nothing. The date
 ///   the decision bears is the one date requirement of the stage (the
 ///   dagtekening, Awir 16; `besluit_datum` in the Awb), or the parameter
 ///   `produces.moment` names.
@@ -321,18 +323,23 @@ pub fn derive(article: &Article, decision_stages: &[&Stage]) -> Result<Option<Ch
             effective_at: effective_at.clone(),
             ..Default::default()
         });
-    } else if let Some(on) = produces
-        .filter(|p| p.legal_character.as_deref() == Some("BESCHIKKING"))
-        .and_then(|p| p.decides_on.as_ref())
-        .map(|d| match d.as_slice() {
-            [one] => Ok(one),
-            more => Err(format!(
-                "decides_on names {} submissions; a decision is taken on one",
-                more.len()
-            )),
-        })
-        .transpose()?
+    } else if let Some(produces) =
+        produces.filter(|p| p.legal_character.as_deref() == Some("BESCHIKKING"))
     {
+        // On a submission (`decides_on`), or, without one, ex officio: a
+        // decision the administrative body takes of its own accord, such as
+        // the aanslag the inspecteur sets (AWR 11), which refers to no gram.
+        let on = produces
+            .decides_on
+            .as_ref()
+            .map(|d| match d.as_slice() {
+                [one] => Ok(one),
+                more => Err(format!(
+                    "decides_on names {} submissions; a decision is taken on one",
+                    more.len()
+                )),
+            })
+            .transpose()?;
         for stage in decision_stages {
             let dated_by = moment.and_then(|m| m.parameter.clone()).or_else(|| {
                 let dates: Vec<&StageRequirement> = stage
@@ -349,14 +356,18 @@ pub fn derive(article: &Article, decision_stages: &[&Stage]) -> Result<Option<Ch
             establishes.push(Establishment {
                 type_: Some("decretogram".to_string()),
                 stage: Some(stage.name.clone()),
-                refers_to: BTreeMap::from([(
-                    "on_application".to_string(),
-                    Reference {
-                        to: Some(on.clone()),
-                        stage: None,
-                        required: true,
-                    },
-                )]),
+                refers_to: on
+                    .map(|on| {
+                        BTreeMap::from([(
+                            "on_application".to_string(),
+                            Reference {
+                                to: Some(on.clone()),
+                                stage: None,
+                                required: true,
+                            },
+                        )])
+                    })
+                    .unwrap_or_default(),
                 effective_at: effective_at.clone(),
                 fields: Some(Fields::Outputs),
                 dated_by,
