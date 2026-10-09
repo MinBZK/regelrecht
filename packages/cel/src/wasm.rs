@@ -62,8 +62,7 @@ pub struct WasmCell {
 
 #[wasm_bindgen]
 impl WasmCell {
-    /// A cell from its configuration texts (`cell.yaml`, its streams and its
-    /// lexostatuses), with the grams the page kept, checked against the law
+    /// A cell from its configuration texts (`cell.yaml` and its streams), with the grams the page kept, checked against the law
     /// the engine has loaded as it applies on `today` (`YYYY-MM-DD`). Its
     /// registers are bound with the engine as data sources (see
     /// `bindRegisters`).
@@ -72,13 +71,11 @@ impl WasmCell {
         engine: &mut WasmEngine,
         cell_yaml: &str,
         streams: Vec<String>,
-        lexostatuses: Option<String>,
         grams: JsValue,
         today: &str,
     ) -> Result<WasmCell, JsValue> {
         let streams: Vec<&str> = streams.iter().map(String::as_str).collect();
-        let config = CellConfig::from_yaml(cell_yaml, &streams, lexostatuses.as_deref())
-            .map_err(cell_error)?;
+        let config = CellConfig::from_yaml(cell_yaml, &streams).map_err(cell_error)?;
         let grams: Vec<Gram> = if grams.is_null() || grams.is_undefined() {
             Vec::new()
         } else {
@@ -399,29 +396,13 @@ impl WasmCell {
         }))
     }
 
-    /// Per parameter a lexostatus gives, the field of a gram it reads, as
-    /// the law declares that field on `on` (name, type, legal basis, the
-    /// article): how to show what `read` returns. A parameter that reads no
-    /// field (a moment, a period) is left out.
-    #[wasm_bindgen(js_name = lexostatusFields)]
-    pub fn lexostatus_fields(
-        &self,
-        engine: &WasmEngine,
-        lexostatus: &str,
-        on: &str,
-    ) -> Result<JsValue, JsValue> {
-        let fields = self
-            .cell
-            .lexostatus_fields(engine.service(), lexostatus, day(on)?)
-            .map_err(cell_error)?;
-        to_js(&fields)
-    }
-
-    /// Every lexostatus of the cell and how it reduces the chronicle, with
-    /// the policy articles as they hold on `on` (`YYYY-MM-DD`): a list of
-    /// `{kind: "configuration", name, inputs, reduction, read_by}` and
-    /// `{kind: "policy", name, register, chronicle, register_input, inputs,
-    /// articles, read_by}`. See `Cell::lexostatuses`.
+    /// Every lexostatus of the cell as it holds on `on` (`YYYY-MM-DD`), with
+    /// the data it gives (`fields`: name, type, unit, legal basis, the
+    /// article that declares it): a list of `{kind: "submission", name,
+    /// provision, event, chronicle, inputs, fields, read_by}` and `{kind:
+    /// "policy", name, provision, policy, article, register, chronicle,
+    /// register_input, inputs, period, outputs, fields, read_by}`. See
+    /// `Cell::lexostatuses`.
     pub fn lexostatuses(&self, engine: &WasmEngine, on: &str) -> Result<JsValue, JsValue> {
         to_js(
             &self
@@ -431,8 +412,8 @@ impl WasmCell {
         )
     }
 
-    /// Read the lexostatus `name` (in the configuration, or a policy that
-    /// reads a register) as it holds at `asOf` (RFC 3339):
+    /// Read the lexostatus `name` (the application, or a policy article that
+    /// reads a register) for the case `root` as it holds at `asOf` (RFC 3339):
     /// `{values: {name: {value, provenance}}, grams: [id, ...]}`, the grams
     /// it was read from. See `Cell::read_lexostatus`.
     #[wasm_bindgen(js_name = readLexostatus)]

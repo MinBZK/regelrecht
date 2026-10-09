@@ -1455,10 +1455,10 @@ fn a_carried_amount_that_fails_again_stays_in_arrears() {
     );
 }
 
-/// The cell describes every lexostatus it reads its chronicle back with, in
-/// its configuration or in a policy of the holder, and reads each one with
-/// the grams it came from: the application, the paid termijnen, and the
-/// grams of the case in the register the policy reads.
+/// The cell describes every lexostatus it reads its chronicle back with, as
+/// the law describes the application or as an article of a policy of the
+/// holder says, and reads each one with the grams it came from: the
+/// application, and the grams of the case in the register the policy reads.
 #[test]
 fn the_demo_cell_describes_and_reads_its_lexostatuses_with_their_grams() {
     let data = tempfile::tempdir().unwrap();
@@ -1492,65 +1492,72 @@ fn the_demo_cell_describes_and_reads_its_lexostatuses_with_their_grams() {
             .unwrap_or_else(|| panic!("no '{name}' in {described}"))
             .clone()
     };
+    let names = |l: &serde_json::Value, key: &str, of: &str| -> Vec<String> {
+        l[key]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x[of].as_str().unwrap().to_string())
+            .collect()
+    };
+    // The application, as the law describes it: what the decisions on it
+    // ask of it, and the day of receipt (Awb 4:13 lid 1).
     let aanvraag = by_name("aanvraag");
-    assert_eq!(aanvraag["kind"], "configuration");
+    assert_eq!(aanvraag["kind"], "submission");
     assert_eq!(aanvraag["inputs"], json!(["root"]));
-    assert_eq!(aanvraag["reduction"]["pick"], "latest");
-    assert_eq!(aanvraag["reduction"]["filter"]["root"], "$root");
     assert_eq!(
-        aanvraag["reduction"]["derivations"]["datum_ontvangst"]["moment"],
-        "effective_at"
+        aanvraag["provision"],
+        "algemene_wet_inkomensafhankelijke_regelingen#15"
     );
-    let readers: Vec<&str> = aanvraag["read_by"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|r| r["event"].as_str().unwrap())
-        .collect();
-    assert_eq!(readers, ["voorschot_verleend", "zorgtoeslag_toegekend"]);
+    assert_eq!(
+        names(&aanvraag, "fields", "name"),
+        ["bsn", "aangevraagd_berekeningsjaar", "datum_ontvangst"]
+    );
+    assert_eq!(
+        names(&aanvraag, "read_by", "event"),
+        ["voorschot_verleend", "zorgtoeslag_toegekend"]
+    );
     assert_eq!(aanvraag["read_by"][0]["stage"], "VOORSCHOT");
+    assert!(aanvraag.get("period").is_none(), "{aanvraag}");
+    // An article of the policy of Toeslagen, by its endpoint.
     let uitbetaald = by_name("uitbetaald");
+    assert_eq!(uitbetaald["kind"], "policy");
     assert_eq!(
-        uitbetaald["reduction"]["derivations"]["uitbetaalde_voorschotten"]["sum"],
-        "betaald_bedrag"
+        uitbetaald["provision"],
+        "fictief_beleid_kroniek_toeslagen#3a"
     );
+    assert_eq!(
+        names(&uitbetaald, "fields", "name"),
+        ["uitbetaalde_voorschotten"]
+    );
+    assert_eq!(uitbetaald["fields"][0]["unit"], "eurocent");
     // Read per berekeningsjaar: the application holds for the years after
     // it as well (Awir 15 lid 5).
     assert_eq!(uitbetaald["inputs"], json!(["root", "berekeningsjaar"]));
     assert_eq!(uitbetaald["period"], "berekeningsjaar");
-    assert!(aanvraag.get("period").is_none(), "{aanvraag}");
-    let policy = by_name("fictief_beleid_kroniek_toeslagen");
-    assert_eq!(policy["kind"], "policy");
-    assert_eq!(policy["register"], "kroniek");
-    assert_eq!(policy["chronicle"], "toeslagen");
-    assert_eq!(policy["register_input"], "grams");
-    assert_eq!(policy["inputs"], json!(["root", "berekeningsjaar"]));
-    assert_eq!(policy["period"], "berekeningsjaar");
-    assert_eq!(policy["articles"][0]["number"], "1");
-    assert!(policy["articles"][0]["outputs"]
-        .as_array()
-        .unwrap()
-        .contains(&json!("voorschotbedrag")));
-    // The voorschot reads one article of it (the estimate), the toekenning
-    // another (the inkomensgegeven), the terugvordering the toekenning, the
-    // payment order all of it, the nabetaling and the incasso what they
-    // execute.
-    let readers: Vec<&str> = policy["read_by"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|r| r["event"].as_str().unwrap())
-        .collect();
     assert_eq!(
-        readers,
-        [
-            "voorschot_verleend",
-            "zorgtoeslag_toegekend",
-            "terugvordering_vastgesteld",
-            "betaalopdracht_gegeven",
-            "nabetaling_opgedragen",
-            "incasso_opgedragen"
-        ]
+        names(&uitbetaald, "read_by", "event"),
+        ["zorgtoeslag_toegekend"]
+    );
+    let voorschot_status = by_name("voorschot");
+    assert_eq!(voorschot_status["register"], "kroniek");
+    assert_eq!(voorschot_status["chronicle"], "toeslagen");
+    assert_eq!(voorschot_status["register_input"], "grams");
+    assert_eq!(voorschot_status["article"], "1");
+    // What it gives: what its readers ask, not the auxiliary outputs.
+    assert!(voorschot_status["outputs"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("laatste_voorschot")));
+    let given = names(&voorschot_status, "fields", "name");
+    assert!(given.contains(&"voorschotbedrag".to_string()), "{given:?}");
+    assert!(
+        !given.contains(&"laatste_voorschot".to_string()),
+        "{given:?}"
+    );
+    assert_eq!(
+        names(&voorschot_status, "read_by", "event"),
+        ["betaalopdracht_gegeven"]
     );
 
     let root = json!({"root": application.id, "berekeningsjaar": 2025});
@@ -1569,15 +1576,26 @@ fn the_demo_cell_describes_and_reads_its_lexostatuses_with_their_grams() {
     assert_eq!(aanvraag.values["datum_ontvangst"].value, "2024-11-04");
     assert_eq!(
         aanvraag.values["bsn"].provenance,
-        json!({"source": "lexostatus", "lexostatus": "aanvraag"})
+        json!({
+            "source": "lexostatus",
+            "lexostatus": "aanvraag",
+            "article": "algemene_wet_inkomensafhankelijke_regelingen#15",
+            "gram": application.id,
+        })
     );
     let uitbetaald = read("uitbetaald");
-    assert_eq!(uitbetaald.grams, paid);
+    // A policy says not which rows it took: the grams are those of the
+    // case in the register, the paid termijn among them.
+    assert!(
+        uitbetaald.grams.contains(&paid[0]),
+        "{:?}",
+        uitbetaald.grams
+    );
     assert_eq!(
         uitbetaald.values["uitbetaalde_voorschotten"].value,
         order.fields["bedrag"]
     );
-    let policy = read("fictief_beleid_kroniek_toeslagen");
+    let policy = read("voorschot");
     assert_eq!(
         policy.values["voorschotbedrag"].value,
         voorschot.fields["voorschotbedrag"]
@@ -1602,7 +1620,7 @@ fn the_demo_cell_describes_and_reads_its_lexostatuses_with_their_grams() {
     assert!(cell
         .read_lexostatus(
             &service,
-            "fictief_beleid_kroniek_toeslagen",
+            "voorschot",
             &serde_json::Map::new(),
             at("2024-12-02T09:00:00+01:00"),
         )
@@ -2889,56 +2907,4 @@ fn the_cell_gives_the_period_and_refuses_one_that_is_no_year() {
         .unwrap_err();
     assert!(matches!(e, Error::Refused(_)), "{e}");
     assert!(e.to_string().contains("not as a whole number"), "{e}");
-}
-
-/// A receipt has no case to read a lexostatus for (a lexostatus reads one
-/// case, by its root): an event recorded on receipt that reads one is an
-/// error in the configuration, not a reading of nothing.
-#[test]
-fn a_receipt_cannot_read_a_lexostatus() {
-    let mut service = regulations();
-    register_bank(&mut service, false);
-    let file = |name: &str| std::fs::read_to_string(demo().join(name)).unwrap();
-    let overboekingen = file("cells/bank/streams/overboekingen.yaml").replace(
-        "    establishes: fictieve_bankvoorwaarden#1\n",
-        "    establishes: fictieve_bankvoorwaarden#1\n    reads: [rekening]\n",
-    );
-    let config = CellConfig::from_yaml(
-        &file("cells/bank/cell.yaml").replace(
-            "streams:\n",
-            "lexostatuses: lexostatuses.yaml\nstreams:\n",
-        ),
-        &[
-            overboekingen.as_str(),
-            file("cells/bank/streams/incasso.yaml").as_str(),
-        ],
-        Some(
-            "cell: bank\nlexostatus_definitions:\n  - name: rekening\n    inputs: [root]\n    reduction:\n      chronicle: rekeningen\n      filter: {root: $root}\n      pick: latest\n      derivations:\n        geboekt_op: {moment: effective_at}\n",
-        ),
-    )
-    .unwrap_or_else(|e| panic!("{e}"));
-    let mut bank = Cell::in_memory(config, Vec::new(), &service, "2024-12-01".parse().unwrap())
-        .unwrap_or_else(|e| panic!("{e}"));
-    let e = bank
-        .receive(
-            &service,
-            BANK_TRANSFER,
-            BTreeMap::new(),
-            BTreeMap::from([
-                ("betaalkenmerk".to_string(), channel(json!("K-1"))),
-                ("rekeningnummer".to_string(), channel(json!(ACCOUNT))),
-                ("bedrag".to_string(), channel(json!(10000))),
-                ("uitvoerdatum".to_string(), channel(json!("2024-12-01"))),
-            ]),
-            at("2024-12-01T11:00:00+01:00"),
-            at("2024-12-01T11:00:00+01:00"),
-        )
-        .unwrap_err();
-    assert!(matches!(e, Error::Setup(_)), "{e}");
-    assert!(
-        e.to_string()
-            .contains("cannot read the lexostatus 'rekening'"),
-        "{e}"
-    );
-    assert_eq!(bank.grams().count(), 0);
 }

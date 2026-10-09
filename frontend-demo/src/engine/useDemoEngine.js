@@ -135,7 +135,7 @@ export async function prepareScenarioEngine(corpus) {
  * `today`. Throws when the law does not give every event its shape.
  */
 export function createCell(engine, cell, grams, today) {
-  return new wasmModule.WasmCell(engine, cell.cellYaml, cell.streams, cell.lexostatuses, grams, today);
+  return new wasmModule.WasmCell(engine, cell.cellYaml, cell.streams, grams, today);
 }
 
 /** Every parameter name any demo law declares; these are the candidate keys. */

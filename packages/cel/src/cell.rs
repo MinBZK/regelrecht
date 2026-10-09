@@ -11,9 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Map;
 
 use crate::chronicle::{Chronicle, Gram, Period};
-use crate::config::{
-    CellConfig, Derivation, Event, LexostatusDefinition, Read, Reduction, Register, Stream,
-};
+use crate::config::{CellConfig, Event, Read, Register, Stream};
 use crate::error::{refused, setup, Result};
 use crate::extension::{Every, ExecutedOn};
 use crate::lexostatus;
@@ -43,47 +41,103 @@ pub struct ReadBy {
     pub stage: Option<String>,
 }
 
-/// An article of a policy of the holder, with the outputs it gives.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct PolicyArticle {
-    pub number: String,
-    pub outputs: Vec<String>,
+/// One datum a lexostatus gives, as the law or the policy declares it: its
+/// name, its type and unit, the provisions it rests on and the article that
+/// declares it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct LexostatusField {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub type_: Option<ParameterType>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unit: Option<String>,
+    pub legal_basis: Vec<String>,
+    pub declared_by: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Whether it is the moment the application counts from, as a date
+    /// (the day of receipt), rather than a field filled in.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub moment: bool,
 }
 
-/// A lexostatus of the cell as it reduces its chronicle: in the cell
-/// configuration (`lexostatuses.yaml`), or in an article in the policy of the
-/// holder that reads a chronicle of the cell as a register (`registers:` in
-/// `cell.yaml`). Either is read with [`Cell::read_lexostatus`] by its `name`.
+impl LexostatusField {
+    fn of_field(f: &shape::FieldDef) -> Self {
+        Self {
+            name: f.name.clone(),
+            type_: f.type_,
+            unit: None,
+            legal_basis: f.legal_basis.clone(),
+            declared_by: f.declared_by.clone(),
+            description: None,
+            moment: false,
+        }
+    }
+}
+
+/// A lexostatus of the cell: what it reads from its own chronicle for a
+/// case, and where its shape is laid down. Either the application the
+/// decisions are taken on, as the law describes it, or an article in the
+/// policy of the holder that reads a chronicle of the cell as a register
+/// (`registers:` in `cell.yaml`). Either is read with
+/// [`Cell::read_lexostatus`] by its `name`. `fields` are the data it gives:
+/// what the events that read it ask of it (every datum, if none does).
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum LexostatusDescription {
-    /// A reduction in the cell configuration: filter, pick, derivations.
-    Configuration {
+    /// What the application of the case says. Its fields are the fields of
+    /// the application as the law declares them (the establishing article
+    /// and the hooks on it) and the moment that counts; `name` is the kind
+    /// of submission (`produces.submission`, lower case), `provision` the
+    /// establishing article. Every decision taken on the application reads
+    /// from it what it asks and no policy it reads gives.
+    Submission {
         name: String,
+        provision: String,
+        event: String,
+        chronicle: String,
         inputs: Vec<String>,
-        /// The input that gives the period the reading is for, if it reads
-        /// one (`period: $<input>` in its filter).
-        #[serde(skip_serializing_if = "Option::is_none")]
-        period: Option<String>,
-        reduction: Reduction,
+        fields: Vec<LexostatusField>,
         read_by: Vec<ReadBy>,
     },
-    /// A policy of the holder: `name` is the policy, `register` the name the
-    /// binding gives the register, `register_input` the input without a
-    /// source (`source: {}`) the chronicle is given as.
+    /// An article of a policy of the holder. `name` is its `endpoint` (or
+    /// `<policy>#<article>`), `provision` the article, `register` the name
+    /// the binding gives the register, `register_input` the input without a
+    /// source (`source: {}`) the chronicle is given as; `outputs` every
+    /// output of the article.
     Policy {
         name: String,
+        provision: String,
+        policy: String,
+        article: String,
         register: String,
         chronicle: String,
         register_input: String,
         inputs: Vec<String>,
         /// The parameter that gives the period the reading is for: the
-        /// period parameter of an event that reads the policy.
+        /// period parameter of an event that reads the article.
         #[serde(skip_serializing_if = "Option::is_none")]
         period: Option<String>,
-        articles: Vec<PolicyArticle>,
+        outputs: Vec<String>,
+        fields: Vec<LexostatusField>,
         read_by: Vec<ReadBy>,
     },
+}
+
+impl LexostatusDescription {
+    pub fn name(&self) -> &str {
+        match self {
+            Self::Submission { name, .. } | Self::Policy { name, .. } => name,
+        }
+    }
+}
+
+/// An event of the cell with what it asks on a day: the parameters of the
+/// stage its decision is taken at, or those of the article it executes.
+struct Asker {
+    read_by: ReadBy,
+    shape: Shape,
+    asked: Vec<String>,
 }
 
 /// A day on which an execution is executed for a case, and the period it is
@@ -228,9 +282,7 @@ impl Cell {
             event_fields: BTreeMap::new(),
         };
         // Every event must take its shape from the law now, not at the first
-        // application; and every field a lexostatus reads must be a field of
-        // a gram in its chronicle, or a typo reads as a fact nobody has.
-        let mut fields: BTreeMap<&str, Vec<String>> = BTreeMap::new();
+        // application.
         let mut event_fields: BTreeMap<String, Vec<String>> = BTreeMap::new();
         for stream in &cell.config.streams {
             for event in &stream.events {
@@ -241,27 +293,7 @@ impl Cell {
                     ))
                 })?;
                 let names: Vec<String> = shape.fields.into_iter().map(|f| f.name).collect();
-                fields
-                    .entry(stream.chronicle.as_str())
-                    .or_default()
-                    .extend(names.iter().cloned());
                 event_fields.insert(event.name.clone(), names);
-            }
-        }
-        for l in &cell.config.lexostatuses {
-            let known = fields.get(l.reduction.chronicle.as_str());
-            for read in l
-                .reduction
-                .derivations
-                .values()
-                .filter_map(Derivation::field)
-            {
-                if !known.is_some_and(|k| k.iter().any(|f| f == read)) {
-                    return Err(setup(format!(
-                        "lexostatus '{}' reads field '{read}', which no event of chronicle '{}' has",
-                        l.name, l.reduction.chronicle
-                    )));
-                }
             }
         }
         cell.event_fields = event_fields;
@@ -406,48 +438,192 @@ impl Cell {
         self.append(&chronicle, gram)
     }
 
-    /// The lexostatus `name` in the cell configuration with the chronicle it
-    /// reads; `None` if the configuration has none of that name.
-    fn configured(&self, name: &str) -> Result<Option<(&LexostatusDefinition, &Chronicle)>> {
-        let Some(definition) = self.config.lexostatuses.iter().find(|l| l.name == name) else {
-            return Ok(None);
-        };
-        Ok(Some((
-            definition,
-            self.chronicle(&definition.reduction.chronicle)?,
-        )))
+    /// Every event of the cell with what it asks on `day` (see [`Asker`]).
+    fn askers(&self, service: &LawExecutionService, day: NaiveDate) -> Result<Vec<Asker>> {
+        let mut out = Vec::new();
+        for stream in &self.config.streams {
+            for event in &stream.events {
+                let (shape, _) = self.shape(service, &event.name, day)?;
+                let asked = if is_decision(&shape) {
+                    asked(&stage_from(service, &shape, day)?)
+                        .into_iter()
+                        .map(str::to_string)
+                        .collect()
+                } else {
+                    shape.parameters.clone()
+                };
+                out.push(Asker {
+                    read_by: ReadBy {
+                        event: event.name.clone(),
+                        stream: stream.id.clone(),
+                        stage: event.stage.clone(),
+                    },
+                    shape,
+                    asked,
+                });
+            }
+        }
+        Ok(out)
     }
 
-    /// Every lexostatus of the cell and how it reduces the chronicle: first
-    /// those in the cell configuration, then each policy of the holder that
-    /// reads a register of the cell, with its articles as they hold on `day`.
-    /// Per lexostatus the events that read it for their case.
+    /// The outputs of article `number` of `policy` as it holds on `day`.
+    fn policy_outputs(
+        service: &LawExecutionService,
+        policy: &str,
+        number: &str,
+        day: NaiveDate,
+    ) -> Result<Vec<String>> {
+        let law = service
+            .resolver()
+            .get_law_for_date(policy, Some(day))
+            .ok_or_else(|| setup(format!("policy '{policy}' has no version on {day}")))?;
+        Ok(law
+            .articles
+            .iter()
+            .find(|a| a.number == number)
+            .ok_or_else(|| {
+                setup(format!(
+                    "policy '{policy}' has no article {number} on {day}"
+                ))
+            })?
+            .get_execution_spec()
+            .into_iter()
+            .flat_map(|e| e.output.iter().flatten())
+            .map(|o| o.name.clone())
+            .collect())
+    }
+
+    /// What the policies `event` reads give, by name, on `day`: a datum of
+    /// the application a policy gives is read as the policy says.
+    fn given_by_reads(
+        &self,
+        service: &LawExecutionService,
+        event: &str,
+        day: NaiveDate,
+    ) -> Result<Vec<String>> {
+        let (_, e) = self.event(event)?;
+        let mut out = Vec::new();
+        for read in &e.reads {
+            match &read.article {
+                Some(number) => {
+                    out.extend(Self::policy_outputs(
+                        service,
+                        &read.regulation,
+                        number,
+                        day,
+                    )?);
+                }
+                None => out.extend(
+                    service
+                        .get_law_info(&read.regulation)
+                        .map(|i| i.outputs)
+                        .unwrap_or_default(),
+                ),
+            }
+        }
+        Ok(out)
+    }
+
+    /// The submission the decision `shape` is taken on: the event of the
+    /// cell that establishes what its one required reference names, if that
+    /// is a submission, with its shape on `day`. `None` for an execution or
+    /// a decision on no submission (ex officio).
+    fn submission_of(
+        &self,
+        service: &LawExecutionService,
+        shape: &Shape,
+        day: NaiveDate,
+    ) -> Result<Option<Shape>> {
+        if !is_decision(shape) {
+            return Ok(None);
+        }
+        for reference in shape.refers_to.values().filter(|r| r.required) {
+            let Some(to) = &reference.to else {
+                continue;
+            };
+            for event in self.config.streams.iter().flat_map(|s| s.events.iter()) {
+                if &event.establishes != to {
+                    continue;
+                }
+                let (submission, _) = self.shape(service, &event.name, day)?;
+                if submission.subtype.is_some() {
+                    return Ok(Some(submission));
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    /// Every datum of the application `submission`: its fields as the law
+    /// declares them, then the moment that counts.
+    fn submission_fields(submission: &Shape) -> Vec<shape::FieldDef> {
+        let mut out = submission.fields.clone();
+        out.extend(submission.moment.clone());
+        out
+    }
+
+    /// Every lexostatus of the cell, as it holds on `day`: per submission the
+    /// cell records, what the application says; then per article of each
+    /// policy of the holder that reads a register of the cell, that article.
+    /// Per lexostatus the events that read it for their case and ask of it,
+    /// and what it gives them.
     pub fn lexostatuses(
         &self,
         service: &LawExecutionService,
         day: NaiveDate,
     ) -> Result<Vec<LexostatusDescription>> {
-        let read_by = |read: &dyn Fn(&Read) -> bool| -> Vec<ReadBy> {
-            self.config
-                .streams
-                .iter()
-                .flat_map(|s| s.events.iter().map(move |e| (s, e)))
-                .filter(|(_, e)| e.reads.iter().any(read))
-                .map(|(s, e)| ReadBy {
-                    event: e.name.clone(),
-                    stream: s.id.clone(),
-                    stage: e.stage.clone(),
-                })
-                .collect()
-        };
+        let askers = self.askers(service, day)?;
         let mut out = Vec::new();
-        for l in &self.config.lexostatuses {
-            out.push(LexostatusDescription::Configuration {
-                name: l.name.clone(),
-                inputs: l.inputs.clone(),
-                period: l.reduction.filter.period_input().map(str::to_string),
-                reduction: l.reduction.clone(),
-                read_by: read_by(&|r| matches!(r, Read::Lexostatus(n) if *n == l.name)),
+        for (sub, chronicle) in askers
+            .iter()
+            .filter(|a| a.shape.subtype.is_some())
+            .map(|a| (&a.shape, self.config.event(&a.read_by.event)))
+        {
+            let all = Self::submission_fields(sub);
+            let mut read_by = Vec::new();
+            let mut wanted: Vec<String> = Vec::new();
+            for asker in &askers {
+                let on = self.submission_of(service, &asker.shape, day)?;
+                if on.is_none_or(|o| o.establishes != sub.establishes) {
+                    continue;
+                }
+                let given = self.given_by_reads(service, &asker.read_by.event, day)?;
+                let period = asker.shape.period.as_ref().map(|p| p.parameter.as_str());
+                let takes: Vec<&String> = all
+                    .iter()
+                    .map(|f| &f.name)
+                    .filter(|n| {
+                        asker.asked.contains(n) && !given.contains(n) && Some(n.as_str()) != period
+                    })
+                    .collect();
+                if takes.is_empty() {
+                    continue;
+                }
+                read_by.push(asker.read_by.clone());
+                for n in takes {
+                    if !wanted.contains(n) {
+                        wanted.push(n.clone());
+                    }
+                }
+            }
+            let fields = all
+                .iter()
+                .filter(|f| wanted.is_empty() || wanted.contains(&f.name))
+                .map(|f| LexostatusField {
+                    moment: sub.moment.as_ref().is_some_and(|m| m.name == f.name),
+                    ..LexostatusField::of_field(f)
+                })
+                .collect();
+            out.push(LexostatusDescription::Submission {
+                name: sub.subtype.clone().unwrap_or_default(),
+                provision: sub.establishes.clone(),
+                event: sub.event.clone(),
+                chronicle: chronicle
+                    .map(|(s, _)| s.chronicle.clone())
+                    .unwrap_or_default(),
+                inputs: vec!["root".to_string()],
+                fields,
+                read_by,
             });
         }
         for register in &self.config.registers {
@@ -456,70 +632,153 @@ impl Cell {
                 .resolver()
                 .get_law_for_date(policy, Some(day))
                 .ok_or_else(|| setup(format!("policy '{policy}' has no version on {day}")))?;
-            let mut inputs: Vec<String> = Vec::new();
-            let mut period = None;
-            let mut articles = Vec::new();
+            let register_input = register::register_input(service, policy)?;
             for article in &law.articles {
                 let Some(execution) = article.get_execution_spec() else {
                     continue;
                 };
-                for p in execution.parameters.iter().flatten() {
-                    if !inputs.contains(&p.name) {
-                        inputs.push(p.name.clone());
+                let provision = format!("{policy}#{}", article.number);
+                let outputs: Vec<&regelrecht_law_model::Output> =
+                    execution.output.iter().flatten().collect();
+                let inputs: Vec<String> = execution
+                    .parameters
+                    .iter()
+                    .flatten()
+                    .map(|p| p.name.clone())
+                    .collect();
+                let mut read_by = Vec::new();
+                let mut wanted: Vec<String> = Vec::new();
+                let mut period = None;
+                for asker in &askers {
+                    let (_, event) = self.event(&asker.read_by.event)?;
+                    if !event
+                        .reads
+                        .iter()
+                        .any(|r| r.reads_article(policy, &article.number))
+                    {
+                        continue;
+                    }
+                    let takes: Vec<&String> = outputs
+                        .iter()
+                        .map(|o| &o.name)
+                        .filter(|n| asker.asked.contains(n))
+                        .collect();
+                    if takes.is_empty() {
+                        continue;
+                    }
+                    read_by.push(asker.read_by.clone());
+                    for n in takes {
+                        if !wanted.contains(n) {
+                            wanted.push(n.clone());
+                        }
+                    }
+                    if let Some(p) = asker
+                        .shape
+                        .period
+                        .as_ref()
+                        .filter(|p| inputs.contains(&p.parameter))
+                    {
+                        period.get_or_insert(p.parameter.clone());
                     }
                 }
-                articles.push(PolicyArticle {
-                    number: article.number.clone(),
-                    outputs: execution
-                        .output
-                        .iter()
-                        .flatten()
-                        .map(|o| o.name.clone())
-                        .collect(),
+                let fields = outputs
+                    .iter()
+                    .filter(|o| wanted.is_empty() || wanted.contains(&o.name))
+                    .map(|o| LexostatusField {
+                        name: o.name.clone(),
+                        type_: Some(o.output_type),
+                        unit: o.type_spec.as_ref().and_then(|t| t.unit.clone()),
+                        legal_basis: vec![provision.clone()],
+                        declared_by: provision.clone(),
+                        description: o.description.clone(),
+                        moment: false,
+                    })
+                    .collect();
+                out.push(LexostatusDescription::Policy {
+                    name: article_name(service, &provision, day),
+                    provision: provision.clone(),
+                    policy: policy.clone(),
+                    article: article.number.clone(),
+                    register: register.name.clone(),
+                    chronicle: register.chronicle.clone(),
+                    register_input: register_input.clone(),
+                    inputs,
+                    period,
+                    outputs: outputs.iter().map(|o| o.name.clone()).collect(),
+                    fields,
+                    read_by,
                 });
             }
-            // The parameter the policy is read for a period by: the period
-            // parameter of an event that reads it (the cell gives it), if the
-            // policy declares it.
-            let readers = self
-                .config
-                .streams
-                .iter()
-                .flat_map(|s| s.events.iter())
-                .filter(|e| {
-                    e.reads.iter().any(
-                        |r| matches!(r, Read::Regulation { regulation, .. } if regulation == policy),
-                    )
-                });
-            for event in readers {
-                let (shape, _) = self.shape(service, &event.name, day)?;
-                if let Some(p) = shape.period.filter(|p| inputs.contains(&p.parameter)) {
-                    period.get_or_insert(p.parameter);
-                }
-            }
-            out.push(LexostatusDescription::Policy {
-                name: policy.clone(),
-                register: register.name.clone(),
-                chronicle: register.chronicle.clone(),
-                register_input: register::register_input(service, policy)?,
-                inputs,
-                period,
-                articles,
-                read_by: read_by(
-                    &|r| matches!(r, Read::Regulation { regulation, .. } if regulation == policy),
-                ),
-            });
         }
         Ok(out)
     }
 
-    /// Read the lexostatus `name` as it holds at `as_of`, with where each
-    /// parameter came from and the grams it was read from. `name` is a
-    /// lexostatus in the cell configuration, or a policy of the holder that
-    /// reads a register of the cell (see [`Self::lexostatuses`]); a policy
-    /// is executed for the case `root` of `inputs`, as [`Self::read_case`]
-    /// executes it, and its grams are those of that case in the register.
-    /// An output the policy leaves empty is no parameter.
+    /// What the application `submission` of the case `root` says at `as_of`:
+    /// per datum (see [`Self::submission_fields`]) its value in the latest
+    /// gram of the submission of the case that holds then, the moment that
+    /// counts as its date, each with the article that declares it and the
+    /// gram; and that gram. A field the gram does not have is left out: a
+    /// fact nobody has, not a null the applicant stated.
+    fn read_submission(
+        &self,
+        submission: &Shape,
+        root: &str,
+        as_of: DateTime<FixedOffset>,
+    ) -> Result<(BTreeMap<String, Input>, String)> {
+        let (_, event) = self.event(&submission.event)?;
+        let (stream, _) = self
+            .config
+            .event(&event.name)
+            .ok_or_else(|| setup(format!("no event '{}'", event.name)))?;
+        let chronicle = self.chronicle(&stream.chronicle)?;
+        let kind = submission.subtype.clone().unwrap_or_default();
+        let gram = lexostatus::in_force(chronicle, as_of)?
+            .into_iter()
+            .rfind(|g| g.name == submission.event && chronicle.root_of(g) == root)
+            .ok_or_else(|| {
+                refused(format!(
+                    "case '{root}' has no {kind} in chronicle '{}' at {as_of}",
+                    stream.chronicle
+                ))
+            })?;
+        let provenance = |f: &shape::FieldDef| {
+            serde_json::json!({
+                "source": "lexostatus",
+                "lexostatus": kind,
+                "article": f.declared_by,
+                "gram": gram.id,
+            })
+        };
+        let mut out = BTreeMap::new();
+        for f in &submission.fields {
+            if let Some(value) = gram.fields.get(&f.name) {
+                out.insert(
+                    f.name.clone(),
+                    Input {
+                        value: value.clone(),
+                        provenance: provenance(f),
+                    },
+                );
+            }
+        }
+        if let Some(m) = &submission.moment {
+            out.insert(
+                m.name.clone(),
+                Input {
+                    value: serde_json::Value::String(gram.effective_at.chars().take(10).collect()),
+                    provenance: provenance(m),
+                },
+            );
+        }
+        Ok((out, gram.id.clone()))
+    }
+
+    /// Read the lexostatus `name` (see [`Self::lexostatuses`]) for the case
+    /// `root` of `inputs` as it holds at `as_of`, with where each datum came
+    /// from and the grams it was read from: what it gives, as the events
+    /// that read it ask it. A policy article is executed as
+    /// [`Self::read_case`] executes it, and its grams are those of the case
+    /// in the register; an output it leaves empty is no datum.
     pub fn read_lexostatus(
         &self,
         service: &LawExecutionService,
@@ -527,120 +786,52 @@ impl Cell {
         inputs: &Map<String, serde_json::Value>,
         as_of: DateTime<FixedOffset>,
     ) -> Result<Reading> {
-        if let Some((definition, chronicle)) = self.configured(name)? {
-            let (values, grams) = lexostatus::reduce(definition, inputs, chronicle, as_of)?;
-            return Ok(Reading {
-                values: values
-                    .into_iter()
-                    .map(|(n, v)| (n, from_lexostatus(v, name)))
-                    .collect(),
-                grams: grams.iter().map(|g| g.id.clone()).collect(),
-            });
-        }
-        let Some((_, chronicle)) = self.register(service, name)? else {
-            return Err(refused(format!("no lexostatus '{name}'")));
-        };
+        let day = as_of.date_naive();
+        let description = self
+            .lexostatuses(service, day)?
+            .into_iter()
+            .find(|l| l.name() == name)
+            .ok_or_else(|| refused(format!("no lexostatus '{name}'")))?;
         let root = inputs
             .get("root")
             .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| refused(format!("policy '{name}' needs input 'root'")))?;
-        let parameters = inputs
-            .iter()
-            .map(|(k, v)| (k.clone(), Value::from(v)))
-            .collect();
-        let values = self
-            .read_policy(service, name, None, parameters, as_of)?
-            .into_iter()
-            .collect();
-        let grams = lexostatus::in_force(chronicle, as_of)?
-            .into_iter()
-            .filter(|g| chronicle.root_of(g) == root)
-            .map(|g| g.id.clone())
-            .collect();
-        Ok(Reading { values, grams })
-    }
-
-    /// Per parameter the lexostatus `lexostatus` gives, the field of a gram
-    /// it reads (a `field`, a `sum`, whether one is `filled`), as the law
-    /// declares that field on `day`: how to read what [`Self::read`]
-    /// returns. The field is looked up in the events of the chronicle the
-    /// lexostatus reads, the event its filter names first. A parameter that
-    /// reads no field (a moment, a period) is left out.
-    pub fn lexostatus_fields(
-        &self,
-        service: &LawExecutionService,
-        lexostatus: &str,
-        day: NaiveDate,
-    ) -> Result<BTreeMap<String, shape::FieldDef>> {
-        let definition = self
-            .config
-            .lexostatuses
-            .iter()
-            .find(|l| l.name == lexostatus)
-            .ok_or_else(|| refused(format!("no lexostatus '{lexostatus}'")))?;
-        let reduction = &definition.reduction;
-        let mut events: Vec<&str> = self
-            .config
-            .streams
-            .iter()
-            .filter(|s| s.chronicle == reduction.chronicle)
-            .flat_map(|s| s.events.iter().map(|e| e.name.as_str()))
-            .collect();
-        if let Some(named) = reduction.filter.event.as_deref() {
-            events.sort_by_key(|e| *e != named);
-        }
-        // Shapes are derived as needed, the filter's event first, and a
-        // field is taken from the first event that has it: an event that
-        // has nothing to do with the reading cannot break it.
-        let mut shapes: Vec<Option<Result<Shape>>> = events.iter().map(|_| None).collect();
-        let mut out = BTreeMap::new();
-        for (name, derivation) in &reduction.derivations {
-            let Some(field) = derivation.field() else {
-                continue;
-            };
-            let mut found = None;
-            let mut first_error = None;
-            for (i, event) in events.iter().enumerate() {
-                let shape = shapes[i]
-                    .get_or_insert_with(|| self.shape(service, event, day).map(|(s, _)| s));
-                match shape {
-                    Ok(shape) => {
-                        if let Some(def) = shape.field(field) {
-                            found = Some(def.clone());
-                            break;
-                        }
-                    }
-                    Err(e) => {
-                        first_error.get_or_insert_with(|| e.to_string());
-                    }
-                }
+            .ok_or_else(|| refused(format!("lexostatus '{name}' needs input 'root'")))?;
+        match description {
+            LexostatusDescription::Submission { event, fields, .. } => {
+                let (submission, _) = self.shape(service, &event, day)?;
+                let (mut values, gram) = self.read_submission(&submission, root, as_of)?;
+                values.retain(|n, _| fields.iter().any(|f| &f.name == n));
+                Ok(Reading {
+                    values,
+                    grams: vec![gram],
+                })
             }
-            let def = found.ok_or_else(|| {
-                setup(format!(
-                    "lexostatus '{lexostatus}' reads field '{field}', which no event of chronicle '{}' has on {day}{}",
-                    reduction.chronicle,
-                    first_error.map(|e| format!(" ({e})")).unwrap_or_default()
-                ))
-            })?;
-            // Whether a field is filled in is a yes or a no, whatever the
-            // field holds.
-            let def = match derivation {
-                Derivation::Filled { legal_basis, .. } => shape::FieldDef {
-                    name: field.to_string(),
-                    type_: Some(regelrecht_law_model::ParameterType::Boolean),
-                    legal_basis: if legal_basis.is_empty() {
-                        def.legal_basis
-                    } else {
-                        legal_basis.clone()
-                    },
-                    declared_by: def.declared_by,
-                    fixed: None,
-                },
-                _ => def,
-            };
-            out.insert(name.clone(), def);
+            LexostatusDescription::Policy {
+                policy,
+                article,
+                fields,
+                ..
+            } => {
+                let (_, chronicle) = self
+                    .register(service, &policy)?
+                    .ok_or_else(|| setup(format!("policy '{policy}' reads no register")))?;
+                let parameters = inputs
+                    .iter()
+                    .map(|(k, v)| (k.clone(), Value::from(v)))
+                    .collect();
+                let values = self
+                    .read_policy(service, &policy, Some(&article), parameters, as_of)?
+                    .into_iter()
+                    .filter(|(n, _)| fields.iter().any(|f| &f.name == n))
+                    .collect();
+                let grams = lexostatus::in_force(chronicle, as_of)?
+                    .into_iter()
+                    .filter(|g| chronicle.root_of(g) == root)
+                    .map(|g| g.id.clone())
+                    .collect();
+                Ok(Reading { values, grams })
+            }
         }
-        Ok(out)
     }
 
     /// What the reads of `event` give for the case `root` at `as_of`, per
@@ -662,11 +853,6 @@ impl Cell {
         as_of: DateTime<FixedOffset>,
     ) -> Result<BTreeMap<String, Input>> {
         let (_, e) = self.event(event)?;
-        if e.reads.is_empty() {
-            return Err(refused(format!(
-                "event '{event}' reads nothing for its case (`reads` in its stream)"
-            )));
-        }
         let mut inputs = Map::new();
         inputs.insert("root".into(), serde_json::Value::String(root.into()));
         if let Some((name, value)) = period {
@@ -679,28 +865,13 @@ impl Cell {
         let mut read: BTreeMap<String, Input> = BTreeMap::new();
         let mut from: BTreeMap<String, String> = BTreeMap::new();
         for source in &e.reads {
-            let values: Vec<(String, Input)> = match source {
-                Read::Lexostatus(lexostatus) => {
-                    let (definition, chronicle) = self
-                        .configured(lexostatus)?
-                        .ok_or_else(|| refused(format!("no lexostatus '{lexostatus}'")))?;
-                    lexostatus::reduce(definition, &inputs, chronicle, as_of)?
-                        .0
-                        .into_iter()
-                        .map(|(name, value)| (name, from_lexostatus(value, lexostatus)))
-                        .collect()
-                }
-                Read::Regulation {
-                    regulation,
-                    article,
-                } => self.read_policy(
-                    service,
-                    regulation,
-                    article.as_deref(),
-                    parameters.clone(),
-                    as_of,
-                )?,
-            };
+            let values = self.read_policy(
+                service,
+                &source.regulation,
+                source.article.as_deref(),
+                parameters.clone(),
+                as_of,
+            )?;
             for (name, input) in values {
                 if let Some(first) = from.get(&name) {
                     return Err(setup(format!(
@@ -790,7 +961,8 @@ impl Cell {
                     value: shape::to_json(&value),
                     provenance: serde_json::json!({
                         "source": "lexostatus",
-                        "lexostatus": register.key(),
+                        "lexostatus": article_name(service, &article, as_of.date_naive()),
+                        "register": register.key(),
                         "article": article,
                     }),
                 },
@@ -904,20 +1076,30 @@ impl Cell {
             };
             period_value = value;
         }
-        let reads = self
-            .config
-            .event(event)
-            .is_some_and(|(_, e)| !e.reads.is_empty());
-        let read: BTreeMap<String, Input> = match root {
-            Some(root) if reads => self.read_case(
+        let mut read: BTreeMap<String, Input> = match root {
+            Some(root) => self.read_case(
                 service,
                 event,
                 root,
                 period_parameter.as_deref().zip(period_value),
                 now,
             )?,
-            _ => BTreeMap::new(),
+            None => BTreeMap::new(),
         };
+        // What the decision asks of the application it is taken on, and no
+        // policy it reads gives, it reads from that application: the law
+        // declares both (the parameters of the stage, the fields of the
+        // application). The period is the cell's to give.
+        if let Some(root) = root {
+            if let Some(submission) = self.submission_of(service, &shape, today)? {
+                let (from_application, _) = self.read_submission(&submission, root, now)?;
+                for (name, input) in from_application {
+                    if Some(&name) != period_parameter.as_ref() {
+                        read.entry(name).or_insert(input);
+                    }
+                }
+            }
+        }
         if let Some(parameter) = period_parameter.as_ref().filter(|p| read.contains_key(*p)) {
             return Err(setup(format!(
                 "'{event}': its case gives '{parameter}', the period it concerns; the cell gives the period, the case is read for it"
@@ -1399,10 +1581,13 @@ impl Cell {
         // Not yet: refusing an application out of time.
         let today = now.date_naive();
         let (shape, chronicle) = self.shape(service, event, today)?;
+        // A decision reads its case if it reads a policy, or is taken on an
+        // application.
         let reads = self
             .config
             .event(event)
-            .is_some_and(|(_, e)| !e.reads.is_empty());
+            .is_some_and(|(_, e)| !e.reads.is_empty())
+            || self.submission_of(service, &shape, today)?.is_some();
         let root = if reads {
             Some(self.case_root(&shape, &chronicle, &refers_to)?)
         } else {
@@ -1885,8 +2070,8 @@ impl Cell {
 
     /// What the receipt events in `shapes` read (`reads` in their streams):
     /// each policy of the holder, executed at `at` over its register, with
-    /// the message `inputs` as its parameters. A lexostatus needs a case,
-    /// which a receipt does not have, and is refused.
+    /// the message `inputs` as its parameters. A receipt has no case, so it
+    /// reads no application.
     fn read_on_receipt(
         &self,
         service: &LawExecutionService,
@@ -1904,24 +2089,13 @@ impl Cell {
                     continue;
                 }
                 seen.push(source);
-                match source {
-                    Read::Lexostatus(name) => {
-                        return Err(setup(format!(
-                            "'{}' is recorded on receipt and has no case; it cannot read the lexostatus '{name}'",
-                            shape.event
-                        )))
-                    }
-                    Read::Regulation {
-                        regulation,
-                        article,
-                    } => out.extend(self.read_policy(
-                        service,
-                        regulation,
-                        article.as_deref(),
-                        parameters.clone(),
-                        at,
-                    )?),
-                }
+                out.extend(self.read_policy(
+                    service,
+                    &source.regulation,
+                    source.article.as_deref(),
+                    parameters.clone(),
+                    at,
+                )?);
             }
         }
         Ok(out)
@@ -2532,15 +2706,30 @@ fn start_of(day: NaiveDate, now: &DateTime<FixedOffset>) -> Result<DateTime<Fixe
         .ok_or_else(|| setup(format!("no start of the day {day}")))
 }
 
-/// A parameter read from a lexostatus.
-fn from_lexostatus(value: serde_json::Value, lexostatus: &str) -> Input {
-    Input {
-        value,
-        provenance: serde_json::json!({
-            "source": "lexostatus",
-            "lexostatus": lexostatus,
-        }),
-    }
+/// The name of the lexostatus an article of a policy is (see
+/// [`Cell::lexostatuses`]): its `endpoint`, or the article itself.
+fn article_name(service: &LawExecutionService, provision: &str, day: NaiveDate) -> String {
+    provision
+        .split_once('#')
+        .and_then(|(policy, number)| {
+            service
+                .resolver()
+                .get_law_for_date(policy, Some(day))?
+                .articles
+                .iter()
+                .find(|a| a.number == number)?
+                .machine_readable
+                .as_ref()?
+                .endpoint
+                .clone()
+        })
+        .unwrap_or_else(|| provision.to_string())
+}
+
+/// Whether the grams of `shape` are decisions, taken at a stage of their
+/// procedure.
+fn is_decision(shape: &Shape) -> bool {
+    shape.type_ == "decretogram" && shape.stage.is_some()
 }
 
 /// What executing the decision `shape` at its stage asks: the article and
@@ -2553,6 +2742,30 @@ fn stage_of(service: &LawExecutionService, shape: &Shape, day: NaiveDate) -> Res
         ))
     })?;
     shape::stage_inputs(service, shape, stage, day)
+}
+
+/// What the decision `shape` asks at its stage on `day`, or, if its law
+/// does not hold yet then (a voorschot decided in December for the year
+/// after, on a law that starts in January), in the first later version that
+/// has it: the shape is derived the same way ([`shape::derive_for`]).
+fn stage_from(service: &LawExecutionService, shape: &Shape, day: NaiveDate) -> Result<StageInputs> {
+    let first = match stage_of(service, shape, day) {
+        Ok(at) => return Ok(at),
+        Err(e) => e,
+    };
+    let mut later: Vec<NaiveDate> = service
+        .resolver()
+        .all_law_versions()
+        .filter(|l| l.id == shape.law_id)
+        .filter_map(|l| l.valid_from.as_deref())
+        .filter_map(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
+        .filter(|d| *d > day)
+        .collect();
+    later.sort();
+    later
+        .into_iter()
+        .find_map(|d| stage_of(service, shape, d).ok())
+        .ok_or(first)
 }
 
 /// The names of the parameters a stage asks.

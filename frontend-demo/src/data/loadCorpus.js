@@ -141,7 +141,7 @@ export function loadCorpus() {
 }
 
 /**
- * Eén cel: `cell.yaml` met de stromen en de lexostatussen die het noemt, als
+ * Eén cel: `cell.yaml` met de stromen die het noemt, als
  * tekst voor WasmCell, plus haar gebeurtenissen.
  */
 async function loadCell(id) {
@@ -149,14 +149,13 @@ async function loadCell(id) {
   const cellYaml = await fetchText(`${base}/cell.yaml`);
   const cell = yaml.load(cellYaml);
   const streams = await Promise.all((cell.streams ?? []).map((p) => fetchText(`${base}/${p}`)));
-  const lexostatuses = cell.lexostatuses ? await fetchText(`${base}/${cell.lexostatuses}`) : null;
   // Per gebeurtenis ook de stroom waarin de cel haar registreert (`$id` en
   // bestand): de achterkant van de kroniek laat zien waar een gram vandaan komt.
   const events = streams.flatMap((text, i) => {
     const stream = yaml.load(text);
     return (stream.events ?? []).map((e) => ({ ...e, chronicle: stream.chronicle, stream: stream.$id ?? null, streamFile: cell.streams[i] }));
   });
-  return { id, recordingActor: cell.recording_actor ?? null, cellYaml, streams, lexostatuses, events };
+  return { id, recordingActor: cell.recording_actor ?? null, cellYaml, streams, events };
 }
 
 /** Organisation display data for a service code. */

@@ -74,7 +74,6 @@ fn cell(service: &LawExecutionService) -> Result<Cell, Error> {
     let config = CellConfig::from_yaml(
         "id: test\nrecording_actor: actor\nstreams: [s.yaml]\n",
         &["$id: s\nrecording_actor: actor\nchronicle: c\nevents:\n  - name: besloten\n    establishes: testbesluit#1\n"],
-        None,
     )?;
     Cell::in_memory(config, Vec::new(), service, "2025-05-01".parse().unwrap())
 }
@@ -195,37 +194,6 @@ articles:
     assert!(e.to_string().contains("BESLUT"), "{e}");
 }
 
-/// What a lexostatus gives is read as the field it reads; whether a field
-/// is filled in is a boolean, whatever the field holds.
-#[test]
-fn a_lexostatus_reads_a_filled_field_as_a_boolean() {
-    let service = service("besluitdatum");
-    let config = CellConfig::from_yaml(
-        "id: test\nrecording_actor: actor\nstreams: [s.yaml]\nlexostatuses: l.yaml\n",
-        &["$id: s\nrecording_actor: actor\nchronicle: c\nevents:\n  - name: besloten\n    establishes: testbesluit#1\n"],
-        Some(
-            "cell: test\nlexostatus_definitions:\n  - name: besluit\n    reduction:\n      chronicle: c\n      filter: {event: besloten}\n      pick: latest\n      derivations:\n        bedrag: {field: bedrag}\n        heeft_bedrag: {filled: bedrag, legal_basis: ['testbesluit#1']}\n",
-        ),
-    )
-    .unwrap_or_else(|e| panic!("{e}"));
-    let cell = Cell::in_memory(config, Vec::new(), &service, "2025-05-01".parse().unwrap())
-        .unwrap_or_else(|e| panic!("{e}"));
-    let fields = cell
-        .lexostatus_fields(&service, "besluit", "2025-05-01".parse().unwrap())
-        .unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(
-        fields["bedrag"].type_,
-        Some(regelrecht_law_model::ParameterType::Number)
-    );
-    let filled = &fields["heeft_bedrag"];
-    assert_eq!(
-        filled.type_,
-        Some(regelrecht_law_model::ParameterType::Boolean)
-    );
-    assert_eq!(filled.legal_basis, ["testbesluit#1"]);
-    assert_eq!(filled.declared_by, "testbesluit#1");
-}
-
 /// The period a stream names for a decision on no submission, when the law
 /// already names one: an error in the configuration, found when the cell
 /// starts.
@@ -235,7 +203,6 @@ fn a_stream_does_not_name_the_period_the_law_names() {
     let config = CellConfig::from_yaml(
         "id: test\nrecording_actor: actor\nstreams: [s.yaml]\n",
         &["$id: s\nrecording_actor: actor\nchronicle: c\nevents:\n  - name: besloten\n    establishes: testbesluit#1\n    period: {parameter: jaar, unit: year}\n    subject: [kenmerk]\n"],
-        None,
     )
     .unwrap_or_else(|e| panic!("{e}"));
     let e = Cell::in_memory(config, Vec::new(), &service, "2025-05-01".parse().unwrap())
@@ -355,7 +322,6 @@ fn ex_officio_cell(
     let config = CellConfig::from_yaml(
         "id: test\nrecording_actor: actor\nstreams: [s.yaml]\n",
         &[stream.as_str()],
-        None,
     )?;
     Cell::in_memory(config, Vec::new(), service, "2025-01-01".parse().unwrap())
 }

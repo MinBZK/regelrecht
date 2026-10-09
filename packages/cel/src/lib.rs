@@ -31,7 +31,7 @@ pub mod shape;
 pub mod wasm;
 
 pub use cell::{
-    Cell, DueDecision, DueExecution, Input, LexostatusDescription, PolicyArticle, ReadBy, Reading,
+    Cell, DueDecision, DueExecution, Input, LexostatusDescription, LexostatusField, ReadBy, Reading,
 };
 pub use chronicle::{Gram, Period};
 pub use error::{Error, Result};

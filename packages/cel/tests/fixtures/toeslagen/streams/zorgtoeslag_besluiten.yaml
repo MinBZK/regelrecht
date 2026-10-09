@@ -5,9 +5,12 @@
 # Dat art. 2 in twee fasen besluit, zegt de procedure van de Awir (`is:
 # BESLUIT`); welk van de twee besluiten dit event vastlegt, zegt `stage`.
 # De parameters leest de cel uit
-# haar eigen kroniek: de lexostatus `aanvraag`, bij het voorschot de schatting
-# van het inkomen (het beleid van Toeslagen, art. 4), en bij de toekenning ook
-# `uitbetaald`, wat er op het voorschot is betaald (Awir 24 lid 2).
+# haar eigen kroniek. Wat het besluit vraagt en de aanvraag bevat, leest zij
+# uit de aanvraag waarop het besluit wordt genomen (de lexostatus `aanvraag`,
+# zoals de wet haar beschrijft: Awir 15 met de haken erop); de rest met het
+# beleid van Toeslagen over haar kroniek: bij het voorschot de schatting van
+# het inkomen (art. 4), bij de toekenning wat er op het voorschot is
+# uitbetaald (art. 3a, Awir 24 lid 2).
 #
 # Een aanvraag geldt ook voor de berekeningsjaren erna (Awir 15 lid 5): elk
 # besluit betreft één berekeningsjaar (`period`), het eerste het aangevraagde,
@@ -22,10 +25,10 @@ events:
     stage: VOORSCHOT
     establishes: wet_op_de_zorgtoeslag#2
     reads:
-      - aanvraag
       - {regulation: fictief_beleid_kroniek_toeslagen, article: '4'}
     decided_on: fictief_beleid_termijnbedrag_voorschot#4
   - name: zorgtoeslag_toegekend
     stage: TOEKENNING
     establishes: wet_op_de_zorgtoeslag#2
-    reads: [aanvraag, uitbetaald]
+    reads:
+      - {regulation: fictief_beleid_kroniek_toeslagen, article: 3a}

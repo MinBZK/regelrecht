@@ -80,6 +80,11 @@ pub struct Shape {
     /// For a decision: the parameter that is the date it bears, which the
     /// cell fills with the day the decision is taken.
     pub dated_by: Option<String>,
+    /// For a submission: the parameter of its establishing article that is
+    /// the moment that counts (`effective_at`) as a date: a date parameter
+    /// whose origin rests on the provision that makes that moment count
+    /// (`produces.moment`; Awir 15 `datum_ontvangst`, on Awb 4:13 lid 1).
+    pub moment: Option<FieldDef>,
 }
 
 impl Shape {
@@ -336,6 +341,7 @@ pub fn derive(service: &LawExecutionService, event: &Event, day: NaiveDate) -> R
         identified_by: entry.identified_by.clone(),
         until: entry.until.clone(),
         dated_by: entry.dated_by.clone(),
+        moment: None,
     };
     for (name, reference) in &shape.refers_to {
         reference
@@ -363,6 +369,7 @@ pub fn derive(service: &LawExecutionService, event: &Event, day: NaiveDate) -> R
             // the establishing article with origin role TIJDVAK. The first
             // decision on the submission concerns it (see `Cell::decide`).
             shape.period = submission_period(&shape, &declared_parameters(article))?;
+            shape.moment = submission_moment(&shape, &declared_parameters(article))?;
         }
         None => {
             shape.type_ = entry.type_.clone().ok_or_else(|| {
@@ -499,6 +506,41 @@ fn tijdvak(
             shape.establishes,
             more.len(),
             more.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(", ")
+        ))),
+    }
+}
+
+/// The parameter of a submission's establishing article that is the moment
+/// that counts, as a date: the one date parameter whose origin rests on a
+/// provision the moment rests on. `None` if the law names no moment or no
+/// such parameter; an error if it names more than one.
+fn submission_moment(shape: &Shape, parameters: &[Parameter]) -> Result<Option<FieldDef>> {
+    let Some(effective_at) = &shape.effective_at else {
+        return Ok(None);
+    };
+    let mut found = Vec::new();
+    for p in parameters {
+        if p.param_type != ParameterType::Date {
+            continue;
+        }
+        if let Some(o) = origin(p, &shape.establishes)? {
+            if effective_at.legal_basis.contains(&o.grondslag) {
+                found.push(FieldDef {
+                    name: p.name.clone(),
+                    type_: Some(p.param_type),
+                    legal_basis: vec![o.grondslag.clone()],
+                    declared_by: shape.establishes.clone(),
+                    fixed: None,
+                });
+            }
+        }
+    }
+    match found.len() {
+        0 | 1 => Ok(found.pop()),
+        n => Err(setup(format!(
+            "{}: {n} date parameters rest on the moment that counts ({}); a submission has one",
+            shape.establishes,
+            effective_at.legal_basis.join(", ")
         ))),
     }
 }
