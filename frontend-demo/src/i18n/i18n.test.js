@@ -46,6 +46,8 @@ const IDENTICAL_BY_DESIGN = new Set([
   'zaak.moments.with_value',
   'lexo.filter.value',
   'lexo.reading.period',
+  'lexo.source.event',
+  'lexo.from_gram.text',
   // Zelfde woord in beide talen: wat een lexostatus uit de kroniek filtert,
   // en het register dat een beleid van de houder leest (RFC-045).
   'lexo.filter',

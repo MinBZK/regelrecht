@@ -119,12 +119,22 @@ export function provisionLabel(corpus, reference) {
  * Waar een bepaling (`<regelwerk>#<artikel>[ lid n]`) in de demo staat: de
  * wet en het artikel, om naar te linken. Een lid wijst naar zijn artikel.
  * `null` als het corpus de wet niet kent: dan valt er niets te openen.
+ *
+ * Een artikel dat de wet in de demo niet bevat (het demo-corpus neemt van
+ * een wet alleen de artikelen op die het rekent), wijst naar dat artikel op
+ * wetten.overheid.nl (`external`, uit de `url` van de wet). Zonder die url
+ * opent de wet zelf. Zo landt een link nooit op een wet waarin het artikel
+ * dat hij noemt niet te vinden is.
  */
 export function provisionTarget(corpus, reference) {
   const [lawId, rest = ''] = String(reference ?? '').split('#');
-  if (!lawId || !corpus?.lawById?.(lawId)) return null;
+  const law = lawId ? corpus?.lawById?.(lawId) : null;
+  if (!law) return null;
   const article = rest.trim().split(/\s+/)[0] || null;
-  return { lawId, article };
+  const articles = law.doc?.articles;
+  if (!article || !articles || articles.some((a) => String(a.number) === article)) return { lawId, article };
+  const url = law.doc?.url;
+  return url ? { lawId, article, external: `${url}#Artikel${article}` } : { lawId, article: null };
 }
 
 /**

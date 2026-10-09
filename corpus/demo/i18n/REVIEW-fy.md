@@ -199,6 +199,26 @@ anders in de vertaling voor, dus er is ook geen eerdere keuze om op te leunen.
 - **"dezelfde aanvraag"** staat op `deselde oanfraach`, naar `oanfraach`
   elders in de demo.
 
+## 9. De lexostatussen in gewone woorden, nog niet nagekeken
+
+- **"Grondslag"** staat op `Grûnslach` (`lexo.col.basis`), naar het bestaande
+  `Gjin grûnslach foar dit momint fêstlein`. Met hoofdletter vooraan; of de
+  hoofdletter op de û goed valt, is niet nagegaan.
+- **"Gebruikt bij" / "Gebruikt als"** staan op `Brûkt by` en `Brûkt as`
+  (`lexo.section.used_by`, `lexo.col.used_as`).
+- **"de indiening"** staat op `de yntsjinning` (`lexo.source.submission`);
+  het werkwoord `yntsjinje` komt elders in de demo voor, het zelfstandig
+  naamwoord niet.
+- **"binnenkwam"** staat op `binnenkaam` en **"rechtens telt"** op
+  `rjochtlik telt` (`lexo.origin.received`, `lexo.origin.counts`). Of
+  `rjochtlik` hier het juridische "rechtens" draagt, is niet nagegaan.
+- **"opgeteld over"** staat op `opteld oer` (`lexo.origin.sum`).
+- **"per {period}"** staat op `foar elk {period}` (`lexo.source.per_period`).
+  `Per` is ook Fries; de omschrijving is gekozen omdat de zin anders gelijk
+  aan het Nederlands bleef. Een revisor mag terug naar `per`.
+- **"Technisch tonen" / "verbergen"** staan op `Technysk sjen litte` en
+  `Technysk ferbergje` (`lexo.technical.*`).
+
 ## Hoe je een correctie doorvoert
 
 De schermteksten staan in `frontend-demo/src/i18n/fy.js`, één sleutel per regel.

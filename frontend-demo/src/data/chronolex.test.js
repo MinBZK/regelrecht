@@ -154,4 +154,12 @@ describe('waar een bepaling in de demo staat', () => {
   it('geeft niets voor een wet die het corpus niet kent', () => {
     expect(provisionTarget(corpus, 'onbekend#1')).toBeNull();
   });
+  it('wijst een artikel dat niet in de demo staat naar wetten.overheid.nl', () => {
+    const doc = { url: 'https://wetten.overheid.nl/BWBR0018472/2025-01-01', articles: [{ number: '15' }] };
+    const withDoc = { lawById: (id) => (id === 'awir' ? { id, doc } : null) };
+    expect(provisionTarget(withDoc, 'awir#15 lid 1')).toEqual({ lawId: 'awir', article: '15' });
+    expect(provisionTarget(withDoc, 'awir#13')).toEqual({ lawId: 'awir', article: '13', external: 'https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel13' });
+    const noUrl = { lawById: () => ({ doc: { articles: [] } }) };
+    expect(provisionTarget(noUrl, 'awir#13')).toEqual({ lawId: 'awir', article: null });
+  });
 });

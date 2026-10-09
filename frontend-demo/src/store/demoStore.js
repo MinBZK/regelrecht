@@ -974,10 +974,21 @@ function gramFields(gram) {
  */
 function gramShape(gram) {
   const cell = (corpus.value?.cells ?? []).find((x) => x.events.some((e) => e.name === gram?.name));
-  const wasmCell = cell && cells.value[cell.id];
+  return cell && gram?.effective_at ? eventShapeOf(cell.id, gram.name, gram.effective_at.slice(0, 10)) : null;
+}
+
+/**
+ * De vorm van gebeurtenis `event` van cel `cellId` zoals de cel haar uit de
+ * wet afleidt op dag `day` (standaard de peildatum): het vestigende artikel,
+ * de soort, de fase en de velden met het artikel dat erom vraagt. `null` als
+ * de cel de vorm niet kan geven.
+ */
+function eventShapeOf(cellId, event, day = state.referenceDate) {
+  void dataVersion.value;
+  const wasmCell = cells.value[cellId];
   if (!wasmCell) return null;
   try {
-    return wasmCell.shape(engine.value, gram.name, gram.effective_at.slice(0, 10));
+    return wasmCell.shape(engine.value, event, day);
   } catch {
     return null;
   }
@@ -1853,6 +1864,7 @@ export function useDemo() {
     applicationValuesFor,
     gramFields,
     gramShape,
+    eventShapeOf,
     gramsOfCase,
   };
 }

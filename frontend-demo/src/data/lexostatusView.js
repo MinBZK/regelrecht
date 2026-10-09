@@ -11,7 +11,8 @@
  * leest (`kind: policy`).
  */
 import { lexostatusRows } from './chronicleView.js';
-import { fieldSpec } from './format.js';
+import { fieldSpec, humanize } from './format.js';
+import { t } from '../i18n/index.js';
 
 /**
  * Of de demo een lexostatus per zaak kan lezen: haar invoer is `root`, en
@@ -133,6 +134,186 @@ export function readingGrams(ids, entries) {
   const byId = new Map((entries ?? []).map((e) => [e.gram.id, e]));
   return (ids ?? []).map((id) => {
     const entry = byId.get(id);
-    return { id, position: entry?.position ?? null, name: entry?.gram.name ?? null };
+    return { id, position: entry?.position ?? null, name: entry?.gram.name ?? null, date: entry?.gram.effective_at?.slice(0, 10) ?? null };
   });
+}
+
+// ---- in gewone woorden ------------------------------------------------------
+//
+// Wat hieronder staat, maakt van de beschrijving van een lexostatus zinnen die
+// iemand zonder de configuratie kan lezen: wat zij geeft, waar de cel het
+// haalt, wie het gebruikt en waarvoor. Alles volgt uit de beschrijving die de
+// cel geeft, de vorm van de gebeurtenissen die haar lezen en de regelwerken;
+// geen naam van een lexostatus, veld of wet staat hier.
+
+/** De soort van een gram (`type`): een aanvraag, een besluit of een uitvoering. */
+const KINDS = { submission: 'submission', decretogram: 'decision', executogram: 'execution' };
+export function gramKind(type) {
+  return KINDS[type] ?? null;
+}
+
+/** Een naam zoals in een lopende zin: zonder hoofdletter vooraan. */
+const inSentence = (name) => {
+  const text = humanize(name);
+  return text && text !== text.toUpperCase() ? text.charAt(0).toLowerCase() + text.slice(1) : text;
+};
+
+/**
+ * Waar een reductie uit leest, als zelfstandig naamwoord: de gebeurtenis bij
+ * naam als het filter haar noemt ("“Voorschottermijn betaald”"), anders de
+ * soort gram ("de aanvraag", "het besluit"). `each` geeft de vorm voor elk van
+ * meer grammen ("elke “Voorschottermijn betaald”").
+ */
+export function sourceNoun(filter, { each = false } = {}) {
+  const suffix = each ? '.each' : '';
+  if (filter?.event) return t(`lexo.source.event${suffix}`, { event: humanize(filter.event) });
+  const kind = gramKind(filter?.type);
+  if (kind === 'submission' && filter?.subtype) return t(`lexo.source.subtype${suffix}`, { kind: inSentence(filter.subtype) });
+  return t(`lexo.source.${kind ?? 'any'}${suffix}`);
+}
+
+/**
+ * Een gebeurtenis die een lexostatus leest (`read_by`), met wat de vorm die de
+ * cel eruit afleidt (`shape`, WasmCell.shape) erover zegt: haar naam zoals een
+ * mens hem leest, of zij een besluit of een uitvoering vastlegt, en de
+ * artikelen die eraan meedoen: het artikel dat haar vestigt en elk artikel dat
+ * een veld toevoegt (een haak in de fase van het besluit).
+ */
+export function readerOf(readBy, shape) {
+  const articles = [shape?.establishes, ...(shape?.fields ?? []).map((f) => f.declared_by)].filter(Boolean);
+  return {
+    event: readBy.event,
+    label: humanize(readBy.event),
+    kind: gramKind(shape?.type),
+    articles: [...new Set(articles)],
+  };
+}
+
+/** Een opsomming in een zin: "a", "a en b", "a, b en c". */
+export function listText(items) {
+  const list = (items ?? []).filter(Boolean);
+  if (list.length < 2) return list[0] ?? '';
+  return `${list.slice(0, -1).join(', ')} ${t('lexo.and')} ${list.at(-1)}`;
+}
+
+/**
+ * Voor wie een lexostatus is, naar de soort van wie haar leest: "het
+ * besluit", "de besluiten", "het besluit en de uitvoering". Leeg als niemand
+ * haar leest.
+ */
+export function readersNoun(readers) {
+  const count = (kind) => (readers ?? []).filter((r) => r.kind === kind).length;
+  const parts = ['decision', 'execution']
+    .map((kind) => [kind, count(kind)])
+    .filter(([, n]) => n > 0)
+    .map(([kind, n]) => t(`lexo.readers.${kind}.${n === 1 ? 'one' : 'other'}`));
+  return listText(parts);
+}
+
+/** De namen van de gegevens die een lexostatus geeft. */
+export function valueNames(description) {
+  if (description?.kind === 'policy') return (description.articles ?? []).flatMap((a) => a.outputs);
+  return Object.keys(description?.reduction?.derivations ?? {});
+}
+
+/**
+ * De zin onder de naam van een lexostatus: wat zij geeft en aan wie ("Geeft
+ * het besluit 4 gegevens uit de aanvraag").
+ */
+export function givesText(description, readers) {
+  const n = valueNames(description).length;
+  const source = description?.kind === 'policy' ? t('lexo.source.register') : sourceNoun(description?.reduction?.filter);
+  const who = readersNoun(readers);
+  return who ? t.plural(n, 'lexo.gives', { readers: who, source }) : t.plural(n, 'lexo.gives.unread', { source });
+}
+
+/**
+ * Waar de cel een lexostatus vandaan haalt, in woorden. In de configuratie:
+ * welke grammen van haar eigen kroniek, van deze zaak, per periode, en welke
+ * ervan ("de laatste versie die geldt"). Bij een beleid: dat zij het leest
+ * volgens dat beleid; welk beleid het is, noemt de link ernaast.
+ */
+export function sourceText(description, actor) {
+  if (description?.kind === 'policy') return t('lexo.source.policy', { actor });
+  const filter = description?.reduction?.filter ?? {};
+  const source = sourceNoun(filter, { each: description?.reduction?.pick === 'all' });
+  const parts = [filter.root ? t('lexo.source.of_case', { source }) : source];
+  if (description?.period) parts.push(t('lexo.source.per_period', { period: inSentence(description.period) }));
+  parts.push(t(`lexo.source.pick.${description?.reduction?.pick ?? 'latest'}`));
+  return t('lexo.source.configuration', { actor, what: parts.join(', ') });
+}
+
+/**
+ * Waar één gegeven vandaan komt, in woorden. In de configuratie volgt dat uit
+ * de regel van zijn afleiding en de soort gram ("ingevuld in de aanvraag",
+ * "de dag waarop de aanvraag binnenkwam"); bij een beleid uit wat het
+ * regelwerk over de uitvoer zegt (`description`).
+ */
+export function originText(derivation, filter, description = '') {
+  if (!derivation) return description || '';
+  const submission = gramKind(filter?.type) === 'submission';
+  const source = sourceNoun(filter);
+  switch (derivation.rule) {
+    case 'field':
+      return t(submission ? 'lexo.origin.filled_in' : 'lexo.origin.recorded', { source });
+    case 'moment':
+      return t(submission ? 'lexo.origin.received' : 'lexo.origin.counts', { source });
+    case 'filled':
+      return t('lexo.origin.filled', { field: inSentence(derivation.of), source });
+    case 'sum':
+      return t('lexo.origin.sum', { field: humanize(derivation.of), each: sourceNoun(filter, { each: true }) });
+    case 'period':
+      return t('lexo.origin.period', { source });
+    default:
+      return t('lexo.rule.unknown');
+  }
+}
+
+/**
+ * Waar een gegeven `name` als invoer dient: elk artikel dat meedoet aan een
+ * gebeurtenis die de lexostatus leest (`readers`, uit `readerOf`) en een
+ * parameter met die naam heeft, met de gebeurtenissen waarbij. `lawDoc(id)`
+ * geeft het regelwerk. Leeg als geen artikel zo'n parameter heeft.
+ */
+export function usesOf(name, readers, lawDoc) {
+  const uses = new Map();
+  for (const reader of readers ?? []) {
+    for (const provision of reader.articles) {
+      const [lawId, number] = provision.split('#');
+      const article = (lawDoc(lawId)?.articles ?? []).find((a) => String(a.number) === number);
+      const parameters = article?.machine_readable?.execution?.parameters ?? [];
+      if (!parameters.some((p) => p.name === name)) continue;
+      if (!uses.has(provision)) uses.set(provision, []);
+      uses.get(provision).push(reader.label);
+    }
+  }
+  return [...uses].map(([provision, labels]) => ({ provision, readers: labels }));
+}
+
+/**
+ * Per gegeven van een lexostatus een regel voor de tabel: de naam zoals een
+ * mens hem leest, de technische naam, waar het vandaan komt, waar het als
+ * invoer dient en de grondslag. `lawDoc(id)` geeft het regelwerk.
+ */
+export function valueRows(description, readers, lawDoc) {
+  if (description?.kind === 'policy') {
+    const articles = policyArticles(description, lawDoc(description.name));
+    return articles.flatMap((a) =>
+      a.outputs.map((o) => ({
+        name: o.name,
+        label: humanize(o.name),
+        origin: originText(null, null, o.description),
+        uses: usesOf(o.name, readers, lawDoc),
+        basis: [a.provision],
+      })),
+    );
+  }
+  const filter = description?.reduction?.filter ?? {};
+  return derivationRows(description?.reduction?.derivations).map((d) => ({
+    name: d.name,
+    label: humanize(d.name),
+    origin: originText(d, filter),
+    uses: usesOf(d.name, readers, lawDoc),
+    basis: d.legalBasis,
+  }));
 }
