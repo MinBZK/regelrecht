@@ -11,34 +11,51 @@
  */
 import { nextMoment } from './moments.js';
 
+/** De sleutel van een periode zoals de cel haar geeft (`{unit, value}`), of `-` zonder. */
+function periodKey(period) {
+  return period ? `${period.unit}:${period.value}` : '-';
+}
+
 /**
  * Leg vast wat er in zaak `c` tot en met `today` uit de wet voortkomt: per
- * uitvoering in `events` de dagen die de cel geeft na wat al gevraagd is
- * (`c.executedThrough`), elk op `now`. Stopt bij de eerste fout van de cel,
- * die op de zaak komt te staan (`c.chronicleError`).
+ * uitvoering in `events` de dagen die de cel geeft, elk op `now`. Een dag
+ * komt met de periode waarvoor de cel hem uitvoert (een voorschot per
+ * berekeningsjaar; in december kunnen er twee zijn), en die periode gaat
+ * ongezien terug naar de cel. Wat al gevraagd is, houdt de zaak per
+ * uitvoering en per periode bij (`c.executedThrough`): een voorschot dat
+ * later bijkomt, begint zo niet pas na de dagen van een ander jaar. Stopt bij
+ * de eerste fout van de cel, die op de zaak komt te staan
+ * (`c.chronicleError`).
  *
- * `cel` is `{ dueExecutions(event, root, after, through, now), execute(event, root, day, now) }`.
+ * `cel` is `{ dueExecutions(event, root, after, through, now), execute(event, root, day, now, period) }`;
+ * `dueExecutions` geeft `[{day, period?}]`.
  * Geeft terug of er een gram is vastgelegd.
  */
 export function executeDue(c, cel, events, { today, now }) {
   if (!c?.applicationGramId) return false;
   let recorded = false;
   for (const event of events) {
-    let days;
+    let due;
     try {
-      days = cel.dueExecutions(event, c.applicationGramId, c.executedThrough?.[event] ?? null, today, now);
+      due = cel.dueExecutions(event, c.applicationGramId, null, today, now);
     } catch (e) {
       c.chronicleError = String(e?.message ?? e);
       return recorded;
     }
-    for (const day of days) {
+    for (const { day, period } of due) {
+      const key = periodKey(period);
+      const asked = c.executedThrough?.[event]?.[key];
+      if (asked && day <= asked) continue;
       try {
-        if (cel.execute(event, c.applicationGramId, day, now)) recorded = true;
+        if (cel.execute(event, c.applicationGramId, day, now, period?.value)) recorded = true;
       } catch (e) {
         c.chronicleError = String(e?.message ?? e);
         return recorded;
       }
-      c.executedThrough = { ...(c.executedThrough ?? {}), [event]: day };
+      c.executedThrough = {
+        ...(c.executedThrough ?? {}),
+        [event]: { ...(c.executedThrough?.[event] ?? {}), [key]: day },
+      };
     }
   }
   return recorded;

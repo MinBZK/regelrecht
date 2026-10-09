@@ -28,7 +28,7 @@ function fakeCel() {
     dueExecutions(event, root, after, through, now) {
       calls.push(['due', after, through, now]);
       if (toekenning()) return [];
-      return firstOfMonths(after ?? '2025-03-10', through);
+      return firstOfMonths(after ?? '2025-03-10', through).map((day) => ({ day }));
     },
     execute(event, root, day, now) {
       calls.push(['execute', day, now]);
@@ -62,7 +62,7 @@ describe('de klok', () => {
       },
       cases: () => [c],
       momentsOf: () => {
-        const next = cel.dueExecutions('termijn', 'a', today, '2026-12-31', now())[0];
+        const next = cel.dueExecutions('termijn', 'a', today, '2026-12-31', now())[0]?.day;
         return [{ date: next }, { date: aanslag }].filter((m) => m.date);
       },
       step: (x) => {
@@ -84,7 +84,7 @@ describe('de klok', () => {
     const recorded = cel.grams.map((g) => g.recorded_at);
     expect([...recorded].sort()).toEqual(recorded);
     for (const g of cel.grams) expect(g.effective_at <= g.recorded_at).toBe(true);
-    expect(c.executedThrough).toEqual({ termijn: '2025-06-01' });
+    expect(c.executedThrough).toEqual({ termijn: { '-': '2025-06-01' } });
   });
 
   it('gaat niet terug en blijft staan op een dag die al is', () => {
@@ -97,10 +97,40 @@ describe('de klok', () => {
     expect(today).toBe('2025-05-03');
   });
 
+  it('voert elke dag uit voor de periode die de cel noemt, en houdt per periode bij wat gevraagd is', () => {
+    // Het voorschot over 2025 wordt in december in één bedrag betaald; dat
+    // over 2026, dezelfde dag verleend, begint ook in december. Wat al voor
+    // 2025 is gevraagd, houdt 2026 niet tegen.
+    const y = (value) => ({ unit: 'year', value });
+    const c = { applicationGramId: 'a' };
+    const executed = [];
+    let years = [2025];
+    let fail = true;
+    const cel = {
+      dueExecutions: () => years.map((v) => ({ day: '2025-12-10', period: y(v) })),
+      execute: (event, root, day, now, period) => {
+        if (period === 2026 && fail) throw new Error('kapot');
+        executed.push(`${day} ${period}`);
+        return { id: `${day}-${period}` };
+      },
+    };
+    const run = () => executeDue(c, cel, ['termijn'], { today: '2025-12-10', now: '2025-12-10T11:00:00' });
+    expect(run()).toBe(true);
+    expect(c.executedThrough).toEqual({ termijn: { 'year:2025': '2025-12-10' } });
+    // Later die dag het voorschot over 2026: zijn eerste termijn valt dezelfde dag.
+    years = [2025, 2026];
+    expect(run()).toBe(false);
+    expect(c.chronicleError).toBe('kapot');
+    fail = false;
+    expect(run()).toBe(true);
+    expect(executed).toEqual(['2025-12-10 2025', '2025-12-10 2026']);
+    expect(c.executedThrough).toEqual({ termijn: { 'year:2025': '2025-12-10', 'year:2026': '2025-12-10' } });
+  });
+
   it('zet een fout van de cel op de zaak en vraagt daarna niets meer', () => {
     const c = { applicationGramId: 'a' };
     const cel = {
-      dueExecutions: () => ['2025-04-01', '2025-05-01'],
+      dueExecutions: () => [{ day: '2025-04-01' }, { day: '2025-05-01' }],
       execute: () => {
         throw new Error('kapot');
       },

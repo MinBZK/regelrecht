@@ -13,10 +13,42 @@
 import { lexostatusRows } from './chronicleView.js';
 import { fieldSpec } from './format.js';
 
-/** Of de demo een lexostatus per zaak kan lezen: haar enige invoer is `root`. */
+/**
+ * Of de demo een lexostatus per zaak kan lezen: haar invoer is `root`, en
+ * hooguit de periode waarvoor zij leest (`period`, zoals de cel die noemt:
+ * het berekeningsjaar van een aanvraag die ook voor de jaren erna geldt).
+ */
 export function readsPerCase(description) {
   const inputs = description?.inputs ?? [];
-  return inputs.length === 1 && inputs[0] === 'root';
+  return inputs.includes('root') && inputs.every((i) => i === 'root' || i === description.period);
+}
+
+/**
+ * De perioden waarover de grammen van een zaak gaan (`period.value`),
+ * oplopend en elk één keer: een lexostatus die per periode leest, leest de
+ * zaak per periode.
+ */
+export function periodsOf(grams) {
+  const values = (grams ?? []).map((g) => g?.period?.value).filter((v) => Number.isInteger(v));
+  return [...new Set(values)].sort((a, b) => a - b);
+}
+
+/**
+ * De lezingen van `description` voor een zaak met grammen `grams`: één
+ * (`null`), of één per periode van de zaak als zij per periode leest.
+ */
+export function readingPeriods(description, grams) {
+  return description?.period ? periodsOf(grams) : [null];
+}
+
+/**
+ * Wat een lezing van `description` voor de zaak `root` als invoer krijgt:
+ * `root`, en de periode als zij per periode leest.
+ */
+export function readingInputs(description, root, period = null) {
+  const inputs = { root };
+  if (description?.period && period != null) inputs[description.period] = period;
+  return inputs;
 }
 
 /**

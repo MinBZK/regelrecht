@@ -332,8 +332,8 @@ const statusTag = computed(() => {
 
         <nldd-banner v-if="received.error" variant="warning" :text="t('chronicle.read_failed')" :supporting-text="received.error"></nldd-banner>
         <nldd-list v-if="received.rows.length" appearance="simple" :accessible-label="t('sheet.application.payments.received')">
-          <nldd-list-item v-for="r in received.rows" :key="r.name" size="sm">
-            <nldd-text-cell size="sm" color="secondary" min-width="55%" :text="t('sheet.application.payments.received')"></nldd-text-cell>
+          <nldd-list-item v-for="r in received.rows" :key="`${r.name}-${r.period}`" size="sm">
+            <nldd-text-cell size="sm" color="secondary" min-width="55%" :text="r.period != null ? t('sheet.application.payments.received_period', { period: r.period }) : t('sheet.application.payments.received')"></nldd-text-cell>
             <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="r.text"></nldd-text-cell>
           </nldd-list-item>
         </nldd-list>

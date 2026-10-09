@@ -97,12 +97,22 @@ export function momentView(m, { corpus, fieldsOf, decided = () => false }) {
     const value = gramRows(m.gram, fieldsOf(m.gram), corpus)
       .map((r) => r.text)
       .join(' · ');
-    return { ...m, text: humanize(m.name), supporting: t('zaak.moments.execution'), value };
+    const supporting = m.period ? t('zaak.moments.execution.period', { period: m.period.value }) : t('zaak.moments.execution');
+    return { ...m, text: humanize(m.name), supporting, value };
   }
   if (m.kind === 'period_end') {
     return { ...m, text: t('zaak.moments.period_end', { period: m.period.value }), supporting: t('zaak.moments.period_end.supporting') };
   }
-  if (m.kind === 'dossier') return { ...m, text: humanize(m.name), supporting: t('zaak.moments.dossier') };
+  if (m.kind === 'dossier') {
+    const supporting = m.period ? t('zaak.moments.dossier.period', { period: m.period.value }) : t('zaak.moments.dossier');
+    return { ...m, text: humanize(m.name), supporting };
+  }
+  // Een volgend besluit op dezelfde aanvraag, op de dag die het beleid van
+  // de houder geeft (een voorschot voor het jaar erna).
+  if (m.kind === 'decision') {
+    const text = `${humanize(m.event)} · ${t('zaak.moments.decision', { period: m.period?.value ?? '' })}`;
+    return { ...m, text, supporting: t('zaak.moments.decision.supporting', { provision }) };
+  }
   const key = decided(m.event) ? 'zaak.moments.given' : 'zaak.moments.expected';
   return { ...m, text: humanize(m.name), supporting: t(key, { provision, event: humanize(m.event) }) };
 }

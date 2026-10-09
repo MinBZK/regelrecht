@@ -187,6 +187,18 @@ anders in de vertaling voor, dus er is ook geen eerdere keuze om op te leunen.
 - **`profiles.claudia.portal_tab_label`** staat nu op `Myn oerheid`, gelijk
   aan dat van Merijn.
 
+## 8. Een aanvraag voor meer jaren (Awir 15 lid 5), nog niet nagekeken
+
+- **"over {jaar}"** staat op `oer {period}` (`zaak.chronicle.period`,
+  `zaak.moments.decision`, `zaak.moments.execution.period`,
+  `zaak.moments.dossier.period`, `case.event.following_decision`). Het
+  Nederlands bedoelt "met betrekking tot dat jaar"; of `oer` dat in het Fries
+  draagt, of dat `foar` beter is, is niet nagegaan.
+- **`sheet.application.payments.received_period`** staat op
+  `Ûntfongen oer {period}`, naar het bestaande `Oant no ta ûntfongen`.
+- **"dezelfde aanvraag"** staat op `deselde oanfraach`, naar `oanfraach`
+  elders in de demo.
+
 ## Hoe je een correctie doorvoert
 
 De schermteksten staan in `frontend-demo/src/i18n/fy.js`, één sleutel per regel.

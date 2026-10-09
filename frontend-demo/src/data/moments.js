@@ -67,23 +67,30 @@ export function isEnded(error) {
 }
 
 /**
- * De eerste van `days` (de dagen die de cel als uitvoeringsdagen geeft,
- * `dueExecutions`) waarop de wet zegt dat er iets ontstaat, gevraagd met
- * `preview(day)` (de cel, zonder vast te leggen): de dag en wat ze zou
- * vastleggen. Welke dagen het zijn, zegt de cel uit de wet; dit bestand kent
- * geen kalender. Alleen de weigering "beëindigd" betekent dat er geen
- * volgende is; elke andere fout gaat door naar de aanroeper.
+ * De eerste van `due` (de dagen die de cel als uitvoeringsdagen geeft,
+ * `dueExecutions`: `{day, period?}`) waarop de wet zegt dat er iets
+ * ontstaat, gevraagd met `preview(due)` (de cel, zonder vast te leggen): de
+ * dag, de periode en wat ze zou vastleggen. Welke dagen het zijn, zegt de
+ * cel uit de wet; dit bestand kent geen kalender. Alleen de weigering
+ * "beëindigd" betekent dat er voor die periode geen volgende is; elke andere
+ * fout gaat door naar de aanroeper.
  */
-export function nextExecution(preview, days) {
-  for (const day of days ?? []) {
+export function nextExecution(preview, due) {
+  const ended = new Set();
+  for (const d of due ?? []) {
+    const key = d.period?.value ?? null;
+    if (ended.has(key)) continue;
     let gram;
     try {
-      gram = preview(day);
+      gram = preview(d);
     } catch (e) {
-      if (isEnded(e)) return null;
+      if (isEnded(e)) {
+        ended.add(key);
+        continue;
+      }
       throw e;
     }
-    if (gram) return { date: day, gram };
+    if (gram) return { date: d.day, period: d.period ?? null, gram };
   }
   return null;
 }

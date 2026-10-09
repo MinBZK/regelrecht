@@ -24,27 +24,51 @@ describe('het volgende moment', () => {
 
 describe('de volgende uitvoering', () => {
   const ended = () => Object.assign(new Error('beëindigd'), { name: 'ended' });
+  const due = (...days) => days.map((day) => ({ day }));
 
   it('is de eerste dag die de cel geeft waarop de wet een gram geeft', () => {
     const asked = [];
-    const preview = (day) => {
+    const preview = ({ day }) => {
       asked.push(day);
       return day === '2025-01-01' ? { fields: { termijnbedrag: 100 } } : null;
     };
-    const days = ['2024-12-01', '2025-01-01', '2025-02-01'];
-    expect(nextExecution(preview, days)).toEqual({ date: '2025-01-01', gram: { fields: { termijnbedrag: 100 } } });
+    expect(nextExecution(preview, due('2024-12-01', '2025-01-01', '2025-02-01'))).toEqual({
+      date: '2025-01-01',
+      period: null,
+      gram: { fields: { termijnbedrag: 100 } },
+    });
     expect(asked).toEqual(['2024-12-01', '2025-01-01']);
   });
 
   it('is er niet als de wet er geen meer geeft of de uitvoering is beëindigd', () => {
-    expect(nextExecution(() => null, ['2025-12-01'])).toBeNull();
+    expect(nextExecution(() => null, due('2025-12-01'))).toBeNull();
     expect(nextExecution(() => null, [])).toBeNull();
-    expect(nextExecution(() => { throw ended(); }, ['2025-12-01'])).toBeNull();
+    expect(nextExecution(() => { throw ended(); }, due('2025-12-01'))).toBeNull();
     expect(isEnded(ended())).toBe(true);
   });
 
+  it('gaat per periode: een beëindigd jaar houdt het volgende jaar niet tegen', () => {
+    // De toekenning over 2025 beëindigt de termijnen van 2025; die van 2026
+    // lopen door.
+    const y2025 = { unit: 'year', value: 2025 };
+    const y2026 = { unit: 'year', value: 2026 };
+    const asked = [];
+    const preview = (d) => {
+      asked.push(`${d.day} ${d.period.value}`);
+      if (d.period.value === 2025) throw ended();
+      return { fields: { termijnbedrag: 200 } };
+    };
+    const days = [
+      { day: '2026-05-01', period: y2025 },
+      { day: '2026-05-01', period: y2026 },
+      { day: '2026-06-01', period: y2025 },
+    ];
+    expect(nextExecution(preview, days)).toEqual({ date: '2026-05-01', period: y2026, gram: { fields: { termijnbedrag: 200 } } });
+    expect(asked).toEqual(['2026-05-01 2025', '2026-05-01 2026']);
+  });
+
   it('laat elke andere fout van de cel door', () => {
-    expect(() => nextExecution(() => { throw new Error('kapot'); }, ['2025-12-01'])).toThrow('kapot');
+    expect(() => nextExecution(() => { throw new Error('kapot'); }, due('2025-12-01'))).toThrow('kapot');
     expect(isEnded(new Error('x'))).toBe(false);
   });
 });

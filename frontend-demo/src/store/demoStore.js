@@ -29,7 +29,7 @@ import { applicationValues, eventsForLaw, gramsOfCase as gramsFor, momentOn } fr
 import { materialiseRecord, tablesFromProfiles } from '../data/materialize.js';
 import { addMonths, comingDates, dayOf, decisionDue, fixedDates, nextExecution, nextMoment, periodEnd } from '../data/moments.js';
 import { advanceTo as advanceClock, executeDue as executeDueOn } from '../data/clock.js';
-import { readingRows } from '../data/lexostatusView.js';
+import { readingInputs, readingPeriods, readingRows } from '../data/lexostatusView.js';
 import { momentView } from '../data/chronicleView.js';
 import { deliver, deliveryErrors, redeliver } from '../data/channels.js';
 import { accountOf as accountFrom } from '../data/account.js';
@@ -617,12 +617,12 @@ function celOf(chrono, caseId = null) {
   return {
     dueExecutions: (event, root, after, through, now) => cell.dueExecutions(engine.value, event, root, after, through, now),
     // Wat de cel vastlegt, gaat meteen over de kanalen verder.
-    execute: (event, root, day, now) => {
-      const gram = cell.execute(engine.value, event, root, day, now);
+    execute: (event, root, day, now, period) => {
+      const gram = cell.execute(engine.value, event, root, day, now, period ?? undefined);
       transport(chrono.cell.id, gram, now, caseId);
       return gram;
     },
-    previewExecution: (event, root, day, now) => cell.previewExecution(engine.value, event, root, day, now),
+    previewExecution: (event, root, day, now, period) => cell.previewExecution(engine.value, event, root, day, now, period ?? undefined),
   };
 }
 
@@ -693,6 +693,68 @@ function dueDecision(c) {
 }
 
 /**
+ * De volgende besluiten van een zaak na het eerste van hun gebeurtenis. Een
+ * aanvraag om een tegemoetkoming geldt ook voor de jaren erna (Awir 15 lid
+ * 5): op dezelfde aanvraag volgt elk jaar een voorschot en een toekenning.
+ * Het eerste besluit van een gebeurtenis neemt de levensloop van de zaak
+ * (`decisionGrams`); elk volgend zegt de cel (`dueDecision`): over welke
+ * periode het gaat, en op welke dag, als het beleid van de houder die geeft
+ * (`decided_on` van de stroom). Wat het dossier ervoor geeft (de aanslag
+ * over dat jaar), staat erbij. Lezen schrijft niets op de zaak.
+ *
+ * Per gebeurtenis `{event, period, day, decidedOn, inputs, dates}`.
+ */
+function followingDecisionsOf(c, chrono, now) {
+  const out = [];
+  for (const d of chrono.decisions) {
+    if (!c.decisionGrams?.[d.name]) continue;
+    const due = chrono.wasmCell.dueDecision(engine.value, d.name, c.applicationGramId, now);
+    const { inputs, dates } = dossierInputs(chrono.wasmCell, d.name, c.applicationGramId, now);
+    out.push({ event: d.name, period: due.period ?? null, day: due.day ?? null, decidedOn: d.decided_on ?? null, inputs, dates });
+  }
+  return out;
+}
+
+/**
+ * Neem de volgende besluiten van de zaak waarvan het moment er is: op de dag
+ * die het beleid geeft, of als elke datum die het dossier ervoor geeft is
+ * geweest. De demo neemt ze zoals de wet ze neemt, zonder behandelaar en
+ * zonder eigen bekendmaking: alleen als de wet het besluit geeft (een
+ * voorschot of toekenning, niet onbekend en geen weigering). Daarna legt de
+ * cel vast wat er op die dag uit voortkomt.
+ */
+function decideFollowing(c) {
+  const chrono = c.applicationGramId ? chronolexFor(corpus.value?.lawById(c.lawId)) : null;
+  if (!chrono) return;
+  const now = nowMoment();
+  const today = state.referenceDate;
+  let decided = false;
+  try {
+    for (const f of followingDecisionsOf(c, chrono, now)) {
+      const due = f.day ? f.day <= today : decisionDue(f.dates, today);
+      if (!due) continue;
+      const shape = chrono.wasmCell.shape(engine.value, f.event, today);
+      const refersTo = applicationReference(f.event, shape, c);
+      const preview = chrono.wasmCell.previewDecision(engine.value, f.event, refersTo, now, f.inputs);
+      const verdict = verdictOf(preview.fields);
+      if (verdict === 'unknown' || verdict === false) {
+        c.chronicleNoteKey = verdict === 'unknown' ? 'zaak.chronicle.undecided' : 'zaak.chronicle.refusal';
+        continue;
+      }
+      chrono.wasmCell.decide(engine.value, f.event, refersTo, now, f.inputs);
+      c.events.push({ at: now, type: 'DECIDED', approved: true, key: 'case.event.following_decision', vars: { period: f.period?.value ?? '' } });
+      decided = true;
+    }
+  } catch (e) {
+    c.chronicleError = String(e?.message ?? e);
+  }
+  if (decided) {
+    syncGrams();
+    executeDue(c);
+  }
+}
+
+/**
  * Wat de wet als volgende moment van deze zaak geeft, als verwachting en niet
  * als gram: wat er nog niet is, is geen feit (RFC-044). De cel voert de wet
  * daarvoor uit zonder vast te leggen. Elk moment draagt zijn datum, wat voor
@@ -725,9 +787,9 @@ function momentsOf(c) {
     for (const { event } of executionsOf(chrono)) {
       // De dagen na vandaag die de cel uit de wet geeft, tot een jaar
       // vooruit; de eerste waarop de wet iets laat ontstaan is het moment.
-      const days = cel.dueExecutions(event, c.applicationGramId, today, addMonths(today, 13), now);
-      const next = nextExecution((day) => cel.previewExecution(event, c.applicationGramId, day, now), days);
-      if (next) moments.push({ date: next.date, kind: 'execution', name: event, gram: next.gram });
+      const due = cel.dueExecutions(event, c.applicationGramId, today, addMonths(today, 13), now);
+      const next = nextExecution((d) => cel.previewExecution(event, c.applicationGramId, d.day, now, d.period?.value), due);
+      if (next) moments.push({ date: next.date, kind: 'execution', name: event, gram: next.gram, period: next.period });
     }
   } catch (e) {
     errors.push(String(e?.message ?? e));
@@ -747,6 +809,16 @@ function momentsOf(c) {
       }
       for (const { field, ...m } of lawFixedDates(chrono, next, c, inputs, now, today)) {
         moments.push({ ...m, kind: 'law', event: next.event, provision: field?.declared_by ?? null });
+      }
+    }
+  } catch (e) {
+    errors.push(String(e?.message ?? e));
+  }
+  try {
+    for (const f of followingDecisionsOf(c, chrono, now)) {
+      if (f.day && f.day > today) moments.push({ date: f.day, kind: 'decision', event: f.event, period: f.period, provision: f.decidedOn });
+      for (const [name, date] of Object.entries(f.dates)) {
+        if (typeof date === 'string' && date > today) moments.push({ date, kind: 'dossier', name, event: f.event, period: f.period });
       }
     }
   } catch (e) {
@@ -801,6 +873,7 @@ function advanceTo(date) {
     momentsOf: nextMoments,
     step: (c) => {
       executeDue(c);
+      decideFollowing(c);
       const due = dueDecision(c);
       if (!due || c.dueStage) return;
       if (state.manualReview) {
@@ -913,14 +986,25 @@ function gramShape(gram) {
 /**
  * Wat er op zaak `c` tot nu toe is ontvangen: de lexostatus die de cel
  * daarvoor heeft (`received` in demo-config.yaml), gelezen op het moment van
- * nu, als regels: `{ rows, error }`. Geen regels zonder zo'n lexostatus. De
+ * nu, als regels: `{ rows, error }`. Leest zij per periode (een
+ * berekeningsjaar), dan een regel per periode van de zaak, met `period`. Geen regels zonder zo'n lexostatus. De
  * cel telt op, niet de demo. Lezen schrijft niets op de zaak.
  */
 function receivedOf(c) {
   const chrono = c?.applicationGramId ? chronolexFor(corpus.value?.lawById(c.lawId)) : null;
   const name = chrono ? corpus.value?.config?.received?.[chrono.cell.id] : null;
   if (!name) return { rows: [], error: null };
-  return readLexostatusOf(chrono.cell.id, { name, kind: 'configuration' }, c.applicationGramId);
+  const { lexostatuses, error } = lexostatusesOf(chrono.cell.id);
+  if (error) return { rows: [], error };
+  const description = lexostatuses.find((l) => l.name === name) ?? { name, kind: 'configuration' };
+  const rows = [];
+  const errors = [];
+  for (const period of readingPeriods(description, gramsOfCase(c))) {
+    const reading = readLexostatusOf(chrono.cell.id, description, c.applicationGramId, period);
+    if (reading.error) errors.push(reading.error);
+    rows.push(...reading.rows.map((row) => ({ ...row, period })));
+  }
+  return { rows, error: errors.join('; ') || null };
 }
 
 /**
@@ -941,16 +1025,17 @@ function lexostatusesOf(cellId) {
 
 /**
  * Lexostatus `description` (uit `lexostatusesOf`) van cel `cellId` voor de
- * zaak die met gram `root` begon, gelezen op het moment van nu (de
- * peildatum): `{ rows, grams, error }`, de waarden zoals een mens ze leest en
+ * zaak die met gram `root` begon, voor de periode `period` als zij per
+ * periode leest, gelezen op het moment van nu (de peildatum):
+ * `{ rows, grams, error }`, de waarden zoals een mens ze leest en
  * de ids van de grammen waaruit de cel ze las. De cel leest, niet de demo.
  */
-function readLexostatusOf(cellId, description, root) {
+function readLexostatusOf(cellId, description, root, period = null) {
   void dataVersion.value;
   const wasmCell = cells.value[cellId];
   if (!wasmCell) return { rows: [], grams: [], error: cellErrors.value[cellId] ?? null };
   try {
-    const reading = wasmCell.readLexostatus(engine.value, description.name, { root }, nowMoment());
+    const reading = wasmCell.readLexostatus(engine.value, description.name, readingInputs(description, root, period), nowMoment());
     // Een reductie in de configuratie leest velden van grammen; een beleid
     // geeft uitvoer van zijn artikelen, en die leest als dat artikel.
     const fields = description.kind === 'configuration' ? wasmCell.lexostatusFields(engine.value, description.name, state.referenceDate) : {};

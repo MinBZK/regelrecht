@@ -2,7 +2,7 @@
 import { computed } from 'vue';
 import { formatDate, humanize } from '../data/format.js';
 import { cellsOfService } from '../data/chronolex.js';
-import { derivationRows, filterRows, policyArticles, readingGrams, readsPerCase } from '../data/lexostatusView.js';
+import { derivationRows, filterRows, policyArticles, readingGrams, readingPeriods, readsPerCase } from '../data/lexostatusView.js';
 import { onlyCase, storedChronicle } from '../data/storedChronicle.js';
 import { useDemo } from '../store/demoStore.js';
 import { useI18n } from '../i18n/index.js';
@@ -56,10 +56,22 @@ const cells = computed(() => {
         derivations: l.kind === 'configuration' ? derivationRows(l.reduction.derivations) : [],
         articles: l.kind === 'policy' ? policyArticles(l, corpus.value?.lawById?.(l.name)?.doc) : [],
         perCase: readsPerCase(l),
+        // Per zaak; leest de lexostatus per periode (een berekeningsjaar),
+        // dan per periode van de zaak.
         readings: readsPerCase(l)
-          ? roots.map((root) => {
-              const reading = demo.readLexostatusOf(cell.id, l, root);
-              return { root, caseText: caseText(caseOfRoot(root)), ...reading, grams: readingGrams(reading.grams, entries) };
+          ? roots.flatMap((root) => {
+              const grams = onlyCase(entries, root).map((e) => e.gram);
+              return readingPeriods(l, grams).map((period) => {
+                const reading = demo.readLexostatusOf(cell.id, l, root, period);
+                const text = caseText(caseOfRoot(root));
+                return {
+                  root,
+                  period,
+                  caseText: period != null ? t('lexo.reading.period', { case: text, period }) : text,
+                  ...reading,
+                  grams: readingGrams(reading.grams, entries),
+                };
+              });
             })
           : [],
       })),
@@ -142,7 +154,7 @@ const cells = computed(() => {
         <nldd-container v-else-if="!l.readings.length" padding-inline="12">
           <nldd-text size="sm" color="secondary">{{ t('lexo.outcome.no_cases') }}</nldd-text>
         </nldd-container>
-        <nldd-list v-for="r in l.readings" :key="`r-${r.root}`" appearance="box-tinted" :accessible-label="r.caseText">
+        <nldd-list v-for="r in l.readings" :key="`r-${r.root}-${r.period}`" appearance="box-tinted" :accessible-label="r.caseText">
           <nldd-list-item size="sm">
             <nldd-text-cell size="sm" :overline="t('kroniek.case.label')" :text="r.caseText"></nldd-text-cell>
           </nldd-list-item>

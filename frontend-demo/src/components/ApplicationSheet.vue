@@ -500,8 +500,8 @@ function claimStatus(cl) {
               <nldd-title size="5"><h3>{{ t('sheet.application.payments.title') }}</h3></nldd-title>
               <nldd-banner v-if="payments.errors.length" variant="warning" :text="t('chronicle.read_failed')" :supporting-text="payments.errors.join('; ')"></nldd-banner>
               <nldd-list v-if="payments.received.length" appearance="box-tinted" :accessible-label="t('sheet.application.payments.received')">
-                <nldd-list-item v-for="r in payments.received" :key="r.name" size="sm">
-                  <nldd-text-cell size="sm" color="secondary" :text="t('sheet.application.payments.received')"></nldd-text-cell>
+                <nldd-list-item v-for="r in payments.received" :key="`${r.name}-${r.period}`" size="sm">
+                  <nldd-text-cell size="sm" color="secondary" :text="r.period != null ? t('sheet.application.payments.received_period', { period: r.period }) : t('sheet.application.payments.received')"></nldd-text-cell>
                   <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="r.text"></nldd-text-cell>
                 </nldd-list-item>
               </nldd-list>

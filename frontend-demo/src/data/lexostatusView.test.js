@@ -1,12 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { derivationRows, filterRows, policyArticles, readingGrams, readingRows, readsPerCase } from './lexostatusView.js';
+import { derivationRows, filterRows, periodsOf, policyArticles, readingGrams, readingInputs, readingPeriods, readingRows, readsPerCase } from './lexostatusView.js';
 
 describe('de lexostatussen van een cel', () => {
-  it('leest een lexostatus per zaak alleen als haar enige invoer root is', () => {
+  it('leest een lexostatus per zaak als haar invoer root is, en hooguit haar periode', () => {
     expect(readsPerCase({ inputs: ['root'] })).toBe(true);
     expect(readsPerCase({ inputs: [] })).toBe(false);
     expect(readsPerCase({ inputs: ['root', 'jaar'] })).toBe(false);
+    expect(readsPerCase({ inputs: ['root', 'jaar'], period: 'jaar' })).toBe(true);
+    expect(readsPerCase({ inputs: ['jaar'], period: 'jaar' })).toBe(false);
     expect(readsPerCase({})).toBe(false);
+  });
+
+  it('leest per periode van de zaak als de lexostatus per periode leest', () => {
+    const grams = [{ period: null }, { period: { unit: 'year', value: 2026 } }, {}, { period: { unit: 'year', value: 2025 } }, { period: { unit: 'year', value: 2026 } }];
+    expect(periodsOf(grams)).toEqual([2025, 2026]);
+    expect(periodsOf(undefined)).toEqual([]);
+    expect(readingPeriods({ period: 'jaar' }, grams)).toEqual([2025, 2026]);
+    expect(readingPeriods({}, grams)).toEqual([null]);
+    expect(readingInputs({ period: 'jaar' }, 'a1', 2025)).toEqual({ root: 'a1', jaar: 2025 });
+    expect(readingInputs({}, 'a1', 2025)).toEqual({ root: 'a1' });
+    expect(readingInputs({ period: 'jaar' }, 'a1')).toEqual({ root: 'a1' });
   });
 
   it('geeft het filter per kenmerk, met de invoer bij een $-waarde', () => {

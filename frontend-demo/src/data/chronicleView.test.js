@@ -45,6 +45,16 @@ describe('een moment als regel', () => {
     expect(m.text).toContain('2025');
   });
 
+  it('noemt de periode van een uitvoering en een volgend besluit op dezelfde aanvraag', () => {
+    const y2026 = { unit: 'year', value: 2026 };
+    const execution = momentView({ kind: 'execution', name: 'termijn_betaald', date: '2025-12-01', period: y2026, gram: { fields: {} } }, { corpus, fieldsOf });
+    expect(execution.supporting).toContain('2026');
+    const decision = momentView({ kind: 'decision', event: 'voorschot_verleend', date: '2025-11-01', period: y2026, provision: null }, { corpus, fieldsOf });
+    expect(decision.text).toContain('2026');
+    const dossier = momentView({ kind: 'dossier', name: 'datum_vaststelling_aanslag', date: '2027-04-15', period: y2026 }, { corpus, fieldsOf });
+    expect(dossier.supporting).toContain('2026');
+  });
+
   it('onderscheidt een datum van een genomen besluit van een die nog komt', () => {
     const m = { kind: 'law', name: 'uiterste', date: '2026-10-15', event: 'toegekend', provision: 'wet#19' };
     const given = momentView(m, { corpus, fieldsOf, decided: () => true });

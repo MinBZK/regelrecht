@@ -89,6 +89,9 @@ const caseGrams = computed(() => {
       summary: g.type === 'executogram' ? rows.map((r) => r.text).join(' · ') : '',
       basis: (g.effective_at_legal_basis ?? []).map((ref) => provisionLabel(corpus.value, ref)).join(' · '),
       establishedBy: g.establishes ? provisionLabel(corpus.value, g.establishes) : '',
+      // De periode waarover het gram gaat: een aanvraag geldt ook voor de
+      // jaren erna, dus een zaak heeft voorschotten en termijnen per jaar.
+      periodText: g.period ? t('zaak.chronicle.period', { period: g.period.value }) : '',
     };
   });
 });
@@ -429,7 +432,7 @@ function claimLawName(cl) {
                 <nldd-list-item v-for="(g, i) in caseGrams" :key="g.id" size="sm">
                   <nldd-timeline-track-cell status="past" :position="trackPosition(i, caseGrams.length)"></nldd-timeline-track-cell>
                   <nldd-spacer-cell size="8"></nldd-spacer-cell>
-                  <nldd-text-cell size="sm" :text="humanize(g.name)" :supporting-text="`${formatDate(g.effective_at.slice(0, 10))} · ${g.establishedBy}`"></nldd-text-cell>
+                  <nldd-text-cell size="sm" :text="humanize(g.name)" :supporting-text="[formatDate(g.effective_at.slice(0, 10)), g.periodText, g.establishedBy].filter(Boolean).join(' · ')"></nldd-text-cell>
                   <nldd-text-cell v-if="g.summary" size="sm" width="fit-content" horizontal-alignment="right" :text="g.summary"></nldd-text-cell>
                 </nldd-list-item>
               </nldd-list>
