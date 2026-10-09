@@ -1,22 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import {
-  derivationRows,
-  filterRows,
   givesText,
   gramKind,
   listText,
   originText,
   periodsOf,
-  policyArticles,
   readerOf,
-  readersNoun,
   readingGrams,
   readingInputs,
   readingPeriods,
   readingRows,
   readsPerCase,
-  sourceNoun,
+  shapeText,
   sourceText,
+  titleText,
+  typeText,
   usesOf,
   valueRows,
 } from './lexostatusView.js';
@@ -40,51 +38,6 @@ describe('de lexostatussen van een cel', () => {
     expect(readingInputs({ period: 'jaar' }, 'a1', 2025)).toEqual({ root: 'a1', jaar: 2025 });
     expect(readingInputs({}, 'a1', 2025)).toEqual({ root: 'a1' });
     expect(readingInputs({ period: 'jaar' }, 'a1')).toEqual({ root: 'a1' });
-  });
-
-  it('geeft het filter per kenmerk, met de invoer bij een $-waarde', () => {
-    expect(filterRows({ type: 'submission', root: '$root', stage: null })).toEqual([
-      { key: 'type', value: 'submission', input: null },
-      { key: 'root', value: '$root', input: 'root' },
-    ]);
-    expect(filterRows(undefined)).toEqual([]);
-  });
-
-  it('geeft per afleiding de regel, wat zij leest en de rechtsgrond', () => {
-    const rows = derivationRows({
-      a: { field: 'x', legal_basis: ['w#1 lid 2'] },
-      b: { moment: 'effective_at' },
-      c: { filled: 'y', legal_basis: [] },
-      d: { sum: 'z', legal_basis: ['w#3'] },
-      e: { period: 'year' },
-      f: {},
-    });
-    expect(rows).toEqual([
-      { name: 'a', rule: 'field', of: 'x', legalBasis: ['w#1 lid 2'] },
-      { name: 'b', rule: 'moment', of: 'effective_at', legalBasis: [] },
-      { name: 'c', rule: 'filled', of: 'y', legalBasis: [] },
-      { name: 'd', rule: 'sum', of: 'z', legalBasis: ['w#3'] },
-      { name: 'e', rule: 'period', of: 'year', legalBasis: [] },
-      { name: 'f', rule: null, of: null, legalBasis: [] },
-    ]);
-  });
-
-  it('geeft de artikelen van een beleid met de uitvoer zoals het regelwerk die beschrijft', () => {
-    const doc = {
-      articles: [{ number: '1', machine_readable: { execution: { output: [{ name: 'bedrag', description: 'Het bedrag.' }] } } }],
-    };
-    const description = { name: 'beleid', articles: [{ number: '1', outputs: ['bedrag', 'hulp'] }, { number: '2', outputs: [] }] };
-    expect(policyArticles(description, doc)).toEqual([
-      {
-        number: '1',
-        provision: 'beleid#1',
-        outputs: [
-          { name: 'bedrag', description: 'Het bedrag.' },
-          { name: 'hulp', description: '' },
-        ],
-      },
-      { number: '2', provision: 'beleid#2', outputs: [] },
-    ]);
   });
 
   it('leest een uitvoer van een beleid als de declaratie in dat beleid', () => {
@@ -136,35 +89,32 @@ describe('de lexostatussen van een cel', () => {
 });
 
 describe('een lexostatus in gewone woorden', () => {
-  // Een cel met een aanvraag, een besluit dat haar leest en een uitvoering:
-  // verzonnen namen, zodat de test laat zien dat de woorden uit de
-  // beschrijving komen en niet uit de demo.
-  const aanvraag = {
-    kind: 'configuration',
+  // Een cel met een melding, een besluit dat haar leest en een artikel van
+  // het beleid: verzonnen namen, zodat de test laat zien dat de woorden uit
+  // de beschrijving komen en niet uit de demo.
+  const melding = {
+    kind: 'submission',
     name: 'melding',
+    provision: 'wet#1',
+    event: 'melding_ontvangen',
+    chronicle: 'k',
     inputs: ['root'],
-    reduction: {
-      chronicle: 'k',
-      filter: { type: 'submission', subtype: 'melding', root: '$root' },
-      pick: 'latest',
-      derivations: {
-        nummer: { field: 'nummer', legal_basis: ['wet#3 lid 1'] },
-        ontvangen_op: { moment: 'effective_at', legal_basis: [] },
-      },
-    },
+    fields: [
+      { name: 'nummer', type: 'string', legal_basis: ['wet#3 lid 1'], declared_by: 'wet#1' },
+      { name: 'ontvangen_op', type: 'date', legal_basis: ['wet#4'], declared_by: 'wet#1', moment: true },
+    ],
     read_by: [{ event: 'hulp_verleend', stream: 's', stage: 'HULP' }],
   };
   const betaald = {
-    kind: 'configuration',
+    kind: 'policy',
     name: 'betaald',
+    provision: 'beleid#2a',
+    policy: 'beleid',
+    article: '2a',
     inputs: ['root', 'jaar'],
     period: 'jaar',
-    reduction: {
-      chronicle: 'k',
-      filter: { type: 'executogram', event: 'termijn_betaald', root: '$root', period: '$jaar' },
-      pick: 'all',
-      derivations: { betaald_totaal: { sum: 'betaald_bedrag', legal_basis: ['wet#9'] } },
-    },
+    outputs: ['hulp', 'betaald_totaal'],
+    fields: [{ name: 'betaald_totaal', type: 'amount', unit: 'eurocent', legal_basis: ['beleid#2a'], declared_by: 'beleid#2a', description: 'Wat er is betaald.' }],
     read_by: [],
   };
   const docs = {
@@ -174,13 +124,10 @@ describe('een lexostatus in gewone woorden', () => {
         { number: '5', machine_readable: { execution: { parameters: [{ name: 'ontvangen_op' }, { name: 'nummer' }] } } },
       ],
     },
-    beleid: {
-      articles: [{ number: '1', machine_readable: { execution: { output: [{ name: 'schatting', description: 'Wat de aanvrager verwacht.' }] } } }],
-    },
   };
   const lawDoc = (id) => docs[id] ?? null;
   const shape = { type: 'decretogram', establishes: 'wet#2', fields: [{ name: 'a', declared_by: 'wet#2' }, { name: 'b', declared_by: 'wet#5' }] };
-  const reader = readerOf(aanvraag.read_by[0], shape);
+  const reader = readerOf(melding.read_by[0], shape);
 
   it('kent de soort van een gram', () => {
     expect([gramKind('submission'), gramKind('decretogram'), gramKind('executogram'), gramKind('x')]).toEqual(['submission', 'decision', 'execution', null]);
@@ -197,39 +144,34 @@ describe('een lexostatus in gewone woorden', () => {
     expect(listText(['a', 'b', 'c'])).toBe('a, b en c');
   });
 
-  it('noemt de lezers naar hun soort', () => {
-    expect(readersNoun([reader])).toBe('het besluit');
-    expect(readersNoun([reader, reader])).toBe('de besluiten');
-    expect(readersNoun([reader, { kind: 'execution' }])).toBe('het besluit en de uitvoering');
-    expect(readersNoun([])).toBe('');
-  });
-
-  it('noemt de bron naar de soort gram, of de gebeurtenis als het filter die noemt', () => {
-    expect(sourceNoun(aanvraag.reduction.filter)).toBe('de melding');
-    expect(sourceNoun({ type: 'decretogram' })).toBe('het besluit');
-    expect(sourceNoun(betaald.reduction.filter, { each: true })).toBe('elke “Termijn betaald”');
+  it('zegt wat zij is: wat er in de aanvraag staat, of de gegevens van het artikel', () => {
+    expect(titleText(melding)).toBe('Wat er in de melding staat');
+    expect(titleText(betaald)).toBe('Betaald totaal');
+    expect(titleText({ ...betaald, fields: [...betaald.fields, { name: 'dag_van_betalen' }] })).toBe('Betaald totaal en dag van betalen');
   });
 
   it('zegt wat zij geeft en aan wie', () => {
-    expect(givesText(aanvraag, [reader])).toBe('Geeft het besluit 2 gegevens uit de melding');
-    expect(givesText(betaald, [])).toBe('1 gegeven uit “Termijn betaald”, dat nog niets leest');
-    expect(givesText({ kind: 'policy', articles: [{ outputs: ['a', 'b'] }] }, [reader])).toBe('Geeft het besluit 2 gegevens uit de kroniek van de zaak');
+    expect(givesText(melding, [reader])).toBe('Geeft “Hulp verleend” 2 gegevens: nummer en ontvangen op.');
+    expect(givesText(betaald, [])).toBe('1 gegeven: betaald totaal. Nog niets leest het.');
   });
 
-  it('zegt waar de cel het haalt', () => {
-    expect(sourceText(aanvraag, 'Dienst X')).toBe('Dienst X haalt dit uit haar eigen kroniek: de melding van deze zaak, de laatste versie die geldt.');
-    expect(sourceText(betaald, 'Dienst X')).toBe('Dienst X haalt dit uit haar eigen kroniek: elke “Termijn betaald” van deze zaak, per jaar, allemaal, voor zover ze gelden.');
-    expect(sourceText({ kind: 'policy' }, 'Dienst X')).toBe('Dienst X leest dit volgens haar beleid:');
+  it('geeft de vorm als klein schema, met type en eenheid', () => {
+    expect(typeText({ type: 'amount', unit: 'eurocent' })).toBe('bedrag in eurocent');
+    expect(typeText({})).toBe('onbekend type');
+    expect(shapeText(melding)).toBe('{ nummer: tekst, ontvangen_op: datum }');
+    expect(shapeText(betaald)).toBe('{ betaald_totaal: bedrag in eurocent }');
+    expect(shapeText({})).toBe('{ }');
   });
 
-  it('zegt per gegeven waar het vandaan komt', () => {
-    const filter = aanvraag.reduction.filter;
-    expect(originText({ rule: 'field', of: 'nummer' }, filter)).toBe('ingevuld in de melding');
-    expect(originText({ rule: 'field', of: 'x' }, { type: 'decretogram' })).toBe('zoals vastgelegd in het besluit');
-    expect(originText({ rule: 'moment', of: 'effective_at' }, filter)).toBe('de dag waarop de melding binnenkwam');
-    expect(originText({ rule: 'filled', of: 'handtekening' }, filter)).toBe('of handtekening is ingevuld in de melding');
-    expect(originText({ rule: 'sum', of: 'betaald_bedrag' }, betaald.reduction.filter)).toBe('Betaald bedrag, opgeteld over elke “Termijn betaald”');
-    expect(originText(null, null, 'Wat de aanvrager verwacht.')).toBe('Wat de aanvrager verwacht.');
+  it('zegt hoe de cel haar afleidt: uit de wet, of met het beleid', () => {
+    expect(sourceText(melding, 'Dienst X')).toBe('Afgeleid uit de wet: wat de besluiten vragen en de melding bevat, zoals de wet de melding beschrijft.');
+    expect(sourceText(betaald, 'Dienst X')).toBe('Een artikel in het beleid van Dienst X, dat haar kroniek als register leest.');
+  });
+
+  it('zegt per gegeven hoe de cel het afleidt', () => {
+    expect(originText(melding, melding.fields[0])).toBe('ingevuld in de melding');
+    expect(originText(melding, melding.fields[1])).toBe('de dag waarop de melding binnenkwam');
+    expect(originText(betaald, betaald.fields[0])).toBe('Wat er is betaald.');
   });
 
   it('vindt de parameter met dezelfde naam in de artikelen van wie haar leest', () => {
@@ -242,11 +184,12 @@ describe('een lexostatus in gewone woorden', () => {
   });
 
   it('geeft per gegeven een regel voor de tabel', () => {
-    expect(valueRows(aanvraag, [reader], lawDoc)).toEqual([
-      { name: 'nummer', label: 'Nummer', origin: 'ingevuld in de melding', uses: usesOf('nummer', [reader], lawDoc), basis: ['wet#3 lid 1'] },
-      { name: 'ontvangen_op', label: 'Ontvangen op', origin: 'de dag waarop de melding binnenkwam', uses: usesOf('ontvangen_op', [reader], lawDoc), basis: [] },
+    expect(valueRows(melding, [reader], lawDoc)).toEqual([
+      { name: 'nummer', label: 'Nummer', type: 'tekst', origin: 'ingevuld in de melding', uses: usesOf('nummer', [reader], lawDoc), basis: ['wet#3 lid 1'] },
+      { name: 'ontvangen_op', label: 'Ontvangen op', type: 'datum', origin: 'de dag waarop de melding binnenkwam', uses: usesOf('ontvangen_op', [reader], lawDoc), basis: ['wet#4'] },
     ]);
-    const policy = { kind: 'policy', name: 'beleid', articles: [{ number: '1', outputs: ['schatting'] }] };
-    expect(valueRows(policy, [], lawDoc)).toEqual([{ name: 'schatting', label: 'Schatting', origin: 'Wat de aanvrager verwacht.', uses: [], basis: ['beleid#1'] }]);
+    expect(valueRows(betaald, [], lawDoc)).toEqual([
+      { name: 'betaald_totaal', label: 'Betaald totaal', type: 'bedrag in eurocent', origin: 'Wat er is betaald.', uses: [], basis: ['beleid#2a'] },
+    ]);
   });
 });

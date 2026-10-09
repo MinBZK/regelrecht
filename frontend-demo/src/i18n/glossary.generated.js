@@ -234,6 +234,7 @@ export default {
       "besluit": "decision",
       "bestuursorgaan": "administrative body",
       "betaald": "paid",
+      "betalingen": "payments",
       "betaaldatum": "payment date",
       "betaalkenmerk": "payment reference",
       "beveiligingsplan": "security plan",

@@ -64,6 +64,11 @@ corrigeren.
   ks, zoals in `tekst`; de term zelf komt uit de chronolexografie en kan ook
   onvertaald blijven), `werombringt ta` voor "reduceert tot", `Oflieding` voor
   "afleiding" en `hâlder` voor "houder" (van het beleid).
+  De kaarten per lexostatus (oktober 2026) voegden toe: `Ôflaat út de wet`
+  voor "afgeleid uit de wet", `Fêstlein yn` voor "vastgelegd in", `Foarm` voor
+  "vorm" (van wat een lexostatus geeft), `ynterface` voor "interface", `Barren`
+  voor "gebeurtenis" en `gearstald gegeven` voor "samengesteld gegeven"; ook
+  daar twijfel.
 - **`zaak.chronicle.undelivered`** (een bericht aan een andere partij dat nog
   niet aankwam, de outbox) is door een taalmodel vertaald. Twijfel bij
   `oankaam` voor "aangekomen" en bij `biedt ... opnij oan` voor "biedt opnieuw

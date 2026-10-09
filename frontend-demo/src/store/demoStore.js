@@ -1175,7 +1175,7 @@ function receivedOf(c) {
   if (!name) return { rows: [], error: null };
   const { lexostatuses, error } = lexostatusesOf(chrono.cell.id);
   if (error) return { rows: [], error };
-  const description = lexostatuses.find((l) => l.name === name) ?? { name, kind: 'configuration' };
+  const description = lexostatuses.find((l) => l.name === name) ?? { name };
   const rows = [];
   const errors = [];
   for (const period of readingPeriods(description, gramsOfCase(c))) {
@@ -1187,9 +1187,9 @@ function receivedOf(c) {
 }
 
 /**
- * De lexostatussen van cel `cellId` en hoe elk de kroniek reduceert
- * (`WasmCell.lexostatuses`), met de artikelen van een beleid zoals ze op de
- * peildatum gelden: `{ lexostatuses, error }`.
+ * De lexostatussen van cel `cellId` zoals ze op de peildatum gelden, elk
+ * met de gegevens die zij geeft en waar haar vorm is vastgelegd
+ * (`WasmCell.lexostatuses`): `{ lexostatuses, error }`.
  */
 function lexostatusesOf(cellId) {
   void dataVersion.value;
@@ -1215,9 +1215,9 @@ function readLexostatusOf(cellId, description, root, period = null) {
   if (!wasmCell) return { rows: [], grams: [], error: cellErrors.value[cellId] ?? null };
   try {
     const reading = wasmCell.readLexostatus(engine.value, description.name, readingInputs(description, root, period), nowMoment());
-    // Een reductie in de configuratie leest velden van grammen; een beleid
-    // geeft uitvoer van zijn artikelen, en die leest als dat artikel.
-    const fields = description.kind === 'configuration' ? wasmCell.lexostatusFields(engine.value, description.name, state.referenceDate) : {};
+    // Elk gegeven leest zoals het artikel dat het vastlegt het declareert
+    // (de wet bij de aanvraag, het beleid bij een artikel ervan).
+    const fields = Object.fromEntries((description.fields ?? []).map((f) => [f.name, f]));
     return { rows: readingRows(reading, fields, corpus.value), grams: reading.grams, error: null };
   } catch (e) {
     return { rows: [], grams: [], error: String(e?.message ?? e) };
