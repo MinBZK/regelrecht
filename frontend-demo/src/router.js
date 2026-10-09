@@ -6,9 +6,14 @@ import { DEFAULT_LOCALE, LOCALES, adoptLocale } from './i18n/index.js';
  *
  * Each page is one entry with one path per language, keyed on the language
  * code. The Dutch paths are the originals and keep working forever; a prefixed
- * language is additive. The English slugs are translated (`/en/laws`, not `/en/wetten`),
- * the way the landing page does it (`/en/signup`) — a half-translated URL
- * reads as unfinished work.
+ * language is additive. The English slugs are translated (`/en/ruleworks`, not
+ * `/en/regelwerken`), the way the landing page does it (`/en/signup`) — a
+ * half-translated URL reads as unfinished work.
+ *
+ * "Keep working forever" also holds for a page whose slug changes: it lists its
+ * old addresses under `formerPaths`, and each becomes a redirect to the page in
+ * the same language. The rulework tab lived at `/wetten` until the thing it
+ * shows got its own name.
  *
  * A page is addressed by name, and that is what makes the rest cheap:
  * `router.resolve({ name: localeRouteName(page, locale), params })` yields the
@@ -30,7 +35,12 @@ import { DEFAULT_LOCALE, LOCALES, adoptLocale } from './i18n/index.js';
 const PAGES = [
   { name: 'home', paths: { nl: '/', en: '/en', fy: '/fy' }, component: () => import('./views/HomeView.vue') },
   { name: 'presentatie', paths: { nl: '/presentatie', en: '/en/presentation', fy: '/fy/presintaasje' }, component: () => import('./views/PresentatieView.vue') },
-  { name: 'wetten', paths: { nl: '/wetten/:lawId?', en: '/en/laws/:lawId?', fy: '/fy/wetten/:lawId?' }, component: () => import('./views/WettenView.vue') },
+  {
+    name: 'wetten',
+    paths: { nl: '/regelwerken/:lawId?', en: '/en/ruleworks/:lawId?', fy: '/fy/regelwurken/:lawId?' },
+    formerPaths: { nl: '/wetten/:lawId?', en: '/en/laws/:lawId?', fy: '/fy/wetten/:lawId?' },
+    component: () => import('./views/WettenView.vue'),
+  },
   { name: 'graaf', paths: { nl: '/graaf', en: '/en/graph', fy: '/fy/graaf' }, component: () => import('./views/GraafView.vue') },
   { name: 'scenarios', paths: { nl: '/scenarios/:featurePath(.*)?', en: '/en/scenarios/:featurePath(.*)?', fy: '/fy/senarios/:featurePath(.*)?' }, component: () => import('./views/ScenariosView.vue') },
   { name: 'simulatie', paths: { nl: '/simulatie', en: '/en/simulation', fy: '/fy/simulaasje' }, component: () => import('./views/SimulatieView.vue') },
@@ -74,6 +84,19 @@ const routes = [
       meta: { locale: l.code, page: p.name },
     })),
   ),
+  // A former address redirects to the page in the same language, and takes the
+  // params, query and hash along: an old link to one law still opens that law.
+  ...LOCALES.flatMap((l) =>
+    PAGES.filter((p) => p.formerPaths?.[l.code]).map((p) => ({
+      path: p.formerPaths[l.code],
+      redirect: (to) => ({
+        name: localeRouteName(p.name, l.code),
+        params: to.params,
+        query: to.query,
+        hash: to.hash,
+      }),
+    })),
+  ),
   // An unknown path keeps the language it was typed in. Sending an English
   // visitor with a typo to the Dutch home page would be a silent demotion.
   //
@@ -93,19 +116,39 @@ export function localeRouteName(page, locale) {
 /**
  * The page a Dutch path from `demo-config.yaml` refers to.
  *
- * The presentation deck's slides carry literal paths (`route: /wetten`), and
+ * The presentation deck's slides carry literal paths (`route: /regelwerken`), and
  * those are authored content, not code — translating them in the config would
  * put routing knowledge in a file about slides. Instead the path is read back
  * to its page name here, and the caller resolves that name in whatever locale
  * is active.
  */
 export function pageForConfigPath(path) {
-  const clean = String(path || '').split('?')[0];
-  const match = PAGES.find((p) => {
-    const root = p.paths[DEFAULT_LOCALE].split('/:')[0];
-    return clean === root || clean.startsWith(`${root}/`);
-  });
-  return match?.name ?? null;
+  return splitConfigPath(path)?.page ?? null;
+}
+
+/**
+ * A Dutch config path taken apart: the page it refers to, and what follows the
+ * page's own root (`/zorgtoeslagwet` in `/regelwerken/zorgtoeslagwet`).
+ *
+ * The rest is cut off against the root that matched, not against the page's
+ * current path. A slide written before a page moved still carries the old path,
+ * and measured against the new root its law would silently fall away: the tab
+ * would open on whatever law happened to be open.
+ */
+export function splitConfigPath(path) {
+  const raw = String(path || '');
+  const clean = raw.split(/[?#]/)[0];
+  for (const p of PAGES) {
+    for (const pattern of [p.paths[DEFAULT_LOCALE], p.formerPaths?.[DEFAULT_LOCALE]]) {
+      if (!pattern) continue;
+      const root = pattern.split('/:')[0];
+      if (clean === root || clean.startsWith(`${root}/`)) {
+        // `/` is the root of the home page only; it has nothing after it.
+        return { page: p.name, rest: root === '/' ? '' : raw.slice(root.length) };
+      }
+    }
+  }
+  return null;
 }
 
 const router = createRouter({

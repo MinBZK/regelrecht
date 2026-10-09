@@ -118,7 +118,7 @@ function onClose() {
       </nldd-container>
       <nldd-button
         slot="actions"
-        variant="primary"
+        appearance="primary"
         text="Uploaden"
         data-testid="upload-confirm-submit"
         :disabled="!canSubmit || undefined"
@@ -126,7 +126,7 @@ function onClose() {
       ></nldd-button>
       <nldd-button
         slot="actions"
-        variant="secondary"
+        appearance="secondary"
         text="Annuleren"
         data-testid="upload-confirm-cancel"
         @click="emit('cancel')"

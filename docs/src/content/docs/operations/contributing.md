@@ -102,6 +102,11 @@ target does not exist.
 If a page is removed rather than moved, redirect it to whatever now covers the
 subject.
 
+Addresses ending in `.html` need no entry. The site published every page as
+`<route>.html` before it moved to Astro, and printed publications cite that
+form. `docs/nginx.conf` answers such a request with a 301 to the same route
+without the suffix, as long as that route exists.
+
 ## Design decisions (RFCs)
 
 Changes to the law format, engine architecture, or cross-cutting patterns require an RFC. See the [RFC process](/rfcs/rfc-000) for details.

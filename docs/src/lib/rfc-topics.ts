@@ -11,7 +11,7 @@ export const RFC_TOPICS = [
     id: 'language',
     label: 'Law language and format',
     description:
-      'The YAML format, its operations and types, and what a law file may say.',
+      'The YAML format, its operations and types, and what a rulework may say.',
   },
   {
     id: 'execution',

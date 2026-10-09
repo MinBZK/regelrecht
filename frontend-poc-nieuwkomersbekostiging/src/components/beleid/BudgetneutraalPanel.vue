@@ -12,7 +12,7 @@
       blijven, dus daarin een budgetneutrale waarde zoeken zou betekenen dat je hem met zichzelf vergelijkt.
       Kies een variant als werkversie, of bewaar je eigen bewerkingen eerst als variant.
       <span v-if="changeCount === 0 && variantColumns.length" class="bn-row">
-        <nldd-button v-for="c in variantColumns" :key="c.key" size="sm" variant="secondary" :text="`Werk in ${c.short}`" @click="setWerkversie(c.variantId)"></nldd-button>
+        <nldd-button v-for="c in variantColumns" :key="c.key" size="sm" appearance="secondary" :text="`Werk in ${c.short}`" @click="setWerkversie(c.variantId)"></nldd-button>
       </span>
     </nldd-banner>
 
@@ -37,7 +37,7 @@
         <nldd-button
           :text="solving ? 'Zoeken…' : 'Zoek budgetneutrale waarde'"
           start-icon="graph"
-          variant="secondary"
+          appearance="secondary"
           :disabled="solving || !defKey || !istMetrics ? true : undefined"
           @click="solve"
         ></nldd-button>
@@ -60,7 +60,7 @@
         <div v-for="(step, i) in solveLog" :key="i" class="bn-step">
           <span class="bn-i">{{ i + 1 }}</span>
           <span>{{ euro(step.value) }}</span>
-          <nldd-icon name="arrow-right" size="16"></nldd-icon>
+          <nldd-icon icon="arrow-right" size="16"></nldd-icon>
           <span>{{ euroCompact(step.spend) }}</span>
           <span class="bn-af" :class="{ 'bn-raak': raak(step) }">{{ afwijking(step) }}</span>
         </div>
@@ -74,7 +74,7 @@
           slot="actions"
           :text="`Toepassen in ${werkversieLabel}`"
           size="sm"
-          variant="primary"
+          appearance="primary"
           @click="apply"
         ></nldd-button>
       <p v-if="applied" class="bn-hint">{{ applied }}</p>

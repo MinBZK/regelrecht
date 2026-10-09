@@ -66,7 +66,7 @@ pub async fn request_enrich(
     if yaml.len() > MAX_INPUT_BYTES {
         return Err((
             StatusCode::PAYLOAD_TOO_LARGE,
-            "Deze wet is te groot om via een taak te verrijken.".to_string(),
+            "Deze versie is te groot om via een taak te verrijken.".to_string(),
         ));
     }
     let source_etag = document_etag(&yaml);
@@ -114,7 +114,7 @@ pub async fn request_enrich(
     let Some(job) = job else {
         return Err((
             StatusCode::CONFLICT,
-            "Er loopt al een verrijking voor deze wet.".to_string(),
+            "Er loopt al een verrijking voor dit regelwerk.".to_string(),
         ));
     };
     tasks::insert_blob(&mut *tx, job.id, BlobKind::Input, &yaml_path, &yaml)

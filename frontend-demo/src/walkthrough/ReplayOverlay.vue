@@ -196,7 +196,7 @@ onUnmounted(() => {
             <nldd-rich-text v-if="c.text" spacing="tight">
               <p>{{ c.text }}</p>
             </nldd-rich-text>
-            <nldd-button size="sm" variant="neutral-transparent" start-icon="play" :lang="locale" :text="t('walkthrough.transcript.play_from', { time: formatTime(c.start) })" @click="playFrom(c.start)"></nldd-button>
+            <nldd-button size="sm" appearance="neutral-transparent" start-icon="play" :lang="locale" :text="t('walkthrough.transcript.play_from', { time: formatTime(c.start) })" @click="playFrom(c.start)"></nldd-button>
           </nldd-container>
         </nldd-container>
       </nldd-page>

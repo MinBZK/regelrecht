@@ -88,6 +88,19 @@ is: in tekst dêr't men rjochten oan ûntliene kin`.
   wetenschappelijke leenwoorden, niet opgezocht.
 - **`regelingen`** als meervoud: de `-ing`-meervouden lopen tussen Fries en
   Nederlands soms uiteen.
+- **`regelwurk`, meervoud `regelwurken`**, voor het Nederlandse "regelwerk":
+  één regeling zoals die in YAML is vastgelegd, met een versie per datum. Het
+  Nederlandse woord is zelf
+  een nieuwe vakterm (RFC-044), en het Friese is er letter voor letter van
+  afgeleid; geen vertaler heeft het gezien. Wat vaststaat: `wurk` is het Friese
+  woord voor "werk", en `regel` is in beide talen hetzelfde. Wat niet vaststaat:
+  of een Friese lezer de samenstelling als één begrip leest, of het meervoud
+  `regelwurken` goed valt (het telbare gebruik is ook in het Nederlands nieuw),
+  en of het een it-woord is. De vertaling behandelt het als it-woord (`it
+  foarige regelwurk`, `gjin oar regelwurk`), naar het
+  Nederlandse "het regelwerk". Het staat in het tabblad, in de dia over dat
+  tabblad en in 24 sleutels in `fy.js` (zoek op `regelwurk`, ook met hoofdletter), dus beslis het in
+  één keer.
 
 - **`begjinstân` en `presintaasjemodus`** in `app.reset.body`. Beide
   samengesteld uit woorden die elders in de vertaling staan (`begjin`, `stân`,
@@ -132,6 +145,29 @@ keuze en geen omissie; zie de banner onder punt 3.
 Woorden die in het Fries werkelijk hetzelfde zijn blijven staan: "Ja", "Nee",
 "Titel", "Adres", "Totaal", "Seed", "Mediaan", "Partner", "Staffel", "Wetten",
 "Portaal", "Alles". Daar is per sleutel naar gevraagd; het is geen luiheid.
+
+## 7. Het dek van Claudia, nog niet nagelezen
+
+Deze dia's kwamen later, met het ondernemersverhaal van Claudia, en zijn door
+hetzelfde soort vertaler gemaakt. Niemand heeft ze nagelezen. Het hele blok
+verdient een lezing; de woorden hieronder zijn nieuw in de demo en komen nergens
+anders in de vertaling voor, dus er is ook geen eerdere keuze om op te leunen.
+
+- **`slides.7`** (Wetten hingje gear), **`slides.9`** (De feroardering
+  toetst), **`slides.15`** (In terras oanfreegje), **`slides.16`** (De gemeente
+  beoardielet) en **`slides.17`** (Prekario folget út de fergunning) zijn
+  nieuw. **`slides.14`** (In ûndernimmer, Claudia) is herschreven.
+- **"Verordening"** staat op `feroardering`. Of dat de gangbare Friese vorm is
+  voor een gemeentelijke verordening, is niet geverifieerd.
+- **"Aanslag"** (de belastingaanslag, `slides.17.overline`) staat op
+  `oanslach`. Het risico is dat het als "aanval" leest.
+- **"Vrijgesteld"** staat op `frijsteld` en **"geheven"** op `heft wurdt`
+  (`slides.17`). Belastingtaal; niet nagekeken tegen Friese
+  overheidsteksten.
+- **"Verleend"** staat op `ferliend`, en als bijvoeglijk naamwoord op
+  `ferliene` ("it ferliene terras"). Controleer of beide vormen kloppen.
+- **`profiles.claudia.portal_tab_label`** staat nu op `Myn oerheid`, gelijk
+  aan dat van Merijn.
 
 ## Hoe je een correctie doorvoert
 

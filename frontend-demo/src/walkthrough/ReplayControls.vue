@@ -86,14 +86,14 @@ watch(
            Not dismissable: it goes when play is pressed. -->
       <nldd-just-in-time-education :active="!!invite || undefined" :text="invite?.title" :supporting-text="invite?.body" placement="top">
         <nldd-button-bar>
-          <nldd-icon-button variant="inherit-tinted" icon="media-backward-end" :text="t('walkthrough.prev_chapter')" @click="prevChapter"></nldd-icon-button>
-          <nldd-icon-button ref="playButton" variant="inherit-filled" :icon="replay.playing ? 'pause' : 'play'" :text="playText" @click="togglePlay"></nldd-icon-button>
-          <nldd-icon-button variant="inherit-tinted" icon="media-forward-end" :text="t('walkthrough.next_chapter')" @click="nextChapter"></nldd-icon-button>
+          <nldd-icon-button appearance="inherit-tinted" icon="media-backward-end" :text="t('walkthrough.prev_chapter')" @click="prevChapter"></nldd-icon-button>
+          <nldd-icon-button ref="playButton" appearance="inherit-filled" :icon="replay.playing ? 'pause' : 'play'" :text="playText" @click="togglePlay"></nldd-icon-button>
+          <nldd-icon-button appearance="inherit-tinted" icon="media-forward-end" :text="t('walkthrough.next_chapter')" @click="nextChapter"></nldd-icon-button>
         </nldd-button-bar>
       </nldd-just-in-time-education>
       <span class="time" aria-hidden="true">{{ timeText }}</span>
       <nldd-button-bar>
-        <nldd-button variant="inherit-tinted" size="sm" :text="t('walkthrough.chapters')" expandable popup-type="menu">
+        <nldd-button appearance="inherit-tinted" size="sm" :text="t('walkthrough.chapters')" expandable popup-type="menu">
           <nldd-menu slot="popup" placement="top-start" :accessible-label="t('walkthrough.chapters')">
             <nldd-menu-item
               v-for="(c, i) in chapters"
@@ -106,7 +106,7 @@ watch(
             ></nldd-menu-item>
           </nldd-menu>
         </nldd-button>
-        <nldd-icon-button variant="inherit-tinted" icon="more" :text="t('walkthrough.more')" expandable popup-type="menu">
+        <nldd-icon-button appearance="inherit-tinted" icon="more" :text="t('walkthrough.more')" expandable popup-type="menu">
           <nldd-menu slot="popup" placement="top-end" :accessible-label="t('walkthrough.more')">
             <!-- `@select` on each item, not on the group: the same reason as
                  the toolbar menus in App.vue. -->
@@ -125,9 +125,9 @@ watch(
         </nldd-icon-button>
       </nldd-button-bar>
     </div>
-    <nldd-button v-if="replay.faq" ref="backButton" variant="inherit-filled" size="sm" start-icon="back" :text="t('walkthrough.faq.back')" @click="backToMain"></nldd-button>
+    <nldd-button v-if="replay.faq" ref="backButton" appearance="inherit-filled" size="sm" start-icon="back" :text="t('walkthrough.faq.back')" @click="backToMain"></nldd-button>
     <nldd-text v-else-if="replay.diverged" size="sm" color="inherit">{{ t('walkthrough.own_turn') }}</nldd-text>
-    <nldd-button v-else variant="inherit-tinted" size="sm" start-icon="hand" :text="t('walkthrough.try')" @click="tryIt"></nldd-button>
+    <nldd-button v-else appearance="inherit-tinted" size="sm" start-icon="hand" :text="t('walkthrough.try')" @click="tryIt"></nldd-button>
   </div>
 </template>
 

@@ -149,7 +149,7 @@ function delegationsFromLaw(law, outputs) {
  * dat, en een demo die een verlopen machtiging toont is misleidend.
  *
  * Dit werkt door in wat er te zien is, en dat is de bedoeling: Claudia's
- * koffiezaak staat sinds 2025-01-15 in het handelsregister, dus op een
+ * café staat sinds 2025-01-15 in het handelsregister, dus op een
  * peildatum daarvóór heeft zij die machtiging nog niet en verdwijnt de keuze
  * uit de werkbalk. Wie zich afvraagt waarom de knop weg is bij een vroege
  * peildatum: dat is de wet, niet een fout.
@@ -259,4 +259,15 @@ export function maySubmitClaims(delegation) {
 /** De sleutel waarmee een machtiging in de opgeslagen staat wordt aangeduid. */
 export function delegationKey(delegation) {
   return delegation ? `${delegation.subjectType}:${delegation.subjectId}` : null;
+}
+
+/**
+ * De machtiging waarmee een profiel binnenkomt: de onderneming met het
+ * KvK-nummer uit `start_namens`. Claudia's verhaal gaat over haar zaak, dus ze
+ * begint namens die zaak; "Mezelf" blijft gewoon te kiezen. Of ze die zaak
+ * mag vertegenwoordigen zegt de wet nog steeds: geeft die de machtiging niet,
+ * dan wijst de sleutel nergens heen en begint ze als zichzelf.
+ */
+export function startDelegationKey(profile) {
+  return profile?.start_namens ? delegationKey({ subjectType: 'BUSINESS', subjectId: profile.start_namens }) : null;
 }

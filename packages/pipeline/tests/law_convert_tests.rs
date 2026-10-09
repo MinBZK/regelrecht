@@ -200,7 +200,7 @@ async fn test_finish_enrich_task_job_new_law_creates_law_create_task() {
         .unwrap();
     tokio::fs::write(&law_abs, "verrijkt: ja").await.unwrap();
 
-    finish_enrich_task_job(&db.pool, &job, dir.path(), &[law_abs], None)
+    finish_enrich_task_job(&db.pool, &job, dir.path(), &[law_abs], true, None)
         .await
         .unwrap();
 
@@ -211,7 +211,7 @@ async fn test_finish_enrich_task_job_new_law_creates_law_create_task() {
     assert_eq!(open[0].task_type, "job_review");
     assert_eq!(
         open[0].title,
-        "Nieuwe wet beoordelen: werkinstructie_toetsing"
+        "Nieuw regelwerk beoordelen: werkinstructie_toetsing"
     );
     let task_payload = open[0].payload.as_ref().unwrap();
     assert_eq!(task_payload["kind"], "law_create");

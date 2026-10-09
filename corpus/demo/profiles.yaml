@@ -4007,8 +4007,8 @@ profiles:
   '999999990':
     name: Claudia van Dam
     description: >-
-      Eigenaar van koffiezaak Noon in Rotterdam West, horeca ondernemer met
-      exploitatievergunning
+      Bestuurder van Café Noon B.V. in Rotterdam West, een café met een eigen kleine
+      bierbrouwerij, een terras en een exploitatievergunning
     properties:
       - Ondernemer
     sources:
@@ -4026,13 +4026,12 @@ profiles:
             rgs_versie: '3.5'
       DOUANE:
         # Een accijnsgoederenplaats is een vergunde ruimte waar accijnsgoederen
-        # onveraccijnsd mogen liggen (art. 40 Wet op de accijns). Een café koopt
-        # zijn drank veraccijnsd in en heeft er dus geen; dat maakt het verschil
-        # zichtbaar tussen wie accijns verschuldigd is en wie een vergunning
-        # nodig heeft.
+        # onveraccijnsd mogen liggen (art. 40 Wet op de accijns). Café Noon brouwt
+        # zijn eigen huisbier; wie bier produceert heeft zo'n plaats nodig (art. 5)
+        # en is over wat de brouwerij verlaat zelf accijns verschuldigd.
         agp_vergunningen:
           - kvk_nummer: '85234567'
-            heeft_agp_vergunning: false
+            heeft_agp_vergunning: true
       KIESRAAD: *id002
       JenV: *id003
       RvIG:
@@ -4059,10 +4058,6 @@ profiles:
             postcode: 3032TL
             woonplaats: Rotterdam
             type: WOONADRES
-        personen_vog:
-          - bsn: '999999990'
-            heeft_geldige_vog: true
-            afgiftedatum: '2024-12-01'
       BELASTINGDIENST:
         box1:
           - bsn: '999999990'
@@ -4107,10 +4102,10 @@ profiles:
           - bsn: '999999990'
             bsn_eigenaar: '999999990'
             kvk_nummer: '85234567'
-            handelsnaam: Koffiezaak Noon
-            rechtsvorm: EENMANSZAAK
+            handelsnaam: Café Noon B.V.
+            rechtsvorm: BV
             status: Actief
-            activiteit: Horeca (SBI 56102, Cafés)
+            activiteit: Café met eigen bierbrouwerij (SBI 56102 Cafés, 11050 Vervaardiging van bier)
             sbi_code: '56102'
             datum_aanvang: '2025-01-15'
             aantal_werknemers: 0
@@ -4118,10 +4113,10 @@ profiles:
         functionarissen:
           - bsn: '999999990'
             kvk_nummer: '85234567'
-            handelsnaam: Koffiezaak Noon
-            rechtsvorm: EENMANSZAAK
+            handelsnaam: Café Noon B.V.
+            rechtsvorm: BV
             status: Actief
-            functie: EIGENAAR
+            functie: BESTUURDER
             bevoegdheid: VOLLEDIG
             datum_inschrijving: '2025-01-15'
             datum_uitschrijving: null
@@ -4130,7 +4125,7 @@ profiles:
             adres: Nieuwe Binnenweg 225A, 3021GC Rotterdam
         organisaties:
           - kvk_nummer: '85234567'
-            rechtsvorm: EENMANSZAAK
+            rechtsvorm: BV
             status: Actief
             aantal_werknemers: 0
             datum_telling: '2025-01-01'
@@ -4138,7 +4133,7 @@ profiles:
             vestigingsadres: Nieuwe Binnenweg 225A, 3021GC Rotterdam
         jaarrekeningen:
           - kvk_nummer: '85234567'
-            rechtsvorm: EENMANSZAAK
+            rechtsvorm: BV
             laatste_boekjaar_einde: '2025-12-31'
       UWV:
         arbeidsverhoudingen:
@@ -4217,10 +4212,17 @@ profiles:
             is_geregistreerd: true
             registratiedatum: '2024-06-15'
       GEMEENTE_ROTTERDAM:
+        # De VOG die Claudia bij haar aanvraag inleverde; de exploitatievergunning
+        # leest hem hier (bindings.yaml). Onder RvIG vond de binding hem niet, en
+        # zonder VOG voldeed ze niet en was haar vergunning "niet van toepassing".
+        personen_vog:
+          - bsn: '999999990'
+            heeft_geldige_vog: true
+            afgiftedatum: '2024-12-01'
         vestigingen:
           - kvk_nummer: '85234567'
             adres: Nieuwe Binnenweg 225A, 3021GC Rotterdam
-            schenkt_alcohol: false
+            schenkt_alcohol: true
             heeft_terras: true
         vergunningen:
           - kvk_nummer: '85234567'
@@ -4229,12 +4231,19 @@ profiles:
             vergunde_categorie: Categorie 1
             datum_verleend: '2025-08-01'
             geldig_tot: '2030-08-01'
-            heeft_alcoholvergunning: false
-            type_horeca: Daghoreca
+            heeft_alcoholvergunning: true
+            type_horeca: Café
             openingstijden: 07:00 - 23:00
             vergunde_activiteiten:
               - Verstrekken van etenswaren
               - Alcoholvrije dranken
+              - Alcoholhoudende dranken (eigen huisbier)
+            # Alcoholwet art. 8 lid 1 onder b: levensgedrag getoetst bij de verlening.
+            is_van_slecht_levensgedrag: false
+            # Art. 2:28 lid 5 onder i t/m k, getoetst bij de verlening op 2025-08-01.
+            kvk_inschrijving_geldig: true
+            feitelijke_toestand_conform_aanvraag: true
+            voldoet_aan_horecabeleid: true
         ontheffingen_geluid_historie:
           - kvk_nummer: '85234567'
             datum: '2026-01-05'
@@ -4257,12 +4266,12 @@ profiles:
               - drinken
         beheerders:
           - kvk_nummer: '85234567'
-            schenkt_alcohol: false
+            schenkt_alcohol: true
             bsn: '999999990'
             heeft_vog: true
             leeftijd: 31
             is_onder_curatele: false
-            heeft_svh_diploma: false
+            heeft_svh_diploma: true
             alle_hebben_vog: true
             alle_voldoen_leeftijd: true
             geen_onder_curatele: true
@@ -4300,6 +4309,9 @@ profiles:
             intrekkingsreden: null
             handhavingsacties: []
             ingetrokken_slecht_levensgedrag: false
+            # Art. 2:28 lid 5 onder h: geen handhavingsacties, dus geen overtreden voorschriften.
+            kvk_nummer: '85234567'
+            voorschriften_overtreden: false
         omgevingsplan_toetsingen:
           - adres: Nieuwe Binnenweg 225A, 3021GC Rotterdam
             categorie: licht
@@ -4314,8 +4326,28 @@ profiles:
           - adres: Nieuwe Binnenweg 225A, 3021GC Rotterdam
             seizoen: jaarrond
             gebied: Rotterdam West
-            max_oppervlakte: 20.0
             # 01:00 en 02:00 op de schaal van de wet (24 is middernacht, 25 is 01:00)
+            max_sluitingstijd_doordeweeks: 25
+            max_sluitingstijd_weekend: 26
+            seizoensregels: jaarrond toegestaan
+            toegestane_locaties:
+              - voor
+              - zij
+          # Jaarrond toegestaan: hetzelfde beleid geldt voor wie alleen een zomer-
+          # of winterterras vraagt. Zonder deze rijen had zo'n aanvraag geen
+          # maximale sluitingstijd en werd ze zonder opgave van reden geweigerd.
+          - adres: Nieuwe Binnenweg 225A, 3021GC Rotterdam
+            seizoen: zomer
+            gebied: Rotterdam West
+            max_sluitingstijd_doordeweeks: 25
+            max_sluitingstijd_weekend: 26
+            seizoensregels: jaarrond toegestaan
+            toegestane_locaties:
+              - voor
+              - zij
+          - adres: Nieuwe Binnenweg 225A, 3021GC Rotterdam
+            seizoen: winter
+            gebied: Rotterdam West
             max_sluitingstijd_doordeweeks: 25
             max_sluitingstijd_weekend: 26
             seizoensregels: jaarrond toegestaan

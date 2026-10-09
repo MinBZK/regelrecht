@@ -137,7 +137,7 @@ async function confirmLeave() {
     <nldd-activity-indicator v-if="loading" text="Trajectgegevens laden" show-text></nldd-activity-indicator>
     <nldd-inline-dialog v-else-if="loadError" variant="alert" :text="loadError.message || 'Fout bij laden'"></nldd-inline-dialog>
     <template v-else-if="detail">
-    <nldd-list variant="box-tinted">
+    <nldd-list appearance="box-tinted">
       <nldd-list-item size="md">
         <nldd-text-cell text="Naam" max-width="180px"></nldd-text-cell>
         <nldd-spacer-cell size="8"></nldd-spacer-cell>
@@ -208,12 +208,12 @@ async function confirmLeave() {
             <p>
               Werk je buiten de editor om in de repo, dan kunnen map- en
               bestandsnamen uit de pas raken met wat erin staat. Deze controle
-              zoekt die verschillen, plus dubbele wet-id's en verwijzingen die
+              zoekt die verschillen, plus dubbele id's en verwijzingen die
               nergens uitkomen.
             </p>
           </nldd-rich-text>
           <nldd-spacer size="8"></nldd-spacer>
-          <nldd-button variant="secondary" size="md" text="Controleer" @click="openStructureCheck"></nldd-button>
+          <nldd-button appearance="secondary" size="md" text="Controleer" @click="openStructureCheck"></nldd-button>
         </nldd-container>
       </nldd-box>
     </template>
@@ -234,7 +234,7 @@ async function confirmLeave() {
             </p>
           </nldd-rich-text>
           <nldd-spacer size="8"></nldd-spacer>
-          <nldd-button variant="destructive" size="md" text="Traject verwijderen" @click="askDelete"></nldd-button>
+          <nldd-button appearance="destructive" size="md" text="Traject verwijderen" @click="askDelete"></nldd-button>
         </nldd-container>
       </nldd-box>
     </template>
@@ -251,7 +251,7 @@ async function confirmLeave() {
             </p>
           </nldd-rich-text>
           <nldd-spacer size="8"></nldd-spacer>
-          <nldd-button variant="destructive" size="md" text="Traject verlaten" @click="askLeave"></nldd-button>
+          <nldd-button appearance="destructive" size="md" text="Traject verlaten" @click="askLeave"></nldd-button>
         </nldd-container>
       </nldd-box>
     </template>
@@ -268,10 +268,10 @@ async function confirmLeave() {
       @close="cancelDelete"
     >
       <nldd-inline-dialog v-if="deleteError" variant="alert" :text="deleteError"></nldd-inline-dialog>
-      <nldd-button slot="actions" variant="primary" text="Behoud traject" @click="cancelDelete"></nldd-button>
+      <nldd-button slot="actions" appearance="primary" text="Behoud traject" @click="cancelDelete"></nldd-button>
       <nldd-button
         slot="actions"
-        variant="destructive"
+        appearance="destructive"
         :text="deleteBusy ? 'Bezig…' : 'Verwijder traject'"
         :disabled="deleteBusy || undefined"
         @click="confirmDelete"
@@ -289,10 +289,10 @@ async function confirmLeave() {
       @close="cancelLeave"
     >
       <nldd-inline-dialog v-if="leaveError" variant="alert" :text="leaveError"></nldd-inline-dialog>
-      <nldd-button slot="actions" variant="primary" text="Blijf in traject" @click="cancelLeave"></nldd-button>
+      <nldd-button slot="actions" appearance="primary" text="Blijf in traject" @click="cancelLeave"></nldd-button>
       <nldd-button
         slot="actions"
-        variant="destructive"
+        appearance="destructive"
         :text="leaveBusy ? 'Bezig…' : 'Verlaat traject'"
         :disabled="leaveBusy || undefined"
         @click="confirmLeave"

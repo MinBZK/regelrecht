@@ -30,7 +30,7 @@ const { ready, loadError, profile, profileKey, corpus, state, delegations, deleg
  * The path of a tab in the language that is on.
  *
  * Without params: a tab points at the root of its section, and carrying the
- * current route's params along would put `/wetten/:lawId` on the Graph tab.
+ * current route's params along would put `/regelwerken/:lawId` on the Graph tab.
  * The views restore their own last position when they mount.
  */
 function pathFor(page) {
@@ -352,7 +352,7 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
                 :current="isActive(tab) || undefined"
                 @click.prevent="router.push(tab.to)"
               >
-                <nldd-icon slot="icon" :name="tab.icon"></nldd-icon>
+                <nldd-icon slot="icon" :icon="tab.icon"></nldd-icon>
               </nldd-tab-bar-item>
             </nldd-tab-bar>
             <!-- Vangnet: past zelfs de iconenbalk niet meer, dan verbergt de
@@ -375,14 +375,14 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
             </nldd-menu-group>
           </nldd-toolbar-item>
           <nldd-toolbar-item slot="end" v-if="openCases > 0">
-            <nldd-button size="sm" variant="neutral-tinted" start-icon="inbox" :text="t.plural(openCases, 'app.cases.pending')" @click="router.push(pathFor('zaaksysteem'))"></nldd-button>
+            <nldd-button size="sm" appearance="neutral-tinted" start-icon="inbox" :text="t.plural(openCases, 'app.cases.pending')" @click="router.push(pathFor('zaaksysteem'))"></nldd-button>
           </nldd-toolbar-item>
           <!-- Namens wie: alleen als de wet meer dan één mogelijkheid geeft.
                Staat naast het profiel, want het hoort bij wie er ingelogd is. -->
           <nldd-toolbar-item slot="end" v-if="showDelegation" class="rr-hide-presenting" :priority="20">
             <nldd-button
               size="md"
-              :variant="activeDelegation ? 'accent-tinted' : 'neutral-transparent'"
+              :appearance="activeDelegation ? 'accent-tinted' : 'neutral-transparent'"
               :start-icon="activeDelegation ? DELEGATION_ICONS[activeDelegation.subjectType] : 'switch'"
               :text="delegationButtonText"
               expandable
@@ -420,7 +420,7 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
             </nldd-menu-group>
           </nldd-toolbar-item>
           <nldd-toolbar-item slot="end" v-if="profile" class="rr-hide-presenting" :priority="30">
-            <nldd-button size="md" variant="neutral-transparent" start-icon="person" :text="profile.name" expandable popup-type="menu">
+            <nldd-button size="md" appearance="neutral-transparent" start-icon="person" :text="profile.name" expandable popup-type="menu">
               <nldd-menu slot="popup" :accessible-label="t('app.profile.label')" @select="onProfileSelect">
                 <nldd-menu-item
                   v-for="[key, p] in profileOptions"
@@ -582,8 +582,8 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
         ></nldd-password-field>
         <nldd-form-field-help-text v-if="whyStatus">{{ t(`app.why.dialog.${whyStatus}`) }}</nldd-form-field-help-text>
       </nldd-form-field>
-      <nldd-button slot="actions" variant="primary" :text="t('app.why.dialog.confirm')" :disabled="!whyInput || whyBusy || undefined" @click="confirmWhyPassword"></nldd-button>
-      <nldd-button slot="actions" variant="secondary" :text="t('app.why.dialog.cancel')" @click="whyDialog?.hide?.()"></nldd-button>
+      <nldd-button slot="actions" appearance="primary" :text="t('app.why.dialog.confirm')" :disabled="!whyInput || whyBusy || undefined" @click="confirmWhyPassword"></nldd-button>
+      <nldd-button slot="actions" appearance="secondary" :text="t('app.why.dialog.cancel')" @click="whyDialog?.hide?.()"></nldd-button>
     </nldd-modal-dialog>
 
     <nldd-modal-dialog
@@ -593,8 +593,8 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
       :supporting-text="t('app.reset.body')"
       :accessible-label="t('app.reset.label')"
     >
-      <nldd-button slot="actions" variant="destructive" :text="t('app.reset.confirm')" @click="confirmReset"></nldd-button>
-      <nldd-button slot="actions" variant="secondary" :text="t('app.reset.cancel')" @click="resetDialog?.hide?.()"></nldd-button>
+      <nldd-button slot="actions" appearance="destructive" :text="t('app.reset.confirm')" @click="confirmReset"></nldd-button>
+      <nldd-button slot="actions" appearance="secondary" :text="t('app.reset.cancel')" @click="resetDialog?.hide?.()"></nldd-button>
     </nldd-modal-dialog>
   </nldd-app-view>
 </template>

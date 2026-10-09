@@ -363,7 +363,7 @@ export function rfcTargets(): Map<number, RfcTarget> {
  * build fails if a number no longer exists or has been superseded.
  */
 const START_HERE: { num: number; why: string }[] = [
-  { num: 1, why: 'The shape of a law file: articles, inputs, outputs.' },
+  { num: 1, why: 'The shape of a rulework: articles, inputs, outputs.' },
   { num: 4, why: 'The one syntax every operation uses.' },
   { num: 7, why: 'How a law calls another law, and which override wins.' },
   { num: 3, why: 'How a law leaves a value to another regulation to fill.' },

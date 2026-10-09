@@ -11,7 +11,7 @@ import { askedInputsFor, claimKeyFor, evaluationParamsFor, nextQuestions } from 
 import { dateInputFor, phraseOutcome, phrasingFor } from '../data/outcomePhrasing.js';
 import { driftSentence } from '../data/caseDrift.js';
 import { useDemo } from '../store/demoStore.js';
-import { objectionOpen, statusOf } from '../data/lifecycle.js';
+import { canBeApplied, objectionOpen, statusOf } from '../data/lifecycle.js';
 import { useLocalePath } from '../i18n/useLocalePath.js';
 import { activeLocale, useI18n } from '../i18n/index.js';
 
@@ -86,7 +86,8 @@ const primary = computed(() => {
  * the old behaviour, so this grows law by law.
  */
 const secondary = computed(() => {
-  const rest = outputs.value.filter(([k]) => k !== primary.value?.name);
+  // Een lege tekst ("geen weigeringsgrond") zegt niets en blijft weg, net als in de aanvraag.
+  const rest = outputs.value.filter(([k, v]) => k !== primary.value?.name && v !== '');
   const wanted = corpus.value?.config?.tile_details?.[`${props.law.service}/${props.law.law_path}`];
   if (!wanted) return rest.slice(0, 6);
   return wanted.map((name) => rest.find(([k]) => k === name)).filter(Boolean);
@@ -110,9 +111,8 @@ const phrased = computed(() => {
   if (!primary.value) return null;
   return phraseOutcome(phrasing.value, {
     met: requirementsMet.value,
-    // An unknown amount is not a number to put in a sentence; the general
-    // rendering names what is missing, so leave it to that.
-    value: isUnknown(primary.value.value) ? null : formatValue(primary.value.value, primary.value.spec),
+    value: formatValue(primary.value.value, primary.value.spec),
+    unknown: isUnknown(primary.value.value),
     isYesNo: typeof primary.value.value === 'boolean',
     date: outcomeDate.value,
   });
@@ -198,8 +198,10 @@ const produces = computed(() => {
   return null;
 });
 // Een machtiging zonder het recht om aanvragen in te dienen mag alleen kijken:
-// dan verdwijnen de knoppen, niet alleen hun werking.
-const canApply = computed(() => canSubmitClaims.value && evaluation.value?.ok && verdict.value === true && !currentCase.value && produces.value?.legal_character === 'BESCHIKKING');
+// dan verdwijnen de knoppen, niet alleen hun werking. Een aanslag vraag je niet
+// aan (`canBeApplied`): de precariotegel bood Claudia eerst aan om haar eigen
+// belasting aan te vragen.
+const canApply = computed(() => canSubmitClaims.value && evaluation.value?.ok && verdict.value === true && !currentCase.value && canBeApplied(produces.value));
 /** A decided-and-rejected case the citizen has not objected to yet (Awb art. 6:5). */
 // Bezwaar pas als de termijn loopt: die begint de dag ná de bekendmaking
 // (Awb 6:8), dus een besluit dat nog niet is verstuurd geeft nog geen knop.
@@ -285,7 +287,7 @@ const statusTag = computed(() => {
           :supporting-text="driftText"
         ></nldd-banner>
         <nldd-inline-dialog v-if="verdict === 'unknown'" icon="info" :text="t('wet.tile.undecidable.title')" :supporting-text="t('wet.tile.undecidable.body', { missing: verdictMissing })"></nldd-inline-dialog>
-        <nldd-list v-else variant="box-tinted" :accessible-label="t('wet.tile.outcome.label')">
+        <nldd-list v-else appearance="box-tinted" :accessible-label="t('wet.tile.outcome.label')">
           <nldd-list-item size="md" :button="primary ? true : undefined" @click="primary && correctOutcome(primary.name, primary.value)">
             <nldd-icon-cell :icon="requirementsMet ? 'check-mark-circle' : 'dismiss-circle'" :color="requirementsMet ? 'success' : 'critical'"></nldd-icon-cell>
             <nldd-spacer-cell size="12"></nldd-spacer-cell>
@@ -314,7 +316,7 @@ const statusTag = computed(() => {
           </nldd-list-item>
         </nldd-list>
 
-        <nldd-list v-if="secondary.length" variant="simple" :accessible-label="t('wet.tile.other_outcomes')">
+        <nldd-list v-if="secondary.length" appearance="simple" :accessible-label="t('wet.tile.other_outcomes')">
           <nldd-list-item v-for="[name, value] in secondary" :key="name" size="sm" button @click="correctOutcome(name, value)">
             <nldd-text-cell size="sm" color="secondary" min-width="55%" :text="humanize(name)"></nldd-text-cell>
             <nldd-text-cell size="sm" width="fit-content" max-width="45%" horizontal-alignment="right" :color="isUnknown(value) ? 'secondary' : 'content'" :text="formatValue(value, fieldSpec(doc, name))"></nldd-text-cell>
@@ -328,7 +330,7 @@ const statusTag = computed(() => {
              saying that of an empty row claims the person supplied something
              they never did. Unanswered reads as a question, answered says who
              gave the answer. -->
-        <nldd-list v-if="ownInputs.length" variant="simple" :accessible-label="t('wet.tile.own_inputs.label')">
+        <nldd-list v-if="ownInputs.length" appearance="simple" :accessible-label="t('wet.tile.own_inputs.label')">
           <nldd-list-item v-for="input in ownInputs" :key="input.name" size="sm" button @click="supply(input)">
             <nldd-icon-cell :icon="input.claim ? 'edit' : 'question-mark-circle'" size="16" :color="input.claim ? 'accent' : 'secondary'"></nldd-icon-cell>
             <nldd-spacer-cell size="8"></nldd-spacer-cell>
@@ -339,7 +341,7 @@ const statusTag = computed(() => {
         <!-- Outlined, not tinted. The tinted box is the answer; giving the same
              fill to a link into the reasoning made the two read as equals, and
              the eye had nowhere to land. This one is a door, not a statement. -->
-        <nldd-list type="tree" variant="box-base" :accessible-label="t('wet.tile.data.label')">
+        <nldd-list type="tree" appearance="box-base" :accessible-label="t('wet.tile.data.label')">
           <!-- Only once the presenter unlocked it from the menu: the
                explanation runs on a language model behind a password. -->
           <nldd-list-item v-if="whyUnlocked && evaluation.traceText" size="sm" button @click="showWhy = true">
@@ -383,18 +385,18 @@ const statusTag = computed(() => {
            about 313px of a 384px footer before padding and gaps push the last
            one onto a second line. "Mijn aanvraag" needed 336px and "Bezwaar
            maken" 347px, so both wrapped; "Aanvraag" and "Bezwaar" fit. -->
-      <nldd-button v-if="canObject" variant="primary" size="sm" start-icon="flag" :text="t('wet.tile.action.object')" @click="apply"></nldd-button>
-      <nldd-button v-else-if="drift" variant="primary" size="sm" start-icon="edit" :text="t('wet.tile.action.amend')" @click="apply"></nldd-button>
-      <nldd-button v-else-if="currentCase" variant="secondary" size="sm" start-icon="file-text" :text="t('wet.tile.action.case')" @click="apply"></nldd-button>
+      <nldd-button v-if="canObject" appearance="primary" size="sm" start-icon="flag" :text="t('wet.tile.action.object')" @click="apply"></nldd-button>
+      <nldd-button v-else-if="drift" appearance="primary" size="sm" start-icon="edit" :text="t('wet.tile.action.amend')" @click="apply"></nldd-button>
+      <nldd-button v-else-if="currentCase" appearance="secondary" size="sm" start-icon="file-text" :text="t('wet.tile.action.case')" @click="apply"></nldd-button>
       <!-- `data-highlight` is what the presentation slide pulses (demo-config.yaml,
            `highlight:`). It selected on the label once, `[text="Gegevens aanvullen"]`,
            and went dark without a sound when the label was shortened, and in every
            language but Dutch from the start. An attribute nobody translates or
            relabels does not have that failure; `slides.test.js` checks it exists. -->
-      <nldd-button v-else-if="canSubmitClaims && evaluation && missingInputs.length && produces?.legal_character === 'BESCHIKKING'" data-highlight="complete-data" variant="primary" size="sm" start-icon="edit" :text="t('wet.tile.action.complete')" @click="apply"></nldd-button>
-      <nldd-button v-else-if="canApply" variant="primary" size="sm" start-icon="paper-plane" :text="t('wet.tile.action.apply')" @click="apply"></nldd-button>
-      <nldd-button v-if="evaluation?.ok" variant="neutral-transparent" size="sm" start-icon="list" :text="t('wet.tile.action.calculation')" @click="showTrace = true"></nldd-button>
-      <nldd-button variant="neutral-transparent" size="sm" start-icon="book" :text="t('wet.tile.action.law_text')" @click="goTo('wetten', { lawId: law.id })"></nldd-button>
+      <nldd-button v-else-if="canSubmitClaims && evaluation && missingInputs.length && produces?.legal_character === 'BESCHIKKING'" data-highlight="complete-data" appearance="primary" size="sm" start-icon="edit" :text="t('wet.tile.action.complete')" @click="apply"></nldd-button>
+      <nldd-button v-else-if="canApply" appearance="primary" size="sm" start-icon="paper-plane" :text="t('wet.tile.action.apply')" @click="apply"></nldd-button>
+      <nldd-button v-if="evaluation?.ok" appearance="neutral-transparent" size="sm" start-icon="list" :text="t('wet.tile.action.calculation')" @click="showTrace = true"></nldd-button>
+      <nldd-button appearance="neutral-transparent" size="sm" start-icon="book" :text="t('wet.tile.action.law_text')" @click="goTo('wetten', { lawId: law.id })"></nldd-button>
     </nldd-container>
 
     <WhySheet :open="showWhy" :law="law" :payload="whyPayload" @close="showWhy = false" />

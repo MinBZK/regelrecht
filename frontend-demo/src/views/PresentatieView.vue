@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onActivated, onMounted, watch } from 'vue';
-import { usePresentation } from '../presentation/usePresentation.js';
+import { deckFor, usePresentation } from '../presentation/usePresentation.js';
 import { useDemo } from '../store/demoStore.js';
 import { useI18n } from '../i18n/index.js';
 import { useRouter } from 'vue-router';
@@ -19,8 +19,11 @@ const { timeline: walkthrough } = useWalkthrough();
 function openWalkthrough() {
   router.push(router.resolve({ name: localeRouteName('rondleiding', locale.value) }).path);
 }
-const { ready, corpus, state } = useDemo();
-const slides = computed(() => corpus.value?.config?.slides ?? []);
+const { ready, corpus, state, profileKey } = useDemo();
+// Het dek van wie er gekozen is; dat is ook wat `start` straks speelt.
+// Loopt het dek al, dan is dat de lijst: een dia kan intussen van persona
+// gewisseld zijn, en een klik moet op die dia van dít dek landen.
+const slides = computed(() => (p.active.value ? p.slides.value : deckFor(corpus.value?.config?.slides ?? [], profileKey.value)));
 
 // De toetsen staan als `{esc}`, `{f}` en `{shiftp}` in de zin en worden hier
 // tot `<kbd>` gevuld. De woordenboeken houden dan hele zinnen in plaats van
@@ -58,11 +61,11 @@ function kindLabel(s) {
       <nldd-title slot="header" size="2">
         <span slot="overline">{{ t('home.presentation.overline') }}</span>
         <h1>{{ t('home.presentation.title') }}</h1>
-        <span slot="subtitle">{{ t('home.presentation.subtitle') }}</span>
+        <span slot="supporting-text">{{ t('home.presentation.subtitle') }}</span>
         <!-- `end`, niet `actions`: nldd-title heeft geen actions-slot, en de
              knop viel daardoor buiten de shadow-DOM (0x0, onzichtbaar). Zonder
              container ertussen, want die krijgt in `.title__end` geen breedte. -->
-        <nldd-button slot="end" variant="primary" start-icon="play" :text="t('home.presentation.start')" :disabled="!ready || undefined" @click="p.start(0)"></nldd-button>
+        <nldd-button slot="end" appearance="primary" start-icon="play" :text="t('home.presentation.start')" :disabled="!ready || undefined" @click="p.start(0)"></nldd-button>
       </nldd-title>
       <!-- Twee blokken met elk één vraag: hoe presenteer je (de modus en de
            toetsen, alleen van belang voor wie zelf presenteert), of kijk je
@@ -104,16 +107,16 @@ function kindLabel(s) {
             <nldd-rich-text size="sm" spacing="tight">
               <p>{{ t('home.presentation.watch.text') }}</p>
             </nldd-rich-text>
-            <nldd-button variant="secondary" start-icon="video-camera" :text="t('home.presentation.walkthrough')" @click="openWalkthrough"></nldd-button>
+            <nldd-button appearance="secondary" start-icon="video-camera" :text="t('home.presentation.walkthrough')" @click="openWalkthrough"></nldd-button>
           </nldd-container>
         </nldd-card>
       </nldd-collection>
       <nldd-spacer size="16"></nldd-spacer>
       <nldd-title size="4">
         <h2>{{ t('home.presentation.slides.label') }}</h2>
-        <span slot="subtitle">{{ t('home.presentation.slides.hint') }}</span>
+        <span slot="supporting-text">{{ t('home.presentation.slides.hint') }}</span>
       </nldd-title>
-      <nldd-list variant="box-base" :accessible-label="t('home.presentation.slides.label')">
+      <nldd-list appearance="box-base" :accessible-label="t('home.presentation.slides.label')">
         <nldd-list-item v-for="(s, i) in slides" :key="i" size="sm" button @click="p.start(i)">
           <nldd-text-cell size="sm" color="secondary" width="fit-content" min-width="32px" :text="String(i + 1)"></nldd-text-cell>
           <nldd-text-cell size="sm" :text="s.title ?? s.lines?.[0]?.replaceAll('**', '') ?? ''" :supporting-text="s.route ? `${kindLabel(s)} · ${s.route}` : kindLabel(s)"></nldd-text-cell>

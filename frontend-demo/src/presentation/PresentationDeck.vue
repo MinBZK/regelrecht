@@ -130,7 +130,7 @@ function saveName(e) {
              op het donkerblauwe vlak zonder eigen kleurregels. -->
         <nldd-button-bar>
           <nldd-icon-button
-            variant="inherit-tinted"
+            appearance="inherit-tinted"
             icon="back"
             :text="t('deck.previous')"
             tooltip-timing="never"
@@ -139,13 +139,13 @@ function saveName(e) {
           ></nldd-icon-button>
           <nldd-button
             v-if="isLast"
-            variant="inherit-tinted"
+            appearance="inherit-tinted"
             :text="t('deck.close')"
             @click="p.stop()"
           ></nldd-button>
           <nldd-icon-button
             v-else
-            variant="inherit-tinted"
+            appearance="inherit-tinted"
             icon="forward"
             :text="t('deck.next')"
             tooltip-timing="never"

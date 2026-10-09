@@ -33,7 +33,7 @@ const cards = [
   },
   {
     title: 'Open Source',
-    body: 'Developed by the Nederlandse Digitale Dienst (Ministry of Economic Affairs and Climate Policy); the work began at the Ministry of the Interior, whose GitHub organization hosts the repository. Everything from the law files to the design decisions is public.',
+    body: 'Developed by the Nederlandse Digitale Dienst (Ministry of Economic Affairs and Climate Policy); the work began at the Ministry of the Interior, whose GitHub organization hosts the repository. Everything from the ruleworks to the design decisions is public.',
     href: 'https://github.com/MinBZK/regelrecht',
   },
 ];
@@ -45,7 +45,7 @@ const actions = [
 ];
 ---
 
-<nldd-list variant="box-tinted">
+<nldd-list appearance="box-tinted">
   {
     actions.map((a) => (
       <nldd-list-item href={a.href}>
@@ -56,7 +56,7 @@ const actions = [
     ))
   }
 </nldd-list>
-<nldd-list variant="box-tinted">
+<nldd-list appearance="box-tinted">
   {
     cards.map((c) => (
       <nldd-list-item href={c.href}>

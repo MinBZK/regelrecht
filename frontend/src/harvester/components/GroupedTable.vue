@@ -67,7 +67,7 @@ function statusBarTitle(group) {
     >
       <nldd-button
         slot="actions"
-        variant="secondary"
+        appearance="secondary"
         text="Clear filters"
         @click="clearFilters"
       />
@@ -76,7 +76,7 @@ function statusBarTitle(group) {
       <slot name="empty-action" />
     </nldd-inline-dialog>
 
-    <nldd-list v-else variant="simple">
+    <nldd-list v-else appearance="simple">
       <!-- Group rows -->
       <nldd-list-item
         v-for="group in data"

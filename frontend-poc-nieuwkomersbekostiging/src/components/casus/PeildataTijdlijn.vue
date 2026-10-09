@@ -16,7 +16,7 @@
         <nldd-text-cell size="sm" :text="datumLabel(peildata[i])" :supporting-text="kwartaalLabel(peildata[i])" :color="ist[i]?.in_bestand ? 'content' : 'secondary'"></nldd-text-cell>
         <nldd-text-cell size="sm" :color="kleur(ist[i])">
           <span class="tl-cel">
-            <nldd-icon :name="ist[i]?.telt ? 'check-mark-circle' : 'dismiss-circle'" size="16"></nldd-icon>
+            <nldd-icon :icon="ist[i]?.telt ? 'check-mark-circle' : 'dismiss-circle'" size="16"></nldd-icon>
             <nldd-tag v-if="ist[i]?.telt" size="sm" :color="categorieColor(ist[i].categorie_effectief)" :text="categorieLabel(ist[i].categorie_effectief)"></nldd-tag>
             <span v-if="ist[i]?.telt" class="tl-jaar">jaar {{ ist[i].bekostigingsjaar }}</span>
             <span class="tl-bedrag">{{ ist[i]?.telt ? euro(ist[i].bedrag) : uitlegNietTellend(ist[i]) }}</span>
@@ -24,7 +24,7 @@
         </nldd-text-cell>
         <nldd-text-cell v-for="k in kolommen" :key="k.id" size="sm" :color="kleur(k.timeline?.[i])">
           <span class="tl-cel">
-            <nldd-icon :name="k.timeline?.[i]?.telt ? 'check-mark-circle' : 'dismiss-circle'" size="16"></nldd-icon>
+            <nldd-icon :icon="k.timeline?.[i]?.telt ? 'check-mark-circle' : 'dismiss-circle'" size="16"></nldd-icon>
             <nldd-tag v-if="k.timeline?.[i]?.telt" size="sm" :color="categorieColor(k.timeline[i].categorie_effectief)" :text="categorieLabel(k.timeline[i].categorie_effectief)"></nldd-tag>
             <span v-if="k.timeline?.[i]?.telt" class="tl-jaar">jaar {{ k.timeline[i].bekostigingsjaar }}</span>
             <span class="tl-bedrag">{{ k.timeline?.[i]?.telt ? euro(k.timeline[i].bedrag) : uitlegNietTellend(k.timeline?.[i]) }}</span>
@@ -35,7 +35,7 @@
           <nldd-button
             text="Trace"
             size="xs"
-            variant="neutral-transparent"
+            appearance="neutral-transparent"
             start-icon="text-document"
             @click="emit('trace', peildata[i])"
           ></nldd-button>
@@ -58,7 +58,7 @@
     <div v-if="verborgen > 0 || alles" class="tl-voet">
       <nldd-button
         size="xs"
-        variant="neutral-transparent"
+        appearance="neutral-transparent"
         :text="alles ? 'Alleen de peildata die ertoe doen' : `Toon alle ${peildata.length} peildata (${verborgen} zonder inschrijving of recht verborgen)`"
         @click="alles = !alles"
       ></nldd-button>

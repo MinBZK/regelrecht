@@ -220,7 +220,7 @@ function viewLaw(job) {
 </script>
 
 <template>
-  <nldd-list v-if="!isEmpty" variant="simple">
+  <nldd-list v-if="!isEmpty" appearance="simple">
     <nldd-list-item v-for="task in shownTasks" :key="task.id" size="md">
       <nldd-icon-cell
         size="20"
@@ -300,7 +300,7 @@ function viewLaw(job) {
               @select="emit('cancel-job', job)"
             ></nldd-menu-item>
           </template>
-          <nldd-menu-item v-else text="Bekijk wet" @select="viewLaw(job)"></nldd-menu-item>
+          <nldd-menu-item v-else text="Bekijk regelwerk" @select="viewLaw(job)"></nldd-menu-item>
           </nldd-menu>
         </nldd-icon-button>
       </nldd-cell>

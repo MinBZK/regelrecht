@@ -10,7 +10,7 @@ capability: implementeren
 capaciteit: 1 architect + 1 engineer; aan uitvoerderskant 1 domeinexpert en 1
   IT-contact in een wekelijks ritme
 toelichting: |-
-  Een uitvoerbare specificatie levert pas iets op als ze tegen echte feiten
+  Een regelwerk levert pas iets op als het tegen echte feiten
   draait. Het corpus bevat de wet en de engine rekent een geval door, maar de
   gegevens waarop dat geval berust liggen bij uitvoeringsorganisaties in
   systemen die het artikel niet kennen waaruit een bedrag volgt. De burger die

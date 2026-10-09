@@ -5,7 +5,7 @@
         v-if="hasChildren"
         class="tn-toggle"
         size="xs"
-        variant="neutral-transparent"
+        appearance="neutral-transparent"
         :icon="open ? 'caret-down-small' : 'caret-right-small'"
         :expanded="open ? true : undefined"
         :accessible-label="open ? 'Inklappen' : 'Uitklappen'"
@@ -26,7 +26,7 @@
         target="_blank"
         rel="noopener"
         :title="`${wetsartikelLabel} openen op wetten.overheid.nl`"
-      >{{ node.name }}<nldd-icon name="external-link" size="12"></nldd-icon></a>
+      >{{ node.name }}<nldd-icon icon="external-link" size="12"></nldd-icon></a>
       <span v-else class="tn-name">{{ node.name }}</span>
       <span v-if="node.result !== null && node.result !== undefined" class="tn-result">
         = {{ formatResult(node.result) }}

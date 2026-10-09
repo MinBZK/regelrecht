@@ -29,6 +29,7 @@ export interface NavLink {
 export interface LandingContent {
   meta: { title: string; description: string }
   nav: {
+    brandTitle: string
     brandMinistry: string
     home: string
     what: string
@@ -133,7 +134,6 @@ export interface LandingContent {
     linksTitle: string
     contactTitle: string
     partOfTitle: string
-    copyright: string
     links: NavLink[]
     partOf: { label: string; href?: string }[]
   }
@@ -179,6 +179,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         'Een project van de Nederlandse Digitale Dienst dat verkent of wetgeving als uitvoerbare code geschreven kan worden.',
     },
     nav: {
+      brandTitle: 'Nederlandse Digitale Dienst',
       brandMinistry: 'Ministerie van Economische Zaken en Klimaat',
       home: 'Home',
       what: 'Wat',
@@ -203,7 +204,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       cards: [
         {
           h: 'Van analoog recht naar code',
-          p: 'Kunnen we traditionele wetgeving transformeren naar machine-uitvoerbare specificaties? We onderzoeken of dit de kloof tussen wetgever en uitvoering kan verkleinen.',
+          p: 'Kunnen we traditionele wetgeving omzetten naar regelwerken, waarin de wettekst en de uitvoerbare interpretatie naast elkaar staan? We onderzoeken of dit de kloof tussen wetgever en uitvoering kan verkleinen.',
         },
         {
           h: 'Gedeelde, controleerbare uitvoering',
@@ -251,7 +252,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       steps: [
         {
           title: 'Analoog naar digitaal',
-          text: 'Kunnen bestaande wetten systematisch worden omgezet van analoge tekst naar machine-uitvoerbare specificaties? Een eerste stap om een digitale basis te onderzoeken.',
+          text: 'Kunnen bestaande wetten systematisch worden omgezet van analoge tekst naar regelwerken? Een eerste stap om een digitale basis te onderzoeken.',
         },
         {
           title: 'Digitaal rechtsstelsel',
@@ -286,7 +287,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           title: 'Regelformaat',
           meta: 'YAML + JSON Schema',
           link: { label: 'Schemadocumentatie', href: '/reference/schema' },
-          text: 'Wetten als YAML-bestanden met de wettekst en de machine-uitvoerbare regels naast elkaar. Een versioned JSON Schema bewaakt de structuur.',
+          text: 'Elke regeling als regelwerk: YAML met de wettekst en de machine-uitvoerbare regels naast elkaar, één bestand per versie. Een versioned JSON Schema bewaakt de structuur.',
         },
         {
           title: 'BDD-scenario’s',
@@ -404,7 +405,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     },
     research: {
       title: 'Onderzoek',
-      lede: 'De verkenning roept vragen op die verder reiken dan techniek: wat het voor de verhouding tussen de staatsmachten betekent als wetsuitvoering publiek en narekenbaar wordt, en welke juridische status een uitvoerbare specificatie heeft. Dat denkwerk schrijven we op voor een academisch publiek, zodat juristen en bestuurskundigen het kunnen toetsen en aanscherpen.',
+      lede: 'De verkenning roept vragen op die verder reiken dan techniek: wat het voor de verhouding tussen de staatsmachten betekent als wetsuitvoering publiek en narekenbaar wordt, en welke juridische status een regelwerk heeft. Dat denkwerk schrijven we op voor een academisch publiek, zodat juristen en bestuurskundigen het kunnen toetsen en aanscherpen.',
       items: [
         {
           title: paperTitle,
@@ -552,7 +553,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         },
         {
           q: 'Waarom een eigen regelformaat?',
-          a: 'Het formaat is YAML met wettekst en machine-uitvoerbare regels naast elkaar in één bestand. Een versioned JSON Schema bewaakt de structuur, BDD-scenario’s leggen de bedoelde uitkomsten vast. Zo kunnen juristen meelezen, ontwikkelaars meebouwen, en verschillende overheidssystemen dezelfde regels gebruiken.',
+          a: 'Het formaat is YAML met wettekst en machine-uitvoerbare regels naast elkaar. Een regeling in dat formaat heet een regelwerk. Een versioned JSON Schema bewaakt de structuur, BDD-scenario’s leggen de bedoelde uitkomsten vast. Zo kunnen juristen meelezen, ontwikkelaars meebouwen, en verschillende overheidssystemen dezelfde regels gebruiken.',
           link: { label: 'Lees RFC-011', href: '/rfcs/rfc-011' },
         },
         {
@@ -615,8 +616,6 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       linksTitle: 'Links',
       contactTitle: 'Contact',
       partOfTitle: 'Onderdeel van',
-      copyright:
-        '© 2026 Ministerie van Economische Zaken en Klimaat. Alle rechten voorbehouden.',
       links: [
         { label: 'GitHub-repository', href: GITHUB },
         { label: 'Hoe het werkt', href: '/#how-it-works' },
@@ -672,6 +671,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         'A project of the Nederlandse Digitale Dienst exploring whether legislation can be written as executable code.',
     },
     nav: {
+      brandTitle: 'Nederlandse Digitale Dienst',
       brandMinistry: 'Ministry of Economic Affairs and Climate Policy',
       home: 'Home',
       what: 'What',
@@ -696,7 +696,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       cards: [
         {
           h: 'From analogue law to code',
-          p: 'Can we transform traditional legislation into machine-executable specifications? We are investigating whether this can narrow the gap between legislator and execution.',
+          p: 'Can we turn traditional legislation into ruleworks, in which the legal text and its executable interpretation sit side by side? We are investigating whether this can narrow the gap between legislator and execution.',
         },
         {
           h: 'Shared, verifiable execution',
@@ -744,7 +744,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       steps: [
         {
           title: 'Analogue to digital',
-          text: 'Can existing laws be systematically converted from analogue text into machine-executable specifications? A first step to explore a digital foundation.',
+          text: 'Can existing laws be systematically converted from analogue text into ruleworks? A first step to explore a digital foundation.',
         },
         {
           title: 'Digital legal system',
@@ -779,7 +779,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           title: 'Rule format',
           meta: 'YAML + JSON Schema',
           link: { label: 'Schema reference', href: '/reference/schema' },
-          text: 'Laws as YAML files, with the legal text and the machine-executable rules side by side. A versioned JSON Schema guards the structure.',
+          text: 'Every regulation as a rulework: YAML with the legal text and the machine-executable rules side by side, one file per version. A versioned JSON Schema guards the structure.',
         },
         {
           title: 'BDD scenarios',
@@ -897,7 +897,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     },
     research: {
       title: 'Research',
-      lede: 'This exploration raises questions that reach beyond technology: what it means for the balance between the branches of government when law execution becomes public and checkable, and what legal status an executable specification has. We write that up for an academic audience, so that legal and public-administration scholars can test and sharpen it.',
+      lede: 'This exploration raises questions that reach beyond technology: what it means for the balance between the branches of government when law execution becomes public and checkable, and what legal status a rulework has. We write that up for an academic audience, so that legal and public-administration scholars can test and sharpen it.',
       items: [
         {
           title: paperTitle,
@@ -1041,7 +1041,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         },
         {
           q: 'Why a dedicated rule format?',
-          a: 'The format is YAML, with legal text and machine-executable rules side by side in a single file. A versioned JSON Schema guards the structure, and BDD scenarios capture the intended outcomes. Legal experts can read along, developers can contribute, and different government systems can use the same rules.',
+          a: 'The format is YAML, with legal text and machine-executable rules side by side. A regulation in that format is called a rulework. A versioned JSON Schema guards the structure, and BDD scenarios capture the intended outcomes. Legal experts can read along, developers can contribute, and different government systems can use the same rules.',
           link: { label: 'Read RFC-011', href: '/rfcs/rfc-011' },
         },
         {
@@ -1104,8 +1104,6 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       linksTitle: 'Links',
       contactTitle: 'Contact',
       partOfTitle: 'Part of',
-      copyright:
-        '© 2026 Ministry of Economic Affairs and Climate Policy. All rights reserved.',
       links: [
         { label: 'GitHub repository', href: GITHUB },
         { label: 'How it works', href: '/en/#how-it-works' },

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { delegationKey, delegationProviders, delegationsFor, maySubmitClaims } from './delegation.js';
+import { delegationKey, startDelegationKey, delegationProviders, delegationsFor, maySubmitClaims } from './delegation.js';
 
 /** Een provider-wet met de standaarduitvoer van de machtigingsinterface. */
 function providerLaw(id, { name = id, service = 'RvIG', outputs = null } = {}) {
@@ -162,14 +162,14 @@ describe('delegationsFor', () => {
   });
 
   it('laat een machtiging die pas later ingaat nog niet zien', () => {
-    // Claudia's koffiezaak staat sinds 2025-01-15 in het handelsregister. Op
+    // Claudia's café staat sinds 2025-01-15 in het handelsregister. Op
     // een peildatum daarvóór bestaat die machtiging nog niet, en dan hoort de
     // keuze uit de werkbalk te verdwijnen. Dat is de wet, geen fout.
     const engine = engineOf({
       machtigingenwet: {
         heeft_delegaties: true,
         subject_ids: ['85234567'],
-        subject_names: ['Koffiezaak Noon'],
+        subject_names: ['Café Noon B.V.'],
         subject_types: ['BUSINESS'],
         delegation_types: ['EIGENAAR'],
         permissions: [['LEZEN']],
@@ -223,7 +223,7 @@ describe('delegationsFor', () => {
       machtigingenwet: {
         heeft_delegaties: true,
         subject_ids: '85234567',
-        subject_names: 'Koffiezaak Noon',
+        subject_names: 'Café Noon B.V.',
         subject_types: 'BUSINESS',
         delegation_types: 'EIGENAAR',
         permissions: ['LEZEN'],
@@ -233,7 +233,7 @@ describe('delegationsFor', () => {
     });
     const { delegations } = delegationsFor(engine, corpus, '999999990', '2025-01-01');
     expect(delegations).toHaveLength(1);
-    expect(delegations[0]).toMatchObject({ subjectId: '85234567', subjectName: 'Koffiezaak Noon' });
+    expect(delegations[0]).toMatchObject({ subjectId: '85234567', subjectName: 'Café Noon B.V.' });
   });
 });
 
@@ -259,5 +259,16 @@ describe('delegationKey', () => {
 
   it('geeft niets terug zonder machtiging', () => {
     expect(delegationKey(null)).toBeNull();
+  });
+});
+
+describe('startDelegationKey', () => {
+  it('wijst de onderneming uit start_namens aan', () => {
+    expect(startDelegationKey({ start_namens: '85234567' })).toBe('BUSINESS:85234567');
+  });
+
+  it('geeft niets voor een profiel zonder start_namens', () => {
+    expect(startDelegationKey({ bsn: '999100001' })).toBeNull();
+    expect(startDelegationKey(null)).toBeNull();
   });
 });

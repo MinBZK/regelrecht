@@ -67,9 +67,9 @@ onUnmounted(() => (here = false));
     <nldd-simple-section width="720px">
       <nldd-title slot="header" size="2">
         <h1>{{ t('walkthrough.missing.title') }}</h1>
-        <span slot="subtitle">{{ t('walkthrough.missing.body') }}</span>
+        <span slot="supporting-text">{{ t('walkthrough.missing.body') }}</span>
       </nldd-title>
-      <nldd-button variant="primary" start-icon="home" :text="t('walkthrough.leave')" @click="router.push(homePath)"></nldd-button>
+      <nldd-button appearance="primary" start-icon="home" :text="t('walkthrough.leave')" @click="router.push(homePath)"></nldd-button>
     </nldd-simple-section>
   </nldd-page>
 
@@ -77,7 +77,7 @@ onUnmounted(() => (here = false));
     <nldd-simple-section>
       <nldd-title slot="header" size="2">
         <h1>{{ t('walkthrough.label') }}</h1>
-        <span slot="subtitle">{{ t('walkthrough.phone') }}</span>
+        <span slot="supporting-text">{{ t('walkthrough.phone') }}</span>
       </nldd-title>
       <!-- A phone gets the recording as a video: the live demo next to a
            rail does not fit on it. Native controls, captions as a track. -->

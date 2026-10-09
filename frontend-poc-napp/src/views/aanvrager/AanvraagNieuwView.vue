@@ -256,7 +256,7 @@ watch(() => session.aanvrager, laadRegistratie);
         >
           <nldd-button
             slot="actions"
-            variant="primary"
+            appearance="primary"
             text="Naar inloggen"
             @click="router.push('/')"
           ></nldd-button>
@@ -358,7 +358,7 @@ watch(() => session.aanvrager, laadRegistratie);
                 </template>
                 <nldd-form-actions>
                   <nldd-button
-                    variant="secondary"
+                    appearance="secondary"
                     type="submit"
                     text="Rekening opslaan"
                     :disabled="rekeningBezig || undefined"
@@ -385,13 +385,13 @@ watch(() => session.aanvrager, laadRegistratie);
               <nldd-button-group orientation="horizontal">
                 <nldd-button
                   size="sm"
-                  variant="neutral-transparent"
+                  appearance="neutral-transparent"
                   text="Alles"
                   @click="selecteerGroep(groep, true)"
                 ></nldd-button>
                 <nldd-button
                   size="sm"
-                  variant="neutral-transparent"
+                  appearance="neutral-transparent"
                   text="Niets"
                   @click="selecteerGroep(groep, false)"
                 ></nldd-button>
@@ -399,7 +399,7 @@ watch(() => session.aanvrager, laadRegistratie);
             </div>
           </nldd-title>
           <nldd-spacer size="8"></nldd-spacer>
-          <nldd-list variant="box">
+          <nldd-list appearance="box">
             <nldd-list-item v-for="a in groepLeden(groep)" :key="a.key" size="sm">
               <nldd-cell width="fit-content">
                 <nldd-checkbox
@@ -582,14 +582,14 @@ watch(() => session.aanvrager, laadRegistratie);
 
         <nldd-button-group orientation="horizontal">
           <nldd-button
-            variant="primary"
+            appearance="primary"
             :text="`Aanvraag indienen (${onderdelen(aantalGeselecteerd)})`"
             start-icon="paper-plane"
             :disabled="bezig || aantalGeselecteerd === 0 || undefined"
             @click="verstuur"
           ></nldd-button>
           <nldd-button
-            variant="neutral-transparent"
+            appearance="neutral-transparent"
             text="Annuleren"
             @click="router.push('/')"
           ></nldd-button>

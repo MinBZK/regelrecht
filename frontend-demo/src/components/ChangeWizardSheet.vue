@@ -149,7 +149,7 @@ function show(claim) {
             <nldd-rich-text spacing="tight">
               <p>{{ t('sheet.change.intro') }}</p>
             </nldd-rich-text>
-            <nldd-list variant="box" :accessible-label="t('sheet.change.kind.label')">
+            <nldd-list appearance="box" :accessible-label="t('sheet.change.kind.label')">
               <nldd-list-item v-for="ct in CHANGE_TYPES" :key="ct.id" size="md" button @click="chooseType(ct.id)">
                 <nldd-icon-cell :icon="ct.icon" size="20" color="accent"></nldd-icon-cell>
                 <nldd-spacer-cell size="12"></nldd-spacer-cell>
@@ -163,7 +163,7 @@ function show(claim) {
           <template v-else-if="step === 1">
             <!-- Een gebeurtenis (huishouden): kiezen, geen invullen. -->
             <template v-if="type?.events">
-              <nldd-list variant="box" :accessible-label="t('sheet.change.what.label')">
+              <nldd-list appearance="box" :accessible-label="t('sheet.change.what.label')">
                 <nldd-list-item
                   v-for="e in type.events"
                   :key="e.value"
@@ -202,8 +202,8 @@ function show(claim) {
             <nldd-banner v-if="error" variant="critical" :text="error"></nldd-banner>
             <nldd-form-actions>
               <nldd-button-group orientation="horizontal">
-                <nldd-button variant="primary" :text="t('sheet.change.continue')" @click="toConfirm"></nldd-button>
-                <nldd-button variant="secondary" :text="t('sheet.change.back')" @click="back"></nldd-button>
+                <nldd-button appearance="primary" :text="t('sheet.change.continue')" @click="toConfirm"></nldd-button>
+                <nldd-button appearance="secondary" :text="t('sheet.change.back')" @click="back"></nldd-button>
               </nldd-button-group>
             </nldd-form-actions>
           </template>
@@ -216,7 +216,7 @@ function show(claim) {
             <nldd-rich-text spacing="tight">
               <p>{{ t('sheet.change.confirm.before') }}<strong>{{ lawName }}</strong>{{ t('sheet.change.confirm.after') }}</p>
             </nldd-rich-text>
-            <nldd-list variant="box-tinted" :accessible-label="t('sheet.change.confirm.label')">
+            <nldd-list appearance="box-tinted" :accessible-label="t('sheet.change.confirm.label')">
               <nldd-list-item v-for="c in claims" :key="c.input" size="md">
                 <nldd-text-cell :text="c.label" :supporting-text="c.input"></nldd-text-cell>
                 <nldd-text-cell width="fit-content" horizontal-alignment="right" :text="show(c)"></nldd-text-cell>
@@ -235,8 +235,8 @@ function show(claim) {
             </nldd-form-field>
             <nldd-form-actions>
               <nldd-button-group orientation="horizontal">
-                <nldd-button variant="primary" :text="t('sheet.change.submit')" @click="submit"></nldd-button>
-                <nldd-button variant="secondary" :text="t('sheet.change.back')" @click="back"></nldd-button>
+                <nldd-button appearance="primary" :text="t('sheet.change.submit')" @click="submit"></nldd-button>
+                <nldd-button appearance="secondary" :text="t('sheet.change.back')" @click="back"></nldd-button>
               </nldd-button-group>
             </nldd-form-actions>
           </template>
@@ -251,8 +251,8 @@ function show(claim) {
             ></nldd-inline-dialog>
             <nldd-form-actions>
               <nldd-button-group orientation="horizontal">
-                <nldd-button variant="primary" :text="t('sheet.change.done.to_portal')" @click="emit('close')"></nldd-button>
-                <nldd-button variant="secondary" :text="t('sheet.change.done.another')" @click="reset"></nldd-button>
+                <nldd-button appearance="primary" :text="t('sheet.change.done.to_portal')" @click="emit('close')"></nldd-button>
+                <nldd-button appearance="secondary" :text="t('sheet.change.done.another')" @click="reset"></nldd-button>
               </nldd-button-group>
             </nldd-form-actions>
           </template>

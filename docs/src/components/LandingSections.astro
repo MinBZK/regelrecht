@@ -134,19 +134,19 @@ function exampleImage(key: string): ImageMetadata {
           <nldd-spacer size="16" />
           <nldd-button-group orientation="horizontal">
             <nldd-button
-              variant="inherit-filled"
+              appearance="inherit-filled"
               href={t.feedback.ctaHref}
               start-icon="notification"
               text={t.feedback.cta}
             />
             <nldd-button
-              variant="inherit-tinted"
+              appearance="inherit-tinted"
               href="/docs/"
               start-icon="books"
               text={t.nav.docs}
             />
             <nldd-button
-              variant="inherit-tinted"
+              appearance="inherit-tinted"
               href="/research/"
               start-icon="text-document"
               text={t.nav.research}
@@ -235,7 +235,7 @@ function exampleImage(key: string): ImageMetadata {
                     <nldd-spacer size="24" />
                     <nldd-button-group orientation="horizontal">
                       <nldd-button
-                        variant="primary"
+                        appearance="primary"
                         href={job.ctaHref}
                         end-icon="external-link"
                         text={job.ctaLabel}
@@ -572,7 +572,7 @@ function exampleImage(key: string): ImageMetadata {
                 <nldd-container padding="20">
                   <nldd-title size="3">
                     <h3>{fase.naam}</h3>
-                    <p slot="subtitle">{fase.ondertitel}</p>
+                    <p slot="supporting-text">{fase.ondertitel}</p>
                   </nldd-title>
                   <nldd-spacer size="8" />
                   <nldd-tag color="neutral" size="md">
@@ -589,7 +589,7 @@ function exampleImage(key: string): ImageMetadata {
           <nldd-spacer size="24" />
           <nldd-button-group orientation="horizontal">
             <nldd-button
-              variant="primary"
+              appearance="primary"
               href="/roadmap"
               start-icon="arrow-right"
               text={t.roadmap.ctaLabel}
@@ -648,7 +648,7 @@ function exampleImage(key: string): ImageMetadata {
           </nldd-rich-text>
           <nldd-spacer size="24" />
           <nldd-button
-            variant="primary"
+            appearance="primary"
             href={t.feedback.ctaHref}
             start-icon="notification"
             text={t.feedback.cta}

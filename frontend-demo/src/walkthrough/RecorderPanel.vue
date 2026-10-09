@@ -209,7 +209,7 @@ onUnmounted(() => {
               </select>
             </nldd-dropdown>
           </nldd-form-field>
-          <nldd-button size="sm" variant="secondary" :start-icon="mic.testing ? 'stop' : 'speaker'" :text="mic.testing ? t('recorder.mic.stop_test') : t('recorder.mic.test')" @click="toggleTest"></nldd-button>
+          <nldd-button size="sm" appearance="secondary" :start-icon="mic.testing ? 'stop' : 'speaker'" :text="mic.testing ? t('recorder.mic.stop_test') : t('recorder.mic.test')" @click="toggleTest"></nldd-button>
           <template v-if="mic.testing">
             <nldd-progress-bar size="md" :color="levelVerdict(mic.levelDb, mic.peakDb) === 'recorder.mic.good' ? 'success' : 'warning'" :value="levelPercent(mic.levelDb)" max="100" value-display="none" :accessible-label="t('recorder.mic.level', { db: mic.levelDb })"></nldd-progress-bar>
             <nldd-text size="sm">{{ t(levelVerdict(mic.levelDb, mic.peakDb)) }} ({{ mic.levelDb }} dB)</nldd-text>
@@ -225,7 +225,7 @@ onUnmounted(() => {
                 </select>
               </nldd-dropdown>
             </nldd-form-field>
-            <nldd-button size="sm" variant="secondary" :start-icon="cam.testing ? 'stop' : 'video-camera'" :text="cam.testing ? t('recorder.cam.stop_test') : t('recorder.cam.test')" @click="toggleCamTest"></nldd-button>
+            <nldd-button size="sm" appearance="secondary" :start-icon="cam.testing ? 'stop' : 'video-camera'" :text="cam.testing ? t('recorder.cam.stop_test') : t('recorder.cam.test')" @click="toggleCamTest"></nldd-button>
             <template v-if="cam.testing">
               <video ref="preview" class="cam-preview" autoplay muted playsinline :aria-label="t('recorder.cam.preview')"></video>
               <nldd-text size="sm">{{ t(lightVerdict(cam.brightness)) }}</nldd-text>
@@ -234,7 +234,7 @@ onUnmounted(() => {
           <nldd-switch-field :label="t('recorder.restore')" :checked="restore || undefined" @change="restore = !restore"></nldd-switch-field>
           <nldd-text v-if="recorder.phase === 'done'" size="sm" color="secondary">{{ t('recorder.saved', { take: recorder.takeId }) }}</nldd-text>
           <nldd-text v-if="recorder.error" size="sm" color="critical">{{ recorder.errorKey ? t(recorder.errorKey) : recorder.error }}</nldd-text>
-          <nldd-button variant="primary" start-icon="play" :text="t('recorder.start')" :loading="recorder.phase === 'starting' || undefined" :disabled="!slides.length || undefined" @click="start"></nldd-button>
+          <nldd-button appearance="primary" start-icon="play" :text="t('recorder.start')" :loading="recorder.phase === 'starting' || undefined" :disabled="!slides.length || undefined" @click="start"></nldd-button>
           <nldd-text size="sm" color="secondary">{{ t('recorder.help') }}</nldd-text>
         </template>
       </nldd-container>

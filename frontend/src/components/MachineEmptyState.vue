@@ -62,12 +62,12 @@ const onLoginTriggerPointerdown = inject('onLoginTriggerPointerdown', () => {});
 // Wie bij artikel 5 op deze knop drukte, kreeg taken terug voor artikel 3, 7 en
 // 12 zonder dat de knop dat ergens had gezegd.
 const actsHere = computed(() => !props.needs);
-const enrichLabel = computed(() => (actsHere.value ? 'Verrijk deze wet' : 'Deze wet verrijken'));
+const enrichLabel = computed(() => (actsHere.value ? 'Verrijk dit regelwerk' : 'Dit regelwerk verrijken'));
 const IN_EEN_TRAJECT = 'Een voorstel komt in een traject te staan, want daar leg je wijzigingen vast.';
 const emptyText = computed(() => {
   if (props.needs === 'login') return `${IN_EEN_TRAJECT} Log in en kies een traject om dit artikel daar te openen.`;
   if (props.needs === 'traject') return `${IN_EEN_TRAJECT} Kies een traject om dit artikel daar te openen.`;
-  return 'Genereren verrijkt de hele wet en levert een voorstel per artikel op in dit traject.';
+  return 'Genereren verrijkt alle artikelen van deze versie en levert een voorstel per artikel op in dit traject.';
 });
 </script>
 
@@ -83,7 +83,7 @@ const emptyText = computed(() => {
   >
     <nldd-button
       slot="actions"
-      variant="secondary"
+      appearance="secondary"
       size="md"
       data-testid="review-btn"
       text="Beoordeel voorstel"
@@ -100,7 +100,7 @@ const emptyText = computed(() => {
   >
     <nldd-button
       slot="actions"
-      variant="secondary"
+      appearance="secondary"
       size="md"
       data-testid="view-tasks-btn"
       text="Bekijk taken"
@@ -118,7 +118,7 @@ const emptyText = computed(() => {
     <nldd-button
       v-if="canEnrich"
       slot="actions"
-      variant="secondary"
+      appearance="secondary"
       size="md"
       start-icon="ai"
       data-testid="enrich-btn"
@@ -129,7 +129,7 @@ const emptyText = computed(() => {
     <nldd-button
       v-if="canWriteHere"
       slot="actions"
-      variant="secondary"
+      appearance="secondary"
       size="md"
       start-icon="write"
       data-testid="init-mr-btn"
@@ -139,7 +139,7 @@ const emptyText = computed(() => {
     <nldd-button
       v-else-if="canCreate"
       slot="actions"
-      variant="secondary"
+      appearance="secondary"
       size="md"
       start-icon="write"
       data-testid="create-mr-btn"

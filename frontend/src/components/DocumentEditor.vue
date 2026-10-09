@@ -236,7 +236,7 @@ function dismissDeleteNotice() {
         <nldd-toolbar-title v-if="paneChromeVisible(docLoading || creating)" slot="center" align="center" :text="docName">
           <!-- Same icon as the row in the werkdocumenten list, so the title
                echoes what you clicked. Decorative: the name is right beside it. -->
-          <nldd-icon slot="media" name="text-document" size="20"></nldd-icon>
+          <nldd-icon slot="media" icon="text-document" size="20"></nldd-icon>
           <nldd-icon-button
             slot="action"
             id="document-actions-btn"
@@ -251,7 +251,7 @@ function dismissDeleteNotice() {
         <!-- Save + revert appear only while there are unsaved changes. -->
         <nldd-toolbar-item v-if="hasChanges" slot="end">
           <nldd-button
-            variant="primary"
+            appearance="primary"
             size="md"
             text="Opslaan"
             :loading="saving || undefined"
@@ -282,7 +282,7 @@ function dismissDeleteNotice() {
         <nldd-banner v-if="deletedRemotely" variant="warning" :text="deletedRemotely"></nldd-banner>
         <!-- Hybrid Markdown editor: live-styled source, no separate preview. -->
         <nldd-text-editor
-          variant="simple"
+          appearance="simple"
           :rows="12"
           resize="auto"
           :value="currentBody"
@@ -449,8 +449,8 @@ function dismissDeleteNotice() {
                 </nldd-validation-list>
               </nldd-form-field>
               <nldd-form-actions>
-                <nldd-button-group>
-                  <nldd-button variant="primary" type="submit" text="Opslaan" :loading="saving || undefined"></nldd-button>
+                <nldd-button-group orientation="vertical">
+                  <nldd-button appearance="primary" type="submit" text="Opslaan" :loading="saving || undefined"></nldd-button>
                 </nldd-button-group>
               </nldd-form-actions>
             </form>
@@ -463,16 +463,16 @@ function dismissDeleteNotice() {
   <!-- Action-failure dialogs (shown imperatively from reactive state). -->
   <Teleport to="body">
     <nldd-modal-dialog ref="saveErrorModalEl" variant="alert" text="Opslaan mislukt" :supporting-text="saveError?.message || undefined" @close="dismissSaveError">
-      <nldd-button slot="actions" variant="primary" text="Oké" @click="dismissSaveError"></nldd-button>
+      <nldd-button slot="actions" appearance="primary" text="Oké" @click="dismissSaveError"></nldd-button>
     </nldd-modal-dialog>
 
     <nldd-modal-dialog ref="conflictModalEl" variant="alert" text="Document is gewijzigd" :supporting-text="conflict || undefined" @close="dismissConflict">
       <nldd-button slot="actions" text="Server-versie laden" @click="conflictReload"></nldd-button>
-      <nldd-button slot="actions" variant="primary" text="Lokaal overschrijven" @click="conflictOverwrite"></nldd-button>
+      <nldd-button slot="actions" appearance="primary" text="Lokaal overschrijven" @click="conflictOverwrite"></nldd-button>
     </nldd-modal-dialog>
 
     <nldd-modal-dialog ref="deleteNoticeModalEl" variant="alert" text="Verwijderen mislukt" :supporting-text="deleteNotice || undefined" @close="dismissDeleteNotice">
-      <nldd-button slot="actions" variant="primary" text="Oké" @click="dismissDeleteNotice"></nldd-button>
+      <nldd-button slot="actions" appearance="primary" text="Oké" @click="dismissDeleteNotice"></nldd-button>
     </nldd-modal-dialog>
 
     <nldd-modal-dialog
@@ -482,8 +482,8 @@ function dismissDeleteNotice() {
       supporting-text="Het document wordt definitief uit het traject verwijderd. Dit kan niet ongedaan worden gemaakt."
       @close="cancelDelete"
     >
-      <nldd-button slot="actions" variant="primary" text="Behoud document" @click="cancelDelete"></nldd-button>
-      <nldd-button slot="actions" variant="destructive" text="Verwijder" @click="onConfirmDelete"></nldd-button>
+      <nldd-button slot="actions" appearance="primary" text="Behoud document" @click="cancelDelete"></nldd-button>
+      <nldd-button slot="actions" appearance="destructive" text="Verwijder" @click="onConfirmDelete"></nldd-button>
     </nldd-modal-dialog>
   </Teleport>
 </template>

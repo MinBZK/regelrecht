@@ -10,7 +10,7 @@ capability: publiceren
 capaciteit: ''
 toelichting: |-
   Waar "Verkenning publicatievoorziening" onderzoekt hoe publicatie,
-  versiebeheer en het register van specificaties moeten werken — en dat
+  versiebeheer en het register van regelwerken moeten werken — en dat
   verkent met een prototype — bouwt dit werkpakket de productierijpe
   publicatievoorziening zelf: de daadwerkelijke implementatie die op basis
   van de verkenning en het prototype in gebruik genomen kan worden.
@@ -20,7 +20,7 @@ onderzoeksvragen:
     kunnen direct worden doorontwikkeld naar een productierijpe
     implementatie, en welke moeten opnieuw ontworpen worden?
   - Hoe wordt de publicatievoorziening geïntegreerd met de bestaande keten
-    (harvester, editor, engine), zodat een gepubliceerde specificatie
+    (harvester, editor, engine), zodat een gepubliceerd regelwerk
     automatisch beschikbaar komt voor uitvoering?
   - Welke beheerorganisatie en operationele processen zijn nodig om de
     publicatievoorziening en het register in productie te draaien (updates,
