@@ -1,8 +1,8 @@
 Feature: Teruglezen van de kroniek van Toeslagen
   Het fictieve beleid van Toeslagen leest haar eigen kroniek terug als de
-  gegevens die art. 16 en 22 Awir en het beleid over de uitbetaling vragen:
+  gegevens die art. 16, 22 en 24 Awir en het beleid over de uitbetaling vragen:
   het voorschot dat geldt, de rekening uit de aanvraag, wat er achterstallig
-  is en de schatting van het inkomen. Het voorschot en de achterstand per
+  is, wat er is uitbetaald en de schatting van het inkomen. Het voorschot en de achterstand per
   berekeningsjaar (`period`): een aanvraag geldt ook voor de jaren erna. De kroniek is hier een tabel met een rij per vastgelegd feit: zijn
   kenmerk, de aanvraag waar het bij hoort (`root`), zijn plaats in de tijd
   (`sequence`) en zijn velden. Er staan steeds ook feiten van een andere
@@ -130,6 +130,33 @@ Feature: Teruglezen van de kroniek van Toeslagen
       | berekeningsjaar | 2025 |
     When I evaluate "achterstallig_bedrag" of "fictief_beleid_kroniek_toeslagen"
     Then output "achterstallig_bedrag" equals 8333
+
+  # Art. 3a: uitbetaald is wat de bank op de termijnen van het voorschot voor
+  # het berekeningsjaar bijschreef; een mislukte betaling, een ander jaar en
+  # een andere aanvraag tellen niet.
+  Scenario: Uitbetaald is wat de bank bijschreef op het voorschot van dit jaar
+    Given parameter "grams" is the collection:
+      | id | root | sequence | event                   | betaald_bedrag | period |
+      | b1 | a1   | 3        | voorschottermijn_betaald | 14100          | 2025   |
+      | m1 | a1   | 4        | betaling_mislukt         | null           | 2025   |
+      | b2 | a1   | 5        | voorschottermijn_betaald | 14100          | 2025   |
+      | b3 | a1   | 6        | voorschottermijn_betaald | 12500          | 2026   |
+      | w1 | a2   | 7        | voorschottermijn_betaald | 99900          | 2025   |
+    And the following parameters:
+      | root            | a1   |
+      | berekeningsjaar | 2025 |
+    When I evaluate "uitbetaalde_voorschotten" of "fictief_beleid_kroniek_toeslagen"
+    Then output "uitbetaalde_voorschotten" equals 28200
+
+  Scenario: Zonder bijgeschreven termijn is er niets uitbetaald
+    Given parameter "grams" is the collection:
+      | id | root | sequence | event              | betaald_bedrag | period |
+      | a1 | a1   | 1        | aanvraag_ontvangen | null           | null   |
+    And the following parameters:
+      | root            | a1   |
+      | berekeningsjaar | 2025 |
+    When I evaluate "uitbetaalde_voorschotten" of "fictief_beleid_kroniek_toeslagen"
+    Then output "uitbetaalde_voorschotten" equals 0
 
   # Art. 4: de schatting van het inkomen is die uit de aanvraag (aanname: ook
   # voor een volgend berekeningsjaar).

@@ -1,12 +1,14 @@
 ---
 # Beleid van de Dienst Toeslagen over het teruglezen van haar eigen kroniek:
 # hoe zij een vastgelegd voorschot, de rekening uit de aanvraag, wat er
-# achterstallig is en de schatting van het inkomen weer leest als de gegevens
-# die art. 16 en 22 Awir en het beleid over de uitbetaling van het voorschot
-# vragen (art. 1 tot en met 4), en hoe zij het ontvangen inkomensgegeven, de
+# achterstallig is, wat er op het voorschot is uitbetaald en de schatting van
+# het inkomen weer leest als de gegevens die art. 16, 22 en 24 Awir en het
+# beleid over de uitbetaling van het voorschot vragen (art. 1 tot en met 4), en hoe zij het ontvangen inkomensgegeven, de
 # toekenning, de nabetaling, de terugvordering en de incasso weer leest als
 # de gegevens die art. 8, 24, 26, 26a en 28 Awir en het beleid over de
-# toekenning, nabetaling en terugvordering vragen (art. 5 tot en met 8). Een
+# toekenning, nabetaling en terugvordering vragen (art. 5 tot en met 8). Elk
+# artikel is een lexostatus van de cel van Toeslagen, onder de naam in
+# `endpoint`. Een
 # aanvraag geldt ook voor de berekeningsjaren erna (art. 15 lid 5
 # Awir), dus een voorschot en wat erop betaald is, lees je per
 # berekeningsjaar: de cel geeft het berekeningsjaar mee (`berekeningsjaar`),
@@ -66,6 +68,8 @@ articles:
       genomen (artikel 22, eerste lid, van die wet). [Aanname: de dagtekening
       is de dag van het besluit.]
     machine_readable:
+      # De naam waaronder de cel dit artikel als lexostatus kent.
+      endpoint: voorschot
       execution:
         parameters:
           - name: root
@@ -181,6 +185,8 @@ articles:
       rekening die de aanvrager in die aanvraag opgaf. Gaf hij er geen op, dan
       is er geen rekening.
     machine_readable:
+      # De naam waaronder de cel dit artikel als lexostatus kent.
+      endpoint: rekening
       execution:
         parameters:
           - name: root
@@ -249,6 +255,8 @@ articles:
       opdroeg. [Aanname: wat op het voorschot van het ene jaar niet is
       bijgeschreven, gaat niet mee met de termijnen van een ander jaar.]
     machine_readable:
+      # De naam waaronder de cel dit artikel als lexostatus kent.
+      endpoint: achterstand
       execution:
         parameters:
           - name: root
@@ -315,6 +323,77 @@ articles:
                   body: $g.meegenomen_achterstand
                   combine: ADD
 
+  - number: 3a
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel24
+    text: >-
+      FICTIEF, aanname namens de Dienst Toeslagen: geen bekendgemaakt beleid.
+      Uitbetaald op het voorschot op een aanvraag voor een berekeningsjaar
+      (artikel 24, tweede lid, van de Algemene wet inkomensafhankelijke
+      regelingen) is de som van wat de bank op de voorschottermijnen van dat
+      voorschot bijschreef, zoals Toeslagen het op het moment van lezen weet.
+      Een betaalopdracht die de bank niet bijschreef, telt niet. Schreef de
+      bank niets bij, dan is er niets uitbetaald. [Aanname: wat op het
+      voorschot voor het ene berekeningsjaar is betaald, telt niet mee voor de
+      toekenning over een ander berekeningsjaar.]
+    machine_readable:
+      # De naam waaronder de cel dit artikel als lexostatus kent.
+      endpoint: uitbetaald
+      execution:
+        parameters:
+          - name: root
+            type: string
+            required: true
+            description: Het kenmerk van de aanvraag.
+          - name: berekeningsjaar
+            type: number
+            required: true
+            description: >-
+              Het berekeningsjaar waarvoor gelezen wordt: een aanvraag geldt
+              ook voor de jaren erna (artikel 15, vijfde lid, van de Algemene
+              wet inkomensafhankelijke regelingen), en de toekenning over een
+              jaar verrekent alleen het voorschot van dat jaar.
+        input:
+          - name: grams
+            type: array
+            source: {}
+        output:
+          # Hulpuitvoer: de aanvraag en het jaar buiten de FOREACH gelezen
+          # (zie artikel 1).
+          - name: aanvraag_van_de_betalingen
+            type: string
+            description: Het kenmerk van de aanvraag waarnaar gevraagd wordt.
+          - name: jaar_van_de_betalingen
+            type: number
+            description: Het berekeningsjaar waarnaar gevraagd wordt.
+          - name: uitbetaalde_voorschotten
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Wat de bank op het voorschot voor het berekeningsjaar bijschreef.
+            legal_basis:
+              law: Algemene wet inkomensafhankelijke regelingen
+              article: '24'
+              paragraph: '2'
+        actions:
+          - output: aanvraag_van_de_betalingen
+            value: $root
+          - output: jaar_van_de_betalingen
+            value: $berekeningsjaar
+          # ADD over geen enkele betaling is nul.
+          - output: uitbetaalde_voorschotten
+            value:
+              operation: FOREACH
+              collection: $grams
+              as: g
+              filter:
+                operation: AND
+                conditions:
+                  - {operation: EQUALS, subject: $g.event, value: voorschottermijn_betaald}
+                  - {operation: EQUALS, subject: $g.root, value: $aanvraag_van_de_betalingen}
+                  - {operation: EQUALS, subject: $g.period, value: $jaar_van_de_betalingen}
+              body: $g.betaald_bedrag
+              combine: ADD
+
   - number: '4'
     url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel16
     text: >-
@@ -328,6 +407,8 @@ articles:
       van die wet). Een wijziging van de schatting (artikel 17 van die wet)
       kent dit beleid nog niet, dus de laatste is die uit de aanvraag.]
     machine_readable:
+      # De naam waaronder de cel dit artikel als lexostatus kent.
+      endpoint: schatting_inkomen
       execution:
         parameters:
           - name: root
@@ -403,6 +484,8 @@ articles:
       laatst ontvangen inkomensgegeven vervangt een eerder over hetzelfde
       jaar.]
     machine_readable:
+      # De naam waaronder de cel dit artikel als lexostatus kent.
+      endpoint: inkomensgegeven
       execution:
         parameters:
           - name: root
@@ -533,6 +616,8 @@ articles:
       bedragen die dat besluit vaststelt; de dagtekening is de dag van dat
       besluit. [Aanname: de dagtekening is de dag van het besluit.]
     machine_readable:
+      # De naam waaronder de cel dit artikel als lexostatus kent.
+      endpoint: toekenning
       execution:
         parameters:
           - name: root
@@ -652,6 +737,8 @@ articles:
       wat Toeslagen de bank opdroeg over te maken, verminderd met wat de bank
       daarvan weigerde.
     machine_readable:
+      # De naam waaronder de cel dit artikel als lexostatus kent.
+      endpoint: nabetaling
       execution:
         parameters:
           - name: root
@@ -722,6 +809,8 @@ articles:
       schrijven, verminderd met wat de bank daarvan weigerde. [Aanname: de
       dagtekening is de dag van het besluit.]
     machine_readable:
+      # De naam waaronder de cel dit artikel als lexostatus kent.
+      endpoint: terugvordering
       execution:
         parameters:
           - name: root
