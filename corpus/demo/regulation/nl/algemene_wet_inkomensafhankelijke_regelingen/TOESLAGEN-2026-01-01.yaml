@@ -356,12 +356,32 @@ articles:
             origin:
               waarde: DOSSIER
               grondslag: algemene_wet_bestuursrecht#4:13 lid 1
+          # Lid 5: het berekeningsjaar waarvoor de aanvraag zou gelden; zie
+          # de uitvoer aanvraag_geldt_voor_berekeningsjaar.
+          - name: berekeningsjaar
+            type: number
+            required: false
+            description: >-
+              Een berekeningsjaar waarvoor gevraagd wordt of de aanvraag geldt
+              (lid 5).
         output:
           - name: aanvraag_binnen_termijn
             type: boolean
             description: >-
               Lid 1: de aanvraag is ingediend tot en met 31 december van het
               jaar volgend op het berekeningsjaar.
+          # Lid 1 en 5: de aanvraag geldt voor het berekeningsjaar waarvoor
+          # zij is gedaan, en wordt geacht mede te zijn gedaan voor de
+          # berekeningsjaren daarna. Geen nieuwe aanvraag dus: op dezelfde
+          # aanvraag volgt elk jaar een voorschot (art. 16 lid 2) en een
+          # toekenning. Lid 6 (de Dienst Toeslagen deelt mee dat de toepassing
+          # van lid 5 kan worden beëindigd) is niet gemodelleerd: zo'n
+          # mededeling kent dit model niet, dus de aanvraag loopt door.
+          - name: aanvraag_geldt_voor_berekeningsjaar
+            type: boolean
+            description: >-
+              Lid 1 en 5: de aanvraag geldt voor dit berekeningsjaar, omdat zij
+              ervoor is gedaan of geacht wordt mede ervoor te zijn gedaan.
         actions:
           - output: aanvraag_binnen_termijn
             value:
@@ -376,6 +396,11 @@ articles:
                     - 1
                 month: 12
                 day: 31
+          - output: aanvraag_geldt_voor_berekeningsjaar
+            value:
+              operation: GREATER_THAN_OR_EQUAL
+              subject: $berekeningsjaar
+              value: $aangevraagd_berekeningsjaar
   - number: '16'
     text: |-
       1 De Dienst Toeslagen verleent de belanghebbende die een aanvraag voor een tegemoetkoming indient vóór 1 april van
@@ -470,8 +495,16 @@ articles:
       # het voorschot onbekend (RFC-036). Lid 4 (nihil bij onvoldoende
       # gegevens) is een oordeel van de Dienst Toeslagen en is niet
       # gemodelleerd: zonder schatting is het voorschot onbekend (RFC-036),
-      # niet nihil. Niet gemodelleerd: de termijn van 13 weken uit lid 1, en
-      # de leden 2, 3 en 5 tot en met 7.
+      # niet nihil.
+      # Het berekeningsjaar van het voorschot is het jaar waarvoor de aanvraag
+      # is gedaan, of een volgend jaar (art. 15 lid 5): de aanvraag geldt dan
+      # ook, en elk jaar volgt op dezelfde aanvraag een voorschot. Lid 2 zegt
+      # dat dat voorschot vóór de aanvang van het berekeningsjaar wordt
+      # verleend; op welke dag, zegt de wet niet en staat (gemarkeerd) in het
+      # fictieve uitvoeringsbeleid van de Dienst Toeslagen
+      # (fictief_beleid_termijnbedrag_voorschot art. 4). Niet gemodelleerd: de
+      # termijn van 13 weken uit lid 1, de toets dat de aanspraak het hele
+      # berekeningsjaar bestaat (lid 2), en de leden 3 en 5 tot en met 7.
       hooks:
         - hook_point: pre_actions
           applies_to:
@@ -504,16 +537,31 @@ articles:
               De tegemoetkoming die de inkomensafhankelijke regeling in de fase
               VOORSCHOT berekent. De beschikking waarop dit artikel haakt geeft
               haar mee.
+          - name: berekeningsjaar
+            type: number
+            required: false
+            description: >-
+              Het berekeningsjaar waarop de tegemoetkoming en dus het voorschot betrekking
+              heeft (art. 2 lid 1 onder b): het jaar waarvoor de aanvraag is
+              gedaan (art. 15 lid 1), of een volgend jaar waarvoor zij geacht
+              wordt mede te zijn gedaan (art. 15 lid 5).
+            origin:
+              # Lid 5: de belanghebbende wordt geacht ook voor dat jaar te
+              # hebben aangevraagd; het jaar is dus zijn keuze, door de wet
+              # aangevuld. Het besluit rekent met de wet van dat jaar
+              # (RFC-048, TIJDVAK).
+              waarde: BELANGHEBBENDE
+              grondslag: algemene_wet_inkomensafhankelijke_regelingen#15 lid 5
+              rol: TIJDVAK
           - name: aangevraagd_berekeningsjaar
             type: number
             required: false
             description: >-
-              Het berekeningsjaar waarop de aanvraag betrekking heeft (art. 15
-              lid 1); lid 1 rekent de 1 april vanaf het jaar erna.
+              Het berekeningsjaar waarvoor de aanvraag is gedaan (art. 15 lid
+              1); lid 5 laat haar ook gelden voor de jaren daarna.
             origin:
               waarde: BELANGHEBBENDE
               grondslag: algemene_wet_inkomensafhankelijke_regelingen#15 lid 1
-              rol: TIJDVAK
           - name: datum_ontvangst
             type: date
             required: false
@@ -548,9 +596,9 @@ articles:
           - name: voorschot_wordt_verleend
             type: boolean
             description: >-
-              Lid 1: de aanvraag is ingediend vóór 1 april van het jaar volgend
-              op het berekeningsjaar, en de Dienst Toeslagen verleent een
-              voorschot.
+              Lid 1: de aanvraag geldt voor het berekeningsjaar (art. 15 lid 1
+              en 5) en is ingediend vóór 1 april van het jaar erna, en de
+              Dienst Toeslagen verleent een voorschot.
           - name: voorschotbedrag
             type: amount
             type_spec:
@@ -560,17 +608,28 @@ articles:
             value: $vermoedelijk_toetsingsinkomen
           - output: voorschot_wordt_verleend
             value:
-              operation: LESS_THAN
-              subject: $datum_ontvangst
-              value:
-                operation: DATE
-                year:
-                  operation: ADD
-                  values:
-                    - $aangevraagd_berekeningsjaar
-                    - 1
-                month: 4
-                day: 1
+              operation: AND
+              conditions:
+                # Art. 15 lid 1 en 5: de aanvraag geldt voor dit jaar, het
+                # jaar waarvoor zij is gedaan of een jaar daarna. Dezelfde
+                # regel als de uitvoer aanvraag_geldt_voor_berekeningsjaar van
+                # art. 15, hier uitgeschreven: art. 16 haakt op de aanvraag van
+                # art. 15, en een bron naar art. 15 zou de engine dan als
+                # kringverwijzing zien.
+                - operation: GREATER_THAN_OR_EQUAL
+                  subject: $berekeningsjaar
+                  value: $aangevraagd_berekeningsjaar
+                - operation: LESS_THAN
+                  subject: $datum_ontvangst
+                  value:
+                    operation: DATE
+                    year:
+                      operation: ADD
+                      values:
+                        - $berekeningsjaar
+                        - 1
+                    month: 4
+                    day: 1
           - output: voorschotbedrag
             value:
               operation: IF
@@ -655,15 +714,21 @@ articles:
             stage: TOEKENNING
       execution:
         parameters:
-          - name: aangevraagd_berekeningsjaar
+          - name: berekeningsjaar
             type: number
             required: false
             description: >-
-              Het berekeningsjaar waarop de aanvraag betrekking heeft (art. 15
-              lid 1); de toekenning gaat over dat jaar.
+              Het berekeningsjaar waarop de tegemoetkoming betrekking
+              heeft (art. 2 lid 1 onder b): het jaar waarvoor de aanvraag is
+              gedaan (art. 15 lid 1), of een volgend jaar waarvoor zij geacht
+              wordt mede te zijn gedaan (art. 15 lid 5).
             origin:
+              # Lid 5: de belanghebbende wordt geacht ook voor dat jaar te
+              # hebben aangevraagd; het jaar is dus zijn keuze, door de wet
+              # aangevuld. Het besluit rekent met de wet van dat jaar
+              # (RFC-048, TIJDVAK).
               waarde: BELANGHEBBENDE
-              grondslag: algemene_wet_inkomensafhankelijke_regelingen#15 lid 1
+              grondslag: algemene_wet_inkomensafhankelijke_regelingen#15 lid 5
               rol: TIJDVAK
           - name: datum_vaststelling_aanslag
             type: date
@@ -716,7 +781,7 @@ articles:
                       year:
                         operation: ADD
                         values:
-                          - $aangevraagd_berekeningsjaar
+                          - $berekeningsjaar
                           - 1
                       month: 9
                       day: 1
@@ -737,7 +802,7 @@ articles:
                 year:
                   operation: ADD
                   values:
-                    - $aangevraagd_berekeningsjaar
+                    - $berekeningsjaar
                     - 1
                 month: 12
                 day: 31

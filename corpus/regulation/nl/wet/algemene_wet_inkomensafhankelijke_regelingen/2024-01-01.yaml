@@ -1253,17 +1253,21 @@ articles:
               De tegemoetkoming die de inkomensafhankelijke regeling in de fase
               VOORSCHOT berekent. De beschikking waarop dit artikel haakt geeft
               haar mee.
-          - name: aangevraagd_berekeningsjaar
+          - name: berekeningsjaar
             type: number
             required: false
             description: >-
-              Het berekeningsjaar waarop de aanvraag betrekking heeft (art. 15
-              lid 1); lid 1 rekent de 1 april vanaf het jaar erna.
+              Het berekeningsjaar waarop de tegemoetkoming en dus het voorschot betrekking
+              heeft (art. 2 lid 1 onder b): het jaar waarvoor de aanvraag is
+              gedaan (art. 15 lid 1), of een volgend jaar waarvoor zij geacht
+              wordt mede te zijn gedaan (art. 15 lid 5).
             origin:
+              # Lid 5: de belanghebbende wordt geacht ook voor dat jaar te
+              # hebben aangevraagd; het jaar is dus zijn keuze, door de wet
+              # aangevuld. Het besluit rekent met de wet van dat jaar
+              # (RFC-048, TIJDVAK).
               waarde: BELANGHEBBENDE
-              grondslag: algemene_wet_inkomensafhankelijke_regelingen#15 lid 1
-              # Art. 14 jo. 15: de tegemoetkoming betreft een berekeningsjaar; het
-              # besluit rekent met de wet van dat jaar (RFC-048, TIJDVAK).
+              grondslag: algemene_wet_inkomensafhankelijke_regelingen#15 lid 5
               rol: TIJDVAK
           - name: datum_ontvangst
             type: date
@@ -1318,7 +1322,7 @@ articles:
                 year:
                   operation: ADD
                   values:
-                    - $aangevraagd_berekeningsjaar
+                    - $berekeningsjaar
                     - 1
                 month: 4
                 day: 1
@@ -1475,15 +1479,21 @@ articles:
             stage: TOEKENNING
       execution:
         parameters:
-          - name: aangevraagd_berekeningsjaar
+          - name: berekeningsjaar
             type: number
             required: false
             description: >-
-              Het berekeningsjaar waarop de aanvraag betrekking heeft (art. 15
-              lid 1); de toekenning gaat over dat jaar.
+              Het berekeningsjaar waarop de tegemoetkoming betrekking
+              heeft (art. 2 lid 1 onder b): het jaar waarvoor de aanvraag is
+              gedaan (art. 15 lid 1), of een volgend jaar waarvoor zij geacht
+              wordt mede te zijn gedaan (art. 15 lid 5).
             origin:
+              # Lid 5: de belanghebbende wordt geacht ook voor dat jaar te
+              # hebben aangevraagd; het jaar is dus zijn keuze, door de wet
+              # aangevuld. Het besluit rekent met de wet van dat jaar
+              # (RFC-048, TIJDVAK).
               waarde: BELANGHEBBENDE
-              grondslag: algemene_wet_inkomensafhankelijke_regelingen#15 lid 1
+              grondslag: algemene_wet_inkomensafhankelijke_regelingen#15 lid 5
               rol: TIJDVAK
           - name: datum_vaststelling_aanslag
             type: date
@@ -1523,7 +1533,7 @@ articles:
                 year:
                   operation: ADD
                   values:
-                    - $aangevraagd_berekeningsjaar
+                    - $berekeningsjaar
                     - 1
                 month: 12
                 day: 31

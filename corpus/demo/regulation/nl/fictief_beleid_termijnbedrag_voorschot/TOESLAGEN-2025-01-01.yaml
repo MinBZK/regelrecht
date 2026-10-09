@@ -8,7 +8,7 @@ valid_from: '2025-01-01'
 # url wijst daarom naar het artikel dat dit beleid uitwerkt, niet naar een
 # bekendmaking.
 url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel22
-name: Uitbetaling van het voorschot (fictief uitvoeringsbeleid)
+name: Verlening en uitbetaling van het voorschot (fictief uitvoeringsbeleid)
 competent_authority:
   name: Dienst Toeslagen
 articles:
@@ -46,15 +46,23 @@ articles:
         #   geen toeslag.
         # - period: de termijnen rekenen met het beleid van het
         #   berekeningsjaar, ook de termijn in december ervoor (art. 22 lid 1).
-        # - once_per: per aanvraag ten hoogste één betaalopdracht per maand
-        #   (art. 22 lid 1: "telkens een maand later"), ook na een herziening
-        #   van het voorschot. Een mislukte termijn wacht niet op een nieuwe
-        #   opdracht in dezelfde maand: hij gaat mee met de opdracht van de
-        #   volgende uitvoeringsdag (eigen keuze van dit fictieve beleid).
-        # - until: na de toekenning wordt geen termijn meer betaald. Eigen
-        #   keuze, gelezen uit art. 24 lid 2 Awir: de voorschotten worden met
-        #   de tegemoetkoming verrekend, dus wat dan nog niet betaald is, komt
-        #   niet meer. Dat volgt uit de toekenning en wordt geen eigen gram.
+        #   Een aanvraag geldt ook voor de jaren erna (art. 15 lid 5 Awir) en
+        #   elk jaar heeft een eigen voorschot; de cel voert dit artikel per
+        #   berekeningsjaar van die voorschotten uit, met dat jaar als
+        #   `berekeningsjaar`. In december kan zo een termijn van het lopende
+        #   jaar en de eerste van het volgende vallen (art. 22 lid 1).
+        # - once_per: per aanvraag en per berekeningsjaar ten hoogste één
+        #   betaalopdracht per maand (art. 22 lid 1: "telkens een maand
+        #   later"), ook na een herziening van het voorschot. Een mislukte
+        #   termijn wacht niet op een nieuwe opdracht in dezelfde maand: hij
+        #   gaat mee met de opdracht van de volgende uitvoeringsdag van
+        #   hetzelfde berekeningsjaar (eigen keuze van dit fictieve beleid).
+        # - until: na de toekenning over een berekeningsjaar wordt op het
+        #   voorschot van dat jaar geen termijn meer betaald; de termijnen van
+        #   een volgend jaar lopen door. Eigen keuze, gelezen uit art. 24 lid 2
+        #   Awir: de voorschotten worden met de tegemoetkoming verrekend, dus
+        #   wat dan nog niet betaald is, komt niet meer. Dat volgt uit de
+        #   toekenning en wordt geen eigen gram.
         produces:
           extensions:
             chronolex:
@@ -91,6 +99,8 @@ articles:
           - name: berekeningsjaar
             type: number
             required: true
+            description: >-
+              Het berekeningsjaar van het voorschot dat wordt uitbetaald.
           - name: maand
             type: date
             required: true
@@ -423,3 +433,62 @@ articles:
             origin:
               waarde: BELANGHEBBENDE
               grondslag: fictief_beleid_termijnbedrag_voorschot#3
+
+  # FICTIEF, eigen keuze in de modellering. Een aanvraag geldt ook voor de
+  # berekeningsjaren erna (art. 15 lid 5 Awir). Het voorschot voor zo'n jaar
+  # wordt verleend vóór de aanvang ervan (art. 16 lid 2), en de eerste termijn
+  # valt in december daarvoor (art. 22 lid 1). Op welke dag Toeslagen het
+  # verleent, zegt de wet niet. De cel neemt het besluit niet eerder dan op
+  # deze dag (`decided_on` van de stroom); de klok van de demo neemt het op
+  # die dag.
+  - number: '4'
+    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel16
+    text: >-
+      FICTIEF, eigen keuze in de modellering: geen bekendgemaakt beleid. Geldt
+      een aanvraag om een tegemoetkoming ook voor een berekeningsjaar na het
+      jaar waarvoor zij is gedaan (artikel 15, vijfde lid, van de Algemene wet
+      inkomensafhankelijke regelingen), dan verleent de Dienst Toeslagen het
+      voorschot voor dat berekeningsjaar op 1 november van het jaar ervoor,
+      vóór de aanvang van het berekeningsjaar (artikel 16, tweede lid, van die
+      wet), zodat de eerste termijn in december valt (artikel 22, eerste lid,
+      van die wet). Voor het jaar waarvoor de aanvraag is gedaan, geeft dit
+      artikel geen dag: dat voorschot volgt op de aanvraag.
+    machine_readable:
+      execution:
+        parameters:
+          - name: berekeningsjaar
+            type: number
+            required: true
+            description: Het berekeningsjaar waarop het voorschot betrekking heeft.
+          - name: aangevraagd_berekeningsjaar
+            type: number
+            required: true
+            description: >-
+              Het berekeningsjaar waarvoor de aanvraag is gedaan (artikel 15,
+              eerste lid, van de Algemene wet inkomensafhankelijke regelingen).
+        output:
+          - name: dag_verlening_voorschot
+            type: date
+            nullable: true
+            description: >-
+              De dag waarop de Dienst Toeslagen het voorschot voor een volgend
+              berekeningsjaar verleent; leeg voor het jaar van de aanvraag.
+        actions:
+          - output: dag_verlening_voorschot
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: GREATER_THAN
+                    subject: $berekeningsjaar
+                    value: $aangevraagd_berekeningsjaar
+                  then:
+                    operation: DATE
+                    year:
+                      operation: SUBTRACT
+                      values:
+                        - $berekeningsjaar
+                        - 1
+                    month: 11
+                    day: 1
+              default: null

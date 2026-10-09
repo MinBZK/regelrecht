@@ -50,14 +50,14 @@ Feature: Toekenning en verrekening van een tegemoetkoming
 
   Scenario: Zonder te weten of er een aanslag is, is de uiterste datum onbekend
     Given the following parameters:
-      | aangevraagd_berekeningsjaar | 2025 |
+      | berekeningsjaar             | 2025 |
     When I evaluate "uiterste_toekenningsdatum" of "algemene_wet_inkomensafhankelijke_regelingen"
     Then output "uiterste_toekenningsdatum" is unknown
 
   # Art. 19 lid 1: zes maanden na de vaststelling van de aanslag.
   Scenario: De toekenning volgt binnen zes maanden na de aanslag
     Given the following parameters:
-      | aangevraagd_berekeningsjaar | 2025       |
+      | berekeningsjaar             | 2025       |
       | datum_vaststelling_aanslag  | 2026-03-15 |
     When I evaluate "uiterste_toekenningsdatum" of "algemene_wet_inkomensafhankelijke_regelingen"
     Then output "uiterste_toekenningsdatum" equals "2026-09-15"
@@ -67,7 +67,7 @@ Feature: Toekenning en verrekening van een tegemoetkoming
   # doorgeeft, is onbekend.
   Scenario: Zonder aanslag volgt de toekenning uiterlijk 31 december van het jaar erna
     Given the following parameters:
-      | aangevraagd_berekeningsjaar | 2025 |
+      | berekeningsjaar             | 2025 |
     And parameter "datum_vaststelling_aanslag" is "null"
     When I evaluate "uiterste_toekenningsdatum" of "algemene_wet_inkomensafhankelijke_regelingen"
     Then output "uiterste_toekenningsdatum" equals "2026-12-31"
@@ -77,7 +77,7 @@ Feature: Toekenning en verrekening van een tegemoetkoming
   Scenario: Een late aanvraag wordt uiterlijk 30 april van het jaar erna toegekend
     Given the calculation date is "2026-01-01"
     And the following parameters:
-      | aangevraagd_berekeningsjaar | 2026       |
+      | berekeningsjaar             | 2026       |
       | datum_ontvangst             | 2027-10-01 |
     And parameter "datum_vaststelling_aanslag" is "null"
     When I evaluate "uiterste_toekenningsdatum" of "algemene_wet_inkomensafhankelijke_regelingen"

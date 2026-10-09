@@ -1,8 +1,9 @@
 Feature: Teruglezen van de kroniek van Toeslagen
   Het fictieve beleid van Toeslagen leest haar eigen kroniek terug als de
-  gegevens die art. 22 Awir en het beleid over de uitbetaling vragen: het
-  voorschot dat geldt, de rekening uit de aanvraag en wat er achterstallig
-  is. De kroniek is hier een tabel met een rij per vastgelegd feit: zijn
+  gegevens die art. 16 en 22 Awir en het beleid over de uitbetaling vragen:
+  het voorschot dat geldt, de rekening uit de aanvraag, wat er achterstallig
+  is en de schatting van het inkomen. Het voorschot en de achterstand per
+  berekeningsjaar (`period`): een aanvraag geldt ook voor de jaren erna. De kroniek is hier een tabel met een rij per vastgelegd feit: zijn
   kenmerk, de aanvraag waar het bij hoort (`root`), zijn plaats in de tijd
   (`sequence`) en zijn velden. Er staan steeds ook feiten van een andere
   aanvraag in: die tellen niet mee.
@@ -20,12 +21,12 @@ Feature: Teruglezen van de kroniek van Toeslagen
       | v2 | a1   | 5        | voorschot_verleend | VOORSCHOT | 120000          | 2025-02-10     | 2025   |
       | w1 | a2   | 7        | voorschot_verleend | VOORSCHOT | 999900          | 2025-03-01     | 2025   |
     And the following parameters:
-      | root | a1 |
-    When I evaluate outputs "laatste_voorschot, voorschotbedrag, dagtekening_voorschot, berekeningsjaar" of "fictief_beleid_kroniek_toeslagen"
+      | root            | a1   |
+      | berekeningsjaar | 2025 |
+    When I evaluate outputs "laatste_voorschot, voorschotbedrag, dagtekening_voorschot" of "fictief_beleid_kroniek_toeslagen"
     Then output "laatste_voorschot" equals 5
     And output "voorschotbedrag" equals 120000
     And output "dagtekening_voorschot" equals "2025-02-10"
-    And output "berekeningsjaar" equals 2025
 
   Scenario: Zonder voorschot op de aanvraag is er geen voorschot
     Given parameter "grams" is the collection:
@@ -33,12 +34,12 @@ Feature: Teruglezen van de kroniek van Toeslagen
       | a1 | a1   | 1        | aanvraag_ontvangen | null      | null            | 2024-11-04     | null   |
       | w1 | a2   | 7        | voorschot_verleend | VOORSCHOT | 999900          | 2025-03-01     | 2025   |
     And the following parameters:
-      | root | a1 |
-    When I evaluate outputs "laatste_voorschot, voorschotbedrag, dagtekening_voorschot, berekeningsjaar" of "fictief_beleid_kroniek_toeslagen"
+      | root            | a1   |
+      | berekeningsjaar | 2025 |
+    When I evaluate outputs "laatste_voorschot, voorschotbedrag, dagtekening_voorschot" of "fictief_beleid_kroniek_toeslagen"
     Then output "laatste_voorschot" is absent
     And output "voorschotbedrag" is absent
     And output "dagtekening_voorschot" is absent
-    And output "berekeningsjaar" is absent
 
   # Art. 2: de rekening uit de aanvraag.
   Scenario: De rekening is die uit de aanvraag
@@ -73,25 +74,80 @@ Feature: Teruglezen van de kroniek van Toeslagen
   # (8333 + 8333) mislukt ook, en staat dan helemaal open.
   Scenario: Achterstallig is wat mislukte en nog niet opnieuw is opgedragen
     Given parameter "grams" is the collection:
-      | id | root | sequence | event                  | mislukt_bedrag | meegenomen_achterstand |
-      | o1 | a1   | 3        | betaalopdracht_gegeven | null           | 0                      |
-      | m1 | a1   | 4        | betaling_mislukt       | 8333           | null                   |
-      | o2 | a1   | 5        | betaalopdracht_gegeven | null           | 8333                   |
-      | m2 | a1   | 6        | betaling_mislukt       | 16666          | null                   |
-      | m9 | a2   | 9        | betaling_mislukt       | 5000           | null                   |
+      | id | root | sequence | event                  | mislukt_bedrag | meegenomen_achterstand | period |
+      | o1 | a1   | 3        | betaalopdracht_gegeven | null           | 0                      | 2025   |
+      | m1 | a1   | 4        | betaling_mislukt       | 8333           | null                   | 2025   |
+      | o2 | a1   | 5        | betaalopdracht_gegeven | null           | 8333                   | 2025   |
+      | m2 | a1   | 6        | betaling_mislukt       | 16666          | null                   | 2025   |
+      | m9 | a2   | 9        | betaling_mislukt       | 5000           | null                   | 2025   |
     And the following parameters:
-      | root | a1 |
+      | root            | a1   |
+      | berekeningsjaar | 2025 |
     When I evaluate "achterstallig_bedrag" of "fictief_beleid_kroniek_toeslagen"
     Then output "achterstallig_bedrag" equals 16666
 
   Scenario: Wat opnieuw is opgedragen en bijgeschreven, staat niet meer open
     Given parameter "grams" is the collection:
-      | id | root | sequence | event                    | mislukt_bedrag | meegenomen_achterstand |
-      | o1 | a1   | 3        | betaalopdracht_gegeven   | null           | 0                      |
-      | m1 | a1   | 4        | betaling_mislukt         | 8333           | null                   |
-      | o2 | a1   | 5        | betaalopdracht_gegeven   | null           | 8333                   |
-      | b2 | a1   | 6        | voorschottermijn_betaald | null           | null                   |
+      | id | root | sequence | event                    | mislukt_bedrag | meegenomen_achterstand | period |
+      | o1 | a1   | 3        | betaalopdracht_gegeven   | null           | 0                      | 2025   |
+      | m1 | a1   | 4        | betaling_mislukt         | 8333           | null                   | 2025   |
+      | o2 | a1   | 5        | betaalopdracht_gegeven   | null           | 8333                   | 2025   |
+      | b2 | a1   | 6        | voorschottermijn_betaald | null           | null                   | 2025   |
     And the following parameters:
-      | root | a1 |
+      | root            | a1   |
+      | berekeningsjaar | 2025 |
     When I evaluate "achterstallig_bedrag" of "fictief_beleid_kroniek_toeslagen"
     Then output "achterstallig_bedrag" equals 0
+
+  # Lid 1, per berekeningsjaar: een aanvraag geldt ook voor de jaren erna
+  # (art. 15 lid 5 Awir). Het voorschot voor 2026 vervangt dat voor 2025
+  # niet; elk jaar heeft zijn laatste voorschot.
+  Scenario: Het voorschot voor het volgende jaar vervangt dat van dit jaar niet
+    Given parameter "grams" is the collection:
+      | id | root | sequence | event              | stage     | voorschotbedrag | effective_date | period |
+      | a1 | a1   | 1        | aanvraag_ontvangen | null      | null            | 2025-01-02     | null   |
+      | v1 | a1   | 2        | voorschot_verleend | VOORSCHOT | 100000          | 2025-01-02     | 2025   |
+      | v2 | a1   | 9        | voorschot_verleend | VOORSCHOT | 110000          | 2025-11-01     | 2026   |
+    And the following parameters:
+      | root            | a1   |
+      | berekeningsjaar | 2025 |
+    When I evaluate outputs "laatste_voorschot, voorschotbedrag, dagtekening_voorschot" of "fictief_beleid_kroniek_toeslagen"
+    Then output "laatste_voorschot" equals 2
+    And output "voorschotbedrag" equals 100000
+    And output "dagtekening_voorschot" equals "2025-01-02"
+
+  # Art. 3, per berekeningsjaar: wat op het voorschot van 2025 mislukte, telt
+  # niet bij de termijnen van 2026.
+  Scenario: Achterstallig is per berekeningsjaar
+    Given parameter "grams" is the collection:
+      | id | root | sequence | event                  | mislukt_bedrag | meegenomen_achterstand | period |
+      | o1 | a1   | 3        | betaalopdracht_gegeven | null           | 0                      | 2025   |
+      | m1 | a1   | 4        | betaling_mislukt       | 8333           | null                   | 2025   |
+      | o2 | a1   | 5        | betaalopdracht_gegeven | null           | 0                      | 2026   |
+      | m2 | a1   | 6        | betaling_mislukt       | 9000           | null                   | 2026   |
+    And the following parameters:
+      | root            | a1   |
+      | berekeningsjaar | 2025 |
+    When I evaluate "achterstallig_bedrag" of "fictief_beleid_kroniek_toeslagen"
+    Then output "achterstallig_bedrag" equals 8333
+
+  # Art. 4: de schatting van het inkomen is die uit de aanvraag (aanname: ook
+  # voor een volgend berekeningsjaar).
+  Scenario: De schatting is die uit de aanvraag
+    Given parameter "grams" is the collection:
+      | id | root | sequence | event              | vermoedelijk_toetsingsinkomen |
+      | a1 | a1   | 1        | aanvraag_ontvangen | 2200000                       |
+      | a2 | a2   | 2        | aanvraag_ontvangen | 3000000                       |
+    And the following parameters:
+      | root | a1 |
+    When I evaluate "vermoedelijk_toetsingsinkomen" of "fictief_beleid_kroniek_toeslagen"
+    Then output "vermoedelijk_toetsingsinkomen" equals 2200000
+
+  Scenario: Een aanvraag zonder schatting heeft geen schatting
+    Given parameter "grams" is the collection:
+      | id | root | sequence | event              | vermoedelijk_toetsingsinkomen |
+      | a1 | a1   | 1        | aanvraag_ontvangen | null                          |
+    And the following parameters:
+      | root | a1 |
+    When I evaluate "vermoedelijk_toetsingsinkomen" of "fictief_beleid_kroniek_toeslagen"
+    Then output "vermoedelijk_toetsingsinkomen" is absent

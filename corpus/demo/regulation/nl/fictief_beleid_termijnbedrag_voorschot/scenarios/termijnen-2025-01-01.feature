@@ -235,3 +235,19 @@ Feature: Termijnen van het voorschot op een tegemoetkoming
     And output "betaald_bedrag" equals 0
     And output "mislukt_bedrag" equals 16666
     And output "reden" equals "rekening geblokkeerd"
+
+  # Art. 4: het voorschot voor een volgend berekeningsjaar (art. 15 lid 5 Awir)
+  # verleent Toeslagen op 1 november van het jaar ervoor (eigen keuze).
+  Scenario: Het voorschot voor het volgende jaar wordt op 1 november verleend
+    Given the following parameters:
+      | berekeningsjaar             | 2026 |
+      | aangevraagd_berekeningsjaar | 2025 |
+    When I evaluate "dag_verlening_voorschot" of "fictief_beleid_termijnbedrag_voorschot"
+    Then output "dag_verlening_voorschot" equals "2025-11-01"
+
+  Scenario: Voor het aangevraagde jaar geeft het beleid geen dag
+    Given the following parameters:
+      | berekeningsjaar             | 2025 |
+      | aangevraagd_berekeningsjaar | 2025 |
+    When I evaluate "dag_verlening_voorschot" of "fictief_beleid_termijnbedrag_voorschot"
+    Then output "dag_verlening_voorschot" is absent
