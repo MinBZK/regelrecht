@@ -50,6 +50,7 @@ SPDX-License-Identifier = "EUPL-1.2"
 path = [
   "**/public/regelrecht-icon.svg",
   "docs/src/assets/editor-notities-screenshot.png",
+  "docs/src/assets/portaal-en-screenshot.png",
   "docs/src/assets/portaal-screenshot.png",
   "docs/src/assets/simulatie-screenshot.png",
 ]
