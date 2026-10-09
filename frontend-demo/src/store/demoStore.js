@@ -30,6 +30,7 @@ import { materialiseRecord, tablesFromProfiles } from '../data/materialize.js';
 import { addMonths, comingDates, dayOf, decisionDue, fixedDates, nextExecution, nextMoment, periodEnd } from '../data/moments.js';
 import { advanceTo as advanceClock, executeDue as executeDueOn } from '../data/clock.js';
 import { readingRows } from '../data/lexostatusView.js';
+import { momentView } from '../data/chronicleView.js';
 import { deliver, deliveryErrors, redeliver } from '../data/channels.js';
 import { accountOf as accountFrom } from '../data/account.js';
 import { activeLocale, t } from '../i18n/index.js';
@@ -758,6 +759,16 @@ function momentsOf(c) {
     }
   }
   return { moments: moments.sort((a, b) => a.date.localeCompare(b.date)), error: errors.join('; ') || null };
+}
+
+/**
+ * De momenten van `momentsOf` zoals een mens ze leest (`momentView`), met de
+ * fout van de cel: `{ moments, error }`.
+ */
+function momentViewsOf(c) {
+  const { moments, error } = momentsOf(c);
+  const decided = (event) => gramsOfCase(c).some((g) => g.name === event);
+  return { moments: moments.map((m) => momentView(m, { corpus: corpus.value, fieldsOf: gramFields, decided })), error };
 }
 
 /** De momenten van `momentsOf`, zonder de fout: voor de klok. */
@@ -1728,7 +1739,7 @@ export function useDemo() {
     setClock,
     advanceToNextMoment,
     nextMoments,
-    momentsOf,
+    momentViewsOf,
     decisionPreview,
     receivedOf,
     lexostatusesOf,

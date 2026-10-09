@@ -9,7 +9,7 @@ import { t } from '../i18n/index.js';
 import { awbOutcomes, canBeApplied, objectionOpen, statusOf } from '../data/lifecycle.js';
 import { driftRows, driftSentence } from '../data/caseDrift.js';
 import { fieldText, provisionLabel } from '../data/chronolex.js';
-import { citizenRows, momentView } from '../data/chronicleView.js';
+import { citizenRows } from '../data/chronicleView.js';
 
 // The citizen's side of an application, inside the portal. The flow the POC
 // generated per regeling: first the questions only the citizen can answer
@@ -312,14 +312,13 @@ const payments = computed(() => {
   const executions = grams.filter((g) => g.type === 'executogram');
   // Lezen, niet vastleggen: een fout van de cel staat hier, niet op de zaak.
   const received = executions.length ? demo.receivedOf(c) : { rows: [], error: null };
-  const coming = demo.momentsOf(c);
-  const decided = (event) => grams.some((g) => g.name === event);
+  const coming = demo.momentViewsOf(c);
   return {
     received: received.rows,
     decisions: grams
       .filter((g) => g.type !== 'executogram')
       .map((g) => ({ id: g.id, name: g.name, at: g.effective_at, rows: citizenRows(g, demo.gramFields(g), corpus.value) })),
-    coming: coming.moments.map((m) => momentView(m, { corpus: corpus.value, fieldsOf: demo.gramFields, decided })),
+    coming: coming.moments,
     errors: [received.error, coming.error].filter(Boolean),
   };
 });

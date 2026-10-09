@@ -12,7 +12,7 @@ import { caseReason, eventText, useDemo } from '../store/demoStore.js';
 import { isDelegationProvider, producesBeschikking, subjectOf } from '../data/entrypoints.js';
 import { awbOutcomes, statusOf } from '../data/lifecycle.js';
 import { provisionLabel } from '../data/chronolex.js';
-import { gramRows as rowsOfGram, momentView } from '../data/chronicleView.js';
+import { gramRows as rowsOfGram } from '../data/chronicleView.js';
 import { useI18n } from '../i18n/index.js';
 import { useLocalePath } from '../i18n/useLocalePath.js';
 
@@ -105,9 +105,7 @@ const upcoming = computed(() => {
   void dataVersion.value;
   void state.referenceDate;
   if (sheetView.value !== 'kroniek' || !selected.value) return { moments: [], error: null };
-  const decided = (event) => caseGrams.value.some((g) => g.name === event);
-  const { moments: list, error } = demo.momentsOf(selected.value);
-  return { moments: list.map((m) => momentView(m, { corpus: corpus.value, fieldsOf: demo.gramFields, decided })), error };
+  return demo.momentViewsOf(selected.value);
 });
 const moments = computed(() => upcoming.value.moments);
 const nextDate = computed(() => moments.value.find((m) => m.date > state.referenceDate)?.date ?? null);
