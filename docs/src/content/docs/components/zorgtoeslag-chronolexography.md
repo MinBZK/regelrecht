@@ -5,7 +5,7 @@ description: "How the demo runs the whole zorgtoeslag process through a chronicl
 
 The demo follows one zorgtoeslag case from the application to the final settlement, and records every legal fact on the way in a chronicle (*kroniek*), as the chronolexography position paper describes it and [RFC-022](/rfcs/rfc-022) maps it onto RegelRecht. This page explains how that works: which components take part, where the law in the law format ends and the recording begins, how the configuration files depend on each other, and what happens in Merijn's case step by step.
 
-The [Demo](/components/demo) page describes the screens. This page describes the machinery behind the Chronicle on a case, the payments on the portal, the Lexostatuses view and the Consequences screen.
+The [Demo](/components/demo) page describes the screens. This page describes the machinery behind the Chronicle on a case, the payments on the portal, the Lexostatuses view and the Citizen screen.
 
 ## Scope and status
 
@@ -46,7 +46,7 @@ flowchart TB
     direction TB
     CLK["One clock<br/>the reference date"]
     POR["Portal<br/>What the law asks, Payments"]
-    GEV["Consequences<br/>the account at the bank"]
+    GEV["Citizen<br/>the account at the bank"]
     ZS["Case system<br/>Chronicle per case,<br/>Chronicle of the cell"]
     CHN["Channels<br/>demo-config.yaml"]
     OB["Outbox<br/>messages that did not arrive"]
@@ -142,7 +142,7 @@ The demo reads everything below from `corpus/demo`. The main corpus has its own 
 | `demo-config.yaml`, `ex_officio` | Per decision a cell takes ex officio its cell, its event and its subject (`bsn: $bsn`) | Demo | For whom the Belastingdienst sets aanslagen: the person of each open case with an application in a chronicle, nobody else |
 | `demo-config.yaml`, `received` | Per cell the lexostatus that says what was paid on a case (`toeslagen: uitbetaald`) | Demo | "Received so far" on the portal; the demo adds nothing up itself |
 | `demo-config.yaml`, `channels` | Which gram of which cell goes to which article of which cell, which field fills which parameter (`$id`, `$period` and `$input.<name>` besides a field), and which reference the answer gets | Demo | The transport between the Belastingdienst, Toeslagen and the bank |
-| `demo-config.yaml`, `consequences` | Per party outside government its cell and how the demo shows it; for the bank (`view: account`) which table and fields make up the account, including `debited`; a field may be a list of names, the first a gram has counts | Demo | The Consequences screen |
+| `demo-config.yaml`, `consequences` | Per party outside government its cell and how the demo shows it; for the bank (`view: account`) which table and fields make up the account, including `debited`; a field may be a list of names, the first a gram has counts | Demo | The Citizen screen |
 | `profiles.yaml`, Merijn's `BANK` and `BELASTINGDIENST` | The account `NL00TEST0123456789` with its opening balance and `geblokkeerd`; per year the day of the aanslag and the verzamelinkomen it sets (`aanslagen_inkomstenbelasting`, read only by the Belastingdienst cell); box 1 income for every other law | Demo, through `bindings.yaml` | The aanslag and so the toekenning, a blocked account |
 
 Two dependencies are easy to miss. The policy that reads the chronicle is valid from 1 January 2024, so that an installment paid in December before the year can read the voorschot (own choice). The installment policy is valid from 2025 and applies the law of the year the voorschot concerns, so installments exist for 2025 and later.
@@ -300,7 +300,7 @@ A message holds from the moment of the gram it carries. When the clock passes se
 
 With `geblokkeerd: true` in Merijn's `BANK` data, the bank refuses every transfer ("rekening geblokkeerd"). The refused amount stays open and goes along with the next payment order (`meegenomen_achterstand`), also in a month without an installment, until the toekenning. An account the bank does not know is refused as "rekening onbekend".
 
-On the portal, the application shows "Received so far" from the lexostatus `uitbetaald`, and the Consequences screen shows the balance (opening balance plus what the bank credited) and the transfers from the chronicle `rekeningen`.
+On the portal, the application shows "Received so far" from the lexostatus `uitbetaald`, and the Citizen screen shows the balance (opening balance plus what the bank credited) and the transfers from the chronicle `rekeningen`.
 
 #### The aanslag
 
@@ -330,7 +330,7 @@ The toekenning over 2026, on 15 April 2027 on the aanslag of that day, rests on 
 
 Policy article 6 (`decided_on`) gives the day of the toekenning when it leaves something to recover, and no day otherwise; the amount comes from the toekenning (article 6 of the chronicle policy). The case lifecycle does not take this decision. The clock takes it on its day, also the first one: `Cell::due_decision` looks at every year of the case without a terugvordering and takes the first the policy gives a day for, so a year without one (2025) does not hold up 2026.
 
-On 1 May 2027 Toeslagen orders the bank to debit the € 190 from Merijn's account (policy article 7, an assumption that he consented). The bank executes its terms article 2: debited unless the account is unknown or blocked or the balance is lower than the amount. The balance is the opening balance plus what the bank credited minus what it debited, read from its own chronicle with `fictief_beleid_kroniek_bank` article 1; a receipt may now `read` a policy of its holder, executed with the message as its parameters. Toeslagen records `terugvordering_geind`, or, when the bank refused (`saldo ontoereikend`), `incasso_mislukt`, and a new order follows on the first of the next month. The Consequences screen shows the debit as a negative amount and the balance going down.
+On 1 May 2027 Toeslagen orders the bank to debit the € 190 from Merijn's account (policy article 7, an assumption that he consented). The bank executes its terms article 2: debited unless the account is unknown or blocked or the balance is lower than the amount. The balance is the opening balance plus what the bank credited minus what it debited, read from its own chronicle with `fictief_beleid_kroniek_bank` article 1; a receipt may now `read` a policy of its holder, executed with the message as its parameters. Toeslagen records `terugvordering_geind`, or, when the bank refused (`saldo ontoereikend`), `incasso_mislukt`, and a new order follows on the first of the next month. The Citizen screen shows the debit as a negative amount and the balance going down.
 
 #### The next year
 
@@ -446,7 +446,7 @@ To follow Merijn's case:
 2. Apply for zorgtoeslag on "My government". "What the law asks" shows the fields with their articles.
 3. Open the case in the case system and its Chronicle: the application, the voorschot and the first payment order with the bank's answer.
 4. Press "To the next moment" to move through the installments, the voorschot for the next year on 1 November, the end of the year and the aanslag, until the toekenning and the nabetaling on 15 April 2026, and on through the installments of the next year to the aanslag, the toekenning and the terugvordering on 15 April 2027 and its incasso on 1 May 2027.
-5. "Chronicle" next to "Cases" on the board shows every gram the cell stores; "See how the cell stores this" on a case filters it. "Lexostatuses" next to it shows `aanvraag` (from the law) and one card per article of `fictief_beleid_kroniek_toeslagen`: what each gives, its shape and where that is laid down, which article asks for each value and how the cell derives it, and what it gives for the case now, with links to the grams it read. The Consequences screen shows the bank's side.
+5. "Chronicle" next to "Cases" on the board shows every gram the cell stores; "See how the cell stores this" on a case filters it. "Lexostatuses" next to it shows `aanvraag` (from the law) and one card per article of `fictief_beleid_kroniek_toeslagen`: what each gives, its shape and where that is laid down, which article asks for each value and how the cell derives it, and what it gives for the case now, with links to the grams it read. The Citizen screen shows the bank's side.
 
 ## Further reading
 

@@ -45,7 +45,7 @@ const PAGES = [
   { name: 'scenarios', paths: { nl: '/scenarios/:featurePath(.*)?', en: '/en/scenarios/:featurePath(.*)?', fy: '/fy/senarios/:featurePath(.*)?' }, component: () => import('./views/ScenariosView.vue') },
   { name: 'simulatie', paths: { nl: '/simulatie', en: '/en/simulation', fy: '/fy/simulaasje' }, component: () => import('./views/SimulatieView.vue') },
   { name: 'portaal', paths: { nl: '/portaal', en: '/en/portal', fy: '/fy/portaal' }, component: () => import('./views/PortaalView.vue') },
-  { name: 'gevolgen', paths: { nl: '/gevolgen', en: '/en/consequences', fy: '/fy/gefolgen' }, component: () => import('./views/GevolgenView.vue') },
+  { name: 'gevolgen', paths: { nl: '/burger', en: '/en/citizen', fy: '/fy/boarger' }, component: () => import('./views/GevolgenView.vue') },
   { name: 'zaaksysteem', paths: { nl: '/zaaksysteem/:caseId?', en: '/en/cases/:caseId?', fy: '/fy/saaksysteem/:caseId?' }, component: () => import('./views/ZaaksysteemView.vue') },
 ];
 
