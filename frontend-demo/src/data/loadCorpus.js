@@ -86,6 +86,13 @@ export function loadCorpus() {
       laws,
       latestById,
       lawById: (id) => latestById.get(id) ?? null,
+      /**
+       * The version of law `id` in force on `date` (YYYY-MM-DD): the one with
+       * the latest `valid_from` on or before it. Before the first version, the
+       * latest one, as `lawById` gives it.
+       */
+      lawOn: (id, date) =>
+        laws.filter((l) => l.id === id && l.valid_from <= date).sort((a, b) => b.valid_from.localeCompare(a.valid_from))[0] ?? latestById.get(id) ?? null,
       /** Resolve the POC-style (law_path, service) address to the latest law entry. */
       lawByPath: (lawPath, service) => {
         const candidates = laws.filter(

@@ -53,7 +53,9 @@ const caseOfRoot = (root) => state.cases.find((c) => c.applicationGramId === roo
 const caseText = (c) => (c ? t('kroniek.case', { law: c.lawName, id: c.id.slice(-5) }) : t('kroniek.case.unknown'));
 const filteredCase = computed(() => (props.root ? caseText(caseOfRoot(props.root)) : ''));
 const actor = computed(() => serviceInfo(corpus.value, props.service).name);
-const lawDoc = (id) => corpus.value?.lawById?.(id)?.doc ?? null;
+// Het regelwerk zoals het op de peildatum geldt: welke parameter een artikel
+// vraagt, kan per versie verschillen.
+const lawDoc = (id) => (corpus.value?.lawOn?.(id, state.referenceDate) ?? corpus.value?.lawById?.(id))?.doc ?? null;
 
 /** Een regel van een filter zoals een mens hem leest. */
 const filterText = (f) => (f.input ? t('lexo.filter.input', { key: f.key, input: f.input }) : t('lexo.filter.value', { key: f.key, value: f.value }));
