@@ -1,7 +1,7 @@
 ---
 # Describes this repository for public-sector software catalogs.
 # Standard: https://yml.publiccode.tools
-publiccodeYmlVersion: '0.4'
+publiccodeYmlVersion: '0.7'
 
 name: RegelRecht
 url: https://github.com/MinBZK/regelrecht
@@ -23,7 +23,7 @@ categories:
 
 intendedAudience:
   countries:
-    - nl
+    - NL
   scope:
     - government
     - justice
@@ -114,7 +114,6 @@ description:
 legal:
   license: EUPL-1.2
   mainCopyrightOwner: Staat der Nederlanden (Ministerie van Binnenlandse Zaken en Koninkrijksrelaties)
-  repoOwner: Ministerie van Binnenlandse Zaken en Koninkrijksrelaties
 
 maintenance:
   type: internal
