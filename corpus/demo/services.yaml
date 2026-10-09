@@ -115,6 +115,7 @@ laws:
   algemene_plaatselijke_verordening/terrassen: GEMEENTE_ROTTERDAM
   algemene_wet_bestuursrecht: AWB
   algemene_wet_inkomensafhankelijke_regelingen: TOESLAGEN
+  algemene_wet_inzake_rijksbelastingen: BELASTINGDIENST
   archiefwet/openbaarheid: NATIONAAL_ARCHIEF
   archiefwet/overbrenging: NATIONAAL_ARCHIEF
   archiefwet/vernietiging: NATIONAAL_ARCHIEF
@@ -134,8 +135,11 @@ laws:
   burgerlijk_wetboek_volmacht: NOTARIAAT
   faillissementswet_curator: RECHTSPRAAK
   faillissementswet_wsnp_bewindvoerder: RECHTSPRAAK
+  fictief_beleid_aanslagregeling: BELASTINGDIENST
+  fictief_beleid_kroniek_bank: BANK
   fictief_beleid_kroniek_toeslagen: TOESLAGEN
   fictief_beleid_termijnbedrag_voorschot: TOESLAGEN
+  fictief_beleid_toekenning_toeslagen: TOESLAGEN
   fictieve_bankvoorwaarden: BANK
   handelsregisterwet: KVK
   handelsregisterwet/bedrijfsgegevens: KVK

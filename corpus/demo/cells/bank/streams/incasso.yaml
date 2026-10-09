@@ -1,0 +1,15 @@
+---
+# Een incasso die bij de bank binnenkomt. De bank voert haar voorwaarden uit
+# bij ontvangst (art. 2); die zeggen of het bedrag wordt afgeschreven of de
+# incasso geweigerd (`record_when`). Het saldo leest zij uit haar eigen
+# kroniek met haar (fictieve) beleid daarover (`reads`).
+$id: incasso
+recording_actor: fictieve_bank
+chronicle: rekeningen
+events:
+  - name: incasso_afgeschreven
+    establishes: fictieve_bankvoorwaarden#2
+    reads: [{regulation: fictief_beleid_kroniek_bank}]
+  - name: incasso_geweigerd
+    establishes: fictieve_bankvoorwaarden#2
+    reads: [{regulation: fictief_beleid_kroniek_bank}]

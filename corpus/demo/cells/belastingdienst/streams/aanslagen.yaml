@@ -1,0 +1,19 @@
+---
+# De aanslag inkomstenbelasting over een kalenderjaar (AWR art. 11 lid 1).
+# Wat de aanslag bevat, zegt de wet: de beschikking en de haken in de fase
+# BESLUIT van de Awb. Het besluit betreft één kalenderjaar (`period`); welk
+# jaar en op welke dag, geeft de cel uit de planning van de inspecteur
+# (`decided_on`): het eerste jaar zonder aanslag waarvoor de planning een dag
+# geeft.
+$id: aanslagen
+recording_actor: inspecteur
+chronicle: aanslagen
+events:
+  - name: aanslag_inkomstenbelasting_vastgesteld
+    establishes: algemene_wet_inzake_rijksbelastingen#11
+    decided_on: fictief_beleid_aanslagregeling#1
+    # Het kalenderjaar van de aanslag (AWR 11 lid 4). Het schema laat de wet
+    # een tijdvak alleen noemen als de aanvrager het kiest (rol TIJDVAK); een
+    # aanslag vraagt niemand aan, dus noemt de stroom de parameter (eigen
+    # keuze).
+    period: {parameter: belastingjaar, unit: year}

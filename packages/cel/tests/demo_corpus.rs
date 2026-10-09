@@ -46,9 +46,11 @@ fn demo() -> PathBuf {
 fn regulations() -> LawExecutionService {
     let mut service =
         load_regulations(&demo().join("regulation")).unwrap_or_else(|e| panic!("{e}"));
-    let config = CellConfig::load(&demo().join("cells/toeslagen/cell.yaml"))
-        .unwrap_or_else(|e| panic!("{e}"));
-    register::bind(&mut service, &config).unwrap_or_else(|e| panic!("{e}"));
+    for cell in ["toeslagen", "bank"] {
+        let config = CellConfig::load(&demo().join(format!("cells/{cell}/cell.yaml")))
+            .unwrap_or_else(|e| panic!("{e}"));
+        register::bind(&mut service, &config).unwrap_or_else(|e| panic!("{e}"));
+    }
     service
 }
 
@@ -274,13 +276,15 @@ fn the_demo_cell_grants_a_voorschot_on_the_estimate() {
     );
     assert_eq!(voorschot.fields["bezwaartermijn_weken"], json!(6));
 
+    // The toekenning rests on the inkomensgegeven the inspecteur provided
+    // (the policy of Toeslagen, art. 2); here it is given, not received.
     let toegekend = DateTime::parse_from_rfc3339("2026-06-01T09:00:00+02:00").unwrap();
     let toekenning = cell
         .decide(
             &service,
             "zorgtoeslag_toegekend",
             refers_to,
-            BTreeMap::new(),
+            inkomensgegeven(79547),
             toegekend,
         )
         .unwrap_or_else(|e| panic!("{e}"));
@@ -289,6 +293,19 @@ fn the_demo_cell_grants_a_voorschot_on_the_estimate() {
         hoogte_on(79547, "2025-01-01")
     );
     assert_ne!(toekenning.fields["hoogte_toeslag"], on_estimate);
+}
+
+/// The inkomensgegeven of the citizen as the caller gives it to a toekenning
+/// (in the demo it arrives from the Belastingdienst; see
+/// `the_aanslag_of_the_belastingdienst_is_what_the_toekenning_rests_on`).
+fn inkomensgegeven(value: i64) -> BTreeMap<String, regelrecht_cel::Input> {
+    BTreeMap::from([(
+        "inkomensgegeven".to_string(),
+        regelrecht_cel::Input {
+            value: json!(value),
+            provenance: json!({"source": "test"}),
+        },
+    )])
 }
 
 fn at(moment: &str) -> DateTime<chrono::FixedOffset> {
@@ -479,13 +496,17 @@ fn the_demo_toekenning_sets_off_the_paid_termijnen() {
                 &service,
                 "zorgtoeslag_toegekend",
                 BTreeMap::from([("on_application".to_string(), application.id.clone())]),
-                BTreeMap::from([(
-                    "datum_vaststelling_aanslag".to_string(),
-                    regelrecht_cel::Input {
-                        value: json!(null),
-                        provenance: json!({"source": "dossier"}),
-                    },
-                )]),
+                {
+                    let mut given = inkomensgegeven(income);
+                    given.insert(
+                        "datum_vaststelling_aanslag".to_string(),
+                        regelrecht_cel::Input {
+                            value: json!(null),
+                            provenance: json!({"source": "dossier"}),
+                        },
+                    );
+                    given
+                },
                 at("2026-06-01T09:00:00+02:00"),
             )
             .unwrap_or_else(|e| panic!("{e}"));
@@ -623,10 +644,19 @@ fn bank(service: &LawExecutionService, data: &std::path::Path, day: &str) -> Cel
 /// profiles.yaml): whether it is blocked. A second account the bank has no
 /// record of is null, as the binding says (`absent: null`).
 fn register_bank(service: &mut LawExecutionService, blocked: bool) {
-    let record = |account: &str, blocked: Value| {
+    register_bank_with(service, blocked, OPENING_BALANCE);
+}
+
+/// The persona's opening balance at the bank (its BANK data), in eurocent.
+const OPENING_BALANCE: i64 = 42350;
+
+/// [`register_bank`] with `opening` as the balance the account starts with.
+fn register_bank_with(service: &mut LawExecutionService, blocked: bool, opening: i64) {
+    let record = |account: &str, blocked: Value, opening: Value| {
         BTreeMap::from([
             ("rekeningnummer".to_string(), Value::String(account.into())),
             ("rekening_geblokkeerd".to_string(), blocked),
+            ("beginsaldo".to_string(), opening),
         ])
     };
     // Replace what the bank knew before (the account was unblocked).
@@ -637,8 +667,8 @@ fn register_bank(service: &mut LawExecutionService, blocked: bool) {
             "BANK",
             "rekeningnummer",
             vec![
-                record(ACCOUNT, Value::Bool(blocked)),
-                record("NL00TEST0000000000", Value::Null),
+                record(ACCOUNT, Value::Bool(blocked), Value::Int(opening)),
+                record("NL00TEST0000000000", Value::Null, Value::Null),
             ],
             10,
         )
@@ -1443,15 +1473,27 @@ fn the_demo_cell_describes_and_reads_its_lexostatuses_with_their_grams() {
         .as_array()
         .unwrap()
         .contains(&json!("voorschotbedrag")));
-    // The voorschot reads one article of it (the estimate), the payment
-    // order all of it.
+    // The voorschot reads one article of it (the estimate), the toekenning
+    // another (the inkomensgegeven), the terugvordering the toekenning, the
+    // payment order all of it, the nabetaling and the incasso what they
+    // execute.
     let readers: Vec<&str> = policy["read_by"]
         .as_array()
         .unwrap()
         .iter()
         .map(|r| r["event"].as_str().unwrap())
         .collect();
-    assert_eq!(readers, ["voorschot_verleend", "betaalopdracht_gegeven"]);
+    assert_eq!(
+        readers,
+        [
+            "voorschot_verleend",
+            "zorgtoeslag_toegekend",
+            "terugvordering_vastgesteld",
+            "betaalopdracht_gegeven",
+            "nabetaling_opgedragen",
+            "incasso_opgedragen"
+        ]
+    );
 
     let root = json!({"root": application.id, "berekeningsjaar": 2025});
     let read = |name: &str| {
@@ -1925,4 +1967,742 @@ fn two_voorschotten_are_both_paid_in_december() {
             .unwrap_err();
         assert!(e.to_string().contains("already"), "{value}: {e}");
     }
+}
+
+/// The article of Toeslagen that receives the inkomensgegeven.
+const TOESLAGEN_INKOMEN: &str = "fictief_beleid_toekenning_toeslagen#1";
+/// The article of Toeslagen that receives the bank's answer to a nabetaling.
+const TOESLAGEN_NABETALING: &str = "fictief_beleid_toekenning_toeslagen#5";
+/// The article of Toeslagen that receives the bank's answer to an incasso.
+const TOESLAGEN_INCASSO: &str = "fictief_beleid_toekenning_toeslagen#8";
+/// The article of the bank that receives an incasso.
+const BANK_INCASSO: &str = "fictieve_bankvoorwaarden#2";
+/// The event of the Belastingdienst for the aanslag inkomstenbelasting.
+const AANSLAG: &str = "aanslag_inkomstenbelasting_vastgesteld";
+
+/// What the Belastingdienst knows of the citizen (its BELASTINGDIENST data,
+/// the table `aanslagen_inkomstenbelasting`): per year the day the
+/// inspecteur sets the aanslag and the verzamelinkomen it sets.
+fn register_aanslagen(service: &mut LawExecutionService, rows: &[(i32, &str, i64)]) {
+    let aanslaggegevens: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|(jaar, _, inkomen)| json!({"jaar": jaar, "verzamelinkomen": inkomen}))
+        .collect();
+    let planning: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|(jaar, dag, _)| json!({"jaar": jaar, "datum_vaststelling": dag}))
+        .collect();
+    for (law, field, value) in [
+        (
+            "algemene_wet_inzake_rijksbelastingen",
+            "aanslaggegevens",
+            aanslaggegevens,
+        ),
+        ("fictief_beleid_aanslagregeling", "planning", planning),
+    ] {
+        service
+            .register_dict_source_for_law(
+                law,
+                "BELASTINGDIENST-aanslagen",
+                "bsn",
+                vec![BTreeMap::from([
+                    ("bsn".to_string(), Value::String(BSN.into())),
+                    (
+                        field.to_string(),
+                        Value::from(&serde_json::Value::Array(value)),
+                    ),
+                ])],
+                10,
+            )
+            .unwrap();
+    }
+}
+
+/// The Belastingdienst cell over the demo corpus, with its chronicle in
+/// `data`.
+fn belastingdienst(service: &LawExecutionService, data: &std::path::Path, day: &str) -> Cell {
+    Cell::open(
+        &demo().join("cells/belastingdienst/cell.yaml"),
+        service,
+        data,
+        day.parse().unwrap(),
+    )
+    .unwrap_or_else(|e| panic!("{e}"))
+}
+
+/// The subject of an aanslag: the citizen.
+fn subject() -> BTreeMap<String, regelrecht_cel::Input> {
+    BTreeMap::from([(
+        "bsn".to_string(),
+        regelrecht_cel::Input {
+            value: json!(BSN),
+            provenance: json!({"source": "test"}),
+        },
+    )])
+}
+
+/// The inspecteur sets the aanslag over `year` at `now`, as the cell says it
+/// is due, and the inkomensgegeven reaches Toeslagen over the channel. The
+/// aanslag and Toeslagen's gram.
+fn aanslag(
+    service: &LawExecutionService,
+    belastingdienst: &mut Cell,
+    toeslagen: &mut Cell,
+    year: i32,
+    now: &str,
+) -> (Gram, Gram) {
+    let mut given = subject();
+    given.insert(
+        "belastingjaar".to_string(),
+        regelrecht_cel::Input {
+            value: json!(year),
+            provenance: json!({"source": "period"}),
+        },
+    );
+    let aanslag = belastingdienst
+        .decide(service, AANSLAG, BTreeMap::new(), given, at(now))
+        .unwrap_or_else(|e| panic!("aanslag {year}: {e}"));
+    let field = |name: &str| channel(aanslag.fields[name].clone());
+    let mut received = toeslagen
+        .receive(
+            service,
+            TOESLAGEN_INKOMEN,
+            BTreeMap::new(),
+            BTreeMap::from([
+                ("kenmerk_aanslag".to_string(), channel(json!(aanslag.id))),
+                ("bsn".to_string(), channel(json!(BSN))),
+                (
+                    "kalenderjaar".to_string(),
+                    channel(json!(aanslag.period.unwrap().value)),
+                ),
+                ("inkomensgegeven".to_string(), field("inkomensgegeven")),
+                (
+                    "datum_vaststelling_aanslag".to_string(),
+                    field("datum_vaststelling_aanslag"),
+                ),
+            ]),
+            at(&aanslag.effective_at),
+            at(now),
+        )
+        .unwrap_or_else(|e| panic!("inkomensgegeven {year}: {e}"));
+    assert_eq!(received.len(), 1, "{received:?}");
+    (aanslag, received.remove(0))
+}
+
+/// A toeslagen case with the voorschot over 2025 granted on 6 January 2025
+/// on the estimate, and every termijn paid through November.
+fn paid_voorschot(
+    service: &mut LawExecutionService,
+    data: &std::path::Path,
+) -> (Cell, Gram, Gram, i64) {
+    let (mut cell, application, voorschot) = with_voorschot(
+        service,
+        data,
+        "2025-01-06T10:15:00+01:00",
+        "2025-01-06T11:00:00+01:00",
+        79547,
+    );
+    let orders = pay_due(
+        &mut cell,
+        service,
+        &application.id,
+        None,
+        "2025-12-31",
+        "2025-12-31T12:00:00+01:00",
+    );
+    let paid: i64 = orders.iter().map(|o| amount(o, "bedrag")).sum();
+    assert_eq!(paid, amount(&voorschot, "voorschotbedrag"));
+    (cell, application, voorschot, paid)
+}
+
+/// The aanslag is a decision of the Belastingdienst cell, taken ex officio
+/// on the day the inspecteur's planning gives, over one year per decision.
+/// Its inkomensgegeven reaches Toeslagen, and the toekenning rests on it:
+/// the day the aanslag was set, and the income in it, not what the
+/// registers know.
+#[test]
+fn the_aanslag_of_the_belastingdienst_is_what_the_toekenning_rests_on() {
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    register_aanslagen(&mut service, &[(2025, "2026-04-15", 2_000_000)]);
+    let (mut toeslagen, application, _, paid) = paid_voorschot(&mut service, data.path());
+    let mut belastingdienst = belastingdienst(&service, data.path(), "2025-01-06");
+
+    // Before the aanslag: the toekenning has no day (no inkomensgegeven).
+    let due = toeslagen
+        .due_decision(
+            &service,
+            "zorgtoeslag_toegekend",
+            &application.id,
+            at("2026-01-02T09:00:00+01:00"),
+        )
+        .unwrap();
+    assert_eq!(due.period, Some(year(2025)));
+    assert_eq!(due.day, None);
+
+    // The cell says over which year and on which day the inspecteur sets the
+    // aanslag: from the year before the one of now, the first year the
+    // planning gives a day for.
+    let due = belastingdienst
+        .due_ex_officio(
+            &service,
+            AANSLAG,
+            &subject(),
+            at("2025-03-01T09:00:00+01:00"),
+        )
+        .unwrap();
+    assert_eq!(due.period, Some(year(2025)));
+    assert_eq!(due.day, Some("2026-04-15".parse().unwrap()));
+    // Not before that day.
+    let mut early = subject();
+    early.insert("belastingjaar".to_string(), channel(json!(2025)));
+    let e = belastingdienst
+        .decide(
+            &service,
+            AANSLAG,
+            BTreeMap::new(),
+            early,
+            at("2026-04-14T09:00:00+02:00"),
+        )
+        .unwrap_err();
+    assert!(e.to_string().contains("2026-04-15"), "{e}");
+
+    let (aanslag, received) = aanslag(
+        &service,
+        &mut belastingdienst,
+        &mut toeslagen,
+        2025,
+        "2026-04-15T09:00:00+02:00",
+    );
+    assert_eq!(aanslag.type_, "decretogram");
+    assert!(aanslag.refers_to.is_empty());
+    assert_eq!(aanslag.period, Some(year(2025)));
+    assert_eq!(aanslag.fields["inkomensgegeven"], 2_000_000);
+    assert_eq!(aanslag.fields["datum_vaststelling_aanslag"], "2026-04-15");
+    // Awb 6:7 hooks onto the aanslag as onto every besluit.
+    assert_eq!(aanslag.fields["bezwaartermijn_weken"], 6);
+    assert_eq!(received.name, "inkomensgegeven_ontvangen");
+    assert_eq!(received.fields["kalenderjaar"], 2025);
+    // Once per year: a second aanslag over 2025 is refused, the next one
+    // is over 2026, without a day in this planning.
+    let mut again = subject();
+    again.insert("belastingjaar".to_string(), channel(json!(2025)));
+    let e = belastingdienst
+        .decide(
+            &service,
+            AANSLAG,
+            BTreeMap::new(),
+            again,
+            at("2026-04-16T09:00:00+02:00"),
+        )
+        .unwrap_err();
+    assert!(e.to_string().contains("already taken"), "{e}");
+    let next = belastingdienst
+        .due_ex_officio(
+            &service,
+            AANSLAG,
+            &subject(),
+            at("2026-04-16T09:00:00+02:00"),
+        )
+        .unwrap();
+    assert_eq!((next.period, next.day), (Some(year(2026)), None));
+    // The same inkomensgegeven delivered twice is recorded once.
+    let e = toeslagen
+        .receive(
+            &service,
+            TOESLAGEN_INKOMEN,
+            BTreeMap::new(),
+            BTreeMap::from([
+                ("kenmerk_aanslag".to_string(), channel(json!(aanslag.id))),
+                ("bsn".to_string(), channel(json!(BSN))),
+                ("kalenderjaar".to_string(), channel(json!(2025))),
+                ("inkomensgegeven".to_string(), channel(json!(2_000_000))),
+                (
+                    "datum_vaststelling_aanslag".to_string(),
+                    channel(json!("2026-04-15")),
+                ),
+            ]),
+            at("2026-04-15T09:00:00+02:00"),
+            at("2026-04-16T09:00:00+02:00"),
+        )
+        .unwrap_err();
+    assert!(matches!(e, Error::Answered(_)), "{e}");
+
+    // Now the toekenning is due on the day of the aanslag, and rests on its
+    // inkomensgegeven, not on the income the registers know (79547).
+    let due = toeslagen
+        .due_decision(
+            &service,
+            "zorgtoeslag_toegekend",
+            &application.id,
+            at("2026-04-15T09:00:00+02:00"),
+        )
+        .unwrap();
+    assert_eq!(due.day, Some("2026-04-15".parse().unwrap()));
+    let toekenning = toeslagen
+        .decide(
+            &service,
+            "zorgtoeslag_toegekend",
+            BTreeMap::from([("on_application".to_string(), application.id.clone())]),
+            BTreeMap::new(),
+            at("2026-04-15T10:00:00+02:00"),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(toekenning.fields["toetsingsinkomen"], 2_000_000);
+    assert_eq!(
+        toekenning.inputs["inkomensgegeven"]["provenance"]["article"],
+        "fictief_beleid_kroniek_toeslagen#5"
+    );
+    assert_eq!(
+        toekenning.inputs["datum_vaststelling_aanslag"]["value"],
+        "2026-04-15"
+    );
+    assert_eq!(toekenning.fields["uiterste_toekenningsdatum"], "2026-10-15");
+    let hoogte = hoogte_on(2_000_000, "2025-01-01").as_i64().unwrap();
+    assert_eq!(
+        amount(&toekenning, "toegekende_tegemoetkoming"),
+        (hoogte + 50) / 100 * 100
+    );
+    assert_eq!(
+        amount(&toekenning, "nog_uit_te_betalen"),
+        amount(&toekenning, "toegekende_tegemoetkoming") - paid
+    );
+}
+
+/// The toekenning with income `income` in the aanslag over 2025, on 15
+/// April 2026, after every termijn of 2025 was paid; the bank, the
+/// Belastingdienst and Toeslagen as the demo carries messages between them.
+fn toekenning_on(
+    service: &mut LawExecutionService,
+    data: &std::path::Path,
+    income: i64,
+) -> (Cell, Cell, Gram, Gram, i64) {
+    register_aanslagen(service, &[(2025, "2026-04-15", income)]);
+    let (mut toeslagen, application, _, paid) = paid_voorschot(service, data);
+    let mut belastingdienst = belastingdienst(service, data, "2025-01-06");
+    aanslag(
+        service,
+        &mut belastingdienst,
+        &mut toeslagen,
+        2025,
+        "2026-04-15T09:00:00+02:00",
+    );
+    let toekenning = toeslagen
+        .decide(
+            service,
+            "zorgtoeslag_toegekend",
+            BTreeMap::from([("on_application".to_string(), application.id.clone())]),
+            BTreeMap::new(),
+            at("2026-04-15T10:00:00+02:00"),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+    let bank = bank(service, data, "2026-04-15");
+    (toeslagen, bank, application, toekenning, paid)
+}
+
+/// A nabetaling (Awir 24 lid 1): on the day of the toekenning Toeslagen
+/// orders the bank to pay what is left, the bank credits it, and Toeslagen
+/// records it paid. The answer is no answer to a termijn: the article that
+/// receives those says it is not addressed to it. Once paid, nothing more
+/// is ordered.
+#[test]
+fn a_lower_income_is_paid_out_through_the_bank() {
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    register_bank(&mut service, false);
+    let (mut toeslagen, mut bank, application, toekenning, _) =
+        toekenning_on(&mut service, data.path(), 2_000_000);
+    let nog = amount(&toekenning, "nog_uit_te_betalen");
+    assert!(nog > 0, "{nog}");
+    assert_eq!(amount(&toekenning, "terug_te_vorderen"), 0);
+
+    let due = toeslagen
+        .due_executions(
+            &service,
+            "nabetaling_opgedragen",
+            &application.id,
+            None,
+            "2026-06-30".parse().unwrap(),
+            at("2026-04-15T11:00:00+02:00"),
+        )
+        .unwrap();
+    assert_eq!(
+        due[0].day,
+        "2026-04-15".parse::<chrono::NaiveDate>().unwrap()
+    );
+    let order = toeslagen
+        .execute_in(
+            &service,
+            "nabetaling_opgedragen",
+            &application.id,
+            due[0].day,
+            Some(2025),
+            at("2026-04-15T11:00:00+02:00"),
+        )
+        .unwrap()
+        .expect("a nabetaling");
+    assert_eq!(amount(&order, "bedrag"), nog);
+    assert_eq!(order.refers_to["toekenning"], toekenning.id);
+    assert_eq!(order.fields["rekeningnummer_begunstigde"], ACCOUNT);
+    assert!(amount(&toekenning, "nog_uit_te_betalen") > 0);
+    // Within four weeks of the dagtekening (Awir 24 lid 1).
+    assert!(
+        order.fields["uitvoerdatum"].as_str().unwrap()
+            <= toekenning.fields["uiterste_uitbetaaldatum"]
+                .as_str()
+                .unwrap()
+    );
+
+    let mut credited = to_bank(
+        &service,
+        &mut bank,
+        &order,
+        "2026-04-15T11:00:00+02:00",
+        "2026-04-15T11:00:00+02:00",
+    )
+    .unwrap();
+    let at_bank = credited.remove(0);
+    assert_eq!(at_bank.name, "overboeking_bijgeschreven");
+    // The answer of the bank is offered to both articles that receive one;
+    // the one for termijnen says it is not for it.
+    let e = answer(
+        &service,
+        &mut toeslagen,
+        &at_bank,
+        &at_bank.effective_at,
+        "2026-04-15T11:00:00+02:00",
+    )
+    .unwrap_err();
+    assert!(matches!(e, Error::NotAddressed(_)), "{e}");
+    let field = |g: &Gram, name: &str| channel(g.fields[name].clone());
+    let paid = toeslagen
+        .receive(
+            &service,
+            TOESLAGEN_NABETALING,
+            BTreeMap::from([("betaalopdracht".to_string(), order.id.clone())]),
+            BTreeMap::from([
+                (
+                    "bijgeschreven".to_string(),
+                    field(&at_bank, "bijgeschreven"),
+                ),
+                (
+                    "bijgeschreven_bedrag".to_string(),
+                    field(&at_bank, "bijgeschreven_bedrag"),
+                ),
+                ("bedrag_opdracht".to_string(), field(&at_bank, "bedrag")),
+                ("reden_weigering".to_string(), field(&at_bank, "reden")),
+            ]),
+            at(&at_bank.effective_at),
+            at("2026-04-15T11:00:00+02:00"),
+        )
+        .unwrap();
+    assert_eq!(paid[0].name, "nabetaling_betaald");
+    assert_eq!(amount(&paid[0], "nabetaald_bedrag"), nog);
+    // The nabetaling does not count as a paid voorschot.
+    let uitbetaald = read(
+        &toeslagen,
+        &service,
+        "uitbetaald",
+        json!({"root": application.id, "berekeningsjaar": 2025})
+            .as_object()
+            .unwrap(),
+        at("2026-04-16T09:00:00+02:00"),
+    );
+    assert_eq!(
+        uitbetaald["uitbetaalde_voorschotten"],
+        toekenning.inputs["uitbetaalde_voorschotten"]["value"]
+    );
+    // Paid: no order in May.
+    let may = toeslagen
+        .execute_in(
+            &service,
+            "nabetaling_opgedragen",
+            &application.id,
+            "2026-05-01".parse().unwrap(),
+            Some(2025),
+            at("2026-05-01T09:00:00+02:00"),
+        )
+        .unwrap();
+    assert_eq!(may, None);
+}
+
+/// A refused nabetaling stays open: the order of the first of the next
+/// month carries it.
+#[test]
+fn a_refused_nabetaling_is_ordered_again_the_next_month() {
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    register_bank(&mut service, true);
+    let (mut toeslagen, mut bank, application, toekenning, _) =
+        toekenning_on(&mut service, data.path(), 2_000_000);
+    let nog = amount(&toekenning, "nog_uit_te_betalen");
+    let order = toeslagen
+        .execute_in(
+            &service,
+            "nabetaling_opgedragen",
+            &application.id,
+            "2026-04-15".parse().unwrap(),
+            Some(2025),
+            at("2026-04-15T11:00:00+02:00"),
+        )
+        .unwrap()
+        .unwrap();
+    let at_bank = to_bank(
+        &service,
+        &mut bank,
+        &order,
+        "2026-04-15T11:00:00+02:00",
+        "2026-04-15T11:00:00+02:00",
+    )
+    .unwrap()
+    .remove(0);
+    assert_eq!(at_bank.name, "overboeking_geweigerd");
+    let field = |g: &Gram, name: &str| channel(g.fields[name].clone());
+    let failed = toeslagen
+        .receive(
+            &service,
+            TOESLAGEN_NABETALING,
+            BTreeMap::from([("betaalopdracht".to_string(), order.id.clone())]),
+            BTreeMap::from([
+                (
+                    "bijgeschreven".to_string(),
+                    field(&at_bank, "bijgeschreven"),
+                ),
+                (
+                    "bijgeschreven_bedrag".to_string(),
+                    field(&at_bank, "bijgeschreven_bedrag"),
+                ),
+                ("bedrag_opdracht".to_string(), field(&at_bank, "bedrag")),
+                ("reden_weigering".to_string(), field(&at_bank, "reden")),
+            ]),
+            at(&at_bank.effective_at),
+            at("2026-04-15T11:00:00+02:00"),
+        )
+        .unwrap();
+    assert_eq!(failed[0].name, "nabetaling_mislukt");
+    let may = toeslagen
+        .execute_in(
+            &service,
+            "nabetaling_opgedragen",
+            &application.id,
+            "2026-05-01".parse().unwrap(),
+            Some(2025),
+            at("2026-05-01T09:00:00+02:00"),
+        )
+        .unwrap()
+        .expect("the refused nabetaling again");
+    assert_eq!(amount(&may, "bedrag"), nog);
+}
+
+/// The terugvordering (Awir 26) for the year of a toekenning that leaves
+/// something to recover: Toeslagen's own decision on the day of the
+/// toekenning, in its own procedure, and the incasso of it through the bank
+/// on the first of the next month. With too low a balance the bank refuses
+/// and the amount stays open; the next month, with enough, it is collected.
+#[test]
+fn a_higher_income_is_recovered_by_its_own_decision_and_collected() {
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    register_bank_with(&mut service, false, 100);
+    let (mut toeslagen, mut bank, application, toekenning, _) =
+        toekenning_on(&mut service, data.path(), 3_500_000);
+    let terug = amount(&toekenning, "terug_te_vorderen");
+    assert!(terug > 11_800, "{terug}");
+    assert_eq!(amount(&toekenning, "nog_uit_te_betalen"), 0);
+    // No nabetaling.
+    assert_eq!(
+        toeslagen
+            .execute_in(
+                &service,
+                "nabetaling_opgedragen",
+                &application.id,
+                "2026-04-15".parse().unwrap(),
+                Some(2025),
+                at("2026-04-15T11:00:00+02:00"),
+            )
+            .unwrap(),
+        None
+    );
+
+    let due = toeslagen
+        .due_decision(
+            &service,
+            "terugvordering_vastgesteld",
+            &application.id,
+            at("2026-04-15T11:00:00+02:00"),
+        )
+        .unwrap();
+    assert_eq!(due.period, Some(year(2025)));
+    assert_eq!(due.day, Some("2026-04-15".parse().unwrap()));
+    let terugvordering = toeslagen
+        .decide(
+            &service,
+            "terugvordering_vastgesteld",
+            BTreeMap::from([("on_application".to_string(), application.id.clone())]),
+            BTreeMap::from([("berekeningsjaar".to_string(), channel(json!(2025)))]),
+            at("2026-04-15T11:00:00+02:00"),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(terugvordering.stage.as_deref(), Some("TERUGVORDERING"));
+    assert_eq!(terugvordering.period, Some(year(2025)));
+    assert_eq!(terugvordering.refers_to["on_application"], application.id);
+    assert_eq!(amount(&terugvordering, "terugvorderingsbedrag"), terug);
+    // Awir 28 lid 1: six weeks; Awb 6:7 hooks onto it as onto every besluit.
+    assert_eq!(
+        terugvordering.fields["uiterste_betaaldatum_terugvordering"],
+        "2026-05-27"
+    );
+    assert_eq!(terugvordering.fields["bezwaartermijn_weken"], 6);
+    // One per year: the next has no day.
+    let next = toeslagen
+        .due_decision(
+            &service,
+            "terugvordering_vastgesteld",
+            &application.id,
+            at("2026-04-16T09:00:00+02:00"),
+        )
+        .unwrap();
+    assert_eq!(next.day, None);
+
+    // Not on the day of the decision itself; on the first of May.
+    assert_eq!(
+        toeslagen
+            .execute_in(
+                &service,
+                "incasso_opgedragen",
+                &application.id,
+                "2026-04-15".parse().unwrap(),
+                Some(2025),
+                at("2026-04-15T12:00:00+02:00"),
+            )
+            .unwrap(),
+        None
+    );
+    let collect = |toeslagen: &mut Cell, bank: &mut Cell, day: &str| -> (Gram, Gram, Gram) {
+        let now = format!("{day}T09:00:00+02:00");
+        let order = toeslagen
+            .execute_in(
+                &service,
+                "incasso_opgedragen",
+                &application.id,
+                day.parse().unwrap(),
+                Some(2025),
+                at(&now),
+            )
+            .unwrap_or_else(|e| panic!("{day}: {e}"))
+            .unwrap_or_else(|| panic!("{day}: no incasso"));
+        let field = |g: &Gram, name: &str| channel(g.fields[name].clone());
+        let at_bank = bank
+            .receive(
+                &service,
+                BANK_INCASSO,
+                BTreeMap::new(),
+                BTreeMap::from([
+                    ("incassokenmerk".to_string(), channel(json!(order.id))),
+                    (
+                        "rekeningnummer".to_string(),
+                        field(&order, "rekeningnummer_debiteur"),
+                    ),
+                    ("bedrag".to_string(), field(&order, "incassobedrag")),
+                    ("uitvoerdatum".to_string(), field(&order, "incassodatum")),
+                ]),
+                at(&order.effective_at),
+                at(&now),
+            )
+            .unwrap_or_else(|e| panic!("bank {day}: {e}"))
+            .remove(0);
+        let answer = toeslagen
+            .receive(
+                &service,
+                TOESLAGEN_INCASSO,
+                BTreeMap::from([("incassoopdracht".to_string(), order.id.clone())]),
+                BTreeMap::from([
+                    ("afgeschreven".to_string(), field(&at_bank, "afgeschreven")),
+                    (
+                        "afgeschreven_bedrag".to_string(),
+                        field(&at_bank, "afgeschreven_bedrag"),
+                    ),
+                    ("bedrag_incasso".to_string(), field(&at_bank, "bedrag")),
+                    (
+                        "reden_weigering_incasso".to_string(),
+                        field(&at_bank, "reden_incasso"),
+                    ),
+                ]),
+                at(&at_bank.effective_at),
+                at(&now),
+            )
+            .unwrap_or_else(|e| panic!("toeslagen {day}: {e}"))
+            .remove(0);
+        (order, at_bank, answer)
+    };
+    // A balance of € 1: refused, the amount stays open.
+    let (order, at_bank, answer) = collect(&mut toeslagen, &mut bank, "2026-05-01");
+    assert_eq!(amount(&order, "incassobedrag"), terug);
+    assert_eq!(order.refers_to["terugvordering"], terugvordering.id);
+    assert_eq!(at_bank.name, "incasso_geweigerd");
+    assert_eq!(at_bank.fields["reden_incasso"], "saldo ontoereikend");
+    assert_eq!(answer.name, "incasso_mislukt");
+    assert_eq!(amount(&answer, "niet_geind_bedrag"), terug);
+
+    // The account receives enough (a transfer the bank credits), and the
+    // first of June the incasso is collected.
+    let deposit = bank
+        .receive(
+            &service,
+            BANK_TRANSFER,
+            BTreeMap::new(),
+            BTreeMap::from([
+                ("betaalkenmerk".to_string(), channel(json!("storting-1"))),
+                ("rekeningnummer".to_string(), channel(json!(ACCOUNT))),
+                ("bedrag".to_string(), channel(json!(terug))),
+                ("uitvoerdatum".to_string(), channel(json!("2026-05-20"))),
+            ]),
+            at("2026-05-20T09:00:00+02:00"),
+            at("2026-05-20T09:00:00+02:00"),
+        )
+        .unwrap();
+    assert_eq!(deposit[0].name, "overboeking_bijgeschreven");
+    let (order, at_bank, answer) = collect(&mut toeslagen, &mut bank, "2026-06-01");
+    assert_eq!(amount(&order, "incassobedrag"), terug);
+    assert_eq!(at_bank.name, "incasso_afgeschreven");
+    assert_eq!(amount(&at_bank, "afgeschreven_bedrag"), terug);
+    assert_eq!(answer.name, "terugvordering_geind");
+    // Collected: nothing more.
+    assert_eq!(
+        toeslagen
+            .execute_in(
+                &service,
+                "incasso_opgedragen",
+                &application.id,
+                "2026-07-01".parse().unwrap(),
+                Some(2025),
+                at("2026-07-01T09:00:00+02:00"),
+            )
+            .unwrap(),
+        None
+    );
+}
+
+/// Up to the threshold of Awir 26a nothing is recovered: the toekenning
+/// leaves € 0 to recover, and no terugvordering is due.
+#[test]
+fn a_small_difference_is_not_recovered() {
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    register_bank(&mut service, false);
+    // The estimate (25.000) plus a little: a few euros less toeslag.
+    let (toeslagen, _, application, toekenning, _) =
+        toekenning_on(&mut service, data.path(), ESTIMATE + 100_000);
+    let na = amount(&toekenning, "terug_te_vorderen_na_verrekening");
+    assert!(na > 0 && na <= 11_800, "{na}");
+    assert_eq!(amount(&toekenning, "terug_te_vorderen"), 0);
+    let due = toeslagen
+        .due_decision(
+            &service,
+            "terugvordering_vastgesteld",
+            &application.id,
+            at("2026-04-16T09:00:00+02:00"),
+        )
+        .unwrap();
+    assert_eq!(due.day, None);
 }

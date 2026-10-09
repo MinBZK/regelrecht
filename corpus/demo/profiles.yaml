@@ -142,18 +142,28 @@ profiles:
             beginsaldo: 42350
             geblokkeerd: false
       BELASTINGDIENST:
-        # De dag waarop de aanslag inkomstenbelasting over een jaar is vastgesteld
-        # (Awir 19: de toekenning volgt binnen zes maanden).
+        # FICTIEF. De aanslag inkomstenbelasting over een jaar, zoals de
+        # inspecteur hem plant en vaststelt: de dag (fictief_beleid_
+        # aanslagregeling) en het verzamelinkomen dat hij vaststelt (AWR art.
+        # 11; het inkomensgegeven, art. 21 onder e). Alleen de cel van de
+        # Belastingdienst leest deze tabel; het inkomen dat de rest van de
+        # demo kent (box1 hieronder) verandert er niet door. Het
+        # verzamelinkomen wijkt bewust af van de schatting in de aanvraag
+        # (22.000 euro): over 2025 lager (een nabetaling), over 2026 hoger
+        # (een terugvordering boven de grens van Awir 26a).
         aanslagen_inkomstenbelasting:
           - bsn: '999100001'
             jaar: 2024
             datum_vaststelling: '2025-04-15'
+            verzamelinkomen: 2415000
           - bsn: '999100001'
             jaar: 2025
             datum_vaststelling: '2026-04-15'
+            verzamelinkomen: 1600000
           - bsn: '999100001'
             jaar: 2026
             datum_vaststelling: '2027-04-15'
+            verzamelinkomen: 3200000
         box1:
           - bsn: '999100001'
             loon_uit_dienstbetrekking: 0

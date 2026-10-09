@@ -1,0 +1,42 @@
+---
+# Wat er na de toekenning volgt (Awir 24 en 26 tot en met 28), en het
+# inkomensgegeven waarop de toekenning rust. Wanneer en hoeveel, zegt de wet
+# door haar uit te voeren: de Awir en het (fictieve) beleid van Toeslagen
+# daarover (fictief_beleid_toekenning_toeslagen). Wat er al is opgedragen en
+# ingevorderd, leest de cel uit haar eigen kroniek met het beleid van
+# Toeslagen daarover (fictief_beleid_kroniek_toeslagen), met de aanvraag als
+# `root`.
+# - inkomensgegeven_ontvangen: het inkomensgegeven dat de inspecteur
+#   verstrekt (AWR 21e lid 1), bij ontvangst vastgelegd (art. 1).
+# - nabetaling_opgedragen: Toeslagen geeft de bank opdracht uit te betalen
+#   wat de toekenning nog uit te betalen laat (Awir 24 lid 1, art. 4), en
+#   het antwoord van de bank: nabetaling_betaald of nabetaling_mislukt
+#   (art. 5).
+# - incasso_opgedragen: Toeslagen geeft de bank opdracht het bedrag van de
+#   terugvordering af te schrijven (Awir 28 lid 1, art. 7), en het antwoord
+#   van de bank: terugvordering_geind of incasso_mislukt (art. 8).
+$id: zorgtoeslag_verrekening
+recording_actor: belastingdienst_toeslagen
+chronicle: toeslagen
+events:
+  - name: inkomensgegeven_ontvangen
+    establishes: fictief_beleid_toekenning_toeslagen#1
+  - name: nabetaling_opgedragen
+    establishes: fictief_beleid_toekenning_toeslagen#4
+    reads:
+      - {regulation: fictief_beleid_kroniek_toeslagen, article: '2'}
+      - {regulation: fictief_beleid_kroniek_toeslagen, article: '6'}
+      - {regulation: fictief_beleid_kroniek_toeslagen, article: '7'}
+  - name: nabetaling_betaald
+    establishes: fictief_beleid_toekenning_toeslagen#5
+  - name: nabetaling_mislukt
+    establishes: fictief_beleid_toekenning_toeslagen#5
+  - name: incasso_opgedragen
+    establishes: fictief_beleid_toekenning_toeslagen#7
+    reads:
+      - {regulation: fictief_beleid_kroniek_toeslagen, article: '2'}
+      - {regulation: fictief_beleid_kroniek_toeslagen, article: '8'}
+  - name: terugvordering_geind
+    establishes: fictief_beleid_toekenning_toeslagen#8
+  - name: incasso_mislukt
+    establishes: fictief_beleid_toekenning_toeslagen#8

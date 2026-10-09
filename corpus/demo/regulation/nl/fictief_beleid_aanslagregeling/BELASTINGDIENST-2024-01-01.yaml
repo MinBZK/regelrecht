@@ -1,0 +1,88 @@
+---
+# FICTIEF. Geen bekendgemaakt beleid van de Belastingdienst, maar een eigen
+# keuze in de modellering: op welke dag de inspecteur de aanslag
+# inkomstenbelasting over een jaar vaststelt. De wet zegt alleen dat hij dat
+# doet (AWR art. 11 lid 1) en binnen welke termijn (lid 3). Wanneer, is de
+# planning van de inspecteur; in de demo staat die per persona en per jaar in
+# de gegevens van de Belastingdienst (BELASTINGDIENST in profiles.yaml,
+# tabel `aanslagen_inkomstenbelasting`). De cel van de Belastingdienst neemt
+# de aanslag niet eerder dan op de dag die dit artikel geeft (`decided_on` in
+# haar stroom).
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.8.0/schema/v0.8.0/schema.json
+$id: fictief_beleid_aanslagregeling
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+# Er is geen bekendgemaakt beleid hierover. De url wijst daarom naar het
+# artikel dat dit beleid uitvoert, niet naar een bekendmaking.
+url: https://wetten.overheid.nl/BWBR0002320/2024-01-01#Artikel11
+name: Planning van de aanslagregeling inkomstenbelasting (fictief uitvoeringsbeleid)
+competent_authority:
+  name: Belastingdienst
+legal_basis:
+  - law_id: algemene_wet_inzake_rijksbelastingen
+    article: '11'
+articles:
+  - number: '1'
+    url: https://wetten.overheid.nl/BWBR0002320/2024-01-01#Artikel11
+    text: >-
+      FICTIEF, eigen keuze in de modellering: geen bekendgemaakt beleid. De
+      inspecteur stelt de aanslag inkomstenbelasting over een kalenderjaar vast
+      (artikel 11, eerste lid, van de Algemene wet inzake rijksbelastingen) op
+      de dag die zijn planning voor de belastingplichtige en dat jaar geeft.
+      Geeft de planning geen dag, dan is er (nog) geen aanslag.
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+            description: De belastingplichtige.
+          - name: belastingjaar
+            type: number
+            required: true
+            description: Het kalenderjaar waarover de aanslag gaat.
+        input:
+          # De planning van de inspecteur voor deze belastingplichtige, als
+          # lijst van rijen (jaar, datum_vaststelling).
+          - name: planning
+            type: array
+            source: {}
+        output:
+          # Hulpuitvoer: het jaar buiten de FOREACH gelezen.
+          - name: jaar_van_de_planning
+            type: number
+            description: Het kalenderjaar waarnaar gevraagd wordt.
+          - name: dag_vaststelling_aanslag
+            type: date
+            nullable: true
+            description: >-
+              De dag waarop de inspecteur de aanslag over het jaar vaststelt;
+              leeg als de planning er geen geeft.
+        actions:
+          - output: jaar_van_de_planning
+            value: $belastingjaar
+          - output: dag_vaststelling_aanslag
+            value:
+              operation: IF
+              cases:
+                # Geen dag in de planning voor dit jaar.
+                - when:
+                    operation: NOT
+                    value:
+                      operation: FOREACH
+                      collection: $planning
+                      as: p
+                      filter: {operation: EQUALS, subject: $p.jaar, value: $jaar_van_de_planning}
+                      body: {operation: NOT, value: {operation: EQUALS, subject: $p.datum_vaststelling, value: null}}
+                      combine: OR
+                  then: null
+              # Eén rij per jaar: ADD over één waarde geeft die waarde (ook
+              # een datum als tekst).
+              default:
+                operation: FOREACH
+                collection: $planning
+                as: p
+                filter: {operation: EQUALS, subject: $p.jaar, value: $jaar_van_de_planning}
+                body: $p.datum_vaststelling
+                combine: ADD

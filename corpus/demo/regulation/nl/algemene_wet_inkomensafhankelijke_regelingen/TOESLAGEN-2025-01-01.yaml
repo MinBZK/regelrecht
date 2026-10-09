@@ -52,6 +52,29 @@ procedure:
         requires:
           - name: bekendmaking_datum
             type: date
+  # De beschikking tot terugvordering (art. 26) is een eigen beschikking, met
+  # een eigen procedure: zij volgt op de toekenning, maar is geen fase van de
+  # tegemoetkoming (de levensloop van een zaak om een tegemoetkoming loopt
+  # niet door haar heen). Eigen keuze in de modellering, zoals de procedure
+  # tegemoetkoming: de Awir geeft geen lijst van fasen. Ook deze beschikking
+  # wordt bekendgemaakt (Awb 3:40, 3:41), met een eigen bezwaartermijn (Awb
+  # 6:8).
+  - id: terugvordering
+    applies_to:
+      legal_character: BESCHIKKING
+    stages:
+      - name: TERUGVORDERING
+        is: BESLUIT
+        description: De Dienst Toeslagen stelt de beschikking tot terugvordering vast (art. 26)
+        requires:
+          - name: dagtekening_terugvordering
+            type: date
+      - name: TERUGVORDERING_BEKENDMAKING
+        is: BEKENDMAKING
+        description: De beschikking tot terugvordering wordt bekendgemaakt (Awb 3:40, 3:41)
+        requires:
+          - name: bekendmaking_datum
+            type: date
 articles:
   - number: '8'
     text: |-
@@ -1091,6 +1114,95 @@ articles:
               operation: DATE_ADD
               date: $dagtekening_toekenning
               weeks: 4
+  - number: '26'
+    text: |-
+      1 Indien een herziening van een tegemoetkoming of een herziening van een voorschot leidt tot een terug te vorderen
+      bedrag dan wel een verrekening van een voorschot met een tegemoetkoming daartoe leidt, is de belanghebbende het
+      bedrag van de terugvordering in zijn geheel verschuldigd.
+
+      2 Het terug te vorderen bedrag, bedoeld in het eerste lid, wordt volledig door de Dienst Toeslagen teruggevorderd.
+      Voor zover de nadelige gevolgen voor de belanghebbende van een volledige terugvordering van het bedrag ingevolge
+      het eerste lid onevenredig zijn in verhouding tot de met die volledige terugvordering te dienen doelen, kan de
+      Dienst Toeslagen bij het vaststellen van de beschikking tot terugvordering een lager bedrag terugvorderen dan het
+      bedrag ingevolge het eerste lid.
+
+      3 In bij ministeriële regeling aan te wijzen gevallen herziet de Dienst Toeslagen de onherroepelijk geworden
+      beschikking tot terugvordering in het voordeel van de belanghebbende.
+    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel26
+    machine_readable:
+      # De beschikking tot terugvordering: lid 1, de belanghebbende is het
+      # terug te vorderen bedrag in zijn geheel verschuldigd, en lid 2, eerste
+      # volzin, de Dienst Toeslagen vordert het volledig terug. Het bedrag is
+      # wat de verrekening bij de toekenning terug te vorderen laat (art. 24
+      # lid 3), na art. 26a: tot de grens van art. 26a wordt niets
+      # teruggevorderd en is er geen beschikking die iets terugvordert (eigen
+      # keuze: art. 26a lid 1 laat de beschikking dan "op nihil" vaststellen;
+      # de demo legt alleen een terugvordering vast die iets terugvordert).
+      #
+      # Een eigen beschikking met een eigen procedure (terugvordering), op
+      # dezelfde aanvraag als de tegemoetkoming waarvan het bedrag
+      # teruggevorderd wordt (`decides_on`, eigen keuze: de wet noemt de
+      # terugvordering geen besluit op de aanvraag, maar zij hoort bij de
+      # tegemoetkoming die op die aanvraag is toegekend). Zij betreft het
+      # berekeningsjaar van die tegemoetkoming.
+      #
+      # Niet gemodelleerd: de herziening (lid 1, eerste helft), een lager
+      # bedrag bij onevenredigheid (lid 2, tweede volzin), lid 3, de
+      # zienswijze (art. 26b) en rente (art. 27).
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          procedure_id: terugvordering
+          decides_on:
+            - algemene_wet_inkomensafhankelijke_regelingen#15
+        parameters:
+          - name: berekeningsjaar
+            type: number
+            required: false
+            description: >-
+              Het berekeningsjaar van de tegemoetkoming waarvan het bedrag
+              wordt teruggevorderd (art. 2 lid 1 onder b).
+            origin:
+              # Het jaar van de tegemoetkoming: het jaar waarvoor de aanvraag
+              # is gedaan of geacht wordt te zijn gedaan (art. 15 lid 5).
+              waarde: BELANGHEBBENDE
+              grondslag: algemene_wet_inkomensafhankelijke_regelingen#15 lid 5
+              rol: TIJDVAK
+          - name: terug_te_vorderen
+            type: amount
+            required: false
+            description: >-
+              Het bedrag dat de verrekening van de voorschotten met de
+              tegemoetkoming terug te vorderen laat (art. 24 lid 3), na art.
+              26a, zoals de beschikking tot toekenning het vaststelde.
+            origin:
+              waarde: DOSSIER
+              grondslag: algemene_wet_inkomensafhankelijke_regelingen#26a lid 1
+          - name: dagtekening_terugvordering
+            type: date
+            required: false
+            description: De dagtekening van de beschikking tot terugvordering.
+        output:
+          - name: terugvordering_wordt_vastgesteld
+            type: boolean
+            description: >-
+              Lid 1: de verrekening leidt tot een terug te vorderen bedrag (na
+              art. 26a).
+          - name: terugvorderingsbedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: >-
+              Het bedrag dat de belanghebbende in zijn geheel verschuldigd is
+              (lid 1) en dat de Dienst Toeslagen volledig terugvordert (lid 2).
+        actions:
+          - output: terugvordering_wordt_vastgesteld
+            value:
+              operation: GREATER_THAN
+              subject: $terug_te_vorderen
+              value: 0
+          - output: terugvorderingsbedrag
+            value: $terug_te_vorderen
   - number: 26a
     text: |-
       1 Indien een herziening van een toegekende tegemoetkoming of een verrekening van een voorschot met een
@@ -1190,3 +1302,43 @@ articles:
                     value: $terugvorderingsgrens
                   then: 0
               default: $terug_te_vorderen_na_verrekening
+  - number: '28'
+    text: |-
+      1 De belanghebbende heeft de verplichting om het bedrag van een terugvordering alsmede de op de voet van artikel
+      27 verschuldigde rente binnen zes weken na de dagtekening van de beschikking tot terugvordering te betalen aan de
+      Dienst Toeslagen.
+
+      2 Het bedrag van een bestuurlijke boete moet worden betaald binnen zes weken na de dagtekening van de
+      boetebeschikking.
+
+      3 De Algemene termijnenwet is niet van toepassing op de in dit artikel gestelde termijnen.
+    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel28
+    machine_readable:
+      # Lid 1: binnen zes weken na de dagtekening van de beschikking tot
+      # terugvordering betalen; een haak na die beschikking, in de fase
+      # TERUGVORDERING. Rente (art. 27) en lid 2 (boete) zijn niet
+      # gemodelleerd. Lid 3: de Algemene termijnenwet geldt niet, dus de
+      # termijn schuift niet naar een werkdag.
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: TERUGVORDERING
+      execution:
+        parameters:
+          - name: dagtekening_terugvordering
+            type: date
+            required: false
+            description: De dagtekening van de beschikking tot terugvordering.
+        output:
+          - name: uiterste_betaaldatum_terugvordering
+            type: date
+            description: >-
+              De dag waarop de belanghebbende het bedrag van de terugvordering
+              uiterlijk betaalt.
+        actions:
+          - output: uiterste_betaaldatum_terugvordering
+            value:
+              operation: DATE_ADD
+              date: $dagtekening_terugvordering
+              weeks: 6

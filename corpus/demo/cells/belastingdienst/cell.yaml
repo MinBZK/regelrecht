@@ -1,0 +1,16 @@
+---
+# Cel van de Belastingdienst. Zij legt de aanslag inkomstenbelasting vast die
+# de inspecteur over een kalenderjaar vaststelt (AWR art. 11 lid 1): een
+# besluit op geen aanvraag, ambtshalve, met het inkomensgegeven dat het
+# aanslagbiljet vermeldt (art. 21c lid 4). Op welke dag, zegt de (fictieve)
+# planning van de inspecteur (`decided_on` in de stroom). Over een kanaal
+# (`channels` in demo-config.yaml) komt het inkomensgegeven bij de Dienst
+# Toeslagen (art. 21e lid 1).
+#
+# De demo laat deze cel alleen besluiten over wie zij in een kroniek volgt
+# (`ex_officio` in demo-config.yaml): de rest van de demo, en elke andere wet
+# die gegevens van de Belastingdienst leest, merkt er niets van.
+id: belastingdienst
+recording_actor: inspecteur   # AWR art. 11 lid 1
+streams:
+  - streams/aanslagen.yaml

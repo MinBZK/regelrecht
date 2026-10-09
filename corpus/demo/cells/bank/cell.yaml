@@ -1,10 +1,18 @@
 ---
 # Cel van een fictieve bank (geen bestaande bank, geen overheid). Zij legt
-# elke overboeking die binnenkomt vast in haar kroniek `rekeningen`:
-# bijgeschreven of geweigerd, naar haar eigen (fictieve) voorwaarden
-# (fictieve_bankvoorwaarden art. 1). Wat er binnenkomt en van wie, zegt het
-# transport tussen de cellen van de demo (`channels` in demo-config.yaml).
+# elke overboeking en elke incasso die binnenkomt vast in haar kroniek
+# `rekeningen`: bijgeschreven, afgeschreven of geweigerd, naar haar eigen
+# (fictieve) voorwaarden (fictieve_bankvoorwaarden art. 1 en 2). Wat er
+# binnenkomt en van wie, zegt het transport tussen de cellen van de demo
+# (`channels` in demo-config.yaml).
 id: bank
 recording_actor: fictieve_bank
 streams:
   - streams/overboekingen.yaml
+  - streams/incasso.yaml
+# De kroniek die het (fictieve) beleid van de bank terugleest (RFC-045 §1):
+# wat er op een rekening is bijgeschreven en afgeschreven, voor het saldo bij
+# een incasso.
+registers:
+  fictief_beleid_kroniek_bank#boekingen:
+    chronicle: rekeningen

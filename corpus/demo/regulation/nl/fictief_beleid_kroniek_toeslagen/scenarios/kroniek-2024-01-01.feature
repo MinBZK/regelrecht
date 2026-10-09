@@ -151,3 +151,77 @@ Feature: Teruglezen van de kroniek van Toeslagen
       | root | a1 |
     When I evaluate "vermoedelijk_toetsingsinkomen" of "fictief_beleid_kroniek_toeslagen"
     Then output "vermoedelijk_toetsingsinkomen" is absent
+
+  # Art. 5: het laatste inkomensgegeven over het jaar voor de BSN uit de
+  # aanvraag; een inkomensgegeven over een ander jaar of van een ander telt
+  # niet.
+  Scenario: Het inkomensgegeven over het berekeningsjaar van de aanvrager
+    Given parameter "grams" is the collection:
+      | id | root | sequence | event                     | bsn       | kalenderjaar | inkomensgegeven | datum_vaststelling_aanslag |
+      | a1 | a1   | 1        | aanvraag_ontvangen        | 999100001 | null         | null            | null                       |
+      | i1 | i1   | 2        | inkomensgegeven_ontvangen | 999100001 | 2024         | 2415000         | 2025-04-15                 |
+      | i2 | i2   | 3        | inkomensgegeven_ontvangen | 999100001 | 2025         | 1600000         | 2026-04-15                 |
+      | i3 | i3   | 4        | inkomensgegeven_ontvangen | 999999990 | 2025         | 9900000         | 2026-04-01                 |
+    And the following parameters:
+      | root            | a1   |
+      | berekeningsjaar | 2025 |
+    When I evaluate outputs "inkomensgegeven, datum_vaststelling_aanslag" of "fictief_beleid_kroniek_toeslagen"
+    Then output "inkomensgegeven" equals 1600000
+    And output "datum_vaststelling_aanslag" equals "2026-04-15"
+
+  Scenario: Zonder inkomensgegeven over het jaar is er geen
+    Given parameter "grams" is the collection:
+      | id | root | sequence | event                     | bsn       | kalenderjaar | inkomensgegeven | datum_vaststelling_aanslag |
+      | a1 | a1   | 1        | aanvraag_ontvangen        | 999100001 | null         | null            | null                       |
+      | i1 | i1   | 2        | inkomensgegeven_ontvangen | 999100001 | 2024         | 2415000         | 2025-04-15                 |
+    And the following parameters:
+      | root            | a1   |
+      | berekeningsjaar | 2025 |
+    When I evaluate outputs "inkomensgegeven, datum_vaststelling_aanslag" of "fictief_beleid_kroniek_toeslagen"
+    Then output "inkomensgegeven" is absent
+    And output "datum_vaststelling_aanslag" is absent
+
+  # Art. 6: de laatste toekenning over het jaar, met wat zij nog uit te
+  # betalen en terug te vorderen laat, en haar dagtekening.
+  Scenario: De toekenning over het berekeningsjaar
+    Given parameter "grams" is the collection:
+      | id | root | sequence | event                 | stage      | period | nog_uit_te_betalen | terug_te_vorderen | effective_date |
+      | a1 | a1   | 1        | aanvraag_ontvangen    | null       | null   | null               | null              | 2025-01-06     |
+      | t1 | a1   | 9        | zorgtoeslag_toegekend | TOEKENNING | 2025   | 11400              | 0                 | 2026-04-15     |
+      | t2 | a1   | 12       | zorgtoeslag_toegekend | TOEKENNING | 2026   | 0                  | 19000             | 2027-04-15     |
+    And the following parameters:
+      | root            | a1   |
+      | berekeningsjaar | 2026 |
+    When I evaluate outputs "nog_uit_te_betalen, terug_te_vorderen, dagtekening_toekenning" of "fictief_beleid_kroniek_toeslagen"
+    Then output "nog_uit_te_betalen" equals 0
+    And output "terug_te_vorderen" equals 19000
+    And output "dagtekening_toekenning" equals "2027-04-15"
+
+  # Art. 7: opgedragen min geweigerd.
+  Scenario: Van de nabetaling is opgedragen wat de bank niet weigerde
+    Given parameter "grams" is the collection:
+      | id | root | sequence | event                 | period | bedrag | niet_nabetaald_bedrag |
+      | n1 | a1   | 10       | nabetaling_opgedragen | 2025   | 11400  | null                  |
+      | m1 | a1   | 11       | nabetaling_mislukt    | 2025   | null   | 11400                 |
+      | n2 | a1   | 12       | nabetaling_opgedragen | 2025   | 11400  | null                  |
+      | n3 | a1   | 13       | nabetaling_opgedragen | 2026   | 5000   | null                  |
+    And the following parameters:
+      | root            | a1   |
+      | berekeningsjaar | 2025 |
+    When I evaluate "opgedragen_nabetaling" of "fictief_beleid_kroniek_toeslagen"
+    Then output "opgedragen_nabetaling" equals 11400
+
+  # Art. 8: de terugvordering over het jaar en wat ervan is ingevorderd.
+  Scenario: De terugvordering en wat ervan is ingevorderd
+    Given parameter "grams" is the collection:
+      | id | root | sequence | event                      | stage          | period | terugvorderingsbedrag | effective_date | incassobedrag | niet_geind_bedrag |
+      | r1 | a1   | 13       | terugvordering_vastgesteld | TERUGVORDERING | 2026   | 19000                 | 2027-04-15     | null          | null              |
+      | o1 | a1   | 14       | incasso_opgedragen         | null           | 2026   | null                  | 2027-05-01     | 19000         | null              |
+      | f1 | a1   | 15       | incasso_mislukt            | null           | 2026   | null                  | 2027-05-01     | null          | 19000             |
+    And the following parameters:
+      | root            | a1   |
+      | berekeningsjaar | 2026 |
+    When I evaluate outputs "terugvorderingsbedrag, dagtekening_terugvordering, ingevorderd_bedrag" of "fictief_beleid_kroniek_toeslagen"
+    Then output "terugvorderingsbedrag" equals 19000
+    And output "dagtekening_terugvordering" equals "2027-04-15"
+    And output "ingevorderd_bedrag" equals 0

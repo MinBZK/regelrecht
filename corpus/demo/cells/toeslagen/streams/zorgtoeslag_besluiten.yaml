@@ -25,7 +25,25 @@ events:
       - aanvraag
       - {regulation: fictief_beleid_kroniek_toeslagen, article: '4'}
     decided_on: fictief_beleid_termijnbedrag_voorschot#4
+  # De toekenning rekent op het inkomensgegeven dat de inspecteur verstrekte
+  # (het beleid van Toeslagen, art. 5 van het teruglezen en art. 2 van de
+  # toekenning) en neemt Toeslagen op de dag van de aanslag, zodra dat
+  # inkomensgegeven er is (`decided_on`).
   - name: zorgtoeslag_toegekend
     stage: TOEKENNING
     establishes: zorgtoeslagwet#2
-    reads: [aanvraag, uitbetaald]
+    reads:
+      - aanvraag
+      - uitbetaald
+      - {regulation: fictief_beleid_kroniek_toeslagen, article: '5'}
+    decided_on: fictief_beleid_toekenning_toeslagen#3
+  # De beschikking tot terugvordering (Awir 26): een eigen besluit op dezelfde
+  # aanvraag, in een eigen procedure, voor het jaar van een toekenning die iets
+  # terug te vorderen laat (na Awir 26a). Wat er terug te vorderen is, leest de
+  # cel uit die toekenning (art. 6 van het teruglezen); de dag geeft het
+  # beleid van Toeslagen (`decided_on`): de dag van de toekenning.
+  - name: terugvordering_vastgesteld
+    establishes: algemene_wet_inkomensafhankelijke_regelingen#26
+    reads:
+      - {regulation: fictief_beleid_kroniek_toeslagen, article: '6'}
+    decided_on: fictief_beleid_toekenning_toeslagen#6

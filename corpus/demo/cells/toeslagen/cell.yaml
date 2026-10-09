@@ -3,7 +3,9 @@
 # aanvraag om zorgtoeslag (Awir art. 15), het voorschot en de toekenning erop
 # (Zorgtoeslagwet art. 2 in de procedure van de Awir), de
 # betaalopdrachten voor de voorschottermijnen (Awir art. 22) en het antwoord
-# van de bank erop vast als gram in haar kroniek (RFC-022).
+# van de bank erop, het inkomensgegeven dat de inspecteur verstrekt, de
+# nabetaling, de terugvordering (Awir art. 26) en de incasso ervan vast als
+# gram in haar kroniek (RFC-022).
 # Wat de aanvraag, de besluiten en de termijnen bevatten, zegt de wet; zie de
 # stromen.
 id: toeslagen
@@ -12,6 +14,7 @@ streams:
   - streams/zorgtoeslag_aanvragen.yaml
   - streams/zorgtoeslag_besluiten.yaml
   - streams/zorgtoeslag_betalingen.yaml
+  - streams/zorgtoeslag_verrekening.yaml
 lexostatuses: lexostatuses.yaml
 # De kroniek die het beleid van Toeslagen terugleest (RFC-045 §1): het
 # beleidsartikel leest haar als invoer zonder bron (`source: {}`); alleen deze

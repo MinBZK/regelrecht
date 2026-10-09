@@ -1,0 +1,628 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.8.0/schema/v0.8.0/schema.json
+$id: fictief_beleid_toekenning_toeslagen
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+# Er is geen bekendgemaakt beleid hierover. De url wijst daarom naar het
+# artikel dat dit beleid uitwerkt, niet naar een bekendmaking.
+url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel19
+name: Toekenning, nabetaling en terugvordering van een tegemoetkoming (fictief uitvoeringsbeleid)
+competent_authority:
+  name: Dienst Toeslagen
+legal_basis:
+  - law_id: algemene_wet_inkomensafhankelijke_regelingen
+    article: '19'
+  - law_id: algemene_wet_inkomensafhankelijke_regelingen
+    article: '24'
+  - law_id: algemene_wet_inkomensafhankelijke_regelingen
+    article: '28'
+# FICTIEF. Geen bekendgemaakt beleid van de Dienst Toeslagen, maar eigen
+# keuzes in de modellering (ontwerpnotitie
+# packages/cel/ONTWERP-proces-zorgtoeslag.md, par. 5b). De Awir zegt dat de
+# toekenning volgt op de aanslag (art. 19), dat een nabetaling binnen vier
+# weken wordt uitbetaald (art. 24 lid 1) en dat een terugvordering binnen zes
+# weken wordt betaald (art. 28 lid 1). Hoe Toeslagen het inkomensgegeven
+# ontvangt, op welke dag zij toekent, wanneer zij betaalt en hoe zij int,
+# zegt de wet niet; dat staat hier, apart van de wet en als keuze
+# herkenbaar.
+articles:
+  # Het inkomensgegeven komt binnen over een kanaal (origin KANAAL): de
+  # inspecteur verstrekt het aan de afnemer (AWR art. 21e lid 1). De cel legt
+  # het vast bij ontvangst (geen `executed_on`). Het kenmerk van de aanslag
+  # identificeert het bericht (`identified_by`): hetzelfde inkomensgegeven
+  # twee keer bezorgd, legt zij één keer vast.
+  - number: '1'
+    url: https://wetten.overheid.nl/BWBR0002320/2025-01-01#Artikel21e
+    text: >-
+      FICTIEF, eigen keuze in de modellering: geen bekendgemaakt beleid. De
+      Dienst Toeslagen legt elk inkomensgegeven vast dat de inspecteur haar als
+      afnemer verstrekt (artikel 21e, eerste lid, van de Algemene wet inzake
+      rijksbelastingen), met de betrokkene, het kalenderjaar, de dag waarop de
+      aanslag is vastgesteld en het kenmerk van de aanslag. [Eigen keuze: de
+      Dienst Toeslagen vraagt het inkomensgegeven niet per geval op; de
+      inspecteur verstrekt het haar zodra de aanslag is vastgesteld.]
+    machine_readable:
+      execution:
+        produces:
+          extensions:
+            chronolex:
+              establishes:
+                - event: inkomensgegeven_ontvangen
+                  type: executogram
+                  fields: [kenmerk_aanslag, bsn, kalenderjaar, inkomensgegeven, datum_vaststelling_aanslag]
+                  record_when: inkomensgegeven_ontvangen
+                  identified_by: kenmerk_aanslag
+        parameters:
+          - name: kenmerk_aanslag
+            type: string
+            required: true
+            description: Het kenmerk van de aanslag waarop het inkomensgegeven berust.
+            origin:
+              waarde: KANAAL
+              grondslag: algemene_wet_inzake_rijksbelastingen#21e lid 1
+          - name: bsn
+            type: string
+            required: true
+            description: De betrokkene (AWR art. 21 onder g).
+            origin:
+              waarde: KANAAL
+              grondslag: algemene_wet_inzake_rijksbelastingen#21e lid 1
+          - name: kalenderjaar
+            type: number
+            required: true
+            description: Het kalenderjaar waarover het inkomensgegeven gaat.
+            origin:
+              waarde: KANAAL
+              grondslag: algemene_wet_inzake_rijksbelastingen#21e lid 1
+          - name: inkomensgegeven
+            type: amount
+            required: true
+            description: Het inkomensgegeven (AWR art. 21 onder e).
+            origin:
+              waarde: KANAAL
+              grondslag: algemene_wet_inzake_rijksbelastingen#21e lid 1
+          - name: datum_vaststelling_aanslag
+            type: date
+            required: true
+            description: >-
+              De dag waarop de aanslag is vastgesteld: een temporeel kenmerk
+              van het inkomensgegeven (AWR art. 21e lid 1).
+            origin:
+              waarde: KANAAL
+              grondslag: algemene_wet_inzake_rijksbelastingen#21e lid 1
+        output:
+          - name: inkomensgegeven_ontvangen
+            type: boolean
+        actions:
+          - output: inkomensgegeven_ontvangen
+            value: true
+
+  # Bij de toekenning is het toetsingsinkomen het inkomensgegeven over het
+  # berekeningsjaar (Awir art. 8 lid 1). Dat de Dienst Toeslagen daarvoor
+  # het inkomensgegeven neemt dat de inspecteur haar verstrekte, en niet wat
+  # zij zelf over het inkomen weet, is hoe zij art. 8 uitvoert: een haak
+  # vóór de beschikking in de fase TOEKENNING van de procedure
+  # tegemoetkoming, zoals Awir 16 bij het voorschot de schatting neemt. Bij
+  # het voorschot vuurt hij niet. Zonder inkomensgegeven (nog geen aanslag)
+  # is het toetsingsinkomen onbekend (RFC-036), en neemt Toeslagen de
+  # toekenning niet (artikel 3).
+  - number: '2'
+    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel8
+    text: >-
+      FICTIEF, eigen keuze in de modellering: geen bekendgemaakt beleid. Bij de
+      toekenning van een tegemoetkoming neemt de Dienst Toeslagen als
+      toetsingsinkomen (artikel 8, eerste lid, van de Algemene wet
+      inkomensafhankelijke regelingen) het inkomensgegeven over het
+      berekeningsjaar dat de inspecteur haar verstrekte (artikel 21e, eerste
+      lid, van de Algemene wet inzake rijksbelastingen).
+    machine_readable:
+      hooks:
+        - hook_point: pre_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: TOEKENNING
+      execution:
+        parameters:
+          - name: inkomensgegeven
+            type: amount
+            required: false
+            description: >-
+              Het inkomensgegeven over het berekeningsjaar, zoals de inspecteur
+              het verstrekte.
+            origin:
+              waarde: REGISTER
+              register: algemene_wet_inzake_rijksbelastingen
+              grondslag: algemene_wet_inzake_rijksbelastingen#21e lid 1
+        output:
+          - name: toetsingsinkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: toetsingsinkomen
+            value: $inkomensgegeven
+
+  # De cel neemt de toekenning niet eerder dan op de dag die dit artikel
+  # geeft (`decided_on` van de stroom); de klok van de demo neemt haar op die
+  # dag.
+  - number: '3'
+    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel19
+    text: >-
+      FICTIEF, eigen keuze in de modellering: geen bekendgemaakt beleid. De
+      Dienst Toeslagen kent de tegemoetkoming met betrekking tot een
+      berekeningsjaar toe op de dag waarop de aanslag inkomstenbelasting over
+      dat jaar is vastgesteld, zodra zij het inkomensgegeven daarover heeft
+      ontvangen (binnen de zes maanden van artikel 19, eerste lid, van de
+      Algemene wet inkomensafhankelijke regelingen). Zonder inkomensgegeven
+      geeft dit artikel geen dag.
+    machine_readable:
+      execution:
+        parameters:
+          - name: datum_vaststelling_aanslag
+            type: date
+            required: false
+            nullable: true
+            description: >-
+              De dag waarop de aanslag over het berekeningsjaar is vastgesteld,
+              zoals het ontvangen inkomensgegeven die meedraagt.
+        output:
+          - name: dag_toekenning
+            type: date
+            nullable: true
+            description: >-
+              De dag waarop de Dienst Toeslagen de tegemoetkoming toekent; leeg
+              zonder aanslag.
+        actions:
+          - output: dag_toekenning
+            value: $datum_vaststelling_aanslag
+
+  # Een nabetaling is een feit in de kroniek van Toeslagen (een executogram:
+  # de uitvoering van de toekenning). De cel voert dit artikel uit op een dag
+  # (`executed_on`) en legt alleen een gram vast als er iets uit te betalen
+  # is (`record_when`).
+  # - refers_to: de toekenning, als het besluit in de fase TOEKENNING van de
+  #   procedure tegemoetkoming; zo noemt dit beleid geen toeslag.
+  # - period: per berekeningsjaar, het jaar van die toekenning.
+  # - once_per en day: één opdracht per maand, op de dag van de toekenning
+  #   zelf (de eerste dag waarop zij mag ontstaan), en anders op de eerste
+  #   van de maand. Weigert de bank, dan gaat het bedrag mee met de opdracht
+  #   van de eerste van de volgende maand.
+  - number: '4'
+    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel24
+    text: >-
+      FICTIEF, eigen keuze in de modellering: geen bekendgemaakt beleid. Laat de
+      verrekening bij de toekenning een bedrag uit te betalen (artikel 24,
+      eerste en tweede lid, van de Algemene wet inkomensafhankelijke
+      regelingen), dan geeft de Dienst Toeslagen de bank opdracht dat bedrag op
+      de dag van de toekenning over te maken naar de rekening die de aanvrager
+      in de aanvraag opgaf. Schrijft de bank het niet bij, dan blijft het
+      openstaan en gaat het mee met de opdracht van de eerste van de volgende
+      maand.
+    machine_readable:
+      execution:
+        produces:
+          extensions:
+            chronolex:
+              establishes:
+                - event: nabetaling_opgedragen
+                  type: executogram
+                  refers_to:
+                    toekenning:
+                      stage: TOEKENNING
+                      required: true
+                  fields: [bedrag, rekeningnummer_begunstigde, uitvoerdatum]
+                  period:
+                    parameter: berekeningsjaar
+                    unit: year
+                  executed_on:
+                    parameter: dag
+                    once_per: month
+                    day: 1
+                  record_when: nabetaling_wordt_opgedragen
+        parameters:
+          - name: nog_uit_te_betalen
+            type: amount
+            required: true
+            description: >-
+              Wat er na de verrekening nog uit te betalen is, zoals de
+              toekenning het vaststelde (art. 24 lid 1 en 2 Awir).
+          - name: opgedragen_nabetaling
+            type: amount
+            required: false
+            description: >-
+              Wat Toeslagen van die nabetaling al opdroeg, minus wat de bank
+              daarvan weigerde.
+          - name: rekeningnummer
+            type: string
+            required: false
+            nullable: true
+            description: De rekening die de aanvrager in de aanvraag opgaf.
+          - name: berekeningsjaar
+            type: number
+            required: true
+            description: Het berekeningsjaar van de toekenning.
+          - name: dag
+            type: date
+            required: true
+            description: De dag waarop de opdracht wordt gegeven.
+        output:
+          - name: openstaande_nabetaling
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: nabetaling_wordt_opgedragen
+            type: boolean
+          - name: bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: rekeningnummer_begunstigde
+            type: string
+            nullable: true
+          - name: uitvoerdatum
+            type: date
+        actions:
+          - output: openstaande_nabetaling
+            value:
+              operation: SUBTRACT
+              values:
+                - $nog_uit_te_betalen
+                - $opgedragen_nabetaling
+          - output: nabetaling_wordt_opgedragen
+            value:
+              operation: GREATER_THAN
+              subject: $openstaande_nabetaling
+              value: 0
+          - output: bedrag
+            value: $openstaande_nabetaling
+          - output: rekeningnummer_begunstigde
+            value: $rekeningnummer
+          - output: uitvoerdatum
+            value: $dag
+
+  # Het antwoord van de bank op een nabetaling, over een kanaal (origin
+  # KANAAL), vastgelegd bij ontvangst, met een verwijzing naar de opdracht.
+  # Zoals bij de voorschottermijnen telt pas wat de bank bijschreef.
+  - number: '5'
+    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel24
+    text: >-
+      FICTIEF, eigen keuze in de modellering: geen bekendgemaakt beleid. Een
+      nabetaling is uitbetaald als de bank het bedrag heeft bijgeschreven op de
+      rekening van de begunstigde. Weigert de bank de overboeking, dan is de
+      nabetaling mislukt en blijft het bedrag openstaan (artikel 4).
+    machine_readable:
+      execution:
+        produces:
+          extensions:
+            chronolex:
+              establishes:
+                - event: nabetaling_betaald
+                  type: executogram
+                  refers_to:
+                    betaalopdracht:
+                      to: fictief_beleid_toekenning_toeslagen#4
+                      required: true
+                  fields: [nabetaald_bedrag]
+                  record_when: nabetaling_uitgevoerd
+                - event: nabetaling_mislukt
+                  type: executogram
+                  refers_to:
+                    betaalopdracht:
+                      to: fictief_beleid_toekenning_toeslagen#4
+                      required: true
+                  fields: [niet_nabetaald_bedrag, reden_nabetaling]
+                  record_when: nabetaling_niet_uitgevoerd
+        parameters:
+          - name: bijgeschreven
+            type: boolean
+            required: true
+            description: Of de bank de overboeking heeft bijgeschreven.
+            origin:
+              waarde: KANAAL
+              grondslag: fictief_beleid_toekenning_toeslagen#5
+          - name: bijgeschreven_bedrag
+            type: amount
+            required: true
+            description: Het bedrag dat de bank bijschreef.
+            origin:
+              waarde: KANAAL
+              grondslag: fictief_beleid_toekenning_toeslagen#5
+          - name: bedrag_opdracht
+            type: amount
+            required: true
+            description: Het bedrag van de betaalopdracht.
+            origin:
+              waarde: KANAAL
+              grondslag: fictief_beleid_toekenning_toeslagen#5
+          - name: reden_weigering
+            type: string
+            required: false
+            nullable: true
+            description: Waarom de bank de overboeking weigerde.
+            origin:
+              waarde: KANAAL
+              grondslag: fictief_beleid_toekenning_toeslagen#5
+        output:
+          - name: nabetaling_uitgevoerd
+            type: boolean
+          - name: nabetaling_niet_uitgevoerd
+            type: boolean
+          - name: nabetaald_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: niet_nabetaald_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: reden_nabetaling
+            type: string
+            nullable: true
+        actions:
+          - output: nabetaling_uitgevoerd
+            value: $bijgeschreven
+          - output: nabetaling_niet_uitgevoerd
+            value:
+              operation: NOT
+              value: $bijgeschreven
+          - output: nabetaald_bedrag
+            value: $bijgeschreven_bedrag
+          - output: niet_nabetaald_bedrag
+            value:
+              operation: IF
+              cases:
+                - when: $bijgeschreven
+                  then: 0
+              default: $bedrag_opdracht
+          - output: reden_nabetaling
+            value: $reden_weigering
+
+  # De cel neemt de beschikking tot terugvordering niet eerder dan op de dag
+  # die dit artikel geeft (`decided_on` van de stroom), en zonder dag niet.
+  - number: '6'
+    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel26
+    text: >-
+      FICTIEF, eigen keuze in de modellering: geen bekendgemaakt beleid. Laat de
+      verrekening bij de toekenning een bedrag terug te vorderen (artikel 24,
+      derde lid, en artikel 26a van de Algemene wet inkomensafhankelijke
+      regelingen), dan stelt de Dienst Toeslagen de beschikking tot
+      terugvordering vast op de dag van de toekenning (artikel 26 van die wet).
+      Is er niets terug te vorderen, dan geeft dit artikel geen dag.
+    machine_readable:
+      execution:
+        parameters:
+          - name: terug_te_vorderen
+            type: amount
+            required: false
+            description: >-
+              Wat de toekenning terug te vorderen laat, na art. 26a Awir.
+          - name: dagtekening_toekenning
+            type: date
+            required: false
+            description: De dagtekening van de beschikking tot toekenning.
+        output:
+          - name: dag_terugvordering
+            type: date
+            nullable: true
+            description: >-
+              De dag waarop de Dienst Toeslagen de beschikking tot
+              terugvordering vaststelt; leeg als er niets terug te vorderen is.
+        actions:
+          - output: dag_terugvordering
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: GREATER_THAN
+                    subject: $terug_te_vorderen
+                    value: 0
+                  then: $dagtekening_toekenning
+              default: null
+
+  # Een incasso is een feit in de kroniek van Toeslagen (een executogram: de
+  # uitvoering van de terugvordering). Art. 28 lid 1 Awir legt de betaling
+  # bij de belanghebbende; dat Toeslagen het bedrag int van zijn rekening, is
+  # een aanname van dit fictieve beleid (de belanghebbende heeft daarvoor
+  # toestemming gegeven).
+  # - refers_to: de terugvordering, als het besluit in de fase
+  #   TERUGVORDERING; period: het berekeningsjaar daarvan.
+  # - once_per en day: één opdracht per maand, op de eerste van de maand na
+  #   de dagtekening (binnen de zes weken van art. 28 lid 1). Weigert de
+  #   bank (saldo te laag), dan blijft het openstaan en volgt de eerste van
+  #   de volgende maand een nieuwe opdracht.
+  - number: '7'
+    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel28
+    text: >-
+      FICTIEF, eigen keuze in de modellering: geen bekendgemaakt beleid. De
+      Dienst Toeslagen int het bedrag van een terugvordering door de bank
+      opdracht te geven het af te schrijven van de rekening die de aanvrager in
+      de aanvraag opgaf, op de eerste van de maand na de dagtekening van de
+      beschikking tot terugvordering. [Aanname: de belanghebbende heeft de
+      Dienst Toeslagen daarvoor toestemming gegeven.] Schrijft de bank het
+      niet af, dan blijft het openstaan en volgt op de eerste van elke
+      volgende maand een nieuwe opdracht, tot het is betaald.
+    machine_readable:
+      execution:
+        produces:
+          extensions:
+            chronolex:
+              establishes:
+                - event: incasso_opgedragen
+                  type: executogram
+                  refers_to:
+                    terugvordering:
+                      stage: TERUGVORDERING
+                      required: true
+                  fields: [incassobedrag, rekeningnummer_debiteur, incassodatum]
+                  period:
+                    parameter: berekeningsjaar
+                    unit: year
+                  executed_on:
+                    parameter: dag
+                    once_per: month
+                    day: 1
+                  record_when: incasso_wordt_opgedragen
+        parameters:
+          - name: terugvorderingsbedrag
+            type: amount
+            required: true
+            description: Het bedrag van de beschikking tot terugvordering.
+          - name: dagtekening_terugvordering
+            type: date
+            required: true
+            description: De dagtekening van de beschikking tot terugvordering.
+          - name: ingevorderd_bedrag
+            type: amount
+            required: false
+            description: >-
+              Wat Toeslagen van de terugvordering al liet afschrijven, minus
+              wat de bank daarvan weigerde.
+          - name: rekeningnummer
+            type: string
+            required: false
+            nullable: true
+            description: De rekening die de aanvrager in de aanvraag opgaf.
+          - name: berekeningsjaar
+            type: number
+            required: true
+            description: Het berekeningsjaar van de terugvordering.
+          - name: dag
+            type: date
+            required: true
+            description: De dag waarop de opdracht wordt gegeven.
+        output:
+          - name: openstaande_terugvordering
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: incasso_wordt_opgedragen
+            type: boolean
+          - name: incassobedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: rekeningnummer_debiteur
+            type: string
+            nullable: true
+          - name: incassodatum
+            type: date
+        actions:
+          - output: openstaande_terugvordering
+            value:
+              operation: SUBTRACT
+              values:
+                - $terugvorderingsbedrag
+                - $ingevorderd_bedrag
+          - output: incasso_wordt_opgedragen
+            value:
+              operation: AND
+              conditions:
+                - operation: GREATER_THAN
+                  subject: $openstaande_terugvordering
+                  value: 0
+                - operation: GREATER_THAN
+                  subject: $dag
+                  value: $dagtekening_terugvordering
+          - output: incassobedrag
+            value: $openstaande_terugvordering
+          - output: rekeningnummer_debiteur
+            value: $rekeningnummer
+          - output: incassodatum
+            value: $dag
+
+  # Het antwoord van de bank op een incasso, over een kanaal (origin
+  # KANAAL), vastgelegd bij ontvangst, met een verwijzing naar de opdracht.
+  - number: '8'
+    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel28
+    text: >-
+      FICTIEF, eigen keuze in de modellering: geen bekendgemaakt beleid. Een
+      terugvordering is voor het afgeschreven bedrag betaald als de bank het
+      van de rekening van de belanghebbende heeft afgeschreven. Weigert de bank
+      de afschrijving, dan blijft het bedrag openstaan (artikel 7).
+    machine_readable:
+      execution:
+        produces:
+          extensions:
+            chronolex:
+              establishes:
+                - event: terugvordering_geind
+                  type: executogram
+                  refers_to:
+                    incassoopdracht:
+                      to: fictief_beleid_toekenning_toeslagen#7
+                      required: true
+                  fields: [geind_bedrag]
+                  record_when: incasso_uitgevoerd
+                - event: incasso_mislukt
+                  type: executogram
+                  refers_to:
+                    incassoopdracht:
+                      to: fictief_beleid_toekenning_toeslagen#7
+                      required: true
+                  fields: [niet_geind_bedrag, reden_incasso]
+                  record_when: incasso_niet_uitgevoerd
+        parameters:
+          - name: afgeschreven
+            type: boolean
+            required: true
+            description: Of de bank het bedrag heeft afgeschreven.
+            origin:
+              waarde: KANAAL
+              grondslag: fictief_beleid_toekenning_toeslagen#8
+          - name: afgeschreven_bedrag
+            type: amount
+            required: true
+            description: Het bedrag dat de bank afschreef.
+            origin:
+              waarde: KANAAL
+              grondslag: fictief_beleid_toekenning_toeslagen#8
+          - name: bedrag_incasso
+            type: amount
+            required: true
+            description: Het bedrag van de incasso-opdracht.
+            origin:
+              waarde: KANAAL
+              grondslag: fictief_beleid_toekenning_toeslagen#8
+          - name: reden_weigering_incasso
+            type: string
+            required: false
+            nullable: true
+            description: Waarom de bank de afschrijving weigerde.
+            origin:
+              waarde: KANAAL
+              grondslag: fictief_beleid_toekenning_toeslagen#8
+        output:
+          - name: incasso_uitgevoerd
+            type: boolean
+          - name: incasso_niet_uitgevoerd
+            type: boolean
+          - name: geind_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: niet_geind_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: reden_incasso
+            type: string
+            nullable: true
+        actions:
+          - output: incasso_uitgevoerd
+            value: $afgeschreven
+          - output: incasso_niet_uitgevoerd
+            value:
+              operation: NOT
+              value: $afgeschreven
+          - output: geind_bedrag
+            value: $afgeschreven_bedrag
+          - output: niet_geind_bedrag
+            value:
+              operation: IF
+              cases:
+                - when: $afgeschreven
+                  then: 0
+              default: $bedrag_incasso
+          - output: reden_incasso
+            value: $reden_weigering_incasso
