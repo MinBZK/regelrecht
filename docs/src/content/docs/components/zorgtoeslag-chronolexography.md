@@ -167,18 +167,18 @@ A cell may implement the interface differently; another system that supplies the
 
 | Lexostatus | Gives | Laid down in | Read by |
 |---|---|---|---|
-| `aanvraag` | `bsn` (text), `aangevraagd_berekeningsjaar` (number), `datum_ontvangst` (date) | the law: Awir 15 with the hooks on the application (Awb 4:2, 4:13) | `voorschot_verleend`, `zorgtoeslag_toegekend` |
+| `aanvraag` | every field of the application; the decisions read `bsn` (text), `aangevraagd_berekeningsjaar` (number) and `datum_ontvangst` (date) | the law: Awir 15 with the hooks on the application (Awb 4:2, 4:13) | `voorschot_verleend`, `zorgtoeslag_toegekend` |
 | `voorschot` | `voorschotbedrag` (amount in eurocent), `dagtekening_voorschot` (date) | `fictief_beleid_kroniek_toeslagen` article 1 | `betaalopdracht_gegeven` |
 | `rekening` | `rekeningnummer` (text) | article 2 | the payment order, the nabetaling, the incasso |
 | `achterstand` | `achterstallig_bedrag` (amount in eurocent) | article 3 | `betaalopdracht_gegeven` |
-| `uitbetaald` | `uitbetaalde_voorschotten` (amount in eurocent) | article 3a, Awir 24 lid 2 | `zorgtoeslag_toegekend` |
+| `uitbetaald` | `uitbetaalde_voorschotten` (amount in eurocent) | article 3a (*aanname*: what Awir 24 lid 2 sets off) | `zorgtoeslag_toegekend` |
 | `schatting_inkomen` | `vermoedelijk_toetsingsinkomen` (amount in eurocent) | article 4 | `voorschot_verleend` |
 | `inkomensgegeven` | `inkomensgegeven`, `datum_vaststelling_aanslag` | article 5 | `zorgtoeslag_toegekend` |
 | `toekenning` | `nog_uit_te_betalen`, `terug_te_vorderen` | article 6 | the terugvordering, the nabetaling |
 | `nabetaling` | `opgedragen_nabetaling` | article 7 | `nabetaling_opgedragen` |
 | `terugvordering` | `terugvorderingsbedrag`, `dagtekening_terugvordering`, `ingevorderd_bedrag` | article 8 | `incasso_opgedragen` |
 
-What a lexostatus gives is what the events that read it ask of it: the parameters of the stage a decision is taken at, or of the article an execution executes. An auxiliary output of a policy article, such as `laatste_voorschot`, is part of the article but not of what it gives.
+The application gives every field the law declares, also those no decision reads, and marks which ones an event reads (`read`). An article of a policy gives what the events that read it ask of it: the parameters of the stage a decision is taken at, or of the article an execution executes. An auxiliary output of a policy article, such as `laatste_voorschot`, is part of the article but not of what it gives.
 
 ### The application, from the law
 
@@ -186,12 +186,12 @@ A decision on an application (`produces.decides_on`) reads from that application
 
 A value a policy article the decision reads also gives is read from that article: `vermoedelijk_toetsingsinkomen` is in the application, and article 4 says how Toeslagen reads it for a following year. The period of the decision (`berekeningsjaar`) is the cell's to give, never the application's.
 
-For Merijn's application of 6 January 2025, `aanvraag` gives:
+For Merijn's application of 6 January 2025, `aanvraag` gives these values to the decisions, next to the fields no decision reads (name, address, dagtekening, the decision requested, signatures, the expected income and the account number):
 
 | Value | Asked by (interface) | How the cell derives it (implementation) | Legal basis | Merijn |
 |---|---|---|---|---|
 | `aangevraagd_berekeningsjaar` | Awir 16 at the voorschot | filled in on the application | Awir 15 lid 1 | 2025 |
-| `bsn` | Zorgtoeslagwet 2, at the voorschot and the toekenning | filled in on the application | Awir 13 | 999100001 |
+| `bsn` | Zorgtoeslagwet 2, at the voorschot and the toekenning | filled in on the application | none: no article says that the applicant gives it (*aanname*) | 999100001 |
 | `datum_ontvangst` | Awir 16 at the voorschot; the 2026 version of Awir 19 at the toekenning too | the day the application came in (`effective_at` of the gram) | Awb 4:13 lid 1 | 6 January 2025 |
 
 Each value carries its provenance, and the decision records it with the gram under `inputs`, so the chronicle shows where every input came from: `{source: lexostatus, lexostatus: aanvraag, article: algemene_wet_inkomensafhankelijke_regelingen#15, gram: <id>}` for the application, `{source: lexostatus, lexostatus: uitbetaald, register: fictief_beleid_kroniek_toeslagen#kroniek, article: fictief_beleid_kroniek_toeslagen#3a}` for a policy article.

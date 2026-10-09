@@ -257,6 +257,20 @@ anders in de vertaling voor, dus er is ook geen eerdere keuze om op te leunen.
   het gangbare Fries zijn, en `besluten` het meervoud van `beslút`, is niet
   nagegaan.
 
+- **Wat een aanvraag geeft en geen besluit leest** (`lexo.gives.unused.*`:
+  `Dêrneist {n} gegevens dy't gjin beslút hjir lêst.`, `lexo.used_as.none`:
+  `Gjin beslút freget derom`, `lexo.used_as.elsewhere`: `De sel lêst it net
+  hjir, mar út in oare leksostatus`): of `dêrneist` en `derom` hier het
+  gangbare Fries zijn, en of `lêst` bij het meervoud `gegevens` goed
+  vervoegd is, is niet nagegaan.
+
+- **Het gevraagde besluit en een ontbrekende grondslag**
+  (`lexo.origin.fixed`: `folt de sel yn: it beslút dat op de {kind} nommen
+  wurdt`; `lexo.basis.none`: `Gjin: gjin artikel seit it mei safolle
+  wurden`): of `folt … yn` en `mei safolle wurden` (voor "met zoveel
+  woorden") natuurlijk Fries zijn, is niet nagegaan.
+
+
 ## Hoe je een correctie doorvoert
 
 De schermteksten staan in `frontend-demo/src/i18n/fy.js`, één sleutel per regel.

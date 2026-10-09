@@ -185,11 +185,45 @@ describe('een lexostatus in gewone woorden', () => {
 
   it('geeft per gegeven een regel voor de tabel', () => {
     expect(valueRows(melding, [reader], lawDoc)).toEqual([
-      { name: 'nummer', label: 'Nummer', type: 'tekst', origin: 'ingevuld in de melding', uses: usesOf('nummer', [reader], lawDoc), basis: ['wet#3 lid 1'] },
-      { name: 'ontvangen_op', label: 'Ontvangen op', type: 'datum', origin: 'de dag waarop de melding binnenkwam', uses: usesOf('ontvangen_op', [reader], lawDoc), basis: ['wet#4'] },
+      { name: 'nummer', label: 'Nummer', type: 'tekst', origin: 'ingevuld in de melding', uses: usesOf('nummer', [reader], lawDoc), read: true, basis: ['wet#3 lid 1'] },
+      { name: 'ontvangen_op', label: 'Ontvangen op', type: 'datum', origin: 'de dag waarop de melding binnenkwam', uses: usesOf('ontvangen_op', [reader], lawDoc), read: true, basis: ['wet#4'] },
     ]);
     expect(valueRows(betaald, [], lawDoc)).toEqual([
-      { name: 'betaald_totaal', label: 'Betaald totaal', type: 'bedrag in eurocent', origin: 'Wat er is betaald.', uses: [], basis: ['beleid#2a'] },
+      { name: 'betaald_totaal', label: 'Betaald totaal', type: 'bedrag in eurocent', origin: 'Wat er is betaald.', uses: [], read: true, basis: ['beleid#2a'] },
     ]);
+  });
+
+  // Een aanvraag geeft alles wat de wet erin declareert, ook wat geen besluit
+  // leest; de cel markeert wat er gelezen wordt (`read`).
+  const volledig = {
+    ...melding,
+    fields: [
+      { ...melding.fields[0], read: true },
+      { name: 'naam', type: 'string', legal_basis: ['wet#3 lid 2'], declared_by: 'wet#3', read: false },
+      { name: 'gevraagd', type: 'string', legal_basis: ['wet#3 lid 3'], declared_by: 'wet#3', fixed: 'wet#2', read: false },
+      { name: 'zonder_grond', type: 'string', legal_basis: [], declared_by: 'wet#1', read: false },
+      { ...melding.fields[1], read: true },
+    ],
+  };
+
+  it('telt bij een volledige aanvraag apart wat geen besluit leest', () => {
+    expect(givesText(volledig, [reader])).toBe('Geeft “Hulp verleend” 2 gegevens: nummer en ontvangen op. Daarnaast 3 gegevens die geen besluit hier leest.');
+    expect(givesText({ ...volledig, fields: volledig.fields.slice(0, 2) }, [reader])).toBe('Geeft “Hulp verleend” 1 gegeven: nummer. Daarnaast 1 gegeven dat geen besluit hier leest.');
+  });
+
+  it('zegt bij het gevraagde besluit dat de cel het invult', () => {
+    expect(originText(volledig, volledig.fields[2])).toBe('vult de cel in: het besluit dat op de melding wordt genomen');
+  });
+
+  it('markeert per regel of de cel het gegeven hier leest, en laat een ontbrekende grondslag leeg', () => {
+    const rows = valueRows(volledig, [reader], lawDoc);
+    expect(rows.map((r) => [r.name, r.read])).toEqual([
+      ['nummer', true],
+      ['naam', false],
+      ['gevraagd', false],
+      ['zonder_grond', false],
+      ['ontvangen_op', true],
+    ]);
+    expect(rows[3].basis).toEqual([]);
   });
 });

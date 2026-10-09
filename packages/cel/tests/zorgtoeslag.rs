@@ -277,17 +277,20 @@ fn toeslagen_decides_on_the_application_and_records_the_decision() {
         .record_submission(&service, "aanvraag_ontvangen", &application(), received)
         .unwrap();
 
-    // 1. The cell reads the application back from its chronicle.
+    // 1. The cell reads the application back from its chronicle: everything
+    // it says, also what no decision reads.
     let root = object(json!({"root": application.id}));
-    let read = read(&cell, &service, "aanvraag", &root, received);
+    let mut read = read(&cell, &service, "aanvraag", &root, received);
+    assert_eq!(read["bsn"], BSN);
+    assert_eq!(read["datum_ontvangst"], "2025-03-04");
+    assert_eq!(read["gevraagde_beschikking"], "wet_op_de_zorgtoeslag#2");
     assert_eq!(
-        serde_json::Value::Object(read.clone()),
-        json!({
-            "bsn": BSN,
-            "aangevraagd_berekeningsjaar": 2025,
-            "datum_ontvangst": "2025-03-04",
-        })
+        read["adres_aanvrager"],
+        "Voorbeeldstraat 1, 2511 AA Den Haag"
     );
+    read.retain(|k, _| {
+        ["bsn", "aangevraagd_berekeningsjaar", "datum_ontvangst"].contains(&k.as_str())
+    });
 
     // 2. Awir 15 lid 1 on what the cell read back: in time.
     let timely = service
@@ -471,7 +474,8 @@ fn toeslagen_decides_on_the_application_and_records_the_decision() {
     // The chronicle survives the cell: a new cell reads it back.
     drop(cell);
     let cell = self::cell(&service, data.path(), decided);
-    let read_again = self::read(&cell, &service, "aanvraag", &root, decided);
+    let mut read_again = self::read(&cell, &service, "aanvraag", &root, decided);
+    read_again.retain(|k, _| read.contains_key(k));
     assert_eq!(read_again, read);
 }
 
@@ -1763,6 +1767,7 @@ fn a_lexostatus_takes_its_shape_from_the_law_or_the_policy() {
             "legal_basis": ["fictief_beleid_kroniek_toeslagen#3a"],
             "declared_by": "fictief_beleid_kroniek_toeslagen#3a",
             "description": "Wat de bank op het voorschot voor het berekeningsjaar bijschreef.",
+            "read": true,
         }])
     );
     let readers: Vec<&str> = uitbetaald["read_by"]

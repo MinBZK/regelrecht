@@ -59,6 +59,14 @@ pub struct LexostatusField {
     /// (the day of receipt), rather than a field filled in.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub moment: bool,
+    /// A value the cell fills in itself rather than the applicant: the
+    /// decision requested is the decision taken on the application.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fixed: Option<serde_json::Value>,
+    /// Whether an event of the cell reads it from this lexostatus for the
+    /// decision it takes or the article it executes: the part of the law's
+    /// interface this lexostatus implements.
+    pub read: bool,
 }
 
 impl LexostatusField {
@@ -71,6 +79,8 @@ impl LexostatusField {
             declared_by: f.declared_by.clone(),
             description: None,
             moment: false,
+            fixed: f.fixed.clone(),
+            read: false,
         }
     }
 }
@@ -81,7 +91,9 @@ impl LexostatusField {
 /// policy of the holder that reads a chronicle of the cell as a register
 /// (`registers:` in `cell.yaml`). Either is read with
 /// [`Cell::read_lexostatus`] by its `name`. `fields` are the data it gives:
-/// what the events that read it ask of it (every datum, if none does).
+/// for an application every field the law declares, for an article of a
+/// policy what the events that read it ask of it (every output, if none
+/// does); `read` marks what an event reads from it.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum LexostatusDescription {
@@ -90,7 +102,8 @@ pub enum LexostatusDescription {
     /// and the hooks on it) and the moment that counts; `name` is the kind
     /// of submission (`produces.submission`, lower case), `provision` the
     /// establishing article. Every decision taken on the application reads
-    /// from it what it asks and no policy it reads gives.
+    /// from it what it asks and no policy it reads gives; a field no
+    /// decision reads is in it all the same, with `read` false.
     Submission {
         name: String,
         provision: String,
@@ -606,11 +619,13 @@ impl Cell {
                     }
                 }
             }
+            // Every field of the application as the law declares it, also
+            // one no decision reads: the application says what it says.
             let fields = all
                 .iter()
-                .filter(|f| wanted.is_empty() || wanted.contains(&f.name))
                 .map(|f| LexostatusField {
                     moment: sub.moment.as_ref().is_some_and(|m| m.name == f.name),
+                    read: wanted.contains(&f.name),
                     ..LexostatusField::of_field(f)
                 })
                 .collect();
@@ -692,6 +707,8 @@ impl Cell {
                         declared_by: provision.clone(),
                         description: o.description.clone(),
                         moment: false,
+                        fixed: None,
+                        read: wanted.contains(&o.name),
                     })
                     .collect();
                 out.push(LexostatusDescription::Policy {

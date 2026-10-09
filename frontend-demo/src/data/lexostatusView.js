@@ -147,6 +147,13 @@ export function valueNames(description) {
 }
 
 /**
+ * Of een gebeurtenis van de cel het gegeven uit deze lexostatus leest
+ * (`read` van de cel). Een aanvraag geeft alles wat de wet erin declareert,
+ * ook wat geen besluit leest; zonder `read` geldt het als gelezen.
+ */
+export const isRead = (field) => field?.read !== false;
+
+/**
  * Wat een lexostatus is, als kop: bij een aanvraag "Wat er in de aanvraag
  * staat"; bij een artikel van het beleid de gegevens die het geeft
  * ("Uitbetaalde voorschotten"), want een artikel heeft geen opschrift.
@@ -164,10 +171,16 @@ export function titleText(description) {
  * datum ontvangst.").
  */
 export function givesText(description, readers) {
-  const names = valueNames(description);
-  const values = listText(names.map(inSentence));
+  const fields = description?.fields ?? [];
   const who = listText((readers ?? []).map((r) => t('lexo.reader', { event: r.label })));
-  return who ? t.plural(names.length, 'lexo.gives', { readers: who, values }) : t.plural(names.length, 'lexo.gives.unread', { values });
+  if (!who) {
+    const values = listText(fields.map((f) => inSentence(f.name)));
+    return t.plural(fields.length, 'lexo.gives.unread', { values });
+  }
+  const read = fields.filter(isRead);
+  const gives = t.plural(read.length, 'lexo.gives', { readers: who, values: listText(read.map((f) => inSentence(f.name))) });
+  const rest = fields.length - read.length;
+  return rest ? `${gives} ${t.plural(rest, 'lexo.gives.unused')}` : gives;
 }
 
 /**
@@ -208,6 +221,7 @@ export function sourceText(description, actor) {
 export function originText(description, field) {
   if (description?.kind === 'submission') {
     const kind = inSentence(description.name);
+    if (field?.fixed != null) return t('lexo.origin.fixed', { kind });
     return t(field?.moment ? 'lexo.origin.received' : 'lexo.origin.filled_in', { kind });
   }
   return field?.description ?? '';
@@ -238,8 +252,9 @@ export function usesOf(name, readers, lawDoc) {
 /**
  * Per gegeven van een lexostatus een regel voor de tabel: de naam zoals een
  * mens hem leest, de technische naam en het type, welke wet erom vraagt
- * (interface), hoe de cel het afleidt (implementatie) en de grondslag.
- * `lawDoc(id)` geeft het regelwerk.
+ * (interface), of de cel het hier leest, hoe de cel het afleidt
+ * (implementatie) en de grondslag: alleen wat de wet als grondslag noemt,
+ * en leeg als zij er geen noemt. `lawDoc(id)` geeft het regelwerk.
  */
 export function valueRows(description, readers, lawDoc) {
   return (description?.fields ?? []).map((f) => ({
@@ -248,6 +263,7 @@ export function valueRows(description, readers, lawDoc) {
     type: typeText(f),
     origin: originText(description, f),
     uses: usesOf(f.name, readers, lawDoc),
+    read: isRead(f),
     basis: f.legal_basis ?? [],
   }));
 }

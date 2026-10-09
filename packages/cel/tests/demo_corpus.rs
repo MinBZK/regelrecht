@@ -1500,8 +1500,10 @@ fn the_demo_cell_describes_and_reads_its_lexostatuses_with_their_grams() {
             .map(|x| x[of].as_str().unwrap().to_string())
             .collect()
     };
-    // The application, as the law describes it: what the decisions on it
-    // ask of it, and the day of receipt (Awb 4:13 lid 1).
+    // The application, as the law describes it: every field the law
+    // declares (Awir 15, the hooks on it, the policy of Toeslagen) and the
+    // day of receipt (Awb 4:13 lid 1), each marked by whether a decision
+    // reads it from the application.
     let aanvraag = by_name("aanvraag");
     assert_eq!(aanvraag["kind"], "submission");
     assert_eq!(aanvraag["inputs"], json!(["root"]));
@@ -1511,8 +1513,47 @@ fn the_demo_cell_describes_and_reads_its_lexostatuses_with_their_grams() {
     );
     assert_eq!(
         names(&aanvraag, "fields", "name"),
+        [
+            "bsn",
+            "aangevraagd_berekeningsjaar",
+            "ondertekening_partner",
+            "naam_aanvrager",
+            "adres_aanvrager",
+            "dagtekening",
+            "gevraagde_beschikking",
+            "ondertekening",
+            "vermoedelijk_toetsingsinkomen",
+            "rekeningnummer",
+            "datum_ontvangst"
+        ]
+    );
+    let read: Vec<&str> = aanvraag["fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|f| f["read"] == true)
+        .map(|f| f["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        read,
         ["bsn", "aangevraagd_berekeningsjaar", "datum_ontvangst"]
     );
+    // The decision requested is the decision taken on the application: the
+    // cell fills it in (Awb 4:2 lid 1 onder c, rol GEVRAAGD_BESLUIT).
+    let gevraagd = aanvraag["fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["name"] == "gevraagde_beschikking")
+        .unwrap();
+    assert!(gevraagd["fixed"].is_string(), "{gevraagd}");
+    assert_eq!(
+        gevraagd["legal_basis"],
+        json!(["algemene_wet_bestuursrecht#4:2 lid 1"])
+    );
+    // No article says the applicant gives his BSN: no grondslag.
+    let bsn = &aanvraag["fields"][0];
+    assert_eq!(bsn["legal_basis"], json!([]), "{bsn}");
     assert_eq!(
         names(&aanvraag, "read_by", "event"),
         ["voorschot_verleend", "zorgtoeslag_toegekend"]

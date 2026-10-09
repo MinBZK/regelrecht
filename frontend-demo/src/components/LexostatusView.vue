@@ -188,6 +188,8 @@ const cells = computed(() => {
                     :text="t('lexo.used_as', { article: label(u.provision), readers: listText(u.readers) })"
                     @click="followProvision($event, u.provision)"
                   ></nldd-link>
+                  <nldd-text v-if="!v.uses.length" size="sm" color="secondary">{{ t('lexo.used_as.none') }}</nldd-text>
+                  <nldd-text v-else-if="!v.read" size="sm" color="secondary">{{ t('lexo.used_as.elsewhere') }}</nldd-text>
                 </nldd-container>
               </nldd-cell>
               <nldd-text-cell size="sm" :text="v.origin"></nldd-text-cell>
@@ -205,6 +207,7 @@ const cells = computed(() => {
                     ></nldd-link>
                     <nldd-text v-else size="sm">{{ basisText(l, b) }}</nldd-text>
                   </template>
+                  <nldd-text v-if="!v.basis.length" size="sm" color="secondary">{{ t('lexo.basis.none') }}</nldd-text>
                 </nldd-container>
               </nldd-cell>
             </nldd-table-row>
