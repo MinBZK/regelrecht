@@ -298,6 +298,7 @@ fn frontend_apps_extracted() {
         "app:frontend-poc-nieuwkomersbekostiging",
         "app:frontend-poc-portal",
         "app:frontend-poc-terugbetaalregimes",
+        "app:frontend-presenter",
         "app:frontend-shared",
     ]
     .iter()
