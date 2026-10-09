@@ -42,12 +42,23 @@ const PROPS = ['id', 'text', 'accessibleLabel', 'label', 'href', 'name', 'placeh
 const ATTRS = ['aria-label', 'title', 'role', 'slot'];
 
 /**
- * An id a component made up on render (`nldd-field-input-3ec46f7f-…`): it
- * differs on every load, so it names nothing a replay can find again.
+ * An id or name a component made up on render (`nldd-field-input-3ec46f7f-…`,
+ * `nldd-segmented-2`): it differs per load or per version of the design
+ * system, so it names nothing a replay can find again.
  */
 export function generatedId(id) {
-  return /[0-9a-f]{8}-[0-9a-f]{4}-|\d{5,}/i.test(String(id ?? ''));
+  return /[0-9a-f]{8}-[0-9a-f]{4}-|\d{5,}|^nldd-[a-z-]+-\d+$/i.test(String(id ?? ''));
 }
+
+/** Properties whose value can be made up by the component that renders it. */
+const MADE_UP = new Set(['id', 'name']);
+
+/**
+ * Text that names a whole page rather than one control: anything this long
+ * is a container's content, and it changes whenever the content does (a law
+ * added to the corpus). A loose match drops it and goes by the element.
+ */
+const CONTAINER_TEXT = 60;
 
 function scopeOf(el) {
   const root = el.getRootNode?.();
@@ -94,7 +105,7 @@ export function signature(el) {
     // A field's value is what the user typed, not who the field is.
     if (p === 'value' && isFormField(el)) continue;
     const v = read(el, p);
-    if (p === 'id' && generatedId(v)) continue;
+    if (MADE_UP.has(p) && generatedId(v)) continue;
     if (v && v.length <= 200) sig[p] = v;
   }
   for (const a of ATTRS) {
@@ -119,7 +130,7 @@ function matches(el, sig) {
   for (const [k, v] of Object.entries(sig)) {
     if (k === 'tag' || k === '__masked') continue;
     // Takes recorded before generated ids were left out still carry them.
-    if (k === 'id' && generatedId(v)) continue;
+    if (MADE_UP.has(k) && generatedId(v)) continue;
     const have = read(el, k);
     if ((sig.__masked && have != null ? MASK(have) : have) !== v) return false;
   }
@@ -146,6 +157,14 @@ export function loosen(sig) {
   let named = false;
   for (const [k, v] of Object.entries(sig)) {
     if (k === 'tag' || k === 'nth' || k === '__masked') continue;
+    // A page's whole text: go by the element instead. Only for a design-system
+    // element (a custom tag), of which a view has one or two; a bare tag of a
+    // plain element would match half the page.
+    if (k === 'textContent' && v.length >= CONTAINER_TEXT && sig.tag.includes('-')) {
+      changed = true;
+      named = true;
+      continue;
+    }
     const masked = MASK(v);
     if (masked !== v) changed = true;
     if (k !== '@role' && k !== '@slot' && k !== 'type') named = true;
@@ -205,7 +224,13 @@ export function resolve(steps, { loose = false } = {}) {
       list = looser ? candidates(scope, looser) : [];
       if (list.length <= nth) index = 0;
     }
-    el = list[index] ?? null;
+    const found = list[index] ?? null;
+    // A part inside a component that the component no longer renders (the
+    // design system dropped the hidden radio inside a segmented-control
+    // item): the component itself takes the click. Only loose, so it is
+    // reported, and only inside its own shadow root.
+    if (!found && loose && el && scope === el.shadowRoot) return el;
+    el = found;
     if (!el) return null;
     scope = el.shadowRoot ?? el;
   }

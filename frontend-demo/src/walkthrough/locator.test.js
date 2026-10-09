@@ -56,6 +56,30 @@ describe('locator', () => {
     expect(scrollTarget(box, { top: 250, max: 500 })).toBe(500);
   });
 
+  it('finds a page again when its text changed, and a field by a renumbered name', () => {
+    const page = document.createElement('rr-test-page');
+    page.textContent = 'Accijnsplicht en tarief alcoholhoudende dranken Douane Bronnen Tarief bier Tarief wijn';
+    document.body.appendChild(page);
+    const recorded = [{ tag: 'rr-test-page', textContent: 'Accijnsplicht en tarief alcoholhoudende drankenDouaneBronnenTarief bierTarief wi', nth: 0 }];
+    // A law was added: the page's text changed. Exact finds nothing, loose finds the page.
+    page.textContent = 'Precariobelasting ' + page.textContent;
+    expect(resolve(recorded)).toBeNull();
+    expect(resolve(recorded, { loose: true })).toBe(page);
+    const radio = document.createElement('input');
+    radio.type = 'radio';
+    radio.name = 'nldd-segmented-3';
+    document.body.appendChild(radio);
+    expect(signature(radio).name).toBeUndefined();
+    expect(resolve([{ tag: 'input', name: 'nldd-segmented-2', type: 'radio', nth: 0 }])).toBe(radio);
+  });
+
+  it('clicks the component when the part inside it that was clicked is gone', () => {
+    const { el } = host('rr-test-item', 'Alles');
+    const recorded = [{ tag: 'rr-test-item', nth: 0 }, { tag: 'input', type: 'radio', nth: 0 }];
+    expect(resolve(recorded)).toBeNull();
+    expect(resolve(recorded, { loose: true })).toBe(el);
+  });
+
   it('leaves out an id a component makes up on every render', () => {
     const input = document.createElement('input');
     input.id = 'nldd-field-input-3ec46f7f-58fa-4d60-9122-9bcc611bab37';
