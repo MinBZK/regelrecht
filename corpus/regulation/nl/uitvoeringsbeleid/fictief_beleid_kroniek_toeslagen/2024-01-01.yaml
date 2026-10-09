@@ -29,13 +29,9 @@ url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel16
 name: Teruglezen van de kroniek van Toeslagen (fictief uitvoeringsbeleid, aanname)
 competent_authority:
   name: Dienst Toeslagen
-legal_basis:
-  - law_id: algemene_wet_inkomensafhankelijke_regelingen
-    article: '16'
-  - law_id: algemene_wet_inkomensafhankelijke_regelingen
-    article: '22'
-  - law_id: algemene_wet_inkomensafhankelijke_regelingen
-    article: '24'
+# Geen legal_basis: geen artikel machtigt dit fictieve beleid met zoveel
+# woorden. De artikelen van de Awir waarvan het de gegevens terugleest, staan
+# bij de uitvoer van elk artikel.
 articles:
   - number: '1'
     url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel16
@@ -115,7 +111,7 @@ articles:
             legal_basis:
               law: Algemene wet inkomensafhankelijke regelingen
               article: '22'
-              paragraph: '1'
+              paragraph: '2'
         actions:
           - output: aanvraag_van_het_voorschot
             value: $root
@@ -316,13 +312,15 @@ articles:
     text: >-
       FICTIEF, aanname namens de Dienst Toeslagen: geen bekendgemaakt beleid.
       Uitbetaald op het voorschot op een aanvraag voor een berekeningsjaar
-      (artikel 24, tweede lid, van de Algemene wet inkomensafhankelijke
-      regelingen) is de som van wat de bank op de voorschottermijnen van dat
+      is de som van wat de bank op de voorschottermijnen van dat
       voorschot bijschreef, zoals Toeslagen het op het moment van lezen weet.
       Een betaalopdracht die de bank niet bijschreef, telt niet. Schreef de
       bank niets bij, dan is er niets uitbetaald. [Aanname: wat op het
       voorschot voor het ene berekeningsjaar is betaald, telt niet mee voor de
-      toekenning over een ander berekeningsjaar.]
+      toekenning over een ander berekeningsjaar.] [Aanname: dit is wat de
+      Dienst Toeslagen verrekent (artikel 24, tweede lid, van de Algemene wet
+      inkomensafhankelijke regelingen); dat lid spreekt van verleende
+      voorschotten.]
     machine_readable:
       # De naam waaronder de cel dit artikel als lexostatus kent.
       endpoint: uitbetaald
@@ -358,10 +356,8 @@ articles:
             type_spec:
               unit: eurocent
             description: Wat de bank op het voorschot voor het berekeningsjaar bijschreef.
-            legal_basis:
-              law: Algemene wet inkomensafhankelijke regelingen
-              article: '24'
-              paragraph: '2'
+            # Geen legal_basis: art. 24 lid 2 Awir verrekent de verleende
+            # voorschotten, niet wat is uitbetaald (aanname, zie de tekst).
         actions:
           - output: aanvraag_van_de_betalingen
             value: $root
@@ -419,10 +415,9 @@ articles:
               unit: eurocent
             nullable: true
             description: Het toetsingsinkomen dat de aanvrager verwacht.
-            legal_basis:
-              law: Algemene wet inkomensafhankelijke regelingen
-              article: '16'
-              paragraph: '1'
+            # Geen legal_basis: art. 16 lid 1 Awir noemt het bedrag waarop de
+            # tegemoetkoming vermoedelijk wordt vastgesteld, niet een inkomen
+            # dat de aanvrager verwacht (eigen keuze in de Awir).
         actions:
           - output: aanvraag_van_de_schatting
             value: $root

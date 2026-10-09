@@ -19,9 +19,8 @@ url: https://wetten.overheid.nl/BWBR0002320/2024-01-01#Artikel11
 name: Planning van de aanslagregeling inkomstenbelasting (fictief uitvoeringsbeleid)
 competent_authority:
   name: Belastingdienst
-legal_basis:
-  - law_id: algemene_wet_inzake_rijksbelastingen
-    article: '11'
+# Geen legal_basis: geen artikel machtigt dit fictieve beleid met zoveel
+# woorden. Het werkt art. 11 AWR uit (de inspecteur stelt de aanslag vast).
 articles:
   - number: '1'
     url: https://wetten.overheid.nl/BWBR0002320/2024-01-01#Artikel11

@@ -10,13 +10,8 @@ url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel19
 name: Toekenning, nabetaling en terugvordering van een tegemoetkoming (fictief uitvoeringsbeleid)
 competent_authority:
   name: Dienst Toeslagen
-legal_basis:
-  - law_id: algemene_wet_inkomensafhankelijke_regelingen
-    article: '19'
-  - law_id: algemene_wet_inkomensafhankelijke_regelingen
-    article: '24'
-  - law_id: algemene_wet_inkomensafhankelijke_regelingen
-    article: '28'
+# Geen legal_basis: geen artikel machtigt dit fictieve beleid met zoveel
+# woorden. Het werkt art. 19, 24 en 28 Awir uit (zie hieronder).
 # FICTIEF. Geen bekendgemaakt beleid van de Dienst Toeslagen, maar eigen
 # keuzes in de modellering (ontwerpnotitie
 # packages/cel/ONTWERP-proces-zorgtoeslag.md, par. 5b). De Awir zegt dat de
@@ -29,7 +24,10 @@ legal_basis:
 articles:
   # Het inkomensgegeven komt binnen over een kanaal (origin KANAAL): de
   # inspecteur verstrekt het aan de afnemer op zijn verzoek (AWR art. 21e
-  # lid 1); hier op een staand verzoek van Toeslagen (eigen keuze). De cel legt
+  # lid 1); hier op een staand verzoek van Toeslagen (eigen keuze). Alleen
+  # het inkomensgegeven rust op AWR 21e lid 1; de betrokkene, het jaar, de
+  # dag en het kenmerk van de aanslag noemt dat lid niet, die rusten op dit
+  # artikel van het beleid. De cel legt
   # het vast bij ontvangst (geen `executed_on`). Het kenmerk van de aanslag
   # identificeert het bericht (`identified_by`): hetzelfde inkomensgegeven
   # twee keer bezorgd, legt zij één keer vast.
@@ -63,21 +61,21 @@ articles:
             description: Het kenmerk van de aanslag waarop het inkomensgegeven berust.
             origin:
               waarde: KANAAL
-              grondslag: algemene_wet_inzake_rijksbelastingen#21e lid 1
+              grondslag: fictief_beleid_toekenning_toeslagen#1
           - name: bsn
             type: string
             required: true
             description: De betrokkene (AWR art. 21 onder g).
             origin:
               waarde: KANAAL
-              grondslag: algemene_wet_inzake_rijksbelastingen#21e lid 1
+              grondslag: fictief_beleid_toekenning_toeslagen#1
           - name: kalenderjaar
             type: number
             required: true
             description: Het kalenderjaar waarover het inkomensgegeven gaat.
             origin:
               waarde: KANAAL
-              grondslag: algemene_wet_inzake_rijksbelastingen#21e lid 1
+              grondslag: fictief_beleid_toekenning_toeslagen#1
           - name: inkomensgegeven
             type: amount
             required: true
@@ -89,11 +87,12 @@ articles:
             type: date
             required: true
             description: >-
-              De dag waarop de aanslag is vastgesteld: een temporeel kenmerk
-              van het inkomensgegeven (AWR art. 21e lid 1).
+              De dag waarop de aanslag is vastgesteld. Aanname: een temporeel
+              kenmerk van het inkomensgegeven (AWR art. 21e lid 1 noemt die
+              kenmerken, niet deze dag).
             origin:
               waarde: KANAAL
-              grondslag: algemene_wet_inzake_rijksbelastingen#21e lid 1
+              grondslag: fictief_beleid_toekenning_toeslagen#1
         output:
           - name: inkomensgegeven_ontvangen
             type: boolean

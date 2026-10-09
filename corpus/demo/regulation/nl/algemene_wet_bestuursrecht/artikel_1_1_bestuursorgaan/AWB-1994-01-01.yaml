@@ -512,9 +512,10 @@ articles:
       bedoeld in artikel 4:14, derde lid, heeft gedaan.
     url: https://wetten.overheid.nl/BWBR0005537/2024-01-01#Artikel4:13
     machine_readable:
-      # Lid 1: de beslistermijn loopt vanaf de ontvangst van de aanvraag. Dat
-      # is het moment dat bij elke aanvraag om een beschikking rechtens telt:
-      # de aanvraag geldt als ingediend op de dag van ontvangst.
+      # Lid 1: de beslistermijn loopt "na ontvangst van de aanvraag". Dat is
+      # het moment dat bij elke aanvraag om een beschikking rechtens telt.
+      # Aanname: de aanvraag geldt ook als ingediend op de dag van ontvangst;
+      # dat zegt dit lid niet met zoveel woorden.
       hooks:
         - hook_point: post_actions
           applies_to:

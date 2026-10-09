@@ -64,7 +64,7 @@ fn origin_on_a_parameter() {
         .and_then(|o| o.valid().ok())
         .expect("origin");
     assert_eq!(o.waarde, OriginValue::Belanghebbende);
-    assert_eq!(o.grondslag, "een_regeling#1 lid 1");
+    assert_eq!(o.grondslag.as_deref(), Some("een_regeling#1 lid 1"));
     assert_eq!(o.register, None);
     let r = p[1]
         .origin
@@ -74,6 +74,22 @@ fn origin_on_a_parameter() {
     assert_eq!(r.waarde, OriginValue::Register);
     assert_eq!(r.register.as_deref(), Some("een_registerwet"));
     assert!(p[2].origin.is_none());
+}
+
+/// A grondslag only where the text says who supplies the value: without one
+/// the origin is valid, and it stays without one in a round trip.
+#[test]
+fn an_origin_without_a_grondslag() {
+    let law = parse(&WET.replace("              grondslag: een_regeling#1 lid 1\n", ""));
+    let o = law.articles[0].get_parameters()[0]
+        .origin
+        .as_ref()
+        .and_then(|o| o.valid().ok())
+        .expect("origin");
+    assert_eq!(o.waarde, OriginValue::Belanghebbende);
+    assert_eq!(o.grondslag, None);
+    let yaml = serde_yaml_ng::to_string(&law).expect("serialize");
+    assert!(!yaml.contains("grondslag: een_regeling#1 lid 1"), "{yaml}");
 }
 
 #[test]

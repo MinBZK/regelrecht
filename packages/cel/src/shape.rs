@@ -524,11 +524,15 @@ fn submission_moment(shape: &Shape, parameters: &[Parameter]) -> Result<Option<F
             continue;
         }
         if let Some(o) = origin(p, &shape.establishes)? {
-            if effective_at.legal_basis.contains(&o.grondslag) {
+            if let Some(grondslag) = o
+                .grondslag
+                .as_ref()
+                .filter(|g| effective_at.legal_basis.contains(g))
+            {
                 found.push(FieldDef {
                     name: p.name.clone(),
                     type_: Some(p.param_type),
-                    legal_basis: vec![o.grondslag.clone()],
+                    legal_basis: vec![grondslag.clone()],
                     declared_by: shape.establishes.clone(),
                     fixed: None,
                 });
@@ -965,7 +969,13 @@ fn part_fields(
                     continue;
                 };
                 if matches!(o.waarde, OriginValue::Belanghebbende | OriginValue::Kanaal) {
-                    out.push(def(&p.name, Some(p.param_type), vec![o.grondslag.clone()]));
+                    // No grondslag where the law does not say who supplies
+                    // it: the field rests on nothing it names.
+                    out.push(def(
+                        &p.name,
+                        Some(p.param_type),
+                        o.grondslag.iter().cloned().collect(),
+                    ));
                 }
             }
             out
@@ -991,9 +1001,13 @@ fn part_fields(
                         "{reference}: fields: the article has no output or parameter '{name}'"
                     ))
                 })?;
-                let basis = origin(p, reference)?
-                    .map_or_else(|| reference.to_string(), |o| o.grondslag.clone());
-                Ok(def(&p.name, Some(p.param_type), vec![basis]))
+                // Without an origin, the article that declares it; with one,
+                // its grondslag, if the law gives one.
+                let basis = match origin(p, reference)? {
+                    None => vec![reference.to_string()],
+                    Some(o) => o.grondslag.iter().cloned().collect(),
+                };
+                Ok(def(&p.name, Some(p.param_type), basis))
             })
             .collect::<Result<_>>()?,
     })

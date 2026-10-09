@@ -1208,9 +1208,9 @@ articles:
       # - op de aanvraag van art. 15: zo vraagt de aanvraag om de schatting
       #   (een gegeven van de aanvraag).
       # Lid 1 verleent het voorschot alleen wie de aanvraag indient "vóór 1
-      # april van het jaar volgend op het berekeningsjaar". Wanneer de
-      # aanvraag is ingediend, is de dag van ontvangst (Awb 4:13 lid 1, zoals
-      # in art. 15). Een latere aanvraag krijgt geen voorschot: de wet
+      # april van het jaar volgend op het berekeningsjaar". Aanname: de
+      # aanvraag is ingediend op de dag van ontvangst (Awb 4:13 lid 1 noemt
+      # die dag; zoals in art. 15). Een latere aanvraag krijgt geen voorschot: de wet
       # verleent er dan geen (`voorschot_wordt_verleend` is onwaar). Eigen
       # keuze: het voorschotbedrag is dan 0 (het uitvoeringsbeleid betaalt van
       # een voorschot van 0 geen termijnen); de wet noemt dat geen
@@ -1253,7 +1253,9 @@ articles:
               tegemoetkoming vermoedelijk zal worden vastgesteld).
             origin:
               waarde: BELANGHEBBENDE
-              grondslag: algemene_wet_inkomensafhankelijke_regelingen#16 lid 1
+              # Geen grondslag: lid 1 noemt het bedrag waarop de tegemoetkoming vermoedelijk zal
+              # worden vastgesteld, niet een inkomen dat de belanghebbende opgeeft. Eigen keuze: hij
+              # geeft het verwachte toetsingsinkomen op (zie boven).
           - name: tegemoetkoming
             type: amount
             required: false
@@ -1291,7 +1293,8 @@ articles:
             required: false
             description: >-
               De dag waarop de Dienst Toeslagen de aanvraag ontving (Awb 4:13
-              lid 1): dan is de aanvraag ingediend (lid 1).
+              lid 1). Aanname: de aanvraag is ingediend (lid 1) op de dag van
+              ontvangst; de wet zegt dat niet met zoveel woorden.
             origin:
               waarde: DOSSIER
               grondslag: algemene_wet_bestuursrecht#4:13 lid 1
@@ -1491,8 +1494,8 @@ articles:
       # fase TOEKENNING van de procedure tegemoetkoming, zodat de toekenning
       # zegt tot wanneer zij had mogen duren. De Awir noemt geen toeslag.
       # - lid 1, eerste volzin: binnen zes maanden na de vaststelling van de
-      #   aanslag inkomstenbelasting. De datum van de laatste van belang
-      #   zijnde aanslag is een temporeel kenmerk van het inkomensgegeven dat
+      #   aanslag inkomstenbelasting. Aanname: de datum van de laatste van
+      #   belang zijnde aanslag is een temporeel kenmerk van het inkomensgegeven dat
       #   de inspecteur verstrekt (AWR art. 21e lid 1): een gegeven uit de
       #   basisregistratie inkomen. Is er geen aanslag, dan is die datum leeg
       #   (null) en geldt lid 2; een datum die niemand doorgeeft, is onbekend
@@ -1534,7 +1537,9 @@ articles:
             origin:
               waarde: REGISTER
               register: algemene_wet_inzake_rijksbelastingen
-              grondslag: algemene_wet_inzake_rijksbelastingen#21e lid 1
+              # Geen grondslag: AWR art. 21e lid 1 verstrekt het inkomensgegeven met bijbehorende
+              # temporele en meta-kenmerken, maar noemt de dag van de aanslag niet. Aanname: die dag
+              # komt mee met het inkomensgegeven.
         output:
           - name: uiterste_toekenningsdatum
             type: date
@@ -1892,7 +1897,8 @@ articles:
               uitbetaald op de dag van de toekenning (lid 2).
             origin:
               waarde: DOSSIER
-              grondslag: algemene_wet_inkomensafhankelijke_regelingen#24 lid 2
+              # Geen grondslag: lid 2 van art. 24 spreekt van verleende voorschotten, niet van wat
+              # is uitbetaald. Eigen keuze: verrekend wordt wat is uitbetaald (zie boven).
           - name: dagtekening_toekenning
             type: date
             required: false
@@ -2101,7 +2107,8 @@ articles:
               uitbetaald op de dag van de toekenning (lid 2).
             origin:
               waarde: DOSSIER
-              grondslag: algemene_wet_inkomensafhankelijke_regelingen#24 lid 2
+              # Geen grondslag: lid 2 van art. 24 spreekt van verleende voorschotten, niet van wat
+              # is uitbetaald. Eigen keuze: verrekend wordt wat is uitbetaald (zie boven).
         input:
           - name: terug_te_vorderen_na_verrekening
             type: amount

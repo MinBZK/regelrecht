@@ -219,8 +219,10 @@ impl<T: serde::de::DeserializeOwned> Declared<T> {
     }
 }
 
-/// Who supplies a parameter, per the law (RFC-048). Always with a
-/// `grondslag`: `<regulation>#<article>`, optionally followed by ` lid <n>`.
+/// Who supplies a parameter, per the law (RFC-048). With a `grondslag`
+/// (`<regulation>#<article>`, optionally followed by ` lid <n>`) only when the
+/// text of that provision says who supplies it; a basis reasoned from other
+/// provisions is left out.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Origin {
@@ -229,7 +231,8 @@ pub struct Origin {
     /// kept.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub register: Option<String>,
-    pub grondslag: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grondslag: Option<String>,
     /// What the parameter is within the decision requested, when that matters
     /// to a process beyond who supplies it.
     #[serde(default, skip_serializing_if = "Option::is_none")]

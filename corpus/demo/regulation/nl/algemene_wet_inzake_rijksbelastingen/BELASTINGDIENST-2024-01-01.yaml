@@ -91,7 +91,9 @@ articles:
               2.3). Eigen keuze: art. 11 noemt het jaar niet zelf.
             origin:
               waarde: DOSSIER
-              grondslag: wet_inkomstenbelasting#2.3
+              # Geen grondslag: Wet IB 2001 art. 2.3 heft de belasting over wat de
+              # belastingplichtige in het kalenderjaar genoot, maar zegt niet wie het jaar van de
+              # aanslag geeft. Eigen keuze: zie boven.
           - name: besluit_datum
             type: date
             required: false
