@@ -842,6 +842,8 @@ export default {
   "zaak.moments.given": "Neffens {provision}",
   "zaak.moments.none": "De wet jout foar dizze saak gjin folgjend momint.",
   "zaak.moments.advance": "Nei it folgjende momint",
+  "zaak.moments.advance_to": "Nei dit momint",
+  "zaak.moments.advance_to.label": "De klok nei {date} sette, mei alles wat der oant dan ûntstiet",
   "zaak.moments.advance.hint": "Set de peildatum op {date} en leit fêst wat der dan yn elke saak ûntstiet. De klok giet allinnich foarút; werom is opnij begjinne.",
   "zaak.decision_due.title": "Wat de wet beslút: {decision}",
   "zaak.decision_due.body": "Berekkene yn de faze fan dit beslút, noch sûnder it fêst te lizzen.",

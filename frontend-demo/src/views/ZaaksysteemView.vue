@@ -115,6 +115,14 @@ const nextDate = computed(() => moments.value.find((m) => m.date > state.referen
 function advance() {
   if (selected.value) demo.advanceToNextMoment(selected.value);
 }
+/**
+ * Naar een later moment uit de lijst: de klok loopt erheen zoals bij
+ * "Naar het volgende moment", langs elk moment ertussen, met alles wat er
+ * onderweg ontstaat (uitvoeringen, besluiten, berichten).
+ */
+function advanceToMoment(date) {
+  if (date > state.referenceDate) demo.advanceTo(date);
+}
 /** De plaats van rij `i` van `n` op een tijdlijn. */
 function trackPosition(i, n) {
   if (n === 1) return 'only';
@@ -460,6 +468,16 @@ function claimLawName(cl) {
                   <nldd-spacer-cell size="8"></nldd-spacer-cell>
                   <nldd-text-cell size="sm" :text="m.value ? t('zaak.moments.with_value', { text: m.text, value: m.value }) : m.text" :supporting-text="m.supporting"></nldd-text-cell>
                   <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="formatValue(m.date, null)"></nldd-text-cell>
+                  <nldd-cell v-if="m.date > state.referenceDate" width="fit-content" vertical-alignment="center">
+                    <nldd-button
+                      size="sm"
+                      appearance="neutral-tinted"
+                      start-icon="future"
+                      :text="t('zaak.moments.advance_to')"
+                      :accessible-label="t('zaak.moments.advance_to.label', { date: formatValue(m.date, null) })"
+                      @click="advanceToMoment(m.date)"
+                    ></nldd-button>
+                  </nldd-cell>
                 </nldd-list-item>
               </nldd-list>
               <nldd-container v-if="!moments.length" padding-inline="12"><nldd-text size="xs" color="secondary">{{ t('zaak.moments.none') }}</nldd-text></nldd-container>

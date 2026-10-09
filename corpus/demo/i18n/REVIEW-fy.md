@@ -270,6 +270,10 @@ anders in de vertaling voor, dus er is ook geen eerdere keuze om op te leunen.
   wurden`): of `folt … yn` en `mei safolle wurden` (voor "met zoveel
   woorden") natuurlijk Fries zijn, is niet nagegaan.
 
+- **Naar een moment spoelen** (`zaak.moments.advance_to`: `Nei dit momint`;
+  `.label`: `De klok nei {date} sette, mei alles wat der oant dan
+  ûntstiet`): `momint` volgt `zaak.moments.title`; of `oant dan` het
+  gangbare Fries is voor "tot dan", is niet nagegaan.
 
 ## Hoe je een correctie doorvoert
 
