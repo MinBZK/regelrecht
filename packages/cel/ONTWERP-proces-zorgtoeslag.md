@@ -10,7 +10,7 @@ De Awir in de tekst die in 2025 gold. Waar 2026 anders is, staat dat erbij.
 
 | Stap | Artikel | Wat ontstaat | Wanneer |
 |---|---|---|---|
-| Aanvraag | Awir 15 | indiening | tot 1 september (2026: 31 december) van het jaar na het berekeningsjaar; geldt ook voor volgende jaren (lid 5) |
+| Aanvraag | Awir 15 | indiening | tot 1 september (2026: 31 december) van het jaar na het berekeningsjaar; geldt ook voor volgende jaren (lid 5, zie §8a) |
 | Voorschot | Awir 16 | beschikking, "tot het bedrag waarop de tegemoetkoming vermoedelijk zal worden vastgesteld" | binnen 13 weken na de aanvraag; vóór het jaar bij een doorlopende aanvraag (lid 2) |
 | Betaling voorschot | Awir 22 | termijnen | per maand een termijn, volgend uit de dagtekening van het voorschot: 12 vanaf december als het vóór het jaar verleend is, anders de resterende maanden plus een bedrag ineens voor de verstreken maanden, of ineens na 31 oktober |
 | Wijziging | Awir 17, 16 lid 5 | melding, dan herziening voorschot | tijdens het jaar |
@@ -146,6 +146,19 @@ Eén knop zet de peildatum op het eerstvolgende moment. De cel legt vast wat dan
 - **Wat er is ontvangen**, leest de demo met de lexostatus die de toekenning ook leest (`received` in `demo-config.yaml` wijst haar aan); de demo telt niet zelf op.
 - **Vaste datums van een besluit dat nog komt** (de uiterste toekenningsdatum) vindt de demo met een heuristiek: een datum die gelijk is in twee voorbeelden van het besluit in verschillende kalendermaanden (vandaag en een maand later) telt als vast. Dat is een keuze van de demo, geen regel van de wet; dat de wet zelf een datum als vast markeert, is een latere stap.
 - **De tijd gaat niet terug**: een kroniek weigert een gram die eerder is vastgelegd dan haar laatste.
+
+## 8a. Een aanvraag voor meer jaren (Awir 15 lid 5)
+
+**Gebouwd (9 oktober 2026).** De demo eindigde met "Zorgtoeslag toegekend, 15 april 2027" en liet het jaar erna leeg. Awir 15 lid 5: "Een aanvraag wordt geacht mede te zijn gedaan voor op het berekeningsjaar volgende berekeningsjaren." Er komt dus geen nieuwe aanvraag: op dezelfde aanvraag volgt elk jaar een voorschot, verleend vóór het jaar (Awir 16 lid 2), met de eerste termijn in december ervoor (Awir 22 lid 1), en later een toekenning.
+
+- **Wet.** Awir 15 geeft `aanvraag_geldt_voor_berekeningsjaar`: het aangevraagde jaar en de jaren erna. Lid 6 (de Dienst deelt mee dat lid 5 eindigt) is niet gemodelleerd. Awir 16 en 19 rekenen met `berekeningsjaar`, het jaar van de tegemoetkoming (art. 2 lid 1 onder b), met rol TIJDVAK en grondslag lid 5: de belanghebbende wordt geacht ook voor dat jaar te hebben aangevraagd. Awir 16 verleent alleen een voorschot voor een jaar waarvoor de aanvraag geldt; die regel staat er uitgeschreven, omdat een bron naar art. 15 vanuit een haak op de aanvraag van art. 15 een kringverwijzing in de engine geeft.
+- **Cel (eigen keuze, generiek).** Een besluit betreft één periode, en die geeft de cel: het eerste besluit van een gebeurtenis het jaar van de aanvraag (haar TIJDVAK), het volgende het jaar erna. Een gegeven jaar vóór dat van de aanvraag weigert ze. De zaak wordt voor die periode gelezen: een lexostatus filtert met `period: $berekeningsjaar`, een beleid krijgt `berekeningsjaar` als parameter. Een uitvoering met een periode loopt per periode van de besluiten waarnaar ze verwijst: verwijzingen, `once_per`, `until` en de verschuldigde dagen gelden per jaar. Zo betaalt december 2025 de laatste termijn van 2025 (of het bedrag ineens) naast de eerste van 2026, en beëindigt de toekenning over 2025 alleen de termijnen van 2025. De eigen periode van een haak op de aanvraag (Awir 16) is geen veld van de aanvraag.
+- **Wanneer (eigen keuze, fictief beleid).** De wet geeft geen dag. `fictief_beleid_termijnbedrag_voorschot` art. 4: het voorschot voor een volgend jaar op 1 november ervoor. De stroom noemt dat artikel (`decided_on`); `Cell::due_decision` geeft periode en dag, en de cel neemt het besluit niet eerder. Valt 1 november al voor het eerste voorschot (een aanvraag in december), dan volgt het volgende voorschot dezelfde dag.
+- **Schatting (aanname).** `fictief_beleid_kroniek_toeslagen` art. 4: zonder nieuwe schatting geldt de schatting uit de aanvraag ook voor een volgend jaar. Het voorschot leest alleen dat artikel (`reads: {regulation, article}`). Art. 1 en 3 (voorschot, achterstand) lezen per berekeningsjaar.
+- **Wetsversies (eigen keuze).** De cel neemt de versie die op 1 januari van het jaar geldt. Het democorpus heeft geen Zorgtoeslagwet en geen standaardpremie voor 2026; voor 2026 geldt dus die van 2025 en is het voorschot even hoog. Het gram noemt de versie (`regulation_valid_from`). Een jaar zonder enige versie weigert de engine.
+- **Demo.** Het eerste besluit van een gebeurtenis neemt de levensloop van de zaak, zoals voorheen. Elk volgend vraagt de klok aan de cel (`dueDecision`): op de dag van het beleid, of op de datum die het dossier voor dat jaar geeft (de aanslag). De demo neemt het zoals de wet het neemt, zonder behandelaar en zonder eigen bekendmaking (open punt). "Ontvangen" staat per jaar.
+
+Open: lid 6 (beëindiging), een herziening van het voorschot bij een nieuwe schatting (Awir 16 lid 5, 17), bekendmaking en bezwaar van de besluiten na het eerste, een Zorgtoeslagwet en standaardpremie voor 2026 in het democorpus.
 
 ## 9. Wat bewust later komt
 

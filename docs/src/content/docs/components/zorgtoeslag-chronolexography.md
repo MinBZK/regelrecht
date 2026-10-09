@@ -92,7 +92,7 @@ The law says, in its own words, what arises. The cell decides how that is record
 | `produces.moment` | Awb 4:13 lid 1: the decision period runs from receipt | `effective_at` of the application is the moment of receipt, with Awb 4:13 lid 1 as its legal basis |
 | `produces.legal_character: BESCHIKKING` with `decides_on` and `procedure_id` | Zorgtoeslagwet 2 decides on the application of Awir 15, in the procedure `tegemoetkoming` of the Awir | One decretogram per stage that `is: BESLUIT` (VOORSCHOT and TOEKENNING), each referring to the application as `on_application`, its fields the outputs of the article and of the hooks at that stage |
 | A stage's `requires` with exactly one date | `dagtekening_voorschot`, `dagtekening_toekenning` | `dated_by`: the cell fills that parameter with the day the decision is taken |
-| `origin` with `rol: TIJDVAK` | `aangevraagd_berekeningsjaar` (Awir 15 lid 1) | The `period` of the decision. A period of `unit: year` means the version of the law in force on 1 January of that year |
+| `origin` with `rol: TIJDVAK` | `aangevraagd_berekeningsjaar` (Awir 15 lid 1) on the application; `berekeningsjaar` (Awir 16 and 19, grondslag Awir 15 lid 5) on the decisions | The period the application asks for, and the `period` of each decision. A period of `unit: year` means the version of the law in force on 1 January of that year |
 | `specifies` on a parameter | Not used here; the NAPP corpus uses it for a lex specialis of Awb 4:2 | One field with two legal bases |
 
 The engine's law model (`packages/law-model/src/model.rs`) reads `moment` and `specifies`. Schema v0.8.0 accepts them but does not describe them yet; a proposal for the schema is still to be written.
@@ -115,16 +115,16 @@ The demo reads everything below from `corpus/demo`. The main corpus has its own 
 | `corpus/demo/regulation/nl/zorgtoeslagwet/TOESLAGEN-2025-01-01.yaml`, article 2 | The amount, and that it is a beschikking on the application of Awir 15 in the procedure `tegemoetkoming` | Engine; the cell derives the decisions from it | The fields of both decisions, and whether the process exists at all. The 2024 version has no `decides_on` and no procedure, so it does not take part |
 | `corpus/demo/regulation/nl/algemene_wet_inkomensafhankelijke_regelingen/` (2025 and 2026) | The procedure `tegemoetkoming` with its stages (AANVRAAG, VOORSCHOT, VOORSCHOT_BEKENDMAKING, TOEKENNING, TOEKENNING_BEKENDMAKING); articles 8, 14, 15, 16, 19, 22, 24 and 26a | Engine; the cell for the shape of the application and the stages | The fields of the application, which stages are decisions, the dates a decision is dated by, the months with an installment, the settlement |
 | `corpus/demo/regulation/nl/algemene_wet_bestuursrecht/artikel_1_1_bestuursorgaan/AWB-1994-01-01.yaml` | Awb 3:46, 4:2, 4:13, 6:7 and 6:8 as hooks | Engine | What every application asks (4:2), the moment of receipt (4:13), and the objection period on each decision |
-| `fictief_beleid_termijnbedrag_voorschot` (Dienst Toeslagen, fictitious) | Article 1: the amount of an installment and the payment order. Article 2: the bank's answer. Article 3: the account number on the application | Engine and cell (explicit chronolex block) | When and how much is ordered, what counts as paid, and the account field on the application form |
-| `fictief_beleid_kroniek_toeslagen` (Dienst Toeslagen, fictitious, *aanname*) | Article 1: the voorschot that holds. Article 2: the account from the application. Article 3: what is still outstanding after a refusal | Engine, over the chronicle as a register | What a payment order reads from the chronicle |
+| `fictief_beleid_termijnbedrag_voorschot` (Dienst Toeslagen, fictitious) | Article 1: the amount of an installment and the payment order. Article 2: the bank's answer. Article 3: the account number on the application. Article 4: the voorschot for a following year is granted on 1 November before it | Engine and cell (explicit chronolex block) | When and how much is ordered, what counts as paid, and the account field on the application form |
+| `fictief_beleid_kroniek_toeslagen` (Dienst Toeslagen, fictitious, *aanname*) | Article 1: the voorschot that holds for a berekeningsjaar. Article 2: the account from the application. Article 3: what is still outstanding for a berekeningsjaar after a refusal. Article 4: the expected income, from the application, also for a following year | Engine, over the chronicle as a register | What a payment order reads from the chronicle |
 | `fictieve_bankvoorwaarden` (fictitious bank) | A transfer is credited on the execution date unless the account is unknown or blocked | Engine and the bank cell | Whether the bank credits or refuses |
 | `corpus/demo/cells/toeslagen/cell.yaml` | The recording actor (`belastingdienst_toeslagen`, Awir 14 lid 1), its streams, its lexostatuses, and `registers` | Cell | Which chronicle the policy reads as `grams` |
-| `corpus/demo/cells/toeslagen/streams/` | Per event its name, the article that establishes it, the `stage` where an article decides twice, and `reads` | Cell | Event names in the chronicle, and where a decision or an execution gets its parameters |
-| `corpus/demo/cells/toeslagen/lexostatuses.yaml` | `aanvraag` (the application by its root) and `uitbetaald` (the sum of `betaald_bedrag`) | Cell | The parameters of both decisions; "Received so far" on the portal |
+| `corpus/demo/cells/toeslagen/streams/` | Per event its name, the article that establishes it, the `stage` where an article decides twice, `reads` (a lexostatus, a policy, or one article of a policy), and `decided_on` (the policy article that gives the day of a decision) | Cell | Event names in the chronicle, where a decision or an execution gets its parameters, and when the voorschot for a following year is due |
+| `corpus/demo/cells/toeslagen/lexostatuses.yaml` | `aanvraag` (the application by its root) and `uitbetaald` (the sum of `betaald_bedrag` for one berekeningsjaar, filter `period: $berekeningsjaar`) | Cell | The parameters of both decisions; "Received for 2025" on the portal |
 | `corpus/demo/cells/bank/` | Cell `bank`, actor `fictieve_bank`, chronicle `rekeningen`, two events on bank terms article 1 | Cell | The bank's chronicle |
 | `corpus/demo/bindings.yaml`, `fictieve_bankvoorwaarden` | `rekening_geblokkeerd` comes from the BANK table `rekeningen`; no row means null | Demo (materializer), then engine | Whether the bank knows the account |
 | `demo-config.yaml`, `profiles.merijn.application` | What Merijn fills in, per field the law asks; `$bsn`, `$reference_date` and `$reference_year` are filled in by the demo | Demo | The application. A field the law does not ask is refused by the cell |
-| `demo-config.yaml`, `dossier` | Parameters with origin `DOSSIER` the cell does not read from its chronicle, in the shape of a binding: the date of the tax assessment for Awir 19 | Demo | When the toekenning can be taken |
+| `demo-config.yaml`, `dossier` | Parameters with origin `DOSSIER` the cell does not read from its chronicle, in the shape of a binding: the date of the tax assessment for Awir 19, selected by the berekeningsjaar of the decision | Demo | When the toekenning of each year can be taken |
 | `demo-config.yaml`, `received` | Per cell the lexostatus that says what was paid on a case (`toeslagen: uitbetaald`) | Demo | "Received so far" on the portal; the demo adds nothing up itself |
 | `demo-config.yaml`, `channels` | Which gram of which cell goes to which article of which cell, which field fills which parameter, and which reference the answer gets | Demo | The transport between Toeslagen and the bank |
 | `demo-config.yaml`, `account` | Which cell, table and fields make up "My account" | Demo | The statement on the portal |
@@ -215,6 +215,21 @@ At this stage the hooks of the Awir do the settlement:
 
 After the toekenning no installment arises: the payment order has `until: {stage: TOEKENNING}`, and the cell refuses with the error kind `ended`.
 
+#### The next year
+
+Awir 15 lid 5 deems the application made for the following berekeningsjaren too, so Merijn does not apply again. Each decision concerns one berekeningsjaar, and the cell gives it: the first decision of an event concerns the year the application asks for, the next one the year after. On 1 November 2025, the day the fictitious policy article 4 gives (*own choice*: the law only says before the year begins), the demo takes the voorschot for 2026 on the same application: € 1.695, on the estimate from the application (policy article 4 of the chronicle policy, *aanname*). The demo corpus has no Zorgtoeslagwet or standaardpremie for 2026, so the 2025 versions are the ones in force on 1 January 2026 and the amount is the same; the gram names the version.
+
+Installments run per berekeningsjaar. In November 2025 the last installment of 2025 is paid (€ 154,10), in December the first of twelve for 2026 (€ 141,25, Awir 22 lid 1). The toekenning over 2025 on 15 April 2026 sets off only what was paid on 2025 (€ 1.695) and ends only the installments of 2025: in May 2026 the installment of 2026 is paid. The next voorschot (2027) is due on 1 November 2026, the next toekenning (2026) on the assessment over 2026 that Merijn's data gives (15 April 2027).
+
+| Moment | Gram (event) | Period | Key fields |
+|---|---|---|---|
+| 1 Nov 2025 | `betaalopdracht_gegeven` | 2025 | € 154,10, the last of 2025 |
+| 1 Nov 2025 | `voorschot_verleend` | 2026 | voorschotbedrag € 1.695 |
+| 1 Dec 2025 to 1 May 2026 | `betaalopdracht_gegeven` (6×) | 2026 | € 141,25 |
+| 15 Apr 2026 | `zorgtoeslag_toegekend` | 2025 | toegekend € 1.654, set off against € 1.695 paid on 2025 |
+
+On the portal, "Received" shows one line per berekeningsjaar; the case Chronicle names the year of each gram, and the Lexostatuses view reads `uitbetaald` and the chronicle policy per year.
+
 ## Time
 
 ### One clock, forward only
@@ -236,8 +251,10 @@ What has yet to happen is no fact. The Chronicle on a case shows, below the gram
 
 | Guard | Where | What it prevents |
 |---|---|---|
-| `once_per: month` | the cell, from the explicit block of policy article 1 | A second payment order in the same case in the same month, also after a revised voorschot |
-| `until: {stage: TOEKENNING}` | the cell | Any installment once the case has a toekenning (error kind `ended`) |
+| `once_per: month` | the cell, from the explicit block of policy article 1 | A second payment order in the same case for the same berekeningsjaar in the same month, also after a revised voorschot; the voorschot of the next year has its own months |
+| `until: {stage: TOEKENNING}` | the cell | Any installment for a berekeningsjaar once the case has a toekenning over that year (error kind `ended`) |
+| `decided_on` | the cell | A voorschot for a following year before the day the policy gives |
+| The period of a decision | the cell | A decision on a year before the one the application asks for |
 | A required reference | the cell | An installment without a voorschot, or a bank answer without an order |
 | One answer per message | the cell (error kind `answered`): by the reference for Toeslagen, by `identified_by` (the betaalkenmerk) for the bank | A second answer to the same order, or a second transfer of it, when a message is offered again |
 | The moment of a received message | the cell (`receive`) | A message that holds after the moment of recording, or before the gram it refers to |
@@ -260,7 +277,11 @@ The design note marks each choice by its source: the law, an RFC, the earlier ch
 - **The policy that reads the chronicle** is written on behalf of the Dienst Toeslagen and marked as *aanname* in its name, its comment and every article: "the dagtekening is the day of the decision" and "a revision replaces the earlier voorschot".
 - **The bank and its terms are fictitious.** The schema has no layer for rules of a private party, so the bank's terms are recorded as UITVOERINGSBELEID with that marking.
 - **The fixed dates of a decision still to come** are found by a heuristic of the demo.
-- **The demo's berekeningsjaar** is the year of the reference date. A voorschot before the year (twelve installments from December, Awir 22 lid 1) cannot be reached from the portal; the cell's tests cover it.
+- **The demo's berekeningsjaar** is the year of the reference date when Merijn applies. The voorschot for each following year is granted before that year (twelve installments from December, Awir 22 lid 1).
+- **The year of a decision** is the cell's to give: the year of the application first, then each year after it (Awir 15 lid 5). Lid 6, the Dienst ending that, is not modeled.
+- **1 November** as the day of the voorschot for a following year, and **the estimate from the application** for that year, are choices of the fictitious policies, marked as such.
+- **A year without its own version** of the Zorgtoeslagwet or the standaardpremie (2026 in the demo corpus) is computed with the version in force on 1 January of that year, the one of 2025.
+- **Decisions after the first** of their event are taken by the demo as the law takes them, without a caseworker and without their own announcement stage.
 
 Where the design note and the code differ, the code is what the demo does. The note's process table gives the 2026 threshold of € 121 for Awir 26a; the demo runs the 2025 text, with € 118. Its section 5 still mentions a lexostatus `betaald_voorschot` and its section 4 a single cell; the code has the lexostatus `uitbetaald` and a separate bank cell.
 
@@ -274,7 +295,8 @@ From the design note and the code comments:
 - A proposal for the schema that describes `produces.moment` and `specifies`.
 - An account the bank does not know at all gives an unknown value in the engine (an error) unless the data says null explicitly.
 - A message that arrives only when the outbox offers it again holds from its arrival, not from the moment of the order it is about. Whether a late answer should hold from the order instead is open.
-- Deferred on purpose: entitlement per calendar month, revision of the voorschot after a change (Awir 16 lid 5, 17) and of the toekenning (20, 21, 21a), interest and collection (27 to 29), setting off across regulations (30), the *zienswijze* before recovery (26b), and channels outside the demo.
+- The decisions for a following year have no announcement and objection period of their own in the case lifecycle.
+- Deferred on purpose: ending lid 5 (Awir 15 lid 6), entitlement per calendar month, revision of the voorschot after a change (Awir 16 lid 5, 17) and of the toekenning (20, 21, 21a), interest and collection (27 to 29), setting off across regulations (30), the *zienswijze* before recovery (26b), and channels outside the demo.
 
 ## Running it
 
@@ -290,7 +312,7 @@ To follow Merijn's case:
 1. Open the demo with Merijn (the default persona) and, before anything is recorded, set the reference date to a day in 2025 or later under Demo, "Reference date".
 2. Apply for zorgtoeslag on "My government". "What the law asks" shows the fields with their articles.
 3. Open the case in the case system and its Chronicle: the application, the voorschot and the first payment order with the bank's answer.
-4. Press "To the next moment" to move through the installments, the end of the year and the assessment, until the toekenning.
+4. Press "To the next moment" to move through the installments, the voorschot for the next year on 1 November, the end of the year and the assessment, until the toekenning, and on through the installments of the next year.
 5. "Chronicle" next to "Cases" on the board shows every gram the cell stores; "See how the cell stores this" on a case filters it. "Lexostatuses" next to it shows `aanvraag`, `uitbetaald` and `fictief_beleid_kroniek_toeslagen`, how each reduces the chronicle, and what each gives for the case now, with links to the grams it read. "My account" on the portal shows the bank's side.
 
 ## Further reading
