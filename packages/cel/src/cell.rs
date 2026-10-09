@@ -20,6 +20,12 @@ use crate::lexostatus;
 use crate::register;
 use crate::shape::{self, Shape};
 
+/// How many periods [`Cell::due_ex_officio`] asks at most, from the first
+/// through the period of now (own choice: fifty years covers any first
+/// period a holder could still decide over, and bounds the executions of
+/// the article that gives the day).
+pub const MAX_EX_OFFICIO_PERIODS: i32 = 50;
+
 /// A parameter of a decision: its value, and where it came from.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Input {
@@ -486,9 +492,7 @@ impl Cell {
                     )
                 });
             for event in readers {
-                let Ok((shape, _)) = self.shape(service, &event.name, day) else {
-                    continue;
-                };
+                let (shape, _) = self.shape(service, &event.name, day)?;
                 if let Some(p) = shape.period.filter(|p| inputs.contains(&p.parameter)) {
                     period.get_or_insert(p.parameter);
                 }
@@ -862,18 +866,29 @@ impl Cell {
         if let (Some(parameter), Some(root)) = (&period_parameter, root) {
             let value = match extra_inputs.get(parameter) {
                 Some(given) => {
-                    let value = given.value.as_i64().and_then(|v| i32::try_from(v).ok());
-                    if let (Some(v), Some((name, asked))) = (
-                        value,
-                        self.submission_period(service, &chronicle, root, now)?,
-                    ) {
+                    // A period that is no whole number is refused before the
+                    // case is read for it: read without one, it would read
+                    // the case for every period.
+                    let v = given
+                        .value
+                        .as_i64()
+                        .and_then(|v| i32::try_from(v).ok())
+                        .ok_or_else(|| {
+                            refused(format!(
+                                "'{event}' concerns the period '{parameter}' gives, and it is given as {}, not as a whole number",
+                                given.value
+                            ))
+                        })?;
+                    if let Some((name, asked)) =
+                        self.submission_period(service, &chronicle, root, now)?
+                    {
                         if v < asked {
                             return Err(refused(format!(
                                 "'{event}' for {parameter} {v}: the application '{root}' asks for {name} {asked}, and a decision on it cannot concern an earlier period"
                             )));
                         }
                     }
-                    value
+                    Some(v)
                 }
                 None => {
                     let next = self.next_period(service, &shape, &chronicle, root, now)?;
@@ -1085,7 +1100,8 @@ impl Cell {
     /// the stream names an article that gives it (`decided_on`) and that
     /// article gives one for this case. Whether the decision is due, is for
     /// the caller to compare with its clock; the cell refuses to take it
-    /// before that day. Read-only.
+    /// before that day, and without a day (see [`Self::check_due`] for the
+    /// one exception, the decision on the application itself). Read-only.
     ///
     /// With `decided_on` and a period, every period of the case without a
     /// decision of the event is a candidate, from the one the application
@@ -1093,8 +1109,10 @@ impl Cell {
     /// one after the latest decision of the event): the first the article
     /// gives a day for is the next decision. A period the holder gives no
     /// day for (a year that leaves nothing to recover, an inkomensgegeven
-    /// that has not arrived) does not hold up a later one (own choice).
-    /// Without a day for any, the first candidate, without a day.
+    /// that has not arrived) is not due, and does not hold up a later one
+    /// (own choice). A refusal is a decision too: a period whose decision
+    /// grants nothing is decided once it is recorded. Without a day for
+    /// any, the first candidate, without a day.
     pub fn due_decision(
         &self,
         service: &LawExecutionService,
@@ -1166,17 +1184,29 @@ impl Cell {
 
     /// The next decision of the ex officio event `event` (a decision on no
     /// submission, such as the aanslag of AWR 11) about the subject
-    /// `subject` (the parameters that say whom it concerns, such as the
-    /// BSN), as the cell holds at `now`: the period it concerns and the day
-    /// the holder takes it (`decided_on`, which such an event must have).
+    /// `subject` (a value for each parameter the stream names as `subject`,
+    /// such as the BSN), as the cell holds at `now`: the period it concerns
+    /// and the day the holder takes it (`decided_on`, which such an event
+    /// must have).
     ///
-    /// The candidates are the periods after the latest decision of the
-    /// event about the subject, through the period of `now`; before the
-    /// first, from the period before the one of `now` (own choice: an
+    /// The candidates are every period without a decision of the event about
+    /// the subject, through the period of `now`, from the first period the
+    /// stream names (`first_period`). So a period the holder gave no day for
+    /// while a later one was decided is asked again, as
+    /// [`Self::due_decision`] asks every undecided period of a case. Without
+    /// `first_period`, from the first decision about the subject, or from
+    /// the period before the one of `now` if that is earlier (own choice: an
     /// administrative body that decides over periods that have ended, such
-    /// as the inspecteur over a year, starts with the last one that ended).
-    /// The first the article gives a day for is the next decision; without a
-    /// day for any, the first candidate, without a day. Read-only.
+    /// as the inspecteur over a year, starts with the last one that ended
+    /// before it follows the subject); a period before the first decision
+    /// that had no day then, is not asked again. The first candidate the
+    /// article gives a day for is the next decision; without a day for any,
+    /// the first candidate, without a day. Read-only.
+    ///
+    /// A `first_period` after the period of `now` asks nothing yet: no
+    /// period and no day, until that period comes. A range of more than
+    /// [`MAX_EX_OFFICIO_PERIODS`] periods is an error, not an empty answer:
+    /// each is an execution of the article `decided_on` names.
     pub fn due_ex_officio(
         &self,
         service: &LawExecutionService,
@@ -1209,14 +1239,42 @@ impl Cell {
                 declared.parameter
             )));
         }
+        let named: Vec<&String> = subject.keys().collect();
+        let mut expected: Vec<&String> = e.subject.iter().collect();
+        expected.sort();
+        if named != expected {
+            return Err(refused(format!(
+                "'{event}' concerns the subject {expected:?} (`subject` in its stream), not {named:?}"
+            )));
+        }
         let decided: Vec<i32> = lexostatus::in_force(self.chronicle(&chronicle)?, now)?
             .into_iter()
             .filter(|g| g.name == event && about(g, subject))
             .filter_map(|g| g.period.map(|p| p.value))
             .collect();
         let current = now.date_naive().year();
-        let first = decided.iter().max().map_or(current - 1, |p| p + 1);
-        let candidates: Vec<i32> = (first..=current.max(first)).collect();
+        let first = match e.first_period {
+            // Not yet: the stream asks its first period once that comes.
+            Some(first) if first > current => {
+                return Ok(DueDecision {
+                    period: None,
+                    day: None,
+                });
+            }
+            Some(first) => first,
+            None => decided
+                .iter()
+                .copied()
+                .chain(std::iter::once(current - 1))
+                .min()
+                .unwrap_or(current - 1),
+        };
+        if current - first >= MAX_EX_OFFICIO_PERIODS {
+            return Err(setup(format!(
+                "'{event}' would ask every period from {first} through {current}; the cell asks at most {MAX_EX_OFFICIO_PERIODS} (`first_period` in its stream, or the first decision about the subject)"
+            )));
+        }
+        let candidates: Vec<i32> = (first..=current).filter(|p| !decided.contains(p)).collect();
         for &candidate in &candidates {
             let period = Period {
                 unit: declared.unit,
@@ -1303,13 +1361,17 @@ impl Cell {
         extra_inputs: BTreeMap<String, Input>,
         now: DateTime<FixedOffset>,
     ) -> Result<Gram> {
-        let (gram, chronicle) = self.take(service, event, refers_to, extra_inputs, now)?;
+        let (gram, chronicle) = self.take(service, event, refers_to, extra_inputs, now, true)?;
         self.append(&chronicle, gram)
     }
 
     /// The gram [`Self::decide`] would record at `now`, without recording
     /// it: what the law decides, to look before deciding. Nothing in the
-    /// chronicle changes, so a moment that has yet to come may be asked too.
+    /// chronicle changes, so a moment that has yet to come may be asked too,
+    /// and whether the decision is due yet is not asked: a decision before
+    /// its day, or without one (the toekenning before the aanslag), shows
+    /// what the law would decide, and [`Self::decide`] still refuses it (see
+    /// [`Self::check_due`]).
     pub fn preview_decision(
         &self,
         service: &LawExecutionService,
@@ -1318,10 +1380,13 @@ impl Cell {
         extra_inputs: BTreeMap<String, Input>,
         now: DateTime<FixedOffset>,
     ) -> Result<Gram> {
-        Ok(self.take(service, event, refers_to, extra_inputs, now)?.0)
+        Ok(self
+            .take(service, event, refers_to, extra_inputs, now, false)?
+            .0)
     }
 
     /// Take a decision: the gram and the chronicle it goes to, not recorded.
+    /// With `due`, only if it is due at `now` (for [`Self::decide`]).
     fn take(
         &self,
         service: &LawExecutionService,
@@ -1329,6 +1394,7 @@ impl Cell {
         refers_to: BTreeMap<String, String>,
         extra_inputs: BTreeMap<String, Input>,
         now: DateTime<FixedOffset>,
+        due: bool,
     ) -> Result<(Gram, String)> {
         // Not yet: refusing an application out of time.
         let today = now.date_naive();
@@ -1342,7 +1408,6 @@ impl Cell {
         } else {
             None
         };
-        let given: Vec<String> = extra_inputs.keys().cloned().collect();
         let Prepared {
             mut inputs,
             available,
@@ -1353,41 +1418,18 @@ impl Cell {
             at,
         } = self.prepare(service, event, root.as_deref(), extra_inputs, now)?;
         self.check_references(&shape, &chronicle, &refers_to)?;
-        // A decision the holder takes on a day of its own (`decided_on`) is
-        // not taken before that day. Ex officio (no case to read), once per
-        // period for the subject the caller gives: on a case, a second
-        // decision for the same period is a revision (a herziening of the
-        // voorschot), which the cell does not refuse.
-        if let Some(reference) = self.event(event)?.1.decided_on.as_deref() {
-            if let (Some(period), None) = (period, &root) {
-                let grams = self.chronicle(&chronicle)?;
-                let period_parameter = shape.period.as_ref().map(|p| p.parameter.as_str());
-                let subject: BTreeMap<String, Input> = available
-                    .iter()
-                    .filter(|(k, _)| given.contains(k) && Some(k.as_str()) != period_parameter)
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect();
-                let taken = grams.grams().iter().find(|g| {
-                    g.name == event
-                        && g.period.is_some_and(|p| p.value == period.value)
-                        && about(g, &subject)
-                });
-                if let Some(gram) = taken {
-                    return Err(refused(format!(
-                        "'{event}' for {} was already taken ('{}')",
-                        period.value, gram.id
-                    )));
-                }
-            }
-            if let Some(due) = self.decided_on(service, reference, &available, day)? {
-                if due > today {
-                    return Err(refused(format!(
-                        "'{event}' for {} is taken on {due} ({reference}), not on {today}",
-                        period.map_or_else(|| "its case".to_string(), |p| p.value.to_string()),
-                    )));
-                }
-            }
-        }
+        self.check_due(
+            service,
+            event,
+            &shape,
+            &chronicle,
+            root.as_deref(),
+            period,
+            &available,
+            day,
+            now,
+            due,
+        )?;
 
         // The decision is taken at its stage of the procedure. The date the
         // decision bears is the one parameter the law names for it
@@ -1446,6 +1488,129 @@ impl Cell {
         gram.fields = fields_of(&shape, &result.outputs, &inputs)?;
         gram.inputs = recorded_inputs(inputs);
         Ok((gram, chronicle))
+    }
+
+    /// Whether the decision `event` may be taken today, if the holder takes
+    /// it on a day of its own (`decided_on` in its stream); `Ok` without
+    /// one. The day `decided_on` gives is the one meaning the cell knows: a
+    /// day is when the decision is due, and no day (null, or a fact it rests
+    /// on that nobody has yet) is not due yet. So the cell refuses it before
+    /// its day, and without one, with one exception: the decision that
+    /// answers the application ([`shape::answered_by`]: the first decision
+    /// stage of its procedure after the submission) for the period the
+    /// application asks for, which whoever answers it (a caseworker, the life
+    /// cycle of the case) takes when the application is decided on. A policy
+    /// may give it a day as well; then not before that day. Every other
+    /// decision (a later stage of the same article, the toekenning after the
+    /// voorschot; a later period, which no application asks for itself, Awir
+    /// 15 lid 5; a decision in a procedure of its own, the terugvordering of
+    /// Awir 26; one on no submission) is
+    /// taken on the holder's day only, as [`Self::due_decision`] and
+    /// [`Self::due_ex_officio`] give it.
+    ///
+    /// Ex officio (no case to read), once per period per subject (the
+    /// parameters `subject` in its stream names); on a case, a second
+    /// decision for the same period is a revision (a herziening of the
+    /// voorschot), which the cell does not refuse. Without `due` (a
+    /// preview), only that: not whether its day has come.
+    #[allow(clippy::too_many_arguments)]
+    fn check_due(
+        &self,
+        service: &LawExecutionService,
+        event: &str,
+        shape: &Shape,
+        chronicle: &str,
+        root: Option<&str>,
+        period: Option<Period>,
+        available: &BTreeMap<String, Input>,
+        day: NaiveDate,
+        now: DateTime<FixedOffset>,
+        due: bool,
+    ) -> Result<()> {
+        let today = now.date_naive();
+        let (_, e) = self.event(event)?;
+        let Some(reference) = e.decided_on.as_deref() else {
+            return Ok(());
+        };
+        let concerns = || period.map_or_else(|| "its case".to_string(), |p| p.value.to_string());
+        if let (Some(period), None) = (period, root) {
+            let mut subject = BTreeMap::new();
+            for name in &e.subject {
+                let value = available.get(name).ok_or_else(|| {
+                    refused(format!(
+                        "'{event}' concerns the subject '{name}' (`subject` in its stream), and nothing gives it"
+                    ))
+                })?;
+                subject.insert(name.clone(), value.clone());
+            }
+            let taken = self
+                .chronicle(chronicle)?
+                .grams()
+                .iter()
+                .find(|g| g.name == event && g.period == Some(period) && about(g, &subject));
+            if let Some(gram) = taken {
+                return Err(refused(format!(
+                    "'{event}' for {} was already taken ('{}')",
+                    period.value, gram.id
+                )));
+            }
+        }
+        // A preview asks what the law decides, not whether it is due yet.
+        if !due {
+            return Ok(());
+        }
+        match self.decided_on(service, reference, available, day)? {
+            Some(due) if due > today => Err(refused(format!(
+                "'{event}' for {} is taken on {due} ({reference}), not on {today}",
+                concerns()
+            ))),
+            Some(_) => Ok(()),
+            None if self
+                .answers_application(service, shape, chronicle, root, period, day, now)? =>
+            {
+                Ok(())
+            }
+            None => Err(refused(format!(
+                "'{event}' for {} is not due: {reference} gives no day for it yet",
+                concerns()
+            ))),
+        }
+    }
+
+    /// Whether the decision of `shape` on the case `root` for `period` is
+    /// the one that answers the application, for the period it asks for
+    /// (see [`Self::check_due`]), in the law on `day`.
+    #[allow(clippy::too_many_arguments)]
+    fn answers_application(
+        &self,
+        service: &LawExecutionService,
+        shape: &Shape,
+        chronicle: &str,
+        root: Option<&str>,
+        period: Option<Period>,
+        day: NaiveDate,
+        now: DateTime<FixedOffset>,
+    ) -> Result<bool> {
+        let Some(root) = root else {
+            return Ok(false);
+        };
+        let Some(character) = shape.legal_character.as_deref() else {
+            return Ok(false);
+        };
+        match shape::answered_by(service, &shape.establishes, character, day)? {
+            shape::Answer::NotAsked => return Ok(false),
+            shape::Answer::Any => {}
+            // Only the first decision of the procedure answers it: the
+            // voorschot, not the toekenning of the same article.
+            shape::Answer::Stage(stage) if shape.stage.as_deref() == Some(stage.as_str()) => {}
+            shape::Answer::Stage(_) => return Ok(false),
+        }
+        let asked = self.submission_period(service, chronicle, root, now)?;
+        Ok(match (period, asked) {
+            (Some(p), Some((_, value))) => p.value == value,
+            (None, _) => true,
+            (Some(_), None) => false,
+        })
     }
 
     /// Execute the article that establishes the execution `event` (an
@@ -2467,6 +2632,8 @@ articles:
             reads: Vec::new(),
             decided_on: None,
             period: None,
+            subject: Vec::new(),
+            first_period: None,
         };
         let shape = shape::derive(&service, &event, "2024-06-01".parse().unwrap()).unwrap();
         let e = fields_of(&shape, &BTreeMap::new(), &BTreeMap::new()).unwrap_err();

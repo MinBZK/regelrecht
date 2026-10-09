@@ -3,7 +3,11 @@
 # hoe zij een vastgelegd voorschot, de rekening uit de aanvraag, wat er
 # achterstallig is en de schatting van het inkomen weer leest als de gegevens
 # die art. 16 en 22 Awir en het beleid over de uitbetaling van het voorschot
-# vragen. Een aanvraag geldt ook voor de berekeningsjaren erna (art. 15 lid 5
+# vragen (art. 1 tot en met 4), en hoe zij het ontvangen inkomensgegeven, de
+# toekenning, de nabetaling, de terugvordering en de incasso weer leest als
+# de gegevens die art. 8, 24, 26, 26a en 28 Awir en het beleid over de
+# toekenning, nabetaling en terugvordering vragen (art. 5 tot en met 8). Een
+# aanvraag geldt ook voor de berekeningsjaren erna (art. 15 lid 5
 # Awir), dus een voorschot en wat erop betaald is, lees je per
 # berekeningsjaar: de cel geeft het berekeningsjaar mee (`berekeningsjaar`),
 # het jaar van het besluit dat zij uitvoert. Dit is de reductie van de
@@ -29,9 +33,19 @@ competent_authority:
   name: Dienst Toeslagen
 legal_basis:
   - law_id: algemene_wet_inkomensafhankelijke_regelingen
+    article: '8'
+  - law_id: algemene_wet_inkomensafhankelijke_regelingen
     article: '16'
   - law_id: algemene_wet_inkomensafhankelijke_regelingen
     article: '22'
+  - law_id: algemene_wet_inkomensafhankelijke_regelingen
+    article: '24'
+  - law_id: algemene_wet_inkomensafhankelijke_regelingen
+    article: '26'
+  - law_id: algemene_wet_inkomensafhankelijke_regelingen
+    article: 26a
+  - law_id: algemene_wet_inkomensafhankelijke_regelingen
+    article: '28'
 articles:
   - number: '1'
     url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel16

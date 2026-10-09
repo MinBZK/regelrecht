@@ -8,13 +8,14 @@ import { useLocalePath } from './i18n/useLocalePath.js';
  * haar kan openen (`linkable`: alleen een wet uit het corpus), het adres
  * (`href`, voor een echte link) en het openen zelf (`openProvision`; een lid
  * opent zijn artikel). Een artikel dat de wet in de demo niet bevat, opent op
- * wetten.overheid.nl, in een nieuw tabblad (`external`). `corpus` is de ref
- * uit de store.
+ * wetten.overheid.nl, in een nieuw tabblad (`external`), in de tekst die op
+ * de peildatum gold. `corpus` is de ref uit de store, `referenceDate` een
+ * functie die de peildatum geeft (de versie van de wet die dan geldt).
  */
-export function useProvisionLinks(corpus) {
+export function useProvisionLinks(corpus, referenceDate = () => null) {
   const router = useRouter();
   const { localePath, goTo } = useLocalePath();
-  const target = (provision) => provisionTarget(corpus.value, provision);
+  const target = (provision) => provisionTarget(corpus.value, provision, referenceDate());
   return {
     label: (provision) => provisionLabel(corpus.value, provision),
     linkable: (provision) => !!target(provision),

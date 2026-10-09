@@ -45,7 +45,7 @@ const chronicles = computed(() => {
 const caseOfRoot = (root) => state.cases.find((c) => c.applicationGramId === root) ?? null;
 const caseText = (c) => (c ? t('kroniek.case', { law: c.lawName, id: c.id.slice(-5) }) : t('kroniek.case.unknown'));
 const filteredCase = computed(() => (props.root ? caseText(caseOfRoot(props.root)) : ''));
-const { label, linkable, openProvision } = useProvisionLinks(corpus);
+const { label, linkable, openProvision } = useProvisionLinks(corpus, () => state.referenceDate);
 
 /** Een moment uit een gram, met datum en tijd zoals de cel het schreef. */
 function moment(iso) {

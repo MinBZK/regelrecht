@@ -40,7 +40,7 @@ const emit = defineEmits(['clear-root', 'show-gram']);
 const { t } = useI18n();
 const demo = useDemo();
 const { corpus, state, dataVersion } = demo;
-const { label, linkable, external, href, openProvision } = useProvisionLinks(corpus);
+const { label, linkable, external, href, openProvision } = useProvisionLinks(corpus, () => state.referenceDate);
 
 /** Een link naar een bepaling: binnen de demo via de router, anders een nieuw tabblad. */
 function followProvision(event, provision) {

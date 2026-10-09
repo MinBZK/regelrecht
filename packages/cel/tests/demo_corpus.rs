@@ -58,6 +58,11 @@ fn regulations() -> LawExecutionService {
 /// boven 18 heeft recht op zorgtoeslag" (Zorgtoeslagwet 2025) registers it,
 /// with `income` as the wages over the year.
 fn register(service: &mut LawExecutionService, income: i64) {
+    register_with(service, income, 0);
+}
+
+/// [`register`] with `savings` as the spaargeld the Belastingdienst knows.
+fn register_with(service: &mut LawExecutionService, income: i64, savings: i64) {
     let row = |pairs: Vec<(&str, Value)>| -> BTreeMap<String, Value> {
         let mut row: BTreeMap<String, Value> =
             pairs.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
@@ -94,6 +99,7 @@ fn register(service: &mut LawExecutionService, income: i64) {
     ] {
         belastingdienst.insert(field.into(), Value::Int(0));
     }
+    belastingdienst.insert("spaargeld".into(), Value::Int(savings));
     let sources = [
         (
             "penitentiaire_beginselenwet",
@@ -277,14 +283,23 @@ fn the_demo_cell_grants_a_voorschot_on_the_estimate() {
     assert_eq!(voorschot.fields["bezwaartermijn_weken"], json!(6));
 
     // The toekenning rests on the inkomensgegeven the inspecteur provided
-    // (the policy of Toeslagen, art. 2); here it is given, not received.
+    // (the policy of Toeslagen, art. 2), and is taken on the day of the
+    // aanslag (art. 3); here both are given, not received.
     let toegekend = DateTime::parse_from_rfc3339("2026-06-01T09:00:00+02:00").unwrap();
+    let mut given = inkomensgegeven(79547);
+    given.insert(
+        "datum_vaststelling_aanslag".to_string(),
+        regelrecht_cel::Input {
+            value: json!("2026-06-01"),
+            provenance: json!({"source": "test"}),
+        },
+    );
     let toekenning = cell
         .decide(
             &service,
             "zorgtoeslag_toegekend",
             refers_to,
-            inkomensgegeven(79547),
+            given,
             toegekend,
         )
         .unwrap_or_else(|e| panic!("{e}"));
@@ -355,6 +370,47 @@ fn with_voorschot(
         )
         .unwrap_or_else(|e| panic!("{e}"));
     (cell, application, voorschot)
+}
+
+/// Only the first decision of the procedure answers the application without
+/// a day of its own: the voorschot. The toekenning over the year applied for
+/// is the same article at a later stage, and waits for the day the policy
+/// gives it (the aanslag); without one it is not due, however early the
+/// voorschot was taken.
+#[test]
+fn the_toekenning_waits_for_its_day_where_the_voorschot_does_not() {
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    let (mut cell, application, voorschot) = with_voorschot(
+        &mut service,
+        data.path(),
+        "2025-03-04T10:15:00+01:00",
+        "2025-03-04T11:00:00+01:00",
+        79547,
+    );
+    assert_eq!(voorschot.period, Some(year(2025)));
+    // What the law would decide may be looked at; taking it is refused.
+    let preview = cell
+        .preview_decision(
+            &service,
+            "zorgtoeslag_toegekend",
+            BTreeMap::from([("on_application".to_string(), application.id.clone())]),
+            inkomensgegeven(79547),
+            at("2025-03-05T09:00:00+01:00"),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(preview.period, Some(year(2025)));
+    let e = cell
+        .decide(
+            &service,
+            "zorgtoeslag_toegekend",
+            BTreeMap::from([("on_application".to_string(), application.id.clone())]),
+            inkomensgegeven(79547),
+            at("2025-03-05T09:00:00+01:00"),
+        )
+        .unwrap_err();
+    assert!(matches!(e, Error::Refused(_)), "{e}");
+    assert!(e.to_string().contains("not due"), "{e}");
 }
 
 /// Pay the voorschottermijn of the month of the first of `year`-`month`: the
@@ -501,7 +557,7 @@ fn the_demo_toekenning_sets_off_the_paid_termijnen() {
                     given.insert(
                         "datum_vaststelling_aanslag".to_string(),
                         regelrecht_cel::Input {
-                            value: json!(null),
+                            value: json!("2026-06-01"),
                             provenance: json!({"source": "dossier"}),
                         },
                     );
@@ -522,8 +578,10 @@ fn the_demo_toekenning_sets_off_the_paid_termijnen() {
             nog - amount(&toekenning, "terug_te_vorderen_na_verrekening"),
             toegekend - paid
         );
-        // Awir 19 lid 2: no aanslag, so at the latest 31 December 2026.
-        assert_eq!(toekenning.fields["uiterste_toekenningsdatum"], "2026-12-31");
+        // Awir 19 lid 1: within six months of the aanslag. (Without one the
+        // policy gives the toekenning no day, so it is not taken; see
+        // `the_toekenning_waits_for_its_day_where_the_voorschot_does_not`.)
+        assert_eq!(toekenning.fields["uiterste_toekenningsdatum"], "2026-12-01");
         // The termijnen still open are not paid.
         let e = cell
             .execute(
@@ -1867,8 +1925,9 @@ fn an_application_holds_for_the_next_berekeningsjaar() {
         .unwrap_err();
     assert!(e.to_string().contains("say which"), "{e}");
 
-    // The next toekenning concerns 2026; its day is the aanslag over 2026,
-    // which the dossier gives, not the policy.
+    // The next toekenning concerns 2026; its day is the day of the aanslag
+    // over 2026, which the policy gives once the inkomensgegeven is there:
+    // not yet.
     let due = cell
         .due_decision(
             &service,
@@ -1896,6 +1955,24 @@ fn an_application_holds_for_the_next_berekeningsjaar() {
         )
         .unwrap_err();
     assert!(matches!(e, Error::Refused(_)), "{e}");
+    assert!(
+        e.to_string().contains("cannot concern an earlier period"),
+        "{e}"
+    );
+    // Nor is the toekenning over 2026 taken before its day: the policy
+    // gives none yet, so it is not due (a later year answers no application
+    // of its own).
+    let e = cell
+        .decide(
+            &service,
+            "zorgtoeslag_toegekend",
+            on_application(),
+            BTreeMap::new(),
+            at("2026-05-01T14:00:00+02:00"),
+        )
+        .unwrap_err();
+    assert!(matches!(e, Error::Refused(_)), "{e}");
+    assert!(e.to_string().contains("not due"), "{e}");
 }
 
 /// The voorschot over a year granted in December of that year is paid in
@@ -2705,4 +2782,163 @@ fn a_small_difference_is_not_recovered() {
         )
         .unwrap();
     assert_eq!(due.day, None);
+}
+
+/// A refusal is a decision too (Awb 1:3): the toekenning over a year for
+/// which the aanslag leaves no right to zorgtoeslag is recorded with that
+/// outcome, and the next decision of the event concerns the year after.
+/// Without it the year would stay undecided, and no later year would come.
+#[test]
+fn a_refusal_is_recorded_and_the_next_year_follows() {
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    register_aanslagen(&mut service, &[(2025, "2026-04-15", 2_000_000)]);
+    let (mut toeslagen, application, _, paid) = paid_voorschot(&mut service, data.path());
+    let mut belastingdienst = belastingdienst(&service, data.path(), "2025-01-06");
+    aanslag(
+        &service,
+        &mut belastingdienst,
+        &mut toeslagen,
+        2025,
+        "2026-04-15T09:00:00+02:00",
+    );
+    // Savings above the vermogensgrens (Zorgtoeslagwet art. 3 lid 1): no
+    // right to zorgtoeslag over 2025.
+    for source in ["DJI", "RvIG", "BELASTINGDIENST", "RVZ"] {
+        service.remove_data_source(source);
+    }
+    register_with(&mut service, 79547, 50_000_000);
+    let toekenning = toeslagen
+        .decide(
+            &service,
+            "zorgtoeslag_toegekend",
+            BTreeMap::from([("on_application".to_string(), application.id.clone())]),
+            BTreeMap::new(),
+            at("2026-04-15T10:00:00+02:00"),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(toekenning.fields["voldoet_aan_voorwaarden"], false);
+    assert_eq!(toekenning.period, Some(year(2025)));
+    assert_eq!(amount(&toekenning, "toegekende_tegemoetkoming"), 0);
+    assert_eq!(amount(&toekenning, "terug_te_vorderen"), paid);
+    let due = toeslagen
+        .due_decision(
+            &service,
+            "zorgtoeslag_toegekend",
+            &application.id,
+            at("2026-04-16T09:00:00+02:00"),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(due.period, Some(year(2026)));
+    // What the voorschot paid is recovered by its own decision.
+    let due = toeslagen
+        .due_decision(
+            &service,
+            "terugvordering_vastgesteld",
+            &application.id,
+            at("2026-04-16T09:00:00+02:00"),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(due.period, Some(year(2025)));
+    assert_eq!(due.day, Some("2026-04-15".parse().unwrap()));
+}
+
+/// The period a decision concerns is given by the cell (the year the
+/// application asks for, first), with that as its provenance; a period the
+/// caller gives that is no whole number is refused before the case is read.
+#[test]
+fn the_cell_gives_the_period_and_refuses_one_that_is_no_year() {
+    let data = tempfile::tempdir().unwrap();
+    let mut service = regulations();
+    let (mut cell, application, voorschot) = with_voorschot(
+        &mut service,
+        data.path(),
+        "2025-01-02T10:00:00+01:00",
+        "2025-01-02T10:30:00+01:00",
+        79547,
+    );
+    assert_eq!(voorschot.period, Some(year(2025)));
+    assert_eq!(
+        voorschot.inputs["berekeningsjaar"],
+        json!({"value": 2025, "provenance": {"source": "period"}})
+    );
+    let inputs = cell
+        .decision_inputs(
+            &service,
+            "voorschot_verleend",
+            &application.id,
+            at("2025-11-01T09:00:00+01:00"),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(inputs["berekeningsjaar"].value, 2026);
+    assert_eq!(inputs["berekeningsjaar"].provenance["source"], "period");
+    let e = cell
+        .decide(
+            &service,
+            "voorschot_verleend",
+            BTreeMap::from([("on_application".to_string(), application.id.clone())]),
+            BTreeMap::from([(
+                "berekeningsjaar".to_string(),
+                Input {
+                    value: json!("2026x"),
+                    provenance: json!({"source": "caller"}),
+                },
+            )]),
+            at("2025-11-01T09:00:00+01:00"),
+        )
+        .unwrap_err();
+    assert!(matches!(e, Error::Refused(_)), "{e}");
+    assert!(e.to_string().contains("not as a whole number"), "{e}");
+}
+
+/// A receipt has no case to read a lexostatus for (a lexostatus reads one
+/// case, by its root): an event recorded on receipt that reads one is an
+/// error in the configuration, not a reading of nothing.
+#[test]
+fn a_receipt_cannot_read_a_lexostatus() {
+    let mut service = regulations();
+    register_bank(&mut service, false);
+    let file = |name: &str| std::fs::read_to_string(demo().join(name)).unwrap();
+    let overboekingen = file("cells/bank/streams/overboekingen.yaml").replace(
+        "    establishes: fictieve_bankvoorwaarden#1\n",
+        "    establishes: fictieve_bankvoorwaarden#1\n    reads: [rekening]\n",
+    );
+    let config = CellConfig::from_yaml(
+        &file("cells/bank/cell.yaml").replace(
+            "streams:\n",
+            "lexostatuses: lexostatuses.yaml\nstreams:\n",
+        ),
+        &[
+            overboekingen.as_str(),
+            file("cells/bank/streams/incasso.yaml").as_str(),
+        ],
+        Some(
+            "cell: bank\nlexostatus_definitions:\n  - name: rekening\n    inputs: [root]\n    reduction:\n      chronicle: rekeningen\n      filter: {root: $root}\n      pick: latest\n      derivations:\n        geboekt_op: {moment: effective_at}\n",
+        ),
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    let mut bank = Cell::in_memory(config, Vec::new(), &service, "2024-12-01".parse().unwrap())
+        .unwrap_or_else(|e| panic!("{e}"));
+    let e = bank
+        .receive(
+            &service,
+            BANK_TRANSFER,
+            BTreeMap::new(),
+            BTreeMap::from([
+                ("betaalkenmerk".to_string(), channel(json!("K-1"))),
+                ("rekeningnummer".to_string(), channel(json!(ACCOUNT))),
+                ("bedrag".to_string(), channel(json!(10000))),
+                ("uitvoerdatum".to_string(), channel(json!("2024-12-01"))),
+            ]),
+            at("2024-12-01T11:00:00+01:00"),
+            at("2024-12-01T11:00:00+01:00"),
+        )
+        .unwrap_err();
+    assert!(matches!(e, Error::Setup(_)), "{e}");
+    assert!(
+        e.to_string()
+            .contains("cannot read the lexostatus 'rekening'"),
+        "{e}"
+    );
+    assert_eq!(bank.grams().count(), 0);
 }

@@ -105,7 +105,10 @@ pub fn reduce<'c>(
             && event.is_none_or(|e| g.name == e)
             && stage.is_none_or(|s| g.stage.as_deref() == Some(s))
             && root.is_none_or(|r| chronicle.root_of(g) == r)
-            && period.is_none_or(|p| g.period.is_some_and(|gp| i64::from(gp.value) == p))
+            && period.is_none_or(|p| {
+                g.period
+                    .is_some_and(|gp| gp.unit == filter.period_unit && i64::from(gp.value) == p)
+            })
     };
     let picked: Vec<&Gram> = in_force(chronicle, as_of)?
         .into_iter()

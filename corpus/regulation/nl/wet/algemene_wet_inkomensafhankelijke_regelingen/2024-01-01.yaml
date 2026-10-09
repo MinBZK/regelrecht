@@ -1219,8 +1219,16 @@ articles:
       # het voorschot onbekend (RFC-036). Lid 4 (nihil bij onvoldoende
       # gegevens) is een oordeel van de Dienst Toeslagen en is niet
       # gemodelleerd: zonder schatting is het voorschot onbekend (RFC-036),
-      # niet nihil. Niet gemodelleerd: de termijn van 13 weken uit lid 1, en
-      # de leden 2, 3 en 5 tot en met 7.
+      # niet nihil.
+      # Het berekeningsjaar van het voorschot is het jaar waarvoor de aanvraag
+      # is gedaan, of een volgend jaar (art. 15 lid 5): de aanvraag geldt dan
+      # ook, en elk jaar volgt op dezelfde aanvraag een voorschot. Lid 2 zegt
+      # dat dat voorschot vóór de aanvang van het berekeningsjaar wordt
+      # verleend; op welke dag, zegt de wet niet en staat (gemarkeerd) in het
+      # fictieve uitvoeringsbeleid van de Dienst Toeslagen
+      # (fictief_beleid_termijnbedrag_voorschot art. 4). Niet gemodelleerd: de
+      # termijn van 13 weken uit lid 1, de toets dat de aanspraak het hele
+      # berekeningsjaar bestaat (lid 2), en de leden 3 en 5 tot en met 7.
       hooks:
         - hook_point: pre_actions
           applies_to:
@@ -1269,6 +1277,15 @@ articles:
               waarde: BELANGHEBBENDE
               grondslag: algemene_wet_inkomensafhankelijke_regelingen#15 lid 5
               rol: TIJDVAK
+          - name: aangevraagd_berekeningsjaar
+            type: number
+            required: false
+            description: >-
+              Het berekeningsjaar waarvoor de aanvraag is gedaan (art. 15 lid
+              1); lid 5 laat haar ook gelden voor de jaren daarna.
+            origin:
+              waarde: BELANGHEBBENDE
+              grondslag: algemene_wet_inkomensafhankelijke_regelingen#15 lid 1
           - name: datum_ontvangst
             type: date
             required: false
@@ -1303,9 +1320,9 @@ articles:
           - name: voorschot_wordt_verleend
             type: boolean
             description: >-
-              Lid 1: de aanvraag is ingediend vóór 1 april van het jaar volgend
-              op het berekeningsjaar, en de Dienst Toeslagen verleent een
-              voorschot.
+              Lid 1: de aanvraag geldt voor het berekeningsjaar (art. 15 lid 1
+              en 5) en is ingediend vóór 1 april van het jaar erna, en de
+              Dienst Toeslagen verleent een voorschot.
           - name: voorschotbedrag
             type: amount
             type_spec:
@@ -1315,17 +1332,28 @@ articles:
             value: $vermoedelijk_toetsingsinkomen
           - output: voorschot_wordt_verleend
             value:
-              operation: LESS_THAN
-              subject: $datum_ontvangst
-              value:
-                operation: DATE
-                year:
-                  operation: ADD
-                  values:
-                    - $berekeningsjaar
-                    - 1
-                month: 4
-                day: 1
+              operation: AND
+              conditions:
+                # Art. 15 lid 1 en 5: de aanvraag geldt voor dit jaar, het
+                # jaar waarvoor zij is gedaan of een jaar daarna. Dezelfde
+                # regel als de uitvoer aanvraag_geldt_voor_berekeningsjaar van
+                # art. 15, hier uitgeschreven: art. 16 haakt op de aanvraag van
+                # art. 15, en een bron naar art. 15 zou de engine dan als
+                # kringverwijzing zien.
+                - operation: GREATER_THAN_OR_EQUAL
+                  subject: $berekeningsjaar
+                  value: $aangevraagd_berekeningsjaar
+                - operation: LESS_THAN
+                  subject: $datum_ontvangst
+                  value:
+                    operation: DATE
+                    year:
+                      operation: ADD
+                      values:
+                        - $berekeningsjaar
+                        - 1
+                    month: 4
+                    day: 1
           - output: voorschotbedrag
             value:
               operation: IF
@@ -1463,11 +1491,12 @@ articles:
       # fase TOEKENNING van de procedure tegemoetkoming, zodat de toekenning
       # zegt tot wanneer zij had mogen duren. De Awir noemt geen toeslag.
       # - lid 1, eerste volzin: binnen zes maanden na de vaststelling van de
-      #   aanslag inkomstenbelasting. Eigen keuze: de datum van de laatste van
-      #   belang zijnde aanslag is een gegeven uit het dossier van de Dienst
-      #   Toeslagen. Is er geen aanslag, dan is die datum leeg (null) en geldt
-      #   lid 2; een datum die niemand doorgeeft, is onbekend (RFC-036), en
-      #   dan is de uiterste datum het ook.
+      #   aanslag inkomstenbelasting. De datum van de laatste van belang
+      #   zijnde aanslag is een temporeel kenmerk van het inkomensgegeven dat
+      #   de inspecteur verstrekt (AWR art. 21e lid 1): een gegeven uit de
+      #   basisregistratie inkomen. Is er geen aanslag, dan is die datum leeg
+      #   (null) en geldt lid 2; een datum die niemand doorgeeft, is onbekend
+      #   (RFC-036), en dan is de uiterste datum het ook.
       # - lid 2: is er geen aanslag, dan uiterlijk 31 december van het jaar
       #   volgend op het berekeningsjaar.
       # Niet gemodelleerd: lid 1, tweede en derde volzin (niet in Nederland
@@ -1503,8 +1532,9 @@ articles:
               De dag waarop de laatste van belang zijnde aanslag
               inkomstenbelasting over het berekeningsjaar is vastgesteld (lid 1).
             origin:
-              waarde: DOSSIER
-              grondslag: algemene_wet_inkomensafhankelijke_regelingen#19 lid 1
+              waarde: REGISTER
+              register: algemene_wet_inzake_rijksbelastingen
+              grondslag: algemene_wet_inzake_rijksbelastingen#21e lid 1
         output:
           - name: uiterste_toekenningsdatum
             type: date

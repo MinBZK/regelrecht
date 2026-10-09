@@ -298,7 +298,7 @@ export default {
   'zaak.chronicle.period': 'over {period}',
   'zaak.chronicle.deviates': 'Het besluit wijkt af van wat de wet berekent. De kroniek legt alleen vast wat de wet vestigt, dus dit besluit staat er niet in.',
   'zaak.chronicle.undecided': 'De wet kon nog niet beslissen, want er ontbreken gegevens. Dit besluit staat daarom niet in de kroniek.',
-  'zaak.chronicle.refusal': 'Het artikel vestigt een toekenning, geen weigering. Deze weigering staat daarom niet in de kroniek.',
+  'zaak.chronicle.refusal': 'De zaak eindigt met deze weigering. Daarom staat zij niet in de kroniek: op een besluit in de kroniek bouwen de volgende besluiten van de zaak voort, en die komen er hier niet.',
 
   // ---- portaal: kop en context --------------------------------------------
   'zaak.portaal.heading.business': 'Welke regelingen gelden voor {name}?',
@@ -976,6 +976,8 @@ export default {
   'sheet.application.payments.coming': 'Wat er nog komt',
   'zaak.moments.with_value': '{text}: {value}',
   'case.event.following_decision': 'Volgend besluit op dezelfde aanvraag genomen, over {period}.',
+  'case.event.following_refusal': 'Volgend besluit op dezelfde aanvraag genomen, over {period}: afgewezen.',
+  'zaak.chronicle.undecided_period': 'Over {period} kon de wet nog niet beslissen, omdat er gegevens ontbreken. Dat besluit staat daarom nog niet in de kroniek.',
   'zaak.moments.execution.period': 'Volgende uitvoering volgens de wet, over {period}',
   'zaak.moments.decision': 'Besluit over {period} op dezelfde aanvraag',
   'zaak.moments.decision.supporting': 'Op de dag die {provision} geeft',

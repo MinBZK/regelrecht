@@ -28,7 +28,8 @@ legal_basis:
 # herkenbaar.
 articles:
   # Het inkomensgegeven komt binnen over een kanaal (origin KANAAL): de
-  # inspecteur verstrekt het aan de afnemer (AWR art. 21e lid 1). De cel legt
+  # inspecteur verstrekt het aan de afnemer op zijn verzoek (AWR art. 21e
+  # lid 1); hier op een staand verzoek van Toeslagen (eigen keuze). De cel legt
   # het vast bij ontvangst (geen `executed_on`). Het kenmerk van de aanslag
   # identificeert het bericht (`identified_by`): hetzelfde inkomensgegeven
   # twee keer bezorgd, legt zij één keer vast.
@@ -39,9 +40,11 @@ articles:
       Dienst Toeslagen legt elk inkomensgegeven vast dat de inspecteur haar als
       afnemer verstrekt (artikel 21e, eerste lid, van de Algemene wet inzake
       rijksbelastingen), met de betrokkene, het kalenderjaar, de dag waarop de
-      aanslag is vastgesteld en het kenmerk van de aanslag. [Eigen keuze: de
-      Dienst Toeslagen vraagt het inkomensgegeven niet per geval op; de
-      inspecteur verstrekt het haar zodra de aanslag is vastgesteld.]
+      aanslag is vastgesteld en het kenmerk van de aanslag. [Eigen keuze: het
+      verzoek van artikel 21e, eerste lid, doet de Dienst Toeslagen eens, als
+      staand verzoek voor elke betrokkene en elk kalenderjaar, en niet per
+      geval; daarop verstrekt de inspecteur het inkomensgegeven zodra de
+      aanslag is vastgesteld.]
     machine_readable:
       execution:
         produces:
@@ -106,7 +109,8 @@ articles:
   # tegemoetkoming, zoals Awir 16 bij het voorschot de schatting neemt. Bij
   # het voorschot vuurt hij niet. Zonder inkomensgegeven (nog geen aanslag)
   # is het toetsingsinkomen onbekend (RFC-036), en neemt Toeslagen de
-  # toekenning niet (artikel 3).
+  # toekenning niet (artikel 3; een inkomensgegeven zonder aanslag, AWR art.
+  # 21 onder e, 2°, is niet gemodelleerd).
   - number: '2'
     url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel8
     text: >-
@@ -144,8 +148,17 @@ articles:
             value: $inkomensgegeven
 
   # De cel neemt de toekenning niet eerder dan op de dag die dit artikel
-  # geeft (`decided_on` van de stroom); de klok van de demo neemt haar op die
-  # dag.
+  # geeft (`decided_on` van de stroom), en voor een volgend berekeningsjaar
+  # zonder dag niet; de klok van de demo neemt haar op die dag.
+  #
+  # AANNAME, beperking: dit artikel kent alleen een toekenning na een
+  # aanslag (art. 19 lid 1 Awir). Art. 19 lid 2 (geen aanslag: uiterlijk 31
+  # december van het jaar erna) en het inkomensgegeven zonder aanslag (het
+  # belastbare loon, AWR art. 21 onder e, 2°) zijn niet gemodelleerd: de
+  # Belastingdienst-cel van de demo stelt alleen aanslagen vast. Wie over
+  # een jaar geen aanslag krijgt, krijgt dus geen toekenning over dat jaar;
+  # de cel geeft daarvoor geen dag. Open punt in de ontwerpnotitie
+  # (packages/cel/ONTWERP-proces-zorgtoeslag.md, par. 11).
   - number: '3'
     url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel19
     text: >-
@@ -155,7 +168,9 @@ articles:
       dat jaar is vastgesteld, zodra zij het inkomensgegeven daarover heeft
       ontvangen (binnen de zes maanden van artikel 19, eerste lid, van de
       Algemene wet inkomensafhankelijke regelingen). Zonder inkomensgegeven
-      geeft dit artikel geen dag.
+      geeft dit artikel geen dag. [Aanname: dit artikel regelt alleen de
+      toekenning na een aanslag; een toekenning zonder aanslag (artikel 19,
+      tweede lid, van die wet) kent het niet.]
     machine_readable:
       execution:
         parameters:

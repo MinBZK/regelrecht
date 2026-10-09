@@ -296,7 +296,7 @@ export default {
   'zaak.chronicle.period': 'for {period}',
   'zaak.chronicle.deviates': 'The decision departs from what the law computes. The chronicle only records what the law establishes, so this decision is not in it.',
   'zaak.chronicle.undecided': 'The law could not decide yet, because facts are missing. This decision is therefore not in the chronicle.',
-  'zaak.chronicle.refusal': 'The article establishes a grant, not a refusal. This refusal is therefore not in the chronicle.',
+  'zaak.chronicle.refusal': 'The case ends with this refusal. That is why it is not in the chronicle: the next decisions of the case build on a decision in the chronicle, and here there are none.',
 
   // ---- portal: heading and context ----------------------------------------
   'zaak.portaal.heading.business': 'Which schemes apply to {name}?',
@@ -955,6 +955,8 @@ export default {
   'sheet.application.payments.coming': 'Still to come',
   'zaak.moments.with_value': '{text}: {value}',
   'case.event.following_decision': 'Next decision on the same application taken, for {period}.',
+  'case.event.following_refusal': 'Next decision on the same application taken, for {period}: refused.',
+  'zaak.chronicle.undecided_period': 'For {period} the law could not decide yet, because facts are missing. That decision is therefore not in the chronicle yet.',
   'zaak.moments.execution.period': 'Next execution under the law, for {period}',
   'zaak.moments.decision': 'Decision for {period} on the same application',
   'zaak.moments.decision.supporting': 'On the day {provision} gives',

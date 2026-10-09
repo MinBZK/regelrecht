@@ -94,10 +94,13 @@ pub struct Event {
     /// list.
     #[serde(default, deserialize_with = "one_or_more")]
     pub reads: Vec<Read>,
-    /// For a decision on a submission: the article (`<regulation>#<article>`)
-    /// that gives the day the holder takes it, for the period it concerns
-    /// (see [`crate::Cell::due_decision`]). Its one date output is that day;
-    /// null is no day of its own.
+    /// The article (`<regulation>#<article>`) that gives the day the holder
+    /// takes the decision, for the period it concerns (see
+    /// [`crate::Cell::due_decision`], [`crate::Cell::due_ex_officio`]). Its
+    /// one date output is that day; null is no day yet, and then the
+    /// decision is not due, except the decision the application asks for,
+    /// for the period it asks for, which whoever answers the application
+    /// takes (see `Cell::check_due`).
     #[serde(default)]
     pub decided_on: Option<String>,
     /// For a decision on no submission (ex officio, such as the aanslag of
@@ -108,6 +111,21 @@ pub struct Event {
     /// choice). Refused when the law already names one.
     #[serde(default)]
     pub period: Option<crate::extension::PeriodParameter>,
+    /// For a decision on no submission (with `period`): the parameters that
+    /// say whom it concerns, such as the BSN of the aanslag. The cell takes
+    /// such a decision once per period per subject: two decisions with the
+    /// same values for these parameters and the same period are the same
+    /// decision, whatever else they were given. Required with `period`.
+    #[serde(default)]
+    pub subject: Vec<String>,
+    /// For a decision on no submission (with `period`): the first period the
+    /// holder decides over, for every subject. Without it, the cell starts
+    /// at the first decision about the subject, or, before the first, at the
+    /// period before the one of now (see [`crate::Cell::due_ex_officio`],
+    /// which asks nothing before it, and refuses more than
+    /// [`crate::cell::MAX_EX_OFFICIO_PERIODS`] periods before now).
+    #[serde(default)]
+    pub first_period: Option<i32>,
 }
 
 /// One source of the parameters of an event's case.
@@ -208,6 +226,14 @@ pub struct Filter {
     /// holds for several).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub period: Option<String>,
+    /// The unit of that period: a gram passes only if its period is of this
+    /// unit too. A calendar year unless the filter says otherwise.
+    #[serde(default = "year")]
+    pub period_unit: PeriodUnit,
+}
+
+fn year() -> PeriodUnit {
+    PeriodUnit::Year
 }
 
 impl Filter {

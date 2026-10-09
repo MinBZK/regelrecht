@@ -239,6 +239,19 @@ anders in de vertaling voor, dus er is ook geen eerdere keuze om op te leunen.
   (`Ambtshalve beslút oer {period}, sûnder oanfraach`): het is een
   bestuursrechtelijke term, en een Fries equivalent is niet gevonden.
 
+- **Een afgewezen volgend besluit** (`case.event.following_refusal`:
+  `… oer {period}: ôfwiisd.`) en het jaar waarover de wet nog niet kon
+  beslissen (`zaak.chronicle.undecided_period`: `Oer {period} koe de wet noch
+  net beslute, want der ûntbrekke gegevens.`) volgen de bestaande zinnen
+  (`case.event.refused_auto`, `zaak.chronicle.undecided`); of `oer {period}`
+  vooraan de zin natuurlijk Fries is, is niet nagegaan.
+
+- **Een geweigerd eerste besluit** (`zaak.chronicle.refusal`: `De saak
+  einiget mei dizze wegering. … bouwe de folgjende besluten fan de saak
+  fuort …`): of `einiget` en `fuortbouwe` (gescheiden als `bouwe … fuort`)
+  het gangbare Fries zijn, en `besluten` het meervoud van `beslút`, is niet
+  nagegaan.
+
 ## Hoe je een correctie doorvoert
 
 De schermteksten staan in `frontend-demo/src/i18n/fy.js`, één sleutel per regel.

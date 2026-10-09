@@ -424,6 +424,8 @@ function claimLawName(cl) {
             <nldd-banner v-if="selected.chronicleError" variant="warning" :text="t('zaak.chronicle.failed')" :supporting-text="selected.chronicleError"></nldd-banner>
             <nldd-banner v-if="selected.deliveryError" variant="warning" :text="t('zaak.chronicle.undelivered')" :supporting-text="selected.deliveryError"></nldd-banner>
             <nldd-banner v-if="selected.chronicleNoteKey" variant="neutral" :text="t(selected.chronicleNoteKey)"></nldd-banner>
+            <!-- Per jaar van een volgend besluit dat de wet nog niet kon nemen. -->
+            <nldd-banner v-for="(note, at) in selected.followingNotes ?? {}" :key="at" variant="neutral" :text="t(note.key, note.vars)"></nldd-banner>
             <!-- De feiten: elke gram van de zaak op het moment dat rechtens
                  telt, de aanvraag, de besluiten en elke betaalde termijn. -->
             <nldd-container gap="4">

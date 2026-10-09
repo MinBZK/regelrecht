@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applicationValues, cellsOfService, eventsForLaw, gramsOfCase, momentOn, provisionLabel, provisionTarget, fieldText } from './chronolex.js';
+import { applicationValues, cellsOfService, eventsForLaw, gramsOfCase, momentOn, provisionLabel, provisionTarget, externalArticleUrl, fieldText } from './chronolex.js';
 
 const cell = {
   id: 'toeslagen',
@@ -158,8 +158,29 @@ describe('waar een bepaling in de demo staat', () => {
     const doc = { url: 'https://wetten.overheid.nl/BWBR0018472/2025-01-01', articles: [{ number: '15' }] };
     const withDoc = { lawById: (id) => (id === 'awir' ? { id, doc } : null) };
     expect(provisionTarget(withDoc, 'awir#15 lid 1')).toEqual({ lawId: 'awir', article: '15' });
-    expect(provisionTarget(withDoc, 'awir#13')).toEqual({ lawId: 'awir', article: '13', external: 'https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel13' });
+    expect(provisionTarget(withDoc, 'awir#13')).toEqual({ lawId: 'awir', article: '13', external: 'https://wetten.overheid.nl/jci1.3:c:BWBR0018472&artikel=13' });
     const noUrl = { lawById: () => ({ doc: { articles: [] } }) };
     expect(provisionTarget(noUrl, 'awir#13')).toEqual({ lawId: 'awir', article: null });
+  });
+  it('laat een anker in de url van de wet weg en neemt bwb_id als die er is', () => {
+    const anchored = { url: 'https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel19', articles: [{ number: '19' }] };
+    expect(externalArticleUrl(anchored, '13')).toBe('https://wetten.overheid.nl/jci1.3:c:BWBR0018472&artikel=13');
+    expect(externalArticleUrl({ bwb_id: 'BWBR0002320', url: 'https://example.org' }, '21e', '2025-06-01')).toBe(
+      'https://wetten.overheid.nl/jci1.3:c:BWBR0002320&artikel=21e&z=2025-06-01&g=2025-06-01',
+    );
+    expect(externalArticleUrl({ url: 'https://example.org/wet' }, '1')).toBeNull();
+  });
+  it('neemt de versie van de wet die op de peildatum geldt, en de tekst van die dag', () => {
+    const v2025 = { id: 'awir', valid_from: '2025-01-01', doc: { bwb_id: 'BWBR0018472', valid_from: '2025-01-01', articles: [{ number: '15' }] } };
+    const v2026 = { id: 'awir', valid_from: '2026-01-01', doc: { bwb_id: 'BWBR0018472', valid_from: '2026-01-01', articles: [{ number: '15' }, { number: '13' }] } };
+    const versions = { lawById: () => v2026, lawOn: (id, date) => (date < '2026-01-01' ? v2025 : v2026) };
+    // In 2025 staat art. 13 niet in de demo: naar wetten.overheid.nl, de tekst van die dag.
+    expect(provisionTarget(versions, 'awir#13', '2025-07-01')).toEqual({
+      lawId: 'awir',
+      article: '13',
+      external: 'https://wetten.overheid.nl/jci1.3:c:BWBR0018472&artikel=13&z=2025-07-01&g=2025-07-01',
+    });
+    // In 2026 wel: binnen de demo.
+    expect(provisionTarget(versions, 'awir#13', '2026-02-01')).toEqual({ lawId: 'awir', article: '13' });
   });
 });

@@ -5,7 +5,8 @@
 # aanslagbiljet vermeldt (art. 21c lid 4). Op welke dag, zegt de (fictieve)
 # planning van de inspecteur (`decided_on` in de stroom). Over een kanaal
 # (`channels` in demo-config.yaml) komt het inkomensgegeven bij de Dienst
-# Toeslagen (art. 21e lid 1).
+# Toeslagen (art. 21e lid 1: op haar verzoek; eigen keuze: een staand verzoek
+# van Toeslagen, zodat de inspecteur het verstrekt zodra de aanslag er is).
 #
 # De demo laat deze cel alleen besluiten over wie zij in een kroniek volgt
 # (`ex_officio` in demo-config.yaml): de rest van de demo, en elke andere wet

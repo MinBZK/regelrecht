@@ -122,19 +122,37 @@ export function provisionLabel(corpus, reference) {
  *
  * Een artikel dat de wet in de demo niet bevat (het demo-corpus neemt van
  * een wet alleen de artikelen op die het rekent), wijst naar dat artikel op
- * wetten.overheid.nl (`external`, uit de `url` van de wet). Zonder die url
+ * wetten.overheid.nl (`external`, zie `externalArticleUrl`). Zonder BWB-id
  * opent de wet zelf. Zo landt een link nooit op een wet waarin het artikel
  * dat hij noemt niet te vinden is.
+ *
+ * Met `date` (JJJJ-MM-DD, de peildatum) is het de versie van de wet die op
+ * die dag geldt (`corpus.lawOn`), en wijst de externe link naar de tekst van
+ * die dag; zonder, de laatste versie.
  */
-export function provisionTarget(corpus, reference) {
+export function provisionTarget(corpus, reference, date = null) {
   const [lawId, rest = ''] = String(reference ?? '').split('#');
-  const law = lawId ? corpus?.lawById?.(lawId) : null;
+  const law = !lawId ? null : date && corpus?.lawOn ? corpus.lawOn(lawId, date) : corpus?.lawById?.(lawId);
   if (!law) return null;
   const article = rest.trim().split(/\s+/)[0] || null;
   const articles = law.doc?.articles;
   if (!article || !articles || articles.some((a) => String(a.number) === article)) return { lawId, article };
-  const url = law.doc?.url;
-  return url ? { lawId, article, external: `${url}#Artikel${article}` } : { lawId, article: null };
+  const external = externalArticleUrl(law.doc, article, date ?? law.doc?.valid_from ?? null);
+  return external ? { lawId, article, external } : { lawId, article: null };
+}
+
+/**
+ * Het artikel `article` van de wet `doc` op wetten.overheid.nl, als
+ * juriconnect-verwijzing (`jci1.3:c:<BWB-id>&artikel=<n>`), zoals de engine
+ * die ook in haar trace geeft. Met `date` de tekst die op die dag gold
+ * (`z` en `g`). Het BWB-id komt uit `bwb_id`, of anders uit de `url` van de
+ * wet (een anker of datum daarin telt niet). `null` zonder BWB-id.
+ */
+export function externalArticleUrl(doc, article, date = null) {
+  const bwb = doc?.bwb_id ?? String(doc?.url ?? '').split('#')[0].match(/BWBR\d+/)?.[0];
+  if (!bwb || !article) return null;
+  const at = date ? `&z=${date}&g=${date}` : '';
+  return `https://wetten.overheid.nl/jci1.3:c:${bwb}&artikel=${article}${at}`;
 }
 
 /**

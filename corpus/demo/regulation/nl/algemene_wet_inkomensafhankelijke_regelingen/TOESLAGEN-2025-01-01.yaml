@@ -713,11 +713,17 @@ articles:
       # fase TOEKENNING van de procedure tegemoetkoming, zodat de toekenning
       # zegt tot wanneer zij had mogen duren. De Awir noemt geen toeslag.
       # - lid 1, eerste volzin: binnen zes maanden na de vaststelling van de
-      #   aanslag inkomstenbelasting. Eigen keuze: de datum van de laatste van
-      #   belang zijnde aanslag is een gegeven uit het dossier van de Dienst
-      #   Toeslagen. Is er geen aanslag, dan is die datum leeg (null) en geldt
-      #   lid 2; een datum die niemand doorgeeft, is onbekend (RFC-036), en
-      #   dan is de uiterste datum het ook.
+      #   aanslag inkomstenbelasting. De datum van de laatste van belang
+      #   zijnde aanslag is een temporeel kenmerk van het inkomensgegeven dat
+      #   de inspecteur verstrekt (AWR art. 21e lid 1): een gegeven uit de
+      #   basisregistratie inkomen. In de demo leest de Dienst Toeslagen haar
+      #   uit het inkomensgegeven dat zij ontving
+      #   (fictief_beleid_kroniek_toeslagen art. 5). Een datum die niemand doorgeeft, is onbekend
+      #   (RFC-036), en dan is de uiterste datum het ook. Leeg (null, geen
+      #   aanslag) geeft lid 2; maar zonder aanslag geeft het fictieve beleid
+      #   van Toeslagen (fictief_beleid_toekenning_toeslagen art. 3) nog geen
+      #   dag om toe te kennen, dus in de demo komt lid 2 niet voor (open
+      #   punt: een inkomensgegeven zonder aanslag, AWR art. 21 onder e, 2°).
       # - lid 2: is er geen aanslag, dan uiterlijk 31 december van het jaar
       #   volgend op het berekeningsjaar.
       # Niet gemodelleerd: lid 1, tweede en derde volzin (niet in Nederland
@@ -753,8 +759,9 @@ articles:
               De dag waarop de laatste van belang zijnde aanslag
               inkomstenbelasting over het berekeningsjaar is vastgesteld (lid 1).
             origin:
-              waarde: DOSSIER
-              grondslag: algemene_wet_inkomensafhankelijke_regelingen#19 lid 1
+              waarde: REGISTER
+              register: algemene_wet_inzake_rijksbelastingen
+              grondslag: algemene_wet_inzake_rijksbelastingen#21e lid 1
         output:
           - name: uiterste_toekenningsdatum
             type: date

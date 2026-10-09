@@ -406,7 +406,29 @@ pub fn derive(service: &LawExecutionService, event: &Event, day: NaiveDate) -> R
                         period.parameter, event.name
                     )));
                 }
+                // Whom it concerns: without it, the cell cannot tell a
+                // second decision about the same subject from a first about
+                // another.
+                if event.subject.is_empty() {
+                    return Err(setup(format!(
+                        "{establishes}: '{}' is taken on no submission; the stream names the parameters that say whom it concerns (`subject`)",
+                        event.name
+                    )));
+                }
+                for name in &event.subject {
+                    if name == &period.parameter || !shape.parameters.contains(name) {
+                        return Err(setup(format!(
+                            "{establishes}: the stream says '{name}' says whom '{}' concerns, and the article declares no such parameter besides its period",
+                            event.name
+                        )));
+                    }
+                }
                 shape.period = Some(period.clone());
+            } else if !event.subject.is_empty() || event.first_period.is_some() {
+                return Err(setup(format!(
+                    "{establishes}: '{}' names a `subject` or a `first_period`, which only a decision on no submission (with `period` in its stream) has",
+                    event.name
+                )));
             }
             // A decision taken at a stage of its procedure is the article
             // with the hooks that fire at that stage (a general law that hooks
@@ -676,6 +698,78 @@ fn execute_submission(
     }
 }
 
+/// Whether a decision of the article `reference`, of `legal_character`,
+/// is one an applicant asks for: its procedure has the stage in which the
+/// default procedure for that legal character receives the submission (its
+/// first stage, Awb: AANVRAAG), by name or as what the stage `is`. A
+/// decision without a procedure of its own is. The terugvordering of Awir
+/// 26, in its own procedure without such a stage, is not: it follows
+/// another decision on the same case.
+pub(crate) fn asked_for(
+    service: &LawExecutionService,
+    reference: &str,
+    legal_character: &str,
+    day: NaiveDate,
+) -> Result<bool> {
+    Ok(answered_by(service, reference, legal_character, day)? != Answer::NotAsked)
+}
+
+/// Which decision of the article `reference` answers the application.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Answer {
+    /// The applicant does not ask for it (see [`asked_for`]).
+    NotAsked,
+    /// The article has no procedure of its own, or its procedure names no
+    /// decision stage after the submission: its decision answers it.
+    Any,
+    /// The decision at this stage: the first decision stage (`is: BESLUIT`,
+    /// or BESLUIT itself) after the stage of the submission. The Awir
+    /// decides on the application first with the voorschot (VOORSCHOT); the
+    /// toekenning (TOEKENNING) is a later decision of the same article on
+    /// the same application, and is not what the application is answered
+    /// with.
+    Stage(String),
+}
+
+/// [`Answer`] for the article `reference`, of `legal_character`, in the
+/// law on `day`. A procedure that receives the submission but names no
+/// decision stage after it does not say which decision answers it: any
+/// does.
+pub(crate) fn answered_by(
+    service: &LawExecutionService,
+    reference: &str,
+    legal_character: &str,
+    day: NaiveDate,
+) -> Result<Answer> {
+    let (law_id, _) = split_reference(reference)?;
+    let (_, article) = article_on(service, reference, day)?;
+    let procedure = service
+        .procedure_of(law_id, article, Some(day))
+        .map_err(|e| setup(format!("{reference}: {e}")))?;
+    let Some(procedure) = procedure else {
+        return Ok(Answer::Any);
+    };
+    let submission = service
+        .resolver()
+        .find_procedure_reported_at(legal_character, None, Some(day))
+        .ok()
+        .and_then(|p| p.stages.first())
+        .map(|s| s.name.clone())
+        .ok_or_else(|| {
+            setup(format!(
+                "{reference}: no default procedure for {legal_character} names the stage of a submission (its first stage)"
+            ))
+        })?;
+    let is = |s: &Stage, name: &str| s.name == name || s.is.as_deref() == Some(name);
+    let Some(at) = procedure.stages.iter().position(|s| is(s, &submission)) else {
+        return Ok(Answer::NotAsked);
+    };
+    Ok(procedure.stages[at + 1..]
+        .iter()
+        .find(|s| is(s, "BESLUIT"))
+        .map_or(Answer::Any, |s| Answer::Stage(s.name.clone())))
+}
+
 /// The fields of a submission: per article of the model, what its chronolex
 /// entries contribute; then the decision requested filled in.
 fn submission_fields(
@@ -688,16 +782,11 @@ fn submission_fields(
     // general law would apply twice. A decision on the submission whose
     // procedure has no stage for it (the terugvordering of Awir 26, in its
     // own procedure without an AANVRAAG) is not one the applicant asks for:
-    // it follows another decision on the same case.
-    let kind = shape.subtype.as_deref().unwrap_or_default().to_uppercase();
+    // it follows another decision on the same case (see [`asked_for`]).
     let mut requested: Vec<&regelrecht_engine::DecisionOn> = Vec::new();
     for decision in &model.decisions {
         let reference = format!("{}#{}", decision.law_id, decision.article_number);
-        let (_, article) = article_on(service, &reference, day)?;
-        let procedure = service
-            .procedure_of(&decision.law_id, article, Some(day))
-            .map_err(|e| setup(format!("{reference}: {e}")))?;
-        if procedure.is_none_or(|p| p.stages.iter().any(|s| s.name == kind)) {
+        if asked_for(service, &reference, &decision.legal_character, day)? {
             requested.push(decision);
         }
     }
@@ -705,7 +794,7 @@ fn submission_fields(
         [one] => one,
         [] => {
             return Err(setup(format!(
-                "{}: no decision is taken on this submission (produces.decides_on)",
+                "{}: no decision is taken on this submission (produces.decides_on) whose procedure has a stage for the submission (the first stage of the default procedure, by name or `is`)",
                 shape.establishes
             )))
         }
@@ -971,6 +1060,8 @@ articles:
             reads: Vec::new(),
             decided_on: None,
             period: None,
+            subject: Vec::new(),
+            first_period: None,
         }
     }
 
@@ -1038,6 +1129,8 @@ articles:
             reads: Vec::new(),
             decided_on: None,
             period: None,
+            subject: Vec::new(),
+            first_period: None,
         }
     }
 
@@ -1135,6 +1228,8 @@ articles:
             reads: Vec::new(),
             decided_on: None,
             period: None,
+            subject: Vec::new(),
+            first_period: None,
         }
     }
 

@@ -3,11 +3,12 @@
 # de wet vraagt een gegeven (het burgerservicenummer, de dag van ontvangst);
 # dat Toeslagen het in een kroniek bewaart, is haar zaak.
 #
-# Het voorschot, de schatting van het inkomen en de achterstand leest de cel
-# al terug met artikelen in het beleid van Toeslagen
-# (fictief_beleid_kroniek_toeslagen, `registers:` in cell.yaml), in dezelfde
-# regeltaal als de wet. De aanvraag en wat er is uitbetaald volgen later; tot
-# dan staan ze hier.
+# Het voorschot, de schatting van het inkomen, de achterstand, het
+# ontvangen inkomensgegeven, de toekenning, de nabetaling, de terugvordering
+# en de incasso leest de cel al terug met artikelen in het beleid van
+# Toeslagen (fictief_beleid_kroniek_toeslagen art. 1 tot en met 8,
+# `registers:` in cell.yaml), in dezelfde regeltaal als de wet. De aanvraag
+# en wat er is uitbetaald volgen later; tot dan staan ze hier.
 cell: toeslagen
 lexostatus_definitions:
   # De aanvraag, zoals Toeslagen haar ontving. `root` is het id van het gram

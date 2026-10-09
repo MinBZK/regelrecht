@@ -167,7 +167,7 @@ impl WasmCell {
 
     /// The gram `decide` would record at `now`, without recording it: what
     /// the law decides, to look before deciding (or ahead, to a moment that
-    /// has yet to come).
+    /// has yet to come), also before its day. See `Cell::preview_decision`.
     #[wasm_bindgen(js_name = previewDecision)]
     pub fn preview_decision(
         &self,

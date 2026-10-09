@@ -33,6 +33,7 @@ import { readingInputs, readingPeriods, readingRows } from '../data/lexostatusVi
 import { momentView } from '../data/chronicleView.js';
 import { deliver, deliveryErrors, redeliver } from '../data/channels.js';
 import { consequencesOf as consequencesFrom } from '../data/consequences.js';
+import { caseOfSubject, exOfficioToTake, followingDue, followingOutcome, isClockDecision, withPeriod } from '../data/following.js';
 import { activeLocale, t } from '../i18n/index.js';
 
 // v3: `executedThrough` houdt per uitvoering bij wat per periode (een
@@ -464,9 +465,16 @@ function previewAt(c, stage) {
  *
  * Eerst zonder vast te leggen, in dezelfde fase: dat is het oordeel van de
  * wet waartegen het besluit wordt gelegd. De kroniek zegt niets anders dan
- * het besluit. Kan de wet nog niet beslissen, wijkt de behandelaar af van wat
- * de wet in die fase berekent, of is het besluit een weigering waar de wet
- * een toekenning vestigt, dan komt er geen gram; de zaak zegt waarom.
+ * het besluit. Kan de wet nog niet beslissen, of wijkt de behandelaar af van
+ * wat de wet in die fase berekent, dan komt er geen gram; de zaak zegt
+ * waarom. Ook een weigering is een besluit (Awb 1:3) en komt in de kroniek,
+ * zodra de zaak er al een besluit heeft (de toekenning na het voorschot: de
+ * terugvordering van wat er is betaald volgt erop), zoals `decideFollowing`
+ * de volgende besluiten vastlegt. Weigert het eerste besluit op de aanvraag,
+ * dan laat de demo de zaak ermee eindigen en legt het niet vast: op een
+ * besluit in de kroniek bouwt de cel de volgende besluiten van de zaak (de
+ * termijnen, het besluit over het jaar erna), en die horen niet bij een zaak
+ * die eindigt.
  */
 function recordDecision(c, stage) {
   if (!c.applicationGramId) return;
@@ -486,7 +494,8 @@ function recordDecision(c, stage) {
       c.chronicleNoteKey = 'zaak.chronicle.deviates';
       return;
     }
-    if (!c.approved && shape.decision_type === 'TOEKENNING') {
+    // Het eerste besluit weigert: de zaak eindigt ermee (zie hierboven).
+    if (!c.approved && shape.decision_type === 'TOEKENNING' && !Object.keys(c.decisionGrams ?? {}).length) {
       c.chronicleNoteKey = 'zaak.chronicle.refusal';
       return;
     }
@@ -687,9 +696,13 @@ function dueDecision(c) {
     const now = nowMoment();
     // Geeft het beleid van de houder de dag van dit besluit (`decided_on`:
     // de toekenning op de dag van de aanslag, zodra het inkomensgegeven er
-    // is), dan is dat zijn moment.
+    // is), dan is dat zijn moment. Zonder die dag is het er niet: de cel
+    // weigert zo'n besluit dan (alleen het besluit dat de aanvraag
+    // beantwoordt neemt zij zonder dag, en dat neemt de levensloop bij de
+    // aanvraag, niet de klok).
     const day = chrono.wasmCell.dueDecision(engine.value, found.event, c.applicationGramId, now).day ?? null;
     if (day) return day <= state.referenceDate ? found : null;
+    if (chrono.decisions.find((d) => d.name === found.event)?.decided_on) return null;
     const { inputs, dates } = dossierInputs(chrono.wasmCell, found.event, c.applicationGramId, now);
     // Zonder datum uit het dossier: de vaste datum die de wet het besluit
     // geeft, uit twee voorbeelden in verschillende maanden (`fixedDates`).
@@ -743,14 +756,15 @@ function clockDecisionsOf(chrono) {
   const out = [];
   for (const e of chrono.cell.events) {
     if (own.has(e.name) || !e.decided_on) continue;
+    // Een gebeurtenis waarvan de cel de vorm niet kan afleiden, neemt de
+    // klok niet; de fout komt bij het besluit zelf naar boven.
     let shape;
     try {
       shape = chrono.wasmCell.shape(engine.value, e.name, state.referenceDate);
     } catch {
       continue;
     }
-    const onApplication = Object.values(shape.refers_to ?? {}).some((r) => r.required && r.to === chrono.application.establishes);
-    if (shape.type === 'decretogram' && onApplication) out.push(e);
+    if (isClockDecision(e, shape, chrono.application.establishes, own)) out.push(e);
   }
   return out;
 }
@@ -759,9 +773,12 @@ function clockDecisionsOf(chrono) {
  * Neem de volgende besluiten van de zaak waarvan het moment er is: op de dag
  * die het beleid geeft, of als elke datum die het dossier ervoor geeft is
  * geweest. De demo neemt ze zoals de wet ze neemt, zonder behandelaar en
- * zonder eigen bekendmaking: alleen als de wet het besluit geeft (een
- * voorschot of toekenning, niet onbekend en geen weigering). Daarna legt de
- * cel vast wat er op die dag uit voortkomt.
+ * zonder eigen bekendmaking, met de uitkomst die de wet geeft: ook een
+ * afwijzing is een besluit (Awb 1:3) en komt in de kroniek, zodat het jaar
+ * beslist is en het volgende volgt (`followingOutcome`). Kan de wet nog niet
+ * beslissen, dan komt er geen gram, en zegt de zaak over welk jaar
+ * (`followingNotes`, per periode). Daarna legt de cel vast wat er op die dag
+ * uit voortkomt.
  */
 function decideFollowing(c) {
   const chrono = c.applicationGramId ? chronolexFor(corpus.value?.lawById(c.lawId)) : null;
@@ -776,21 +793,27 @@ function decideFollowing(c) {
     for (let round = 0; round < 10; round += 1) {
       let took = false;
       for (const f of followingDecisionsOf(c, chrono, now)) {
-        const due = f.day ? f.day <= today : decisionDue(f.dates, today);
-        if (!due) continue;
+        if (!followingDue(f, today)) continue;
         const shape = chrono.wasmCell.shape(engine.value, f.event, today);
         const refersTo = applicationReference(f.event, shape, c);
         // Het besluit betreft de periode die de cel gaf.
-        const inputs = shape.period && f.period ? { ...f.inputs, [shape.period.parameter]: { value: f.period.value, provenance: { source: 'period' } } } : f.inputs;
+        const inputs = withPeriod(f.inputs, shape.period?.parameter, f.period);
         const preview = chrono.wasmCell.previewDecision(engine.value, f.event, refersTo, now, inputs);
-        const verdict = verdictOf(preview.fields);
-        if (verdict === 'unknown' || verdict === false) {
-          c.chronicleNoteKey = verdict === 'unknown' ? 'zaak.chronicle.undecided' : 'zaak.chronicle.refusal';
+        const outcome = followingOutcome(verdictOf(preview.fields));
+        const period = f.period?.value ?? '';
+        if (outcome === 'undecided') {
+          c.followingNotes = { ...(c.followingNotes ?? {}), [`${f.event}:${period}`]: { key: 'zaak.chronicle.undecided_period', vars: { period } } };
           continue;
         }
         const gram = chrono.wasmCell.decide(engine.value, f.event, refersTo, now, inputs);
         transport(chrono.cell.id, gram, now, c.id);
-        c.events.push({ at: now, type: 'DECIDED', approved: true, key: 'case.event.following_decision', vars: { period: f.period?.value ?? '' } });
+        if (c.followingNotes) {
+          const rest = { ...c.followingNotes };
+          delete rest[`${f.event}:${period}`];
+          c.followingNotes = rest;
+        }
+        const granted = outcome === 'grant';
+        c.events.push({ at: now, type: 'DECIDED', approved: granted, key: granted ? 'case.event.following_decision' : 'case.event.following_refusal', vars: { period } });
         decided = true;
         took = true;
         break;
@@ -972,11 +995,10 @@ function decideExOfficio() {
       for (const c of state.cases) if (c.applicationGramId && exOfficioSubjects().includes(c.bsn)) c.chronicleError = error;
       return;
     }
-    for (const d of due) {
-      if (!d.day || d.day > today || !d.period || !d.periodParameter) continue;
-      const caseOf = state.cases.find((c) => c.bsn === d.bsn && c.applicationGramId);
+    for (const d of exOfficioToTake(due, today)) {
+      const caseOf = caseOfSubject(state.cases, d.bsn, statusOf);
       try {
-        const inputs = { ...d.subject, [d.periodParameter]: { value: d.period.value, provenance: { source: 'period' } } };
+        const inputs = withPeriod(d.subject, d.periodParameter, d.period);
         const gram = cells.value[d.cell].decide(engine.value, d.event, {}, now, inputs);
         transport(d.cell, gram, now, caseOf?.id ?? null);
         decided = true;
@@ -1715,6 +1737,7 @@ function resubmitCase(caseId, evaluation, params = personaParams()) {
   c.dueStage = null;
   c.chronicleNoteKey = null;
   c.chronicleError = null;
+  c.followingNotes = null;
   const lawEntry = corpus.value?.lawById(c.lawId);
   if (lawEntry) recordApplication(c, lawEntry, params);
   const opnieuw = isoDate(nowMoment());

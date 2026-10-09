@@ -221,6 +221,40 @@ describe('a message that is not for every article it is offered to', () => {
     expect(undelivered[0].error).toContain('Geen ontvanger');
     const again = redeliver(undelivered, channels, () => answer, receive);
     expect(again.undelivered).toHaveLength(1);
+    expect(again.undelivered[0].missed).toEqual(channels.map(channelKey));
+  });
+
+  it('is offered again over every channel it missed, and arrives where the second one takes it', () => {
+    const { undelivered } = deliver(answer, 'bank', channels, () => {
+      throw notAddressed();
+    });
+    expect(undelivered).toHaveLength(1);
+    expect(undelivered[0].missed).toEqual(channels.map(channelKey));
+    const asked = [];
+    const later = (to, article) => {
+      asked.push(article);
+      if (article === 'termijn#2') throw notAddressed();
+      return [{ id: 'n1', name: 'nabetaling_betaald' }];
+    };
+    const again = redeliver(undelivered, channels, () => answer, later);
+    expect(asked).toEqual(['termijn#2', 'nabetaling#5']);
+    expect(again.recorded.map((r) => r.gram.id)).toEqual(['n1']);
+    expect(again.undelivered).toEqual([]);
+  });
+
+  it('is offered again over every channel it missed, and every receiver that takes it records', () => {
+    const { undelivered } = deliver(answer, 'bank', channels, () => {
+      throw notAddressed();
+    });
+    const asked = [];
+    const later = (to, article) => {
+      asked.push(article);
+      return [{ id: `g-${article}`, name: 'ontvangen' }];
+    };
+    const again = redeliver(undelivered, channels, () => answer, later);
+    expect(asked).toEqual(['termijn#2', 'nabetaling#5']);
+    expect(again.recorded.map((r) => r.gram.id)).toEqual(['g-termijn#2', 'g-nabetaling#5']);
+    expect(again.undelivered).toEqual([]);
   });
 });
 

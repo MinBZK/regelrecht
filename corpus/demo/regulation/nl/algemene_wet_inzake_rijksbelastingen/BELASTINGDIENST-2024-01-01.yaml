@@ -54,9 +54,13 @@ articles:
       # (`besluit_datum`; art. 22j: de bezwaartermijn loopt vanaf de dag na
       # de dagtekening van het aanslagbiljet, niet gemodelleerd).
       #
-      # Het tijdvak (lid 4): de inkomstenbelasting wordt geheven over een
-      # kalenderjaar, en de aanslag betreft dat jaar. Het schema kent de rol
-      # TIJDVAK alleen voor een tijdvak dat de aanvrager kiest; voor een
+      # Het tijdvak: de inkomstenbelasting wordt geheven over wat de
+      # belastingplichtige in het kalenderjaar genoot (Wet IB 2001 art. 2.3;
+      # art. 2.7 lid 1: de over een kalenderjaar verschuldigde belasting).
+      # Eigen keuze: de aanslag betreft dat kalenderjaar. Art. 11 zelf noemt
+      # geen jaar; lid 4 spreekt alleen voor de vervaltermijn van lid 3 over
+      # het tijdvak waarover de belasting wordt geheven. Het schema kent de
+      # rol TIJDVAK alleen voor een tijdvak dat de aanvrager kiest; voor een
       # besluit op geen aanvraag noemt de stroom van de cel de parameter die
       # het jaar geeft (eigen keuze, open punt voor het schema).
       #
@@ -82,11 +86,12 @@ articles:
             type: number
             required: true
             description: >-
-              Het kalenderjaar waarover de aanslag wordt vastgesteld: het
-              tijdvak waarover de inkomstenbelasting wordt geheven (lid 4).
+              Het kalenderjaar waarover de aanslag wordt vastgesteld: het jaar
+              waarover de inkomstenbelasting wordt geheven (Wet IB 2001 art.
+              2.3). Eigen keuze: art. 11 noemt het jaar niet zelf.
             origin:
               waarde: DOSSIER
-              grondslag: algemene_wet_inzake_rijksbelastingen#11 lid 4
+              grondslag: wet_inkomstenbelasting#2.3
           - name: besluit_datum
             type: date
             required: false

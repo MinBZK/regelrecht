@@ -80,3 +80,25 @@ Feature: Het voorschot alleen op een aanvraag vóór 1 april
       | berekeningsjaar             | 2024 |
     When I evaluate "aanvraag_geldt_voor_berekeningsjaar" of "algemene_wet_inkomensafhankelijke_regelingen"
     Then output "aanvraag_geldt_voor_berekeningsjaar" is false
+
+  # De versie van 2024 toetst hetzelfde: een voorschot alleen voor een jaar
+  # waarvoor de aanvraag geldt.
+  Scenario: In de versie van 2024 krijgt het aangevraagde jaar een voorschot
+    Given the calculation date is "2024-06-01"
+    And the following parameters:
+      | aangevraagd_berekeningsjaar | 2024       |
+      | berekeningsjaar             | 2024       |
+      | datum_ontvangst             | 2024-05-01 |
+      | tegemoetkoming              | 157731     |
+    When I evaluate "voorschot_wordt_verleend" of "algemene_wet_inkomensafhankelijke_regelingen"
+    Then output "voorschot_wordt_verleend" is true
+
+  Scenario: In de versie van 2024 krijgt een jaar vóór het aangevraagde geen voorschot
+    Given the calculation date is "2024-06-01"
+    And the following parameters:
+      | aangevraagd_berekeningsjaar | 2025       |
+      | berekeningsjaar             | 2024       |
+      | datum_ontvangst             | 2024-05-01 |
+      | tegemoetkoming              | 157731     |
+    When I evaluate "voorschot_wordt_verleend" of "algemene_wet_inkomensafhankelijke_regelingen"
+    Then output "voorschot_wordt_verleend" is false

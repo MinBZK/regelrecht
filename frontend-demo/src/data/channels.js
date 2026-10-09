@@ -133,13 +133,17 @@ export function deliver(gram, cellId, channels, receive, tag = {}) {
 
 /**
  * Berichten van één gram die geen ontvanger voor zich hielden: is er geen
- * enkel kanaal waarop het bericht wél aankwam, dan staat het bij wat niet
- * aankwam (met de fout van het eerste kanaal); anders is het bezorgd.
+ * enkel kanaal waarop het bericht wél aankwam, dan staat het één keer bij wat
+ * niet aankwam, onder het eerste kanaal, met in `missed` elk kanaal dat het
+ * niet kwijt kon. `redeliver` biedt het dan opnieuw aan over al die kanalen,
+ * zodat een ontvanger op het tweede kanaal het later alsnog kan aannemen.
+ * Anders is het bezorgd.
  */
 function unaddressed(out, missed, addressed) {
   if (addressed > 0 || !missed.length) return;
   const [first] = missed;
-  out.undelivered.push({ ...first, error: `Geen ontvanger voor dit bericht: ${missed.map((m) => m.channel).join(', ')}` });
+  const channels = missed.map((m) => m.channel);
+  out.undelivered.push({ ...first, missed: channels, error: `Geen ontvanger voor dit bericht: ${channels.join(', ')}` });
 }
 
 /**
@@ -168,18 +172,23 @@ export function redeliver(outbox, channels, gramOf, receive) {
     // meer, dan is er niets meer te bezorgen.
     if (entry.loop && !(channels ?? []).some((c) => channelKey(c) === entry.channel)) continue;
     attempt(out, entry, channels, () => {
-      const channel = (channels ?? []).find((c) => channelKey(c) === entry.channel);
+      // Een bericht dat geen enkel kanaal kwijt kon, gaat opnieuw over elk
+      // kanaal dat het miste (`missed`); een ander over zijn eigen kanaal.
+      const keys = entry.missed?.length ? entry.missed : [entry.channel];
+      const found = keys.map((key) => (channels ?? []).find((c) => channelKey(c) === key)).filter(Boolean);
       const gram = gramOf(entry.cellId, entry.gramId);
-      if (!channel || !gram) {
-        const missing = channel ? `gram ${entry.gramId} van cel ${entry.cellId}` : `kanaal ${entry.channel}`;
+      if (!found.length || !gram) {
+        const missing = found.length ? `gram ${entry.gramId} van cel ${entry.cellId}` : `kanaal ${keys.join(', ')}`;
         throw new Error(`Niet opnieuw te bezorgen: ${missing} bestaat niet`);
       }
-      // In de outbox staat een bericht dat geen enkel kanaal kwijt kon (een
-      // fout in de kanalen); zegt de ontvanger nog steeds dat het niet voor
-      // haar is, dan blijft het staan.
-      if (!over(channel, gram, entry.cellId, channels, receive, 0, out, entry.tag ?? {}, null)) {
-        throw new Error(`Geen ontvanger voor dit bericht: ${entry.channel}`);
+      // Elk kanaal krijgt het, zoals bij `deliver`: elke ontvanger die het
+      // aanneemt, legt vast. Zegt elke ontvanger nog steeds dat het niet voor
+      // haar is (een fout in de kanalen), dan blijft het staan.
+      let addressed = 0;
+      for (const channel of found) {
+        if (over(channel, gram, entry.cellId, channels, receive, 0, out, entry.tag ?? {}, null)) addressed += 1;
       }
+      if (addressed === 0) throw new Error(`Geen ontvanger voor dit bericht: ${keys.join(', ')}`);
     });
   }
   return out;

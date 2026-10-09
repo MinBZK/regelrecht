@@ -236,7 +236,9 @@ channels:
       bedrag_opdracht: bedrag
       reden_weigering: reden
   # De aanslag van de inspecteur: het inkomensgegeven gaat naar de Dienst
-  # Toeslagen (AWR art. 21e lid 1).
+  # Toeslagen (AWR art. 21e lid 1: op haar verzoek). Eigen keuze: Toeslagen
+  # heeft een staand verzoek, dus het kanaal brengt het inkomensgegeven
+  # zodra de aanslag is vastgesteld, zonder vraag per geval.
   - from: {cell: belastingdienst, event: aanslag_inkomstenbelasting_vastgesteld}
     to: {cell: toeslagen, article: fictief_beleid_toekenning_toeslagen#1}
     inputs:
