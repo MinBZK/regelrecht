@@ -1819,7 +1819,7 @@ impl Cell {
     /// - `executed_on.once_per`: a second gram of the event in the same case
     ///   in the same month is refused, whatever gram it refers to.
     ///
-    /// A fact that has yet to happen is not a fact (RFC-044): `on` may not
+    /// A fact that has yet to happen is not a fact (RFC-050): `on` may not
     /// lie after `now`, nor before the day of a gram it refers to. The gram
     /// holds from the start of `on` (or from `now`, on the day itself), but
     /// not before the moment of a gram it refers to; it is recorded at `now`.

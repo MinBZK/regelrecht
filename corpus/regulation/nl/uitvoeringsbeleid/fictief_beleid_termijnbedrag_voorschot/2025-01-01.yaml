@@ -37,7 +37,7 @@ articles:
       execution:
         # Een betaalopdracht is een feit in de kroniek van Toeslagen
         # (chronolex, een executogram: de uitvoering van het voorschot). Een
-        # termijn die nog moet komen is geen feit (RFC-044): de cel voert dit
+        # termijn die nog moet komen is geen feit (RFC-050): de cel voert dit
         # artikel uit op een dag (`executed_on`) en legt alleen een gram vast
         # als er die maand iets te betalen is (`record_when`). Of de termijn
         # ook betaald is, zegt pas de bank (artikel 2).

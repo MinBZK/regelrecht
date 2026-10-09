@@ -401,7 +401,7 @@ function dossierRows() {
 
 /**
  * Wat het dossier geeft voor het besluit `event` op de zaak `root`: wat de
- * fase van het besluit vraagt met herkomst DOSSIER (de wet zegt het, RFC-043)
+ * fase van het besluit vraagt met herkomst DOSSIER (de wet zegt het, RFC-048)
  * en de cel niet zelf uit haar kroniek leest. Waar het dossier het heeft,
  * staat in `dossier` in demo-config.yaml, in de vorm van een binding; de
  * gegevens van de zaak die de cel leest (de BSN, het berekeningsjaar) kiezen
@@ -832,7 +832,7 @@ function decideFollowing(c) {
 
 /**
  * Wat de wet als volgende moment van deze zaak geeft, als verwachting en niet
- * als gram: wat er nog niet is, is geen feit (RFC-044). De cel voert de wet
+ * als gram: wat er nog niet is, is geen feit (RFC-050). De cel voert de wet
  * daarvoor uit zonder vast te leggen. Elk moment draagt zijn datum, wat voor
  * moment het is en de naam van wat het geeft:
  *
@@ -1017,7 +1017,7 @@ function decideExOfficio() {
  * waarvan het moment er is. Dat besluit neemt de demo zelf als de wet erover
  * beslist en niet elke aanvraag met de hand wordt beoordeeld (zoals bij het
  * indienen); anders komt het bij de behandelaar te liggen. Terug kan niet: een
- * gram ligt nooit in de toekomst (RFC-044), dus terug is opnieuw beginnen.
+ * gram ligt nooit in de toekomst (RFC-050), dus terug is opnieuw beginnen.
  */
 function advanceTo(date) {
   if (!date || date <= state.referenceDate) return;

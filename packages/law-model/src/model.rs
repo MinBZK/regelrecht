@@ -183,7 +183,7 @@ pub struct Parameter {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub legal_basis: Option<ProvisionReference>,
     /// Who supplies this parameter, per the law, with the provision that says
-    /// so (RFC-043). Metadata for a process runtime and an editor; the engine
+    /// so (RFC-048). Metadata for a process runtime and an editor; the engine
     /// does not read it. An `origin` that is not valid does not stop the law
     /// from loading: it is kept as written, and a runtime that reads it
     /// reports it with the file and the parameter.
@@ -195,7 +195,7 @@ pub struct Parameter {
 }
 
 /// A field a law declares for a process runtime and not for the engine
-/// (RFC-043): valid, or kept as written. The engine never fails to load a law
+/// (RFC-048): valid, or kept as written. The engine never fails to load a law
 /// because such a field is wrong; whoever reads it asks [`Declared::valid`]
 /// and reports the reason.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -219,7 +219,7 @@ impl<T: serde::de::DeserializeOwned> Declared<T> {
     }
 }
 
-/// Who supplies a parameter, per the law (RFC-043). Always with a
+/// Who supplies a parameter, per the law (RFC-048). Always with a
 /// `grondslag`: `<regulation>#<article>`, optionally followed by ` lid <n>`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -236,7 +236,7 @@ pub struct Origin {
     pub rol: Option<OriginRole>,
 }
 
-/// The role of a parameter within the decision requested (RFC-043).
+/// The role of a parameter within the decision requested (RFC-048).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum OriginRole {
@@ -255,7 +255,7 @@ pub enum OriginRole {
     Besluit,
 }
 
-/// The five origins of a parameter (RFC-043).
+/// The five origins of a parameter (RFC-048).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum OriginValue {
@@ -273,7 +273,7 @@ pub enum OriginValue {
 }
 
 /// An implementing policy overriding the origin that a law gives one of its
-/// parameters, with the provision of the policy as `grondslag` (RFC-043).
+/// parameters, with the provision of the policy as `grondslag` (RFC-048).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OriginOverride {
@@ -1417,7 +1417,7 @@ pub struct MachineReadable {
     #[serde(default)]
     pub declares: Option<Vec<Declaration>>,
     /// Origins this article (of an implementing policy) gives parameters of
-    /// another regulation, overriding what that regulation says (RFC-043).
+    /// another regulation, overriding what that regulation says (RFC-048).
     /// Each entry is kept as written when it is not valid; see [`Declared`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origins: Option<Vec<Declared<OriginOverride>>>,

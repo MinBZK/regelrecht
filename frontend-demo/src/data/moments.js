@@ -2,7 +2,7 @@
  * De tijd in de demo: welk moment de wet als volgende geeft.
  *
  * De demo heeft één klok, de peildatum (`state.referenceDate`). Die loopt
- * alleen vooruit: een gram ligt nooit in de toekomst (RFC-044), dus terug kan
+ * alleen vooruit: een gram ligt nooit in de toekomst (RFC-050), dus terug kan
  * alleen door opnieuw te beginnen. Wat het volgende moment is, staat niet in
  * een kalender hier, maar komt uit de wet en de kroniek: de cel voert de wet
  * uit zonder vast te leggen (een voorbeeld), en wat daar als datum uitkomt is

@@ -2,7 +2,7 @@
 
 Status: concept, ter bespreking. Bouwt voort op #1679 (de aanvraag als chronolex-feit) en #1683 (de aanvraag en het besluit in de demo).
 
-Deze notitie beschrijft hoe de cel van Toeslagen het hele proces van de zorgtoeslag vastlegt: de aanvraag, het voorschot, de maandelijkse betalingen, de definitieve toekenning na het berekeningsjaar en de verrekening. Ze beschrijft ook hoe de demo daarvoor de tijd vooruit laat lopen. Bij elke keuze staat waar die vandaan komt: **wet**, **RFC** (RFC-022 op main, RFC-044/045/047 op `poc/chronolex`), **oude PoC** (de chrono-poc-PR's #1466 t/m #1482) of **eigen keuze**.
+Deze notitie beschrijft hoe de cel van Toeslagen het hele proces van de zorgtoeslag vastlegt: de aanvraag, het voorschot, de maandelijkse betalingen, de definitieve toekenning na het berekeningsjaar en de verrekening. Ze beschrijft ook hoe de demo daarvoor de tijd vooruit laat lopen. Bij elke keuze staat waar die vandaan komt: **wet**, **RFC** (RFC-022, en RFC-045 tot en met 050 in deze PR), **oude PoC** (de chrono-poc-PR's #1466 t/m #1482) of **eigen keuze**.
 
 ## 1. Het proces volgens de wet
 
@@ -70,7 +70,7 @@ Art. 22 spreekt dus niet van een lijst of van betalingsopdrachten. Het zegt per 
 
 **Voorstel (eigen keuze):** art. 22 wordt een **regel per maand**, geen lijst. Het artikel krijgt als invoer het voorschotbedrag, de dagtekening van het voorschot, de maanden met aanspraak en een maand. Het antwoordt: valt er in deze maand een termijn, en zo ja welk bedrag. Elke keer dat de tijd een maand verder gaat, vraagt de cel dat aan de wet; pas een betaalde termijn wordt een gram (§5).
 
-- **Een termijn die nog moet komen is geen feit** (RFC-044: "wat nog moet gebeuren is geen feit"). Het voorschotgram legt geen toekomstige betalingen vast, alleen het bedrag en het moment van het besluit. Dat volgt de tekst ("elke volgende termijn telkens een maand later") en sluit aan bij het vooruitspoelen (§8).
+- **Een termijn die nog moet komen is geen feit** (RFC-050: "wat nog moet gebeuren is geen feit"). Het voorschotgram legt geen toekomstige betalingen vast, alleen het bedrag en het moment van het besluit. Dat volgt de tekst ("elke volgende termijn telkens een maand later") en sluit aan bij het vooruitspoelen (§8).
 - **De hoogte van een termijn** regelt de wet niet. Voorstel: het voorschotbedrag gedeeld door het aantal termijnen, met het restant in de laatste termijn (zoals de oude PoC, #1466). Dat is een uitvoeringskeuze en hoort in het uitvoeringsbeleid van Toeslagen, niet in de Awir. Zolang er geen beleid is, staat het als gemarkeerde keuze in het model.
 - **Wie betaalt, zegt de wet niet**, maar het uitvoeringsbeleid of de cel (oude PoC: "betaler uit het wereldbestand"). Voor deze stap blijft het bij één cel: Toeslagen legt zelf vast dat de termijn betaald is. Een aparte betaalcel is een latere stap.
 
@@ -84,7 +84,7 @@ Art. 22 spreekt dus niet van een lijst of van betalingsopdrachten. Het zegt per 
 - **Na de toekenning vervallen de nog niet betaalde voorschottermijnen.** Dat volgt uit de verwijzing en wordt geen eigen gram (#1472).
 - **Terugvordering (Awir 26)**, met de drempel van 26a. De zienswijze (26b) is een Awb-achtige stap; die volgt later.
 
-**Wat de lexostatus daarvoor nodig heeft:** optellen over meerdere grammen (een `sum` naast `pick: latest`) en lezen **op een moment**: `peilmoment` (effective_at ≤ t) en `bekend_op` (recorded_at ≤ t), gesorteerd op effective_at en daarna recorded_at (RFC-044 en RFC-045 §7). De compacte cel kent dat nog niet.
+**Wat de lexostatus daarvoor nodig heeft:** optellen over meerdere grammen (een `sum` naast `pick: latest`) en lezen **op een moment**: `peilmoment` (effective_at ≤ t) en `bekend_op` (recorded_at ≤ t), gesorteerd op effective_at en daarna recorded_at (RFC-050 en RFC-045 §7). De compacte cel kent dat nog niet.
 
 **Gebouwd (8 oktober 2026): het voorschot leest de cel terug met een beleidsartikel.** Besloten op 6 en 7 oktober: de reductie is bedrijfslogica van de houder en staat in dezelfde regeltaal als de wet, als artikel in het beleid van de houder (RFC-045); wat nergens staat, schrijven we namens de houder en markeren we als **aanname**. De lexostatus `voorschot` is daarom vervangen door `fictief_beleid_kroniek_toeslagen` art. 1, een fictief uitvoeringsbeleid van de Dienst Toeslagen, gemarkeerd als aanname. Het artikel krijgt de aanvraag als parameter `root` en de kroniek als invoer zonder bron (`source: {}`), en geeft het voorschotbedrag (Awir 16 lid 1), de dagtekening van het voorschot (Awir 22 lid 1) en het berekeningsjaar. Het wetsformaat kent geen LAST: het laatste voorschot is het besluit met de hoogste `sequence` (MAX), en één waarde lees je met ADD over dat ene besluit.
 
@@ -153,7 +153,7 @@ Dit is nu het grootste gat. Het staat in `Cell::decide` en in de review van #168
 
 **Eén klok.** De peildatum van de demo (`state.referenceDate`) wordt de enige tijd. De bekendmaking, de bezwaartermijn en de zaakgebeurtenissen gebruiken die ook, in plaats van `nowIso()` (eigen keuze; nu lopen er twee tijdassen).
 
-**Vooruit, niet terug.** Een gram mag niet in de toekomst liggen (RFC-044). Terugzetten zou de kroniek ongeldig maken. Terug kan dus alleen via "opnieuw beginnen" (de bestaande reset).
+**Vooruit, niet terug.** Een gram mag niet in de toekomst liggen (RFC-050). Terugzetten zou de kroniek ongeldig maken. Terug kan dus alleen via "opnieuw beginnen" (de bestaande reset).
 
 **"Naar het volgende moment".** In de Kroniek van een zaak toont de demo onder de feiten wat de wet als volgende moment geeft, als verwachting en niet als gram:
 - de volgende voorschottermijn (art. 22, gevraagd voor de volgende maand);

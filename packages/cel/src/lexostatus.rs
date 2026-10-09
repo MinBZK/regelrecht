@@ -4,7 +4,7 @@
 //! (see [`crate::Cell::lexostatuses`]), or an article in the policy of the
 //! holder that reads the chronicle as a register ([`crate::register`]).
 //!
-//! A reading is the state at a moment (`peilmoment`, RFC-044): a gram counts
+//! A reading is the state at a moment (`peilmoment`, RFC-050): a gram counts
 //! when it legally holds by then (`effective_at` on or before the moment), and
 //! the grams are in the order they legally hold, then the order the cell
 //! recorded them, so a fact recorded late about an earlier moment is not the

@@ -65,7 +65,7 @@ export function executeDue(c, cel, events, { today, now }) {
  * Zet de klok vooruit naar `date`, langs elk moment van elke zaak en niet in
  * één sprong: een zaak waarvan het besluit eerder valt, krijgt het op die
  * dag, en daarna wat erop volgt. Terug kan niet: een gram ligt nooit in de
- * toekomst (RFC-044).
+ * toekomst (RFC-050).
  *
  * `ops`: `today()` en `setToday(day)` (de peildatum), `cases()` (de open
  * zaken), `momentsOf(c)` (wat de wet als volgende momenten van een zaak
