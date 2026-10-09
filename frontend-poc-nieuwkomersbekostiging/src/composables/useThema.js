@@ -1,5 +1,5 @@
 /**
- * Licht/donker-thema. Het nldd design system kiest zijn palet op
+ * Licht/donker-thema. Het NLDD Designsysteem kiest zijn palet op
  * `:root[data-scheme]`: de `light-dark()`-tokens hangen aan de `color-scheme`
  * die dat attribuut zet, en de componenten lezen het attribuut bovendien zelf
  * (`_resolveActiveScheme`, plus een MutationObserver erop).

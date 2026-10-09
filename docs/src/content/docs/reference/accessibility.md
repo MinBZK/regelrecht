@@ -96,7 +96,7 @@ contrast measurement.
 
 - There has been **no independent audit**. Everything above rests on the team's
   own test and review.
-- The interface uses web components from the NLDD design system that render their
+- The interface uses web components from the NLDD Designsysteem that render their
   content in a shadow DOM. The `<main>` landmark is rendered by `nldd-page`
   inside that shadow DOM. Screen reader support for landmarks in shadow DOM
   still varies (NVDA and JAWS handle it well, VoiceOver on iOS is inconsistent);
@@ -113,6 +113,6 @@ on which page, and we will pick it up.
 
 This draft statement was drawn up on 21 May 2026, updated on 27 May 2026 after a
 re-check, and updated again on 29 May 2026 after the footer copyright text was
-brought up to AA contrast in the NLDD design system. RegelRecht is an
+brought up to AA contrast in the NLDD Designsysteem. RegelRecht is an
 exploration and still under development; the statement is updated when the site
 changes or after a formal audit.
