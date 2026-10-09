@@ -340,7 +340,7 @@ een sleutel die maar in één bestand landt is een bug, geen halve klus.
 
 ## Frontend / UI Components
 
-**All user interface MUST be built with components from the MinBZK design system: https://github.com/MinBZK/storybook** (the NLDD `nldd-*` web components, from `@nldd/design-system`). Do not hand-roll custom UI elements when a design-system component exists. For the required component hierarchy, nesting rules, and layout patterns, use the `storybook-component-hierarchy` skill.
+**All user interface MUST be built with components from the NLDD Designsysteem: https://github.com/NederlandseDigitaleDienst/design-system** (the NLDD `nldd-*` web components, from `@nldd/design-system`). Do not hand-roll custom UI elements when a design-system component exists. For the required component hierarchy, nesting rules, and layout patterns, use the `storybook-component-hierarchy` skill.
 
 The element prefix is `nldd-`, with two l's. Older prose may still write
 `ndd-`; that is stale.

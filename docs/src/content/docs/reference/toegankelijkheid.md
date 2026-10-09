@@ -97,7 +97,7 @@ contrastmeting.
 
 - Er is **geen onafhankelijke audit** geweest. Alles hierboven berust op de eigen
   toets en controle van het team.
-- De interface gebruikt web-componenten uit het NLDD-designsysteem die hun inhoud
+- De interface gebruikt web-componenten uit het NLDD Designsysteem die hun inhoud
   in een schaduw-DOM tekenen. De `<main>`-landmark wordt door `nldd-page`
   binnen die schaduw-DOM gerenderd. Ondersteuning hiervoor verschilt nog per
   schermlezer (NVDA en JAWS komen er goed mee om, VoiceOver op iOS is
@@ -115,6 +115,6 @@ op welke pagina; dan pakken we het op.
 
 Deze conceptverklaring is opgesteld op 21 mei 2026, bijgewerkt op 27 mei 2026 na
 een hercontrole, en opnieuw bijgewerkt op 29 mei 2026 nadat de copyright-tekst in
-de footer in het NLDD-designsysteem op AA-contrast is gebracht. RegelRecht is een
+de footer in het NLDD Designsysteem op AA-contrast is gebracht. RegelRecht is een
 verkenning en wordt nog ontwikkeld; de verklaring wordt bijgewerkt als de site
 verandert of na een formele audit.
