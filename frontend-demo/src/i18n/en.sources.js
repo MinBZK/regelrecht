@@ -891,7 +891,6 @@ export default {
   "zaak.lifecycle_failed": "d769",
   "zaak.moments.advance": "d3ce",
   "zaak.moments.advance.hint": "9af1",
-  "zaak.moments.advance_to": "7c6b",
   "zaak.moments.advance_to.label": "ebcc",
   "zaak.moments.decision": "cfef",
   "zaak.moments.decision.supporting": "0922",

@@ -968,7 +968,6 @@ export default {
   'zaak.moments.given': 'Volgens {provision}',
   'zaak.moments.none': 'De wet geeft voor deze zaak geen volgend moment.',
   'zaak.moments.advance': 'Naar het volgende moment',
-  'zaak.moments.advance_to': 'Naar dit moment',
   'zaak.moments.advance_to.label': 'De klok naar {date} zetten, met alles wat er tot dan ontstaat',
   'zaak.moments.advance.hint': 'Zet de peildatum op {date} en legt vast wat er dan in elke zaak ontstaat. De klok gaat alleen vooruit; terug is opnieuw beginnen.',
   'zaak.decision_due.title': 'Wat de wet besluit: {decision}',

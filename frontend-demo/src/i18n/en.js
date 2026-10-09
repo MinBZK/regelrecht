@@ -947,7 +947,6 @@ export default {
   'zaak.moments.given': 'Under {provision}',
   'zaak.moments.none': 'The law gives no next moment for this case.',
   'zaak.moments.advance': 'To the next moment',
-  'zaak.moments.advance_to': 'To this moment',
   'zaak.moments.advance_to.label': 'Set the clock to {date}, with everything that arises until then',
   'zaak.moments.advance.hint': 'Sets the reference date to {date} and records what then arises in every case. The clock only moves forward; going back means starting again.',
   'zaak.decision_due.title': 'What the law decides: {decision}',

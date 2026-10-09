@@ -469,14 +469,13 @@ function claimLawName(cl) {
                   <nldd-text-cell size="sm" :text="m.value ? t('zaak.moments.with_value', { text: m.text, value: m.value }) : m.text" :supporting-text="m.supporting"></nldd-text-cell>
                   <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="formatValue(m.date, null)"></nldd-text-cell>
                   <nldd-cell v-if="m.date > state.referenceDate" width="fit-content" vertical-alignment="center">
-                    <nldd-button
+                    <nldd-icon-button
                       size="sm"
                       appearance="neutral-tinted"
-                      start-icon="future"
-                      :text="t('zaak.moments.advance_to')"
+                      icon="future"
                       :accessible-label="t('zaak.moments.advance_to.label', { date: formatValue(m.date, null) })"
                       @click="advanceToMoment(m.date)"
-                    ></nldd-button>
+                    ></nldd-icon-button>
                   </nldd-cell>
                 </nldd-list-item>
               </nldd-list>
