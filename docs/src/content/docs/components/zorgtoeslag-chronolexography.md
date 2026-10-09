@@ -5,7 +5,7 @@ description: "How the demo runs the whole zorgtoeslag process through a chronicl
 
 The demo follows one zorgtoeslag case from the application to the final settlement, and records every legal fact on the way in a chronicle (*kroniek*), as the chronolexography position paper describes it and [RFC-022](/rfcs/rfc-022) maps it onto RegelRecht. This page explains how that works: which components take part, where the law in the law format ends and the recording begins, how the configuration files depend on each other, and what happens in Merijn's case step by step.
 
-The [Demo](/components/demo) page describes the screens. This page describes the machinery behind the Chronicle on a case, the payments on the portal and "My account".
+The [Demo](/components/demo) page describes the screens. This page describes the machinery behind the Chronicle on a case, the payments on the portal, the Lexostatuses view and the Consequences screen.
 
 ## Scope and status
 
@@ -43,7 +43,8 @@ flowchart TB
   subgraph DM["demo: frontend-demo in the browser"]
     direction TB
     CLK["One clock<br/>the reference date"]
-    POR["Portal<br/>What the law asks, Payments,<br/>My account"]
+    POR["Portal<br/>What the law asks, Payments"]
+    GEV["Consequences<br/>the account at the bank"]
     ZS["Case system<br/>Chronicle per case,<br/>Chronicle of the cell"]
     CHN["Channels<br/>demo-config.yaml"]
     OB["Outbox<br/>messages that did not arrive"]
@@ -70,7 +71,7 @@ flowchart TB
   CLK -->|"offers again each step"| OB
   POR -->|"shape, recordSubmission"| CT
   ZS -->|"reads back via grams and previews"| CT
-  POR -->|"balance and transfers from"| KB
+  GEV -->|"balance and transfers from"| KB
 ```
 
 Both cells and the engine run in the browser as one WebAssembly module, `regelrecht_cel`: the crate `packages/cel` built with its `wasm` feature, which exports the engine (`WasmEngine`) next to the cell (`WasmCell`). The page keeps the grams in `localStorage` and hands them back to `WasmCell` when it starts.
@@ -127,10 +128,53 @@ The demo reads everything below from `corpus/demo`. The main corpus has its own 
 | `demo-config.yaml`, `dossier` | Parameters with origin `DOSSIER` the cell does not read from its chronicle, in the shape of a binding: the date of the tax assessment for Awir 19, selected by the berekeningsjaar of the decision | Demo | When the toekenning of each year can be taken |
 | `demo-config.yaml`, `received` | Per cell the lexostatus that says what was paid on a case (`toeslagen: uitbetaald`) | Demo | "Received so far" on the portal; the demo adds nothing up itself |
 | `demo-config.yaml`, `channels` | Which gram of which cell goes to which article of which cell, which field fills which parameter, and which reference the answer gets | Demo | The transport between Toeslagen and the bank |
-| `demo-config.yaml`, `account` | Which cell, table and fields make up "My account" | Demo | The statement on the portal |
+| `demo-config.yaml`, `consequences` | Per party outside government its cell and how the demo shows it; for the bank (`view: account`) which table and fields make up the account | Demo | The Consequences screen |
 | `profiles.yaml`, Merijn's `BANK` and `BELASTINGDIENST` | The account `NL00TEST0123456789` with its opening balance and `geblokkeerd`; the assessment dates per year; box 1 income | Demo, through `bindings.yaml` and `dossier` | Income at the toekenning, the assessment date, a blocked account |
 
 Two dependencies are easy to miss. The policy that reads the chronicle is valid from 1 January 2024, so that an installment paid in December before the year can read the voorschot (own choice). The installment policy is valid from 2025 and applies the law of the year the voorschot concerns, so installments exist for 2025 and later.
+
+## Lexostatuses
+
+A lexostatus is what a cell knows about a case on a given moment, read back from its own chronicle. It is not a stored state. The chronicle holds only grams, and the cell computes a lexostatus anew each time it is asked, from the grams that hold at that moment. Read it at an earlier moment and you get what the cell knew then.
+
+### What it gives
+
+The output of a lexostatus is a set of separate values, and each one fills an input of a decision or an execution. The event `voorschot_verleend` reads the lexostatus `aanvraag` (`reads` in its stream), and the cell passes each value as the parameter of the same name to the articles that take part in that decision. For Merijn's application of 6 January 2025, `aanvraag` gives:
+
+| Value | Where it comes from | Fills | Legal basis | Merijn |
+|---|---|---|---|---|
+| `aangevraagd_berekeningsjaar` | filled in on the application | the parameter of Awir 16 at the voorschot | Awir 15 lid 1 | 2025 |
+| `bsn` | filled in on the application | the parameter of Zorgtoeslagwet 2, at the voorschot and the toekenning | Awir 13 | 999100001 |
+| `datum_ontvangst` | the day the application came in (`effective_at` of the gram) | the parameter of Awir 16 at the voorschot; the 2026 version of Awir 19 asks it at the toekenning too | Awb 4:13 lid 1 | 6 January 2025 |
+
+Each value carries its provenance (`{source: lexostatus, lexostatus: aanvraag}`), and the decision records it with the gram under `inputs`, so the chronicle shows where every input of a decision came from.
+
+### Two ways to reduce
+
+A cell reduces its chronicle to these values in one of two ways.
+
+- **In the cell configuration.** `corpus/demo/cells/toeslagen/lexostatuses.yaml` defines `aanvraag` and `uitbetaald` with a filter (which grams: type, subtype, event, case, period), a pick (`latest` or `all`) and per value a derivation (a field, a moment, whether a field is filled, a sum, the period) with its legal basis. `uitbetaald` sums `betaald_bedrag` over every `voorschottermijn_betaald` of the case for one berekeningsjaar.
+- **In an article of the holder's policy.** `fictief_beleid_kroniek_toeslagen` reads the chronicle as a register (`registers:` in `cell.yaml`) and gives, in the same rule language as the law, the voorschot that holds for a berekeningsjaar (article 1), the account (article 2), what is still outstanding (article 3) and the expected income (article 4). The cell lists such a policy as a lexostatus by the policy's name.
+
+The second is the intended direction. On 6 October 2026 the owner decided that reduction is business logic of the holder and belongs in the same rule language as the law, where a jurist can read it, test it and change it, and where it carries its own legal basis or is marked as an assumption. The configuration language in `lexostatuses.yaml` is a language of its own that only the cell understands. `aanvraag` and `uitbetaald` still use it, and moving them into the policy is open (see [Open questions](#open-questions)).
+
+Since a decision concerns one berekeningsjaar (see [The next year](#the-next-year)), a lexostatus can be read per year. `uitbetaald` takes the input `berekeningsjaar` and filters on `period: $berekeningsjaar`; the policy takes the period parameter of the event that reads it. The cell reads it for the year of the decision it is about to take, so the toekenning over 2025 sets off only what was paid on 2025.
+
+### How to ask
+
+In the browser, through the WASM module:
+
+```js
+const reading = cell.readLexostatus(engine, 'uitbetaald', { root, berekeningsjaar: 2025 }, '2026-04-15T12:00:00+02:00');
+// { values: { uitbetaalde_voorschotten: { value: 169500, provenance: { source: 'lexostatus', lexostatus: 'uitbetaald' } } },
+//   grams: ['…', '…'] }
+```
+
+`root` is the id of the application gram the case started with, and the moment is RFC 3339, not a date: the cell reads what holds at that instant. A policy is asked by its name with the inputs its articles declare (`readLexostatus(engine, 'fictief_beleid_kroniek_toeslagen', { root, berekeningsjaar: 2025 }, …)`); its values name the article they came from in their provenance. `cell.lexostatuses(engine, '2025-03-01')` describes every lexostatus of the cell, both kinds, with the events that read it. In Rust the same calls are `Cell::read_lexostatus(&service, name, &inputs, as_of)`, returning a `Reading` with `values` and `grams`, and `Cell::lexostatuses(&service, day)`.
+
+### Where to see it
+
+In the case system, "Lexostatuses" next to "Cases" and "Chronicle" shows each lexostatus of the cell in words: what it gives and to whom, where the cell gets it, which decisions and executions use it, and per value where it comes from, which input of which article it fills and its legal basis. Below that, per case and per berekeningsjaar, the values on the reference date, each with the grams it was read from. "Show technical details" shows the raw reduction. The [Demo](/components/demo) page describes the view.
 
 ## Merijn's case, step by step
 
@@ -201,7 +245,7 @@ A message holds from the moment of the gram it carries. When the clock passes se
 
 With `geblokkeerd: true` in Merijn's `BANK` data, the bank refuses every transfer ("rekening geblokkeerd"). The refused amount stays open and goes along with the next payment order (`meegenomen_achterstand`), also in a month without an installment, until the toekenning. An account the bank does not know is refused as "rekening onbekend".
 
-On the portal, the application shows "Received so far" from the lexostatus `uitbetaald`, and "My account" shows the balance (opening balance plus what the bank credited) and the transfers from the chronicle `rekeningen`.
+On the portal, the application shows "Received so far" from the lexostatus `uitbetaald`, and the Consequences screen shows the balance (opening balance plus what the bank credited) and the transfers from the chronicle `rekeningen`.
 
 #### The toekenning and the settlement
 
@@ -313,7 +357,7 @@ To follow Merijn's case:
 2. Apply for zorgtoeslag on "My government". "What the law asks" shows the fields with their articles.
 3. Open the case in the case system and its Chronicle: the application, the voorschot and the first payment order with the bank's answer.
 4. Press "To the next moment" to move through the installments, the voorschot for the next year on 1 November, the end of the year and the assessment, until the toekenning, and on through the installments of the next year.
-5. "Chronicle" next to "Cases" on the board shows every gram the cell stores; "See how the cell stores this" on a case filters it. "Lexostatuses" next to it shows `aanvraag`, `uitbetaald` and `fictief_beleid_kroniek_toeslagen`, how each reduces the chronicle, and what each gives for the case now, with links to the grams it read. "My account" on the portal shows the bank's side.
+5. "Chronicle" next to "Cases" on the board shows every gram the cell stores; "See how the cell stores this" on a case filters it. "Lexostatuses" next to it shows `aanvraag`, `uitbetaald` and `fictief_beleid_kroniek_toeslagen`: what each gives, where it comes from, which inputs it fills, and what it gives for the case now, with links to the grams it read. The Consequences screen shows the bank's side.
 
 ## Further reading
 
