@@ -230,11 +230,6 @@ impl<'l> RuleContext<'l> {
         self.local.clear();
     }
 
-    /// Get all input parameters.
-    pub fn parameters(&self) -> &BTreeMap<String, Value> {
-        &self.parameters
-    }
-
     /// Get the reference date.
     pub fn reference_date(&self) -> NaiveDate {
         self.reference_date
