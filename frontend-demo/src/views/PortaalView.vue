@@ -4,7 +4,7 @@ import LawTile from '../components/LawTile.vue';
 import EditValueSheet from '../components/EditValueSheet.vue';
 import ApplicationSheet from '../components/ApplicationSheet.vue';
 import ChangeWizardSheet from '../components/ChangeWizardSheet.vue';
-import { fieldSpec, formatValue, humanize, numericImpact } from '../data/format.js';
+import { fieldSpec, numericImpact } from '../data/format.js';
 import { loadFailures } from '../engine/useDemoEngine.js';
 import { delegationLabel, permissionLabel } from '../data/delegation.js';
 import { useDemo } from '../store/demoStore.js';
@@ -21,7 +21,7 @@ const { t } = useI18n();
 // Op een smal scherm blijft alleen de kop staan; zie de toelichting in de
 // template bij nldd-title.
 const narrow = useNarrow();
-const { profile, persona, portalLaws, corpus, state, activeDelegation, canSubmitClaims, features, dataVersion } = demo;
+const { profile, persona, portalLaws, corpus, state, activeDelegation, canSubmitClaims, features } = demo;
 
 // Impact per law (from the tiles' evaluations) drives the ordering.
 const impact = reactive({});
@@ -108,26 +108,6 @@ const actingSupport = computed(() => {
   const rights = d.permissions.map((p) => permissionLabel(p)).join(', ').toLowerCase();
   const source = d.lawName ? t('zaak.portaal.acting.source', { law: d.lawName }) : '';
   return t('zaak.portaal.acting.support', { name: d.subjectName, rights, source });
-});
-
-// De rekening bij de fictieve bank: waar de betalingen van de overheid
-// werkelijk binnenkomen, uit de kroniek van de bankcel. Leeg zonder rekening.
-const EURO = { type: 'amount' };
-const account = computed(() => {
-  void dataVersion.value;
-  void state.grams;
-  const a = demo.accountOf();
-  if (!a) return null;
-  return {
-    ...a,
-    balanceText: formatValue(a.balance, EURO),
-    transactions: a.transactions.map((tx) => ({
-      id: tx.id,
-      text: tx.credited ? t('zaak.portaal.account.credited') : t('zaak.portaal.account.refused', { reason: tx.reason ?? '' }),
-      supporting: [formatValue(tx.date), tx.payer ? t('zaak.portaal.account.from', { payer: humanize(tx.payer) }) : null].filter(Boolean).join(' · '),
-      amount: formatValue(tx.credited || tx.amount, EURO),
-    })),
-  };
 });
 
 // A law the engine refused to load (a type-check finding, RFC-037) is missing
@@ -241,29 +221,6 @@ const loadFailureText = computed(() => loadFailures.value.map((f) => `${f.id} ($
         <LawTile v-for="law in sortedLaws" :key="law.id" :law="law" @edit-value="onEditValue" @evaluated="onEvaluated" @apply="onApply" />
       </nldd-collection>
       <nldd-inline-dialog v-if="sortedLaws.length === 0" icon="inbox" :text="t('zaak.portaal.empty.title')" :supporting-text="t('zaak.portaal.empty.body')"></nldd-inline-dialog>
-    </nldd-simple-section>
-
-    <!-- De rekening van de persona bij een verzonnen bank: een tweede cel,
-         waar de betaalopdrachten van Toeslagen binnenkomen. -->
-    <nldd-simple-section v-if="account" width="1440px" padding-top="0">
-      <nldd-title slot="header" size="3">
-        <h2>{{ t('zaak.portaal.account.title') }}</h2>
-        <span slot="supporting-text">{{ t('zaak.portaal.account.supporting', { number: account.number }) }}</span>
-      </nldd-title>
-      <nldd-banner v-if="account.blocked" variant="warning" :text="t('zaak.portaal.account.blocked')"></nldd-banner>
-      <nldd-list appearance="box-tinted" :accessible-label="t('zaak.portaal.account.title')">
-        <nldd-list-item size="sm">
-          <nldd-text-cell size="sm" :text="t('zaak.portaal.account.balance')" :supporting-text="t('zaak.portaal.account.opening', { amount: formatValue(account.opening, EURO) })"></nldd-text-cell>
-          <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="account.balanceText"></nldd-text-cell>
-        </nldd-list-item>
-        <nldd-list-item v-for="tx in account.transactions" :key="tx.id" size="sm">
-          <nldd-text-cell size="sm" :text="tx.text" :supporting-text="tx.supporting"></nldd-text-cell>
-          <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="tx.amount"></nldd-text-cell>
-        </nldd-list-item>
-        <nldd-list-item v-if="!account.transactions.length" size="sm">
-          <nldd-text-cell size="sm" color="secondary" :text="t('zaak.portaal.account.empty')"></nldd-text-cell>
-        </nldd-list-item>
-      </nldd-list>
     </nldd-simple-section>
 
     <EditValueSheet :open="!!editing" :node="editing?.node ?? null" :tile-law-id="editing?.law?.id ?? null" :self-declared="!!editing?.selfDeclared" @close="editing = null" />

@@ -32,7 +32,7 @@ import { advanceTo as advanceClock, executeDue as executeDueOn } from '../data/c
 import { readingInputs, readingPeriods, readingRows } from '../data/lexostatusView.js';
 import { momentView } from '../data/chronicleView.js';
 import { deliver, deliveryErrors, redeliver } from '../data/channels.js';
-import { accountOf as accountFrom } from '../data/account.js';
+import { consequencesOf as consequencesFrom } from '../data/consequences.js';
 import { activeLocale, t } from '../i18n/index.js';
 
 // v3: `executedThrough` houdt per uitvoering bij wat per periode (een
@@ -1057,14 +1057,29 @@ function readLexostatusOf(cellId, description, root, period = null) {
 }
 
 /**
- * De rekening van de persona (of van wie er namens gehandeld wordt) bij de
- * fictieve bank: saldo en overboekingen, uit de gegevens van de persona en de
- * kroniek van de bankcel (`account` in demo-config.yaml). `null` zonder
- * rekening.
+ * Wat er buiten de overheid gebeurt door haar besluiten, voor de persona (of
+ * wie er namens gehandeld wordt): per partij onder `consequences` in
+ * demo-config.yaml wat haar cel over hem vastlegde, uit zijn gegevens en de
+ * kroniek van die cel (data/consequences.js).
  */
-function accountOf(bsn = subjectBsn()) {
-  const sources = corpus.value?.profiles?.profiles?.[bsn]?.sources;
-  return accountFrom(corpus.value?.config?.account, sources, state.grams, corpus.value?.cells ?? []);
+function consequencesOf(bsn = subjectBsn()) {
+  void dataVersion.value;
+  const cellList = corpus.value?.cells ?? [];
+  return consequencesFrom(corpus.value?.config?.consequences, {
+    sources: corpus.value?.profiles?.profiles?.[bsn]?.sources,
+    grams: state.grams,
+    cells: cellList,
+    serviceOf: (cellId) => serviceOfCell(cellList.find((c) => c.id === cellId)),
+  });
+}
+
+/**
+ * De organisatie waaronder een cel valt: die van de wet die haar eerste
+ * gebeurtenis vestigt. `null` als het corpus die wet niet kent.
+ */
+function serviceOfCell(cell) {
+  const lawId = cell?.events?.[0]?.establishes?.split('#')[0];
+  return (lawId && corpus.value?.lawById?.(lawId)?.service) ?? null;
 }
 
 /** De grammen van een zaak, in de volgorde van de kroniek. */
@@ -1840,7 +1855,7 @@ export function useDemo() {
     receivedOf,
     lexostatusesOf,
     readLexostatusOf,
-    accountOf,
+    consequencesOf,
     reregister,
     portalLaws,
     isLawEnabled,

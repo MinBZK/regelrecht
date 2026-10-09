@@ -103,6 +103,9 @@ const tabs = computed(() => [
     icon: activeDelegation.value?.subjectType === 'BUSINESS' ? 'building' : 'person',
     to: pathFor('portaal'),
   },
+  // Wat er buiten de overheid gebeurt door haar besluiten (een bank, later
+  // een zorgverzekeraar): naast het portaal, niet erin.
+  { name: 'gevolgen', text: t('app.tabs.gevolgen'), icon: 'buildings', to: pathFor('gevolgen') },
   { name: 'zaaksysteem', text: t('app.tabs.zaaksysteem'), icon: 'inbox', to: pathFor('zaaksysteem') },
 ]);
 
@@ -113,9 +116,11 @@ function isActive(tab) {
 }
 
 // De tabbalk krimpt met het venster mee in plaats van tabbladen weg te laten
-// vallen. Gemeten met zeven tabbladen: icoon met tekst 878px, alleen tekst
-// 696px, alleen icoon 314px. Bij de drempels zit ruimte voor de knoppen rechts
-// (namens wie, profiel) en de overloopknop.
+// vallen. Gemeten met acht tabbladen (sinds Gevolgen): icoon met tekst
+// 1090px, alleen tekst 880px; met zeven was dat 878px en 696px, alleen icoon
+// 314px. Op de oude drempels (1240 en 1040) viel de profielknop rechts weg.
+// Bij de drempels zit ruimte voor de knoppen rechts (namens wie, profiel) en
+// de overloopknop.
 const viewportWidth = ref(typeof window === 'undefined' ? 1600 : window.innerWidth);
 function onResize() {
   viewportWidth.value = window.innerWidth;
@@ -155,8 +160,8 @@ onMounted(() => document.addEventListener('click', onOverflowMenuClick, true));
 onUnmounted(() => document.removeEventListener('click', onOverflowMenuClick, true));
 
 const tabVariant = computed(() => {
-  if (viewportWidth.value >= 1240) return 'icon-and-text';
-  if (viewportWidth.value >= 1040) return 'text';
+  if (viewportWidth.value >= 1320) return 'icon-and-text';
+  if (viewportWidth.value >= 1100) return 'text';
   return 'icon';
 });
 

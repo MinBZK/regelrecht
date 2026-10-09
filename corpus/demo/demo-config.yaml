@@ -223,28 +223,34 @@ channels:
       bedrag_opdracht: bedrag
       reden_weigering: reden
 
-# De rekening van de persona bij de fictieve bank, in het portaal ("Mijn
-# rekening"). Het rekeningnummer, het beginsaldo en of de rekening
-# geblokkeerd is staan in de gegevens van de persona (`data`); wat er op de
-# rekening gebeurde, in de kroniek van de bankcel (`cell`, per gram de velden
+# Gevolgen: wat er buiten de overheid gebeurt door haar besluiten, op een
+# eigen scherm naast het portaal. Per partij die geen overheid is, haar cel
+# (`cell`) en hoe de demo haar toont (`view`); de naam van de partij is die
+# van de organisatie waaronder de cel valt (services.yaml). Een zorgverzekeraar
+# of een werkgever komt hier later bij.
+#
+# `view: account` is een rekening: het rekeningnummer, het beginsaldo en of
+# de rekening geblokkeerd is staan in de gegevens van de persona (`data`);
+# wat er op de rekening gebeurde, in de kroniek van de cel (per gram de velden
 # onder `gram`). Het saldo is het beginsaldo plus wat de bank bijschreef: een
 # afschrift, geen wet. Een rekening blokkeren kan nu alleen in profiles.yaml
 # (`geblokkeerd: true` bij de persona); een knop in het demomenu volgt later.
-account:
-  cell: bank
-  data:
-    service: BANK
-    table: rekeningen
-    number: rekeningnummer
-    opening_balance: beginsaldo
-    blocked: geblokkeerd
-  gram:
-    account: rekeningnummer
-    amount: bedrag
-    credited: bijgeschreven_bedrag
-    date: uitvoerdatum
-    reason: reden
-    reference: betaalkenmerk
+consequences:
+  - cell: bank
+    view: account
+    data:
+      service: BANK
+      table: rekeningen
+      number: rekeningnummer
+      opening_balance: beginsaldo
+      blocked: geblokkeerd
+    gram:
+      account: rekeningnummer
+      amount: bedrag
+      credited: bijgeschreven_bedrag
+      date: uitvoerdatum
+      reason: reden
+      reference: betaalkenmerk
 
 # Applications under these laws always go to a caseworker of the service,
 # whatever the law concludes: Rotterdam grants a terrasvergunning after

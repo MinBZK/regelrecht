@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest';
 import router, { localeFromPath, localeRouteName, pageForConfigPath, splitConfigPath } from './router.js';
 
-const PAGE_NAMES = ['home', 'presentatie', 'wetten', 'graaf', 'scenarios', 'simulatie', 'portaal', 'zaaksysteem'];
+const PAGE_NAMES = ['home', 'presentatie', 'wetten', 'graaf', 'scenarios', 'simulatie', 'portaal', 'gevolgen', 'zaaksysteem'];
 
 describe('localeFromPath', () => {
   it.each([

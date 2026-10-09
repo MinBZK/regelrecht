@@ -219,6 +219,14 @@ anders in de vertaling voor, dus er is ook geen eerdere keuze om op te leunen.
 - **"Technisch tonen" / "verbergen"** staan op `Technysk sjen litte` en
   `Technysk ferbergje` (`lexo.technical.*`).
 
+## 10. Het scherm Gevolgen, nog niet nagekeken
+
+- **"Gevolgen"** staat op `Gefolgen` (`app.tabs.gevolgen`, `gevolgen.title`),
+  en het pad op `/fy/gefolgen`. Of dat het gangbare Friese woord is, is niet
+  nagegaan.
+- **"bûten de oerheid"** (`gevolgen.intro`, `gevolgen.none`) volgt
+  `oerheid` elders in de demo.
+
 ## Hoe je een correctie doorvoert
 
 De schermteksten staan in `frontend-demo/src/i18n/fy.js`, één sleutel per regel.
