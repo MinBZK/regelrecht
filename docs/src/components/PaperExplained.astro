@@ -42,7 +42,6 @@ interface Props {
 }
 const { lang } = Astro.props;
 const t = content[lang];
-const other = lang === 'nl' ? '/research/rules-as-executed/explained' : '/research/rules-as-executed/uitgelegd';
 
 const date = new Intl.DateTimeFormat(lang === 'en' ? 'en-GB' : 'nl-NL', {
   day: 'numeric',
@@ -86,7 +85,6 @@ const padding = { 'sm-padding-block': '32', 'md-padding-block': '48', 'lg-paddin
   <nldd-spacer size="16" />
   <nldd-container layout="wrap" gap="16">
     <nldd-link href="/research/rules-as-executed" size="md" text={t.header.paper} />
-    <nldd-link href={other} lang={lang === 'nl' ? 'en' : 'nl'} size="md" text={t.header.otherLang} />
   </nldd-container>
   <nldd-spacer size="24" />
   <nldd-title size="5"><h2 id="px-toc">{t.header.tocLabel}</h2></nldd-title>
@@ -111,7 +109,7 @@ const padding = { 'sm-padding-block': '32', 'md-padding-block': '48', 'lg-paddin
   <nldd-rich-text><p>{t.published.p1}</p></nldd-rich-text>
   <nldd-spacer size="24" />
   <nldd-card background="base">
-    <nldd-container padding="20" data-px-switch={t.published.options[0].id}>
+    <nldd-container padding="20" sm-padding="16" data-px-switch={t.published.options[0].id}>
       <nldd-title size="5"><h3 id="px-case-label">{t.published.caseLabel}</h3></nldd-title>
       <nldd-spacer size="4" />
       <nldd-text size="sm" color="secondary">{t.published.caseIntro}</nldd-text>
@@ -133,6 +131,8 @@ const padding = { 'sm-padding-block': '32', 'md-padding-block': '48', 'lg-paddin
       </nldd-container>
       <nldd-spacer size="16" />
       <nldd-text size="sm" color="secondary">{t.published.caseNote}</nldd-text>
+      <nldd-spacer size="8" />
+      <nldd-link href={t.published.caseLink.href} lang="nl" size="sm" end-icon="external-link" text={t.published.caseLink.text} />
     </nldd-container>
   </nldd-card>
   <nldd-spacer size="24" />
@@ -158,7 +158,7 @@ const padding = { 'sm-padding-block': '32', 'md-padding-block': '48', 'lg-paddin
     <nldd-spacer size="12" />
     <nldd-segmented-control accessible-labeled-by="px-matrix-now" width="full" data-control hidden>
       <nldd-segmented-control-item value="now" text={t.now} />
-      <nldd-segmented-control-item value="proposal" text={t.proposal} />
+      <nldd-segmented-control-item value="proposal" text={t.proposalShort} />
     </nldd-segmented-control>
     <nldd-spacer size="16" />
     {(['now', 'proposal'] as const).map((state) => (
@@ -193,7 +193,7 @@ const padding = { 'sm-padding-block': '32', 'md-padding-block': '48', 'lg-paddin
     <nldd-spacer size="12" />
     <nldd-segmented-control accessible-labeled-by="px-flow" width="full" data-control hidden>
       <nldd-segmented-control-item value="now" text={t.now} />
-      <nldd-segmented-control-item value="proposal" text={t.proposal} />
+      <nldd-segmented-control-item value="proposal" text={t.proposalShort} />
     </nldd-segmented-control>
     <nldd-spacer size="16" />
     {([
@@ -336,10 +336,10 @@ const padding = { 'sm-padding-block': '32', 'md-padding-block': '48', 'lg-paddin
   <nldd-rich-text><p>{t.default.p1}</p></nldd-rich-text>
   <nldd-spacer size="24" />
   <nldd-card background="base">
-    <nldd-container padding="20" data-px-switch={t.default.variants[1].id}>
+    <nldd-container padding="20" sm-padding="16" data-px-switch={t.default.variants[1].id}>
       <nldd-title size="5"><h3 id="px-override">{t.default.variantsLabel}</h3></nldd-title>
       <nldd-spacer size="12" />
-      <nldd-segmented-control accessible-labeled-by="px-override" width="full" data-control hidden>
+      <nldd-segmented-control accessible-labeled-by="px-override" width="full" size="sm" data-control hidden>
         {t.default.variants.map((v) => <nldd-segmented-control-item value={v.id} text={v.short} />)}
       </nldd-segmented-control>
       <nldd-spacer size="16" />
