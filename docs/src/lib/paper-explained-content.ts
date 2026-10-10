@@ -179,6 +179,7 @@ export interface Content {
     p3: string;
     p4: string;
     reasons: string[];
+    p4b: string;
     p5: string;
   };
   limits: {
@@ -278,7 +279,7 @@ const nl: Content = {
     matrixLabel: 'Wie kan wat met de regel zoals die wordt uitgevoerd?',
     columns: ['Leest de regel', 'Rekent één geval na', 'Rekent een populatie na'],
     p3:
-      'Om dat gat heen heeft de overheid vervangende waarborgen gebouwd: het Algoritmeregister, DPIA’s, het IAMA, proportionaliteitscommissies. Ze beoordelen allemaal beschrijvingen van systemen, opgesteld door wie die systemen bouwde. Met een gepubliceerde regel krijgen ze iets anders te beoordelen: de regel zelf.',
+      'Om dat gat heen heeft de overheid vervangende waarborgen gebouwd: het Algoritmeregister, DPIA’s, het IAMA, proportionaliteitscommissies. Ze werken maar half, want ze beoordelen beschrijvingen van systemen, opgesteld door wie die systemen bouwde. Met een gepubliceerde regel krijgen ze iets anders te beoordelen: de regel zelf.',
     p4:
       'Het paper noemt de toeslagenaffaire, Robodebt in Australië en het Horizon-schandaal in het Verenigd Koninkrijk als uitingen van hetzelfde patroon. Over de toeslagenaffaire zegt het dat ondoorzichtige uitvoering één draad van het falen was. De parlementaire enquête concludeerde dat alle drie de machten blind waren geweest voor mens en recht.',
   },
@@ -304,7 +305,7 @@ const nl: Content = {
     flowProposalNote:
       'De uitleg die de organisatie toepast, staat op één plek, en die plek is openbaar. Wie het besluit krijgt, kan het naast de gepubliceerde specificatie leggen.',
     p2:
-      'Het formaat is met opzet beperkt. Er zit weinig in: rekenen, vergelijken, nagaan of iets in een lijst staat, datums toetsen, en verwijzen naar andere regels. Geen lussen, geen recursie, geen algemene programmeertaal. Daardoor eindigt elke berekening, en blijft de specificatie leesbaar voor juristen. Ze volgt de artikelindeling van de wet, zodat je artikel voor artikel kunt nagaan of de vertaling klopt.',
+      'Het formaat is met opzet beperkt. Er zit weinig in: rekenen, vergelijken, nagaan of iets in een lijst staat, datums toetsen, en verwijzen naar andere regels. Geen onbegrensde herhaling, geen recursie, geen algemene programmeertaal. Zo eindigt elke berekening, en is de bedoeling dat de specificatie leesbaar blijft voor juristen. Ze volgt de artikelindeling van de wet, zodat je artikel voor artikel moet kunnen nagaan of de vertaling klopt.',
     exampleLabel: 'Een verzonnen artikel en zijn specificatie (naar figuur 1 van het paper)',
     exampleStatute:
       'Een bewoner komt in aanmerking voor een parkeervergunning als zijn voertuig weinig uitstoot. Voor een emissievrij voertuig geldt een lager tarief.',
@@ -333,7 +334,7 @@ const nl: Content = {
     p1:
       'Onder het voorstel krijgt elk besluit een vastlegging mee: welke specificaties de berekening gebruikte, vastgelegd als vingerafdruk van hun inhoud, met welke invoer, met welke engine, en wat eruit kwam. De organisatie ondertekent dat geheel.',
     p2:
-      'De vingerafdruk laat zien welke versie de organisatie zegt te hebben gebruikt. Dat die versie het besluit ook nam, blijkt pas als je narekent: draai de gepubliceerde regel op de vastgelegde invoer en kijk of dezelfde uitkomst eruit komt. Omdat de uitkomst alleen van de specificatie en de invoer afhangt, kan dat altijd, en komt er bij dezelfde invoer altijd hetzelfde uit.',
+      'De vingerafdruk laat zien welke versie de organisatie zegt te hebben gebruikt. Dat die versie het besluit ook nam, blijkt pas als je narekent: draai de gepubliceerde regel op de vastgelegde invoer en kijk of dezelfde uitkomst eruit komt. Omdat de uitkomst alleen van de specificatie en de invoer afhangt, geeft dezelfde invoer altijd hetzelfde antwoord. Narekenen kan dan ook altijd, mits je de gepubliceerde specificaties kunt krijgen en een engine hebt die hetzelfde rekent als die van de organisatie.',
     demoIntro:
       'Hieronder twee besluiten over de zorgtoeslag van dezelfde persoon, met de testgegevens uit het corpus. Ze zijn zojuist in je browser berekend. Reken ze na.',
     decision: 'Besluit',
@@ -357,7 +358,7 @@ const nl: Content = {
     failed: 'Berekenen lukte niet. Probeer de pagina opnieuw te laden.',
     noScript: 'Hiervoor is JavaScript nodig: de engine draait in je eigen browser, niet op een server.',
     revealA:
-      'Dit besluit is genomen met de gepubliceerde versie. Je narekening gebruikt dezelfde engine als het besluit; met een andere engine leun je erop dat beide hetzelfde uitrekenen, en hoe je dat vaststelt is een open vraag in het paper.',
+      'Beide controles kloppen: de vastgelegde versie is de gepubliceerde, en die geeft op de vastgelegde invoer hetzelfde bedrag. Of die invoer klopt, zegt dit niet. Je narekening gebruikt dezelfde engine als het besluit; met een andere engine leun je erop dat beide hetzelfde uitrekenen, en hoe je dat vaststelt is een open vraag in het paper.',
     revealB: (published, local, diff) =>
       `Het systeem achter dit besluit draaide een eigen kopie van de wet, waarin één percentage nog op de waarde van vorig jaar stond (${local} in plaats van ${published}). Die kopie is nooit gepubliceerd. Het verschil is ${diff}, en het valt op twee manieren op: de vingerafdruk past niet bij de gepubliceerde versie, en narekenen geeft een ander bedrag.`,
     disclaimer:
@@ -387,7 +388,7 @@ const nl: Content = {
           ['Volgens de algemene regel', '6 weken (art. 6:7 Awb)'],
           ['Vervangen door', '4 weken'],
           ['Grond', 'in afwijking van art. 6:7 Awb'],
-          ['Vastgelegd door', 'Vreemdelingenwet 2000, art. 69'],
+          ['Verklaard door', 'Vreemdelingenwet 2000, art. 69'],
         ],
         note:
           'De bijzondere wet wijkt af van de algemene. Die afwijking staat in de gepubliceerde specificatie zelf, en de verklaring is haar eigen grond.',
@@ -430,12 +431,12 @@ const nl: Content = {
   offices: {
     title: 'Ieder in zijn eigen ambt',
     p1:
-      'Dezelfde gepubliceerde specificatie dient iedereen, maar niet iedereen op dezelfde manier. Wie een besluit krijgt, kan het eigen geval narekenen, en vooraf uitproberen wat een verhuizing of een ander inkomen doet. In bezwaar en beroep kan de rechter het voorliggende geval opnieuw uitvoeren en vaststellen of een uitkomst uit de specificatie volgt of uit de wettekst zelf. Controleurs met een wettelijke grondslag voor de gegevens kunnen een hele populatie narekenen. De Kamer en het publiek hebben geen casusgegevens en kunnen geen besluit narekenen. Zij krijgen de regel zelf: elke drempel, en het volledige effect van een amendement voordat het wordt aangenomen.',
+      'Dezelfde gepubliceerde specificatie dient iedereen, maar niet iedereen op dezelfde manier. Wie een besluit krijgt, kan het eigen geval narekenen, en vooraf uitproberen wat een verhuizing of een ander inkomen doet. De meeste mensen doen dat niet zelf, en het voorstel gaat daar ook niet van uit; het paper verwacht dat sociaal raadslieden, sociaal advocaten, schuldhulpverleners en journalisten de specificatie eerst lezen. In bezwaar kan de behandelaar het geval opnieuw uitvoeren, in beroep de rechter, die kan vaststellen of een uitkomst uit de specificatie volgt of uit de wettekst zelf. De rechter mag de specificatie gebruiken en is er nooit aan gebonden. Controleurs met een wettelijke grondslag voor de gegevens kunnen een hele populatie narekenen. De Kamer en het publiek hebben geen casusgegevens en kunnen geen besluit narekenen. Zij krijgen de regel zelf: elke drempel, en het volledige effect van een amendement voordat het wordt aangenomen.',
     p2:
       'Dat narekenen bij de betrokkenen ligt en niet bij iedereen, is volgens het paper juist goed:',
     quote:
       'a state in which anyone could re-run anyone’s case would have bought transparency by abolishing privacy.',
-    quoteNote: 'Een staat waarin iedereen ieders geval kan narekenen, koopt transparantie met privacy.',
+    quoteNote: 'Een staat waarin iedereen ieders geval kan narekenen, koopt transparantie door privacy af te schaffen.',
     p3:
       'Publiceren verandert de machtsverhouding alleen als de andere machten met het gepubliceerde kunnen werken. Het paper verwacht niet dat Kamerleden zelf specificaties lezen. Het wijst op Bureau Wetgeving en de Dienst Analyse en Onderzoek van de Tweede Kamer, die die capaciteit zouden kunnen krijgen, voor alle fracties gelijk. In Frankrijk bestaat zoiets al: LexImpact rekent bij de Assemblée nationale amendementen door met OpenFisca.',
   },
@@ -459,21 +460,21 @@ const nl: Content = {
     skipped: 'niet nodig',
     stop: 'Uitkomst: geen recht. Verder kijken hoeft niet.',
     orderNote:
-      'Beide volgordes zijn wettelijk toegestaan. Alleen in de eerste komen gevoelige gegevens die er niet toe doen nooit in beeld. Systemen raadplegen vaak alles waar ze bij mogen, omdat niemand het pad ziet. In een specificatie ligt het pad vast en kun je het nalopen.',
+      'Beide controles zijn wettelijk toegestaan. Alleen in de eerste volgorde komen gevoelige gegevens die er niet toe doen nooit in beeld. Systemen raadplegen vaak alles waar ze bij mogen, omdat niemand het pad ziet. In een specificatie wordt het pad zichtbaar, en kun je eisen dat de engine het zuinigste volgt.',
     p2:
       'Een Memorie van Toelichting rekent vaak voorbeelden voor. Die kunnen dienen als test: de gepubliceerde specificatie rekent ze na, of niet. Het paper noemt ook de beperking: zulke voorbeelden worden niet bijgewerkt als de wet verandert of als bedragen worden geïndexeerd, dus ze testen na een paar jaar niet meer de regel die geldt.',
     p3: 'Op de voorpagina draait zo’n voorbeeld uit de Kamerstukken van de zorgtoeslag.',
     landingLink: 'Naar het voorbeeld op de voorpagina',
-    gapLabel: 'Een gat, gepubliceerd in plaats van verstopt (naar figuur 5 van het paper)',
+    gapLabel: 'Een gat, gepubliceerd in plaats van verstopt (naar figuur 5 van het paper; een voorbeeld uit de tijd vóór ROUND, CEIL en FLOOR)',
     gapRows: [
       ['Artikel', '12'],
       ['Wat de tekst zegt', 'naar boven afgerond op hele euro’s'],
-      ['Waarom het niet past', 'het formaat kent geen bewerking om af te ronden'],
+      ['Waarom het niet paste', 'het formaat kende toen geen bewerking om af te ronden'],
       ['Wat nodig zou zijn', 'bewerkingen om af te ronden (ROUND, CEIL, FLOOR)'],
-      ['Status', 'nog niet vrijgegeven: de engine weigert besluiten die van dit artikel afhangen'],
+      ['Status', 'niet vrijgegeven: tot een beoordelaar het artikel vrijgeeft, weigert de engine besluiten die ervan afhangen'],
     ],
     gapNote:
-      'Soms kan het formaat een bepaling niet uitdrukken. Een vertaler, en zeker een taalmodel, grijpt dan naar iets dat meestal hetzelfde uitkomt: een afronding nabootsen met rekenwerk, een tabel uitschrijven als reeks voorwaarden. Dat levert een specificatie op die draait en er trouw uitziet, maar afwijkt van de wet. Het paper wil dat het gat zelf wordt gepubliceerd, als aantekening bij het artikel.',
+      'Soms kan het formaat een bepaling niet uitdrukken. Een vertaler, en zeker een taalmodel, grijpt dan naar iets dat meestal hetzelfde uitkomt: een afronding nabootsen met rekenwerk, een tabel uitschrijven als reeks voorwaarden. Dat levert een specificatie op die draait en er trouw uitziet, maar afwijkt van de wet. Het paper wil dat het gat zelf wordt gepubliceerd, als aantekening bij het artikel. Het noemt ook de grens daarvan: een gat dat de vertaler niet aantekent en de lezer niet opmerkt, glipt erdoor.',
     p4:
       'Bij een bepaling als ‘naar het oordeel van de minister’ valt niets te benaderen. Die uitkomst is niet aan het formaat om uit te rekenen.',
   },
@@ -495,6 +496,8 @@ const nl: Content = {
       'Bij een wetswijziging moeten rechter, burger en wetgever precies zien wat er veranderde. In natuurlijke taal kan een herformulering hetzelfde lijken en iets anders doen, of andersom.',
       'Het knelpunt zit bij het lezen, niet bij het schrijven. RegelSpraak is gemaakt voor wie de regel opstelt; dit voorstel voor wie na de uitvoering moet kunnen controleren.',
     ],
+    p4b:
+      'Het paper sluit een schrijflaag in natuurlijke taal die naar dit formaat vertaalt niet uit; het noemt dat een samenhangende richting. En het zegt erbij dat het zijn keuze met argumenten verdedigt, niet met metingen: een vergelijking met RegelSpraak staat op de onderzoeksagenda.',
     p5:
       'In de referentie-implementatie vertalen taalmodellen wetten naar het formaat, artikel voor artikel, volgens een gepubliceerde werkwijze. Ze rekenen nooit. Wat een besluit uitrekent, is de deterministische engine, op een specificatie die mensen hebben nagekeken en een organisatie heeft overgenomen.',
   },
@@ -502,11 +505,11 @@ const nl: Content = {
   limits: {
     title: 'Wat dit niet oplost',
     p1:
-      'Een ambtenaar mag alleen doen waarvoor de wet een bevoegdheid geeft. In een organisatie van mensen is die grens niet scherp: er gebeurt weleens iets behulpzaams waarvoor niemand bevoegd is, en niemand controleert het. Een samenleving leunt daar misschien meer op dan ze kan zeggen. Een systeem kent die ongeschreven marge niet. Het paper wijst erop dat publicatie daar niets aan verandert: de marge sluit net zo goed in software die nooit gepubliceerd wordt, en dat gebeurt nu al.',
+      'Een ambtenaar mag alleen doen waarvoor de wet een bevoegdheid geeft. In een organisatie van mensen is die grens niet scherp: er gebeurt weleens iets behulpzaams waarvoor niemand bevoegd is, en niemand controleert het. Een samenleving leunt daar misschien meer op dan ze kan zeggen. Een systeem kent die ongeschreven marge niet. Publicatie verandert daar niets aan: de marge sluit net zo goed in software die nooit gepubliceerd wordt, en dat gebeurt nu al. Het paper rekent zichzelf wel uitdrukkelijk tot de beweging die de marge sluit. Wie de uitvoering continu laat controleren, haalt ook de marge in de handhaving weg, en een uitvoering die je kunt inzien, krijgt misschien juist meer taken. Het voorstel maakt dat sluiten wel zichtbaar, en geeft een deel van de ruimte terug: de berekende uitkomst is een standaard (stap 5), waarvan wie bevoegd is met een gegronde reden mag afwijken.',
     p2:
       'Een bekend bezwaar is dat wie de regel kent, hem kan ontduiken. Het paper scheidt daarom de beslisregel van de controlelogica. Alleen de eerste hoeft openbaar: hoe de wet op feiten tot een uitkomst komt. Hoe de overheid kiest wie ze controleert, valt erbuiten. Wie zijn zaken net onder een drempel regelt, kan dat omdat de wetgever een precieze drempel koos. Met een adviseur lukt dat nu ook al; geheimhouding benadeelt alleen wie geen adviseur kan betalen.',
     p3:
-      'Het paper noemt zichzelf onvolmaakt, en zegt dat het nieuwe problemen introduceert. Het richt zich op de oorzaak die het aanwijst: dat de uitvoering van wetten ondoorzichtig is. Een deel van de vragen laat het uitdrukkelijk open.',
+      'Het paper noemt zijn aanpak onvolmaakt, en zegt dat die nieuwe problemen introduceert. Het richt zich op de oorzaak die het aanwijst: dat de uitvoering van wetten ondoorzichtig is. Een deel van de vragen laat het uitdrukkelijk open.',
     openLabel: 'Open vragen uit het paper',
     open: [
       'Wat voor juridisch object een specificatie is, en of een correctie alleen voor de toekomst werkt.',
@@ -605,7 +608,7 @@ const en: Content = {
     matrixLabel: 'Who can do what with the rule as executed?',
     columns: ['Reads the rule', 'Re-runs one case', 'Re-runs a population'],
     p3:
-      'Around that gap the Dutch state has built substitute safeguards: the Algorithm Register, data protection impact assessments, the human-rights impact assessment IAMA, proportionality committees. All of them assess descriptions of systems, written by the people who built those systems. With a published rule they get something else to assess: the rule itself.',
+      'Around that gap the Dutch state has built substitute safeguards: the Algorithm Register, data protection impact assessments, the human-rights impact assessment IAMA, proportionality committees. They work only imperfectly, because they assess descriptions of systems, written by the people who built those systems. With a published rule they get something else to assess: the rule itself.',
     p4:
       'The paper names the Dutch childcare benefits scandal (toeslagenaffaire), Robodebt in Australia and the Post Office Horizon scandal in the United Kingdom as instances of the same pattern. Of the toeslagenaffaire it says that opaque execution was one strand of the failure. The parliamentary inquiry concluded that all three branches had been blind to people and justice.',
   },
@@ -631,7 +634,7 @@ const en: Content = {
     flowProposalNote:
       'The reading the organization applies sits in one place, and that place is public. Whoever receives the decision can hold it up against the published specification.',
     p2:
-      'The format is restricted on purpose. There is little in it: arithmetic, comparison, checking whether something is in a list, date tests, and references to other rules. No loops, no recursion, no general-purpose programming language. That way every calculation ends, and the specification stays readable for lawyers. It follows the article structure of the statute, so you can check article by article whether the translation holds.',
+      'The format is restricted on purpose. There is little in it: arithmetic, comparison, checking whether something is in a list, date tests, and references to other rules. No unbounded iteration, no recursion, no general-purpose programming language. That way every calculation ends, and the specification is meant to stay readable for lawyers. It follows the article structure of the statute, so that you should be able to check article by article whether the translation holds.',
     exampleLabel: 'A made-up article and its specification (after Figure 1 of the paper)',
     exampleStatute:
       'A resident is eligible for a parking permit if their vehicle has low emissions. The fee is reduced for zero-emission vehicles.',
@@ -660,7 +663,7 @@ const en: Content = {
     p1:
       'Under the proposal every decision comes with a record: which specifications the calculation used, recorded as a fingerprint of their content, with which inputs, with which engine, and what came out. The organization signs the whole.',
     p2:
-      'The fingerprint shows which version the organization says it used. That this version also made the decision only shows when you re-run it: run the published rule on the recorded inputs and see whether the same outcome comes out. Because the outcome depends only on the specification and the inputs, that is always possible, and the same inputs always give the same result.',
+      'The fingerprint shows which version the organization says it used. That this version also made the decision only shows when you re-run it: run the published rule on the recorded inputs and see whether the same outcome comes out. Because the outcome depends only on the specification and the inputs, the same inputs always give the same answer. Re-running is therefore always possible, provided you can obtain the published specifications and an engine that computes the same as the organization’s.',
     demoIntro:
       'Below are two decisions on the healthcare allowance of the same person, using the test data from the corpus. They were just computed in your browser. Check them.',
     decision: 'Decision',
@@ -684,7 +687,7 @@ const en: Content = {
     failed: 'The calculation failed. Try reloading the page.',
     noScript: 'This needs JavaScript: the engine runs in your own browser, not on a server.',
     revealA:
-      'This decision was made with the published version. Your check uses the same engine as the decision; with a different engine you rely on both computing the same thing, and how to establish that is an open question in the paper.',
+      'Both checks pass: the recorded version is the published one, and it gives the same amount on the recorded inputs. Whether those inputs are true, this does not say. Your check uses the same engine as the decision; with a different engine you rely on both computing the same thing, and how to establish that is an open question in the paper.',
     revealB: (published, local, diff) =>
       `The system behind this decision ran its own copy of the law, in which one percentage still had last year’s value (${local} instead of ${published}). That copy was never published. The difference is ${diff}, and it shows in two ways: the fingerprint does not match the published version, and re-running gives a different amount.`,
     disclaimer:
@@ -757,7 +760,7 @@ const en: Content = {
   offices: {
     title: 'Each within its own office',
     p1:
-      'The same published specification serves everyone, but not everyone in the same way. Whoever receives a decision can re-run their own case, and try out in advance what a move or a different income would do. In objection and appeal the court can re-run the case before it and establish whether an outcome follows from the specification or from the statute itself. Auditors with a legal basis for the data can re-run a whole population. Parliament and the public hold no case data and cannot re-run a decision. They get the rule itself: every threshold, and the full effect of an amendment before it is passed.',
+      'The same published specification serves everyone, but not everyone in the same way. Whoever receives a decision can re-run their own case, and try out in advance what a move or a different income would do. Most people will not do this themselves, and the proposal does not assume they will; the paper expects social-legal counsellors, legal aid lawyers, welfare officers and journalists to read the specification first. In objection the officer handling it can re-run the case, and on appeal the court, which can establish whether an outcome follows from the specification or from the statute itself. The court may use the specification and is never bound by it. Auditors with a legal basis for the data can re-run a whole population. Parliament and the public hold no case data and cannot re-run a decision. They get the rule itself: every threshold, and the full effect of an amendment before it is passed.',
     p2:
       'That re-running falls to those with standing, and not to everyone, is according to the paper the right model:',
     quote:
@@ -786,21 +789,21 @@ const en: Content = {
     skipped: 'not needed',
     stop: 'Outcome: not eligible. Nothing more to look up.',
     orderNote:
-      'Both orders are lawful. Only in the first do sensitive data that do not matter never come into view. Systems often consult everything they are allowed to, because nobody sees the path. In a specification the path is fixed and can be checked.',
+      'Both checks are legally authorized. Only in the first order do sensitive data that do not matter never come into view. Systems often consult everything they are allowed to, because nobody sees the path. In a specification the path becomes visible, and the engine can be required to follow the least invasive one.',
     p2:
       'An explanatory memorandum (Memorie van Toelichting) often works through examples. Those can serve as a test: the published specification reproduces them, or it does not. The paper also names the limit: such examples are not updated when the law changes or amounts are indexed, so after a few years they no longer test the rule in force.',
     p3: 'The home page runs one such example from the parliamentary papers on the healthcare allowance.',
     landingLink: 'To the example on the home page',
-    gapLabel: 'A gap, published rather than hidden (after Figure 5 of the paper)',
+    gapLabel: 'A gap, published rather than hidden (after Figure 5 of the paper; an example from before ROUND, CEIL and FLOOR existed)',
     gapRows: [
       ['Article', '12'],
       ['What the text says', 'naar boven afgerond op hele euro’s (rounded up to whole euros)'],
-      ['Why it does not fit', 'the format has no rounding operation'],
+      ['Why it did not fit', 'the format then had no rounding operation'],
       ['What it would need', 'rounding operations (ROUND, CEIL, FLOOR)'],
-      ['Status', 'not yet cleared: the engine refuses decisions that depend on this article'],
+      ['Status', 'not cleared: until a reviewer clears the article, the engine refuses decisions that depend on it'],
     ],
     gapNote:
-      'Sometimes the format cannot express a provision. A translator, and a language model in particular, will then reach for something that mostly comes out the same: imitate the rounding with arithmetic, write a table out as a chain of conditions. That yields a specification that runs and looks faithful, while it diverges from the law. The paper wants the gap itself published, as an annotation on the article.',
+      'Sometimes the format cannot express a provision. A translator, and a language model in particular, will then reach for something that mostly comes out the same: imitate the rounding with arithmetic, write a table out as a chain of conditions. That yields a specification that runs and looks faithful, while it diverges from the law. The paper wants the gap itself published, as an annotation on the article. It also names the limit: a gap the translator does not annotate and the reader does not notice slips through.',
     p4:
       'For a provision like “at the discretion of the minister” there is nothing to approximate. That outcome is not the format’s to compute.',
   },
@@ -822,6 +825,8 @@ const en: Content = {
       'When the law is amended, courts, citizens and the legislature need to see exactly what changed. In natural language a rewording can look the same and do something else, or the other way round.',
       'The bottleneck is reading, not writing. RegelSpraak is made for whoever authors the rule; this proposal for whoever has to check after execution.',
     ],
+    p4b:
+      'The paper does not rule out a natural-language authoring layer that compiles to this format; it calls that a coherent direction. And it says that it defends its choice on argument, not on measurement: a comparison with RegelSpraak is on the research agenda.',
     p5:
       'In the reference implementation, language models translate laws into the format, article by article, following a published procedure. They never compute. What computes a decision is the deterministic engine, running a specification that people have reviewed and an organization has adopted.',
   },
@@ -829,11 +834,11 @@ const en: Content = {
   limits: {
     title: 'What this does not fix',
     p1:
-      'An official may only do what the law gives them the power to do. In an organization of people that boundary is not sharp: something helpful happens for which nobody holds a power, and nobody checks. A society may depend on that more than it can say. A system has no such unwritten margin. The paper points out that publication changes nothing here: the margin closes just as much in software that is never published, and that is already happening.',
+      'An official may only do what the law gives them the power to do. In an organization of people that boundary is not sharp: something helpful happens for which nobody holds a power, and nobody checks. A society may depend on that more than it can say. A system has no such unwritten margin. Publication changes nothing here: the margin closes just as much in software that is never published, and that is already happening. The paper does count itself, explicitly, part of the movement that closes the margin. Checking execution continuously also removes the enforcement margin, and an execution you can inspect may well be given more work. The proposal does make that closing visible, and gives part of the room back: the computed outcome is a default (step 5), from which whoever holds the power may depart for a stated reason.',
     p2:
       'A familiar objection is that whoever knows the rule can game it. So the paper separates the decision rule from the enforcement logic. Only the first has to be public: how the law turns facts into an outcome. How government chooses whom to check falls outside it. Whoever arranges their affairs just below a threshold can do so because the legislature chose a precise threshold. With an advisor that already works today; secrecy only disadvantages those who cannot afford one.',
     p3:
-      'The paper calls itself imperfect, and says it introduces new problems. It aims at the cause it identifies: that the execution of law is opaque. Some questions it leaves explicitly open.',
+      'The paper calls its approach imperfect, and says it introduces new problems. It aims at the cause it identifies: that the execution of law is opaque. Some questions it leaves explicitly open.',
     openLabel: 'Open questions from the paper',
     open: [
       'What kind of legal object a specification is, and whether a correction only works prospectively.',
@@ -871,7 +876,7 @@ export function actors(lang: Lang): ActorRow[] {
     },
     {
       actor: t ? 'Bezwaar en rechter' : 'Objection officer and court',
-      now: [n('no'), n('no', t ? 'ziet alleen de uitkomst' : 'sees only the outcome'), n('no')],
+      now: [n('part', t ? 'kan de logica zelf reconstrueren' : 'can reconstruct the logic itself'), n('no', t ? 'ziet alleen de uitkomst' : 'sees only the outcome'), n('no')],
       proposal: [n('yes'), n('yes', t ? 'het voorliggende geval' : 'the case before it'), n('no')],
     },
     {

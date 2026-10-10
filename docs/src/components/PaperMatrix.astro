@@ -1,0 +1,91 @@
+---
+/*
+ * A small yes/partly/no matrix for the plain-language paper page: who can do
+ * what (steps 2 and 6) and Table 1 (step 8).
+ *
+ * Rendered twice, and CSS shows one. From about 40rem up it is an nldd-table,
+ * which reads across. Below that, four columns no longer fit a phone without
+ * the table scrolling sideways, so each row becomes a short block of its own:
+ * the row's name, then one line per column. Same data, same tags; only the
+ * reading direction changes.
+ */
+import type { Cell } from '~/lib/paper-explained-content';
+
+interface Row {
+  label: string;
+  strong?: boolean;
+  cells: Cell[];
+}
+
+interface Props {
+  label: string;
+  /** The header over the row names. */
+  corner: string;
+  columns: string[];
+  rows: Row[];
+  words: { yes: string; part: string; no: string };
+  background?: 'base' | 'tinted';
+  /** Grid tracks for the wide view; the first is the row-name column. */
+  tracks?: string;
+}
+
+const {
+  label,
+  corner,
+  columns,
+  rows,
+  words,
+  background = 'base',
+  tracks = 'minmax(150px, 1.2fr) repeat(3, minmax(110px, 1fr))',
+} = Astro.props;
+
+const color = (v: Cell['v']) => (v === 'yes' ? 'success' : v === 'part' ? 'warning' : 'neutral');
+---
+
+<div class="rr-px-matrix">
+  <div class="rr-px-matrix__wide">
+    <nldd-table accessible-label={label} background={background} columns={tracks}>
+      <nldd-table-row slot="header">
+        <nldd-cell width="full"><nldd-text weight="bold" size="sm">{corner}</nldd-text></nldd-cell>
+        {columns.map((c) => <nldd-cell width="full"><nldd-text weight="bold" size="sm">{c}</nldd-text></nldd-cell>)}
+      </nldd-table-row>
+      {rows.map((row) => (
+        <nldd-table-row>
+          <nldd-cell width="full" vertical-alignment="top">
+            <nldd-text size="sm" weight={row.strong ? 'bold' : 'medium'}>{row.label}</nldd-text>
+          </nldd-cell>
+          {row.cells.map((c) => (
+            <nldd-cell width="full" vertical-alignment="top">
+              <nldd-container gap="4">
+                <nldd-tag size="sm" color={color(c.v)} text={words[c.v]} />
+                {c.note && <nldd-text size="xs" color="secondary">{c.note}</nldd-text>}
+              </nldd-container>
+            </nldd-cell>
+          ))}
+        </nldd-table-row>
+      ))}
+    </nldd-table>
+  </div>
+
+  {/* The narrow view repeats the table for sighted readers on a small
+      screen; the wide one is hidden there, so a screen reader meets the data
+      once at any width. */}
+  <ul class="rr-px-matrix__narrow" aria-label={label}>
+    {rows.map((row) => (
+      <li>
+        <nldd-text size="sm" weight="bold">{row.label}</nldd-text>
+        <dl class="rr-px-receipt">
+          {row.cells.map((c, i) => (
+            <div>
+              <dt>{columns[i]}</dt>
+              <dd>
+                <nldd-tag size="sm" color={color(c.v)} text={words[c.v]} />
+                {c.note && <nldd-text size="xs" color="secondary">{c.note}</nldd-text>}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </li>
+    ))}
+  </ul>
+</div>

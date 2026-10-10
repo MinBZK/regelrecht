@@ -152,6 +152,7 @@ rr-px-receipts [hidden] {
   padding-inline-start: 1.25rem;
 }
 .rr-px-facts code {
+  overflow-wrap: anywhere;
   font: var(--primitives-font-monospace-sm-regular-snug);
 }
 .rr-px-facts summary {
@@ -187,4 +188,32 @@ rr-px-receipts [hidden] {
 .rr-px-code {
   font: var(--primitives-font-monospace-sm-regular-snug);
   overflow-wrap: anywhere;
+}
+
+/* The matrices: a table where four columns fit, a block per row where they
+   do not (see PaperMatrix.astro). 40rem is where the widest of them, the
+   actor matrix, still fits beside the page gutters without scrolling. */
+.rr-px-matrix__narrow {
+  display: none;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rr-px-matrix__narrow > li {
+  padding-block: var(--primitives-space-12, 0.75rem);
+  border-bottom: 1px solid var(--semantics-dividers-color);
+}
+.rr-px-matrix__narrow dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--primitives-space-4) var(--primitives-space-8);
+  align-items: baseline;
+}
+@media (max-width: 40rem) {
+  .rr-px-matrix__wide {
+    display: none;
+  }
+  .rr-px-matrix__narrow {
+    display: block;
+  }
 }

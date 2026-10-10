@@ -22,7 +22,8 @@ import {
   landscape,
   type SectionRef,
 } from '~/lib/paper-explained';
-import { content, actors, type Lang, type Cell } from '~/lib/paper-explained-content';
+import { content, actors, type Lang } from '~/lib/paper-explained-content';
+import PaperMatrix from './PaperMatrix.astro';
 import '~/styles/paper-explained.css';
 
 interface Props {
@@ -53,15 +54,14 @@ const chapters: { id: string; title: string; refs: SectionRef[] }[] = [
   { id: 'binding', title: t.binding.title, refs: [section('sec:format'), section('sec:legalstatus'), section('sec:whochooses')] },
   { id: 'bonnetje', title: t.receipt.title, refs: [section('sec:attestation'), section('sec:traceaccess')] },
   { id: 'standaard', title: t.default.title, refs: [section('sec:overrides'), section('sec:autooverrides')] },
-  { id: 'ambt', title: t.offices.title, refs: [section('sec:actors'), section('sec:readers'), section('sec:conclusion')] },
+  { id: 'ambt', title: t.offices.title, refs: [section('sec:court'), section('sec:runningcase'), section('sec:gaming'), section('sec:readers')] },
   { id: 'blootleggen', title: t.diagnose.title, refs: [section('sec:structuralanalysis'), section('sec:untranslatables'), section('sec:lawmaking'), section('sec:pathoptimization')] },
   { id: 'rules-as-code', title: t.veterans.title, refs: [section('sec:priorwork'), section('sec:cnl'), section('sec:translation')] },
-  { id: 'grenzen', title: t.limits.title, refs: [section('sec:cannotbuildback'), section('sec:gaming'), section('sec:agenda')] },
+  { id: 'grenzen', title: t.limits.title, refs: [section('sec:cannotbuildback'), section('sec:gaming'), section('sec:agenda'), section('sec:conclusion')] },
 ];
 const ch = Object.fromEntries(chapters.map((c, i) => [c.id, { ...c, n: i + 1 }]));
 
-const tagColor = (v: Cell['v']) => (v === 'yes' ? 'success' : v === 'part' ? 'warning' : 'neutral');
-const tagText = (v: Cell['v']) => (v === 'yes' ? t.yes : v === 'part' ? t.part : t.no);
+const words = { yes: t.yes, part: t.part, no: t.no };
 ---
 
 {/* Shared markup for the end of each chapter: where to read on in the paper. */}
@@ -191,29 +191,13 @@ const tagText = (v: Cell['v']) => (v === 'yes' ? t.yes : v === 'part' ? t.part :
     {(['now', 'proposal'] as const).map((state) => (
       <div class="rr-px-panel" data-panel={state}>
         <nldd-text size="sm" weight="bold" class="rr-px-panel__label">{state === 'now' ? t.now : t.proposal}</nldd-text>
-        <nldd-table
-          accessible-label={`${t.power.matrixLabel} ${state === 'now' ? t.now : t.proposal}`}
-          background="base"
-          columns="minmax(150px, 1.2fr) repeat(3, minmax(120px, 1fr))"
-        >
-          <nldd-table-row slot="header">
-            <nldd-cell width="full"><nldd-text weight="bold" size="sm">{t.actorColumn}</nldd-text></nldd-cell>
-            {t.power.columns.map((c) => <nldd-cell width="full"><nldd-text weight="bold" size="sm">{c}</nldd-text></nldd-cell>)}
-          </nldd-table-row>
-          {matrix.map((row) => (
-            <nldd-table-row>
-              <nldd-cell width="full" vertical-alignment="top"><nldd-text size="sm" weight="medium">{row.actor}</nldd-text></nldd-cell>
-              {row[state].map((c) => (
-                <nldd-cell width="full" vertical-alignment="top">
-                  <nldd-container gap="4">
-                    <nldd-tag size="sm" color={tagColor(c.v)} text={tagText(c.v)} />
-                    {c.note && <nldd-text size="xs" color="secondary">{c.note}</nldd-text>}
-                  </nldd-container>
-                </nldd-cell>
-              ))}
-            </nldd-table-row>
-          ))}
-        </nldd-table>
+        <PaperMatrix
+          label={`${t.power.matrixLabel} ${state === 'now' ? t.now : t.proposal}`}
+          corner={t.actorColumn}
+          columns={t.power.columns}
+          rows={matrix.map((row) => ({ label: row.actor, cells: row[state] }))}
+          words={words}
+        />
       </div>
     ))}
   </rr-px-switch>
@@ -282,7 +266,7 @@ const tagText = (v: Cell['v']) => (v === 'yes' ? t.yes : v === 'part' ? t.part :
       accessible-label={t.binding.exampleLabel}
       background="tinted"
       columns="minmax(160px, 1fr) minmax(200px, 1.3fr) minmax(140px, 1fr)"
-      sm-columns="minmax(140px, 1fr) minmax(180px, 1.3fr)"
+      sm-columns="minmax(0, 1fr) minmax(0, 1.3fr)"
     >
       <nldd-table-row slot="header">
         {t.binding.mapColumns.map((c, i) => (
@@ -447,29 +431,14 @@ const tagText = (v: Cell['v']) => (v === 'yes' ? t.yes : v === 'part' ? t.part :
   <nldd-spacer size="16" />
   <nldd-rich-text><p>{t.offices.p1}</p></nldd-rich-text>
   <nldd-spacer size="24" />
-  <nldd-table
-    accessible-label={`${t.power.matrixLabel} ${t.proposal}`}
+  <PaperMatrix
+    label={`${t.power.matrixLabel} ${t.proposal}`}
+    corner={t.actorColumn}
+    columns={t.power.columns}
+    rows={matrix.map((row) => ({ label: row.actor, cells: row.proposal }))}
+    words={words}
     background="tinted"
-    columns="minmax(150px, 1.2fr) repeat(3, minmax(120px, 1fr))"
-  >
-    <nldd-table-row slot="header">
-      <nldd-cell width="full"><nldd-text weight="bold" size="sm">{t.actorColumn}</nldd-text></nldd-cell>
-      {t.power.columns.map((c) => <nldd-cell width="full"><nldd-text weight="bold" size="sm">{c}</nldd-text></nldd-cell>)}
-    </nldd-table-row>
-    {matrix.map((row) => (
-      <nldd-table-row>
-        <nldd-cell width="full" vertical-alignment="top"><nldd-text size="sm" weight="medium">{row.actor}</nldd-text></nldd-cell>
-        {row.proposal.map((c) => (
-          <nldd-cell width="full" vertical-alignment="top">
-            <nldd-container gap="4">
-              <nldd-tag size="sm" color={tagColor(c.v)} text={tagText(c.v)} />
-              {c.note && <nldd-text size="xs" color="secondary">{c.note}</nldd-text>}
-            </nldd-container>
-          </nldd-cell>
-        ))}
-      </nldd-table-row>
-    ))}
-  </nldd-table>
+  />
   <nldd-spacer size="24" />
   <nldd-rich-text><p>{t.offices.p2}</p></nldd-rich-text>
   <nldd-spacer size="8" />
@@ -574,24 +543,19 @@ const tagText = (v: Cell['v']) => (v === 'yes' ? t.yes : v === 'part' ? t.part :
   <nldd-spacer size="16" />
   <nldd-rich-text><p>{t.veterans.p1}</p></nldd-rich-text>
   <nldd-spacer size="24" />
-  <nldd-table
-    accessible-label={t.veterans.tableLabel}
+  <PaperMatrix
+    label={t.veterans.tableLabel}
+    corner={t.veterans.columns[0]}
+    columns={t.veterans.columns.slice(1)}
+    rows={table.rows.map((r) => ({
+      label: r.isProposal ? t.thisPaper : r.approach,
+      strong: r.isProposal,
+      cells: [{ v: r.exec }, { v: r.publ }, { v: r.bound }],
+    }))}
+    words={words}
     background="tinted"
-    columns="minmax(180px, 2fr) repeat(3, minmax(96px, 1fr))"
-  >
-    <nldd-table-row slot="header">
-      {t.veterans.columns.map((c) => <nldd-cell width="full"><nldd-text weight="bold" size="sm">{c}</nldd-text></nldd-cell>)}
-    </nldd-table-row>
-    {table.rows.map((r) => (
-      <nldd-table-row>
-        <nldd-cell width="full"><nldd-text size="sm" weight={r.isProposal ? 'bold' : 'regular'}>{r.isProposal ? t.thisPaper : r.approach}</nldd-text></nldd-cell>
-        {[r.exec, r.publ, r.bound].map((v) => {
-          const val: Cell['v'] = v === 'yes' ? 'yes' : v === 'part' ? 'part' : 'no';
-          return <nldd-cell width="full"><nldd-tag size="sm" color={tagColor(val)} text={tagText(val)} /></nldd-cell>;
-        })}
-      </nldd-table-row>
-    ))}
-  </nldd-table>
+    tracks="minmax(180px, 2fr) repeat(3, minmax(96px, 1fr))"
+  />
   <nldd-spacer size="8" />
   <nldd-link href={table.href} size="sm" text={t.tableLink} />
   <nldd-spacer size="24" />
@@ -600,6 +564,7 @@ const tagText = (v: Cell['v']) => (v === 'yes' ? t.yes : v === 'part' ? t.part :
     <p>{t.veterans.p3}</p>
     <p>{t.veterans.p4}</p>
     <ol>{t.veterans.reasons.map((r) => <li>{r}</li>)}</ol>
+    <p>{t.veterans.p4b}</p>
     <p>{t.veterans.p5}</p>
   </nldd-rich-text>
   <nldd-spacer size="24" />
