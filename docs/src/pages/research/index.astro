@@ -17,6 +17,7 @@ interface ResearchItem {
   text: string;
   href: string;
   linkLabel: string;
+  also?: { href: string; linkLabel: string };
 }
 
 const items: ResearchItem[] = [
@@ -27,15 +28,9 @@ const items: ResearchItem[] = [
     text: paper.abstract_lead,
     href: '/research/rules-as-executed',
     linkLabel: 'position paper',
-  },
-  {
-    title: `${paper.title}, explained`,
-    meta: 'Plain-language companion • Dutch and English',
-    text:
-      'The argument of the paper in nine steps, with a decision you can check in ' +
-      'your own browser. Also in Dutch: Rules as Executed, uitgelegd.',
-    href: '/research/rules-as-executed/explained',
-    linkLabel: 'explainer',
+    // The explainer is the same paper in plain language, so it rides on the
+    // paper's card instead of taking a card of its own.
+    also: { href: '/research/rules-as-executed/explained', linkLabel: 'plain-language explainer' },
   },
   {
     title: 'Rules as Executed: When machine-executable laws are published',
