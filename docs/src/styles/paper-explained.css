@@ -1,0 +1,211 @@
+/*
+ * The plain-language page about "Rules as Executed" (/research/rules-as-
+ * executed/uitgelegd and /explained). Only what the design-system components
+ * do not cover: the step diagrams, the receipt rows, and spacing for plain
+ * lists. Every rule here is custom CSS on top of NLDD and is listed in the
+ * pull request that added it, as AGENTS.md asks.
+ */
+
+/* Components that set their own display ignore [hidden]; the switches and the
+   receipt panel rely on it to show one thing at a time. */
+rr-px-switch,
+rr-px-receipts {
+  display: block;
+}
+
+rr-px-switch [hidden],
+rr-px-receipts [hidden] {
+  display: none !important;
+}
+
+.rr-px-lede {
+  font: var(--primitives-font-body-lg-regular-snug);
+  max-width: 46rem;
+}
+
+.rr-px-step {
+  margin: 0 0 var(--primitives-space-4);
+  color: var(--semantics-content-secondary-color);
+  font: var(--primitives-font-body-sm-medium-snug, inherit);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.rr-px-toc {
+  margin: 0;
+  padding-inline-start: 1.5rem;
+  columns: 2 18rem;
+}
+.rr-px-toc li {
+  margin-block: var(--primitives-space-4);
+  break-inside: avoid;
+}
+
+/* A row of steps with a chevron between them; a column on narrow screens,
+   where the chevron turns to point down. */
+.rr-px-flow {
+  display: flex;
+  gap: var(--primitives-space-24, 1.5rem);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rr-px-flow__step {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+}
+.rr-px-flow__step + .rr-px-flow__step::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: calc(-1 * var(--primitives-space-16, 1rem));
+  top: 50%;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-top: 2px solid var(--semantics-content-secondary-color);
+  border-right: 2px solid var(--semantics-content-secondary-color);
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+/* The unpublished layer: a dashed outline, since it is there but unseen. */
+.rr-px-flow__step--hidden nldd-card {
+  outline: 2px dashed var(--semantics-dividers-color);
+  outline-offset: 4px;
+  border-radius: var(--semantics-surfaces-corner-radius, 8px);
+}
+/* The published specification: the one thing both sides hold. */
+.rr-px-flow__step--key nldd-card {
+  outline: 2px solid var(--semantics-buttons-accent-filled-background-color);
+  outline-offset: 4px;
+  border-radius: var(--semantics-surfaces-corner-radius, 8px);
+}
+@media (max-width: 40rem) {
+  .rr-px-flow {
+    flex-direction: column;
+  }
+  .rr-px-flow__step + .rr-px-flow__step::before {
+    inset-inline-start: 50%;
+    top: calc(-1 * var(--primitives-space-12, 0.75rem));
+    transform: translate(-50%, -50%) rotate(135deg);
+  }
+}
+
+.rr-px-panel + .rr-px-panel {
+  margin-top: var(--primitives-space-24, 1.5rem);
+}
+.rr-px-panel__label {
+  display: block;
+  margin-bottom: var(--primitives-space-8);
+}
+
+.rr-px-demand {
+  margin: 0;
+  font: var(--primitives-font-body-lg-medium-snug, inherit);
+}
+
+/* Key/value rows: the receipt, an override record, an annotation. */
+/* Plain elements outside nldd-text and nldd-rich-text take the body font
+   from here, or they fall back to the browser default. */
+.rr-px-receipt,
+.rr-px-facts,
+.rr-px-status,
+.rr-px-toc {
+  font: var(--primitives-font-body-sm-regular-snug);
+  color: var(--semantics-content-color);
+}
+
+.rr-px-receipt {
+  margin: 0;
+  display: grid;
+  gap: 0;
+}
+.rr-px-receipt > div {
+  display: grid;
+  grid-template-columns: minmax(8rem, 2fr) 3fr;
+  gap: var(--primitives-space-8);
+  padding-block: var(--primitives-space-8);
+  border-bottom: 1px solid var(--semantics-dividers-color);
+}
+.rr-px-receipt > div:last-child {
+  border-bottom: 0;
+}
+.rr-px-receipt dt {
+  color: var(--semantics-content-secondary-color);
+}
+.rr-px-receipt dd {
+  margin: 0;
+  min-width: 0;
+}
+.rr-px-receipt__amount dd {
+  font-weight: 700;
+}
+@media (max-width: 30rem) {
+  .rr-px-receipt > div {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}
+.rr-px-digest {
+  font-family: var(--primitives-font-family-monospace);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.rr-px-checks {
+  margin: 0 0 var(--primitives-space-8);
+  padding: 0;
+  list-style: none;
+}
+.rr-px-checks li {
+  display: flex;
+  gap: var(--primitives-space-8);
+  align-items: baseline;
+  margin-block: var(--primitives-space-4);
+}
+
+.rr-px-facts ul {
+  columns: 2 16rem;
+  margin: var(--primitives-space-8) 0 0;
+  padding-inline-start: 1.25rem;
+}
+.rr-px-facts code {
+  font-family: var(--primitives-font-family-monospace);
+  font-size: 0.8125rem;
+}
+.rr-px-facts summary {
+  cursor: pointer;
+}
+
+/* The order-of-checks figure: one row per register, the skipped one faded. */
+.rr-px-path {
+  margin: 0 0 var(--primitives-space-12, 0.75rem);
+  padding: 0;
+  list-style: none;
+}
+.rr-px-path__step {
+  display: flex;
+  gap: var(--primitives-space-12, 0.75rem);
+  align-items: flex-start;
+  padding-block: var(--primitives-space-8);
+  border-bottom: 1px solid var(--semantics-dividers-color);
+}
+.rr-px-path__step > span {
+  display: grid;
+}
+.rr-px-path__step--skipped > span {
+  opacity: 0.55;
+}
+
+.rr-px-refs ul {
+  margin: var(--primitives-space-4) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.rr-px-refs li {
+  margin-block: var(--primitives-space-4);
+}
+
+.rr-px-code {
+  font-family: var(--primitives-font-family-monospace);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
