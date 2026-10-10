@@ -36,7 +36,9 @@ interface Props {
 
 const { label, rowHeader, columns, rows, words, background = 'base', tracks: fit = 'equal' } = Astro.props;
 
-const color = (v: Cell['v']) => (v === 'yes' ? 'success' : v === 'part' ? 'warning' : 'neutral');
+// "nee" gets a color of its own in every state. A grey "nee" next to green reads as
+// "not applicable", which made the proposal look as if it removed every no.
+const color = (v: Cell['v']) => (v === 'yes' ? 'success' : v === 'part' ? 'warning' : 'critical');
 const word = (v: Cell['v']) => (v === 'yes' ? words.yes : v === 'part' ? words.part : words.no);
 const tracks =
   fit === 'fit'
