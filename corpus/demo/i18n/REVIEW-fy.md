@@ -62,8 +62,9 @@ corrigeren.
   zaaksysteem: hoe de cel haar kroniek terugleest) zijn door een taalmodel
   vertaald. Twijfel bij `Leksostatussen` voor de term "lexostatussen" (de x als
   ks, zoals in `tekst`; de term zelf komt uit de chronolexografie en kan ook
-  onvertaald blijven), `werombringt ta` voor "reduceert tot", `Oflieding` voor
-  "afleiding" en `hâlder` voor "houder" (van het beleid).
+  onvertaald blijven) en `hâlder` voor "houder" (van het beleid). De woorden
+  voor de reductietaal (`werombringt ta` voor "reduceert tot", `Oflieding` voor
+  "afleiding") zijn met die taal verdwenen (oktober 2026).
   De kaarten per lexostatus (oktober 2026) voegden toe: `Ôflaat út de wet`
   voor "afgeleid uit de wet", `Fêstlein yn` voor "vastgelegd in", `Foarm` voor
   "vorm" (van wat een lexostatus geeft), `ynterface` voor "interface", `Barren`
@@ -209,26 +210,22 @@ anders in de vertaling voor, dus er is ook geen eerdere keuze om op te leunen.
 - **"Grondslag"** staat op `Grûnslach` (`lexo.col.basis`), naar het bestaande
   `Gjin grûnslach foar dit momint fêstlein`. Met hoofdletter vooraan; of de
   hoofdletter op de û goed valt, is niet nagegaan.
-- **"Gebruikt bij" / "Gebruikt als"** staan op `Brûkt by` en `Brûkt as`
-  (`lexo.section.used_by`, `lexo.col.used_as`).
-- **"de indiening"** staat op `de yntsjinning` (`lexo.source.submission`);
-  het werkwoord `yntsjinje` komt elders in de demo voor, het zelfstandig
-  naamwoord niet.
-- **"binnenkwam"** staat op `binnenkaam` en **"rechtens telt"** op
-  `rjochtlik telt` (`lexo.origin.received`, `lexo.origin.counts`). Of
-  `rjochtlik` hier het juridische "rechtens" draagt, is niet nagegaan.
-- **"opgeteld over"** staat op `opteld oer` (`lexo.origin.sum`).
-- **"per {period}"** staat op `foar elk {period}` (`lexo.source.per_period`).
-  `Per` is ook Fries; de omschrijving is gekozen omdat de zin anders gelijk
-  aan het Nederlands bleef. Een revisor mag terug naar `per`.
+- **"binnenkwam"** staat op `binnenkaam` (`lexo.origin.received`).
+- **Vervallen (oktober 2026)**, met de reductietaal en de oude kaart:
+  `lexo.section.used_by` (`Brûkt by`), `lexo.source.submission` (`de
+  yntsjinning`), `lexo.origin.counts` (`rjochtlik telt`), `lexo.origin.sum`
+  (`opteld oer`) en `lexo.source.per_period` (`foar elk {period}`) bestaan
+  niet meer. `lexo.col.used_as` bestaat nog, maar staat nu op `Frege troch
+  (ynterface)` in plaats van `Brûkt as`.
 - **"Technisch tonen" / "verbergen"** staan op `Technysk sjen litte` en
   `Technysk ferbergje` (`lexo.technical.*`).
 
-## 10. Het scherm Gevolgen, nog niet nagekeken
+## 10. Het scherm Burger, nog niet nagekeken
 
-- **"Gevolgen"** staat op `Gefolgen` (`app.tabs.gevolgen`, `gevolgen.title`),
-  en het pad op `/fy/gefolgen`. Of dat het gangbare Friese woord is, is niet
-  nagegaan.
+- **"Burger"** staat op `Boarger` (`app.tabs.gevolgen`, `gevolgen.title`),
+  en het pad op `/fy/boarger`. Het scherm heette eerst "Gevolgen" (`Gefolgen`);
+  de sleutels houden die naam. Of `Boarger` het gangbare Friese woord is, is
+  niet nagegaan.
 - **"bûten de oerheid"** (`gevolgen.intro`, `gevolgen.none`) volgt
   `oerheid` elders in de demo.
 
@@ -270,9 +267,10 @@ anders in de vertaling voor, dus er is ook geen eerdere keuze om op te leunen.
   wurden`): of `folt … yn` en `mei safolle wurden` (voor "met zoveel
   woorden") natuurlijk Fries zijn, is niet nagegaan.
 
-- **Naar een moment spoelen** (`zaak.moments.advance_to`: `Nei dit momint`;
-  `.label`: `De klok nei {date} sette, mei alles wat der oant dan
-  ûntstiet`): `momint` volgt `zaak.moments.title`; of `oant dan` het
+- **Naar een moment spoelen** (`zaak.moments.advance_to.label`: `De klok
+  nei {date} sette, mei alles wat der oant dan ûntstiet`): de knop is alleen
+  een icoon, dit is zijn toegankelijke naam; de zichtbare tekst
+  `zaak.moments.advance_to` (`Nei dit momint`) is weg. Of `oant dan` het
   gangbare Fries is voor "tot dan", is niet nagegaan.
 
 ## Hoe je een correctie doorvoert

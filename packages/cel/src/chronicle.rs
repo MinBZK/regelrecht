@@ -39,7 +39,8 @@ impl Period {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Gram {
     pub id: String,
-    /// `submission` (an application) or `decretogram` (a decision).
+    /// `submission` (an application), `decretogram` (a decision) or
+    /// `executogram` (an execution, such as a payment order or a receipt).
     #[serde(rename = "type")]
     pub type_: String,
     /// For a submission: its kind in lower case (`aanvraag`).
