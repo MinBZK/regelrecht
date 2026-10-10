@@ -346,14 +346,25 @@ fn declaration_fingerprint(law: &ArticleBasedLaw) -> Vec<String> {
         if let Some(hooks) = article.get_hooks() {
             for decl in hooks {
                 parts.push(format!(
-                    "hook\0{}\0{:?}\0{:?}\0{:?}\0{:?}",
+                    "hook\0{}\0{:?}\0{:?}\0{:?}\0{:?}\0{:?}\0{:?}\0{:?}",
                     article.number,
                     decl.hook_point,
                     decl.applies_to.legal_character,
                     decl.applies_to.decision_type,
-                    decl.applies_to.stage
+                    decl.applies_to.stage,
+                    decl.applies_to.submission,
+                    decl.applies_to.decided_by,
+                    decl.applies_to.established_by
                 ));
             }
+        }
+        for target in article
+            .get_produces()
+            .and_then(|p| p.decides_on.as_ref())
+            .into_iter()
+            .flatten()
+        {
+            parts.push(format!("decides_on\0{}\0{target}", article.number));
         }
         if let Some(overrides) = article.get_overrides() {
             for decl in overrides {
@@ -376,10 +387,26 @@ pub(crate) struct LawArticleRef {
 }
 
 /// A hook index entry linking a hook declaration to the law and article that defined it.
-pub(crate) struct HookEntry {
+pub struct HookEntry {
     pub(crate) law_id: String,
     pub(crate) article_number: String,
     filter: HookFilter,
+}
+
+impl HookEntry {
+    /// What the hook applies to.
+    pub fn filter(&self) -> &HookFilter {
+        &self.filter
+    }
+}
+
+/// A decision taken on a submission (RFC-046): the decision article and the
+/// legal character it produces.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct DecisionOn {
+    pub law_id: String,
+    pub article_number: String,
+    pub legal_character: String,
 }
 
 /// Resolves cross-law references and provides law registry functionality.
@@ -429,6 +456,13 @@ pub struct RuleResolver {
     /// Hook index: (hook_point, legal_character) -> list of (law_id, article_number, filter)
     /// Enables O(1) lookup of hooks that should fire for a given lifecycle event.
     hooks_index: HashMap<(HookPoint, String), Vec<HookEntry>>,
+    /// Hooks on a submission (RFC-046): (hook_point, kind) -> entries, such
+    /// as Awb 4:2 on every `AANVRAAG`.
+    submission_hooks_index: HashMap<(HookPoint, String), Vec<HookEntry>>,
+    /// Decisions taken on a submission (RFC-046): `<law>#<article>` of the
+    /// article that establishes the submission -> the decision articles that
+    /// name it in `produces.decides_on`, with their legal character.
+    decides_on_index: HashMap<String, Vec<DecisionOn>>,
     /// Override index: (target_law, target_article, output) -> list of overriding articles
     /// Enables O(1) lookup of lex specialis overrides for a given output.
     overrides_index: HashMap<(String, String, String), Vec<LawArticleRef>>,
@@ -490,6 +524,8 @@ impl RuleResolver {
             output_index: HashMap::new(),
             implements_index: HashMap::new(),
             hooks_index: HashMap::new(),
+            submission_hooks_index: HashMap::new(),
+            decides_on_index: HashMap::new(),
             overrides_index: HashMap::new(),
             procedure_index: HashMap::new(),
             procedure_defaults: HashMap::new(),
@@ -686,10 +722,31 @@ impl RuleResolver {
                 continue;
             };
             for decl in hooks {
-                if decl.applies_to.legal_character.is_none() {
-                    return Err(EngineError::LoadError(format!(
-                        "law '{}' article {}: hook declares no applies_to.legal_character, \
+                let f = &decl.applies_to;
+                let problem = match (&f.legal_character, &f.submission) {
+                    (None, None) => Some(
+                        "hook declares neither applies_to.legal_character nor applies_to.submission, \
                          so it can never fire",
+                    ),
+                    (Some(_), Some(_)) => Some(
+                        "hook declares both applies_to.legal_character and applies_to.submission; \
+                         a hook applies to a decision or to a submission (RFC-046)",
+                    ),
+                    (Some(_), None) if f.decided_by.is_some() || f.established_by.is_some() => {
+                        Some(
+                            "applies_to.decided_by and applies_to.established_by only narrow a hook \
+                             on a submission",
+                        )
+                    }
+                    (None, Some(_)) if f.stage.is_some() || f.decision_type.is_some() => Some(
+                        "a hook on a submission takes no stage or decision_type; decided_by and \
+                         established_by narrow it",
+                    ),
+                    _ => None,
+                };
+                if let Some(problem) = problem {
+                    return Err(EngineError::LoadError(format!(
+                        "law '{}' article {}: {problem}",
                         law.id, article.number
                     )));
                 }
@@ -1373,6 +1430,14 @@ impl RuleResolver {
             entries.retain(|entry| entry.law_id != law_id);
         }
         self.hooks_index.retain(|_, v| !v.is_empty());
+        for entries in self.submission_hooks_index.values_mut() {
+            entries.retain(|entry| entry.law_id != law_id);
+        }
+        self.submission_hooks_index.retain(|_, v| !v.is_empty());
+        for entries in self.decides_on_index.values_mut() {
+            entries.retain(|d| d.law_id != law_id);
+        }
+        self.decides_on_index.retain(|_, v| !v.is_empty());
 
         // Remove old override index entries for this law
         for entries in self.overrides_index.values_mut() {
@@ -1448,14 +1513,39 @@ impl RuleResolver {
                     // honest key to file it under (see `check_hook_filters`).
                     if let Some(hook_decls) = article.get_hooks() {
                         for decl in hook_decls {
+                            let entry = HookEntry {
+                                law_id: law_id.to_string(),
+                                article_number: article.number.clone(),
+                                filter: decl.applies_to.clone(),
+                            };
                             if let Some(ref legal_char) = decl.applies_to.legal_character {
                                 let key = (decl.hook_point, legal_char.clone());
-                                let entry = HookEntry {
+                                self.hooks_index.entry(key).or_default().push(entry);
+                            } else if let Some(ref kind) = decl.applies_to.submission {
+                                let key = (decl.hook_point, kind.clone());
+                                self.submission_hooks_index
+                                    .entry(key)
+                                    .or_default()
+                                    .push(entry);
+                            }
+                        }
+                    }
+
+                    // Decisions taken on a submission (RFC-046).
+                    if let Some(produces) = article.get_produces() {
+                        if let (Some(targets), Some(lc)) =
+                            (&produces.decides_on, &produces.legal_character)
+                        {
+                            for target in targets {
+                                let entry = DecisionOn {
                                     law_id: law_id.to_string(),
                                     article_number: article.number.clone(),
-                                    filter: decl.applies_to.clone(),
+                                    legal_character: lc.clone(),
                                 };
-                                self.hooks_index.entry(key).or_default().push(entry);
+                                let list = self.decides_on_index.entry(target.clone()).or_default();
+                                if !list.contains(&entry) {
+                                    list.push(entry);
+                                }
                             }
                         }
                     }
@@ -1498,6 +1588,14 @@ impl RuleResolver {
             entries.retain(|entry| entry.law_id != law_id);
         }
         self.hooks_index.retain(|_, v| !v.is_empty());
+        for entries in self.submission_hooks_index.values_mut() {
+            entries.retain(|entry| entry.law_id != law_id);
+        }
+        self.submission_hooks_index.retain(|_, v| !v.is_empty());
+        for entries in self.decides_on_index.values_mut() {
+            entries.retain(|d| d.law_id != law_id);
+        }
+        self.decides_on_index.retain(|_, v| !v.is_empty());
 
         // Remove override index entries for this law
         for entries in self.overrides_index.values_mut() {
@@ -1591,7 +1689,7 @@ impl RuleResolver {
     ///
     /// Returns matching (law_id, article_number, filter) entries.
     /// Filters by stage: if the hook has a stage, it must match; if not, it defaults to "BESLUIT".
-    pub(crate) fn find_hooks(
+    pub fn find_hooks(
         &self,
         hook_point: HookPoint,
         legal_character: &str,
@@ -1607,6 +1705,69 @@ impl RuleResolver {
             .iter()
             .filter(|entry| hook_filter_admits(&entry.filter, decision_type, stage))
             .collect()
+    }
+
+    /// The decisions taken on the submission that `<law_id>#<article>`
+    /// establishes (RFC-046): the articles that name it in
+    /// `produces.decides_on`, with their legal character.
+    pub fn decisions_on(&self, law_id: &str, article_number: &str) -> &[DecisionOn] {
+        self.decides_on_index
+            .get(&format!("{law_id}#{article_number}"))
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+    }
+
+    /// Find the hooks on a submission of `kind` that the article
+    /// `<law_id>#<article>` establishes (RFC-046). A hook with `decided_by`
+    /// fires only if decisions are taken on the submission and all of them
+    /// have that legal character: the engine does not guess which regime of
+    /// the general law applies. A hook with `established_by` fires only on
+    /// the submission of that one article (policy that works out the
+    /// application of one law). Public so that a runtime can ask which
+    /// articles take part in a submission by the same rule the engine fires
+    /// them; [`crate::LawExecutionService::submission`] collects them with
+    /// what they ask.
+    pub fn find_submission_hooks(
+        &self,
+        hook_point: HookPoint,
+        kind: &str,
+        law_id: &str,
+        article_number: &str,
+    ) -> Vec<&HookEntry> {
+        let Some(entries) = self
+            .submission_hooks_index
+            .get(&(hook_point, kind.to_string()))
+        else {
+            return Vec::new();
+        };
+        entries
+            .iter()
+            .filter(|e| self.submission_filter_admits(&e.filter, law_id, article_number))
+            .collect()
+    }
+
+    /// Whether a hook on a submission narrows itself away from the submission
+    /// `law_id#article_number` establishes: `decided_by` (every decision taken
+    /// on it has that legal character) and `established_by` (only this
+    /// establishing article). The kind is matched by the caller.
+    pub(crate) fn submission_filter_admits(
+        &self,
+        filter: &HookFilter,
+        law_id: &str,
+        article_number: &str,
+    ) -> bool {
+        let decided = match filter.decided_by.as_deref() {
+            None => true,
+            Some(lc) => {
+                let decisions = self.decisions_on(law_id, article_number);
+                !decisions.is_empty() && decisions.iter().all(|d| d.legal_character == lc)
+            }
+        };
+        decided
+            && filter
+                .established_by
+                .as_deref()
+                .is_none_or(|r| r == format!("{law_id}#{article_number}"))
     }
 
     /// Find overrides for a specific article output.
@@ -1726,11 +1887,7 @@ impl RuleResolver {
 ///
 /// An absent stage means BESLUIT (backward compatibility per RFC-008); an
 /// absent decision type admits every decision type.
-pub(crate) fn hook_filter_admits(
-    filter: &HookFilter,
-    decision_type: Option<&str>,
-    stage: &str,
-) -> bool {
+pub fn hook_filter_admits(filter: &HookFilter, decision_type: Option<&str>, stage: &str) -> bool {
     if filter.stage.as_deref().unwrap_or("BESLUIT") != stage {
         return false;
     }

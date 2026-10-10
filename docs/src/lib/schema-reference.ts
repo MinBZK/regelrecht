@@ -350,6 +350,9 @@ const ANCHOR_OVERRIDES: Record<string, string> = {
   machineReadableSection: 'machine-readable',
   operationType: 'operations',
   operation: 'operations',
+  // A provision with an optional paragraph; documented with the article
+  // reference it extends.
+  provisionGround: 'article-reference',
 };
 
 function defAnchor(name: string): string {
@@ -971,6 +974,28 @@ export function enumBlocks(): EnumBlock[] {
  */
 export function legalBasisFields(): Field[] {
   return fieldsOf(defs.legalBasis ?? {});
+}
+
+/**
+ * `origin`: who supplies a parameter, with the provision that says so.
+ *
+ * Its own section because a parameter's type links to it, and because the
+ * reader of an application wants the list of who-supplies-what in one place.
+ */
+export function originFields(): Field[] {
+  return fieldsOf(defs.origin ?? {});
+}
+
+/**
+ * `articleReference`: a string, so there is no field table, only the shape.
+ * Its own section because `decides_on` and `established_by` link to it.
+ */
+export function articleReference(): { description: string; pattern: string } {
+  const node = defs.articleReference ?? {};
+  return {
+    description: renderDescription(node.description ?? ''),
+    pattern: node.pattern ?? '',
+  };
 }
 
 /**
