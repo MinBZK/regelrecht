@@ -93,9 +93,13 @@ describe('wat de wet over de velden zegt', () => {
       { name: 'z', declared_by: 'w#1' },
     ];
     expect(fieldsByArticle(fields)).toEqual([
-      { article: 'w#1', names: ['x', 'z'] },
-      { article: 'awb#4:2', names: ['y'] },
+      { article: 'w#1', names: ['x', 'z'], fields: [{ name: 'x', basis: [] }, { name: 'z', basis: [] }] },
+      { article: 'awb#4:2', names: ['y'], fields: [{ name: 'y', basis: [] }] },
     ]);
+    // Elk veld met de grondslag die de gram ervoor vastlegt; een veld zonder grondslag heeft er geen.
+    const groups = fieldsByArticle(fields, { x: ['w#1 lid 2'], y: ['awb#4:2 lid 1', 'beleid#3'] });
+    expect(groups[0].fields).toEqual([{ name: 'x', basis: ['w#1 lid 2'] }, { name: 'z', basis: [] }]);
+    expect(groups[1].fields).toEqual([{ name: 'y', basis: ['awb#4:2 lid 1', 'beleid#3'] }]);
   });
 });
 

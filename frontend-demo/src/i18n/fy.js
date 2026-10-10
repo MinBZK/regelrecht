@@ -881,6 +881,7 @@ export default {
   "kroniek.establishes": "Fêstige troch",
   "kroniek.fields_by": "Fjilden frege troch",
   "kroniek.legal_basis": "Rjochtsgrûn",
+  "kroniek.field.no_basis": "sûnder grûnslach",
   "kroniek.effective_at": "Telt rjochtens fan",
   "kroniek.effective_at.no_basis": "Gjin grûnslach foar dit momint fêstlein",
   "kroniek.dated_by": "deitekene mei {parameter}",

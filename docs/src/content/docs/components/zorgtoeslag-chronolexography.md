@@ -280,7 +280,7 @@ Every gram in the chronicle `toeslagen` of this case, apart from the bank's gram
 
 On "My government", the zorgtoeslag tile opens the application panel. Under "What the law asks" it lists the fields of the application with the article that asks each one: the cell executes Awir 15 with an empty application, and the engine fires the hooks that apply to it and yields with the model of the submission (`WasmCell.shape`). Awb 4:2 asks the name, address, date and signature, and the decision requested; the cell fills in the requested decision itself (Zorgtoeslagwet 2, origin role `GEVRAAGD_BESLUIT`). Awir 15 asks the BSN and the berekeningsjaar. Awir 16 asks the income Merijn expects. The fictitious policy article 3 asks the account. The values come from `profiles.merijn.application` in `demo-config.yaml`.
 
-On submission the cell records `aanvraag_ontvangen` (`recordSubmission`). Its `effective_at` is the moment of receipt, with Awb 4:13 lid 1 as legal basis; its `legal_basis` lists every provision a field rests on.
+On submission the cell records `aanvraag_ontvangen` (`recordSubmission`). Its `effective_at` is the moment of receipt, with Awb 4:13 lid 1 as legal basis. Its `legal_basis` is the article that establishes it, Awir 15, and nothing else. What a field rests on is recorded with the field, under `field_basis`: Awir 15 lid 1 for the berekeningsjaar, Awb 4:2 lid 1 for the name, the address, the date and the signature. A field that no article asks for in so many words, such as the BSN, has no entry. A decision rests on the article that decides (Zorgtoeslagwet 2), and its fields on the article that gives them (Awir 16 for the voorschotbedrag, Awb 6:7 for the objection period).
 
 #### The voorschot
 

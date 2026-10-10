@@ -84,7 +84,14 @@ describe('de invoer uit een andere wet', () => {
   it('leest een invoer naar de declaratie in een wet waarop de gram rust', () => {
     const doc = { articles: [{ machine_readable: { execution: { parameters: [{ name: 'inkomen', type: 'amount' }] } } }] };
     const withLaw = { lawById: (id) => (id === 'andere' ? { doc } : null) };
-    const gram = { regulation: 'eigen', legal_basis: ['eigen#1', 'andere#16'], inputs: { inkomen: { value: 2200000, provenance: null } } };
+    const gram = { regulation: 'eigen', legal_basis: ['andere#16'], inputs: { inkomen: { value: 2200000, provenance: null } } };
+    expect(inputRows(gram, withLaw)[0].text).toMatch(/22[.,]000/);
+  });
+
+  it('ook naar een wet waarop alleen een veld van de gram rust', () => {
+    const doc = { articles: [{ machine_readable: { execution: { parameters: [{ name: 'inkomen', type: 'amount' }] } } }] };
+    const withLaw = { lawById: (id) => (id === 'andere' ? { doc } : null) };
+    const gram = { regulation: 'eigen', legal_basis: ['eigen#1'], field_basis: { bedrag: ['andere#16'] }, inputs: { inkomen: { value: 2200000, provenance: null } } };
     expect(inputRows(gram, withLaw)[0].text).toMatch(/22[.,]000/);
   });
 });

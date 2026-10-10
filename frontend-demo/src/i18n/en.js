@@ -986,6 +986,7 @@ export default {
   'kroniek.establishes': 'Established by',
   'kroniek.fields_by': 'Fields asked for by',
   'kroniek.legal_basis': 'Legal basis',
+  'kroniek.field.no_basis': 'no legal basis',
   'kroniek.effective_at': 'Legally effective from',
   'kroniek.effective_at.no_basis': 'No legal basis recorded for this moment',
   'kroniek.dated_by': 'dated by {parameter}',

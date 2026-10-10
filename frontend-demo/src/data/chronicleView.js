@@ -18,12 +18,14 @@ function specOf(gram, name, corpus) {
 }
 
 /**
- * De declaratie van parameter `name` in een van de wetten waarop de gram
- * rust (`legal_basis`): een invoer die een andere wet vraagt of geeft, zoals
- * het geschatte inkomen van Awir 16, staat niet in de wet die besluit.
+ * De declaratie van parameter `name` in een van de wetten waarop de gram of
+ * een van haar velden rust (`legal_basis`, `field_basis`): een invoer die een
+ * andere wet vraagt of geeft, zoals het geschatte inkomen van Awir 16, staat
+ * niet in de wet die besluit.
  */
 function basisSpecOf(gram, name, corpus) {
-  for (const reference of gram?.legal_basis ?? []) {
+  const references = [...(gram?.legal_basis ?? []), ...Object.values(gram?.field_basis ?? {}).flat()];
+  for (const reference of new Set(references)) {
     const doc = corpus?.lawById?.(String(reference).split('#')[0])?.doc;
     const spec = doc ? fieldSpec(doc, name) : null;
     if (spec) return spec;

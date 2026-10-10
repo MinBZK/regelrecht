@@ -54,9 +54,14 @@ pub struct Gram {
     pub recording_actor: String,
     /// The article that establishes the fact (`<regulation>#<article>`).
     pub establishes: String,
-    /// The article that establishes the fact first, then the provisions the
-    /// fields rest on.
+    /// The legal basis of the fact: the article that establishes it (for a
+    /// decision the article that decides, for an execution or a receipt its
+    /// article).
     pub legal_basis: Vec<String>,
+    /// Per field, the provisions it rests on. A field that rests on none
+    /// has no entry.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub field_basis: BTreeMap<String, Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub legal_character: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -206,6 +211,7 @@ mod tests {
             recording_actor: "a".into(),
             establishes: "w#1".into(),
             legal_basis: Vec::new(),
+            field_basis: BTreeMap::new(),
             legal_character: None,
             decision_type: None,
             regulation: None,

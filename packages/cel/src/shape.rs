@@ -99,14 +99,21 @@ impl Shape {
         self.record_when.is_some() && self.executed_on.is_none()
     }
 
-    /// The establishing article, then every provision a field rests on, each
-    /// once.
+    /// The legal basis of a gram of the event: the article that establishes
+    /// it, and only that. What a field rests on is the field's own
+    /// ([`Shape::field_basis`]).
     pub fn legal_basis(&self) -> Vec<String> {
-        let mut out = vec![self.establishes.clone()];
-        for f in &self.fields {
-            push_new(&mut out, &f.legal_basis);
-        }
-        out
+        vec![self.establishes.clone()]
+    }
+
+    /// Per field, the provisions it rests on; a field that rests on none has
+    /// no entry.
+    pub fn field_basis(&self) -> BTreeMap<String, Vec<String>> {
+        self.fields
+            .iter()
+            .filter(|f| !f.legal_basis.is_empty())
+            .map(|f| (f.name.clone(), f.legal_basis.clone()))
+            .collect()
     }
 }
 

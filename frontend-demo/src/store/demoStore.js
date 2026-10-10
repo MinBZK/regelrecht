@@ -40,7 +40,7 @@ import { activeLocale, t } from '../i18n/index.js';
 // berekeningsjaar) al gevraagd is; een oude staat wordt niet omgezet.
 // v4: de toekenning rust op de aanslag van de cel van de Belastingdienst, niet
 // meer op een datum uit het dossier; een oude zaak heeft die aanslag niet.
-const STORAGE_KEY = 'rr-demo-state-v4';
+const STORAGE_KEY = 'rr-demo-state-v5';
 
 function today() {
   // Local calendar date, not UTC: in the evening the two differ.

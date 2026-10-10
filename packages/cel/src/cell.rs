@@ -376,6 +376,7 @@ impl Cell {
             recording_actor: self.config.recording_actor.clone(),
             establishes: shape.establishes.clone(),
             legal_basis: shape.legal_basis(),
+            field_basis: shape.field_basis(),
             legal_character: shape.legal_character.clone(),
             decision_type: shape.decision_type.clone(),
             regulation: None,

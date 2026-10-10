@@ -1007,6 +1007,7 @@ export default {
   'kroniek.establishes': 'Gevestigd door',
   'kroniek.fields_by': 'Velden gevraagd door',
   'kroniek.legal_basis': 'Rechtsgrond',
+  'kroniek.field.no_basis': 'zonder grondslag',
   'kroniek.effective_at': 'Telt rechtens vanaf',
   'kroniek.effective_at.no_basis': 'Geen grondslag voor dit moment vastgelegd',
   'kroniek.dated_by': 'gedagtekend met {parameter}',

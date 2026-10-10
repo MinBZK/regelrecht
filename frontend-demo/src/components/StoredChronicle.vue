@@ -84,7 +84,7 @@ function describe(entry) {
         law: declared?.to ? t('kroniek.refers.to', { provision: label(declared.to) }) : declared?.stage ? t('kroniek.refers.stage', { stage: declared.stage }) : '',
       };
     }),
-    articles: fieldsByArticle(shape?.fields),
+    articles: fieldsByArticle(shape?.fields, gram.field_basis),
     inputs: inputRows(gram, corpus.value).map((row) => ({ ...row, provenance: provenanceText(row.provenance) })),
     stored: JSON.stringify(gram, null, 2),
   };
@@ -147,14 +147,30 @@ watch(() => props.focus, (id) => { if (id) show(id); }, { immediate: true });
               <nldd-text-cell size="sm" :overline="t('kroniek.establishes')" :text="label(e.gram.establishes)" :supporting-text="e.lawSays"></nldd-text-cell>
               <nldd-icon-cell v-if="linkable(e.gram.establishes)" icon="chevron-right" size="16" color="secondary"></nldd-icon-cell>
             </nldd-list-item>
-            <nldd-list-item v-for="a in e.articles" :key="a.article" size="sm" :button="linkable(a.article) || undefined" @click="openProvision(a.article)">
-              <nldd-text-cell size="sm" :overline="t('kroniek.fields_by')" :text="label(a.article)" :supporting-text="a.names.map((n) => humanize(n)).join(', ')"></nldd-text-cell>
-              <nldd-icon-cell v-if="linkable(a.article)" icon="chevron-right" size="16" color="secondary"></nldd-icon-cell>
-            </nldd-list-item>
+            <!-- De rechtsgrond van de gram: het artikel dat hem vestigt. -->
             <nldd-list-item v-for="basis in e.gram.legal_basis ?? []" :key="`basis-${basis}`" size="sm" :button="linkable(basis) || undefined" @click="openProvision(basis)">
               <nldd-text-cell size="sm" :overline="t('kroniek.legal_basis')" :text="label(basis)"></nldd-text-cell>
               <nldd-icon-cell v-if="linkable(basis)" icon="chevron-right" size="16" color="secondary"></nldd-icon-cell>
             </nldd-list-item>
+            <!-- Per artikel dat velden vraagt: elk veld met zijn eigen
+                 grondslag, zoals de gram die vastlegt. -->
+            <template v-for="a in e.articles" :key="a.article">
+              <nldd-list-item size="sm" :button="linkable(a.article) || undefined" @click="openProvision(a.article)">
+                <nldd-text-cell size="sm" :overline="t('kroniek.fields_by')" :text="label(a.article)"></nldd-text-cell>
+                <nldd-icon-cell v-if="linkable(a.article)" icon="chevron-right" size="16" color="secondary"></nldd-icon-cell>
+              </nldd-list-item>
+              <template v-for="f in a.fields" :key="`${a.article}-${f.name}`">
+                <nldd-list-item v-if="!f.basis.length" size="sm">
+                  <nldd-spacer-cell size="16"></nldd-spacer-cell>
+                  <nldd-text-cell size="sm" :text="humanize(f.name)" :supporting-text="t('kroniek.field.no_basis')"></nldd-text-cell>
+                </nldd-list-item>
+                <nldd-list-item v-for="basis in f.basis" :key="`${a.article}-${f.name}-${basis}`" size="sm" :button="linkable(basis) || undefined" @click="openProvision(basis)">
+                  <nldd-spacer-cell size="16"></nldd-spacer-cell>
+                  <nldd-text-cell size="sm" :text="humanize(f.name)" :supporting-text="label(basis)"></nldd-text-cell>
+                  <nldd-icon-cell v-if="linkable(basis)" icon="chevron-right" size="16" color="secondary"></nldd-icon-cell>
+                </nldd-list-item>
+              </template>
+            </template>
 
             <!-- De twee tijden van een gram: wanneer het feit rechtens telt,
                  en wanneer de cel het vastlegde. -->

@@ -226,7 +226,26 @@ fn a_citizen_applies_and_toeslagen_records_the_application() {
         ["algemene_wet_bestuursrecht#4:13 lid 1"]
     );
     assert_eq!(gram.establishes, format!("{AWIR}#15"));
-    assert_eq!(gram.legal_basis[0], format!("{AWIR}#15"));
+    // The legal basis of the gram is the article that establishes it, and
+    // only that; every field keeps its own grondslag.
+    assert_eq!(gram.legal_basis, [format!("{AWIR}#15")]);
+    assert_eq!(
+        gram.field_basis["aangevraagd_berekeningsjaar"],
+        [format!("{AWIR}#15 lid 1")]
+    );
+    assert_eq!(
+        gram.field_basis["naam_aanvrager"],
+        ["algemene_wet_bestuursrecht#4:2 lid 1"]
+    );
+    assert_eq!(
+        gram.field_basis["ondertekening_partner"],
+        [format!("{AWIR}#15 lid 3")]
+    );
+    // A field the law asks without saying it must: no entry.
+    for name in ["bsn", "vermoedelijk_toetsingsinkomen"] {
+        assert!(gram.fields.contains_key(name), "{name}");
+        assert!(!gram.field_basis.contains_key(name), "{name}");
+    }
     // The fields are what the executed law asks of the applicant: Awir 15
     // and Awb 4:2 lid 1. The decision requested (4:2 lid 1 onder c) is the
     // one Zorgtoeslagwet art. 2 takes on it: the cell fills it in.
@@ -760,11 +779,17 @@ fn the_voorschot_rests_on_the_estimate_and_the_toekenning_on_the_income() {
     // The Awb on a besluit: VOORSCHOT is one.
     assert_eq!(voorschot.fields["bezwaartermijn_weken"], json!(6));
     assert_eq!(voorschot.fields["motivering_vereist"], json!(true));
-    for basis in [
-        "algemene_wet_inkomensafhankelijke_regelingen#16",
-        "algemene_wet_bestuursrecht#6:7",
+    // The decision rests on the article that decides; what Awir 16 and the
+    // Awb add rests on them, per field.
+    assert_eq!(voorschot.legal_basis, [format!("{ZORGTOESLAG}#2")]);
+    for (field, basis) in [
+        (
+            "voorschotbedrag",
+            "algemene_wet_inkomensafhankelijke_regelingen#16",
+        ),
+        ("bezwaartermijn_weken", "algemene_wet_bestuursrecht#6:7"),
     ] {
-        assert!(voorschot.legal_basis.iter().any(|b| b == basis), "{basis}");
+        assert_eq!(voorschot.field_basis[field], [basis], "{field}");
     }
 
     // A year later the toekenning, still on the law of 2025, on the income
@@ -1414,9 +1439,17 @@ fn a_toekenning_above_the_voorschot_pays_out_the_rest() {
     assert_eq!(toekenning.fields["terug_te_vorderen"], 0);
     assert_eq!(toekenning.fields["uiterste_uitbetaaldatum"], "2026-06-29");
     assert_eq!(toekenning.fields["uiterste_toekenningsdatum"], "2026-09-15");
-    for basis in ["19", "24", "26a"] {
-        let basis = format!("{AWIR}#{basis}");
-        assert!(toekenning.legal_basis.contains(&basis), "{basis}");
+    assert_eq!(toekenning.legal_basis, [format!("{ZORGTOESLAG}#2")]);
+    for (field, basis) in [
+        ("uiterste_toekenningsdatum", "19"),
+        ("nog_uit_te_betalen", "24"),
+        ("terug_te_vorderen", "26a"),
+    ] {
+        assert_eq!(
+            toekenning.field_basis[field],
+            [format!("{AWIR}#{basis}")],
+            "{field}"
+        );
     }
 }
 

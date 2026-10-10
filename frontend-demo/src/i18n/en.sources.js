@@ -218,6 +218,7 @@ export default {
   "kroniek.effective_at.no_basis": "57f9",
   "kroniek.empty": "c280",
   "kroniek.establishes": "0302",
+  "kroniek.field.no_basis": "d1cd",
   "kroniek.fields_by": "df04",
   "kroniek.filtered": "460c",
   "kroniek.filtered.clear": "68be",

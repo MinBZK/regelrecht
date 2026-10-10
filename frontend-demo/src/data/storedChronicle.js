@@ -80,16 +80,17 @@ export function onlyCase(entries, root) {
  * De velden van een gebeurtenis per artikel dat erom vraagt (`declared_by`
  * uit de vorm die de cel afleidt): het artikel dat de gram vestigt en elke
  * haak die er velden aan toevoegt, in de volgorde waarin ze voor het eerst
- * voorkomen.
+ * voorkomen. Per veld de bepalingen waarop het rust, zoals de gram ze
+ * vastlegt (`field_basis`); een veld zonder grondslag heeft er geen.
  */
-export function fieldsByArticle(fields) {
+export function fieldsByArticle(fields, fieldBasis = {}) {
   const groups = new Map();
   for (const f of fields ?? []) {
     const article = f.declared_by ?? '';
     if (!groups.has(article)) groups.set(article, []);
-    groups.get(article).push(f.name);
+    groups.get(article).push({ name: f.name, basis: fieldBasis?.[f.name] ?? [] });
   }
-  return [...groups].map(([article, names]) => ({ article, names }));
+  return [...groups].map(([article, list]) => ({ article, names: list.map((f) => f.name), fields: list }));
 }
 
 /**
