@@ -89,7 +89,7 @@ test('PACKAGES dekt elk image dat deploy.yml naar GHCR duwt', () => {
   // iemand ernaar kijkt, dus hij staat expliciet in het script en wordt hier
   // vergeleken.
   const deploy = readFileSync(new URL('../.github/workflows/deploy.yml', import.meta.url), 'utf8');
-  const built = [...deploy.matchAll(/^\s*image-name:\s*\S+\/(\S+)\s*$/gm)].map((m) => m[1]);
+  const built = [...deploy.matchAll(/^\s*image-name:\s*(\S+)\s*$/gm)].map((m) => m[1]);
 
   assert.ok(built.length > 0, 'geen image-name in deploy.yml gevonden');
   assert.deepEqual(built.filter((name) => !PACKAGES.includes(name)), []);
