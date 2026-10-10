@@ -46,18 +46,30 @@ export function figureHref(id: string): string {
   return `${PAPER_PATH}#${encodeURIComponent(id)}`;
 }
 
-/** Strip markup and decode the handful of entities the converter writes. */
+const ENTITIES: Record<string, string> = {
+  ndash: '–',
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  '#39': "'",
+};
+
+/**
+ * Plain text from a fragment of the paper HTML, for rendering as text.
+ *
+ * Entities are decoded in one pass, so `&amp;lt;` stays the literal `&lt;`
+ * rather than becoming `<`; tags are stripped after that, repeatedly, until
+ * none is left. What comes out is only ever rendered as escaped text.
+ */
 function plain(html: string): string {
-  return html
-    .replace(/<[^>]+>/g, '')
-    .replace(/&ndash;/g, '–')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\s+/g, ' ')
-    .trim();
+  let text = html.replace(/&(ndash|amp|lt|gt|quot|#39);/g, (_m, name: string) => ENTITIES[name]);
+  let previous: string;
+  do {
+    previous = text;
+    text = text.replace(/<[^>]*>/g, '');
+  } while (text !== previous);
+  return text.replace(/\s+/g, ' ').trim();
 }
 
 function figureBody(id: string): string {
