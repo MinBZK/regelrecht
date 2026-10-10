@@ -23,6 +23,24 @@ export function writableSource(detail) {
 }
 
 /**
+ * `auth_ref` of the shared central corpus source — the default writable source a
+ * traject gets when it is created without its own repo. Mirrors
+ * `CENTRAL_WRITABLE_AUTH_REF` in the backend (`packages/editor-api/src/
+ * trajects.rs`), which is also the marker the backend checks before it refuses
+ * to move that source's root path.
+ */
+const CENTRAL_AUTH_REF = 'minbzk-central';
+
+/**
+ * True when this source is the shared central corpus. Its layout is fixed for
+ * every traject that writes to it, so the settings pane shows its root path
+ * read-only instead of offering an edit that the backend would refuse.
+ */
+export function isCentralSource(source) {
+  return !!source && source.auth_ref === CENTRAL_AUTH_REF;
+}
+
+/**
  * Build a GitHub tree URL pointing at the traject branch:
  * `https://github.com/{owner}/{repo}/tree/{branch}`. Slashes inside the branch
  * name are left intact (GitHub serves `tree/feature/x` directly; percent-

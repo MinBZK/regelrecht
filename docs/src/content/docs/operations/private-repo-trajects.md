@@ -103,6 +103,22 @@ Before anything is stored, the editor runs a **preflight check** against the Git
 
 It then creates the traject branch on GitHub. If any of these steps fails you get a specific error (see [error messages](#error-messages-and-what-they-mean) below), no row is written to the database, and you can retry straight after fixing the cause. If the database write fails after the branch was created, the branch stays behind on GitHub; the editor logs it but does not remove it.
 
+## Changing the subpath later
+
+If the regulation moves to a different place in the repository over time, for example because working folders were added next to the corpus, the traject owner changes the subpath under **Instellingen → Algemeen → Subpath**. Leaving it empty means the repository root.
+
+The subpath is the root of everything the editor reads and writes on this repository: laws, scenarios, annotations (`annotations/<law>/annotations.yaml`) and documents (`documents/<traject-ref>/`). After a change the editor looks for them under the new path. Existing annotations and documents do not move along by themselves; you move them yourself on the traject branch. Whatever lies outside the subpath is left alone by the editor; it just no longer counts as regulation.
+
+Only the traject owner can do this, and only on an own repository: trajects that write to the central corpus keep the fixed path `regulation/nl`.
+
+## Changing the repository later
+
+When the repository moves, for example to another GitHub organization, the traject can follow it under **Instellingen → Algemeen → Repo**: enter the new owner and repository name, separated by a slash, and choose **Repo wijzigen**. Only someone with the `editor-admin` role can do this; being the traject owner is not enough, because the repository decides where the platform's tokens are used. An `editor-admin` who is not a member of the traject cannot open its settings, but can make the same change through `PUT /api/trajects/{id}/repo`.
+
+Before anything is stored, the editor runs the same checks as when creating a traject, against the new repository: there must be a token, it must have push rights, and the base branch must exist. The service token is looked up under the name derived from the new coordinates, so configure `CORPUS_AUTH_<NEW_OWNER>_<NEW_REPO>_TOKEN` first. Without one, personal mode checks the GitHub account of the person making the change, and every member who saves later needs push rights on the new repository too. The traject branch is created on the new repository when it is missing there; after a GitHub transfer it already exists. Branch, base branch and subpath stay as they are.
+
+Trajects on the central corpus keep their repository.
+
 ## How commit attribution works
 
 Every save in a traject produces a commit on the traject branch. Who it is attributed to depends on the token:

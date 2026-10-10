@@ -8,8 +8,15 @@ import {
   useTrajectDetail,
   writableSource,
   branchTreeUrl,
+  isCentralSource,
 } from '../composables/useTrajectDetail.js';
-import { deleteTraject, leaveTraject } from '../composables/useTrajects.js';
+import {
+  deleteTraject,
+  leaveTraject,
+  moveTrajectRepo,
+  updateTraject,
+} from '../composables/useTrajects.js';
+import { hasRole } from '../composables/useAuth.js';
 import { paneChromeVisible } from '../constants.js';
 
 const router = useRouter();
@@ -41,6 +48,119 @@ const subpath = computed(() => {
   const p = source.value.gh_path;
   return p && p.trim() ? p : 'repo-root';
 });
+
+// --- Root-pad (subpath) wijzigen (owner van een traject met eigen repo) ---
+//
+// Alleen de eigenaar mag het pad verzetten, en alleen op een eigen GitHub-repo:
+// het centrale corpus deelt zijn indeling met elk traject dat erop schrijft, dus
+// daar weigert de backend de wijziging. Wie hem niet mag wijzigen, ziet de
+// huidige waarde gewoon als tekst.
+const canEditSubpath = computed(
+  () =>
+    detail.value?.role === 'owner' &&
+    !!source.value &&
+    source.value.source_type === 'github' &&
+    !isCentralSource(source.value),
+);
+
+const subpathDraft = ref('');
+const subpathSaving = ref(false);
+const subpathError = ref(null);
+
+// Het veld volgt de geladen bron: bij openen, bij wisselen van traject en na de
+// herlaad die op een geslaagde opslag volgt. Leeg veld = repo-root, dezelfde
+// afspraak als bij het aanmaken van een traject.
+watch(
+  source,
+  (s) => {
+    subpathDraft.value = s?.gh_path || '';
+    subpathError.value = null;
+  },
+  { immediate: true },
+);
+
+function onSubpathInput(event) {
+  // nldd-text-field dispatcht een CustomEvent met de nieuwe waarde in
+  // event.detail.value. De host zet z'n eigen `value` vóór het dispatchen,
+  // dus event.target.value klopt ook, maar detail eerst lezen houdt het
+  // contract expliciet - zoals onYamlInput in EditorView.vue en de andere
+  // nldd-invoerhandlers. `??` laat een bewust lege waarde (veld gewist =
+  // repo-root) door.
+  subpathDraft.value =
+    event.detail?.value ?? event.target?.value ?? subpathDraft.value;
+  // De melding van de vorige poging gaat weg zodra de gebruiker begint te
+  // corrigeren - anders staat een afgekeurd pad nog rood onder een veld
+  // waar inmiddels iets anders staat (zelfde afspraak als InviteMembersSheet).
+  if (subpathError.value) subpathError.value = null;
+}
+
+async function saveSubpath() {
+  if (subpathSaving.value || !props.trajectId) return;
+  subpathSaving.value = true;
+  subpathError.value = null;
+  try {
+    await updateTraject(props.trajectId, { repo_path: subpathDraft.value });
+    // Herladen in plaats van de waarde lokaal bijwerken: de backend normaliseert
+    // (leeg/spaties wordt repo-root), dus dit toont wat er echt is opgeslagen.
+    reload();
+  } catch (e) {
+    subpathError.value = e.message || 'Opslaan mislukt';
+  } finally {
+    subpathSaving.value = false;
+  }
+}
+
+// --- Repo wijzigen (alleen editor-admin, traject met eigen repo) ---
+//
+// Voor als de repo verhuist, bijvoorbeeld naar een andere GitHub-organisatie.
+// Naar welke repo een traject schrijft bepaalt waar de tokens van het platform
+// heen gaan, dus dat is aan een beheerder en niet aan de eigenaar. Branch, base
+// branch en subpath blijven staan; de backend controleert eerst of de editor op
+// de nieuwe repo kan werken en weigert anders met een uitleg.
+const canEditRepo = computed(
+  () =>
+    hasRole('editor-admin') &&
+    !!source.value &&
+    source.value.source_type === 'github' &&
+    !isCentralSource(source.value),
+);
+
+const repoDraft = ref('');
+const repoSaving = ref(false);
+const repoError = ref(null);
+
+watch(
+  repoLabel,
+  (label) => {
+    repoDraft.value = label || '';
+    repoError.value = null;
+  },
+  { immediate: true },
+);
+
+function onRepoInput(event) {
+  repoDraft.value = event.detail?.value ?? event.target?.value ?? repoDraft.value;
+  if (repoError.value) repoError.value = null;
+}
+
+async function saveRepo() {
+  if (repoSaving.value || !props.trajectId) return;
+  const parts = repoDraft.value.trim().split('/');
+  if (parts.length !== 2 || !parts[0].trim() || !parts[1].trim()) {
+    repoError.value = 'Schrijf de repo als eigenaar/naam, bijvoorbeeld example-org/regelrecht-corpus.';
+    return;
+  }
+  repoSaving.value = true;
+  repoError.value = null;
+  try {
+    await moveTrajectRepo(props.trajectId, parts[0].trim(), parts[1].trim());
+    reload();
+  } catch (e) {
+    repoError.value = e.message || 'Opslaan mislukt';
+  } finally {
+    repoSaving.value = false;
+  }
+}
 
 function orDash(v) {
   return v && String(v).trim() ? v : '—';
@@ -161,8 +281,47 @@ async function confirmLeave() {
       <nldd-list-item size="md">
         <nldd-text-cell text="Repo" max-width="180px" vertical-alignment="top"></nldd-text-cell>
         <nldd-spacer-cell size="8"></nldd-spacer-cell>
+        <nldd-cell v-if="canEditRepo" width="full" vertical-alignment="top">
+          <nldd-link
+            v-if="repoUrl"
+            size="md"
+            :href="repoUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            end-icon="external-link"
+            text="Traject-branch op GitHub"
+          ></nldd-link>
+          <nldd-spacer v-if="repoUrl" size="8"></nldd-spacer>
+          <nldd-form-field>
+            <nldd-text-field
+              size="md"
+              name="repo"
+              accessible-label="Repo"
+              :value="repoDraft"
+              :invalid="repoError ? true : undefined"
+              :unmet="repoError ? 'repo-error' : undefined"
+              @input="onRepoInput"
+            ></nldd-text-field>
+            <nldd-form-field-help-text>
+              Eigenaar/naam van de GitHub-repo. Pas dit aan als de repo naar een andere organisatie is verhuisd.
+            </nldd-form-field-help-text>
+            <nldd-validation-list>
+              <nldd-validation-item id="repo-error">
+                {{ repoError }}
+              </nldd-validation-item>
+            </nldd-validation-list>
+          </nldd-form-field>
+          <nldd-spacer size="8"></nldd-spacer>
+          <nldd-button
+            variant="secondary"
+            size="md"
+            :text="repoSaving ? 'Bezig…' : 'Repo wijzigen'"
+            :disabled="repoSaving || undefined"
+            @click="saveRepo"
+          ></nldd-button>
+        </nldd-cell>
         <nldd-text-cell
-          v-if="repoUrl"
+          v-else-if="repoUrl"
           supporting-text="Opent de traject-branch op GitHub in een nieuw tabblad."
           vertical-alignment="top"
         >
@@ -188,9 +347,46 @@ async function confirmLeave() {
         <nldd-text-cell :text="source?.gh_base_branch || 'onbekend'"></nldd-text-cell>
       </nldd-list-item>
       <nldd-list-item size="md">
-        <nldd-text-cell text="Subpath" max-width="180px"></nldd-text-cell>
+        <nldd-text-cell text="Subpath" max-width="180px" vertical-alignment="top"></nldd-text-cell>
         <nldd-spacer-cell size="8"></nldd-spacer-cell>
-        <nldd-text-cell :text="subpath"></nldd-text-cell>
+        <nldd-text-cell v-if="!canEditSubpath" :text="subpath"></nldd-text-cell>
+        <nldd-cell v-else width="full" vertical-alignment="top">
+          <nldd-form-field>
+            <nldd-text-field
+              size="md"
+              name="repo_path"
+              accessible-label="Subpath"
+              :value="subpathDraft"
+              :invalid="subpathError ? true : undefined"
+              :unmet="subpathError ? 'subpath-error' : undefined"
+              @input="onSubpathInput"
+            ></nldd-text-field>
+            <nldd-form-field-help-text>
+              Submap met regulation YAML-bestanden. Laat leeg voor repo-root.
+            </nldd-form-field-help-text>
+            <nldd-validation-list>
+              <nldd-validation-item id="subpath-error">
+                {{ subpathError }}
+              </nldd-validation-item>
+            </nldd-validation-list>
+          </nldd-form-field>
+          <nldd-spacer size="8"></nldd-spacer>
+          <!-- Permanent, niet pas na een fout: het pad bepaalt alles wat de
+               editor op deze repo leest en schrijft, dus dit is wat je moet
+               weten vóór je opslaat. -->
+          <nldd-banner
+            variant="warning"
+            text="Let op: alles buiten deze map ziet de editor niet meer als regulation. Dat geldt ook voor annotaties en documenten van dit traject."
+          ></nldd-banner>
+          <nldd-spacer size="8"></nldd-spacer>
+          <nldd-button
+            variant="secondary"
+            size="md"
+            :text="subpathSaving ? 'Bezig…' : 'Opslaan'"
+            :disabled="subpathSaving || undefined"
+            @click="saveSubpath"
+          ></nldd-button>
+        </nldd-cell>
       </nldd-list-item>
     </nldd-list>
 
