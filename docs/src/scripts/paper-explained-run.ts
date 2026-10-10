@@ -86,7 +86,21 @@ function versionInForce(paths: string[], date: string): string {
   return candidates[0].p;
 }
 
-async function run(engine: any, feature: string): Promise<{ amount: number; root: any; date: string }> {
+/**
+ * Runs one at a time. A run clears the engine's data sources and registers
+ * the scenario's over several awaited steps, so two runs on the shared engine
+ * that overlap (two "check" buttons pressed in quick succession) would wipe
+ * each other's inputs halfway and report a mismatch that is not there.
+ */
+let queue: Promise<unknown> = Promise.resolve();
+
+function run(engine: any, feature: string): Promise<{ amount: number; root: any; date: string }> {
+  const next = queue.then(() => runNow(engine, feature));
+  queue = next.catch(() => {});
+  return next;
+}
+
+async function runNow(engine: any, feature: string): Promise<{ amount: number; root: any; date: string }> {
   const parsed = parseFeature(feature);
   const wanted = parsed.scenarios.find((s: any) => s.name.includes(SCENARIO));
   if (!wanted) throw new Error('scenario not found in the feature file');
@@ -152,10 +166,14 @@ export async function runReceipts(base = '/'): Promise<Receipts> {
   const localText = publishedText.replace(PUBLISHED_LINE, LOCAL_LINE);
 
   // B's system: the same engine and laws, except its copy of the law in force.
-  const local = await run(
-    engineFrom(loaded, (path, text) => (path === publishedVersion ? localText : text)),
-    feature,
-  );
+  const localEngine = engineFrom(loaded, (path, text) => (path === publishedVersion ? localText : text));
+  let local: Awaited<ReturnType<typeof run>>;
+  try {
+    local = await run(localEngine, feature);
+  } finally {
+    // Used once; the WASM memory behind it is not reclaimed by the JS GC.
+    localEngine.free?.();
+  }
   if (local.amount === published.amount) {
     throw new Error('the local copy computes the same amount; the panel would show nothing');
   }

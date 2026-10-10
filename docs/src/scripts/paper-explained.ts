@@ -7,11 +7,15 @@
  * receipt panel only exists with JavaScript, because its decisions are computed
  * here, in the visitor's browser.
  */
-import { prepare, runReceipts, recompute, type Receipts } from './paper-explained-run';
+import { runReceipts, recompute, type Receipts } from './paper-explained-run';
 
 /** One segmented control, several panels; shows the panel the control selects. */
 class Switch extends HTMLElement {
+  private wired = false;
+
   connectedCallback() {
+    if (this.wired) return;
+    this.wired = true;
     const control = this.querySelector<HTMLElement & { value?: string }>('[data-control]');
     const panels = Array.from(this.querySelectorAll<HTMLElement>('[data-panel]'));
     if (!control || panels.length === 0) return;
@@ -55,15 +59,15 @@ const longDate = (iso: string, lang: string) =>
   }).format(new Date(`${iso}T00:00:00`));
 
 /** The version a law path names, by the date its file is named after. */
-const versionOf = (path: string, lang: string) => {
+const versionOf = (path: string, lang: string, template: string) => {
   const from = path.split('/').pop()!.replace(/\.yaml$/, '');
-  return lang === 'en' ? `in force from ${longDate(from, lang)}` : `geldig vanaf ${longDate(from, lang)}`;
+  return template.replace('{date}', longDate(from, lang));
 };
 
-function formatFact(value: unknown, unit: string | null, lang: string): string {
+function formatFact(value: unknown, unit: string | null, lang: string, t: Strings): string {
   if (typeof value === 'number' && unit === 'eurocent') return money(value, lang);
   if (typeof value === 'number') return new Intl.NumberFormat(lang === 'en' ? 'en-GB' : 'nl-NL').format(value);
-  if (typeof value === 'boolean') return lang === 'en' ? (value ? 'yes' : 'no') : value ? 'ja' : 'nee';
+  if (typeof value === 'boolean') return value ? t.yes : t.no;
   if (value === null || value === undefined) return '–';
   return String(value);
 }
@@ -75,6 +79,10 @@ interface Strings {
   check: string;
   failed: string;
   revealA: string;
+  inForce: string;
+  inputs: string;
+  yes: string;
+  no: string;
 }
 
 class ReceiptsPanel extends HTMLElement {
@@ -82,20 +90,20 @@ class ReceiptsPanel extends HTMLElement {
   private receipts: Receipts | null = null;
 
   connectedCallback() {
+    if (this.observer) return;
     const status = this.querySelector<HTMLElement>('[data-status]');
     if (status) status.hidden = false;
-    // Warm the engine early, compute once the panel is close: a visitor who
-    // never scrolls this far pays for neither.
+    // Fetch and compute once the panel is within a screen or so: a visitor
+    // who never scrolls this far downloads neither the engine nor the laws.
     this.observer = new IntersectionObserver(
       (entries) => {
         if (!entries.some((e) => e.isIntersecting)) return;
         this.observer?.disconnect();
         void this.compute(status);
       },
-      { rootMargin: '600px 0px' },
+      { rootMargin: '1200px 0px' },
     );
     this.observer.observe(this);
-    void prepare('/').catch(() => {});
   }
 
   disconnectedCallback() {
@@ -112,7 +120,7 @@ class ReceiptsPanel extends HTMLElement {
     try {
       const r = await runReceipts('/');
       this.receipts = r;
-      const summary = (this.dataset.inputsSummary ?? '{n}').replace('{n}', String(r.facts.length));
+      const summary = t.inputs.replace('{n}', String(r.facts.length));
       for (const id of ['a', 'b'] as const) {
         const card = this.querySelector<HTMLElement>(`[data-receipt="${id}"]`);
         if (!card) continue;
@@ -121,7 +129,7 @@ class ReceiptsPanel extends HTMLElement {
           const el = card.querySelector<HTMLElement>(`[data-f="${f}"]`);
           if (el) el.textContent = v;
         };
-        set('version', versionOf(d.version, lang));
+        set('version', versionOf(d.version, lang, t.inForce));
         set('digest', d.digest);
         set('date', longDate(r.calculationDate, lang));
         set('inputs', summary);
@@ -136,7 +144,7 @@ class ReceiptsPanel extends HTMLElement {
             const li = document.createElement('li');
             const code = document.createElement('code');
             code.textContent = `${f.provider}.${f.field}`;
-            li.append(code, document.createTextNode(` ${formatFact(f.value, f.unit, lang)}`));
+            li.append(code, document.createTextNode(` ${formatFact(f.value, f.unit, lang, t)}`));
             return li;
           }),
         );
@@ -182,6 +190,8 @@ class ReceiptsPanel extends HTMLElement {
                 .replace('{local}', percent(r.change.local, lang))
                 .replace('{diff}', money(Math.abs(d.amount - verified.amount), lang));
         reveal.hidden = false;
+        // The button is about to go; keep the keyboard where the answer is.
+        reveal.focus();
       }
       button?.setAttribute('hidden', '');
     } catch (err) {

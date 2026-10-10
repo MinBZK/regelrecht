@@ -54,6 +54,8 @@ export interface Content {
   step: string;
   thisPaper: string;
   tableLink: string;
+  figureLink: string;
+  actorColumn: string;
   yes: string;
   part: string;
   no: string;
@@ -114,7 +116,9 @@ export interface Content {
       inputs: string;
       amount: string;
     };
-    inputsSummary: (n: number) => string;
+    /** `{n}` is replaced by the number of values, in the browser. */
+    inputsSummary: string;
+    inForce: string;
     check: string;
     checking: string;
     checkDigest: string;
@@ -214,6 +218,8 @@ const nl: Content = {
   step: 'Stap',
   thisPaper: 'Dit paper',
   tableLink: 'Tabel 1 in het paper, met het volledige onderschrift',
+  figureLink: 'Figuur 1 in het paper',
+  actorColumn: 'Wie',
   yes: 'ja',
   part: 'deels',
   no: 'nee',
@@ -339,7 +345,8 @@ const nl: Content = {
       inputs: 'Vastgelegde invoer',
       amount: 'Zorgtoeslag volgens het besluit',
     },
-    inputsSummary: (n) => `${n} waarden uit de registraties, dezelfde voor beide besluiten`,
+    inputsSummary: '{n} waarden uit de registraties, dezelfde voor beide besluiten',
+    inForce: 'geldig vanaf {date}',
     check: 'Reken na',
     checking: 'Bezig met narekenen…',
     checkDigest: 'Vingerafdruk is die van de gepubliceerde versie',
@@ -538,6 +545,8 @@ const en: Content = {
   step: 'Step',
   thisPaper: 'This paper',
   tableLink: 'Table 1 in the paper, with its full caption',
+  figureLink: 'Figure 1 in the paper',
+  actorColumn: 'Who',
   yes: 'yes',
   part: 'partly',
   no: 'no',
@@ -663,7 +672,8 @@ const en: Content = {
       inputs: 'Recorded inputs',
       amount: 'Allowance according to the decision',
     },
-    inputsSummary: (n) => `${n} values from the registers, the same for both decisions`,
+    inputsSummary: '{n} values from the registers, the same for both decisions',
+    inForce: 'in force from {date}',
     check: 'Check it',
     checking: 'Checking…',
     checkDigest: 'The fingerprint is that of the published version',

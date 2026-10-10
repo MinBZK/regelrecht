@@ -18,18 +18,7 @@ rr-px-receipts [hidden] {
   display: none !important;
 }
 
-.rr-px-lede {
-  font: var(--primitives-font-body-lg-regular-snug);
-  max-width: 46rem;
-}
 
-.rr-px-step {
-  margin: 0 0 var(--primitives-space-4);
-  color: var(--semantics-content-secondary-color);
-  font: var(--primitives-font-body-sm-medium-snug, inherit);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
 
 .rr-px-toc {
   margin: 0;
@@ -97,10 +86,6 @@ rr-px-receipts [hidden] {
   margin-bottom: var(--primitives-space-8);
 }
 
-.rr-px-demand {
-  margin: 0;
-  font: var(--primitives-font-body-lg-medium-snug, inherit);
-}
 
 /* Key/value rows: the receipt, an override record, an annotation. */
 /* Plain elements outside nldd-text and nldd-rich-text take the body font
@@ -145,8 +130,7 @@ rr-px-receipts [hidden] {
   }
 }
 .rr-px-digest {
-  font-family: var(--primitives-font-family-monospace);
-  font-size: 0.8125rem;
+  font: var(--primitives-font-monospace-sm-regular-snug);
   overflow-wrap: anywhere;
 }
 
@@ -168,8 +152,7 @@ rr-px-receipts [hidden] {
   padding-inline-start: 1.25rem;
 }
 .rr-px-facts code {
-  font-family: var(--primitives-font-family-monospace);
-  font-size: 0.8125rem;
+  font: var(--primitives-font-monospace-sm-regular-snug);
 }
 .rr-px-facts summary {
   cursor: pointer;
@@ -191,9 +174,6 @@ rr-px-receipts [hidden] {
 .rr-px-path__step > span {
   display: grid;
 }
-.rr-px-path__step--skipped > span {
-  opacity: 0.55;
-}
 
 .rr-px-refs ul {
   margin: var(--primitives-space-4) 0 0;
@@ -205,7 +185,6 @@ rr-px-receipts [hidden] {
 }
 
 .rr-px-code {
-  font-family: var(--primitives-font-family-monospace);
-  font-size: 0.8125rem;
+  font: var(--primitives-font-monospace-sm-regular-snug);
   overflow-wrap: anywhere;
 }

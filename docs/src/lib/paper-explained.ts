@@ -87,11 +87,13 @@ export function codeFigure(id: string): CodeFigure {
   return { codeHtml: code[1], caption: plain(caption[1]), href: figureHref(id) };
 }
 
+export type Mark = 'yes' | 'part' | 'no';
+
 export interface LandscapeRow {
   approach: string;
-  exec: string;
-  publ: string;
-  bound: string;
+  exec: Mark;
+  publ: Mark;
+  bound: Mark;
   /** The row the paper sets apart with a rule: the proposal itself. */
   isProposal: boolean;
 }
@@ -100,6 +102,14 @@ export interface Landscape {
   caption: string;
   rows: LandscapeRow[];
   href: string;
+}
+
+/** A cell of Table 1. Anything but the three values the paper uses is a build error. */
+function mark(cell: string): Mark {
+  if (cell === 'yes') return 'yes';
+  if (cell === 'part') return 'part';
+  if (cell === '\u2013') return 'no';
+  throw new Error(`paper-explained: unexpected Table 1 cell "${cell}"`);
 }
 
 /** Table 1, row for row as the paper has it. */
@@ -120,9 +130,9 @@ export function landscape(): Landscape {
     }
     rows.push({
       approach: plain(name[1]),
-      exec: cells[0],
-      publ: cells[1],
-      bound: cells[2],
+      exec: mark(cells[0]),
+      publ: mark(cells[1]),
+      bound: mark(cells[2]),
       isProposal: tr[1].includes('rr-rule'),
     });
   }
