@@ -8,6 +8,7 @@ import { LOCALES, useI18n } from './i18n/index.js';
 import { localeRouteName } from './router.js';
 import PresentationDeck from './presentation/PresentationDeck.vue';
 import { usePresentation } from './presentation/usePresentation.js';
+import { lockWhy, probeWhy, unlockWhy, whyAvailable, whyUnlocked } from './why/why.js';
 
 // The workspace shell: one bar with the tab bar and the presenter menu, and
 // the active tab below it. Every tab is a route; <keep-alive> keeps the tabs
@@ -24,7 +25,7 @@ const { ready, loadError, profile, profileKey, corpus, state, delegations, deleg
  * The path of a tab in the language that is on.
  *
  * Without params: a tab points at the root of its section, and carrying the
- * current route's params along would put `/wetten/:lawId` on the Graph tab.
+ * current route's params along would put `/regelwerken/:lawId` on the Graph tab.
  * The views restore their own last position when they mount.
  */
 function pathFor(page) {
@@ -51,6 +52,7 @@ function refreshScrollMode(attempt = 0) {
 }
 onMounted(() => {
   demo.boot().catch(() => {});
+  probeWhy();
   refreshScrollMode();
 });
 router.afterEach(refreshScrollMode);
@@ -242,6 +244,29 @@ function toggleFullscreen() {
   else document.documentElement.requestFullscreen?.();
 }
 
+// Unlocking the "why" explanation (why/why.js). The password is checked by the
+// server; the dialog only passes it on and says whether it was accepted.
+const whyDialog = ref(null);
+const whyInput = ref('');
+const whyStatus = ref(null); // null | 'wrong' | 'unavailable'
+const whyBusy = ref(false);
+function askWhyPassword() {
+  whyInput.value = '';
+  whyStatus.value = null;
+  whyDialog.value?.show?.();
+}
+async function confirmWhyPassword() {
+  if (!whyInput.value || whyBusy.value) return;
+  whyBusy.value = true;
+  try {
+    const result = await unlockWhy(whyInput.value);
+    if (result === 'ok') whyDialog.value?.hide?.();
+    else whyStatus.value = result;
+  } finally {
+    whyBusy.value = false;
+  }
+}
+
 const resetDialog = ref(null);
 function askReset() {
   resetDialog.value?.show?.();
@@ -302,7 +327,7 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
                 :current="isActive(tab) || undefined"
                 @click.prevent="router.push(tab.to)"
               >
-                <nldd-icon slot="icon" :name="tab.icon"></nldd-icon>
+                <nldd-icon slot="icon" :icon="tab.icon"></nldd-icon>
               </nldd-tab-bar-item>
             </nldd-tab-bar>
             <!-- Vangnet: past zelfs de iconenbalk niet meer, dan verbergt de
@@ -325,14 +350,14 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
             </nldd-menu-group>
           </nldd-toolbar-item>
           <nldd-toolbar-item slot="end" v-if="openCases > 0">
-            <nldd-button size="sm" variant="neutral-tinted" start-icon="inbox" :text="t.plural(openCases, 'app.cases.pending')" @click="router.push(pathFor('zaaksysteem'))"></nldd-button>
+            <nldd-button size="sm" appearance="neutral-tinted" start-icon="inbox" :text="t.plural(openCases, 'app.cases.pending')" @click="router.push(pathFor('zaaksysteem'))"></nldd-button>
           </nldd-toolbar-item>
           <!-- Namens wie: alleen als de wet meer dan één mogelijkheid geeft.
                Staat naast het profiel, want het hoort bij wie er ingelogd is. -->
           <nldd-toolbar-item slot="end" v-if="showDelegation" class="rr-hide-presenting" :priority="20">
             <nldd-button
               size="md"
-              :variant="activeDelegation ? 'accent-tinted' : 'neutral-transparent'"
+              :appearance="activeDelegation ? 'accent-tinted' : 'neutral-transparent'"
               :start-icon="activeDelegation ? DELEGATION_ICONS[activeDelegation.subjectType] : 'switch'"
               :text="delegationButtonText"
               expandable
@@ -370,7 +395,7 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
             </nldd-menu-group>
           </nldd-toolbar-item>
           <nldd-toolbar-item slot="end" v-if="profile" class="rr-hide-presenting" :priority="30">
-            <nldd-button size="md" variant="neutral-transparent" start-icon="person" :text="profile.name" expandable popup-type="menu">
+            <nldd-button size="md" appearance="neutral-transparent" start-icon="person" :text="profile.name" expandable popup-type="menu">
               <nldd-menu slot="popup" :accessible-label="t('app.profile.label')" @select="onProfileSelect">
                 <nldd-menu-item
                   v-for="[key, p] in profileOptions"
@@ -483,6 +508,10 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
           <nldd-menu-group slot="overflow" :text="t('app.demo.label')">
             <nldd-menu-item :text="t('app.demo.fullscreen')" icon="square-arrow-up" @select="toggleFullscreen"></nldd-menu-item>
             <nldd-menu-item :text="t('app.demo.reset')" icon="refresh" @select="askReset"></nldd-menu-item>
+            <!-- Only when a server answers /api/why; without one the feature
+                 does not exist and the menu does not mention it. -->
+            <nldd-menu-item v-if="whyAvailable && !whyUnlocked" :text="t('app.why.unlock')" icon="unlocked" @select="askWhyPassword"></nldd-menu-item>
+            <nldd-menu-item v-if="whyUnlocked" :text="t('app.why.lock')" icon="locked" @select="lockWhy"></nldd-menu-item>
           </nldd-menu-group>
         </nldd-toolbar>
       </nldd-container>
@@ -507,14 +536,38 @@ const openCases = computed(() => state.cases.filter((c) => c.status === 'IN_REVI
     </nldd-bar-split-view>
 
     <nldd-modal-dialog
+      ref="whyDialog"
+      :text="t('app.why.dialog.title')"
+      :supporting-text="t('app.why.dialog.body')"
+      :accessible-label="t('app.why.dialog.title')"
+      horizontal-alignment="left"
+    >
+      <nldd-form-field :label="t('app.why.dialog.password')" @keydown.enter="confirmWhyPassword">
+        <nldd-password-field
+          :value="whyInput"
+          autocomplete="current-password"
+          :invalid="whyStatus === 'wrong' || undefined"
+          :show-button-text="t('app.why.dialog.show')"
+          :hide-button-text="t('app.why.dialog.hide')"
+          :show-button-accessible-label="t('app.why.dialog.show_label')"
+          :hide-button-accessible-label="t('app.why.dialog.hide_label')"
+          @input="whyInput = $event.detail?.value ?? $event.target.value; whyStatus = null"
+        ></nldd-password-field>
+        <nldd-form-field-help-text v-if="whyStatus">{{ t(`app.why.dialog.${whyStatus}`) }}</nldd-form-field-help-text>
+      </nldd-form-field>
+      <nldd-button slot="actions" appearance="primary" :text="t('app.why.dialog.confirm')" :disabled="!whyInput || whyBusy || undefined" @click="confirmWhyPassword"></nldd-button>
+      <nldd-button slot="actions" appearance="secondary" :text="t('app.why.dialog.cancel')" @click="whyDialog?.hide?.()"></nldd-button>
+    </nldd-modal-dialog>
+
+    <nldd-modal-dialog
       ref="resetDialog"
       variant="alert"
       :text="t('app.reset.title')"
       :supporting-text="t('app.reset.body')"
       :accessible-label="t('app.reset.label')"
     >
-      <nldd-button slot="actions" variant="destructive" :text="t('app.reset.confirm')" @click="confirmReset"></nldd-button>
-      <nldd-button slot="actions" variant="secondary" :text="t('app.reset.cancel')" @click="resetDialog?.hide?.()"></nldd-button>
+      <nldd-button slot="actions" appearance="destructive" :text="t('app.reset.confirm')" @click="confirmReset"></nldd-button>
+      <nldd-button slot="actions" appearance="secondary" :text="t('app.reset.cancel')" @click="resetDialog?.hide?.()"></nldd-button>
     </nldd-modal-dialog>
   </nldd-app-view>
 </template>

@@ -44,16 +44,18 @@ flowchart TD
 | `load_check.rs` | Load-time checks the schema cannot express, such as refusing a law that writes the Unknown sentinel into its own literals |
 | `receipt.rs` | The Execution Receipt envelope (RFC-013) |
 | `annotation/` | Stand-off note resolution: anchors a note to law text by quote, with fuzzy matching (RFC-005, RFC-018) |
-| `telemetry.rs` | OpenTelemetry export of the engine's tracing events; compiled only with the `otel` feature |
 | `config.rs` | Security limits and the list of supported schema versions (see [Security Limits](#security-limits)) |
+| `schema.rs` | Embedded JSON schemas and version detection for the `validate` binary; compiled only with the `validate` feature |
+| `demand.rs` | Dependency closure of a requested output, so an article runs only the actions that output needs (RFC-043) |
+| `types.rs` | Runtime and trace enums, plus re-exports of the document-model types from the Law Model crate |
 
-The types a law file deserializes into are not defined in the engine. They live in the [Law Model](./law-model) crate, which `article.rs` re-exports and loads under the security limits.
+The types a rulework deserializes into are not defined in the engine. They live in the [Law Model](./law-model) crate, which `article.rs` re-exports and loads under the security limits.
 
 ## How It Works
 
 ```mermaid
 flowchart TD
-    A[Load Law YAML] --> B[Parse Articles]
+    A[Load rulework] --> B[Parse Articles]
     B --> C[Build Output Index]
     C --> D[Select the actions the requested outputs need]
     D --> E[Execute Operations]
@@ -174,7 +176,7 @@ The engine automatically loads the referenced law, executes it with the specifie
 
 ### Open Term Resolution (IoC)
 
-Higher laws declare `open_terms` that lower regulations fill via `implements`. At execution time, the engine:
+Laws declare `open_terms` that other regulations fill via `implements`, by delegation or in co-government. At execution time, the engine:
 
 1. Indexes all `implements` declarations at law load time
 2. Looks up the implementations of an `open_term` when an operation first reads it
@@ -253,7 +255,7 @@ The exported methods are the `#[wasm_bindgen(js_name = ...)]` functions on `Wasm
 
 ## Security Limits
 
-The engine enforces fixed limits, set in `packages/engine/src/config.rs`, so that a hostile or broken law file cannot exhaust memory or the stack:
+The engine enforces fixed limits, set in `packages/engine/src/config.rs`, so that a hostile or broken rulework cannot exhaust memory or the stack:
 
 | Limit | Value | Purpose |
 |-------|-------|---------|
@@ -286,7 +288,7 @@ See [RFC-013](/rfcs/rfc-013) for the design rationale.
 | `output_names` | The outputs to compute, a non-empty list; the older single `output_name` is still accepted |
 | `params` | Parameters as a JSON object |
 | `date` | Calculation date, `YYYY-MM-DD` |
-| `extra_laws` | Optional list of further law YAMLs, loaded for cross-law references and open terms |
+| `extra_laws` | Optional list of further rulework versions, loaded for cross-law references and open terms |
 
 Two flags change the run. `--untranslatable=<mode>` sets how the engine treats markings (`error`, `propagate`, `warn` or `ignore`; see [Markings](/concepts/markings)), and `--receipt` prints an Execution Receipt instead of the plain result. The binary loads only the laws in the request, so every law the execution reaches has to be in `law_yaml` or `extra_laws`. `jq` builds the request conveniently:
 
@@ -329,7 +331,7 @@ Key benchmarks: URI parsing, variable resolution, operations, article evaluation
 
 ## Further reading
 
-- [Law Format](/concepts/law-format) - structure of law YAML files
+- [Law Format](/concepts/law-format) - structure of a rulework
 - [RFC-003: Inversion of Control](/rfcs/rfc-003) - open terms and delegation
 - [RFC-004: Uniform Operations](/rfcs/rfc-004) - operation syntax
 - [RFC-007: Cross-Law Execution](/rfcs/rfc-007) - hooks, overrides, and temporal computation

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, onActivated, onDeactivated, ref, watch } from 'vue';
 import { VueFlow, useVueFlow } from '@vue-flow/core';
 import { Background } from '@vue-flow/background';
 import '@vue-flow/core/dist/style.css';
@@ -66,11 +66,28 @@ function withDependencies(laws) {
 }
 
 // ---- selection ----------------------------------------------------------------
+const focus = ref(null);
+// Staat de focus er omdat het profiel hem koos (`graph_focus`), dan zoomt de
+// graaf op die wet in plaats van op het hele verhaal:
+// Claudia's verhaal telt zeventien wetten, en uitgezoomd daarop is de
+// precariobelasting niet meer te lezen. Een klik van de presentator neemt het
+// over.
+const focusFromProfile = ref(false);
+
+function focusProfileLaw() {
+  const id = profile.value?.graph_focus;
+  const law = id && corpus.value?.latestById.has(id) ? id : null;
+  focus.value = law;
+  focusFromProfile.value = !!law;
+}
+
 const selected = ref(new Set());
 const preset = ref('verhaal'); // 'verhaal' | 'portaal' | 'alles' | '' (hand-picked)
 
 function applyPreset(name) {
   if (!corpus.value || !profile.value) return;
+  // Bij een profielwissel zet focusProfileLaw hem direct daarna weer aan.
+  focusFromProfile.value = false;
   preset.value = name;
   if (name === 'alles') {
     selected.value = new Set(allLaws.value.map((l) => l.id));
@@ -86,9 +103,34 @@ function applyPreset(name) {
     }
   }
 }
-watch([profile, corpus], () => applyPreset('verhaal'), { immediate: true });
+// Een wissel terwijl een ander tabblad open staat (<keep-alive>) past de graaf
+// aan terwijl hij onzichtbaar is; fitView meet dan niets. Bij terugkomst dus
+// nog één keer passend maken, maar alleen dan: wie op de graaf zelf wisselt en
+// daarna rondkijkt, wil zijn beeld terug als hij even weg is geweest.
+let active = false;
+let refitOnActivate = false;
+// Op de profielsleutel en niet op het profielobject: een taalwissel levert
+// een nieuw corpus en dus een nieuw profielobject, en dan hoort de keuze van
+// de presentator (wetten, focus, zoom) te blijven staan.
+watch([() => demo.profileKey.value, () => !!corpus.value], () => {
+  applyPreset('verhaal');
+  focusProfileLaw();
+  if (!active) refitOnActivate = true;
+}, { immediate: true });
+onActivated(() => {
+  active = true;
+  if (!refitOnActivate) return;
+  refitOnActivate = false;
+  refit();
+});
+onDeactivated(() => {
+  active = false;
+});
 
+// Wie zelf wetten kiest, neemt het beeld over van de profielfocus: anders zoomt
+// elke herberekening van de graaf terug naar die ene wet (zie refit).
 function toggle(lawId) {
+  focusFromProfile.value = false;
   const next = new Set(selected.value);
   if (next.has(lawId)) next.delete(lawId);
   else next.add(lawId);
@@ -96,6 +138,7 @@ function toggle(lawId) {
   preset.value = '';
 }
 function only(lawId) {
+  focusFromProfile.value = false;
   selected.value = new Set([lawId]);
   preset.value = '';
 }
@@ -139,8 +182,11 @@ const values = computed(() => {
   for (const law of shownLaws.value) {
     for (const input of lawShape(law).inputs) {
       const key = `${input.ref.regulation}#${input.ref.output}`;
+      // Leest de wet dit uit een besloten zaak (caseRefs), dan telt wat zij
+      // daar las: een losse run van de andere wet kent de aanvraag niet.
+      const viaCase = (law.caseRefs ?? []).some((r) => r.name === input.name) ? sources[law.id]?.[input.name] : undefined;
       const fromOutputs = outputs[input.ref.regulation]?.[input.ref.output];
-      const v = fromOutputs ?? (refs.has(key) ? fmt(input.ref.regulation, input.ref.output, refs.get(key)) : undefined);
+      const v = viaCase ?? fromOutputs ?? (refs.has(key) ? fmt(input.ref.regulation, input.ref.output, refs.get(key)) : undefined);
       if (v !== undefined) {
         inputs[law.id] ??= {};
         inputs[law.id][input.name] = v;
@@ -151,12 +197,12 @@ const values = computed(() => {
 });
 
 // ---- the graph ------------------------------------------------------------------
-const focus = ref(null);
 // Every law is laid out so the picture never shifts when "Alles" comes on;
 // only the neighbourhood of the selection is visible.
 const graph = computed(() => buildGraph(allLaws.value, values.value, focus.value, shownIds.value));
 
 function onNodeClick({ node }) {
+  focusFromProfile.value = false;
   if (node.type === 'law') focus.value = focus.value === node.id ? null : node.id;
   else if (node.type === 'item' && node.data.ref && selected.value.has(node.data.ref.regulation)) focus.value = node.data.ref.regulation;
 }
@@ -165,9 +211,23 @@ function onNodeDoubleClick({ node }) {
 }
 function onPaneClick() {
   focus.value = null;
+  focusFromProfile.value = false;
 }
+/**
+ * Everything shown, or only the profile's focus law. Not the focus law plus its
+ * neighbours: the layout runs left to right along the chain, so a law and its
+ * neighbours can sit at opposite ends, and their bounds are nearly the whole
+ * graph again.
+ */
 function refit() {
-  setTimeout(() => fitView({ padding: 0.1, nodes: [...shownIds.value] }), 50);
+  const onFocus = focusFromProfile.value && focus.value && shownIds.value.has(focus.value);
+  const options = onFocus ? { padding: 0.2, maxZoom: 1, nodes: [focus.value] } : { padding: 0.1, nodes: [...shownIds.value] };
+  setTimeout(() => fitView(options), 50);
+}
+/** "Passend maken": always the whole picture. */
+function fitAll() {
+  focusFromProfile.value = false;
+  refit();
 }
 // vue-flow's fit-view-on-init runs before the nodes exist (the corpus arrives
 // async); refit whenever the set of laws changes.
@@ -198,11 +258,11 @@ function unique(laws) {
     </nldd-split-view-pane>
 
     <nldd-split-view-pane slot="main" has-content>
-      <nldd-page sticky-header>
+      <nldd-page landmarks="page" sticky-header>
         <nldd-container slot="header" padding="8">
           <nldd-toolbar size="sm">
             <nldd-toolbar-item slot="start">
-              <nldd-button size="sm" variant="neutral-tinted" start-icon="books" :text="t('wet.sidebar.label')" :supporting-text="`${selected.size}`" @click="splitView?.showPrimarySidebarSheet?.()"></nldd-button>
+              <nldd-button size="sm" appearance="neutral-tinted" start-icon="books" :text="t('wet.sidebar.label')" :supporting-text="`${selected.size}`" @click="splitView?.showPrimarySidebarSheet?.()"></nldd-button>
             </nldd-toolbar-item>
             <nldd-toolbar-title slot="start" :text="t('wet.graph.title')" :supporting-text="t('wet.graph.subtitle', { laws: shownLaws.length, edges: graph.edges.filter((e) => !e.hidden).length, persona: profile?.name ?? t('wet.graph.persona.fallback') })" max-width="480px"></nldd-toolbar-title>
             <nldd-toolbar-item slot="end">
@@ -213,13 +273,13 @@ function unique(laws) {
               </nldd-segmented-control>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
-              <nldd-button size="sm" variant="neutral-tinted" start-icon="binoculars" :text="t('wet.graph.fit')" @click="refit"></nldd-button>
+              <nldd-button size="sm" appearance="neutral-tinted" start-icon="binoculars" :text="t('wet.graph.fit')" @click="refit"></nldd-button>
             </nldd-toolbar-item>
           </nldd-toolbar>
         </nldd-container>
         <nldd-simple-section v-if="!shownLaws.length" height="60vh">
           <nldd-inline-dialog icon="centralized-network" :text="t('wet.graph.empty.title')" :supporting-text="t('wet.graph.empty.body')">
-            <nldd-button slot="actions" variant="primary" size="sm" :text="t('wet.sidebar.label')" @click="splitView?.showPrimarySidebarSheet?.()"></nldd-button>
+            <nldd-button slot="actions" appearance="primary" size="sm" :text="t('wet.sidebar.label')" @click="splitView?.showPrimarySidebarSheet?.()"></nldd-button>
           </nldd-inline-dialog>
         </nldd-simple-section>
         <div v-else class="graph-canvas">
@@ -258,7 +318,7 @@ function unique(laws) {
                plaats van op te lichten. `neutral-transparent` is nog erger, die
                heeft helemaal geen hover-vulling. Getint geeft 0.923 in rust en
                0.898 onder de muis. -->
-          <nldd-button-bar class="graph-zoom" variant="neutral-tinted">
+          <nldd-button-bar class="graph-zoom" appearance="neutral-tinted">
             <nldd-icon-button icon="add" :text="t('wet.graph.zoom_in')" @click="zoomIn()"></nldd-icon-button>
             <nldd-icon-button icon="remove" :text="t('wet.graph.zoom_out')" @click="zoomOut()"></nldd-icon-button>
             <nldd-button-bar-divider></nldd-button-bar-divider>
@@ -280,12 +340,12 @@ function unique(laws) {
         </nldd-container>
         <nldd-container padding="12" gap="12">
           <nldd-button-group orientation="horizontal" size="sm">
-            <nldd-button variant="secondary" size="sm" start-icon="book" :text="t('wet.graph.open_in_laws')" @click="goTo('wetten', { lawId: focusLaw.id })"></nldd-button>
-            <nldd-button variant="neutral-tinted" size="sm" :text="t('wet.graph.only_this')" @click="only(focusLaw.id)"></nldd-button>
+            <nldd-button appearance="secondary" size="sm" start-icon="book" :text="t('wet.graph.open_in_laws')" @click="goTo('wetten', { lawId: focusLaw.id })"></nldd-button>
+            <nldd-button appearance="neutral-tinted" size="sm" :text="t('wet.graph.only_this')" @click="only(focusLaw.id)"></nldd-button>
           </nldd-button-group>
           <nldd-container gap="4">
             <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">{{ t('wet.graph.reads_from') }}</nldd-text></nldd-container>
-            <nldd-list variant="box-base" :accessible-label="t('wet.graph.reads_from')">
+            <nldd-list appearance="box-base" :accessible-label="t('wet.graph.reads_from')">
               <nldd-list-item v-if="uses.length === 0" size="sm"><nldd-text-cell size="sm" color="secondary" :text="t('wet.graph.no_law_in_view')"></nldd-text-cell></nldd-list-item>
               <nldd-list-item v-for="l in unique(uses)" :key="l.id" size="sm" button @click="focus = l.id">
                 <nldd-text-cell size="sm" :text="l.name" :supporting-text="serviceInfo(corpus, l.service).name"></nldd-text-cell>
@@ -294,7 +354,7 @@ function unique(laws) {
           </nldd-container>
           <nldd-container gap="4">
             <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">{{ t('wet.graph.read_by') }}</nldd-text></nldd-container>
-            <nldd-list variant="box-base" :accessible-label="t('wet.graph.read_by')">
+            <nldd-list appearance="box-base" :accessible-label="t('wet.graph.read_by')">
               <nldd-list-item v-if="usedBy.length === 0" size="sm"><nldd-text-cell size="sm" color="secondary" :text="t('wet.graph.no_law_in_view')"></nldd-text-cell></nldd-list-item>
               <nldd-list-item v-for="l in unique(usedBy)" :key="l.id" size="sm" button @click="focus = l.id">
                 <nldd-text-cell size="sm" :text="l.name" :supporting-text="serviceInfo(corpus, l.service).name"></nldd-text-cell>

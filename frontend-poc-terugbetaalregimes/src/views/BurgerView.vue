@@ -63,7 +63,7 @@
       <nldd-simple-section background="tinted">
         <nldd-title :size="3">
           <span>Dit zou je kunnen aanpassen</span>
-          <span slot="subtitle">
+          <span slot="supporting-text">
             Je hoeft niets te doen. Laat je alles staan, dan blijft het bedrag hierboven gelden. Zet hieronder iets
             aan om te zien wat er dan verandert.
           </span>
@@ -143,7 +143,7 @@
             class="bon-knop"
             :text="verstuurTekst"
             start-icon="send"
-            variant="primary"
+            appearance="primary"
             @click="aanvraagOpen = true"
           ></nldd-button>
         </section>
@@ -158,7 +158,7 @@
       <nldd-simple-section>
         <nldd-title :size="3">
           <span>Wat dit nog meer raakt</span>
-          <span slot="subtitle">Andere regelingen kijken naar hetzelfde inkomen.</span>
+          <span slot="supporting-text">Andere regelingen kijken naar hetzelfde inkomen.</span>
         </nldd-title>
         <toeslagen-signaal class="sectie-inhoud" :persona="selected" :choices="choices" />
       </nldd-simple-section>
@@ -169,7 +169,7 @@
           <nldd-button
             text="Bekijk hoe dit is berekend"
             start-icon="text-document"
-            variant="secondary"
+            appearance="secondary"
             @click="openBerekening"
           ></nldd-button>
           <span class="demo-label">Demo: wat als het beleid verandert? Kies bovenaan een werkversie; deze pagina rekent ermee.</span>

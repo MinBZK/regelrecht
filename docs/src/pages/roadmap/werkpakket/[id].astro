@@ -206,7 +206,7 @@ const kerngegevens = [
   >
     <nldd-title slot="header" size="1">
       <h1>{wp.titel}</h1>
-      <p slot="subtitle">
+      <p slot="supporting-text">
         {[
           fase && (fase.ondertitel ? `${fase.naam} · ${fase.ondertitel}` : fase.naam),
           discipline?.naam,
@@ -331,7 +331,7 @@ const kerngegevens = [
             <nldd-title size="4">
               <h2>Ontwerp en implementatie</h2>
             </nldd-title>
-            <nldd-list type="navigation" variant="box-tinted">
+            <nldd-list type="navigation" appearance="box-tinted">
               {rfcs.map((rfc) => (
                 <nldd-list-item href={rfc.link}>
                   {/* The implementation state renders as a tag, the same
@@ -362,7 +362,7 @@ const kerngegevens = [
                 <nldd-text size="sm" weight="medium" color="secondary">
                   Kan pas beginnen als dit opgeleverd is
                 </nldd-text>
-                <nldd-list type="navigation" variant="box-tinted">
+                <nldd-list type="navigation" appearance="box-tinted">
                   {wachtOp.map((related) => (
                     <nldd-list-item href={`/roadmap/werkpakket/${related!.data.id}`}>
                       <nldd-text-cell
@@ -387,7 +387,7 @@ const kerngegevens = [
                 <nldd-text size="sm" weight="medium" color="secondary">
                   Wacht op dit werkpakket
                 </nldd-text>
-                <nldd-list type="navigation" variant="box-tinted">
+                <nldd-list type="navigation" appearance="box-tinted">
                   {blokkeert.map((related) => (
                     <nldd-list-item href={`/roadmap/werkpakket/${related.data.id}`}>
                       <nldd-text-cell
@@ -415,7 +415,7 @@ const kerngegevens = [
         <nldd-title size="4"><h2>Samenhang</h2></nldd-title>
         {
           samenhang.length ? (
-            <nldd-list type="navigation" variant="box-tinted">
+            <nldd-list type="navigation" appearance="box-tinted">
               {samenhang.map((related) => {
                 const relatedFase = getFase(related!.data.faseId);
                 const relatedDiscipline = getDiscipline(

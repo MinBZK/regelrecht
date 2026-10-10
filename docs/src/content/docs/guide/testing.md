@@ -67,7 +67,7 @@ The first three also run on their own, and the pre-commit hooks call them the sa
 
 ```bash
 just format       # rustfmt check (cargo fmt --check)
-just lint         # clippy over all packages
+just lint         # clippy over all packages and targets, with the validate and annotation-validation features
 just build-check  # cargo check over the whole workspace
 ```
 
@@ -104,7 +104,7 @@ just mutants-diff  # Only what this branch changed
 
 ## Schema Validation
 
-All law YAML files are validated against the JSON schema:
+Every rulework is validated against the JSON schema:
 
 ```bash
 just validate                     # Validate all

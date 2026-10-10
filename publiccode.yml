@@ -1,0 +1,131 @@
+---
+# Describes this repository for public-sector software catalogs.
+# Standard: https://yml.publiccode.tools
+publiccodeYmlVersion: '0.7'
+
+name: RegelRecht
+url: https://github.com/MinBZK/regelrecht
+landingURL: https://regelrecht.rijks.app
+roadmap: https://regelrecht.rijks.app/roadmap
+logo: docs/public/regelrecht-icon.svg
+
+releaseDate: 2026-02-26
+developmentStatus: beta
+softwareType: standalone/web
+platforms:
+  - web
+  - linux
+
+categories:
+  - compliance-management
+  - business-process-management
+  - knowledge-management
+
+intendedAudience:
+  countries:
+    - NL
+  scope:
+    - government
+    - justice
+    - welfare
+    - employment
+
+description:
+  nl:
+    shortDescription: >-
+      Legt Nederlandse wet- en regelgeving vast als machineleesbare regels
+      en voert die uit, met bij elke uitkomst de herleiding naar de wettekst.
+    longDescription: |
+      RegelRecht maakt Nederlandse wet- en regelgeving uitvoerbaar. Een
+      regeling wordt als regelwerk vastgelegd in YAML: de wettekst per
+      artikel, met daarnaast de beslislogica die uit dat artikel volgt. De
+      engine rekent zo'n regelwerk door voor een gegeven situatie en geeft
+      naast de uitkomst het volledige spoor terug: welke artikelen zijn
+      toegepast, met welke gegevens en in welke volgorde.
+
+      Regelwerken verwijzen naar elkaar zoals wetten dat doen. Een
+      ministeriële regeling vult een open norm in een wet in, en een
+      toeslagenwet haalt het toetsingsinkomen op uit de wet die het
+      definieert. De engine volgt die verwijzingen, zodat een berekening
+      over meerdere regelingen heen te herleiden blijft.
+
+      Elk regelwerk wordt getoetst met scenario's in Gherkin, waarvan een
+      deel is afgeleid van de rekenvoorbeelden in de memorie van
+      toelichting. Een harvester haalt de geldende teksten op uit het
+      Basiswettenbestand, en in de editor kan een jurist een regelwerk
+      bewerken en de uitvoering direct zien.
+
+      Het project is open zodat iedereen kan nalezen hoe een wet in
+      uitvoerbare regels is vertaald en die vertaling tegen de wet zelf kan
+      leggen. Het formaat is vastgelegd in een JSON-schema met versies, de
+      ontwerpbeslissingen staan in openbare RFC's.
+    documentation: https://docs.regelrecht.rijks.app
+    features:
+      - Wetgeving vastleggen als regelwerk in YAML, per artikel naast de wettekst
+      - Regelwerken uitvoeren met een herleidbaar spoor per uitkomst
+      - Verwijzingen tussen regelingen en delegatie naar lagere regelgeving
+      - Scenario's in Gherkin, afgeleid van de memorie van toelichting
+      - Wetteksten ophalen uit het Basiswettenbestand
+      - Editor met directe uitvoering van het regelwerk
+      - Engine in Rust, ook als WebAssembly in de browser
+    screenshots:
+      - docs/src/assets/editor-notities-screenshot.png
+      - docs/src/assets/simulatie-screenshot.png
+  en:
+    shortDescription: >-
+      Records Dutch legislation as machine-readable rules and executes them,
+      tracing every outcome back to the legal text.
+    longDescription: |
+      RegelRecht makes Dutch legislation executable. A regulation is recorded
+      as a rulework in YAML: the legal text per article, next to the decision
+      logic that follows from that article. The engine evaluates a rulework
+      for a given situation and returns the outcome together with the full
+      trail: which articles were applied, on which data and in which order.
+
+      Ruleworks refer to each other the way laws do. A ministerial regulation
+      fills in an open norm from an act, and a benefits act takes the
+      assessment income from the act that defines it. The engine follows
+      those references, so a calculation that spans several regulations
+      stays traceable.
+
+      Every rulework is tested with Gherkin scenarios, some of them derived
+      from the worked examples in the explanatory memorandum. A harvester
+      downloads the texts in force from the Dutch official legislation
+      repository (Basiswettenbestand), and in the editor a legal expert can
+      edit a rulework and see it execute right away.
+
+      The project is open so that anyone can read how a law was translated
+      into executable rules and check that translation against the law
+      itself. The format is laid down in a versioned JSON schema, and the
+      design decisions are in public RFCs.
+    documentation: https://docs.regelrecht.rijks.app
+    features:
+      - Recording legislation as a rulework in YAML, per article next to the legal text
+      - Executing ruleworks with a traceable trail for every outcome
+      - References between regulations and delegation to lower regulations
+      - Gherkin scenarios derived from the explanatory memorandum
+      - Downloading legal texts from the Basiswettenbestand
+      - Editor with live execution of the rulework
+      - Engine in Rust, also available as WebAssembly in the browser
+    screenshots:
+      - docs/src/assets/editor-notities-screenshot.png
+      - docs/src/assets/simulatie-screenshot.png
+
+legal:
+  license: EUPL-1.2
+  mainCopyrightOwner: Staat der Nederlanden (Ministerie van Binnenlandse Zaken en Koninkrijksrelaties)
+
+maintenance:
+  type: internal
+  contacts:
+    - name: Team RegelRecht
+      email: regelrecht@minbzk.nl
+
+localisation:
+  localisationReady: true
+  # Frisian (fy) is left out on purpose: the demo carries a Frisian translation,
+  # but it is machine-translated and still awaits review by a Frisian speaker
+  # (corpus/demo/i18n/REVIEW-fy.md). Add it here once that review is done.
+  availableLanguages:
+    - nl
+    - en

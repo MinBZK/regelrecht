@@ -12,7 +12,7 @@
         v-if="naarLabel"
         slot="actions"
         size="sm"
-        variant="secondary"
+        appearance="secondary"
         :text="naarLabel"
         @click="$emit('ga')"
       ></nldd-button>

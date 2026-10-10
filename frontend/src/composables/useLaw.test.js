@@ -336,14 +336,14 @@ describe('useLaw law_create-flow (seedFromYaml + createLaw)', () => {
   it('createLaw geeft de servermelding door (bijv. een 409-slugconflict)', async () => {
     globalThis.fetch = vi.fn().mockImplementation(async (url, opts) => {
       if (opts?.method === 'POST') {
-        return res({ ok: false, status: 409, body: 'Er bestaat al een wet met dit $id in dit traject; pas het $id in de YAML aan.' });
+        return res({ ok: false, status: 409, body: 'Er bestaat al een regelwerk met dit $id in dit traject; pas het $id in de YAML aan.' });
       }
       return res({ ok: false, status: 404, body: 'Law not found' });
     });
     const law = useLaw('nieuwe_wet4', null, 'tr-12345678');
     await waitForLoaded(law);
     await expect(law.createLaw('$id: nieuwe_wet4\narticles: []\n')).rejects.toThrow(
-      /bestaat al een wet/i,
+      /bestaat al een regelwerk/i,
     );
     expect(law.saveError.value).toBeTruthy();
   });

@@ -212,7 +212,7 @@ watch(() => session.aanvrager, laadAanvragen);
                 </nldd-form-field>
                 <nldd-form-actions>
                   <nldd-button
-                    variant="primary"
+                    appearance="primary"
                     type="submit"
                     text="Verder"
                     start-icon="lock-closed"
@@ -242,7 +242,7 @@ watch(() => session.aanvrager, laadAanvragen);
               </nldd-rich-text>
               <nldd-spacer size="16"></nldd-spacer>
 
-              <nldd-list variant="box">
+              <nldd-list appearance="box">
                 <nldd-list-item size="md" type="button" @click="doLogin({ type: 'VOLLEDIG' })">
                   <nldd-title-cell
                     text="De gehele partij"
@@ -275,7 +275,7 @@ watch(() => session.aanvrager, laadAanvragen);
                   ></nldd-text-field>
                 </nldd-form-field>
                 <nldd-spacer size="8"></nldd-spacer>
-                <nldd-list v-if="getoondeProfielen.length" variant="box">
+                <nldd-list v-if="getoondeProfielen.length" appearance="box">
                   <nldd-list-item
                     v-for="p in getoondeProfielen"
                     :key="`${p.orgaan}:${p.gebied_code}`"
@@ -301,7 +301,7 @@ watch(() => session.aanvrager, laadAanvragen);
 
               <nldd-spacer size="16"></nldd-spacer>
               <nldd-button
-                variant="neutral-transparent"
+                appearance="neutral-transparent"
                 text="Terug"
                 start-icon="arrow-left"
                 :disabled="bezig || undefined"
@@ -324,7 +324,7 @@ watch(() => session.aanvrager, laadAanvragen);
           <nldd-spacer size="32"></nldd-spacer>
           <nldd-title size="4"><h3>Voorbeeldpartijen (demo)</h3></nldd-title>
           <nldd-spacer size="8"></nldd-spacer>
-          <nldd-list variant="box">
+          <nldd-list appearance="box">
             <nldd-list-item
               v-for="d in demoVoorbeelden"
               :key="d.kvk_nummer"
@@ -357,7 +357,7 @@ watch(() => session.aanvrager, laadAanvragen);
           <h2>Uw subsidieaanvragen</h2>
           <div v-if="aanvragen.length" slot="actions">
             <nldd-button
-              variant="primary"
+              appearance="primary"
               text="Nieuwe aanvraag"
               start-icon="plus"
               @click="router.push('/nieuw')"
@@ -366,7 +366,7 @@ watch(() => session.aanvrager, laadAanvragen);
         </nldd-title>
         <nldd-spacer size="24"></nldd-spacer>
 
-        <nldd-list v-if="aanvragen.length" variant="box">
+        <nldd-list v-if="aanvragen.length" appearance="box">
           <nldd-list-item
             v-for="item in aanvragen"
             :key="item.aanvraag.id"
@@ -404,7 +404,7 @@ watch(() => session.aanvrager, laadAanvragen);
         >
           <nldd-button
             slot="actions"
-            variant="primary"
+            appearance="primary"
             text="Nieuwe aanvraag"
             @click="router.push('/nieuw')"
           ></nldd-button>

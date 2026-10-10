@@ -256,7 +256,6 @@ export function generateCitizens(userParams, referenceDate, templateRow = () => 
     T('RvIG', 'personen', {
       bsn: p.bsn,
       geboortedatum: p.birthDate,
-      verblijfsadres: 'Amsterdam',
       land_verblijf: 'NEDERLAND',
       nationaliteit: p.dutch ? 'NEDERLANDS' : 'BUITENLANDS',
       age: p.age,
@@ -482,18 +481,23 @@ export function generateBusinesses(userParams, referenceDate, templateRow = () =
     T('GEMEENTE_ROTTERDAM', 'horecagebiedsplannen', { adres: address, categorie: 'licht', gebied: 'Rotterdam West', categorie_toegestaan: rng.chance(0.9), ontwikkelruimte: rng.chance(0.85) });
     T('GEMEENTE_ROTTERDAM', 'omgevingsplan_toetsingen', { adres: address, categorie: 'licht', horeca_toegestaan: rng.chance(0.9) });
     T('GEMEENTE_ROTTERDAM', 'bgt_terraslocaties', { adres: address, locatie: 'voor', beschikbare_oppervlakte: Math.round(rng.uniform(10, 120)), functie_oppervlak: 'voetpad', is_openbare_weg: true });
-    T('GEMEENTE_ROTTERDAM', 'terrassenbeleid', { adres: address, seizoen: 'jaarrond', gebied: 'Rotterdam West', max_oppervlakte: rng.pick([20, 30, 40]) });
+    // Categorie licht (aangevraagde_categorie): terras tot 23.00 uur. De APV
+    // noemt geen terrastijden; het horecabeleid vult art. 2:29 in
+    // (Horecagebiedsplannen 2024-2027).
+    T('GEMEENTE_ROTTERDAM', 'terrassenbeleid', { adres: address, seizoen: 'jaarrond', gebied: 'Rotterdam West', max_sluitingstijd_doordeweeks: 23, max_sluitingstijd_weekend: 23 });
     T('GEMEENTE_ROTTERDAM', 'precario_tarieven', { adres: address, gebruik: 'terras' });
 
     // The business at the municipality.
     T('GEMEENTE_ROTTERDAM', 'vestigingen', { kvk_nummer: kvk, adres: address, schenkt_alcohol: alcohol, heeft_terras: terrace });
-    T('GEMEENTE_ROTTERDAM', 'vergunningen', { kvk_nummer: kvk, heeft_exploitatievergunning: horeca && rng.chance(0.8), categorie: '1', heeft_alcoholvergunning: alcohol && rng.chance(0.7) });
+    // Art. 2:28 lid 5 onder i t/m k: getoetst bij de verlening. Zonder deze
+    // velden bleef de exploitatievergunning voor bijna iedereen onbekend.
+    T('GEMEENTE_ROTTERDAM', 'vergunningen', { kvk_nummer: kvk, heeft_exploitatievergunning: horeca && rng.chance(0.8), categorie: '1', heeft_alcoholvergunning: alcohol && rng.chance(0.7), kvk_inschrijving_geldig: true, feitelijke_toestand_conform_aanvraag: true, voldoet_aan_horecabeleid: true });
     T('GEMEENTE_ROTTERDAM', 'inrichtingen', { kvk_nummer: kvk, vloeroppervlakte_horecalokaliteit: floor, type_bedrijf: type });
     T('GEMEENTE_ROTTERDAM', 'beheerders', { kvk_nummer: kvk, schenkt_alcohol: alcohol, bsn, heeft_vog: vog, leeftijd: ownerAge, is_onder_curatele: curatele, heeft_svh_diploma: svh, alle_hebben_vog: vog, alle_voldoen_leeftijd: ownerAge >= 21, geen_onder_curatele: !curatele });
     T('GEMEENTE_ROTTERDAM', 'leidinggevenden', { kvk_nummer: kvk, bsn, naam: `Eigenaar ${i}`, leeftijd: ownerAge, is_onder_curatele: curatele, heeft_svh_diploma: svh, is_van_slecht_levensgedrag: false, is_ingeschreven_svh_register: svh, aantal_voldoet_alle_eisen: ownerAge >= 21 && !curatele && svh ? 1 : 0 });
     T('GEMEENTE_ROTTERDAM', 'exploitatie_inschrijvingen', { kvk_nummer: kvk, bsn_eigenaar: bsn, aangevraagde_categorie: 'licht' });
     T('GEMEENTE_ROTTERDAM', 'geluidsklachten', { kvk_nummer: kvk, heeft_actieve_klachten: rng.chance(0.1) });
-    T('GEMEENTE_ROTTERDAM', 'vergunningen_historie', { adres: address, bsn, vergunning_type: 'exploitatievergunning', intrekkingsdatum: null, intrekkingsreden: null, ingetrokken_slecht_levensgedrag: false });
+    T('GEMEENTE_ROTTERDAM', 'vergunningen_historie', { adres: address, bsn, kvk_nummer: kvk, vergunning_type: 'exploitatievergunning', intrekkingsdatum: null, intrekkingsreden: null, ingetrokken_slecht_levensgedrag: false, voorschriften_overtreden: false });
     T('GEMEENTE_ROTTERDAM', 'personen_vog', { bsn, heeft_geldige_vog: vog });
 
     // Inspectorates and registers.
@@ -507,7 +511,7 @@ export function generateBusinesses(userParams, referenceDate, templateRow = () =
     T('SVH', 'registraties', { bsn, is_geregistreerd: svh, naam: `Eigenaar ${i}` });
 
     // The owner as a person.
-    T('RvIG', 'personen', { bsn, geboortedatum: ownerBirth, verblijfsadres: 'Rotterdam', land_verblijf: 'NEDERLAND', nationaliteit: 'NEDERLANDS', age: ownerAge, has_dutch_nationality: true, has_partner: false, residence_address: address, has_fixed_address: true, household_size: 1 });
+    T('RvIG', 'personen', { bsn, geboortedatum: ownerBirth, land_verblijf: 'NEDERLAND', nationaliteit: 'NEDERLANDS', age: ownerAge, has_dutch_nationality: true, has_partner: false, residence_address: address, has_fixed_address: true, household_size: 1 });
     T('RvIG', 'relaties', { bsn, partnerschap_type: 'GEEN', partner_bsn: null, has_partner: false, kinderen: [] });
     T('RvIG', 'verblijfplaats', { bsn, straat: street, huisnummer: houseNumber, postcode, woonplaats: 'Rotterdam', type: 'WOONADRES' });
     T('RvIG', 'personen_vog', { bsn, heeft_geldige_vog: vog });
@@ -517,13 +521,16 @@ export function generateBusinesses(userParams, referenceDate, templateRow = () =
       aangevraagde_categorie: 'licht',
       activiteiten: horeca ? ['eten_en_drinken'] : ['detailhandel'],
       bereidt_of_serveert_voedsel: food,
+      // Wie een terras heeft, vraagt er een vergunning voor. Wat de APV
+      // toekent, wordt in de runner een verleende zaak (zie caseSourceLaws).
+      aanvragen: terrace ? ['algemene_plaatselijke_verordening/terrassen'] : [],
       terras_locatie: 'voor',
       terras_oppervlakte: terraceArea,
       obstakelvrije_ruimte: 1.8,
       seizoen: 'jaarrond',
       gewenste_openingstijd: 8,
       gewenste_sluitingstijd_doordeweeks: 23,
-      gewenste_sluitingstijd_weekend: 24,
+      gewenste_sluitingstijd_weekend: 23,
       activiteitsdatum: isoDate(refYear, 12, 31),
       activiteitsstarttijd: 20,
     };

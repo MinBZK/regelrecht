@@ -11,7 +11,7 @@
         <nldd-title :size="3">
           <span slot="overline">Voor beleidsmakers</span>
           <span>{{ bewerken ? 'Scenario aanpassen' : 'Scenario toevoegen' }}</span>
-          <span slot="subtitle">
+          <span slot="supporting-text">
             Stel een situatie samen en reken hem door naast de andere scenario's.
           </span>
         </nldd-title>
@@ -165,16 +165,16 @@
           <nldd-button
             :text="bewerken ? 'Wijzigingen opslaan' : 'Scenario toevoegen'"
             start-icon="checked"
-            variant="primary"
+            appearance="primary"
             :disabled="!kanOpslaan ? true : undefined"
             @click="opslaan"
           ></nldd-button>
-          <nldd-button text="Annuleren" variant="neutral-transparent" @click="emit('close')"></nldd-button>
+          <nldd-button text="Annuleren" appearance="neutral-transparent" @click="emit('close')"></nldd-button>
           <nldd-button
             v-if="kanOpslaan"
             text="Kopieer als YAML"
             start-icon="code"
-            variant="neutral-transparent"
+            appearance="neutral-transparent"
             @click="kopieer"
           ></nldd-button>
         </div>

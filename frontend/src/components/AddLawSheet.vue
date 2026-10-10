@@ -1,6 +1,6 @@
 <script setup>
 /**
- * AddLawSheet - "Wet toevoegen" vanuit een traject, in één flow, gepresenteerd
+ * AddLawSheet - "Regelwerk toevoegen" vanuit een traject, in één flow, gepresenteerd
  * als sheet (rechts; op klein scherm een bottom-sheet). Vervangt de eerdere
  * AddLawPopover, die de combobox-listbox van SearchPopover overnam voor iets
  * dat geen zoek-in-place maar een eigen taak is.
@@ -269,14 +269,14 @@ defineExpose({ show });
     ref="sheetRef"
     placement="right"
     width="480px"
-    accessible-label="Wet toevoegen aan traject"
+    accessible-label="Regelwerk toevoegen aan traject"
     sm-full-height
     @close="onSheetClose"
   >
       <nldd-page sticky-header>
         <nldd-top-title-bar
           slot="header"
-          text="Wet toevoegen"
+          text="Regelwerk toevoegen"
           dismiss-text="Annuleer"
           @dismiss="close"
         ></nldd-top-title-bar>
@@ -298,7 +298,7 @@ defineExpose({ show });
           <!-- Route 1: zoeken in het centrale corpus + BWB-harvest. -->
           <template v-if="mode === 'search'">
           <nldd-form-field
-            label="Zoek een wet"
+            label="Zoek een regelwerk"
             supporting-label="Op naam, law-id of BWB-id (bijv. BWBR0002399)"
           >
             <nldd-text-field
@@ -306,7 +306,7 @@ defineExpose({ show });
               size="md"
               width="full"
               :value="search"
-              placeholder="Zoek een wet of BWB-id…"
+              placeholder="Zoek een regelwerk of BWB-id…"
               @input="onSearchInput"
               @keydown="onKeydown"
             ></nldd-text-field>
@@ -321,7 +321,7 @@ defineExpose({ show });
           </template>
 
           <!-- Resultaatrijen: promoten (centraal corpus) of ophalen (BWB). -->
-          <nldd-list v-if="hasRows" variant="box-tinted">
+          <nldd-list v-if="hasRows" appearance="box-tinted">
             <!-- Centrale-corpus-treffers: promoten naar het traject. -->
             <nldd-list-item
               v-for="law in sortedLaws"
@@ -337,7 +337,7 @@ defineExpose({ show });
               <nldd-cell>
                 <nldd-button
                   size="sm"
-                  variant="primary"
+                  appearance="primary"
                   text="Toevoegen aan traject"
                   :disabled="isInTraject(law) || undefined"
                   :loading="promoteState[law.law_id] === 'busy' || undefined"
@@ -348,7 +348,7 @@ defineExpose({ show });
 
             <!-- Direct getypt BWB-id: traject-harvest zonder externe zoeker. -->
             <nldd-list-item v-if="showDirectBwbRow" size="md" :data-bwb-id="bwbIdQuery">
-              <nldd-icon-cell size="20"><nldd-icon name="harvest"></nldd-icon></nldd-icon-cell>
+              <nldd-icon-cell size="20"><nldd-icon icon="harvest"></nldd-icon></nldd-icon-cell>
               <nldd-spacer-cell size="8"></nldd-spacer-cell>
               <nldd-text-cell
                 :text="bwbIdQuery"
@@ -358,7 +358,7 @@ defineExpose({ show });
               <nldd-cell>
                 <nldd-button
                   size="sm"
-                  variant="primary"
+                  appearance="primary"
                   text="Ophalen naar traject"
                   :disabled="['busy', 'requested'].includes(harvestState[bwbIdQuery]) || undefined"
                   @click="requestTrajectHarvest(bwbIdQuery)"
@@ -373,7 +373,7 @@ defineExpose({ show });
               size="md"
               :data-bwb-id="result.bwb_id"
             >
-              <nldd-icon-cell size="20"><nldd-icon name="harvest"></nldd-icon></nldd-icon-cell>
+              <nldd-icon-cell size="20"><nldd-icon icon="harvest"></nldd-icon></nldd-icon-cell>
               <nldd-spacer-cell size="8"></nldd-spacer-cell>
               <nldd-text-cell
                 :text="result.title"
@@ -383,7 +383,7 @@ defineExpose({ show });
               <nldd-cell>
                 <nldd-button
                   size="sm"
-                  variant="primary"
+                  appearance="primary"
                   text="Ophalen naar traject"
                   :disabled="['busy', 'requested'].includes(harvestState[result.bwb_id]) || undefined"
                   @click="requestTrajectHarvest(result.bwb_id, result.title)"
@@ -423,11 +423,11 @@ defineExpose({ show });
           <template v-else>
             <nldd-form-field
               label="Upload een document"
-              supporting-label="PDF of Word. Bij deze conversie leest AI het document: er is geen route naar een wet zonder taalmodel. De keten zet het om naar een basis-wet en verrijkt het; het resultaat komt terug als review-taak bij Taken."
+              supporting-label="PDF of Word. Bij deze conversie leest AI het document: er is geen route naar een regelwerk zonder taalmodel. De keten zet het om naar een eerste opzet van het regelwerk en verrijkt die; het resultaat komt terug als review-taak bij Taken."
             >
               <nldd-button
                 size="md"
-                variant="secondary"
+                appearance="secondary"
                 start-icon="upload-to-cloud"
                 text="Bestand kiezen…"
                 data-testid="add-law-upload"

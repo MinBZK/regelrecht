@@ -24,7 +24,7 @@ import '~/styles/scenario.css';
 ---
 
 <rr-scenario-runner>
-  <nldd-code-viewer language="gherkin" variant="simple">{scenarioDemo.text}</nldd-code-viewer>
+  <nldd-code-viewer language="gherkin" appearance="simple">{scenarioDemo.text}</nldd-code-viewer>
 
   <nldd-spacer size="16" />
 
@@ -42,7 +42,7 @@ import '~/styles/scenario.css';
   {/* Hidden until the script claims it: a button that opens nothing is worse
       than no button. */}
   <nldd-button
-    variant="primary"
+    appearance="primary"
     start-icon="play"
     text="Edit and run this scenario"
     data-open
@@ -71,10 +71,10 @@ import '~/styles/scenario.css';
       </nldd-container>
 
       <nldd-button-group orientation="horizontal">
-        <nldd-button variant="primary" size="md" start-icon="play" text="Run" data-run />
-        <nldd-button variant="secondary" size="md" text="Reset" data-reset />
+        <nldd-button appearance="primary" size="md" start-icon="play" text="Run" data-run />
+        <nldd-button appearance="secondary" size="md" text="Reset" data-reset />
         <nldd-button
-          variant="neutral-transparent"
+          appearance="neutral-transparent"
           size="md"
           start-icon="close"
           text="Close"
@@ -91,7 +91,7 @@ import '~/styles/scenario.css';
           <nldd-title size="4"><h3>Scenario</h3></nldd-title>
           <nldd-code-editor
             language="gherkin"
-            variant="input-field"
+            appearance="input-field"
             accessible-label="Scenario"
             line-numbers
             resize="auto"

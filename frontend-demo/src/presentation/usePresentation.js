@@ -11,27 +11,62 @@
  */
 import { computed, nextTick, ref } from 'vue';
 import { currentLocale } from '../i18n/index.js';
-import { localeRouteName, pageForConfigPath } from '../router.js';
+import { localeRouteName, pageForConfigPath, splitConfigPath } from '../router.js';
 
 /**
  * The slide's target, in the language that is on.
  *
- * `route:` in demo-config.yaml is a Dutch path (`/wetten`), because a file
+ * `route:` in demo-config.yaml is a Dutch path (`/regelwerken`), because a file
  * about slides should not have to know the routing table of every language.
  * It is read back to its page here and resolved against the active locale, so
  * a deck presented in English opens the English tabs.
  */
 function slideTarget(path) {
   if (!path || !router) return null;
-  const page = pageForConfigPath(path);
-  if (!page) return path;
-  // Wat na het tabblad komt (`/wetten/zorgtoeslagwet`: de wet) gaat mee. Anders
-  // opent de dia het tabblad op de wet die er toevallig nog open stond, en
-  // landt de presentator na een oefenronde op de verkeerde.
-  const root = router.resolve({ name: page }).path;
-  const rest = path.startsWith(root) ? path.slice(root.length) : '';
+  const parts = splitConfigPath(path);
+  if (!parts) return path;
+  // What follows the tab (`/regelwerken/zorgtoeslagwet`: the law) comes along.
+  // Without it the slide opens the tab on whatever law was left open, and after
+  // a rehearsal the presenter lands on the wrong one. The rest comes from
+  // `splitConfigPath`, so a slide that still carries a former path keeps its law.
+  // A slide that names no law gets the chosen persona's own (profileDefault).
+  const { page } = parts;
+  const rest = parts.rest || profileDefault(page);
   const base = router.resolve({ name: localeRouteName(page, currentLocale()) }).path;
   return rest ? `${base.replace(/\/$/, '')}${rest}` : base;
+}
+
+/**
+ * Noemt een dia geen wet (`route: /regelwerken`), dan opent hij die van het gekozen
+ * profiel: `default_law` op Wetten, `default_feature` op Scenario's. Wie
+ * Claudia kiest en de presentatie start, landt zo bij precario in plaats van
+ * bij de zorgtoeslag van Merijn. Vast in het pad blijft ook hier de wet die
+ * er toevallig nog open stond buiten de deur.
+ */
+function profileDefault(page) {
+  const profile = demo?.profile?.value;
+  if (!profile) return '';
+  if (page === 'wetten' && profile.default_law) {
+    const d = profile.default_law;
+    const law = demo.corpus?.value?.lawByPath(d.law_path, d.service);
+    return law ? `/${encodeURIComponent(law.id)}` : '';
+  }
+  if (page === 'scenarios' && profile.default_feature) return `/${profile.default_feature}`;
+  return '';
+}
+
+/** Alle dia's uit demo-config.yaml; het dek zelf is de keuze daaruit bij de start. */
+let allSlides = [];
+/** Voor welke persona het lopende dek gekozen is (vast vanaf `start`). */
+let deckKey = null;
+
+/**
+ * Het dek van een persona: de dia's zonder `decks` (opening, de wet, de
+ * simulatie, het slot) plus die met deze persona in `decks`. Wie Claudia kiest
+ * en start, krijgt haar verhaal en wisselt niet halverwege naar Merijn.
+ */
+export function deckFor(slides, profileKey) {
+  return slides.filter((s) => !s.decks || s.decks.includes(profileKey));
 }
 
 const active = ref(false);
@@ -89,7 +124,7 @@ function isOnStage() {
   // waar we zijn, en houdt het dek de toetsen niet vast. Dat is de veilige
   // kant: onzichtbaar bladeren is precies wat hier misging.
   if (!slideRoute || !router) return false;
-  // Op het tabblad vergelijken en niet op het pad. `/wetten/:lawId?`,
+  // Op het tabblad vergelijken en niet op het pad. `/regelwerken/:lawId?`,
   // `/scenarios/:featurePath(.*)?` en `/zaaksysteem/:caseId?` verdiepen hun
   // eigen pad: WettenView en ScenariosView doen bij binnenkomst meteen een
   // `router.replace` naar de standaardwet of -feature van het profiel, nog
@@ -109,7 +144,10 @@ function isOnStage() {
 function init({ router: r, demo: d, slides }) {
   if (r) router = r;
   if (d) demo = d;
-  if (slides) slidesRef.value = slides;
+  if (slides) allSlides = slides;
+  // Loopt de presentatie, dan blijft het dek van die persona, maar in de nieuwe
+  // dia's: een taalwissel levert dezelfde dia's vertaald.
+  slidesRef.value = deckFor(allSlides, active.value ? deckKey : demo?.profileKey?.value);
 }
 
 /**
@@ -150,15 +188,19 @@ async function runSlide(i) {
   if (!s) return;
   applyLayout(s);
   // The persona is a function of the slide index: the most recent `profile`
-  // at or before this slide, so prev/next/goto agree.
+  // at or before this slide, so prev/next/goto agree. Before the first such
+  // slide it is the persona the deck was started for: wie in Merijns dek
+  // terugbladert van de Claudia-dia, hoort weer bij de zorgtoeslag uit te komen.
   if (demo) {
+    let persona = deckKey;
     for (let j = i; j >= 0; j -= 1) {
       const p = slidesRef.value[j]?.profile;
       if (p) {
-        if (demo.profileKey.value !== p) demo.setProfile(p);
+        persona = p;
         break;
       }
     }
+    if (persona && demo.profileKey.value !== persona) demo.setProfile(persona);
   }
   const target = slideTarget(s.route);
   if (target && router && router.currentRoute.value.path !== target) {
@@ -255,6 +297,12 @@ function onKey(e) {
 }
 
 function start(i = 0) {
+  // Het dek ligt vast zodra de presentatie loopt: een dia die van persona
+  // wisselt (Merijns dek eindigt bij Claudia) gooit het niet halverwege om.
+  if (!active.value) {
+    deckKey = demo?.profileKey?.value;
+    slidesRef.value = deckFor(allSlides, deckKey);
+  }
   if (!total.value) return;
   active.value = true;
   document.documentElement.classList.add('rr-presenting');

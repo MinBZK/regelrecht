@@ -55,7 +55,7 @@
       <nldd-simple-section>
         <nldd-title :size="4">
           <span>Regelingen vergelijken per peildatum</span>
-          <span slot="subtitle">Per kwartaal: telt de leerling, in welke categorie en welk jaar, tegen welk bedrag (25% van het jaarbedrag). Huidig recht staat altijd links; elke gekozen regeling komt daarnaast.</span>
+          <span slot="supporting-text">Per kwartaal: telt de leerling, in welke categorie en welk jaar, tegen welk bedrag (25% van het jaarbedrag). Huidig recht staat altijd links; elke gekozen regeling komt daarnaast.</span>
         </nldd-title>
         <nldd-activity-indicator v-if="loading" size="24" timing="instant"></nldd-activity-indicator>
         <peildata-tijdlijn
@@ -72,7 +72,7 @@
       <nldd-simple-section>
         <nldd-title :size="4">
           <span>Waarom deze leerling meetelt, en hoe vaak</span>
-          <span slot="subtitle">Van de gegevens in ROD naar de categorie (asielzoeker of overige vreemdeling) en het aantal kwartalen dat bekostigd wordt, onder huidig recht.</span>
+          <span slot="supporting-text">Van de gegevens in ROD naar de categorie (asielzoeker of overige vreemdeling) en het aantal kwartalen dat bekostigd wordt, onder huidig recht.</span>
         </nldd-title>
         <categorie-uitleg :persona="selected" :uitkomst="uitlegUitkomst" />
       </nldd-simple-section>

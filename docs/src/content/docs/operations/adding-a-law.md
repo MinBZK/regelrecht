@@ -44,9 +44,9 @@ just validate corpus/regulation/nl/wet/your_law/2025-01-01.yaml
 just validate
 ```
 
-The validator rejects files with an unknown or missing `$schema` version. Make sure the `$schema` URL uses a tag-based ref (`refs/tags/schema-vX.Y.Z`) and points to a released schema version.
+The validator rejects files with an unknown or missing `$schema` version. Make sure the `$schema` URL uses a tag-based ref (`refs/tags/schema-vX.Y.Z`) and points to a released schema version. CI checks only the version in the URL, not that the ref is a tag, so a branch-based URL slips through.
 
-The tag is what makes that URL a promise rather than a hope: it pins the schema your law validated against, and it cannot move afterwards. A schema version is tagged automatically when it lands on `main`, and CI blocks a version that has no tag, so the address a law file cites always resolves.
+The tag is what makes that URL a promise rather than a hope: it pins the schema your law validated against, and it cannot move afterwards. A schema version is tagged automatically when it lands on `main`, and CI blocks a version that has no tag, so the address a version cites always resolves.
 
 Fix any schema errors before proceeding.
 
@@ -97,7 +97,7 @@ This writes one box-drawing trace per successful evaluation to `trace_output/` i
 
 ## Step 6: Open a pull request
 
-Commit the new law file and its scenarios, and open a PR. CI validates the law against the schema and runs the engine tests and the engine-conformance BDD suite, but not your law's own scenarios (see step 5): their result is whatever you saw locally, so say in the PR description that they pass. Add the `deploy:preview` label to the PR if reviewers should be able to try the law in a running editor.
+Commit the new rulework and its scenarios, and open a PR. CI validates the law against the schema and runs the engine tests and the engine-conformance BDD suite, but not your law's own scenarios (see step 5): their result is whatever you saw locally, so say in the PR description that they pass. Add the `deploy:preview` label to the PR if reviewers should be able to try the law in a running editor.
 
 End the PR body with a `Werkpakket:` line, which a required check enforces, and add a `Wet:` line naming the law's `$id`:
 

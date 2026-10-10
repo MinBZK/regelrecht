@@ -27,10 +27,10 @@ const nl = {
   lede: 'Sleep de lijn om te zien wat er tussen de Wet op de zorgtoeslag en een uitgerekend bedrag zit. Onderaan rekent de engine het scenario echt uit.',
   steps: [
     { tag: 'Wettekst', h: 'Wat de wet zegt', p: 'Artikel 3, eerste lid van de Wet op de zorgtoeslag: wie te veel vermogen heeft, krijgt geen toeslag. De tekst die iedereen kan opzoeken.' },
-    { tag: 'Machineleesbaar', h: 'Wat de machine leest', p: 'Hetzelfde artikel, uitvoerbaar. De bedragen uit de wettekst staan er letterlijk in, en het vermogen zelf wordt bij een andere wet opgehaald.' },
+    { tag: 'Machineleesbaar', h: 'Wat de machine leest', p: 'Hetzelfde artikel, uitvoerbaar: een stuk uit het regelwerk van deze wet. De bedragen uit de wettekst staan er letterlijk in, en het vermogen zelf wordt bij een andere wet opgehaald.' },
     { tag: 'Toelichting', h: 'Waarom het er zo staat', p: 'De wetgever aan het woord, letterlijk uit de parlementaire stukken.' },
     { tag: 'Scenario', h: 'Hoe we het controleren', p: 'De wetgever rekent de zorgtoeslag zelf voor in de Kamerstukken. Die tabel is hier een uitvoerbaar scenario: dezelfde formule, nagerekend tot op de euro. Valt het om, dan is de wet veranderd of klopt de uitvoering niet meer.' },
-    { tag: 'Uitvoering', h: 'De engine rekent', p: 'Precies dat scenario, uitgevoerd op de machine-uitvoerbare wet hierboven. Wat je hieronder ziet gebeuren, gebeurt nu: de engine draait in deze browser, op jouw machine.' },
+    { tag: 'Uitvoering', h: 'De engine rekent', p: 'Precies dat scenario, uitgevoerd op het regelwerk hierboven. Wat je hieronder ziet gebeuren, gebeurt nu: de engine draait in deze browser, op jouw machine.' },
   ],
   runLabel: 'Uitvoeren',
   resultLabel: 'Zorgtoeslag per jaar',
@@ -53,10 +53,10 @@ const en = {
   lede: 'Drag the divider to see what sits between the Dutch Healthcare Allowance Act and an amount worked out. At the bottom the engine runs the scenario for real.',
   steps: [
     { tag: 'Statute', h: 'What the law says', p: 'Article 3, first paragraph of the Wet op de zorgtoeslag: too much capital means no allowance. The text anyone can look up.' },
-    { tag: 'Machine-readable', h: 'What the machine reads', p: 'The same article, executable. The amounts from the statute appear literally, and the capital itself is fetched from another law.' },
+    { tag: 'Machine-readable', h: 'What the machine reads', p: 'The same article, executable: a piece of the rulework for this law. The amounts from the statute appear literally, and the capital itself is fetched from another law.' },
     { tag: 'Memorandum', h: 'Why it reads that way', p: 'The legislature in its own words, quoted from the parliamentary papers.' },
     { tag: 'Scenario', h: 'How we check it', p: 'The legislature works the allowance out itself in the parliamentary papers. That table is an executable scenario here: the same formula, checked to the euro. If it breaks, either the law moved or the execution no longer matches it.' },
-    { tag: 'Execution', h: 'The engine runs', p: 'That very scenario, executed against the machine-executable law above. What you see happening below is happening now: the engine runs in this browser, on your machine.' },
+    { tag: 'Execution', h: 'The engine runs', p: 'That very scenario, executed against the rulework above. What you see happening below is happening now: the engine runs in this browser, on your machine.' },
   ],
   runLabel: 'Run',
   resultLabel: 'Allowance per year',
@@ -91,6 +91,10 @@ const LAW_LABELS: Record<string, { nl: string; en: string }> = {
     en: 'Awir (income-related schemes)',
   },
   wet_inkomstenbelasting_2001: { nl: 'Wet inkomstenbelasting 2001', en: 'Income Tax Act 2001' },
+  algemene_wet_inzake_rijksbelastingen: {
+    nl: 'AWR',
+    en: 'AWR (General State Taxes Act)',
+  },
 };
 
 /**
@@ -169,7 +173,7 @@ const labels = JSON.stringify({
             its own keyboard-reachable scroll region and the theme handling.
             `wrap` matters here: without it the YAML scrolls sideways under the
             wipe, and a line that is half-covered must not reflow. */}
-        <nldd-code-viewer slot="under" language="yaml" variant="simple" wrap>{demo.yaml}</nldd-code-viewer>
+        <nldd-code-viewer slot="under" language="yaml" appearance="simple" wrap>{demo.yaml}</nldd-code-viewer>
         <nldd-blockquote slot="over" cite={demo.lawUrl}>
           <p>{demo.prose}</p>
           <span slot="attribution">
@@ -203,7 +207,7 @@ const labels = JSON.stringify({
         {/* Gherkin is one of the languages the viewer highlights. No `wrap`:
             the data tables are aligned on their pipes and reflowing them would
             destroy the alignment, so this one scrolls sideways instead. */}
-        <nldd-code-viewer slot="under" language="gherkin" variant="simple">{demo.gherkin}</nldd-code-viewer>
+        <nldd-code-viewer slot="under" language="gherkin" appearance="simple">{demo.gherkin}</nldd-code-viewer>
         {/* The citation links to the published document, like the statute
             quotation above does. It is a quotation from the parliamentary
             papers, so it has to be checkable; and both the citation and the
@@ -260,7 +264,7 @@ const labels = JSON.stringify({
           {/* `text` rather than slotted content: the default slot is not the
               label slot, so plain text between the tags renders nothing. */}
           <nldd-button
-            variant="secondary"
+            appearance="secondary"
             size="sm"
             text={t.replay}
             data-replay

@@ -26,51 +26,71 @@ wet_op_de_zorgtoeslag (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   ║   │               ╟──Resolving from PARAMETERS: $BSN = '999993653'
 ║   ║   │               ╙──Computing toetsingsinkomen
 ║   ║   │                   ├──Compute ADD(...) = 79547
-║   ║   │                   │   ├──Resolving $VERZAMELINKOMEN
+║   ║   │                   │   ├──Resolving $INKOMENSGEGEVEN
 ║   ║   │                   │   │   ├──Resolving from RESOLVED_INPUT: 79547
-║   ║   │                   │   │   └──Reference: wet_inkomstenbelasting_2001#toetsingsinkomen
+║   ║   │                   │   │   ├──Resolving $BEREKENINGSJAAR
+║   ║   │                   │   │   │   ├──Resolving from RESOLVED_INPUT: 2025
+║   ║   │                   │   │   │   └──Resolving $ALGEMENE_WET_INKOMENSAFHANKELIJKE_REGELINGEN#BEREKENINGSJAAR
+║   ║   │                   │   │   │       ├──Resolving from RESOLVED_INPUT: 2025
+║   ║   │                   │   │   │       └──Computing berekeningsjaar
+║   ║   │                   │   │   │           ├──Resolving from CONTEXT: $REFERENCEDATE.YEAR = 2025
+║   ║   │                   │   │   │           └──Result: berekeningsjaar = 2025
+║   ║   │                   │   │   └──Reference: algemene_wet_inzake_rijksbelastingen#inkomensgegeven
 ║   ║   │                   │   │       ╟──Resolving from PARAMETERS: $BSN = '999993653'
-║   ║   │                   │   │       ╙──Computing toetsingsinkomen
-║   ║   │                   │   │           ├──Compute ADD(...) = 79547
-║   ║   │                   │   │           │   ├──Resolving $BOX1_INKOMEN
-║   ║   │                   │   │           │   │   ├──Resolving from RESOLVED_INPUT: 79547
-║   ║   │                   │   │           │   │   └──Reference: wet_inkomstenbelasting_2001#box1_inkomen
-║   ║   │                   │   │           │   │       ╟──Resolving from PARAMETERS: $BSN = '999993653'
-║   ║   │                   │   │           │   │       ╙──Computing box1_inkomen
-║   ║   │                   │   │           │   │           ├──Compute ADD(...) = 79547
-║   ║   │                   │   │           │   │           │   ├──Resolving $LOON_UIT_DIENSTBETREKKING
-║   ║   │                   │   │           │   │           │   │   ├──Resolving from RESOLVED_INPUT: 79547
-║   ║   │                   │   │           │   │           │   │   └──Resolving from DATA_SOURCE: $LOON_UIT_DIENSTBETREKKING = 79547
-║   ║   │                   │   │           │   │           │   ├──Resolving $UITKERINGEN_EN_PENSIOENEN
-║   ║   │                   │   │           │   │           │   │   ├──Resolving from RESOLVED_INPUT: 0
-║   ║   │                   │   │           │   │           │   │   └──Resolving from DATA_SOURCE: $UITKERINGEN_EN_PENSIOENEN = 0
-║   ║   │                   │   │           │   │           │   ├──Resolving $WINST_UIT_ONDERNEMING
-║   ║   │                   │   │           │   │           │   │   ├──Resolving from RESOLVED_INPUT: 0
-║   ║   │                   │   │           │   │           │   │   └──Resolving from DATA_SOURCE: $WINST_UIT_ONDERNEMING = 0
-║   ║   │                   │   │           │   │           │   ├──Resolving $RESULTAAT_OVERIGE_WERKZAAMHEDEN
-║   ║   │                   │   │           │   │           │   │   ├──Resolving from RESOLVED_INPUT: 0
-║   ║   │                   │   │           │   │           │   │   └──Resolving from DATA_SOURCE: $RESULTAAT_OVERIGE_WERKZAAMHEDEN = 0
-║   ║   │                   │   │           │   │           │   └──Resolving $EIGEN_WONING
-║   ║   │                   │   │           │   │           │       ├──Resolving from RESOLVED_INPUT: 0
-║   ║   │                   │   │           │   │           │       └──Resolving from DATA_SOURCE: $EIGEN_WONING = 0
-║   ║   │                   │   │           │   │           └──Result: box1_inkomen = 79547
-║   ║   │                   │   │           │   └──Resolving $BOX2_INKOMEN
-║   ║   │                   │   │           │       ├──Resolving from RESOLVED_INPUT: 0
-║   ║   │                   │   │           │       └──Reference: wet_inkomstenbelasting_2001#box2_inkomen
-║   ║   │                   │   │           │           ╟──Resolving from PARAMETERS: $BSN = '999993653'
-║   ║   │                   │   │           │           ╙──Computing box2_inkomen
-║   ║   │                   │   │           │               ├──Compute ADD(...) = 0
-║   ║   │                   │   │           │               │   ├──Resolving $REGULIERE_VOORDELEN
-║   ║   │                   │   │           │               │   │   ├──Resolving from RESOLVED_INPUT: 0
-║   ║   │                   │   │           │               │   │   └──Resolving from DATA_SOURCE: $REGULIERE_VOORDELEN = 0
-║   ║   │                   │   │           │               │   └──Resolving $VERVREEMDINGSVOORDELEN
-║   ║   │                   │   │           │               │       ├──Resolving from RESOLVED_INPUT: 0
-║   ║   │                   │   │           │               │       └──Resolving from DATA_SOURCE: $VERVREEMDINGSVOORDELEN = 0
-║   ║   │                   │   │           │               └──Result: box2_inkomen = 0
-║   ║   │                   │   │           └──Result: toetsingsinkomen = 79547
-║   ║   │                   │   └──Resolving $BUITENLANDS_INKOMEN
+║   ║   │                   │   │       ╟──Resolving from RESOLVED_INPUT: $BEREKENINGSJAAR = 2025
+║   ║   │                   │   │       ╙──Computing inkomensgegeven
+║   ║   │                   │   │           ├──IF(case 0 matched) = 79547
+║   ║   │                   │   │           │   ├──CASE 0: True
+║   ║   │                   │   │           │   │   └──Resolving $AANSLAG_OF_NAVORDERINGSAANSLAG_VASTGESTELD
+║   ║   │                   │   │           │   │       ├──Resolving from RESOLVED_INPUT: True
+║   ║   │                   │   │           │   │       └──Resolving from DATA_SOURCE: $AANSLAG_OF_NAVORDERINGSAANSLAG_VASTGESTELD = True
+║   ║   │                   │   │           │   └──THEN: 79547
+║   ║   │                   │   │           │       └──Resolving $VERZAMELINKOMEN
+║   ║   │                   │   │           │           ├──Resolving from RESOLVED_INPUT: 79547
+║   ║   │                   │   │           │           └──Reference: wet_inkomstenbelasting_2001#verzamelinkomen
+║   ║   │                   │   │           │               ╟──Resolving from PARAMETERS: $BSN = '999993653'
+║   ║   │                   │   │           │               ╙──Computing verzamelinkomen
+║   ║   │                   │   │           │                   ├──Compute ADD(...) = 79547
+║   ║   │                   │   │           │                   │   ├──Resolving $BOX1_INKOMEN
+║   ║   │                   │   │           │                   │   │   ├──Resolving from RESOLVED_INPUT: 79547
+║   ║   │                   │   │           │                   │   │   └──Reference: wet_inkomstenbelasting_2001#box1_inkomen
+║   ║   │                   │   │           │                   │   │       ╟──Resolving from PARAMETERS: $BSN = '999993653'
+║   ║   │                   │   │           │                   │   │       ╙──Computing box1_inkomen
+║   ║   │                   │   │           │                   │   │           ├──Compute ADD(...) = 79547
+║   ║   │                   │   │           │                   │   │           │   ├──Resolving $LOON_UIT_DIENSTBETREKKING
+║   ║   │                   │   │           │                   │   │           │   │   ├──Resolving from RESOLVED_INPUT: 79547
+║   ║   │                   │   │           │                   │   │           │   │   └──Resolving from DATA_SOURCE: $LOON_UIT_DIENSTBETREKKING = 79547
+║   ║   │                   │   │           │                   │   │           │   ├──Resolving $UITKERINGEN_EN_PENSIOENEN
+║   ║   │                   │   │           │                   │   │           │   │   ├──Resolving from RESOLVED_INPUT: 0
+║   ║   │                   │   │           │                   │   │           │   │   └──Resolving from DATA_SOURCE: $UITKERINGEN_EN_PENSIOENEN = 0
+║   ║   │                   │   │           │                   │   │           │   ├──Resolving $WINST_UIT_ONDERNEMING
+║   ║   │                   │   │           │                   │   │           │   │   ├──Resolving from RESOLVED_INPUT: 0
+║   ║   │                   │   │           │                   │   │           │   │   └──Resolving from DATA_SOURCE: $WINST_UIT_ONDERNEMING = 0
+║   ║   │                   │   │           │                   │   │           │   ├──Resolving $RESULTAAT_OVERIGE_WERKZAAMHEDEN
+║   ║   │                   │   │           │                   │   │           │   │   ├──Resolving from RESOLVED_INPUT: 0
+║   ║   │                   │   │           │                   │   │           │   │   └──Resolving from DATA_SOURCE: $RESULTAAT_OVERIGE_WERKZAAMHEDEN = 0
+║   ║   │                   │   │           │                   │   │           │   └──Resolving $EIGEN_WONING
+║   ║   │                   │   │           │                   │   │           │       ├──Resolving from RESOLVED_INPUT: 0
+║   ║   │                   │   │           │                   │   │           │       └──Resolving from DATA_SOURCE: $EIGEN_WONING = 0
+║   ║   │                   │   │           │                   │   │           └──Result: box1_inkomen = 79547
+║   ║   │                   │   │           │                   │   └──Resolving $BOX2_INKOMEN
+║   ║   │                   │   │           │                   │       ├──Resolving from RESOLVED_INPUT: 0
+║   ║   │                   │   │           │                   │       └──Reference: wet_inkomstenbelasting_2001#box2_inkomen
+║   ║   │                   │   │           │                   │           ╟──Resolving from PARAMETERS: $BSN = '999993653'
+║   ║   │                   │   │           │                   │           ╙──Computing box2_inkomen
+║   ║   │                   │   │           │                   │               ├──Compute ADD(...) = 0
+║   ║   │                   │   │           │                   │               │   ├──Resolving $REGULIERE_VOORDELEN
+║   ║   │                   │   │           │                   │               │   │   ├──Resolving from RESOLVED_INPUT: 0
+║   ║   │                   │   │           │                   │               │   │   └──Resolving from DATA_SOURCE: $REGULIERE_VOORDELEN = 0
+║   ║   │                   │   │           │                   │               │   └──Resolving $VERVREEMDINGSVOORDELEN
+║   ║   │                   │   │           │                   │               │       ├──Resolving from RESOLVED_INPUT: 0
+║   ║   │                   │   │           │                   │               │       └──Resolving from DATA_SOURCE: $VERVREEMDINGSVOORDELEN = 0
+║   ║   │                   │   │           │                   │               └──Result: box2_inkomen = 0
+║   ║   │                   │   │           │                   └──Result: verzamelinkomen = 79547
+║   ║   │                   │   │           └──Result: inkomensgegeven = 79547
+║   ║   │                   │   └──Resolving $NIET_IN_NEDERLAND_BELASTBAAR_INKOMEN
 ║   ║   │                   │       ├──Resolving from RESOLVED_INPUT: 0
-║   ║   │                   │       └──Resolving from DATA_SOURCE: $BUITENLANDS_INKOMEN = 0
+║   ║   │                   │       └──Resolving from DATA_SOURCE: $NIET_IN_NEDERLAND_BELASTBAAR_INKOMEN = 0
 ║   ║   │                   └──Result: toetsingsinkomen = 79547
 ║   ║   └──Result: in_aanmerking_genomen_toetsingsinkomen = 79547
 ║   ╟──Computing hoogte_zorgtoeslag

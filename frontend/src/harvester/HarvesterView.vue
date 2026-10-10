@@ -70,7 +70,7 @@ function goToLibrary() {
               icon="arrow-left"
               text="Terug"
               tooltip-timing="never"
-              variant="neutral-tinted"
+              appearance="neutral-tinted"
               @click="goToLibrary"
             ></nldd-icon-button>
           </nldd-toolbar-item>
@@ -104,7 +104,7 @@ function goToLibrary() {
               icon="plus-small"
               text="Nieuwe harvest-job"
               tooltip-timing="never"
-              variant="neutral-tinted"
+              appearance="neutral-tinted"
               @click="openNewHarvestJob"
             ></nldd-icon-button>
           </nldd-toolbar-item>

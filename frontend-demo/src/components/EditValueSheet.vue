@@ -243,7 +243,7 @@ function submit() {
           <nldd-top-title-bar :text="humanize(node.name)" :supporting-text="law?.name ?? node.law" :dismiss-text="t('sheet.dismiss')" @dismiss="emit('close')"></nldd-top-title-bar>
         </nldd-container>
         <nldd-container padding="16" gap="16">
-          <nldd-list variant="box-tinted" :accessible-label="t('sheet.edit.current')">
+          <nldd-list appearance="box-tinted" :accessible-label="t('sheet.edit.current')">
             <nldd-list-item size="md">
               <nldd-cell v-if="node.service"><OrgLogo :service="node.service" /></nldd-cell>
               <nldd-spacer-cell v-if="node.service" size="12"></nldd-spacer-cell>
@@ -283,17 +283,17 @@ function submit() {
                     <nldd-text-field v-else :value="row[c] ?? ''" width="full" :keyboard="columnKind(c) === 'number' ? 'numeric' : undefined" @input="setCell(i, c, $event.detail?.value ?? $event.target.value, columnKind(c))"></nldd-text-field>
                   </nldd-cell>
                   <nldd-cell>
-                    <nldd-icon-button size="xs" variant="neutral-transparent" icon="trash" :accessible-label="t('sheet.edit.rows.remove')" @click="removeRow(i)"></nldd-icon-button>
+                    <nldd-icon-button size="xs" appearance="neutral-transparent" icon="trash" :accessible-label="t('sheet.edit.rows.remove')" @click="removeRow(i)"></nldd-icon-button>
                   </nldd-cell>
                 </nldd-table-row>
                 <nldd-inline-dialog slot="empty" :text="t('sheet.edit.rows.empty')"></nldd-inline-dialog>
               </nldd-table>
-              <nldd-button size="sm" variant="secondary" start-icon="plus" :text="t('sheet.edit.rows.add')" @click="addRow"></nldd-button>
+              <nldd-button size="sm" appearance="secondary" start-icon="plus" :text="t('sheet.edit.rows.add')" @click="addRow"></nldd-button>
             </template>
             <!-- A list of plain values (ages, properties): one typed field per
                  item, with the same add and remove as the table. -->
             <template v-else-if="kind === 'list'">
-              <nldd-list variant="simple" :accessible-label="t('sheet.edit.list.label')">
+              <nldd-list appearance="simple" :accessible-label="t('sheet.edit.list.label')">
                 <nldd-list-item v-for="(item, i) in list" :key="i" size="sm">
                   <nldd-cell width="full">
                     <nldd-dropdown v-if="valueKind(item) === 'boolean'">
@@ -306,15 +306,15 @@ function submit() {
                     <nldd-text-field v-else :value="item ?? ''" width="full" :keyboard="valueKind(item) === 'number' ? 'numeric' : undefined" @input="setListItem(i, $event.detail?.value ?? $event.target.value, valueKind(item))"></nldd-text-field>
                   </nldd-cell>
                   <nldd-spacer-cell size="8"></nldd-spacer-cell>
-                  <nldd-cell><nldd-icon-button size="xs" variant="neutral-transparent" icon="trash" :accessible-label="t('sheet.edit.list.remove')" @click="removeListItem(i)"></nldd-icon-button></nldd-cell>
+                  <nldd-cell><nldd-icon-button size="xs" appearance="neutral-transparent" icon="trash" :accessible-label="t('sheet.edit.list.remove')" @click="removeListItem(i)"></nldd-icon-button></nldd-cell>
                 </nldd-list-item>
                 <nldd-inline-dialog slot="empty" :text="t('sheet.edit.list.empty')"></nldd-inline-dialog>
               </nldd-list>
-              <nldd-button size="sm" variant="secondary" start-icon="plus" :text="t('sheet.edit.list.add')" @click="addListItem"></nldd-button>
+              <nldd-button size="sm" appearance="secondary" start-icon="plus" :text="t('sheet.edit.list.add')" @click="addListItem"></nldd-button>
             </template>
             <!-- One record (an address, a decision): a typed field per named field. -->
             <template v-else-if="kind === 'record'">
-              <nldd-list variant="simple" :accessible-label="t('sheet.edit.record.label')">
+              <nldd-list appearance="simple" :accessible-label="t('sheet.edit.record.label')">
                 <nldd-list-item v-for="key in recordKeys" :key="key" size="sm">
                   <nldd-text-cell size="sm" min-width="120px" :text="humanize(key)"></nldd-text-cell>
                   <nldd-cell width="full">
@@ -358,8 +358,8 @@ function submit() {
           <nldd-banner v-if="error" variant="critical" :text="error"></nldd-banner>
           <nldd-form-actions>
             <nldd-button-group orientation="horizontal">
-              <nldd-button variant="primary" :text="caseworker ? t('sheet.edit.submit.officer') : selfDeclared ? t('sheet.edit.submit.self') : t('sheet.edit.submit.citizen')" @click="submit"></nldd-button>
-              <nldd-button variant="secondary" :text="t('sheet.cancel')" @click="emit('close')"></nldd-button>
+              <nldd-button appearance="primary" :text="caseworker ? t('sheet.edit.submit.officer') : selfDeclared ? t('sheet.edit.submit.self') : t('sheet.edit.submit.citizen')" @click="submit"></nldd-button>
+              <nldd-button appearance="secondary" :text="t('sheet.cancel')" @click="emit('close')"></nldd-button>
             </nldd-button-group>
           </nldd-form-actions>
         </nldd-container>

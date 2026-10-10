@@ -25,7 +25,7 @@ const { t } = useI18n();
 
 const route = useRoute();
 const router = useRouter();
-const { corpus, profile } = useDemo();
+const { corpus, profile, profileKey } = useDemo();
 
 const features = computed(() => corpus.value?.scenarios ?? []);
 // The list of test files is a sheet, closed until asked for.
@@ -84,10 +84,15 @@ watch(
   // Op `meta.page` en niet op `route.name`: zie WettenView. Onder
   // /en/scenarios heet de route `scenarios:en`, en op de naam vergelijken laat
   // dit tabblad leeg achter.
-  () => [route.meta?.page, route.params.featurePath, corpus.value, profile.value],
-  ([page, featurePath]) => {
+  () => [route.meta?.page, route.params.featurePath, corpus.value, profileKey.value],
+  ([page, featurePath, , key], old) => {
+    // Een ander persona begint bij de scenario's van zijn eigen wet, ook als
+    // dit tabblad (via <keep-alive>) nog op die van het vorige persona stond.
+    // Zie WettenView.
+    const switched = old?.[3] != null && old[3] !== key;
+    if (switched) selectedPath.value = null;
     if (page !== 'scenarios' || !corpus.value) return;
-    if (featurePath) {
+    if (featurePath && !(switched && featurePath === old[1])) {
       const path = `/data/laws/${featurePath}`;
       if (path !== selectedPath.value) select(path, { replaceRoute: true });
     } else if (!selectedPath.value) {
@@ -145,7 +150,7 @@ async function run(index) {
   lap('engine', startedAt);
   const refused = selectedLoadFailure.value;
   if (refused) {
-    state.error = `Wet ${refused.id} (${refused.path}) is niet geladen; de engine weigerde: ${refused.message}`;
+    state.error = t('scenario.law_refused', { id: refused.id, path: refused.path, message: refused.message });
     state.status = 'fail';
     open[index] = true;
     return;
@@ -330,11 +335,11 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
     </nldd-split-view-pane>
 
     <nldd-split-view-pane slot="main" has-content>
-      <nldd-page sticky-header>
+      <nldd-page landmarks="page" sticky-header>
         <nldd-container slot="header" padding="8">
           <nldd-toolbar size="sm">
             <nldd-toolbar-item slot="start">
-              <nldd-button size="sm" variant="neutral-tinted" start-icon="checklist" :text="t('app.tabs.scenarios')" :supporting-text="`${features.length}`" @click="splitView?.showPrimarySidebarSheet?.()"></nldd-button>
+              <nldd-button size="sm" appearance="neutral-tinted" start-icon="checklist" :text="t('app.tabs.scenarios')" :supporting-text="`${features.length}`" @click="splitView?.showPrimarySidebarSheet?.()"></nldd-button>
             </nldd-toolbar-item>
             <nldd-toolbar-title v-if="parsed" slot="start" :text="scenarioTitle(parsed.feature)" :supporting-text="fileName"></nldd-toolbar-title>
             <nldd-toolbar-item slot="end" v-if="parsed">
@@ -344,10 +349,10 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
               </nldd-segmented-control>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end" v-if="parsed">
-              <nldd-button size="sm" variant="primary" start-icon="play" :text="t('scenario.run_all')" :loading="runningAll || undefined" :disabled="(anyRunning && !runningAll) || undefined" @click="runAll"></nldd-button>
+              <nldd-button size="sm" appearance="primary" start-icon="play" :text="t('scenario.run_all')" :loading="runningAll || undefined" :disabled="(anyRunning && !runningAll) || undefined" @click="runAll"></nldd-button>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end" v-if="parsed && selectedLaw">
-              <nldd-button size="sm" variant="neutral-tinted" start-icon="book" :text="t('wet.tile.action.law_text')" @click="goTo('wetten', { lawId: selectedLaw.id })"></nldd-button>
+              <nldd-button size="sm" appearance="neutral-tinted" start-icon="book" :text="t('wet.tile.action.law_text')" @click="goTo('wetten', { lawId: selectedLaw.id })"></nldd-button>
             </nldd-toolbar-item>
           </nldd-toolbar>
         </nldd-container>
@@ -355,8 +360,8 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
         <nldd-simple-section v-if="loadFailures.length" width="full">
           <nldd-banner
             variant="critical"
-            :text="selectedLoadFailure ? t('scenario.law_not_loaded', { id: selectedLoadFailure.id }) : t.plural(loadFailures.length, 'scenario.laws_not_loaded')"
-            :supporting-text="`De engine weigerde: ${loadFailures.map((f) => `${f.id} (${f.path}): ${f.message}`).join(' — ')}`"
+            :text="selectedLoadFailure ? t('scenario.law_not_loaded', { id: selectedLoadFailure.id }) : t.plural(new Set(loadFailures.map((f) => f.id)).size, 'scenario.laws_not_loaded')"
+            :supporting-text="t('scenario.engine_refused', { details: loadFailures.map((f) => `${f.id} (${f.path}): ${f.message}`).join('; ') })"
           ></nldd-banner>
         </nldd-simple-section>
         <nldd-simple-section v-if="loadError" width="full">
@@ -364,7 +369,7 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
         </nldd-simple-section>
         <nldd-simple-section v-else-if="!parsed" height="60vh">
           <nldd-inline-dialog icon="checklist" :text="t('scenario.pick')" :supporting-text="t('scenario.pick.hint')">
-            <nldd-button slot="actions" variant="primary" size="sm" :text="t('app.tabs.scenarios')" @click="splitView?.showPrimarySidebarSheet?.()"></nldd-button>
+            <nldd-button slot="actions" appearance="primary" size="sm" :text="t('app.tabs.scenarios')" @click="splitView?.showPrimarySidebarSheet?.()"></nldd-button>
           </nldd-inline-dialog>
         </nldd-simple-section>
         <nldd-simple-section v-else-if="showText" width="full">
@@ -403,7 +408,7 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
                     <nldd-spacer-cell size="8"></nldd-spacer-cell>
                     <!-- nldd-icon in a cell, not an nldd-icon-cell: the segment turns
                          every icon cell in it, and only the chevron should turn. -->
-                    <nldd-cell><nldd-icon :name="statusIcon(index)" :color="statusColor(index)" size="24"></nldd-icon></nldd-cell>
+                    <nldd-cell><nldd-icon :icon="statusIcon(index)" :color="statusColor(index)" size="24"></nldd-icon></nldd-cell>
                     <nldd-spacer-cell size="12"></nldd-spacer-cell>
                     <nldd-title-cell size="5" :text="scenarioTitle(scenario.name)" :supporting-text="scenario.tags.join(' ') || undefined"></nldd-title-cell>
                     <!-- One height across the action row: an md tag and xs buttons are both
@@ -415,11 +420,11 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
                        them the tag and both buttons touch. -->
                   <nldd-spacer-cell size="8"></nldd-spacer-cell>
                   <nldd-cell>
-                    <nldd-button size="xs" variant="secondary" start-icon="play" :text="t('scenario.run')" :loading="runs[index]?.status === 'running' || undefined" :disabled="(anyRunning && runs[index]?.status !== 'running') || undefined" @click="runAndShow(index)"></nldd-button>
+                    <nldd-button size="xs" appearance="secondary" start-icon="play" :text="t('scenario.run')" :loading="runs[index]?.status === 'running' || undefined" :disabled="(anyRunning && runs[index]?.status !== 'running') || undefined" @click="runAndShow(index)"></nldd-button>
                   </nldd-cell>
                   <nldd-spacer-cell v-if="runs[index]?.traceText" size="8"></nldd-spacer-cell>
                   <nldd-cell v-if="runs[index]?.traceText">
-                    <nldd-button size="xs" variant="neutral-tinted" start-icon="list" :text="t('scenario.trace')" @click="activeTrace = index"></nldd-button>
+                    <nldd-button size="xs" appearance="neutral-tinted" start-icon="list" :text="t('scenario.trace')" @click="activeTrace = index"></nldd-button>
                   </nldd-cell>
                 </nldd-list-item>
               </nldd-list>
@@ -446,7 +451,7 @@ const fileName = computed(() => selectedPath.value?.split('/').pop() ?? '');
           </nldd-container>
           <nldd-container padding="16" gap="16">
             <nldd-banner v-if="traceScenario.error" variant="critical" :text="t('scenario.run_failed')" :supporting-text="traceScenario.error"></nldd-banner>
-            <nldd-list v-if="traceScenario.outputs" variant="box-tinted" :accessible-label="t('scenario.outputs')">
+            <nldd-list v-if="traceScenario.outputs" appearance="box-tinted" :accessible-label="t('scenario.outputs')">
               <nldd-list-item v-for="(v, k) in traceScenario.outputs" :key="k" size="sm">
                 <nldd-text-cell size="sm" :text="String(k)"></nldd-text-cell>
                 <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="JSON.stringify(v)"></nldd-text-cell>

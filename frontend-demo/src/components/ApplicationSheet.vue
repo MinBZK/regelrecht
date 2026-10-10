@@ -6,7 +6,7 @@ import { lineageFromTrace, leafValues } from '../data/lineage.js';
 import { askedInputsFor, claimKeyFor, evaluationParamsFor, inputKind, nextQuestions, parseAnswer } from '../data/askedInputs.js';
 import { caseReason, eventText, useDemo } from '../store/demoStore.js';
 import { t } from '../i18n/index.js';
-import { awbOutcomes, objectionOpen, statusOf } from '../data/lifecycle.js';
+import { awbOutcomes, canBeApplied, objectionOpen, statusOf } from '../data/lifecycle.js';
 import { driftRows, driftSentence } from '../data/caseDrift.js';
 
 // The citizen's side of an application, inside the portal. The flow the POC
@@ -67,6 +67,15 @@ const primaryName = computed(() => corpus.value?.config?.dashboard_outputs?.[`${
 const outcomeRows = computed(() => {
   const o = props.evaluation?.ok ? props.evaluation.outputs : {};
   const rows = Object.entries(o).filter(([k]) => k !== 'voldoet_aan_voorwaarden');
+  // Dezelfde keuze als de tegel (`tile_details`), anders hing het af van de
+  // volgorde van de uitvoer wat er in beeld kwam: bij de terrasvergunning viel
+  // de weigeringsgrond als zevende weg, en stond er "Aanvragen heeft geen zin"
+  // zonder te zeggen waarom. Een lege tekst is geen grond en blijft weg.
+  const wanted = corpus.value?.config?.tile_details?.[`${props.law?.service}/${props.law?.law_path}`];
+  if (wanted) {
+    const pick = (name) => rows.find(([k, v]) => k === name && v !== '');
+    return [primaryName.value, ...wanted].map(pick).filter(Boolean);
+  }
   rows.sort(([a], [b]) => (a === primaryName.value ? -1 : b === primaryName.value ? 1 : 0));
   return rows.slice(0, 6);
 });
@@ -179,7 +188,10 @@ watch(
 );
 
 // ---- step 2/3: check and submit --------------------------------------------------
-const canSubmit = computed(() => props.evaluation?.ok && verdict.value === true && declared.value && missing.value.length === 0);
+// Een aanslag vraag je niet aan: via "Aanvullen" komt ook de accijns hier, en
+// dan rekent de aanvraag mee maar dient niets in.
+const applicable = computed(() => canBeApplied((props.law?.doc?.articles ?? []).map((a) => a.machine_readable?.execution?.produces).find(Boolean) ?? null));
+const canSubmit = computed(() => applicable.value && props.evaluation?.ok && verdict.value === true && declared.value && missing.value.length === 0);
 function submitApplication() {
   const c = demo.submitCase(props.law, props.evaluation, evaluationParamsFor(personaParams(), asked.value));
   if (c) {
@@ -274,7 +286,7 @@ const claimedPrimary = computed(() => {
 const caseClaims = computed(() => {
   const c = currentCase.value;
   if (!c) return [];
-  return demo.state.claims.filter((cl) => cl.caseId === c.id || (cl.bsn === c.bsn && cl.tileLawId === c.lawId));
+  return demo.state.claims.filter((cl) => cl.caseId === c.id || (cl.bsn === (c.claimsBsn ?? c.bsn) && cl.tileLawId === c.lawId));
 });
 function claimSpec(cl) {
   return fieldSpec(corpus.value?.lawById(cl.lawId)?.doc, cl.input);
@@ -333,14 +345,14 @@ function claimStatus(cl) {
               </nldd-form-field>
               <nldd-banner v-if="error" variant="critical" :text="error"></nldd-banner>
               <nldd-form-actions>
-                <nldd-button variant="primary" :text="t('sheet.application.continue')" :disabled="!canContinue || undefined" @click="submitAnswer"></nldd-button>
+                <nldd-button appearance="primary" :text="t('sheet.application.continue')" :disabled="!canContinue || undefined" @click="submitAnswer"></nldd-button>
               </nldd-form-actions>
             </template>
             <template v-else>
               <nldd-activity-indicator timing="instant" size="24"></nldd-activity-indicator>
               <nldd-rich-text spacing="tight"><p>{{ t('sheet.application.recomputing') }}</p></nldd-rich-text>
             </template>
-            <nldd-list v-if="asked.some((a) => a.claim)" variant="simple" :accessible-label="t('sheet.application.declared.label')">
+            <nldd-list v-if="asked.some((a) => a.claim)" appearance="simple" :accessible-label="t('sheet.application.declared.label')">
               <nldd-list-item v-for="a in asked.filter((x) => x.claim)" :key="a.name" size="sm">
                 <nldd-icon-cell icon="checked" size="16" color="success"></nldd-icon-cell>
                 <nldd-spacer-cell size="8"></nldd-spacer-cell>
@@ -358,14 +370,14 @@ function claimStatus(cl) {
             </template>
             <template v-else>
               <nldd-banner v-if="verdict === 'unknown'" variant="accent" :text="t('sheet.application.unknown.title')" :supporting-text="t('sheet.application.unknown.supporting', { missing: verdictMissing })"></nldd-banner>
-              <nldd-list v-else variant="box-tinted" :accessible-label="t('sheet.application.outcome')">
+              <nldd-list v-else appearance="box-tinted" :accessible-label="t('sheet.application.outcome')">
                 <nldd-list-item size="md">
                   <nldd-icon-cell :icon="requirementsMet ? 'check-mark-circle' : 'dismiss-circle'" :color="requirementsMet ? 'success' : 'critical'"></nldd-icon-cell>
                   <nldd-spacer-cell size="12"></nldd-spacer-cell>
                   <nldd-title-cell size="4" :overline="requirementsMet ? t('sheet.application.meets') : t('sheet.application.meets_not')" :text="requirementsMet && outcomeRows[0] ? formatValue(outcomeRows[0][1], fieldSpec(doc, outcomeRows[0][0])) : requirementsMet ? t('sheet.application.yes') : t('sheet.application.pointless')" :supporting-text="requirementsMet && outcomeRows[0] ? humanize(outcomeRows[0][0]) : ''"></nldd-title-cell>
                 </nldd-list-item>
               </nldd-list>
-              <nldd-list v-if="outcomeRows.length > 1" variant="simple" :accessible-label="t('sheet.application.outcome.other')">
+              <nldd-list v-if="outcomeRows.length > 1" appearance="simple" :accessible-label="t('sheet.application.outcome.other')">
                 <nldd-list-item v-for="[name, value] in outcomeRows.slice(1)" :key="name" size="sm">
                   <nldd-text-cell size="sm" color="secondary" :text="humanize(name)"></nldd-text-cell>
                   <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="formatValue(value, fieldSpec(doc, name))"></nldd-text-cell>
@@ -374,17 +386,17 @@ function claimStatus(cl) {
 
               <nldd-title size="5">
                 <h3>{{ t('sheet.application.basis.title') }}</h3>
-                <span slot="subtitle">{{ t('sheet.application.basis.subtitle', { n: usedCount }) }}</span>
+                <span slot="supporting-text">{{ t('sheet.application.basis.subtitle', { n: usedCount }) }}</span>
               </nldd-title>
-              <nldd-list type="tree" variant="box-tinted" :accessible-label="t('sheet.application.basis.label')">
+              <nldd-list type="tree" appearance="box-tinted" :accessible-label="t('sheet.application.basis.label')">
                 <DataLineage :nodes="lineage" @edit="emit('edit-value', { node: $event, law })" />
               </nldd-list>
               <nldd-rich-text spacing="tight"><p><small>{{ t('sheet.application.basis.hint') }}</small></p></nldd-rich-text>
 
-              <template v-if="requirementsMet">
+              <template v-if="requirementsMet && applicable">
                 <nldd-checkbox-field :label="t('sheet.application.declaration')" :checked="declared || undefined" @change="declared = !!($event.detail?.checked ?? $event.target?.checked)"></nldd-checkbox-field>
                 <nldd-form-actions>
-                  <nldd-button variant="primary" start-icon="paper-plane" :text="t('sheet.application.submit')" :disabled="!canSubmit || undefined" @click="submitApplication"></nldd-button>
+                  <nldd-button appearance="primary" start-icon="paper-plane" :text="t('sheet.application.submit')" :disabled="!canSubmit || undefined" @click="submitApplication"></nldd-button>
                 </nldd-form-actions>
               </template>
               <nldd-banner v-else-if="verdict === false" variant="warning" :text="t('sheet.application.refuse.title')" :supporting-text="t('sheet.application.refuse.supporting')"></nldd-banner>
@@ -403,17 +415,17 @@ function claimStatus(cl) {
                  aanvraag is een eigen besluit. -->
             <template v-if="drift && !justSubmitted">
               <nldd-banner variant="warning" :text="t('sheet.application.drift.title')" :supporting-text="driftText"></nldd-banner>
-              <nldd-list variant="box-tinted" :accessible-label="t('sheet.application.drift.label')">
+              <nldd-list appearance="box-tinted" :accessible-label="t('sheet.application.drift.label')">
                 <nldd-list-item v-for="row in rows" :key="row.name" size="sm">
                   <nldd-text-cell size="sm" color="secondary" min-width="50%" :text="humanize(row.name)"></nldd-text-cell>
                   <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="`${row.was} → ${row.now}`"></nldd-text-cell>
                 </nldd-list-item>
               </nldd-list>
               <nldd-form-actions>
-                <nldd-button variant="primary" start-icon="paper-plane" :text="t('sheet.application.drift.amend')" @click="resubmit"></nldd-button>
+                <nldd-button appearance="primary" start-icon="paper-plane" :text="t('sheet.application.drift.amend')" @click="resubmit"></nldd-button>
               </nldd-form-actions>
             </template>
-            <nldd-list v-if="claimedPrimary" variant="box-tinted" :accessible-label="t('sheet.application.claimed.label')">
+            <nldd-list v-if="claimedPrimary" appearance="box-tinted" :accessible-label="t('sheet.application.claimed.label')">
               <nldd-list-item size="sm">
                 <nldd-text-cell size="sm" color="secondary" :text="t('sheet.application.claimed.row', { field: humanize(claimedPrimary.name) })"></nldd-text-cell>
                 <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="formatValue(claimedPrimary.value, fieldSpec(doc, claimedPrimary.name))"></nldd-text-cell>
@@ -425,7 +437,7 @@ function claimStatus(cl) {
             </nldd-list>
             <template v-if="caseClaims.length">
               <nldd-title size="5"><h3>{{ t('sheet.application.corrections.title') }}</h3></nldd-title>
-              <nldd-list variant="box-tinted" :accessible-label="t('sheet.application.corrections.title')">
+              <nldd-list appearance="box-tinted" :accessible-label="t('sheet.application.corrections.title')">
                 <nldd-list-item v-for="cl in caseClaims" :key="cl.id" size="sm">
                   <nldd-text-cell size="sm" :text="`${humanize(cl.input)}: ${formatValue(cl.oldValue, claimSpec(cl))} → **${formatValue(cl.newValue, claimSpec(cl))}**`">
                     <span slot="supporting-text">
@@ -442,7 +454,7 @@ function claimStatus(cl) {
               </nldd-list>
             </template>
             <nldd-title size="5"><h3>{{ t('sheet.application.history.title') }}</h3></nldd-title>
-            <nldd-list variant="simple" :accessible-label="t('sheet.application.history.label')">
+            <nldd-list appearance="simple" :accessible-label="t('sheet.application.history.label')">
               <nldd-list-item v-for="(e, i) in citizenEvents" :key="i" size="sm">
                 <nldd-text-cell size="sm" :text="e.text" :supporting-text="formatDateTime(e.at)"></nldd-text-cell>
               </nldd-list-item>
@@ -452,7 +464,7 @@ function claimStatus(cl) {
                  vanaf de bekendmaking, en een bijzondere wet die daarvan
                  afwijkt is er al in verwerkt. Daarom staat hier een datum en
                  geen vaste tekst. -->
-            <nldd-list v-if="awb.bezwaartermijnEinde" variant="box-tinted" :accessible-label="t('sheet.application.objection.deadline.label')">
+            <nldd-list v-if="awb.bezwaartermijnEinde" appearance="box-tinted" :accessible-label="t('sheet.application.objection.deadline.label')">
               <nldd-list-item size="sm">
                 <nldd-text-cell size="sm" color="secondary" :text="t('sheet.application.objection.until')"></nldd-text-cell>
                 <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="formatValue(awb.bezwaartermijnEinde, null)"></nldd-text-cell>
@@ -467,7 +479,7 @@ function claimStatus(cl) {
                 <nldd-multi-line-text-field :value="objectionReason" rows="3" :placeholder="t('sheet.application.objection.placeholder')" @input="objectionReason = $event.detail?.value ?? $event.target.value"></nldd-multi-line-text-field>
               </nldd-form-field>
               <nldd-form-actions>
-                <nldd-button variant="secondary" start-icon="flag" :text="t('sheet.application.objection.submit')" @click="fileObjection"></nldd-button>
+                <nldd-button appearance="secondary" start-icon="flag" :text="t('sheet.application.objection.submit')" @click="fileObjection"></nldd-button>
               </nldd-form-actions>
             </template>
             <!-- Besloten, maar nog niet de deur uit. Eerlijk benoemen dat de

@@ -32,7 +32,7 @@ RegelRecht makes Dutch law machine-readable and executable. Some branches of law
 
 Bestuursrecht is the natural home for machine-readable law. Government bodies apply structured rules to individual cases and produce formal decisions (*beschikkingen*). The Awb provides a uniform procedural framework; sector-specific laws define the substance.
 
-Eligibility checks, benefit calculations, permit conditions: these follow deterministic if/then logic with defined inputs and outputs. The engine's cross-law reference mechanism maps to how administrative law works, where higher laws delegate to lower regulations and ministeriële regelingen fill in concrete values.
+Eligibility checks, benefit calculations, permit conditions: these follow deterministic if/then logic with defined inputs and outputs. The engine's cross-law reference mechanism maps to how administrative law works, where laws refer to each other and ministeriële regelingen and municipal ordinances fill in values the law leaves open.
 
 The corpus already contains the Awb, Participatiewet, Zorgtoeslag, Wlz, and Zorgverzekeringswet. Scaling is hard because so many laws, regulations, and policy rules interact.
 

@@ -259,6 +259,22 @@ describe('materialiseRecord', () => {
     const { record } = materialiseRecord(shape, bindings, { bsn: '100000001' }, rowsFor, { cases });
     expect(record.kinderen.map((c) => c.id)).toEqual(['a']);
   });
+
+  it('reads one value from the latest matching case when the binding names a field', () => {
+    // The permit the municipality granted and the area it granted it for.
+    const bindings = {
+      oppervlakte: { kind: 'cases', service: 'GEMEENTE', field: 'terras_oppervlakte', absent: 0, select_on: [{ name: 'status', value: 'DECIDED' }, { name: 'bsn', value: '$bsn' }] },
+    };
+    // Newest first, as the demo store keeps them (`state.cases.unshift`).
+    const cases = [
+      { status: 'SUBMITTED', bsn: '100000001', terras_oppervlakte: 90 },
+      { status: 'DECIDED', bsn: '100000001', terras_oppervlakte: 60 },
+      { status: 'DECIDED', bsn: '100000001', terras_oppervlakte: 40 },
+    ];
+    expect(materialiseRecord(shape, bindings, { bsn: '100000001' }, rowsFor, { cases }).record.oppervlakte).toBe(60);
+    // No granted case: what `absent` says, as for a register without a row.
+    expect(materialiseRecord(shape, bindings, { bsn: '2' }, rowsFor, { cases }).record.oppervlakte).toBe(0);
+  });
 });
 
 describe('materialiseAll', () => {
@@ -322,5 +338,18 @@ describe('tablesFromProfiles / collectKeyValues', () => {
       bsn: ['100000001', '999999990'],
       kvk_nummer: ['85234567'],
     });
+  });
+});
+
+describe('een onbekende uitkomst in een besloten zaak', () => {
+  it('blijft onbekend in plaats van als waarde door te gaan', () => {
+    const shape = { parameters: ['kvk_nummer'], inputTypes: { vergunde_oppervlakte: 'number' } };
+    const bindings = { vergunde_oppervlakte: { kind: 'cases', field: 'vergunde_oppervlakte', select_on: [{ name: 'kvk_nummer', value: '$kvk_nummer' }], service: 'GEMEENTE_ROTTERDAM', absent: 0 } };
+    const cases = [{ kvk_nummer: '1', vergunde_oppervlakte: { __unknown: true, missing: [] } }];
+    const { record } = materialiseRecord(shape, bindings, { kvk_nummer: '1' }, () => [], { cases });
+    expect('vergunde_oppervlakte' in record).toBe(false);
+    // Ter vergelijking: een bekende waarde gaat wel door.
+    const known = materialiseRecord(shape, bindings, { kvk_nummer: '1' }, () => [], { cases: [{ kvk_nummer: '1', vergunde_oppervlakte: 30 }] });
+    expect(known.record.vergunde_oppervlakte).toBe(30);
   });
 });

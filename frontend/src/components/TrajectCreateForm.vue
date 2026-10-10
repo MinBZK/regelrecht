@@ -197,7 +197,7 @@ function bind(field) {
             :value="form.repo_path"
             @input="bind('repo_path')($event)"
           ></nldd-text-field>
-          <nldd-form-field-help-text>Submap met regulation YAML-bestanden. Laat leeg voor repo-root.</nldd-form-field-help-text>
+          <nldd-form-field-help-text>Submap met de regelwerken. Laat leeg voor repo-root.</nldd-form-field-help-text>
         </nldd-form-field>
       </template>
 
@@ -238,7 +238,7 @@ function bind(field) {
 
       <nldd-form-actions>
         <nldd-button
-          variant="primary"
+          appearance="primary"
           size="md"
           width="full"
           :text="busy ? 'Bezig…' : 'Maak traject aan'"

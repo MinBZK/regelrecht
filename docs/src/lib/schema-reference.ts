@@ -151,11 +151,11 @@ export function schemaUrl(): string {
 const CONCEPTS: Record<string, ConceptLink> = {
   source: { href: '/concepts/cross-law-references#how-it-works', label: 'Cross-Law References' },
   open_terms: {
-    href: '/concepts/inversion-of-control#the-higher-law-declares-an-open-term',
+    href: '/concepts/inversion-of-control#the-law-declares-an-open-term',
     label: 'Inversion of Control',
   },
   implements: {
-    href: '/concepts/inversion-of-control#the-lower-regulation-implements-it',
+    href: '/concepts/inversion-of-control#the-implementing-regulation-fills-it',
     label: 'Inversion of Control',
   },
   hooks: { href: '/concepts/hooks-and-reactive-execution#how-hooks-work', label: 'Hooks' },
@@ -1022,7 +1022,7 @@ export function referenceHeadings(): { depth: number; slug: string; text: string
   const out: { depth: number; slug: string; text: string }[] = [];
   const h = (depth: number, slug: string, text: string) => out.push({ depth, slug, text });
 
-  h(2, 'law-file', 'The law file');
+  h(2, 'law-file', 'The rulework');
   h(3, 'identifiers-per-layer', 'Identifiers per regulatory layer');
   h(4, 'top-legal-basis', 'legal_basis');
   h(3, 'articles', 'Articles');

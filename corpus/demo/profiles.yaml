@@ -76,7 +76,6 @@ profiles:
         personen:
           - bsn: '999100001'
             geboortedatum: '1989-05-15'
-            verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 36
@@ -321,7 +320,6 @@ profiles:
         personen:
           - bsn: '999991905'
             geboortedatum: '1988-10-16'
-            verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 36
@@ -434,7 +432,6 @@ profiles:
         personen:
           - bsn: '900253010'
             geboortedatum: '1965-04-12'
-            verblijfsadres: Utrecht
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 60
@@ -506,7 +503,6 @@ profiles:
         personen:
           - bsn: '900253022'
             geboortedatum: '1975-07-21'
-            verblijfsadres: Nijmegen
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 50
@@ -578,7 +574,6 @@ profiles:
         personen:
           - bsn: '900253034'
             geboortedatum: '1985-09-13'
-            verblijfsadres: Utrecht
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 40
@@ -650,7 +645,6 @@ profiles:
         personen:
           - bsn: '900253046'
             geboortedatum: '1995-09-27'
-            verblijfsadres: Rotterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 30
@@ -722,7 +716,6 @@ profiles:
         personen:
           - bsn: '900253058'
             geboortedatum: '1995-10-02'
-            verblijfsadres: Den Haag
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 30
@@ -794,7 +787,6 @@ profiles:
         personen:
           - bsn: '900265425'
             geboortedatum: '2000-10-04'
-            verblijfsadres: Toetsoog
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 25
@@ -866,7 +858,6 @@ profiles:
         personen:
           - bsn: '900265437'
             geboortedatum: '2000-10-04'
-            verblijfsadres: Rotterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 25
@@ -938,7 +929,6 @@ profiles:
         personen:
           - bsn: '900265449'
             geboortedatum: '2000-10-15'
-            verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 25
@@ -1010,7 +1000,6 @@ profiles:
         personen:
           - bsn: '900265450'
             geboortedatum: '2000-10-21'
-            verblijfsadres: Voorschoten
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 25
@@ -1082,7 +1071,6 @@ profiles:
         personen:
           - bsn: '900265462'
             geboortedatum: '2000-10-28'
-            verblijfsadres: Hellevoetsluis
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 25
@@ -1154,7 +1142,6 @@ profiles:
         personen:
           - bsn: '999991772'
             geboortedatum: '2000-03-24'
-            verblijfsadres: Utrecht
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 25
@@ -1230,7 +1217,6 @@ profiles:
         personen:
           - bsn: '999100002'
             geboortedatum: '1987-08-10'
-            verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 38
@@ -1426,7 +1412,6 @@ profiles:
         personen:
           - bsn: '999100003'
             geboortedatum: '1983-11-22'
-            verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 42
@@ -1629,7 +1614,6 @@ profiles:
         personen:
           - bsn: '999100004'
             geboortedatum: '1971-09-08'
-            verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 54
@@ -1761,7 +1745,6 @@ profiles:
         personen:
           - bsn: '999300001'
             geboortedatum: '1990-03-18'
-            verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 35
@@ -1933,7 +1916,6 @@ profiles:
         personen:
           - bsn: '999993653'
             geboortedatum: '2005-01-01'
-            verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 20
@@ -2027,7 +2009,6 @@ profiles:
         personen:
           - bsn: '999993654'
             geboortedatum: '1948-02-15'
-            verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 77
@@ -2096,7 +2077,6 @@ profiles:
         personen:
           - bsn: '999993655'
             geboortedatum: '1980-01-01'
-            verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 45
@@ -2162,7 +2142,6 @@ profiles:
         personen:
           - bsn: '999993656'
             geboortedatum: '1985-01-01'
-            verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 40
@@ -2243,7 +2222,6 @@ profiles:
         personen:
           - bsn: '999993657'
             geboortedatum: '1975-01-01'
-            verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 50
@@ -2308,7 +2286,6 @@ profiles:
         personen:
           - bsn: '999993658'
             geboortedatum: '2004-01-01'
-            verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 21
@@ -2377,7 +2354,6 @@ profiles:
         personen:
           - bsn: '999993659'
             geboortedatum: '1990-01-01'
-            verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
             nationaliteit: DUITS
             age: 35
@@ -2450,7 +2426,6 @@ profiles:
         personen:
           - bsn: '999993660'
             geboortedatum: '1998-05-15'
-            verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 27
@@ -2533,7 +2508,6 @@ profiles:
         personen:
           - bsn: '999777777'
             geboortedatum: '1991-04-15'
-            verblijfsadres: Utrecht
             land_verblijf: NEDERLAND
             nationaliteit: MAROKKAANS
             age: 34
@@ -2607,7 +2581,6 @@ profiles:
         personen:
           - bsn: '999888888'
             geboortedatum: '1990-05-15'
-            verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 35
@@ -2703,7 +2676,6 @@ profiles:
         personen:
           - bsn: '999993872'
             geboortedatum: '1986-04-17'
-            verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 38
@@ -2818,7 +2790,6 @@ profiles:
         personen:
           - bsn: '999991723'
             geboortedatum: '2020-06-10'
-            verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 5
@@ -2860,7 +2831,6 @@ profiles:
         personen:
           - bsn: '999992740'
             geboortedatum: '2022-08-15'
-            verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 3
@@ -2902,7 +2872,6 @@ profiles:
         personen:
           - bsn: '999200001'
             geboortedatum: '2020-01-01'
-            verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 5
@@ -2944,7 +2913,6 @@ profiles:
         personen:
           - bsn: '999200002'
             geboortedatum: '2022-01-01'
-            verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 3
@@ -2987,7 +2955,6 @@ profiles:
         personen:
           - bsn: '999200003'
             geboortedatum: '2014-05-15'
-            verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 11
@@ -3029,7 +2996,6 @@ profiles:
         personen:
           - bsn: '999200004'
             geboortedatum: '2017-03-22'
-            verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 8
@@ -3071,7 +3037,6 @@ profiles:
         personen:
           - bsn: '999200005'
             geboortedatum: '2011-08-30'
-            verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 14
@@ -3113,7 +3078,6 @@ profiles:
         personen:
           - bsn: '999200006'
             geboortedatum: '2018-06-12'
-            verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 7
@@ -3155,7 +3119,6 @@ profiles:
         personen:
           - bsn: '999200007'
             geboortedatum: '2020-01-01'
-            verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 5
@@ -3198,7 +3161,6 @@ profiles:
         personen:
           - bsn: '999400001'
             geboortedatum: '1972-09-14'
-            verblijfsadres: Utrecht
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 53
@@ -3262,7 +3224,6 @@ profiles:
         personen:
           - bsn: '999400002'
             geboortedatum: '2013-04-22'
-            verblijfsadres: Utrecht
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 12
@@ -3302,7 +3263,6 @@ profiles:
         personen:
           - bsn: '999993670'
             geboortedatum: '1960-03-20'
-            verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 65
@@ -3371,7 +3331,6 @@ profiles:
         personen:
           - bsn: '999410001'
             geboortedatum: '1970-06-15'
-            verblijfsadres: Utrecht
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 55
@@ -3416,7 +3375,6 @@ profiles:
         personen:
           - bsn: '999500001'
             geboortedatum: '1985-09-20'
-            verblijfsadres: Utrecht
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 40
@@ -3446,7 +3404,6 @@ profiles:
         personen:
           - bsn: '999500002'
             geboortedatum: '1978-04-12'
-            verblijfsadres: Amersfoort
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 47
@@ -3468,7 +3425,6 @@ profiles:
         personen:
           - bsn: '999500003'
             geboortedatum: '1960-11-30'
-            verblijfsadres: Zeist
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 65
@@ -3490,7 +3446,6 @@ profiles:
         personen:
           - bsn: '999410002'
             geboortedatum: '1982-07-22'
-            verblijfsadres: Den Haag
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 43
@@ -3522,7 +3477,6 @@ profiles:
         personen:
           - bsn: '999500004'
             geboortedatum: '1955-02-14'
-            verblijfsadres: Den Haag
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 70
@@ -3544,7 +3498,6 @@ profiles:
         personen:
           - bsn: '999410003'
             geboortedatum: '1965-12-05'
-            verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 60
@@ -3576,7 +3529,6 @@ profiles:
         personen:
           - bsn: '999410004'
             geboortedatum: '1972-08-18'
-            verblijfsadres: Rotterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 53
@@ -3616,7 +3568,6 @@ profiles:
         personen:
           - bsn: '999500006'
             geboortedatum: '1980-01-25'
-            verblijfsadres: Rotterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 45
@@ -3638,7 +3589,6 @@ profiles:
         personen:
           - bsn: '999410005'
             geboortedatum: '1968-03-10'
-            verblijfsadres: Eindhoven
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 57
@@ -3669,7 +3619,6 @@ profiles:
         personen:
           - bsn: '999500007'
             geboortedatum: '1988-11-08'
-            verblijfsadres: Eindhoven
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 37
@@ -3691,7 +3640,6 @@ profiles:
         personen:
           - bsn: '999410006'
             geboortedatum: '1958-05-30'
-            verblijfsadres: Groningen
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 67
@@ -3726,7 +3674,6 @@ profiles:
         personen:
           - bsn: '999500008'
             geboortedatum: '1960-08-22'
-            verblijfsadres: Groningen
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 65
@@ -3761,7 +3708,6 @@ profiles:
         personen:
           - bsn: '999410007'
             geboortedatum: '1975-04-15'
-            verblijfsadres: Maastricht
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 50
@@ -3791,7 +3737,6 @@ profiles:
         personen:
           - bsn: '999500009'
             geboortedatum: '1990-07-20'
-            verblijfsadres: Maastricht
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 35
@@ -3813,7 +3758,6 @@ profiles:
         personen:
           - bsn: '999600001'
             geboortedatum: '1975-03-12'
-            verblijfsadres: Amsterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 50
@@ -3851,7 +3795,6 @@ profiles:
         personen:
           - bsn: '999600002'
             geboortedatum: '1968-08-20'
-            verblijfsadres: Utrecht
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 57
@@ -3889,7 +3832,6 @@ profiles:
         personen:
           - bsn: '999600003'
             geboortedatum: '1980-05-15'
-            verblijfsadres: Rotterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 45
@@ -3927,7 +3869,6 @@ profiles:
         personen:
           - bsn: '999600004'
             geboortedatum: '1972-11-30'
-            verblijfsadres: Groningen
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 53
@@ -3965,7 +3906,6 @@ profiles:
         personen:
           - bsn: '999600005'
             geboortedatum: '1978-02-28'
-            verblijfsadres: Den Haag
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 47
@@ -4003,7 +3943,6 @@ profiles:
         personen:
           - bsn: '999600006'
             geboortedatum: '1985-07-10'
-            verblijfsadres: Eindhoven
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 40
@@ -4041,7 +3980,6 @@ profiles:
         personen:
           - bsn: '999600007'
             geboortedatum: '1965-12-01'
-            verblijfsadres: Maastricht
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 60
@@ -4069,8 +4007,8 @@ profiles:
   '999999990':
     name: Claudia van Dam
     description: >-
-      Eigenaar van koffiezaak Noon in Rotterdam West, horeca ondernemer met
-      exploitatievergunning
+      Bestuurder van Café Noon B.V. in Rotterdam West, een café met een eigen kleine
+      bierbrouwerij, een terras en een exploitatievergunning
     properties:
       - Ondernemer
     sources:
@@ -4088,20 +4026,18 @@ profiles:
             rgs_versie: '3.5'
       DOUANE:
         # Een accijnsgoederenplaats is een vergunde ruimte waar accijnsgoederen
-        # onveraccijnsd mogen liggen (art. 40 Wet op de accijns). Een café koopt
-        # zijn drank veraccijnsd in en heeft er dus geen; dat maakt het verschil
-        # zichtbaar tussen wie accijns verschuldigd is en wie een vergunning
-        # nodig heeft.
+        # onveraccijnsd mogen liggen (art. 40 Wet op de accijns). Café Noon brouwt
+        # zijn eigen huisbier; wie bier produceert heeft zo'n plaats nodig (art. 5)
+        # en is over wat de brouwerij verlaat zelf accijns verschuldigd.
         agp_vergunningen:
           - kvk_nummer: '85234567'
-            heeft_agp_vergunning: false
+            heeft_agp_vergunning: true
       KIESRAAD: *id002
       JenV: *id003
       RvIG:
         personen:
           - bsn: '999999990'
             geboortedatum: '1994-03-20'
-            verblijfsadres: Rotterdam
             land_verblijf: NEDERLAND
             nationaliteit: NEDERLANDS
             age: 31
@@ -4122,10 +4058,6 @@ profiles:
             postcode: 3032TL
             woonplaats: Rotterdam
             type: WOONADRES
-        personen_vog:
-          - bsn: '999999990'
-            heeft_geldige_vog: true
-            afgiftedatum: '2024-12-01'
       BELASTINGDIENST:
         box1:
           - bsn: '999999990'
@@ -4170,10 +4102,10 @@ profiles:
           - bsn: '999999990'
             bsn_eigenaar: '999999990'
             kvk_nummer: '85234567'
-            handelsnaam: Koffiezaak Noon
-            rechtsvorm: EENMANSZAAK
+            handelsnaam: Café Noon B.V.
+            rechtsvorm: BV
             status: Actief
-            activiteit: Horeca (SBI 56102, Cafés)
+            activiteit: Café met eigen bierbrouwerij (SBI 56102 Cafés, 11050 Vervaardiging van bier)
             sbi_code: '56102'
             datum_aanvang: '2025-01-15'
             aantal_werknemers: 0
@@ -4181,10 +4113,10 @@ profiles:
         functionarissen:
           - bsn: '999999990'
             kvk_nummer: '85234567'
-            handelsnaam: Koffiezaak Noon
-            rechtsvorm: EENMANSZAAK
+            handelsnaam: Café Noon B.V.
+            rechtsvorm: BV
             status: Actief
-            functie: EIGENAAR
+            functie: BESTUURDER
             bevoegdheid: VOLLEDIG
             datum_inschrijving: '2025-01-15'
             datum_uitschrijving: null
@@ -4193,7 +4125,7 @@ profiles:
             adres: Nieuwe Binnenweg 225A, 3021GC Rotterdam
         organisaties:
           - kvk_nummer: '85234567'
-            rechtsvorm: EENMANSZAAK
+            rechtsvorm: BV
             status: Actief
             aantal_werknemers: 0
             datum_telling: '2025-01-01'
@@ -4201,7 +4133,7 @@ profiles:
             vestigingsadres: Nieuwe Binnenweg 225A, 3021GC Rotterdam
         jaarrekeningen:
           - kvk_nummer: '85234567'
-            rechtsvorm: EENMANSZAAK
+            rechtsvorm: BV
             laatste_boekjaar_einde: '2025-12-31'
       UWV:
         arbeidsverhoudingen:
@@ -4280,10 +4212,17 @@ profiles:
             is_geregistreerd: true
             registratiedatum: '2024-06-15'
       GEMEENTE_ROTTERDAM:
+        # De VOG die Claudia bij haar aanvraag inleverde; de exploitatievergunning
+        # leest hem hier (bindings.yaml). Onder RvIG vond de binding hem niet, en
+        # zonder VOG voldeed ze niet en was haar vergunning "niet van toepassing".
+        personen_vog:
+          - bsn: '999999990'
+            heeft_geldige_vog: true
+            afgiftedatum: '2024-12-01'
         vestigingen:
           - kvk_nummer: '85234567'
             adres: Nieuwe Binnenweg 225A, 3021GC Rotterdam
-            schenkt_alcohol: false
+            schenkt_alcohol: true
             heeft_terras: true
         vergunningen:
           - kvk_nummer: '85234567'
@@ -4292,12 +4231,19 @@ profiles:
             vergunde_categorie: Categorie 1
             datum_verleend: '2025-08-01'
             geldig_tot: '2030-08-01'
-            heeft_alcoholvergunning: false
-            type_horeca: Daghoreca
+            heeft_alcoholvergunning: true
+            type_horeca: Café
             openingstijden: 07:00 - 23:00
             vergunde_activiteiten:
               - Verstrekken van etenswaren
               - Alcoholvrije dranken
+              - Alcoholhoudende dranken (eigen huisbier)
+            # Alcoholwet art. 8 lid 1 onder b: levensgedrag getoetst bij de verlening.
+            is_van_slecht_levensgedrag: false
+            # Art. 2:28 lid 5 onder i t/m k, getoetst bij de verlening op 2025-08-01.
+            kvk_inschrijving_geldig: true
+            feitelijke_toestand_conform_aanvraag: true
+            voldoet_aan_horecabeleid: true
         ontheffingen_geluid_historie:
           - kvk_nummer: '85234567'
             datum: '2026-01-05'
@@ -4320,12 +4266,12 @@ profiles:
               - drinken
         beheerders:
           - kvk_nummer: '85234567'
-            schenkt_alcohol: false
+            schenkt_alcohol: true
             bsn: '999999990'
             heeft_vog: true
             leeftijd: 31
             is_onder_curatele: false
-            heeft_svh_diploma: false
+            heeft_svh_diploma: true
             alle_hebben_vog: true
             alle_voldoen_leeftijd: true
             geen_onder_curatele: true
@@ -4363,6 +4309,9 @@ profiles:
             intrekkingsreden: null
             handhavingsacties: []
             ingetrokken_slecht_levensgedrag: false
+            # Art. 2:28 lid 5 onder h: geen handhavingsacties, dus geen overtreden voorschriften.
+            kvk_nummer: '85234567'
+            voorschriften_overtreden: false
         omgevingsplan_toetsingen:
           - adres: Nieuwe Binnenweg 225A, 3021GC Rotterdam
             categorie: licht
@@ -4377,8 +4326,28 @@ profiles:
           - adres: Nieuwe Binnenweg 225A, 3021GC Rotterdam
             seizoen: jaarrond
             gebied: Rotterdam West
-            max_oppervlakte: 20.0
             # 01:00 en 02:00 op de schaal van de wet (24 is middernacht, 25 is 01:00)
+            max_sluitingstijd_doordeweeks: 25
+            max_sluitingstijd_weekend: 26
+            seizoensregels: jaarrond toegestaan
+            toegestane_locaties:
+              - voor
+              - zij
+          # Jaarrond toegestaan: hetzelfde beleid geldt voor wie alleen een zomer-
+          # of winterterras vraagt. Zonder deze rijen had zo'n aanvraag geen
+          # maximale sluitingstijd en werd ze zonder opgave van reden geweigerd.
+          - adres: Nieuwe Binnenweg 225A, 3021GC Rotterdam
+            seizoen: zomer
+            gebied: Rotterdam West
+            max_sluitingstijd_doordeweeks: 25
+            max_sluitingstijd_weekend: 26
+            seizoensregels: jaarrond toegestaan
+            toegestane_locaties:
+              - voor
+              - zij
+          - adres: Nieuwe Binnenweg 225A, 3021GC Rotterdam
+            seizoen: winter
+            gebied: Rotterdam West
             max_sluitingstijd_doordeweeks: 25
             max_sluitingstijd_weekend: 26
             seizoensregels: jaarrond toegestaan

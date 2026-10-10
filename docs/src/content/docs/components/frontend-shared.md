@@ -20,8 +20,8 @@ The editor is the reference for what lives here, and the other apps conform to i
 |-----|---------|
 | Editor (`frontend/`) | API calls, sign-in state, the GitHub link status, the color scheme, value helpers, the Gherkin runner |
 | Demo (`frontend-demo/`) | The color scheme, value helpers, the Gherkin runner |
-| The two static PoCs (`frontend-poc-*`) | The Gherkin runner, saved state, browser variants, the line diff, the reload-on-stale-bundle handler, the shared components |
-| Lawmaking (`frontend-lawmaking/`) | Lists the package as a dependency, imports nothing from it today |
+| The two static PoCs (`frontend-poc-*`) | The Gherkin runner, saved state, browser variants, the line diff, the reload-on-stale-bundle handler, the tool-call formatter, the shared components |
+| Lawmaking (`frontend-lawmaking/`) | The color scheme |
 
 ## Architecture
 
@@ -57,9 +57,10 @@ These came in with the proof-of-concepts behind the [PoC Portal](./poc-portal). 
 
 | Module | Purpose |
 |--------|---------|
-| `useBewaardeStand.js` | Keeps choices and settings across a page reload in `localStorage`, under a prefix per case. Two PoCs share one origin behind the portal, and without the prefix they would read each other's state. Edited law YAML is deliberately not stored here |
+| `useBewaardeStand.js` | Keeps choices and settings across a page reload in `localStorage`, under a prefix per case. Two PoCs share one origin behind the portal, and without the prefix they would read each other's state. An edited rulework is deliberately not stored here |
 | `browserVarianten.js` | Variants a user saves in their own browser, in the same shape as the variants checked into the case. Each file keeps a fingerprint of the law text it started from, so the app can say when the corpus has changed underneath it |
 | `reloadOnStaleBundle.js` | Reloads the page when a lazily loaded view no longer exists after a deploy, at most once per ten seconds |
+| `formatToolCall.js` | Renders a tool call in the policy assistant's feed as one readable line, whatever shape the model's arguments take. Used by `AssistentPanel.vue` in both static PoCs |
 | `lib/diff.js` | A line diff (longest common subsequence) for showing a change to a law's YAML, with no dependency |
 | `components/` | `Paneel.vue` (a collapsible section), `KolommenMenu.vue` (a menu to pick variants as columns), `AssistentMeldingen.vue` (notices from the policy assistant) and `OptimalisatiepadChart.vue` (the path the assistant takes toward a target, which needs the optional `echarts` peer dependency) |
 

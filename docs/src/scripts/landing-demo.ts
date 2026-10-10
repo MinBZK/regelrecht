@@ -175,9 +175,58 @@ class ScrollyDemo extends HTMLElement {
           ' .cm-content { padding-inline-end: 3rem; }',
       );
       root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet];
+      this.keepScrollerReachable(viewer, root);
     } catch {
       // Constructable stylesheets are not available everywhere; without them
       // the YAML simply shows down to the fold, which is what it did before.
+    }
+  }
+
+  /**
+   * Put the capped viewer's scroller in the tab order.
+   *
+   * The component does this itself, but only for a line that overflows
+   * sideways, and never with `wrap`. The cap above makes the viewer scroll
+   * vertically, which the component does not look for, so a keyboard user
+   * could not reach the rest of the YAML. This sets the same three attributes
+   * the component would, and sets them again when the component strips them:
+   * it does that on every resize in which it finds no sideways overflow.
+   * Reported as NederlandseDigitaleDienst/design-system#288; this goes once
+   * the component measures both directions.
+   */
+  private keepScrollerReachable(viewer: Element, root: ShadowRoot) {
+    const scroller = root.querySelector<HTMLElement>('.cm-scroller');
+    if (!scroller) return;
+
+    const mark = () => {
+      // A scroller without a height has not been laid out; its numbers say
+      // nothing about overflow yet.
+      if (scroller.clientHeight === 0) return;
+      const overflows =
+        scroller.scrollHeight > scroller.clientHeight ||
+        scroller.scrollWidth > scroller.clientWidth;
+      if (!overflows) return;
+
+      // Only what is missing: writing an attribute that is already there
+      // would wake the observer below for nothing.
+      if (scroller.getAttribute('tabindex') !== '0') {
+        scroller.setAttribute('tabindex', '0');
+      }
+      if (!scroller.hasAttribute('role')) scroller.setAttribute('role', 'region');
+      if (!scroller.hasAttribute('aria-label')) {
+        // The component's own label for this region, in its own language.
+        const label = (viewer as any)._t?.('components.code-viewer.region-label');
+        scroller.setAttribute('aria-label', label || 'Code');
+      }
+    };
+
+    mark();
+    new MutationObserver(mark).observe(scroller, {
+      attributes: true,
+      attributeFilter: ['tabindex', 'role', 'aria-label'],
+    });
+    if (typeof ResizeObserver !== 'undefined') {
+      new ResizeObserver(mark).observe(scroller);
     }
   }
 

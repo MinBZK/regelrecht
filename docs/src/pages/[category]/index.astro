@@ -39,7 +39,7 @@ if (dangling.length > 0) {
 }
 ---
 
-<Base lang="en" kind="docs" pathname={category.prefix} title={title}>
+<Base lang={category.lang ?? 'en'} kind="docs" pathname={category.prefix} title={title}>
   <nldd-one-third-two-thirds-section
     sm-padding-bottom="32"
     md-padding-bottom="64"
@@ -73,7 +73,7 @@ if (dangling.length > 0) {
                 <nldd-spacer size="8" />
               </Fragment>
             )}
-            <nldd-list type="navigation" variant="box-tinted">
+            <nldd-list type="navigation" appearance="box-tinted">
               {group.items
                 .filter((it) => it.link)
                 .map((it) => (

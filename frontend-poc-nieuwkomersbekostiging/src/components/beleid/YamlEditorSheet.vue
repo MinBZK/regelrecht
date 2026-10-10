@@ -18,8 +18,8 @@
         </p>
 
         <div class="ye-actions">
-          <nldd-button :text="`Toepassen in ${werkversieLabel}`" variant="primary" start-icon="checked" @click="apply"></nldd-button>
-          <nldd-button text="Terugzetten" variant="neutral-transparent" start-icon="undo" @click="reset"></nldd-button>
+          <nldd-button :text="`Toepassen in ${werkversieLabel}`" appearance="primary" start-icon="checked" @click="apply"></nldd-button>
+          <nldd-button text="Terugzetten" appearance="neutral-transparent" start-icon="undo" @click="reset"></nldd-button>
         </div>
 
         <nldd-banner v-if="error" variant="critical">

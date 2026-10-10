@@ -17,6 +17,9 @@ export interface DocsNavItem {
   summary?: string
   /** Short intro paragraph, shown in the left column of the category page. */
   intro?: string
+  /** Language of the section, when it is not English (sets the category
+   *  page's <html lang>, like the per-page `lang` frontmatter). */
+  lang?: 'en' | 'nl'
 }
 
 export const docsNav: DocsNavItem[] = [
@@ -72,5 +75,17 @@ export const docsNav: DocsNavItem[] = [
       'Look-ups: glossary, schema reference, conformance, and known harvester issues.',
     intro:
       'Reference material to look things up: a glossary of terms, the law schema, what conformance testing covers, which features are documented, the accessibility statement, and known issues in the harvester.',
+  },
+  {
+    // Dutch, like the law it explains: the terms (besluit, beschikking,
+    // belanghebbende) are the ones colleagues meet in the statutes themselves.
+    text: 'Basiswerk recht',
+    link: '/basiswerk/',
+    match: '/basiswerk/',
+    lang: 'nl',
+    summary:
+      'Staats- en bestuursrecht voor wie regels machine-uitvoerbaar maakt, in het Nederlands.',
+    intro:
+      'Een oriëntatie in staats- en bestuursrecht voor collega’s zonder juridische scholing: waar bevoegdheid vandaan komt, welke vorm een regel heeft, en wie er wat tegen kan doen. De voorbeelden komen uit één regeling, de zorgtoeslag, en elke claim verwijst naar een open bron.',
   },
 ]

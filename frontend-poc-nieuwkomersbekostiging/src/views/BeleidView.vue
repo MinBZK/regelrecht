@@ -2,7 +2,7 @@
   <nldd-side-by-side-split-view panes="2">
     <!-- LINKS: wat vergelijk je, wat wijzig je, hulpmiddelen, instellingen -->
     <div slot="pane-1" class="pane pane-left">
-      <nldd-page>
+      <nldd-page landmarks="page">
         <div class="pane-inner">
           <nldd-title :size="2">
             <span slot="overline">Voor beleidsmakers</span>
@@ -28,7 +28,7 @@
                       <option v-for="d in editableDocs" :key="d.entry.path" :value="d.entry.path">{{ d.entry.name }} (geldig vanaf {{ String(d.entry.valid_from ?? '').slice(0, 4) }})</option>
                     </select>
                   </nldd-dropdown>
-                  <nldd-button text="Open in YAML-editor" start-icon="code" variant="secondary" size="sm" :disabled="!yamlKeuze ? true : undefined" @click="openYaml(yamlKeuze)"></nldd-button>
+                  <nldd-button text="Open in YAML-editor" start-icon="code" appearance="secondary" size="sm" :disabled="!yamlKeuze ? true : undefined" @click="openYaml(yamlKeuze)"></nldd-button>
                 </div>
               </details>
             </paneel>
@@ -58,12 +58,12 @@
 
     <!-- RECHTS: de twee rekeningen -->
     <div slot="pane-2" class="pane pane-right">
-      <nldd-page background="tinted">
+      <nldd-page background="tinted" accessible-label="Rekeningen">
         <div class="pane-inner">
           <div class="kop-rij">
             <nldd-title :size="3">
               <span>Twee rekeningen naast elkaar</span>
-              <span slot="subtitle">Wat de regeling kost (bedragen aan scholen) en wat de uitvoering kost (handelingen bij scholen en DUO, plus investering).</span>
+              <span slot="supporting-text">Wat de regeling kost (bedragen aan scholen) en wat de uitvoering kost (handelingen bij scholen en DUO, plus investering).</span>
             </nldd-title>
             <doorreken-knop v-if="ready" class="kop-actie" />
           </div>

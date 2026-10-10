@@ -82,7 +82,7 @@ export function useScenarios(lawId, trajectRef = ref(null)) {
       const res = await apiFetch(scenariosListUrl(trajectRef.value, lawId.value), {
         errorMessage: (status) =>
           status === 404
-            ? `Deze wet is niet gevonden in deze scope (${status})`
+            ? `Dit regelwerk is niet gevonden in deze scope (${status})`
             : `Scenario's konden niet worden geladen: ${status}`,
       });
       const listed = await res.json();

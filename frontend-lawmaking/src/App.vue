@@ -58,7 +58,7 @@
           <nldd-toolbar-item slot="end">
             <nldd-button
               :text="isPlaying ? 'Pauzeren' : 'Afspelen'"
-              :variant="isPlaying ? 'primary' : 'secondary'"
+              :appearance="isPlaying ? 'primary' : 'secondary'"
               @click="togglePlay"
             ></nldd-button>
           </nldd-toolbar-item>

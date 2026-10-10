@@ -1,9 +1,9 @@
 ---
 title: "Contributing"
-description: "The branching model, quality checks, and workflow for contributing to RegelRecht."
+description: "The branching model, quality checks, and workflow the RegelRecht team follows, and how outside contributions are handled."
 ---
 
-RegelRecht is open source and welcomes contributions. The workflow is below.
+RegelRecht is open source so that anyone can read and check how law is translated into executable rules. The project is not organized around outside contributions: issues are the channel the team acts on, and pull requests from outside are generally not merged (see `CONTRIBUTING.md` at the repository root). This page describes the workflow the team itself follows.
 
 ## Branching model
 
@@ -101,6 +101,11 @@ target does not exist.
 
 If a page is removed rather than moved, redirect it to whatever now covers the
 subject.
+
+Addresses ending in `.html` need no entry. The site published every page as
+`<route>.html` before it moved to Astro, and printed publications cite that
+form. `docs/nginx.conf` answers such a request with a 301 to the same route
+without the suffix, as long as that route exists.
 
 ## Design decisions (RFCs)
 

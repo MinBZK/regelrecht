@@ -47,7 +47,7 @@ C4Container
     Rel(user, editor, "Browses and edits laws")
     Rel(editor, editorapi, "REST API calls")
     Rel(editor, engine, "Executes laws (WASM)")
-    Rel(editorapi, corpus, "Reads and writes law files")
+    Rel(editorapi, corpus, "Reads and writes ruleworks")
     Rel(editorapi, admin, "Proxies /api/harvest-admin")
     Rel(editorapi, pipelineapi, "Proxies /api/harvest")
     Rel(editorapi, db, "Creates traject jobs")
@@ -77,7 +77,7 @@ regelrecht/
 ├── packages/
 │   ├── engine/           # Execution engine (native, WASM, CLI)
 │   ├── law-model/        # Rust implementation of the schema contract
-│   ├── corpus/           # Library for reading regulation YAML
+│   ├── corpus/           # Library for reading ruleworks
 │   ├── harvester/        # BWB / CVDR download and conversion
 │   ├── pipeline/         # Job queue, harvest and enrich workers
 │   ├── editor-api/       # Backend for the law editor
@@ -89,7 +89,7 @@ regelrecht/
 │   ├── frontend-shared/  # Code shared by the Vue frontends
 │   ├── poc-portal/       # Password-gated portal for the PoCs
 │   ├── poc-napp/         # Backend of the napp PoC
-│   ├── poc-assistent/    # Policy assistant for the PoCs
+│   ├── poc-assistent/    # Policy assistant for the PoCs (Node package)
 │   ├── arch-extract/     # Architecture explorer (developer tool)
 │   └── grafana/          # Provisioned dashboards
 ├── frontend/             # Law editor (Vue 3 + Vite)
@@ -98,7 +98,8 @@ regelrecht/
 ├── frontend-poc-*/       # The proof-of-concepts behind the portal
 ├── corpus-poc/           # Case corpora of the PoCs, not law in force
 ├── pocs/                 # The PoC register
-├── corpus/               # Machine-readable laws (YAML), plus the demo corpus
+├── corpus/               # Machine-readable laws (YAML), notes, and the demo corpus
+├── corpus-registry.yaml  # The regulation sources the corpus library loads
 ├── bdd/                  # Canonical BDD grammar + conformance features
 ├── schema/               # Law format JSON schema, one directory per version
 └── docs/                 # Documentation site (Astro) + RFCs

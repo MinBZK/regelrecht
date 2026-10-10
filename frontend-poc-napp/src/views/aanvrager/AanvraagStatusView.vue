@@ -138,7 +138,7 @@ watch(item, (i) => {
     <template v-else-if="item">
       <nldd-simple-section width="820px">
         <nldd-button
-          variant="neutral-transparent"
+          appearance="neutral-transparent"
           size="sm"
           text="Terug naar uw aanvragen"
           start-icon="chevron-left"
@@ -226,7 +226,7 @@ watch(item, (i) => {
             <nldd-spacer size="16"></nldd-spacer>
             <nldd-title size="5"><h4>Landelijke subsidie in delen (art. 14)</h4></nldd-title>
             <nldd-spacer size="8"></nldd-spacer>
-            <nldd-list variant="box">
+            <nldd-list appearance="box">
               <nldd-list-item v-for="d in landelijkeDelen" :key="d.label" size="sm">
                 <nldd-text-cell :text="d.label" color="secondary"></nldd-text-cell>
                 <nldd-text-cell :text="euro(d.bedrag)" horizontal-alignment="right"></nldd-text-cell>
@@ -302,7 +302,7 @@ watch(item, (i) => {
                 </template>
                 <nldd-form-actions>
                   <nldd-button
-                    variant="primary"
+                    appearance="primary"
                     type="submit"
                     text="Verzuim herstellen"
                     :disabled="bezwaarBezig || undefined"
@@ -326,7 +326,7 @@ watch(item, (i) => {
                 </nldd-rich-text>
                 <div v-if="!bezwaarOpen">
                   <nldd-button
-                    variant="secondary"
+                    appearance="secondary"
                     text="Bezwaar maken"
                     @click="bezwaarOpen = true"
                   ></nldd-button>
@@ -380,13 +380,13 @@ watch(item, (i) => {
                   <nldd-form-actions>
                     <nldd-button-group orientation="horizontal">
                       <nldd-button
-                        variant="primary"
+                        appearance="primary"
                         type="submit"
                         text="Bezwaarschrift indienen"
                         :disabled="bezwaarBezig || undefined"
                       ></nldd-button>
                       <nldd-button
-                        variant="secondary"
+                        appearance="secondary"
                         text="Annuleren"
                         @click="bezwaarOpen = false"
                       ></nldd-button>

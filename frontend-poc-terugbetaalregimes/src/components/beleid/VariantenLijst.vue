@@ -1,5 +1,5 @@
 <template>
-  <nldd-list variant="box">
+  <nldd-list appearance="box">
     <nldd-list-item size="sm">
       <nldd-text-cell
         :text="werkversie ? 'Huidig recht' : 'Huidig recht **(werkversie)**'"

@@ -14,8 +14,8 @@ Feature: Berekening Zorgtoeslag 2024
       | bsn       | status | inrichting_type |
       | 999993653 | VRIJ   | GEEN            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 2007-01-01    | GEEN              | null        | []                | Amsterdam      | []             | NEDERLAND     |               | null  | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999993653 | 2007-01-01    | GEEN              | null        | []                | []             | NEDERLAND     |               | null  | []           |                       |
     And the following "DJI" data with key "bsn" for law "wet_forensische_zorg":
       | bsn       | zorgtype | juridische_titel |
       | 999993653 | null     | null             |
@@ -37,8 +37,8 @@ Feature: Berekening Zorgtoeslag 2024
       | bsn       | status | inrichting_type |
       | 999993653 | null   | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 2005-01-01    | GEEN              | null        | []                | Amsterdam      | []             | NEDERLAND     |               | null  | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999993653 | 2005-01-01    | GEEN              | null        | []                | []             | NEDERLAND     |               | null  | []           |                       |
     And the following "DJI" data with key "bsn" for law "wet_forensische_zorg":
       | bsn       | zorgtype | juridische_titel |
       | 999993653 | null     | null             |
@@ -59,8 +59,8 @@ Feature: Berekening Zorgtoeslag 2024
       | bsn       | status | inrichting_type |
       | 999993653 | null   | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 1998-01-01    | GEEN              | null        | []                | Amsterdam      | []             | NEDERLAND     |               | null  | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999993653 | 1998-01-01    | GEEN              | null        | []                | []             | NEDERLAND     |               | null  | []           |                       |
     And the following "DJI" data with key "bsn" for law "wet_forensische_zorg":
       | bsn       | zorgtype | juridische_titel |
       | 999993653 | null     | null             |
@@ -82,8 +82,8 @@ Feature: Berekening Zorgtoeslag 2024
       | bsn       | status | inrichting_type |
       | 999993653 | null   | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 2004-01-01    | GEEN              | null        | []                | Amsterdam      | []             | NEDERLAND     |               | null  | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999993653 | 2004-01-01    | GEEN              | null        | []                | []             | NEDERLAND     |               | null  | []           |                       |
     And the following "DJI" data with key "bsn" for law "wet_forensische_zorg":
       | bsn       | zorgtype | juridische_titel |
       | 999993653 | null     | null             |
@@ -105,8 +105,8 @@ Feature: Berekening Zorgtoeslag 2024
       | bsn       | status | inrichting_type |
       | 999993653 | null   | null            |
     And the following "RvIG" data with key "bsn" for law "wet_brp":
-      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | verblijfsadres | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
-      | 999993653 | 1998-01-01    | GEEN              | null        | []                | Amsterdam      | []             | NEDERLAND     |               | null  | []           |                       |
+      | bsn       | geboortedatum | partnerschap_type | partner_bsn | kinderen_gegevens | ouder_adressen | land_verblijf | nationaliteit | adres | medebewoners | partner_geboortedatum |
+      | 999993653 | 1998-01-01    | GEEN              | null        | []                | []             | NEDERLAND     |               | null  | []           |                       |
     And the following "DJI" data with key "bsn" for law "wet_forensische_zorg":
       | bsn       | zorgtype | juridische_titel |
       | 999993653 | null     | null             |

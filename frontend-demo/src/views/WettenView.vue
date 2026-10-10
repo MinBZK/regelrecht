@@ -22,7 +22,7 @@ const router = useRouter();
 // in duwen.
 const { localePath } = useLocalePath();
 const { t, locale } = useI18n();
-const { corpus, profile } = useDemo();
+const { corpus, profile, profileKey } = useDemo();
 // The law list is a sheet (primary-sidebar-as-sheet): closed by default so the
 // law itself has the room, opened from the toolbar.
 const splitView = ref(null);
@@ -107,13 +107,24 @@ function resetExpansion() {
 watch(
   // Op `meta.page` en niet op `route.name`: dezelfde pagina heeft per taal een
   // eigen routenaam (`wetten` en `wetten:en`), en op de naam vergelijken laat
-  // deze watcher onder /en/laws meteen terugkeren. Het tabblad opent dan geen
+  // deze watcher onder /en/ruleworks meteen terugkeren. Het tabblad opent dan geen
   // enkele wet, ook niet de standaardwet van het profiel, en toont een leeg
   // paneel zonder dat er iets faalt.
-  () => [route.meta?.page, route.params.lawId, corpus.value, profile.value],
-  ([page, lawId]) => {
+  () => [route.meta?.page, route.params.lawId, corpus.value, profileKey.value],
+  ([page, lawId, , key], old) => {
+    // Een ander persona begint bij zijn eigen wet. <keep-alive> houdt dit
+    // tabblad gemount, dus zonder deze reset bleef na de wissel naar Claudia
+    // de zorgtoeslag van Merijn open staan. Van `null` naar het standaard-
+    // profiel (het corpus is net geladen) is geen wissel: dan moet een deeplink
+    // gewoon openen. Net zo een link die tegelijk met het profiel verandert
+    // (een dia met `profile` en een wet in `route`); alleen de oude link wijkt.
+    const switched = old?.[3] != null && old[3] !== key;
+    if (switched) {
+      trail.splice(0);
+      activeId.value = null;
+    }
     if (page !== 'wetten' || !corpus.value) return;
-    if (lawId && typeof lawId === 'string') {
+    if (lawId && typeof lawId === 'string' && !(switched && lawId === old[1])) {
       openLaw(decodeURIComponent(lawId), { replaceRoute: true });
     } else if (!activeId.value && profile.value?.default_law) {
       const d = profile.value.default_law;
@@ -166,15 +177,15 @@ const referencedBy = computed(() => {
     </nldd-split-view-pane>
 
     <nldd-split-view-pane slot="main" has-content>
-      <nldd-page sticky-header>
+      <nldd-page landmarks="page" sticky-header>
         <nldd-container slot="header" padding="8">
           <nldd-toolbar size="sm">
             <nldd-toolbar-item slot="start">
-              <nldd-button size="sm" variant="neutral-tinted" start-icon="books" :text="t('wet.sidebar.label')" :supporting-text="`${sidebarLaws.length}`" @click="splitView?.showPrimarySidebarSheet?.()"></nldd-button>
+              <nldd-button size="sm" appearance="neutral-tinted" start-icon="books" :text="t('wet.sidebar.label')" :supporting-text="`${sidebarLaws.length}`" @click="splitView?.showPrimarySidebarSheet?.()"></nldd-button>
             </nldd-toolbar-item>
             <template v-if="activeLaw">
               <nldd-toolbar-item slot="start" v-if="trail.length > 1">
-                <nldd-icon-button size="sm" variant="neutral-transparent" icon="chevron-left" :text="t('wet.back', { name: tabInfo(trail.at(-2))?.name ?? t('wet.back.fallback') })" @click="goBack"></nldd-icon-button>
+                <nldd-icon-button size="sm" appearance="neutral-transparent" icon="chevron-left" :text="t('wet.back', { name: tabInfo(trail.at(-2))?.name ?? t('wet.back.fallback') })" @click="goBack"></nldd-icon-button>
               </nldd-toolbar-item>
               <nldd-toolbar-title slot="start" :text="activeLaw.name" :supporting-text="t('wet.valid_from', { service: serviceInfo(corpus, activeLaw.service).name, date: activeLaw.valid_from })" max-width="480px"></nldd-toolbar-title>
               <nldd-toolbar-item slot="end">
@@ -191,7 +202,7 @@ const referencedBy = computed(() => {
                 </nldd-button-bar>
               </nldd-toolbar-item>
               <nldd-toolbar-item slot="end">
-                <nldd-button size="sm" variant="neutral-tinted" end-icon="external-link" text="wetten.overheid.nl" :href="activeLaw.doc.url" target="_blank"></nldd-button>
+                <nldd-button size="sm" appearance="neutral-tinted" end-icon="external-link" text="wetten.overheid.nl" :href="activeLaw.doc.url" target="_blank"></nldd-button>
               </nldd-toolbar-item>
             </template>
           </nldd-toolbar>
@@ -199,7 +210,7 @@ const referencedBy = computed(() => {
 
         <nldd-simple-section v-if="!activeLaw" height="60vh">
           <nldd-inline-dialog icon="books" :text="t('wet.empty.title')" :supporting-text="t('wet.empty.body')">
-            <nldd-button slot="actions" variant="primary" size="sm" :text="t('wet.sidebar.label')" @click="splitView?.showPrimarySidebarSheet?.()"></nldd-button>
+            <nldd-button slot="actions" appearance="primary" size="sm" :text="t('wet.sidebar.label')" @click="splitView?.showPrimarySidebarSheet?.()"></nldd-button>
           </nldd-inline-dialog>
         </nldd-simple-section>
         <nldd-simple-section v-else width="full">
@@ -211,7 +222,7 @@ const referencedBy = computed(() => {
               <nldd-button
                 slot="actions"
                 size="sm"
-                variant="neutral-tinted"
+                appearance="neutral-tinted"
                 end-icon="external-link"
                 :text="t('wet.dutch_only.published')"
                 :href="activeLaw.doc.url"
@@ -241,7 +252,7 @@ const referencedBy = computed(() => {
           <nldd-top-title-bar :text="t('wet.inspector.label')"></nldd-top-title-bar>
         </nldd-container>
         <nldd-container padding="12" gap="16">
-          <nldd-list variant="box-base" :accessible-label="t('wet.executed_by')">
+          <nldd-list appearance="box-base" :accessible-label="t('wet.executed_by')">
             <nldd-list-item size="md">
               <nldd-cell><OrgLogo :service="activeLaw.service" /></nldd-cell>
               <nldd-spacer-cell size="12"></nldd-spacer-cell>
@@ -250,7 +261,7 @@ const referencedBy = computed(() => {
           </nldd-list>
           <nldd-container gap="4">
             <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">{{ t('wet.uses_data_from') }}</nldd-text></nldd-container>
-            <nldd-list variant="box-base" :accessible-label="t('wet.uses_data_from')">
+            <nldd-list appearance="box-base" :accessible-label="t('wet.uses_data_from')">
               <nldd-list-item v-if="references.length === 0" size="sm"><nldd-text-cell size="sm" color="secondary" :text="t('wet.no_other_laws')"></nldd-text-cell></nldd-list-item>
               <nldd-list-item v-for="ref in references" :key="ref.id" size="sm" button @click="openLaw(ref.id)">
                 <nldd-cell><OrgLogo :service="ref.service" size="sm" /></nldd-cell>
@@ -262,7 +273,7 @@ const referencedBy = computed(() => {
           </nldd-container>
           <nldd-container gap="4">
             <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">{{ t('wet.used_by') }}</nldd-text></nldd-container>
-            <nldd-list variant="box-base" :accessible-label="t('wet.used_by')">
+            <nldd-list appearance="box-base" :accessible-label="t('wet.used_by')">
               <nldd-list-item v-if="referencedBy.length === 0" size="sm"><nldd-text-cell size="sm" color="secondary" :text="t('wet.no_other_laws')"></nldd-text-cell></nldd-list-item>
               <nldd-list-item v-for="ref in referencedBy" :key="ref.id" size="sm" button @click="openLaw(ref.id)">
                 <nldd-cell><OrgLogo :service="ref.service" size="sm" /></nldd-cell>

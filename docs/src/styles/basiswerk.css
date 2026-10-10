@@ -1,0 +1,604 @@
+/*
+ * Basiswerk staats- en bestuursrecht: de vormentaal van de schema's
+ * (kaart, stroom, matrix, spectrum), de openingsvraag, callouts en bronnen.
+ * Overgenomen uit de eerste opzet van het basiswerk; de klassen
+ * houden hun rr-voorvoegsel omdat de S1- en S2-tekeningen in schemas.js ze
+ * gebruiken. Kleuren komen uit de NLDD-tokens, dus licht en donker lopen mee.
+ */
+
+/* Callout — teaching-kader met HTML-inhoud (rijker dan nldd-banner) */
+.rr-callout {
+  display: flex;
+  gap: var(--primitives-space-12);
+  margin: var(--primitives-space-20) 0;
+  padding: var(--primitives-space-16);
+  border-radius: var(--semantics-surfaces-corner-radius);
+  border: 1px solid var(--semantics-surfaces-tinted-border-color);
+  background: var(--semantics-surfaces-tinted-background-color);
+  border-left-width: 3px;
+}
+
+.rr-callout__icon { flex: none; margin-top: 0.1rem; }
+.rr-callout__title { font: var(--primitives-font-body-md-bold); margin: 0 0 var(--primitives-space-6); }
+.rr-callout .rr-prose { line-height: 1.55; }
+.rr-callout .rr-prose p:last-child { margin-bottom: 0; }
+
+.rr-callout--accent  { border-left-color: var(--semantics-content-accent-color); }
+.rr-callout--warning { border-left-color: var(--semantics-content-warning-color); }
+.rr-callout--success { border-left-color: var(--semantics-content-success-color); }
+.rr-callout--critical { border-left-color: var(--semantics-content-critical-color); }
+.rr-callout--neutral { border-left-color: var(--semantics-dividers-color); }
+.rr-callout--accent .rr-callout__icon  { color: var(--semantics-content-accent-color); }
+.rr-callout--warning .rr-callout__icon { color: var(--semantics-content-warning-color); }
+.rr-callout--success .rr-callout__icon { color: var(--semantics-content-success-color); }
+
+/* Aside — zijkader voor redactionele noten */
+.rr-aside {
+  margin: var(--primitives-space-20) 0;
+  padding: var(--primitives-space-16);
+  border-radius: var(--semantics-surfaces-corner-radius);
+  background: var(--semantics-surfaces-tinted-background-color);
+  border: 1px dashed var(--semantics-surfaces-tinted-border-color);
+}
+
+.rr-aside__title {
+  display: flex;
+  align-items: center;
+  gap: var(--primitives-space-8);
+  font: var(--primitives-font-body-sm-bold);
+  color: var(--semantics-content-secondary-color);
+  margin: 0 0 var(--primitives-space-8);
+}
+
+.rr-aside .rr-prose { font: var(--primitives-font-body-sm-regular); line-height: 1.55; }
+.rr-aside .rr-prose p:last-child { margin-bottom: 0; }
+
+/* ── Het basiswerk: vormentaal, vragen, bronnen ──────────────────────
+   Vier schemavormen en niet meer. De vorm draagt betekenis: aan het uiterlijk
+   moet de lezer zien wat voor soort informatie hij krijgt. Alles is bewust
+   sober — een schema dat je niet op een whiteboard kunt natekenen is fout. */
+
+.rr-schema {
+  margin: var(--primitives-space-32) 0;
+  padding: var(--primitives-space-20);
+  border: 1px solid var(--semantics-surfaces-tinted-border-color);
+  border-radius: var(--semantics-surfaces-corner-radius);
+  background: var(--semantics-surfaces-base-background-color);
+}
+
+.rr-schema__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--primitives-space-8);
+  margin-bottom: var(--primitives-space-16);
+  padding-bottom: var(--primitives-space-8);
+  border-bottom: 1px solid var(--semantics-dividers-color);
+}
+
+.rr-schema__code {
+  font-family: var(--primitives-font-family-monospace);
+  font-weight: 700;
+  color: var(--semantics-content-accent-color);
+}
+
+.rr-schema__title { font: var(--primitives-font-body-md-bold); flex: 1; }
+
+.rr-schema__vorm {
+  font: var(--primitives-font-body-xxs-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--semantics-content-secondary-color);
+}
+
+.rr-schema__body--scroll { overflow-x: auto; }
+
+.rr-schema__onthoud,
+.rr-schema__stop {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--primitives-space-8);
+  margin: var(--primitives-space-16) 0 0;
+  font: var(--primitives-font-body-sm-regular);
+}
+
+.rr-schema__onthoud { color: var(--semantics-content-secondary-color); }
+
+.rr-schema__stop {
+  padding-top: var(--primitives-space-12);
+  border-top: 1px dashed var(--semantics-content-warning-color);
+  color: var(--semantics-content-warning-color);
+}
+
+.rr-schema__caption {
+  margin: var(--primitives-space-8) 0 0;
+  font: var(--primitives-font-body-xs-regular);
+  color: var(--semantics-content-secondary-color);
+}
+
+/* Kaart — verhoudingen, geen verloop */
+.rr-kaart {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--primitives-space-12);
+}
+
+.rr-kaart__kolom {
+  padding: var(--primitives-space-12);
+  border: 1px solid var(--semantics-surfaces-tinted-border-color);
+  border-radius: var(--primitives-corner-radius-md);
+  background: var(--semantics-surfaces-tinted-background-color);
+}
+
+.rr-kaart__kop { font: var(--primitives-font-body-sm-bold); margin: 0; }
+
+.rr-kaart__vraag {
+  font: var(--primitives-font-body-sm-regular);
+  font-style: italic;
+  color: var(--semantics-content-accent-color);
+  margin: var(--primitives-space-4) 0 var(--primitives-space-8);
+}
+
+.rr-kaart__kolom ul { margin: 0; padding-left: var(--primitives-space-16); }
+.rr-kaart__kolom li { font: var(--primitives-font-body-sm-regular); margin-bottom: var(--primitives-space-4); }
+
+.rr-kaart-eigen svg { max-width: 100%; height: auto; }
+
+.rr-nogtetekenen {
+  padding: var(--primitives-space-24);
+  border: 1px dashed var(--semantics-content-secondary-color);
+  border-radius: var(--primitives-corner-radius-md);
+  text-align: center;
+}
+
+.rr-nogtetekenen p {
+  margin: 0;
+  font: var(--primitives-font-body-sm-regular);
+  color: var(--semantics-content-secondary-color);
+}
+
+.rr-page__meta .rr-status {
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--primitives-corner-radius-full);
+  border: 1px solid var(--semantics-content-warning-color);
+  color: var(--semantics-content-warning-color);
+}
+
+/* Ladder — hoog naar laag, met wat er uitdrukkelijk náást staat.
+   Dat "ernaast" is geen opmaakkeuze: het is de hele les van S4. */
+.rr-ladderwrap {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--primitives-space-16);
+  align-items: start;
+}
+
+.rr-ladder { list-style: none; margin: 0; padding: 0; }
+
+.rr-ladder li {
+  position: relative;
+  padding: var(--primitives-space-8) var(--primitives-space-12);
+  border: 1px solid var(--semantics-surfaces-tinted-border-color);
+  border-radius: var(--primitives-corner-radius-md);
+  background: var(--semantics-surfaces-tinted-background-color);
+}
+
+.rr-ladder li + li { margin-top: var(--primitives-space-6); }
+
+/* Pijl omlaag tussen de treden: de rangorde is de inhoud. */
+.rr-ladder li + li::before {
+  content: '';
+  position: absolute;
+  top: calc(-1 * var(--primitives-space-6) - 1px);
+  left: 1.25rem;
+  width: 1px;
+  height: var(--primitives-space-6);
+  background: var(--semantics-content-secondary-color);
+}
+
+.rr-ladder__label { font: var(--primitives-font-body-sm-bold); margin: 0 0 var(--primitives-space-4); }
+
+/* Duo — twee ordes op dezelfde hoogte. De verticale streep ertussen zegt
+   "naast elkaar", niet "boven elkaar": dat onderscheid is de hele correctie. */
+/* Eén trede die twee ordes bevat — dus wél de gewone achtergrond (het is één
+   niveau), maar een gestippelde rand zodat je ziet dat het geen normale trede is. */
+.rr-ladder li.is-duo { border-style: dashed; }
+
+/* In een halve tredebreedte werkt de tweekolomsvorm niet: label boven waarde. */
+.rr-schema .rr-ladder__duo .rr-ladder__velden {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+
+.rr-ladder__duo .rr-ladder__velden dt {
+  font-size: 0.85em;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.rr-ladder__duo .rr-ladder__velden dd + dt { margin-top: var(--primitives-space-6); }
+
+.rr-ladder__duo {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--primitives-space-12);
+}
+
+.rr-ladder__duo > div + div {
+  padding-left: var(--primitives-space-12);
+  border-left: 1px solid var(--semantics-content-secondary-color);
+}
+
+.rr-ladder__verhouding {
+  margin: var(--primitives-space-8) 0 0;
+  padding-top: var(--primitives-space-8);
+  border-top: 1px dotted var(--semantics-surfaces-tinted-border-color);
+  font: var(--primitives-font-body-xs-regular);
+  color: var(--semantics-content-secondary-color);
+}
+
+@media (max-width: 48rem) {
+  .rr-ladder__duo { grid-template-columns: minmax(0, 1fr); }
+  .rr-ladder__duo > div + div { padding-left: 0; border-left: 0; padding-top: var(--primitives-space-8); border-top: 1px solid var(--semantics-content-secondary-color); }
+}
+
+.rr-ladder__velden {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0 var(--primitives-space-8);
+  margin: 0;
+  font: var(--primitives-font-body-xs-regular);
+}
+
+.rr-ladder__velden dt { color: var(--semantics-content-secondary-color); }
+.rr-ladder__velden dd { margin: 0; }
+
+.rr-ernaast {
+  padding: var(--primitives-space-12);
+  border: 1px dashed var(--semantics-content-accent-color);
+  border-radius: var(--primitives-corner-radius-md);
+}
+
+.rr-ernaast__kop { font: var(--primitives-font-body-sm-bold); margin: 0; }
+.rr-ernaast__vraag {
+  font: var(--primitives-font-body-xs-regular);
+  font-style: italic;
+  color: var(--semantics-content-accent-color);
+  margin: var(--primitives-space-4) 0 var(--primitives-space-8);
+}
+.rr-ernaast ul { margin: 0; padding-left: var(--primitives-space-16); }
+.rr-ernaast li { font: var(--primitives-font-body-xs-regular); margin-bottom: var(--primitives-space-4); }
+
+@media (max-width: 48rem) {
+  .rr-ladderwrap { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Stroom — verloop in de tijd */
+.rr-stroom {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--primitives-space-8);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  counter-reset: stap;
+}
+
+.rr-stroom li {
+  position: relative;
+  flex: 1 1 8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: var(--primitives-space-8) var(--primitives-space-12);
+  border: 1px solid var(--semantics-surfaces-tinted-border-color);
+  border-radius: var(--primitives-corner-radius-md);
+  background: var(--semantics-surfaces-tinted-background-color);
+}
+
+.rr-stroom li.is-extern { border-color: var(--semantics-content-accent-color); }
+.rr-stroom li.is-markering { border-style: dashed; }
+
+.rr-stroom__label { font: var(--primitives-font-body-sm-bold); }
+.rr-stroom__tijd { font: var(--primitives-font-body-xs-regular); color: var(--semantics-content-secondary-color); }
+
+.rr-stroom__extern {
+  font: var(--primitives-font-body-xxs-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--semantics-content-accent-color);
+}
+
+.rr-stroom--klein li { flex-basis: 6rem; padding: var(--primitives-space-6) var(--primitives-space-8); }
+.rr-stroom--klein .rr-stroom__label { font: var(--primitives-font-body-xs-regular); }
+
+.rr-stroom__variant { margin-top: var(--primitives-space-16); }
+.rr-stroom__variantkop { font: var(--primitives-font-body-xs-bold); color: var(--semantics-content-secondary-color); margin: 0 0 var(--primitives-space-6); }
+
+/* Matrix — twee kruisende onderscheidingen */
+.rr-matrix { border-collapse: collapse; width: 100%; font: var(--primitives-font-body-sm-regular); }
+.rr-matrix th, .rr-matrix td {
+  padding: var(--primitives-space-8);
+  border: 1px solid var(--semantics-dividers-color);
+  text-align: left;
+  vertical-align: top;
+}
+.rr-matrix thead th { font: var(--primitives-font-body-sm-bold); background: var(--semantics-surfaces-tinted-background-color); }
+.rr-matrix tbody th { font: var(--primitives-font-body-sm-bold); background: var(--semantics-surfaces-tinted-background-color); }
+.rr-matrix tr.is-gescheiden th,
+.rr-matrix tr.is-gescheiden td { border-top: 3px solid var(--semantics-content-accent-color); }
+
+.rr-matrix td.is-dood {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--semantics-content-secondary-color) 0 2px,
+    transparent 2px 6px
+  );
+}
+
+/* Spectrum — gradaties, uitdrukkelijk zonder vakjes */
+.rr-spectrum + .rr-spectrum { margin-top: var(--primitives-space-16); }
+.rr-spectrum__label { font: var(--primitives-font-body-sm-bold); margin: 0 0 var(--primitives-space-6); }
+
+.rr-spectrum__balk {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  padding: var(--primitives-space-8) 0 var(--primitives-space-16);
+  background: linear-gradient(
+    to right,
+    var(--semantics-content-accent-color),
+    var(--semantics-content-secondary-color)
+  );
+  background-size: 100% 3px;
+  background-repeat: no-repeat;
+  background-position: bottom;
+}
+
+.rr-spectrum__pool { font: var(--primitives-font-body-sm-regular); }
+.rr-spectrum__pool--rechts { text-align: right; }
+
+.rr-spectrum__punten { margin: var(--primitives-space-12) 0 0; padding-left: var(--primitives-space-20); }
+.rr-spectrum__punten li { font: var(--primitives-font-body-sm-regular); margin-bottom: var(--primitives-space-4); }
+
+/* De openingsvraag die een hoofdstuk kadert */
+.rr-vraag {
+  margin: var(--primitives-space-24) 0;
+  padding: var(--primitives-space-16) var(--primitives-space-20);
+  border-left: 3px solid var(--semantics-content-accent-color);
+  background: var(--semantics-surfaces-tinted-background-color);
+  border-radius: 0 var(--semantics-surfaces-corner-radius) var(--semantics-surfaces-corner-radius) 0;
+  font: var(--primitives-font-body-lg-regular);
+}
+
+.rr-vraag .rr-prose p:last-child { margin-bottom: 0; }
+
+.rr-vraag__kop {
+  font: var(--primitives-font-body-xxs-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--semantics-content-secondary-color);
+  margin: 0 0 var(--primitives-space-8);
+}
+
+
+/* Bronnen — maximaal drie, dat is de doctrine */
+.rr-bronnen {
+  margin: var(--primitives-space-24) 0;
+  padding-top: var(--primitives-space-12);
+  border-top: 1px solid var(--semantics-dividers-color);
+}
+
+.rr-bronnen__kop {
+  font: var(--primitives-font-body-xxs-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--semantics-content-secondary-color);
+  margin: 0 0 var(--primitives-space-6);
+}
+
+.rr-bronnen ul { margin: 0; padding-left: var(--primitives-space-20); }
+.rr-bronnen li { font: var(--primitives-font-body-sm-regular); margin-bottom: var(--primitives-space-4); }
+.rr-bronnen a { color: var(--semantics-links-color); }
+
+/* Leestijd in de hoofdstukkop */
+.rr-page__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--primitives-space-8);
+  font: var(--primitives-font-body-xs-regular);
+  color: var(--semantics-content-secondary-color);
+  margin-top: var(--primitives-space-12);
+}
+
+.rr-page__meta .rr-deel {
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--primitives-corner-radius-full);
+  background: var(--semantics-surfaces-tinted-background-color);
+  border: 1px solid var(--semantics-surfaces-tinted-border-color);
+}
+
+@media (max-width: 60rem) {
+  .rr-shell { grid-template-columns: 1fr; }
+  .rr-nav { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--semantics-dividers-color); }
+  .rr-page { padding: var(--primitives-space-24) var(--primitives-space-16) var(--primitives-space-48); }
+}
+
+/* ── S1: actorenkaart (deel 1.1) ──────────────────────────────────
+   Eigen SVG in plaats van de dozenrij van `vorm: kaart`: bij deze kaart
+   dragen de pijlen de inhoud, en één ervan is doorgekruist. De vormgeving
+   staat hier en niet in de SVG zelf, zodat licht en donker meelopen met de
+   rest van de site. */
+.rr-s1 { display: block; width: 100%; height: auto; }
+
+.rr-s1__doos rect {
+  fill: transparent;
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+.rr-s1__doos text {
+  fill: currentColor;
+  text-anchor: middle;
+  font: var(--primitives-font-body-sm-bold, 600 14px/1.2 system-ui, sans-serif);
+  font-size: 15px;
+}
+
+.rr-s1__pijl path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  marker-end: url(#s1-punt);
+}
+.rr-s1__pijl .rr-s1__toets { stroke-dasharray: 5 4; }
+
+.rr-s1__pijl marker path,
+.rr-s1 marker path { fill: currentColor; stroke: none; }
+
+/* De uitzondering waar het hoofdstuk om draait: wél de pijl tekenen, en hem
+   dan doorkruisen. Weglaten zou de vraag niet oproepen. */
+.rr-s1__verboden path {
+  fill: none;
+  stroke: var(--semantics-content-critical-color, currentColor);
+  stroke-width: 1.5;
+  opacity: 0.75;
+  stroke-dasharray: 6 5;
+}
+.rr-s1__verboden .rr-s1__verbodenpijl { marker-end: url(#s1-punt); }
+.rr-s1__verboden .rr-s1__kruis {
+  stroke-width: 2.5;
+  stroke-dasharray: none;
+  opacity: 1;
+}
+
+.rr-s1__label text {
+  fill: currentColor;
+  text-anchor: middle;
+  font-size: 13px;
+  opacity: 0.75;
+}
+.rr-s1__label .rr-s1__label--verboden {
+  fill: var(--semantics-content-critical-color, currentColor);
+  opacity: 1;
+}
+
+/* ── S2: drie overlappende functies (deel 1.2) ────────────────────
+   Venn met transparante vlakken: de overlappen moeten leesbaar blijven, dus
+   de cirkels krijgen alleen een rand en een heel lichte vulling. */
+.rr-s2 { display: block; width: 100%; height: auto; }
+
+.rr-s2__cirkel circle {
+  fill: currentColor;
+  fill-opacity: 0.05;
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+.rr-s2__naam text {
+  fill: currentColor;
+  text-anchor: middle;
+  font: var(--primitives-font-body-sm-bold, 600 15px/1.2 system-ui, sans-serif);
+  font-size: 16px;
+}
+.rr-s2__overlap text {
+  fill: currentColor;
+  text-anchor: middle;
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+/* Banner "werk in uitvoering" — boven elke pagina, tot de site getoetst is */
+.rr-wip {
+  display: flex;
+  align-items: center;
+  gap: var(--primitives-space-8);
+  margin: 0;
+  padding: var(--primitives-space-8) var(--primitives-space-16);
+  border-bottom: 2px solid var(--semantics-content-warning-color);
+  background: var(--semantics-surfaces-tinted-background-color);
+  font-size: 0.875rem;
+}
+.rr-wip nldd-icon { color: var(--semantics-content-warning-color); flex: none; }
+
+/* Link naar het bronbestand van de pagina */
+.rr-edit {
+  display: flex;
+  gap: var(--primitives-space-8);
+  align-items: center;
+  margin-top: var(--primitives-space-32);
+  font-size: 0.875rem;
+  color: var(--semantics-content-secondary-color, inherit);
+}
+.rr-edit a { display: inline-flex; gap: var(--primitives-space-4); align-items: center; }
+
+.rr-visually-hidden {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+.rr-schema__bron { font: var(--primitives-font-body-sm-regular); margin: var(--primitives-space-32) 0 0; }
+
+/* nldd-rich-text zet dt in kolom 1 en dd in kolom 2. In de schema's bepaalt
+   de ladder zelf de kolommen; anders zakt de label-kolom in de duo-trede
+   (één kolom) weg tot nul breed. */
+.rr-schema dt,
+.rr-schema dd { grid-column: auto; }
+
+/* ── De RegelRecht-laag ────────────────────────────────────────────────
+   Dicht tenzij de schakelaar (#bw-regelrecht, een nldd-toggle-button)
+   `selected` draagt; zelfde patroon als de afhankelijkhedenschakelaar op
+   /roadmap. Elementen houden hun eigen display als de laag open is. */
+html:not(:has(#bw-regelrecht[selected])) .bw-laag { display: none; }
+
+html:has(#bw-regelrecht[selected]) .rr-stroom li.is-rr,
+html:has(#bw-regelrecht[selected]) .rr-matrix tr.is-rr th {
+  box-shadow: inset 0 0 0 2px var(--semantics-content-accent-color);
+}
+
+.bw-rr-nummer {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.4em;
+  height: 1.4em;
+  margin-right: var(--primitives-space-4);
+  border-radius: 999px;
+  background: var(--semantics-content-accent-color);
+  color: var(--semantics-surfaces-background-color, #fff);
+  font: var(--primitives-font-body-xs-bold);
+}
+html:has(#bw-regelrecht[selected]) .rr-stroom .bw-rr-nummer { display: inline-grid; }
+
+.bw-schema-rr {
+  margin-top: var(--primitives-space-16);
+  padding-top: var(--primitives-space-12);
+  border-top: 2px solid var(--semantics-content-accent-color);
+  font: var(--primitives-font-body-sm-regular);
+}
+.bw-schema-rr__kop { font: var(--primitives-font-body-sm-bold); margin: 0 0 var(--primitives-space-6); }
+.bw-schema-rr ol { margin: 0; padding-left: var(--primitives-space-20); }
+.bw-schema-rr li + li { margin-top: var(--primitives-space-6); }
+.rr-stroom .bw-rr-nummer { align-self: flex-start; }
+
+/* De schakelaar blijft in beeld tijdens het lezen: de laag aan- of uitzetten
+   moet kunnen op de plek waar je bent. De houder is nul hoog, zodat de knop
+   rechts op de regel erna valt (het deel-label) en de tekst niet verschuift. */
+.bw-schakelaar {
+  /* De knop zakt 1.6rem, de bovenmarge van de deel-regel, zodat hij daarop
+     uitlijnt; top compenseert dat, zodat hij vastgeplakt op 8px staat. */
+  --bw-zak: 1.6rem;
+  position: sticky;
+  top: calc(var(--primitives-space-8) - var(--bw-zak));
+  z-index: 2;
+  height: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  overflow: visible;
+  pointer-events: none;
+}
+.bw-schakelaar nldd-toggle-button {
+  pointer-events: auto;
+  margin-top: var(--bw-zak);
+  box-shadow: 0 2px 8px color-mix(in oklab, currentColor 14%, transparent);
+  border-radius: var(--semantics-controls-corner-radius, 6px);
+}
+
+/* Ruimte rechts op de deel-regel, zodat de knop daar niets afdekt. */
+.rr-page__meta { padding-right: 11rem; min-height: 2rem; }

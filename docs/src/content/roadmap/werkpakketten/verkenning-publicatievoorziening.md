@@ -9,7 +9,7 @@ categorie: bet
 capability: publiceren
 capaciteit: ''
 toelichting: |-
-  Deze onderzoeksopgave richt zich op het beheer van versies en de temporele consistentie (Temporal Consistency) van wetgeving wanneer deze wordt omgezet in uitvoerbare specificaties. Het centrale uitgangspunt is dat een juridisch besluit altijd moet worden genomen op basis van de regels die op dat specifieke moment van kracht waren.
+  Deze onderzoeksopgave richt zich op het beheer van versies en de temporele consistentie (Temporal Consistency) van wetgeving wanneer deze wordt omgezet in regelwerken. Het centrale uitgangspunt is dat een juridisch besluit altijd moet worden genomen op basis van de regels die op dat specifieke moment van kracht waren.
 
   De belangrijkste punten zijn:
 
@@ -23,7 +23,7 @@ toelichting: |-
 
   - **Het Staatsblad als bron van versies**: Het Staatsblad dient als de bron voor 'release tags'. Een publicatiedatum wordt direct de versienummering (bijv. versie 2020-03-15). Verwijzingen tussen wetten zijn niet vastgepind op één versie, maar worden dynamisch opgelost op basis van de relevante datum van de zaak.
 
-  - **Verifieerbaarheid en het Register**: Om te voorkomen dat twee besluiten met dezelfde specificatie-hash verschillende uitkomsten geven (omdat afhankelijke wetten zijn gewijzigd), moet per uitvoering worden vastgelegd welke specifieke versies zijn gebruikt. Er is een register nodig dat:
+  - **Verifieerbaarheid en het Register**: Om te voorkomen dat twee besluiten met dezelfde versie-hash verschillende uitkomsten geven (omdat afhankelijke wetten zijn gewijzigd), moet per uitvoering worden vastgelegd welke specifieke versies zijn gebruikt. Er is een register nodig dat:
 
   - De inhoud teruggeeft die bij een specifieke digest (hash) hoort.
 
@@ -46,7 +46,7 @@ onderzoeksvragen:
     paper: sec:ownership
   - vraag: Wat moet het versiebeheer mogelijk maken?
     paper: sec:versionedartifact
-  - vraag: Wie beheert het register van gepubliceerde specificaties?
+  - vraag: Wie beheert het register van gepubliceerde regelwerken?
     paper: sec:ownership
   - vraag: >-
       Hoe voorkomen we dat de overheid achteraf 'de geschiedenis herschrijft'

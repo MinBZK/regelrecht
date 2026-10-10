@@ -18,17 +18,16 @@
 
 ## Component Quick Reference
 
-| Component | Node ID | Page | Tag Name | Status |
-|-----------|---------|------|----------|--------|
-| Button | `20:27` | Lists | `rr-button` | Implemented |
-| Checkbox | `236:41408` | Lists | `rr-checkbox` | Implemented |
-| Radio Button | `236:41398` | Lists | `rr-radio` | Implemented |
-| Switch | `236:41353` | Lists | `rr-switch` | Implemented |
-| Toggle Button | `309:3542` | Inputs and Selectors | `rr-toggle-button` | Implemented |
-| Icon Button | `240:1391` | Lists | `rr-icon-button` | Implemented |
-| Menu Bar | `48:2135` | Bars | `rr-menu-bar` | Implemented |
-| Top Navigation Bar | `48:2135` | Bars | - | Implemented |
-| Box | - | - | `rr-box` | Utility (no Figma) |
+| Component | Node ID | Page |
+|-----------|---------|------|
+| Button | `20:27` | Lists |
+| Checkbox | `236:41408` | Lists |
+| Radio Button | `236:41398` | Lists |
+| Switch | `236:41353` | Lists |
+| Toggle Button | `309:3542` | Inputs and Selectors |
+| Icon Button | `240:1391` | Lists |
+| Menu Bar | `48:2135` | Bars |
+| Top Navigation Bar | `48:2135` | Bars |
 
 ---
 
@@ -38,7 +37,6 @@
 
 **Node ID:** `20:27` (component set)
 **Figma Name:** `button`
-**Implementation:** `src/components/button/rr-button.js`
 
 #### Properties
 - `style`: accent-filled, accent-outlined, accent-tinted, neutral-tinted, accent-transparent, danger-tinted
@@ -79,7 +77,6 @@
 
 **Node ID:** `236:41408` (component set)
 **Figma Name:** `checkbox-list-cell`
-**Implementation:** `src/components/checkbox/rr-checkbox.js`
 
 #### Properties
 - `size`: xs, s, m
@@ -100,7 +97,6 @@
 
 **Node ID:** `236:41398` (component set)
 **Figma Name:** `radio-button-list-cell`
-**Implementation:** `src/components/radio/rr-radio.js`
 
 #### Properties
 - `size`: xs, s, m
@@ -119,7 +115,6 @@
 
 **Node ID:** `236:41353` (component set)
 **Figma Name:** `switch-list-cell`
-**Implementation:** `src/components/switch/rr-switch.js`
 
 #### Properties
 - `size`: xs, s, m
@@ -138,7 +133,6 @@
 
 **Node ID:** `309:3542` (component set)
 **Figma Name:** `toggle-button`
-**Implementation:** `src/components/toggle-button/rr-toggle-button.js`
 
 #### Properties
 - `size`: xs, s, m
@@ -156,7 +150,6 @@
 
 **Node ID:** `240:1391` (component set)
 **Figma Name:** `icon-button-list-cell`
-**Implementation:** `src/components/icon-button/rr-icon-button.js`
 
 #### Properties
 - `style`: accent-filled, accent-outlined, accent-tinted, neutral-tinted, accent-transparent
@@ -173,7 +166,6 @@ Same as Button, plus:
 
 **Node ID:** `48:2135` (component set)
 **Figma Name:** `top-navigation-bar`
-**Implementation:** `src/components/menu-bar/rr-menu-bar.js`
 
 Note: Menu Bar is part of the Top Navigation Bar design in Figma.
 
@@ -181,9 +173,6 @@ Note: Menu Bar is part of the Top Navigation Bar design in Figma.
 - `size`: s, m, l
 - `selected`: boolean
 - `disabled`: boolean
-
-#### Additional Components
-- `rr-menu-item` (`src/components/menu-bar/rr-menu-item.js`)
 
 #### Tokens
 - `--components-menu-bar-menu-item-color`
@@ -224,7 +213,6 @@ opacity: calc(var(--primitives-opacity-disabled, 38) / 100)
 
 | Property | Value |
 |----------|-------|
-| File | `tokens/rr-tokens.json` |
 | Plugin | variables2json v1.0.4 |
 | Exported | 2024-12-20 |
 

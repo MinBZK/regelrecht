@@ -47,8 +47,8 @@ flowchart LR
 | `enrich.rs` | Enrichment execution: call the LLM to add `machine_readable` sections |
 | `enrich_v2/` | The model-free parts of enrichment: checks, capability plan, reference graph, closing pass |
 | `document_convert.rs` | Uploaded document (docx, PDF and others) to a markdown werkdocument |
-| `law_convert.rs` | Uploaded PDF or Word document to a base-law YAML, followed by a task-flow enrich |
-| `law_migrate.rs` | Lift a law file to schema v0.7.1, the current release (structurally v0.7.0) |
+| `law_convert.rs` | Uploaded PDF or Word document to a base rulework, followed by a task-flow enrich |
+| `law_migrate.rs` | Lift a version of a rulework to schema v0.7.1, the current release (structurally v0.7.0) |
 | `markings.rs`, `untranslatables.rs` | Persist the markings and untranslatables the enrichment agent reports |
 | `tasks.rs` | Personal review tasks that tie a finished job to the account that requested it |
 | `feature_flags.rs` | Read and write the shared `feature_flags` table |
@@ -67,9 +67,9 @@ flowchart LR
 | `regelrecht-harvest-worker` | `src/bin/harvest_worker.rs` | Claims `harvest` and `traject_harvest` jobs |
 | `regelrecht-enrich-worker` | `src/bin/enrich_worker.rs` | Claims `enrich`, `document_convert` and `law_convert` jobs, which share the LLM CLI environment and the hourly budget |
 | `regelrecht-pipeline-api` | `src/bin/pipeline_api.rs` | Internal HTTP service, see [Pipeline API](#pipeline-api) |
-| `law-check` | `src/bin/law_check.rs` | Runs the deterministic enrichment checks over law files, without database, git or model. Exits 1 on schema errors; `--strict` fails on every finding; `--corpus` adds the cross-law binding check |
-| `law-source` | `src/bin/law_source.rs` | Compares a law file's text with the official BWB toestand. Exits 1 when an article drifts, is missing or is fabricated. `--rewrite` replaces the text with the official one and keeps `machine_readable` per article |
-| `law-migrate` | `src/bin/law_migrate.rs` | Lifts law files to schema v0.7.1 (the v0.7.0 shape; v0.7.1 changed only descriptions) and validates the result. A required field it cannot fill is reported, never guessed; it writes only with `--write` |
+| `law-check` | `src/bin/law_check.rs` | Runs the deterministic enrichment checks over ruleworks, without database, git or model. Exits 1 on schema errors; `--strict` fails on every finding; `--corpus` adds the cross-law binding check |
+| `law-source` | `src/bin/law_source.rs` | Compares a rulework's text with the official BWB toestand. Exits 1 when an article drifts, is missing or is fabricated. `--rewrite` replaces the text with the official one and keeps `machine_readable` per article |
+| `law-migrate` | `src/bin/law_migrate.rs` | Lifts versions of ruleworks to schema v0.7.1 (the v0.7.0 shape; v0.7.1 changed only descriptions) and validates the result. A required field it cannot fill is reported, never guessed; it writes only with `--write` |
 | `enrich-once` | `src/bin/enrich_once.rs` | Runs the real enrichment loop against a directory on disk, without database or git, so a worker change can be tried on one law locally |
 
 Run the four tools from `packages/` with
@@ -185,8 +185,27 @@ windows of at most `ENRICH_MAX_ARTICLES_PER_RUN` articles (default 15) and owns
 the cursor itself: it lives in `.enrichment.yaml` on the `enrich/{provider}`
 branch, each chunk pushes its own result, and the next chunk is queued in the
 same transaction that completes the current one. A law of N articles is done in
-at most `ceil(N / 15)` successful runs, whatever the model does. Task-flow
-enrichments (`deliver: task`) always take the whole law.
+at most `ceil(N / 15)` successful runs, whatever the model does.
+
+Task-flow enrichments (`deliver: task`) walk the same windows but push nothing.
+Each window is its own job with its own review tasks. The next job takes the
+current job's result as its input blobs: the proposal, so the next window
+builds on what this one enriched, and `.enrichment.yaml`, which carries the
+cursor. A window's review tasks cover the articles that window changed. The
+last window is wider: its closing reconcile pass and binding check run over the
+whole law, so it can also carry tasks for articles from earlier windows.
+
+A new law (`new_law`, from an upload or a harvest into a traject) is created as
+a whole, so its windows produce no review task along the way. Only the last
+window does, with the complete law as one proposal. If a window fails for good,
+the requester gets a failure task and the earlier windows' work is lost; the
+law has to be uploaded or harvested again.
+
+When an existing law takes more than one window, a window whose proposal cannot
+be compared article by article fails and is retried, the last window included.
+It does not fall back to one task for the whole law, because that proposal also
+contains the earlier windows' articles, and approving it would silently restore
+changes a reviewer had rejected.
 
 Within one window, `ENRICH_SESSION_REUSE` decides how the translation pass and
 the feedback rounds of the gates share an agent session: all of them (`window`,
@@ -269,6 +288,14 @@ translation pass, a feedback round per gate, the closing pass and the final
 schema gate. The worker lowers it when the job budget cannot hold that many,
 so raising `LLM_TIMEOUT_SECS` without raising `WORKER_JOB_TIMEOUT_SECS` buys
 nothing.
+
+The shares are not equal. The translation pass writes every
+`machine_readable` in its window and is capped at three shares of the job
+budget, less a 30 s reserve; each feedback round the run may make is capped at
+one, counted from `ENRICH_FEEDBACK_ROUNDS`. A lower `LLM_TIMEOUT_SECS` stays as
+it is. With `WORKER_JOB_TIMEOUT_SECS=3900` and one round per gate the caps are
+1290 s for the translation and 430 s per round, where an even split gave each
+call about 550 s. More rounds per gate make every share smaller.
 
 ## Database Schema
 

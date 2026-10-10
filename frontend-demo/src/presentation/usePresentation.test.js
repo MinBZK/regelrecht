@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { usePresentation } from './usePresentation.js';
+import { deckFor, usePresentation } from './usePresentation.js';
 import { adoptLocale } from '../i18n/index.js';
 
 // De presentatie hangt één keydown-luisteraar aan het venster en houdt die
@@ -14,12 +14,12 @@ import { adoptLocale } from '../i18n/index.js';
 /**
  * Een router-dubbel met alleen wat de presentatie ervan leest en gebruikt.
  * De tabbladen dragen een naam en sommige een optionele parameter, net als in
- * router.js: `/wetten/:lawId?` houdt dezelfde naam als de presentator een wet
+ * router.js: `/regelwerken/:lawId?` houdt dezelfde naam als de presentator een wet
  * opent.
  */
 const ROUTES = [
   { name: 'home', path: '/' },
-  { name: 'wetten', path: '/wetten' },
+  { name: 'wetten', path: '/regelwerken' },
   { name: 'simulatie', path: '/simulatie' },
   { name: 'zaaksysteem', path: '/zaaksysteem' },
 ];
@@ -39,7 +39,7 @@ function nameFor(path) {
  * heeft (`wetten` en `wetten:en`) en `meta.page` is wat die twee delen.
  */
 /** De Engelse slugs van de paden die deze tests aanraken. */
-const EN_PATHS = { wetten: '/laws', simulatie: '/simulation', zaaksysteem: '/cases' };
+const EN_PATHS = { wetten: '/ruleworks', simulatie: '/simulation', zaaksysteem: '/cases' };
 
 function routeFor(path) {
   // Een Engels pad hoort bij dezelfde pagina als zijn Nederlandse tegenhanger:
@@ -83,7 +83,7 @@ function fakeRouter(path = '/') {
 
 const SLIDES = [
   { kind: 'title', title: 'Opening' },
-  { kind: 'demo', title: 'De wetten', route: '/wetten' },
+  { kind: 'demo', title: 'De wetten', route: '/regelwerken' },
   { kind: 'closing', title: 'Slot' },
 ];
 
@@ -134,17 +134,26 @@ describe('usePresentation in het Engels', () => {
   });
 
   it('opent het Engelse tabblad voor een dia met een Nederlands pad', async () => {
-    // `route: /wetten` staat zo in demo-config.yaml, want dat bestand gaat over
+    // `route: /regelwerken` staat zo in demo-config.yaml, want dat bestand gaat over
     // dia's en hoort de routetabel van elke taal niet te kennen. Wie het dek in
-    // het Engels draait hoort wel op /en/laws te landen.
+    // het Engels draait hoort wel op /en/ruleworks te landen.
     await p.start(1);
-    expect(router.currentRoute.value.path).toBe('/en/laws');
+    expect(router.currentRoute.value.path).toBe('/en/ruleworks');
   });
 
   it('neemt de wet uit het dia-pad mee naar het Engelse tabblad', async () => {
+    p.init({ slides: [SLIDES[0], { kind: 'demo', title: 'De wet', route: '/regelwerken/zorgtoeslagwet' }] });
+    await p.start(1);
+    expect(router.currentRoute.value.path).toBe('/en/ruleworks/zorgtoeslagwet');
+  });
+
+  it('houdt de wet vast voor een dia die nog het oude pad draagt', async () => {
+    // Het tabblad stond op `/wetten`. Een dia die dat pad nog heeft moet op
+    // dezelfde wet uitkomen: tegen het nieuwe pad afgemeten valt de rest weg,
+    // en opent het tabblad de wet die er toevallig nog open stond.
     p.init({ slides: [SLIDES[0], { kind: 'demo', title: 'De wet', route: '/wetten/zorgtoeslagwet' }] });
     await p.start(1);
-    expect(router.currentRoute.value.path).toBe('/en/laws/zorgtoeslagwet');
+    expect(router.currentRoute.value.path).toBe('/en/ruleworks/zorgtoeslagwet');
   });
 
   it('houdt de toetsen vast op het Engelse tabblad dat de dia opende', async () => {
@@ -186,16 +195,16 @@ describe('usePresentation toetsafvang', () => {
     // Zaalmodus, dia met een route: het dek staat niet in beeld, maar het
     // scherm is nog van deze dia.
     expect(p.visible.value).toBe(false);
-    expect(router.currentRoute.value.path).toBe('/wetten');
+    expect(router.currentRoute.value.path).toBe('/regelwerken');
     expect(press('ArrowRight')).toBe(true);
     expect(p.index.value).toBe(2);
   });
 
   it('landt op de wet uit het dia-pad, ook als er een andere open stond', async () => {
-    router.goTo('/wetten/zvw');
-    p.init({ slides: [SLIDES[0], { kind: 'demo', title: 'De wet', route: '/wetten/zorgtoeslagwet' }] });
+    router.goTo('/regelwerken/zvw');
+    p.init({ slides: [SLIDES[0], { kind: 'demo', title: 'De wet', route: '/regelwerken/zorgtoeslagwet' }] });
     await p.start(1);
-    expect(router.currentRoute.value.path).toBe('/wetten/zorgtoeslagwet');
+    expect(router.currentRoute.value.path).toBe('/regelwerken/zorgtoeslagwet');
   });
 
   it('laat de toetsen los zodra de presentator zelf een ander tabblad opent', async () => {
@@ -214,7 +223,7 @@ describe('usePresentation toetsafvang', () => {
     router.goTo('/simulatie');
     expect(press(' ')).toBe(false);
 
-    router.goTo('/wetten');
+    router.goTo('/regelwerken');
     expect(press(' ')).toBe(true);
     expect(p.index.value).toBe(2);
   });
@@ -222,11 +231,11 @@ describe('usePresentation toetsafvang', () => {
   it('blijft bladeren als het tabblad zichzelf verdiept', async () => {
     await p.start(1);
     // WettenView opent bij binnenkomst meteen de standaardwet van het profiel
-    // en doet `router.replace('/wetten/<lawId>')` (een watch met
+    // en doet `router.replace('/regelwerken/<lawId>')` (een watch met
     // `immediate: true`), zonder dat de presentator iets aanraakt. Hetzelfde
     // geldt voor ScenariosView. Vergelijken op pad zou het dek dus doof maken
     // op de dia die zojuist zelf dit tabblad opende.
-    router.goTo('/wetten/zorgtoeslagwet');
+    router.goTo('/regelwerken/zorgtoeslagwet');
 
     expect(p.isOnStage()).toBe(true);
     expect(press('ArrowRight')).toBe(true);
@@ -316,5 +325,145 @@ describe('usePresentation toetsafvang', () => {
     expect(p.isOnStage()).toBe(true);
     expect(press(' ')).toBe(true);
     expect(p.index.value).toBe(2);
+  });
+});
+
+describe('usePresentation en het profiel', () => {
+  // Een dia zonder wet in zijn pad (`route: /regelwerken`) opent de wet van wie er
+  // gekozen is: de presentator die Claudia kiest en dan start, hoort bij
+  // precario te landen en niet bij de zorgtoeslag van Merijn.
+  const PROFILES = {
+    merijn: { default_law: { law_path: 'zorgtoeslagwet', service: 'TOESLAGEN' }, default_feature: 'zorgtoeslagwet/scenarios/zt.feature' },
+    claudia: { default_law: { law_path: 'verordening_precariobelasting/gemeenten', service: 'GEMEENTE_ROTTERDAM' }, default_feature: 'verordening_precariobelasting/gemeenten/scenarios/precario.feature' },
+  };
+  const IDS = { zorgtoeslagwet: 'zorgtoeslagwet', 'verordening_precariobelasting/gemeenten': 'precariobelasting_rotterdam' };
+
+  function fakeDemo(key) {
+    const profileKey = { value: key };
+    return {
+      profileKey,
+      get profile() { return { value: PROFILES[profileKey.value] }; },
+      corpus: { value: { lawByPath: (path) => (IDS[path] ? { id: IDS[path] } : null) } },
+      setProfile(k) { profileKey.value = k; },
+    };
+  }
+
+  let p;
+  let router;
+  beforeEach(() => {
+    p = usePresentation();
+    router = fakeRouter();
+    p.setMode('zaal');
+  });
+  afterEach(() => {
+    p.stop();
+    // `init` schrijft alleen wat je meegeeft; een demo zonder profiel laat de
+    // volgende test dus geen standaardwet erven.
+    p.init({ demo: { profileKey: { value: null }, profile: { value: null }, corpus: { value: null }, setProfile() {} } });
+  });
+
+  it('opent de standaardwet van het gekozen profiel', async () => {
+    p.init({ router, demo: fakeDemo('claudia'), slides: SLIDES });
+    await p.start(1);
+    expect(router.currentRoute.value.path).toBe('/regelwerken/precariobelasting_rotterdam');
+  });
+
+  it('opent na een profielwissel op de dia de wet van het nieuwe profiel', async () => {
+    p.init({ router, demo: fakeDemo('claudia'), slides: [SLIDES[0], { kind: 'demo', route: '/regelwerken', profile: 'merijn' }] });
+    await p.start(1);
+    expect(router.currentRoute.value.path).toBe('/regelwerken/zorgtoeslagwet');
+  });
+
+  it('laat een wet in het dia-pad voorgaan', async () => {
+    p.init({ router, demo: fakeDemo('claudia'), slides: [SLIDES[0], { kind: 'demo', route: '/regelwerken/zvw' }] });
+    await p.start(1);
+    expect(router.currentRoute.value.path).toBe('/regelwerken/zvw');
+  });
+});
+
+describe('een dek per persona', () => {
+  // Dia's met `decks` horen bij het verhaal van die persona; de rest delen ze.
+  // Het dek ligt vast bij het starten: de dia die in Merijns dek naar Claudia
+  // wisselt, mag zijn dek niet halverwege omgooien.
+  const DECK = [
+    { kind: 'title', title: 'Opening' },
+    { kind: 'demo', title: 'Merijn', route: '/simulatie', profile: 'merijn', decks: ['merijn'] },
+    { kind: 'demo', title: 'Claudia', route: '/zaaksysteem', profile: 'claudia' },
+    { kind: 'demo', title: 'Terras', route: '/simulatie', decks: ['claudia'] },
+    { kind: 'closing', title: 'Slot' },
+  ];
+  const demoAs = (key) => ({
+    profileKey: { value: key },
+    profile: { value: null },
+    corpus: { value: null },
+    setProfile(k) { this.profileKey.value = k; },
+  });
+
+  let p;
+  beforeEach(() => {
+    p = usePresentation();
+    p.setMode('zaal');
+  });
+  afterEach(() => {
+    p.stop();
+    p.init({ demo: demoAs(null) });
+  });
+
+  it('kiest de gedeelde dia\'s plus die van de persona', () => {
+    expect(deckFor(DECK, 'claudia').map((s) => s.title)).toEqual(['Opening', 'Claudia', 'Terras', 'Slot']);
+    expect(deckFor(DECK, 'merijn').map((s) => s.title)).toEqual(['Opening', 'Merijn', 'Claudia', 'Slot']);
+  });
+
+  it('start met Claudia zonder naar Merijn te wisselen', async () => {
+    const demo = demoAs('claudia');
+    p.init({ router: fakeRouter(), demo, slides: DECK });
+    await p.start(0);
+    for (let i = 0; i < 3; i += 1) await p.next();
+    expect(p.current.value.title).toBe('Slot');
+    expect(demo.profileKey.value).toBe('claudia');
+  });
+
+  it('houdt Merijns dek vast als een dia naar Claudia wisselt', async () => {
+    const demo = demoAs('merijn');
+    p.init({ router: fakeRouter(), demo, slides: DECK });
+    await p.start(0);
+    await p.next();
+    await p.next();
+    expect(demo.profileKey.value).toBe('claudia');
+    await p.next();
+    expect(p.current.value.title).toBe('Slot');
+  });
+});
+
+describe('een lopend dek en nieuwe dia\'s', () => {
+  it('houdt het dek van de start vast, maar neemt vertaalde dia\'s over', async () => {
+    const p = usePresentation();
+    p.setMode('zaal');
+    const demo = { profileKey: { value: 'claudia' }, profile: { value: null }, corpus: { value: null }, setProfile(k) { this.profileKey.value = k; } };
+    const deck = (title) => [{ kind: 'title', title }, { kind: 'demo', title: 'M', route: '/simulatie', decks: ['merijn'] }, { kind: 'closing', title: 'Slot' }];
+    p.init({ router: fakeRouter(), demo, slides: deck('Opening') });
+    await p.start(0);
+    demo.profileKey.value = 'merijn';
+    p.init({ slides: deck('Opening (en)') });
+    expect(p.slides.value.map((s) => s.title)).toEqual(['Opening (en)', 'Slot']);
+    p.stop();
+    p.init({ demo: { profileKey: { value: null }, profile: { value: null }, corpus: { value: null }, setProfile() {} } });
+  });
+});
+
+describe('terugbladeren in een dek', () => {
+  it('geeft dia\'s vóór de eerste persona-dia de persona van het dek terug', async () => {
+    const p = usePresentation();
+    p.setMode('zaal');
+    const demo = { profileKey: { value: 'merijn' }, profile: { value: null }, corpus: { value: null }, setProfile(k) { this.profileKey.value = k; } };
+    const slides = [{ kind: 'title', title: 'Opening' }, { kind: 'demo', title: 'Wet', route: '/regelwerken' }, { kind: 'demo', title: 'Claudia', route: '/simulatie', profile: 'claudia' }];
+    p.init({ router: fakeRouter(), demo, slides });
+    await p.start(0);
+    await p.goTo(2);
+    expect(demo.profileKey.value).toBe('claudia');
+    await p.goTo(1);
+    expect(demo.profileKey.value).toBe('merijn');
+    p.stop();
+    p.init({ demo: { profileKey: { value: null }, profile: { value: null }, corpus: { value: null }, setProfile() {} } });
   });
 });

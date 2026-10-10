@@ -55,7 +55,7 @@
       <nldd-button
         v-if="gekozenStand.wijzigingen?.length"
         size="sm"
-        variant="secondary"
+        appearance="secondary"
         start-icon="save"
         :text="`Neem deze stand over in ${werkversieLabel}`"
         @click="neemStandOver(gekozenStand)"
@@ -84,8 +84,8 @@
            de feed stond hij los van waar je kijkt. -->
       <div v-if="streaming || afronding" class="as-status">
         <span class="as-status-wat">
-          <nldd-icon v-if="openVraag" name="help" size="16"></nldd-icon>
-          <nldd-icon v-else-if="afronding" name="checked" size="16"></nldd-icon>
+          <nldd-icon v-if="openVraag" icon="help" size="16"></nldd-icon>
+          <nldd-icon v-else-if="afronding" icon="checked" size="16"></nldd-icon>
           <nldd-activity-indicator v-else size="16" timing="instant"></nldd-activity-indicator>
           <span>{{ openVraag ? 'Wacht op jouw keuze.' : statusWat }}</span>
         </span>
@@ -111,7 +111,7 @@
             ></nldd-checkbox-field>
             <nldd-button
               size="sm"
-              variant="primary"
+              appearance="primary"
               text="Doorgeven"
               :disabled="!aangevinkt.length ? true : undefined"
               @click="beantwoord(aangevinkt)"
@@ -122,7 +122,7 @@
               v-for="(o, i) in openVraag.opties"
               :key="i"
               size="sm"
-              :variant="i === 0 ? 'primary' : 'secondary'"
+              :appearance="i === 0 ? 'primary' : 'secondary'"
               :text="o.gevolg ? `${o.label} — ${o.gevolg}` : o.label"
               @click="beantwoord([o.label])"
             ></nldd-button>
@@ -138,7 +138,7 @@
       v-if="heeftWijziging"
       :text="`Overnemen in ${werkversieLabel}`"
       start-icon="save"
-      variant="secondary"
+      appearance="secondary"
       @click="takeOverlays"
     ></nldd-button>
     <p v-if="heeftWijziging" class="as-hint">
@@ -171,7 +171,7 @@
       <summary @click.prevent="voorbeeldenOpen = !voorbeeldenOpen">
         Voorbeelden ({{ voorbeelden.length }})
       </summary>
-      <nldd-list variant="simple">
+      <nldd-list appearance="simple">
         <nldd-list-item
           v-for="(v, i) in voorbeelden"
           :key="i"
@@ -188,11 +188,11 @@
       <nldd-button
         text="Verstuur"
         start-icon="send"
-        variant="primary"
+        appearance="primary"
         :disabled="!beschikbaar || !prompt.trim() || (loopt && !!openVraag)"
         @click="verstuur"
       ></nldd-button>
-      <nldd-button v-if="loopt" text="Stop" start-icon="remove" variant="secondary" @click="stop"></nldd-button>
+      <nldd-button v-if="loopt" text="Stop" start-icon="remove" appearance="secondary" @click="stop"></nldd-button>
     </div>
   </div>
 </template>
