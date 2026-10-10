@@ -1,0 +1,24 @@
+---
+# De uitvoering van het voorschot, in drie feiten.
+# - betaalopdracht_gegeven: Toeslagen geeft de bank opdracht een termijn te
+#   betalen. Wanneer en hoeveel, zegt de wet door haar uit te voeren: art. 22
+#   Awir en het (fictieve) uitvoeringsbeleid van Toeslagen over de
+#   uitbetaling (art. 1). De cel voert het beleid per maand uit en legt
+#   alleen een gram vast als er die maand iets te betalen is. Het voorschot,
+#   de rekening uit de aanvraag en wat er achterstallig is, leest de cel uit
+#   haar eigen kroniek met het beleid van Toeslagen daarover
+#   (fictief_beleid_kroniek_toeslagen), met de aanvraag als `root`.
+# - voorschottermijn_betaald en betaling_mislukt: het antwoord van de bank,
+#   bij ontvangst vastgelegd (art. 2 van hetzelfde beleid). Pas een betaalde
+#   termijn telt als uitbetaald (Awir 24 lid 2).
+$id: zorgtoeslag_betalingen
+recording_actor: belastingdienst_toeslagen
+chronicle: toeslagen
+events:
+  - name: betaalopdracht_gegeven
+    establishes: fictief_beleid_termijnbedrag_voorschot#1
+    reads: [{regulation: fictief_beleid_kroniek_toeslagen}]
+  - name: voorschottermijn_betaald
+    establishes: fictief_beleid_termijnbedrag_voorschot#2
+  - name: betaling_mislukt
+    establishes: fictief_beleid_termijnbedrag_voorschot#2

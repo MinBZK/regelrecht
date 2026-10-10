@@ -29,6 +29,7 @@ laws: {}
 names:
   aantal_onbestelbaar: Number undeliverable
   aantal_studerend_gezin: Number of students in household
+  aantal_termijnen: Number of instalments
   aanvraag_soort_opvang: Type of care applied for
   advies_mate_van_gevaar: Advised degree of danger
   afm_toezending_gedaan: Submitted to AFM
@@ -43,6 +44,8 @@ names:
   cjib_twijfel: Doubt flagged by CJIB
   criteria_door_overheid_bepaald: Criteria determined by government
   datum_aanvang: Start date
+  datum_vaststelling_aanslag: Date of the tax assessment
+  eerste_termijn: First instalment
   emissie_per_reizigerskilometer_woon_werk: Emissions per passenger kilometre, commuting
   emissie_per_reizigerskilometer_zakelijk: Emissions per passenger kilometre, business travel
   gewerkte_weken_36: Worked weeks in last 36
@@ -68,17 +71,21 @@ names:
   is_verzekerde_zorgtoeslag: Is insured for healthcare allowance
   is_voor_het_leven_benoemde_ambtenaar_rvs_of_rekenkamer: Is civil servant appointed for life at RvS or Court of Audit
   komt_in_aanmerking_voor_geluidsontheffing: Is eligible for noise exemption
+  laatste_termijn: Last instalment
   land_verblijf: Country of residence
   leeftijd_exploitant: Age of operator
   leeftijd_leidinggevende: Age of manager
   slecht_levensgedrag_bij_verlening: Conduct assessed at licensing
   levensverwachting_65: Life expectancy at 65
+  maand_eerste_termijn: Month of first instalment
+  maand_laatste_termijn: Month of last instalment
   mag_vernietigd_worden: May be destroyed
   max_duur_maanden: Maximum duration in months
   melding_deadline_uren: Notification deadline in hours
   minister_of_gs_besluit_anders: Minister or GS decides otherwise
   ministerraad_besluit_staatsbelang: Council of Ministers decision on state interest
   moet_overgebracht_worden: Must be transferred
+  nog_uit_te_betalen: Still to be paid
   noodplan_voldoet: Emergency plan meets requirements
   onderzoekstermijn_maanden: Investigation period in months
   op_selectielijst_vernietiging: On selection list for destruction
@@ -98,7 +105,12 @@ names:
   tarief_overige_alcohol: Rate for other alcohol
   tarief_tussenproduct: Intermediate product rate
   tarief_wijn: Wine rate
+  termijn_in_maand: Instalment in month
+  termijn_wordt_betaald: Instalment is paid
+  terug_te_vorderen: To be recovered
+  terug_te_vorderen_na_verrekening: To be recovered after set-off
   tijdig_aangevraagd: Applied for in time
+  toegekende_tegemoetkoming: Allowance awarded
   toeslagen_onderzoek: Toeslagen investigation
   toeslagen_twijfel: Doubt flagged by Toeslagen
   twijfel_reden: Reason for doubt
@@ -107,6 +119,9 @@ names:
   type_product: Type of product
   type_rechter: Type of judge
   type_regeling: Type of regulation
+  uitbetaalde_voorschotten: Advances paid
+  uiterste_toekenningsdatum: Latest award date
+  uiterste_uitbetaaldatum: Latest payment date
   uitzondering_caribisch_nederland_van_toepassing: Caribbean Netherlands exception applies
   vergunning_toegestaan: Permit allowed
   vergunning_toegestaan_straling: Radiation permit allowed
@@ -152,13 +167,19 @@ words:
   aanloopperiode: start-up period
   aanmaakdatum: creation date
   aanmerking: consideration
+  aanslag: tax assessment
+  aanslaggegevens: assessment data
   aantal: number of
   aanvang: commencement
   aanvraag: application
+  aanvrager: applicant
+  aanvullende: additional
   aanvulling: supplement
   accijns: excise duty
   accijnscategorie: excise category
   accijnsgoed: excise good
+  achterstallig: in arrears
+  achterstand: arrears
   actief: active
   actieve: active
   activiteit: activity
@@ -170,6 +191,8 @@ words:
   adressen: addresses
   advies: advice
   adviesplicht: duty to seek advice
+  afgeronde: rounded
+  afgeschreven: debited
   afm: AFM
   aftrek: deduction
   afwezig: absent
@@ -204,12 +227,15 @@ words:
   bedrijfsinkomen: business income
   bedrijfskapitaal: business capital
   bedrijfsvoering: business operations
+  beginsaldo: opening balance
   begrensd: capped
+  begunstigde: beneficiary
   beheerders: managers
   bekendmaking: publication
   belastbaar: taxable
   belasting: tax
   belastingdienst: Belastingdienst
+  belastingjaar: tax year
   belastingplichtig: liable to tax
   belastingschuld: tax debt
   beleggingen: investments
@@ -220,14 +246,21 @@ words:
   bepaald: determined
   beperking: restriction
   bereidt: prepares
+  berekende: calculated
+  berekeningsjaar: calculation year
   beroep: appeal
   beroepstermijn: appeal period
   beschikbare: available
   beschikking: decision
   beschrijving: description
+  beslissing: decision
   beslistermijn: decision period
   besluit: decision
   bestuursorgaan: administrative body
+  betaald: paid
+  betaaldatum: payment date
+  betaalkenmerk: payment reference
+  betalingen: payments
   beveiligingsplan: security plan
   bevestigd: confirmed
   bevoegd: competent
@@ -245,8 +278,10 @@ words:
   bier: beer
   bij: by
   bijdrage: contribution
+  bijgeschreven: credited
   bijstand: social assistance
   binnen: within
+  boekingen: entries
   boekjaar: financial year
   box1: box 1
   box2: box 2
@@ -269,11 +304,16 @@ words:
   curandus: ward
   curatele: guardianship
   curator: guardian
+  dag: day
   dagloon: daily wage
+  dagtekening: dating
   data: data
   dates: dates
   datum: date
+  de: the
   deadline: deadline
+  debiteur: debtor
+  deel: part
   delegaties: delegations
   delegation: delegation
   deponeringsplicht: filing obligation
@@ -295,6 +335,7 @@ words:
   dranken: drinks
   driven: driven
   duur: duration
+  eerste: first
   eigen: own
   eigenaar: owner
   einddatum: end date
@@ -332,6 +373,7 @@ words:
   gebeurtenissen: events
   gebied: area
   gebieden: areas
+  geblokkeerd: blocked
   geboortedatum: date of birth
   gebruik: use
   gebruiksdoel: use purpose
@@ -339,9 +381,12 @@ words:
   gedetineerd: detained
   gedetineerde: detainee
   geen: 'no'
+  gegeven: given
   gegevens: data
+  geind: collected
   geldig: valid
   geldige: valid
+  geldt: applies
   geluidsklachten: noise complaints
   geluidsontheffing: noise exemption
   gemiddeld: average
@@ -355,12 +400,15 @@ words:
   geschiedenis: history
   gesteld: provided
   gevaar: danger
+  gevraagde: requested
+  geweigerd: refused
   gewenste: desired
   gewerkte: worked
   gezag: authority
   gezamenlijk: joint
   gezin: household
   goed: property
+  grams: grams
   gs: GS
   handelingsonbekwaam: legally incapable
   handlichting: emancipation
@@ -385,13 +433,20 @@ words:
   id: id
   ids: ids
   in: in
+  incasso: direct debit
+  incassobedrag: direct debit amount
+  incassodatum: direct debit date
+  incassokenmerk: direct debit reference
   incident: incident
+  ineens: lump-sum
   informatieplicht: information obligation
   ingeschreven: registered
   ingetrokken: withdrawn
+  ingevorderd: recovered
   ingezetenschapsduur: residence duration
   inkomen: income
   inkomensafhankelijke: income-dependent
+  inkomensgegeven: income figure
   inkomensgegevens: income data
   inkomenskorting: income reduction
   inrichting: establishment
@@ -406,6 +461,8 @@ words:
   jaren: years
   juridische: legal
   jurisdictie: jurisdiction
+  kalenderjaar: calendar year
+  kenmerk: reference
   kind: child
   kinderbijslag: child benefit
   kinderen: children
@@ -449,6 +506,7 @@ words:
   max: max
   maximale: maximum
   medebewoners: co-residents
+  meegenomen: carried
   melding: notification
   meldplicht: notification obligation
   mentorschap: mentorship
@@ -457,11 +515,15 @@ words:
   minimum: minimum
   minister: minister
   ministerraad: council of ministers
+  mislukt: failed
   mobiliteitsvergoeding: mobility allowance
   moet: must
   mogelijk: possible
   motivering: reasoning
+  mutaties: movements
   naam: name
+  nabetaald: paid afterwards
+  nabetaling: additional payment
   names: names
   nationaal: national
   nationale: national
@@ -471,6 +533,7 @@ words:
   netto: net
   niet: not
   nieuwe: new
+  nodig: needed
   noodplan: emergency plan
   nummer: number
   nummers: numbers
@@ -482,6 +545,7 @@ words:
   onder: under
   ondernemer: entrepreneur
   onderneming: business
+  ondertekening: signature
   onderwijstype: type of education
   onderzoek: investigation
   onderzoeksplicht: duty to investigate
@@ -489,12 +553,17 @@ words:
   onroerend: immovable
   ontheffing: exemption
   ontheffingen: exemptions
+  ontvangen: received
+  ontvangst: receipt
   ontvangt: receives
   op: to
   opbouwpercentage: accrual percentage
+  opdracht: order
   openbaar: public
   openbare: public
   openingstijd: opening time
+  openstaande: outstanding
+  opgedragen: ordered
   oppervlak: area
   oppervlakte: area
   opschortingsmachtiging: suspension authorisation
@@ -528,6 +597,7 @@ words:
   personeel: staff
   persoonsgebonden: personal
   persoonsgegevens: personal data
+  planning: planning
   polis: policy
   posities: positions
   postadres: postal address
@@ -547,6 +617,7 @@ words:
   rechterlijk: judicial
   rechtspersoon: legal person
   rechtsvorm: legal form
+  redelijkerwijs: reasonably
   reden: reason
   referentiedatum: reference date
   refperiode: reference period
@@ -558,14 +629,20 @@ words:
   registraties: registrations
   reguliere: regular
   reizigerskilometer: passenger kilometre
+  rekening: account
+  rekeningnummer: account number
   rekenkamer: court of audit
   relatie: relation
   relaties: relations
   resterende: remaining
   resultaat: income
   retour: returned
+  root: application
   ruimte: space
   rvs: RvS
+  saldo: balance
+  saldomutaties: balance movements
+  schatting: estimate
   schenkt: serves
   schriftelijke: written
   schulden: debts
@@ -599,14 +676,21 @@ words:
   tarief: rate
   te: to be
   technologie: technology
+  tegemoetkoming: allowance
   termijn: period
+  termijnbedrag: instalment amount
+  termijnen: instalments
   terras: terrace
   terrassenbeleid: terrace policy
   terrasvergunning: terrace permit
+  terugvordering: recovery
+  terugvorderingsbedrag: recovery amount
   tib: TIB
   tijdig: in time
   titel: title
+  toegekend: granted
   toegestaan: permitted
+  toekenning: award
   toepassing: applicable
   toeslag: allowance
   toeslagen: allowances
@@ -624,6 +708,7 @@ words:
   uit: from
   uiterste: latest
   uitgebracht: issued
+  uitgevoerd: executed
   uitgezonderd: exempted
   uitkering: benefit
   uitkeringen: benefits
@@ -633,6 +718,7 @@ words:
   uitsluiting: exclusion
   uitsluitingen: exclusions
   uitstoot: emissions
+  uitvoerdatum: execution date
   uitzondering: exception
   until: until
   uren: hours
@@ -641,6 +727,7 @@ words:
   vanaf: from
   vast: permanent
   vastgesteld: adopted
+  vaststelling: assessment
   veelvuldig: frequent
   verblijf: residence
   verblijfsadres: residential address
@@ -656,9 +743,11 @@ words:
   vergunningsplicht: permit requirement
   verkiezingsdatum: election date
   verklaring: statement
+  verkrijgen: obtain
   verleend: granted
   verleende: granted
   verlening: granting
+  vermoedelijk: expected
   vermogen: assets
   vermogensgegevens: asset data
   vernietig: destroy
@@ -674,6 +763,7 @@ words:
   vervreemdingsvoordelen: disposal gains
   verwachte: expected
   verwachting: expectancy
+  verzamelinkomen: aggregate income
   verzekerd: insured
   verzekerde: insured
   verzekering: insurance
@@ -688,6 +778,8 @@ words:
   volmacht: proxy
   voor: for
   voordelen: gains
+  voorschot: advance
+  voorschotbedrag: advance amount
   voorschriften: conditions
   voorwaarden: conditions
   vrijstelling: exemption
@@ -720,6 +812,7 @@ words:
   woonsituatie: living situation
   woont: lives
   worden: be
+  wordt: is
   wsnp: Wsnp
   zaak: case
   zachte: soft

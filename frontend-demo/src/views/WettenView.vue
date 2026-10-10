@@ -1,5 +1,5 @@
 <script setup>
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useLocalePath } from '../i18n/useLocalePath.js';
 import { useI18n } from '../i18n/index.js';
@@ -8,6 +8,7 @@ import OrgLogo from '../components/OrgLogo.vue';
 import LawGroupTree from '../components/LawGroupTree.vue';
 import { useDemo } from '../store/demoStore.js';
 import { serviceInfo } from '../data/loadCorpus.js';
+import { childPath } from '../components/yamlExpand.js';
 
 // The law browser: every demo law in the sidebar, grouped by the organisation
 // that executes it; the selected law as a collapsible YAML tree in which every
@@ -66,18 +67,38 @@ function configFor(key, law) {
   return cfg[law.id] ?? cfg[law.law_path] ?? [];
 }
 
-function openLaw(lawId, { replaceRoute = false } = {}) {
+/** Het pad van artikel `number` in de boom, zoals YamlNode het noemt. */
+function articlePath(number) {
+  return childPath('articles', 0, { number }, true);
+}
+
+/**
+ * Open een wet; met `article` ook dat artikel, opengeklapt en in beeld. Het
+ * artikel staat in de query (`?artikel=`), zodat een link vanuit een ander
+ * tabblad (de kroniek in het zaaksysteem) op het artikel zelf uitkomt.
+ */
+function openLaw(lawId, { replaceRoute = false, article = null } = {}) {
   if (!lawIds.value.has(lawId)) return;
   if (trail.at(-1) !== lawId) trail.push(lawId);
   activeId.value = lawId;
   splitView.value?.hidePrimarySidebarSheet?.();
   const law = corpus.value.lawById(lawId);
-  expandState.paths = configFor('expanded_paths', law);
+  const configured = configFor('expanded_paths', law);
+  expandState.paths = article ? [...configured, articlePath(article)] : configured;
   expandState.folded = configFor('folded_paths', law);
   expandState.all = null;
   expandState.version += 1;
-  const target = localePath('wetten', { lawId });
+  if (article) showRaw.value = false;
+  const target = router.resolve({ path: localePath('wetten', { lawId }), query: article ? { artikel: article } : {} }).fullPath;
   if (route.fullPath !== target) (replaceRoute ? router.replace : router.push).call(router, target);
+  if (article) scrollToArticle(article);
+}
+
+async function scrollToArticle(article) {
+  await nextTick();
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  const path = articlePath(article);
+  [...document.querySelectorAll('.yaml-tree [data-path]')].find((el) => el.dataset.path === path)?.scrollIntoView({ block: 'start' });
 }
 
 function goBack() {
@@ -110,22 +131,22 @@ watch(
   // deze watcher onder /en/ruleworks meteen terugkeren. Het tabblad opent dan geen
   // enkele wet, ook niet de standaardwet van het profiel, en toont een leeg
   // paneel zonder dat er iets faalt.
-  () => [route.meta?.page, route.params.lawId, corpus.value, profileKey.value],
-  ([page, lawId, , key], old) => {
+  () => [route.meta?.page, route.params.lawId, route.query.artikel, corpus.value, profileKey.value],
+  ([page, lawId, article, , key], old) => {
     // Een ander persona begint bij zijn eigen wet. <keep-alive> houdt dit
     // tabblad gemount, dus zonder deze reset bleef na de wissel naar Claudia
     // de zorgtoeslag van Merijn open staan. Van `null` naar het standaard-
     // profiel (het corpus is net geladen) is geen wissel: dan moet een deeplink
     // gewoon openen. Net zo een link die tegelijk met het profiel verandert
     // (een dia met `profile` en een wet in `route`); alleen de oude link wijkt.
-    const switched = old?.[3] != null && old[3] !== key;
+    const switched = old?.[4] != null && old[4] !== key;
     if (switched) {
       trail.splice(0);
       activeId.value = null;
     }
     if (page !== 'wetten' || !corpus.value) return;
     if (lawId && typeof lawId === 'string' && !(switched && lawId === old[1])) {
-      openLaw(decodeURIComponent(lawId), { replaceRoute: true });
+      openLaw(decodeURIComponent(lawId), { replaceRoute: true, article: typeof article === 'string' ? article : null });
     } else if (!activeId.value && profile.value?.default_law) {
       const d = profile.value.default_law;
       const law = corpus.value.lawByPath(d.law_path, d.service);

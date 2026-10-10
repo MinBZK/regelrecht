@@ -20,6 +20,26 @@ profiles:
     # Graaf: the laws that tell this persona's story (detentie -> verzekerd -> zorgtoeslag)
     graph_laws: [penitentiaire_beginselenwet, zvw, zorgtoeslagwet]
     zaaksysteem_service: TOESLAGEN
+    # Wat Merijn invult op een aanvraag die in een kroniek komt (chronolex):
+    # per veld dat de wet vraagt de waarde. Welke velden er zijn, zegt de wet;
+    # een veld zonder waarde hier blijft leeg. De demo vult `$bsn` (de BSN
+    # van de persona), `$reference_date` (de peildatum) en `$reference_year`
+    # (het jaar daarvan) zelf in.
+    application:
+      bsn: $bsn
+      aangevraagd_berekeningsjaar: $reference_year
+      naam_aanvrager: Merijn van der Meer
+      adres_aanvrager: Meeuwenlaan 28, 1021HS Amsterdam
+      dagtekening: $reference_date
+      ondertekening: Merijn van der Meer
+      # Awir 16: het toetsingsinkomen dat Merijn over het jaar verwacht, in
+      # eurocent. Het voorschot rekent ermee; de toekenning later met wat de
+      # Belastingdienst over het jaar weet (24.150 euro).
+      vermoedelijk_toetsingsinkomen: 2200000
+      # Het (fictieve) beleid van Toeslagen vraagt op welke rekening het
+      # voorschot wordt betaald. Een duidelijk verzonnen nummer, geen IBAN;
+      # de fictieve bank kent het (BANK in profiles.yaml).
+      rekeningnummer: NL00TEST0123456789
     portal_tab_label: Mijn overheid
     portal_heading: Waar heb ik recht op? Wat zijn mijn plichten?
     portal_subtitle: >-
@@ -146,6 +166,157 @@ profiles:
         - wet_structuur_uitvoeringsorganisatie_werk_en_inkomen
         - wet_inkomstenbelasting
 
+# Wat het dossier van een uitvoerder weet en de wet als parameter vraagt
+# (origin DOSSIER), maar wat de cel niet uit haar eigen kroniek leest. Zelfde
+# vorm als een binding in bindings.yaml (tabel, kolom, `select_on`, `absent`),
+# maar dan voor een parameter en niet voor een `source: {}`-invoer, per wet en
+# per parameter. `$naam` in `select_on` is een gegeven van de zaak: wat de cel
+# voor het besluit uit de kroniek leest (de BSN, het berekeningsjaar).
+#
+# Leeg: de datum van de aanslag (Awir 19) en het inkomensgegeven leest
+# Toeslagen nu uit haar eigen kroniek, waar de aanslag van de Belastingdienst
+# als feit binnenkwam (`ex_officio` en `channels` hieronder).
+dossier: {}
+
+# Besluiten die een cel ambtshalve neemt, op geen aanvraag: de aanslag
+# inkomstenbelasting van de inspecteur (AWR art. 11). Per besluit de cel, de
+# gebeurtenis en over wie (`subject`: per parameter van het besluit de waarde,
+# `$bsn` is de BSN van de persoon van een zaak). Over welk jaar en op welke
+# dag, zegt de cel uit de planning van de inspecteur (`decided_on` in haar
+# stroom); de klok neemt het besluit op die dag.
+#
+# Eigen keuze van de demo: de cel besluit alleen over wie de demo in een
+# kroniek volgt, de persoon van een open zaak met een aanvraag in een kroniek
+# (nu alleen de zorgtoeslag). Zonder zo'n zaak gebeurt er niets, en geen
+# andere wet merkt iets van deze cel.
+ex_officio:
+  - cell: belastingdienst
+    event: aanslag_inkomstenbelasting_vastgesteld
+    subject:
+      bsn: $bsn
+
+# Wat de burger in het portaal ziet als "ontvangen tot nu toe", per cel: de
+# lexostatus waarin de cel uit haar kroniek leest wat er op een zaak is
+# uitbetaald. Dezelfde lezing die een besluit van de cel leest; de demo telt
+# zelf niets op. Een cel zonder regel hier toont niets.
+received:
+  toeslagen: uitbetaald
+
+# Het transport tussen de cellen (kanalen, RFC-022): welke gram van welke cel
+# naar welke cel gaat, en welk veld welke parameter van het ontvangende
+# artikel vult (`$id` is het kenmerk van de gram). Wat er bij de ontvanger
+# ontstaat, zegt haar wet: de cel voert het artikel uit en legt vast wat het
+# zegt. De wet zegt niet wie de bank is of hoe een bericht reist; dat is de
+# demo. Een gram kan zo een keten in gang zetten: de betaalopdracht van
+# Toeslagen gaat naar de bank, het antwoord van de bank terug naar Toeslagen.
+#
+# Een veld is een veld van de gram; `$id` is haar kenmerk, `$period` de
+# waarde van de periode die zij betreft (het kalenderjaar van een aanslag) en
+# `$input.<naam>` de waarde waarmee de cel haar parameter `<naam>` vulde (de
+# BSN waarover de aanslag gaat). Gaan er van één gram berichten naar meer
+# artikelen (het antwoord van de bank op een termijn of op een nabetaling),
+# dan zegt de ontvangende cel van elk bericht of het voor dat artikel is; een
+# bericht dat voor geen enkel artikel is, blijft in de outbox.
+channels:
+  - from: {cell: toeslagen, event: betaalopdracht_gegeven}
+    to: {cell: bank, article: fictieve_bankvoorwaarden#1}
+    inputs:
+      betaalkenmerk: $id
+      rekeningnummer: rekeningnummer_begunstigde
+      bedrag: bedrag
+      uitvoerdatum: uitvoerdatum
+  - from: {cell: bank, article: fictieve_bankvoorwaarden#1}
+    to:
+      cell: toeslagen
+      article: fictief_beleid_termijnbedrag_voorschot#2
+      refers_to: {betaalopdracht: betaalkenmerk}
+    inputs:
+      bijgeschreven: bijgeschreven
+      bijgeschreven_bedrag: bijgeschreven_bedrag
+      bedrag_opdracht: bedrag
+      reden_weigering: reden
+  # De aanslag van de inspecteur: het inkomensgegeven gaat naar de Dienst
+  # Toeslagen (AWR art. 21e lid 1: op haar verzoek). Eigen keuze: Toeslagen
+  # heeft een staand verzoek, dus het kanaal brengt het inkomensgegeven
+  # zodra de aanslag is vastgesteld, zonder vraag per geval.
+  - from: {cell: belastingdienst, event: aanslag_inkomstenbelasting_vastgesteld}
+    to: {cell: toeslagen, article: fictief_beleid_toekenning_toeslagen#1}
+    inputs:
+      kenmerk_aanslag: $id
+      bsn: $input.bsn
+      kalenderjaar: $period
+      inkomensgegeven: inkomensgegeven
+      datum_vaststelling_aanslag: datum_vaststelling_aanslag
+  # De nabetaling na de toekenning (Awir 24 lid 1): een overboeking, en het
+  # antwoord van de bank terug.
+  - from: {cell: toeslagen, event: nabetaling_opgedragen}
+    to: {cell: bank, article: fictieve_bankvoorwaarden#1}
+    inputs:
+      betaalkenmerk: $id
+      rekeningnummer: rekeningnummer_begunstigde
+      bedrag: bedrag
+      uitvoerdatum: uitvoerdatum
+  - from: {cell: bank, article: fictieve_bankvoorwaarden#1}
+    to:
+      cell: toeslagen
+      article: fictief_beleid_toekenning_toeslagen#5
+      refers_to: {betaalopdracht: betaalkenmerk}
+    inputs:
+      bijgeschreven: bijgeschreven
+      bijgeschreven_bedrag: bijgeschreven_bedrag
+      bedrag_opdracht: bedrag
+      reden_weigering: reden
+  # De incasso van een terugvordering (Awir 28 lid 1): een afschrijving, en
+  # het antwoord van de bank terug.
+  - from: {cell: toeslagen, event: incasso_opgedragen}
+    to: {cell: bank, article: fictieve_bankvoorwaarden#2}
+    inputs:
+      incassokenmerk: $id
+      rekeningnummer: rekeningnummer_debiteur
+      bedrag: incassobedrag
+      uitvoerdatum: incassodatum
+  - from: {cell: bank, article: fictieve_bankvoorwaarden#2}
+    to:
+      cell: toeslagen
+      article: fictief_beleid_toekenning_toeslagen#8
+      refers_to: {incassoopdracht: incassokenmerk}
+    inputs:
+      afgeschreven: afgeschreven
+      afgeschreven_bedrag: afgeschreven_bedrag
+      bedrag_incasso: bedrag
+      reden_weigering_incasso: reden_incasso
+
+# Gevolgen: wat er buiten de overheid gebeurt door haar besluiten, op een
+# eigen scherm naast het portaal. Per partij die geen overheid is, haar cel
+# (`cell`) en hoe de demo haar toont (`view`); de naam van de partij is die
+# van de organisatie waaronder de cel valt (services.yaml). Een zorgverzekeraar
+# of een werkgever komt hier later bij.
+#
+# `view: account` is een rekening: het rekeningnummer, het beginsaldo en of
+# de rekening geblokkeerd is staan in de gegevens van de persona (`data`);
+# wat er op de rekening gebeurde, in de kroniek van de cel (per gram de velden
+# onder `gram`; een lijst noemt velden van verschillende soorten grammen, het
+# eerste dat de gram heeft telt). Het saldo is het beginsaldo plus wat de bank
+# bijschreef, min wat zij afschreef: een afschrift, geen wet. Een rekening blokkeren kan nu alleen in profiles.yaml
+# (`geblokkeerd: true` bij de persona); een knop in het demomenu volgt later.
+consequences:
+  - cell: bank
+    view: account
+    data:
+      service: BANK
+      table: rekeningen
+      number: rekeningnummer
+      opening_balance: beginsaldo
+      blocked: geblokkeerd
+    gram:
+      account: rekeningnummer
+      amount: bedrag
+      credited: bijgeschreven_bedrag
+      debited: afgeschreven_bedrag
+      date: uitvoerdatum
+      reason: [reden, reden_incasso]
+      reference: [betaalkenmerk, incassokenmerk]
+
 # Applications under these laws always go to a caseworker of the service,
 # whatever the law concludes: Rotterdam grants a terrasvergunning after
 # assessing it, so the demo does not decide it on its own. Precario follows
@@ -170,9 +341,16 @@ hidden_laws:
   # en geen van beide draagt het verhaal van Merijn of Claudia.
   RVO: [omgevingswet/werkgebonden_personenmobiliteit]
   RvIG: [wet_brp, wet_brp/laa]
-  BELASTINGDIENST: [wet_brp/terugmelding, belastingdienst_vermogen, zvw/werkgeversbijdrage]
+  # De aanslag van AWR 11 en de beschikking tot terugvordering van Awir 26
+  # zijn besluiten die de cellen nemen (de Belastingdienst, Toeslagen), geen
+  # regelingen om aan te vragen: ze staan niet op een portaal.
+  BELASTINGDIENST:
+    - wet_brp/terugmelding
+    - belastingdienst_vermogen
+    - zvw/werkgeversbijdrage
+    - algemene_wet_inzake_rijksbelastingen
   CJIB: [wet_brp/terugmelding]
-  TOESLAGEN: [wet_brp/terugmelding]
+  TOESLAGEN: [wet_brp/terugmelding, algemene_wet_inkomensafhankelijke_regelingen]
   JenV: [awb/bezwaar, awb/beroep]
   UWV:
     - wet_werk_en_inkomen_naar_arbeidsvermogen

@@ -32,13 +32,16 @@ async function initEngine() {
     try {
       // The WASM glue lives in public/wasm/pkg; import it through a blob URL to
       // sidestep Vite's rule against importing from /public (same as the editor).
-      const res = await fetch('/wasm/pkg/regelrecht_engine.js');
+      // The demo loads regelrecht-cel's module: the engine (WasmEngine) and the
+      // chronolex cell (WasmCell) in one, so the cell executes the law with the
+      // engine that holds the corpus and the persona data.
+      const res = await fetch('/wasm/pkg/regelrecht_cel.js');
       if (!res.ok) throw new Error(`WASM-glue niet gevonden (${res.status})`);
       const blob = new Blob([await res.text()], { type: 'application/javascript' });
       const blobUrl = URL.createObjectURL(blob);
       const wasm = await import(/* @vite-ignore */ blobUrl);
       URL.revokeObjectURL(blobUrl);
-      await wasm.default('/wasm/pkg/regelrecht_engine_bg.wasm');
+      await wasm.default('/wasm/pkg/regelrecht_cel_bg.wasm');
       wasmModule = wasm;
       engineInstance = new wasm.WasmEngine();
       engineReady.value = true;
@@ -124,6 +127,15 @@ export async function prepareScenarioEngine(corpus) {
     }
   })();
   return scenarioPromise;
+}
+
+/**
+ * The cell of a corpus cell (`corpus.cells[i]`) on `engine`, with the grams
+ * kept from an earlier session, checked against the law as it applies on
+ * `today`. Throws when the law does not give every event its shape.
+ */
+export function createCell(engine, cell, grams, today) {
+  return new wasmModule.WasmCell(engine, cell.cellYaml, cell.streams, grams, today);
 }
 
 /** Every parameter name any demo law declares; these are the candidate keys. */

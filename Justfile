@@ -62,8 +62,12 @@ wasm-build:
     # python3 dependency) needed, and it works with or without dev-setup.
     cargo build --manifest-path packages/engine/Cargo.toml --target wasm32-unknown-unknown --release --features wasm --target-dir packages/target
     "$bindgen" --target web --out-dir frontend/public/wasm/pkg packages/target/wasm32-unknown-unknown/release/regelrecht_engine.wasm
-    # The demo runs the same engine in the browser; keep the two copies identical.
-    mkdir -p frontend-demo/public/wasm/pkg && cp frontend/public/wasm/pkg/* frontend-demo/public/wasm/pkg/
+    # The demo runs the engine together with the chronolex cell: one module,
+    # regelrecht-cel built with its wasm feature, exporting WasmEngine and
+    # WasmCell.
+    cargo build --manifest-path packages/cel/Cargo.toml --target wasm32-unknown-unknown --release --features wasm --target-dir packages/target
+    mkdir -p frontend-demo/public/wasm/pkg
+    "$bindgen" --target web --out-dir frontend-demo/public/wasm/pkg packages/target/wasm32-unknown-unknown/release/regelrecht_cel.wasm
     # The landing page runs the zorgtoeslag scenario in the visitor's browser
     # when the panel scrolls into view, so the amount it shows is computed there
     # and then rather than asserted. Same artifact again: one engine, three

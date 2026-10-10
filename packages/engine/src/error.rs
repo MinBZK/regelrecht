@@ -136,6 +136,21 @@ pub enum EngineError {
     #[error("Output '{output}' not found in law '{law_id}'")]
     OutputNotFound { law_id: String, output: String },
 
+    /// More than one article of the law produces the output, so a reference
+    /// to it by name cannot choose. Loading such a law is not refused (an
+    /// article may name its own `bevoegd_gezag`, as the Wlz does); referring
+    /// to the output by name is.
+    #[error(
+        "Output '{output}' of law '{law_id}' is produced by more than one article ({}); \
+         a reference by output name cannot choose between them",
+        articles.join(", ")
+    )]
+    AmbiguousOutput {
+        law_id: String,
+        output: String,
+        articles: Vec<String>,
+    },
+
     /// An output the law says does not arise.
     ///
     /// Distinct from [`EngineError::OutputNotFound`], which is the shape of a
@@ -347,6 +362,14 @@ pub enum ExternalError {
     #[error("Output not found: {0}")]
     OutputNotFound(String),
 
+    /// More than one article produces the output; which articles is public
+    /// legal data.
+    #[error("Output '{output}' is produced by more than one article ({})", articles.join(", "))]
+    AmbiguousOutput {
+        output: String,
+        articles: Vec<String>,
+    },
+
     /// The law says this output does not arise, with the words that say so.
     #[error("Output '{output}' does not arise: {grounds}")]
     OutputVoided { output: String, grounds: String },
@@ -446,6 +469,9 @@ impl From<EngineError> for ExternalError {
             },
             EngineError::ArticleNotFound { .. } => ExternalError::ArticleNotFound,
             EngineError::OutputNotFound { output, .. } => ExternalError::OutputNotFound(output),
+            EngineError::AmbiguousOutput {
+                output, articles, ..
+            } => ExternalError::AmbiguousOutput { output, articles },
             // The ground travels with it: an API caller has to be able to tell
             // "the law says no" from "this output does not exist".
             EngineError::OutputVoided {

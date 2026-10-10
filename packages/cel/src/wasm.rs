@@ -1,0 +1,440 @@
+//! The cell in the browser: `WasmCell`, next to the `WasmEngine` it executes
+//! the law with. The chronicle lives in memory; the page keeps it between
+//! sessions by passing back what `grams()` gave.
+
+use std::collections::BTreeMap;
+
+use chrono::{DateTime, FixedOffset, NaiveDate};
+use regelrecht_engine::wasm::WasmEngine;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
+use serde_wasm_bindgen::Serializer;
+use wasm_bindgen::prelude::*;
+
+use crate::cell::{Cell, Input};
+use crate::chronicle::Gram;
+use crate::config::CellConfig;
+
+fn error(e: impl std::fmt::Display) -> JsValue {
+    JsValue::from_str(&e.to_string())
+}
+
+/// An error of the cell as a JS `Error` whose `name` is the kind of error
+/// ([`crate::Error::code`]: `refused`, `ended`, ...), so the page can tell
+/// "nothing more to come" from a failure without reading the message.
+fn cell_error(e: crate::Error) -> JsValue {
+    let js = js_sys::Error::new(&e.to_string());
+    js.set_name(e.code());
+    js.into()
+}
+
+fn to_js<T: Serialize>(value: &T) -> Result<JsValue, JsValue> {
+    value
+        .serialize(&Serializer::json_compatible())
+        .map_err(error)
+}
+
+fn from_js<T: DeserializeOwned>(value: JsValue) -> Result<T, JsValue> {
+    serde_wasm_bindgen::from_value(value).map_err(error)
+}
+
+fn moment(now: &str) -> Result<DateTime<FixedOffset>, JsValue> {
+    DateTime::parse_from_rfc3339(now).map_err(|e| error(format!("'{now}': {e}")))
+}
+
+fn day(day: &str) -> Result<NaiveDate, JsValue> {
+    NaiveDate::parse_from_str(day, "%Y-%m-%d").map_err(|e| error(format!("'{day}': {e}")))
+}
+
+/// `{name: {value, provenance}}` from the page, or nothing.
+fn extra(extra_inputs: JsValue) -> Result<BTreeMap<String, Input>, JsValue> {
+    if extra_inputs.is_null() || extra_inputs.is_undefined() {
+        Ok(BTreeMap::new())
+    } else {
+        from_js(extra_inputs)
+    }
+}
+
+#[wasm_bindgen]
+pub struct WasmCell {
+    cell: Cell,
+}
+
+#[wasm_bindgen]
+impl WasmCell {
+    /// A cell from its configuration texts (`cell.yaml` and its streams), with the grams the page kept, checked against the law
+    /// the engine has loaded as it applies on `today` (`YYYY-MM-DD`). Its
+    /// registers are bound with the engine as data sources (see
+    /// `bindRegisters`).
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        engine: &mut WasmEngine,
+        cell_yaml: &str,
+        streams: Vec<String>,
+        grams: JsValue,
+        today: &str,
+    ) -> Result<WasmCell, JsValue> {
+        let streams: Vec<&str> = streams.iter().map(String::as_str).collect();
+        let config = CellConfig::from_yaml(cell_yaml, &streams).map_err(cell_error)?;
+        let grams: Vec<Gram> = if grams.is_null() || grams.is_undefined() {
+            Vec::new()
+        } else {
+            from_js(grams)?
+        };
+        crate::register::bind(engine.service_mut(), &config).map_err(cell_error)?;
+        let cell =
+            Cell::in_memory(config, grams, engine.service(), day(today)?).map_err(cell_error)?;
+        Ok(WasmCell { cell })
+    }
+
+    /// Bind the registers of the cell with the engine again: after the page
+    /// cleared the engine's data sources (`clearDataSources`), a policy that
+    /// reads a chronicle of the cell would otherwise read nothing.
+    #[wasm_bindgen(js_name = bindRegisters)]
+    pub fn bind_registers(&self, engine: &mut WasmEngine) -> Result<(), JsValue> {
+        crate::register::bind(engine.service_mut(), self.cell.config()).map_err(cell_error)
+    }
+
+    /// What a gram of `event` holds on `day`: per field its name, type,
+    /// legal basis, the article that asks it, and a value the cell fills in
+    /// itself. The fields of an application form.
+    pub fn shape(&self, engine: &WasmEngine, event: &str, on: &str) -> Result<JsValue, JsValue> {
+        let (shape, _) = self
+            .cell
+            .shape(engine.service(), event, day(on)?)
+            .map_err(cell_error)?;
+        to_js(&shape)
+    }
+
+    /// Record an application as the applicant made it, received at `now`
+    /// (RFC 3339, Dutch time).
+    #[wasm_bindgen(js_name = recordSubmission)]
+    pub fn record_submission(
+        &mut self,
+        engine: &WasmEngine,
+        event: &str,
+        submitted: JsValue,
+        now: &str,
+    ) -> Result<JsValue, JsValue> {
+        let submitted: serde_json::Map<String, serde_json::Value> = from_js(submitted)?;
+        let gram = self
+            .cell
+            .record_submission(engine.service(), event, &submitted, moment(now)?)
+            .map_err(cell_error)?;
+        to_js(&gram)
+    }
+
+    /// The parameters of the decision `event` on the application `root`, as
+    /// the cell reads them from its chronicle at `now` (RFC 3339):
+    /// `{name: {value, provenance}}`, ready for `decide`.
+    #[wasm_bindgen(js_name = inputsFor)]
+    pub fn inputs_for(
+        &self,
+        engine: &WasmEngine,
+        event: &str,
+        root: &str,
+        now: &str,
+    ) -> Result<JsValue, JsValue> {
+        let inputs = self
+            .cell
+            .decision_inputs(engine.service(), event, root, moment(now)?)
+            .map_err(cell_error)?;
+        to_js(&inputs)
+    }
+
+    /// What taking the decision `event` on the application `root` at `now`
+    /// asks: the stage with what it requires, the articles taking part and
+    /// every parameter they declare with its origin. What the cell does not
+    /// read from its chronicle (`inputsFor`), the page may give as
+    /// `extraInputs`.
+    #[wasm_bindgen(js_name = decisionStage)]
+    pub fn decision_stage(
+        &self,
+        engine: &WasmEngine,
+        event: &str,
+        root: &str,
+        now: &str,
+    ) -> Result<JsValue, JsValue> {
+        let stage = self
+            .cell
+            .decision_stage(engine.service(), event, root, moment(now)?)
+            .map_err(cell_error)?;
+        to_js(&stage)
+    }
+
+    /// The gram `decide` would record at `now`, without recording it: what
+    /// the law decides, to look before deciding (or ahead, to a moment that
+    /// has yet to come), also before its day. See `Cell::preview_decision`.
+    #[wasm_bindgen(js_name = previewDecision)]
+    pub fn preview_decision(
+        &self,
+        engine: &WasmEngine,
+        event: &str,
+        refers_to: JsValue,
+        now: &str,
+        extra_inputs: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let refers_to: BTreeMap<String, String> = from_js(refers_to)?;
+        let gram = self
+            .cell
+            .preview_decision(
+                engine.service(),
+                event,
+                refers_to,
+                extra(extra_inputs)?,
+                moment(now)?,
+            )
+            .map_err(cell_error)?;
+        to_js(&gram)
+    }
+
+    /// Take a decision at `now` and record it, referring to `refersTo`
+    /// (`{on_application: <id>}`). The cell reads the parameters from that
+    /// case itself; `extraInputs` (`{name: {value, provenance}}`, optional)
+    /// may only add what it does not read.
+    pub fn decide(
+        &mut self,
+        engine: &WasmEngine,
+        event: &str,
+        refers_to: JsValue,
+        now: &str,
+        extra_inputs: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let refers_to: BTreeMap<String, String> = from_js(refers_to)?;
+        let gram = self
+            .cell
+            .decide(
+                engine.service(),
+                event,
+                refers_to,
+                extra(extra_inputs)?,
+                moment(now)?,
+            )
+            .map_err(cell_error)?;
+        to_js(&gram)
+    }
+
+    /// Execute the execution `event` (an executogram) for the case `root` on
+    /// `on` (`YYYY-MM-DD`), recorded at `now` (RFC 3339), for the period
+    /// `period` (its value, as `dueExecutions` gives it; absent if the case
+    /// has one): the gram if the law says one arises, otherwise `null`. See
+    /// `Cell::execute_in`.
+    pub fn execute(
+        &mut self,
+        engine: &WasmEngine,
+        event: &str,
+        root: &str,
+        on: &str,
+        now: &str,
+        period: Option<i32>,
+    ) -> Result<JsValue, JsValue> {
+        let gram = self
+            .cell
+            .execute_in(
+                engine.service(),
+                event,
+                root,
+                day(on)?,
+                period,
+                moment(now)?,
+            )
+            .map_err(cell_error)?;
+        match gram {
+            Some(gram) => to_js(&gram),
+            None => Ok(JsValue::NULL),
+        }
+    }
+
+    /// The gram `execute` would record for the case `root` on `on`
+    /// (`YYYY-MM-DD`), reading the chronicle as it holds at `now`, without
+    /// recording it; `null` if the law says none arises then. `on` may lie
+    /// after `now`: what the law gives as the next instalment.
+    #[wasm_bindgen(js_name = previewExecution)]
+    pub fn preview_execution(
+        &self,
+        engine: &WasmEngine,
+        event: &str,
+        root: &str,
+        on: &str,
+        now: &str,
+        period: Option<i32>,
+    ) -> Result<JsValue, JsValue> {
+        let gram = self
+            .cell
+            .preview_execution_in(
+                engine.service(),
+                event,
+                root,
+                day(on)?,
+                period,
+                moment(now)?,
+            )
+            .map_err(cell_error)?;
+        match gram {
+            Some(gram) => to_js(&gram),
+            None => Ok(JsValue::NULL),
+        }
+    }
+
+    /// Record what arises on receipt of a message from another party:
+    /// execute `article` (`<regulation>#<article>`) with `inputs`
+    /// (`{name: {value, provenance}}`) at `now` (RFC 3339), referring to the
+    /// grams of this cell in `refersTo` (`{name: id}`). `at` (RFC 3339, or
+    /// absent for `now`) is when the message arrived; the grams hold from
+    /// then. Returns the grams recorded (none, one, or more). A message about
+    /// a gram that already has its answer fails with name `answered`. See
+    /// `Cell::receive`.
+    pub fn receive(
+        &mut self,
+        engine: &WasmEngine,
+        article: &str,
+        refers_to: JsValue,
+        inputs: JsValue,
+        now: &str,
+        at: Option<String>,
+    ) -> Result<JsValue, JsValue> {
+        let refers_to: BTreeMap<String, String> = if refers_to.is_null() || refers_to.is_undefined()
+        {
+            BTreeMap::new()
+        } else {
+            from_js(refers_to)?
+        };
+        let now = moment(now)?;
+        let grams = self
+            .cell
+            .receive(
+                engine.service(),
+                article,
+                refers_to,
+                extra(inputs)?,
+                at.as_deref().map(moment).transpose()?.unwrap_or(now),
+                now,
+            )
+            .map_err(cell_error)?;
+        to_js(&grams)
+    }
+
+    /// The days up to `through` (`YYYY-MM-DD`) on which the execution
+    /// `event` is executed for the case `root`, after `after` (a day, or
+    /// `null`), as the case holds at `now` (RFC 3339), each with the period
+    /// it is executed for: `[{day: "YYYY-MM-DD", period: {unit, value}?}]`.
+    /// See `Cell::due_executions`. The page executes or previews each day;
+    /// it does not work out the days itself.
+    #[wasm_bindgen(js_name = dueExecutions)]
+    pub fn due_executions(
+        &self,
+        engine: &WasmEngine,
+        event: &str,
+        root: &str,
+        after: Option<String>,
+        through: &str,
+        now: &str,
+    ) -> Result<JsValue, JsValue> {
+        let after = after.as_deref().map(day).transpose()?;
+        let days = self
+            .cell
+            .due_executions(
+                engine.service(),
+                event,
+                root,
+                after,
+                day(through)?,
+                moment(now)?,
+            )
+            .map_err(cell_error)?;
+        let days: Vec<serde_json::Value> = days
+            .iter()
+            .map(|d| serde_json::json!({"day": d.day.to_string(), "period": d.period}))
+            .collect();
+        to_js(&days)
+    }
+
+    /// The next decision of `event` on the case `root`, as the case holds at
+    /// `now` (RFC 3339): `{period: {unit, value}?, day: "YYYY-MM-DD"?}`, the
+    /// period it concerns and the day the holder's policy gives for it (the
+    /// stream's `decided_on`), if any. See `Cell::due_decision`.
+    #[wasm_bindgen(js_name = dueDecision)]
+    pub fn due_decision(
+        &self,
+        engine: &WasmEngine,
+        event: &str,
+        root: &str,
+        now: &str,
+    ) -> Result<JsValue, JsValue> {
+        let due = self
+            .cell
+            .due_decision(engine.service(), event, root, moment(now)?)
+            .map_err(cell_error)?;
+        to_js(&serde_json::json!({
+            "period": due.period,
+            "day": due.day.map(|d| d.to_string()),
+        }))
+    }
+
+    /// The next decision of the ex officio event `event` (a decision on no
+    /// submission, such as the aanslag of AWR 11) about `subject`
+    /// (`{name: {value, provenance}}`: whom it concerns, such as the BSN), as
+    /// the cell holds at `now` (RFC 3339): `{period: {unit, value}?, day:
+    /// "YYYY-MM-DD"?}`. To take it, pass `subject` and the period (under the
+    /// parameter that gives it) as `extraInputs` of `decide`, with no
+    /// references. See `Cell::due_ex_officio`.
+    #[wasm_bindgen(js_name = dueExOfficio)]
+    pub fn due_ex_officio(
+        &self,
+        engine: &WasmEngine,
+        event: &str,
+        subject: JsValue,
+        now: &str,
+    ) -> Result<JsValue, JsValue> {
+        let due = self
+            .cell
+            .due_ex_officio(engine.service(), event, &extra(subject)?, moment(now)?)
+            .map_err(cell_error)?;
+        to_js(&serde_json::json!({
+            "period": due.period,
+            "day": due.day.map(|d| d.to_string()),
+        }))
+    }
+
+    /// Every lexostatus of the cell as it holds on `on` (`YYYY-MM-DD`), with
+    /// the data it gives (`fields`: name, type, unit, legal basis, the
+    /// article that declares it): a list of `{kind: "submission", name,
+    /// provision, event, chronicle, inputs, fields, read_by}` and `{kind:
+    /// "policy", name, provision, policy, article, register, chronicle,
+    /// register_input, inputs, period, outputs, fields, read_by}`. See
+    /// `Cell::lexostatuses`.
+    pub fn lexostatuses(&self, engine: &WasmEngine, on: &str) -> Result<JsValue, JsValue> {
+        to_js(
+            &self
+                .cell
+                .lexostatuses(engine.service(), day(on)?)
+                .map_err(cell_error)?,
+        )
+    }
+
+    /// Read the lexostatus `name` (the application, or a policy article that
+    /// reads a register) for the case `root` as it holds at `asOf` (RFC 3339):
+    /// `{values: {name: {value, provenance}}, grams: [id, ...]}`, the grams
+    /// it was read from. See `Cell::read_lexostatus`.
+    #[wasm_bindgen(js_name = readLexostatus)]
+    pub fn read_lexostatus(
+        &self,
+        engine: &WasmEngine,
+        name: &str,
+        inputs: JsValue,
+        as_of: &str,
+    ) -> Result<JsValue, JsValue> {
+        let inputs: serde_json::Map<String, serde_json::Value> = from_js(inputs)?;
+        to_js(
+            &self
+                .cell
+                .read_lexostatus(engine.service(), name, &inputs, moment(as_of)?)
+                .map_err(cell_error)?,
+        )
+    }
+
+    /// Every gram, to keep between sessions and to show.
+    pub fn grams(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.cell.grams().collect::<Vec<_>>())
+    }
+}

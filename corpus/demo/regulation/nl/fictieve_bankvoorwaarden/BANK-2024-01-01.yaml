@@ -1,0 +1,283 @@
+---
+# FICTIEF. De voorwaarden van een fictieve bank, geen overheidsregeling en
+# geen bestaande bank. Het wetsformaat kent geen laag voor regels van een
+# private partij; daarom staat dit regelwerk als UITVOERINGSBELEID, met deze
+# markering. Het dient alleen de demo: een rekening waarop betalingen van de
+# overheid werkelijk binnenkomen, in een eigen cel (corpus/demo/cells/bank).
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.8.0/schema/v0.8.0/schema.json
+$id: fictieve_bankvoorwaarden
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+url: https://github.com/MinBZK/regelrecht/blob/main/corpus/demo/regulation/nl/fictieve_bankvoorwaarden/BANK-2024-01-01.yaml
+name: Voorwaarden van de fictieve bank (fictief, geen overheidsregeling)
+competent_authority:
+  name: Fictieve bank
+articles:
+  - number: '1'
+    url: https://github.com/MinBZK/regelrecht/blob/main/corpus/demo/regulation/nl/fictieve_bankvoorwaarden/BANK-2024-01-01.yaml#artikel-1
+    text: >-
+      FICTIEF, geen bestaande voorwaarden. Een overboeking wordt op de
+      uitvoerdatum bijgeschreven op de rekening van de begunstigde, tenzij de
+      rekening bij de bank onbekend is of geblokkeerd is. Een overboeking die
+      niet wordt bijgeschreven, wordt geweigerd, met de reden. Een overboeking
+      met een betaalkenmerk dat de bank al heeft verwerkt, voert zij niet
+      nogmaals uit.
+    machine_readable:
+      execution:
+        # De bank legt elke ontvangen overboeking vast in haar kroniek
+        # `rekeningen`: bijgeschreven of geweigerd. Welke van de twee, zegt
+        # dit artikel (`record_when`). Er is geen dag waarop de bank dit
+        # uitvoert: zij voert het uit als de overboeking binnenkomt (geen
+        # `executed_on`). Het kenmerk van de opdrachtgever reist mee als veld,
+        # niet als verwijzing: het gram van de opdracht ligt in een andere
+        # kroniek. Dat kenmerk identificeert de overboeking
+        # (`identified_by`): een tweede overboeking met hetzelfde kenmerk
+        # verwerkt de bank niet (laatste zin van het artikel), ook niet als
+        # de opdrachtgever haar opnieuw aanbiedt.
+        produces:
+          extensions:
+            chronolex:
+              establishes:
+                - event: overboeking_bijgeschreven
+                  type: executogram
+                  fields: [betaalkenmerk, rekeningnummer, uitvoerdatum, bedrag, bijgeschreven, bijgeschreven_bedrag, reden]
+                  record_when: bijgeschreven
+                  identified_by: betaalkenmerk
+                - event: overboeking_geweigerd
+                  type: executogram
+                  fields: [betaalkenmerk, rekeningnummer, uitvoerdatum, bedrag, bijgeschreven, bijgeschreven_bedrag, reden]
+                  record_when: geweigerd
+                  identified_by: betaalkenmerk
+        parameters:
+          - name: rekeningnummer
+            type: string
+            required: true
+            description: Het rekeningnummer van de begunstigde.
+            origin:
+              waarde: KANAAL
+              grondslag: fictieve_bankvoorwaarden#1
+          - name: bedrag
+            type: amount
+            required: true
+            description: Het bedrag van de overboeking, in eurocent.
+            origin:
+              waarde: KANAAL
+              grondslag: fictieve_bankvoorwaarden#1
+          - name: uitvoerdatum
+            type: date
+            required: true
+            description: De dag waarop de opdrachtgever de overboeking wil laten uitvoeren.
+            origin:
+              waarde: KANAAL
+              grondslag: fictieve_bankvoorwaarden#1
+          - name: betaalkenmerk
+            type: string
+            required: true
+            description: Het kenmerk dat de opdrachtgever aan de overboeking gaf.
+            origin:
+              waarde: KANAAL
+              grondslag: fictieve_bankvoorwaarden#1
+        input:
+          # Of de rekening bij de bank geblokkeerd is; null als de bank de
+          # rekening niet kent.
+          - name: rekening_geblokkeerd
+            type: boolean
+            nullable: true
+            source: {}
+        output:
+          - name: bijgeschreven
+            type: boolean
+          - name: geweigerd
+            type: boolean
+          - name: bijgeschreven_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: reden
+            type: string
+        actions:
+          - output: bijgeschreven
+            value:
+              operation: EQUALS
+              subject: $rekening_geblokkeerd
+              value: false
+          - output: geweigerd
+            value:
+              operation: NOT
+              value: $bijgeschreven
+          - output: bijgeschreven_bedrag
+            value:
+              operation: IF
+              cases:
+                - when: $bijgeschreven
+                  then: $bedrag
+              default: 0
+          - output: reden
+            value:
+              operation: IF
+              cases:
+                - when: {operation: EQUALS, subject: $rekening_geblokkeerd, value: null}
+                  then: rekening onbekend
+                - when: {operation: EQUALS, subject: $rekening_geblokkeerd, value: true}
+                  then: rekening geblokkeerd
+              default: ''
+  - number: '2'
+    url: https://github.com/MinBZK/regelrecht/blob/main/corpus/demo/regulation/nl/fictieve_bankvoorwaarden/BANK-2024-01-01.yaml#artikel-2
+    text: >-
+      FICTIEF, geen bestaande voorwaarden. Een incasso van een schuldeiser aan
+      wie de rekeninghouder toestemming gaf, wordt op de uitvoerdatum
+      afgeschreven van de rekening, tenzij de rekening bij de bank onbekend of
+      geblokkeerd is of het saldo op de uitvoerdatum lager is dan het bedrag.
+      Een incasso die niet wordt afgeschreven, wordt geweigerd, met de reden.
+      Een incasso met een kenmerk dat de bank al heeft verwerkt, voert zij niet
+      nogmaals uit.
+    machine_readable:
+      execution:
+        # De bank legt elke ontvangen incasso vast in haar kroniek
+        # `rekeningen`: afgeschreven of geweigerd, bij ontvangst, zoals een
+        # overboeking (artikel 1). Het saldo leest zij uit haar eigen kroniek
+        # met haar (fictieve) beleid daarover (fictief_beleid_kroniek_bank,
+        # `reads` in haar stroom): het beginsaldo plus wat zij bijschreef,
+        # minus wat zij afschreef.
+        produces:
+          extensions:
+            chronolex:
+              establishes:
+                - event: incasso_afgeschreven
+                  type: executogram
+                  fields:
+                    - incassokenmerk
+                    - rekeningnummer
+                    - uitvoerdatum
+                    - bedrag
+                    - afgeschreven
+                    - afgeschreven_bedrag
+                    - reden_incasso
+                  record_when: afgeschreven
+                  identified_by: incassokenmerk
+                - event: incasso_geweigerd
+                  type: executogram
+                  fields:
+                    - incassokenmerk
+                    - rekeningnummer
+                    - uitvoerdatum
+                    - bedrag
+                    - afgeschreven
+                    - afgeschreven_bedrag
+                    - reden_incasso
+                  record_when: incasso_geweigerd
+                  identified_by: incassokenmerk
+        parameters:
+          - name: rekeningnummer
+            type: string
+            required: true
+            description: Het rekeningnummer waarvan wordt afgeschreven.
+            origin:
+              waarde: KANAAL
+              grondslag: fictieve_bankvoorwaarden#2
+          - name: bedrag
+            type: amount
+            required: true
+            description: Het bedrag van de incasso, in eurocent.
+            origin:
+              waarde: KANAAL
+              grondslag: fictieve_bankvoorwaarden#2
+          - name: uitvoerdatum
+            type: date
+            required: true
+            description: De dag waarop de schuldeiser de incasso wil laten uitvoeren.
+            origin:
+              waarde: KANAAL
+              grondslag: fictieve_bankvoorwaarden#2
+          - name: incassokenmerk
+            type: string
+            required: true
+            description: Het kenmerk dat de schuldeiser aan de incasso gaf.
+            origin:
+              waarde: KANAAL
+              grondslag: fictieve_bankvoorwaarden#2
+          - name: saldomutaties
+            type: amount
+            required: false
+            description: >-
+              Wat de bank tot nu toe op de rekening bijschreef, minus wat zij
+              afschreef (fictief_beleid_kroniek_bank art. 1).
+        input:
+          - name: rekening_geblokkeerd
+            type: boolean
+            nullable: true
+            source: {}
+          # Het saldo waarmee de rekening in de demo begint; null als de bank
+          # de rekening niet kent.
+          - name: beginsaldo
+            type: amount
+            nullable: true
+            source: {}
+            type_spec:
+              unit: eurocent
+        output:
+          - name: saldo
+            type: amount
+            nullable: true
+            type_spec:
+              unit: eurocent
+          - name: afgeschreven
+            type: boolean
+          - name: incasso_geweigerd
+            type: boolean
+          - name: afgeschreven_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: reden_incasso
+            type: string
+        actions:
+          - output: saldo
+            value:
+              operation: IF
+              cases:
+                - when: {operation: EQUALS, subject: $beginsaldo, value: null}
+                  then: null
+              default:
+                operation: ADD
+                values:
+                  - $beginsaldo
+                  - $saldomutaties
+          - output: afgeschreven
+            value:
+              operation: IF
+              cases:
+                # Onbekend of geblokkeerd: niet afschrijven.
+                - when:
+                    operation: NOT
+                    value: {operation: EQUALS, subject: $rekening_geblokkeerd, value: false}
+                  then: false
+                - when: {operation: EQUALS, subject: $saldo, value: null}
+                  then: false
+              default:
+                operation: GREATER_THAN_OR_EQUAL
+                subject: $saldo
+                value: $bedrag
+          - output: incasso_geweigerd
+            value:
+              operation: NOT
+              value: $afgeschreven
+          - output: afgeschreven_bedrag
+            value:
+              operation: IF
+              cases:
+                - when: $afgeschreven
+                  then: $bedrag
+              default: 0
+          - output: reden_incasso
+            value:
+              operation: IF
+              cases:
+                - when: {operation: EQUALS, subject: $rekening_geblokkeerd, value: null}
+                  then: rekening onbekend
+                - when: {operation: EQUALS, subject: $rekening_geblokkeerd, value: true}
+                  then: rekening geblokkeerd
+                - when: {operation: NOT, value: $afgeschreven}
+                  then: saldo ontoereikend
+              default: ''

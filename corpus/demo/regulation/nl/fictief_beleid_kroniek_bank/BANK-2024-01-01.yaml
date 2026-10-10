@@ -1,0 +1,79 @@
+---
+# FICTIEF. Hoe de fictieve bank haar eigen kroniek terugleest: wat er op een
+# rekening is bijgeschreven en afgeschreven. Geen overheidsregeling en geen
+# bestaande bank; het wetsformaat kent geen laag voor regels van een private
+# partij, daarom staat dit regelwerk als UITVOERINGSBELEID, met deze
+# markering. Het is de reductie van de kroniek `rekeningen` zoals RFC-045 die
+# plaatst: een artikel in het beleid van de houder, in het wetsformaat. Welke
+# kroniek de invoer `boekingen` is, zegt de configuratie van de cel van de
+# bank (`registers:` in corpus/demo/cells/bank/cell.yaml), niet dit beleid.
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.8.0/schema/v0.8.0/schema.json
+$id: fictief_beleid_kroniek_bank
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+url: https://github.com/MinBZK/regelrecht/blob/main/corpus/demo/regulation/nl/fictief_beleid_kroniek_bank/BANK-2024-01-01.yaml
+name: Teruglezen van de kroniek van de fictieve bank (fictief, geen overheidsregeling)
+competent_authority:
+  name: Fictieve bank
+articles:
+  - number: '1'
+    url: https://github.com/MinBZK/regelrecht/blob/main/corpus/demo/regulation/nl/fictief_beleid_kroniek_bank/BANK-2024-01-01.yaml#artikel-1
+    text: >-
+      FICTIEF, geen bestaande voorwaarden. De mutaties op een rekening zijn de
+      bedragen die de bank op die rekening bijschreef (artikel 1 van de
+      voorwaarden), verminderd met de bedragen die zij ervan afschreef
+      (artikel 2 van de voorwaarden), zoals haar administratie die kent op het
+      moment van lezen.
+    machine_readable:
+      execution:
+        parameters:
+          - name: rekeningnummer
+            type: string
+            required: true
+            description: De rekening waarvan de mutaties worden gelezen.
+        input:
+          # De kroniek van de bank; de configuratie van haar cel bindt haar.
+          - name: boekingen
+            type: array
+            source: {}
+        output:
+          # Hulpuitvoer: de rekening buiten de FOREACH gelezen. Binnen de
+          # FOREACH is `$rekeningnummer` het veld van de boeking zelf (een
+          # veld van het element schaduwt een parameter met dezelfde naam,
+          # RFC-016).
+          - name: rekening_van_de_mutaties
+            type: string
+            description: De rekening waarnaar gevraagd wordt.
+          - name: saldomutaties
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Bijgeschreven minus afgeschreven.
+        actions:
+          - output: rekening_van_de_mutaties
+            value: $rekeningnummer
+          - output: saldomutaties
+            value:
+              operation: SUBTRACT
+              values:
+                - operation: FOREACH
+                  collection: $boekingen
+                  as: b
+                  filter:
+                    operation: AND
+                    conditions:
+                      - {operation: EQUALS, subject: $b.event, value: overboeking_bijgeschreven}
+                      - {operation: EQUALS, subject: $b.rekeningnummer, value: $rekening_van_de_mutaties}
+                  body: $b.bijgeschreven_bedrag
+                  combine: ADD
+                - operation: FOREACH
+                  collection: $boekingen
+                  as: b
+                  filter:
+                    operation: AND
+                    conditions:
+                      - {operation: EQUALS, subject: $b.event, value: incasso_afgeschreven}
+                      - {operation: EQUALS, subject: $b.rekeningnummer, value: $rekening_van_de_mutaties}
+                  body: $b.afgeschreven_bedrag
+                  combine: ADD

@@ -81,6 +81,7 @@ fn run_lifecycle(
                 state: next,
                 outputs,
                 pending_inputs,
+                ..
             } => {
                 // Alleen aanleveren wat de aanroeper ook echt heeft; wat hij
                 // niet heeft, is waar de levensloop op wacht.
@@ -265,4 +266,101 @@ fn een_afwijkende_termijn_werkt_door_in_de_einddatum() {
         Some(&date("2026-04-09")),
         "outputs: {outputs:?}"
     );
+}
+
+/// Een tegemoetkoming volgt de procedure van de Awir, met twee besluiten:
+/// het voorschot en de toekenning. Elk wordt bekendgemaakt (Awb 3:41), en op
+/// elke bekendmaking vuurt Awb 6:8, zodat elk besluit zijn eigen
+/// bezwaartermijn heeft, gerekend vanaf zijn eigen bekendmaking.
+const WET_MET_TEGEMOETKOMING: &str = r#"
+$id: test_tegemoetkoming
+regulatory_layer: WET
+publication_date: '2026-01-01'
+valid_from: '2020-01-01'
+name: Testwet die een tegemoetkoming geeft
+articles:
+  - number: '1'
+    text: De Dienst Toeslagen kent de tegemoetkoming toe.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          procedure_id: tegemoetkoming
+        output:
+          - name: toegekend
+            type: boolean
+        actions:
+          - output: toegekend
+            value: true
+"#;
+
+#[test]
+fn elk_besluit_van_een_tegemoetkoming_heeft_een_eigen_bezwaartermijn() {
+    let mut service = load_corpus();
+    if !heeft_wet(&service, "algemene_wet_inkomensafhankelijke_regelingen") {
+        eprintln!("overgeslagen: de Awir zit niet in dit corpus");
+        return;
+    }
+    service.load_law(WET_MET_TEGEMOETKOMING).unwrap();
+    let step = |state: Option<StageState>, given: &[(&str, &str)]| {
+        let given = given
+            .iter()
+            .map(|(k, v)| (k.to_string(), date(v)))
+            .collect();
+        service
+            .execute_stage(
+                "test_tegemoetkoming",
+                "toegekend",
+                state,
+                given,
+                "2025-01-01",
+            )
+            .unwrap()
+    };
+    let yielded = |outcome: ExecutionOutcome| match outcome {
+        ExecutionOutcome::Yielded {
+            state,
+            outputs,
+            pending_inputs,
+            ..
+        } => (state, outputs, pending_inputs),
+        ExecutionOutcome::Complete(r) => panic!("klaar, terwijl er een fase wacht: {r:?}"),
+    };
+
+    let (state, _, pending) = yielded(step(None, &[]));
+    assert_eq!(state.current_stage, "VOORSCHOT");
+    assert_eq!(pending, vec!["dagtekening_voorschot".to_string()]);
+
+    let (state, _, pending) = yielded(step(
+        Some(state),
+        &[("dagtekening_voorschot", "2024-11-20")],
+    ));
+    assert_eq!(state.current_stage, "VOORSCHOT_BEKENDMAKING");
+    assert_eq!(pending, vec!["bekendmaking_datum".to_string()]);
+
+    let (state, outputs, pending) =
+        yielded(step(Some(state), &[("bekendmaking_datum", "2024-11-21")]));
+    assert_eq!(state.current_stage, "TOEKENNING");
+    assert_eq!(pending, vec!["dagtekening_toekenning".to_string()]);
+    assert_eq!(
+        outputs.get("bezwaartermijn_einddatum"),
+        Some(&date("2025-01-02"))
+    );
+
+    // De bekendmaking van het voorschot geldt niet voor de toekenning: die
+    // wacht op haar eigen bekendmaking.
+    let (state, _, pending) = yielded(step(
+        Some(state),
+        &[("dagtekening_toekenning", "2026-05-01")],
+    ));
+    assert_eq!(state.current_stage, "TOEKENNING_BEKENDMAKING");
+    assert_eq!(pending, vec!["bekendmaking_datum".to_string()]);
+
+    match step(Some(state), &[("bekendmaking_datum", "2026-05-04")]) {
+        ExecutionOutcome::Complete(result) => assert_eq!(
+            result.outputs.get("bezwaartermijn_einddatum"),
+            Some(&date("2026-06-15"))
+        ),
+        other => panic!("de levensloop had klaar moeten zijn: {other:?}"),
+    }
 }

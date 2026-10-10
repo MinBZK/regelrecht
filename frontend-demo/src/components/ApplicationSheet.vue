@@ -8,6 +8,8 @@ import { caseReason, eventText, useDemo } from '../store/demoStore.js';
 import { t } from '../i18n/index.js';
 import { awbOutcomes, canBeApplied, objectionOpen, statusOf } from '../data/lifecycle.js';
 import { driftRows, driftSentence } from '../data/caseDrift.js';
+import { fieldText, provisionLabel } from '../data/chronolex.js';
+import { citizenRows } from '../data/chronicleView.js';
 
 // The citizen's side of an application, inside the portal. The flow the POC
 // generated per regeling: first the questions only the citizen can answer
@@ -51,6 +53,23 @@ const currentCase = computed(() => {
   return props.law ? findCase(props.law) : null;
 });
 const doc = computed(() => props.law?.doc);
+// De aanvraag zoals de wet haar vraagt (chronolex): per veld het artikel dat
+// erom vraagt en wat de persona invult. Alleen voor een wet waarvan een cel
+// het besluit in haar kroniek legt.
+const lawApplication = computed(() => {
+  void dataVersion.value;
+  if (!props.law || !demo.ready.value) return null;
+  const shape = demo.applicationShape(props.law);
+  if (!shape) return null;
+  const values = demo.applicationValuesFor(props.law, shape);
+  return shape.fields.map((f) => ({
+    name: f.name,
+    field: f,
+    value: f.fixed ?? values[f.name],
+    byCell: f.fixed != null,
+    basis: f.legal_basis.map((ref) => provisionLabel(corpus.value, ref)).join(' · '),
+  }));
+});
 
 // true/false when the law decided, 'unknown' when it could not for lack of
 // facts (RFC-036): then there is nothing to submit yet. A law without a
@@ -275,6 +294,34 @@ function fileObjection() {
   demo.objectToCase(currentCase.value.id, objectionReason.value.trim() || t('sheet.application.objection.default_reason'));
   objectionReason.value = '';
 }
+/**
+ * Wat er uit de kroniek van deze zaak volgt voor de burger: wat er tot nu toe
+ * is ontvangen (zoals de cel het uit haar kroniek leest, `receivedOf`), de
+ * besluiten met hun bedragen en datums (het voorschot, de toekenning met wat
+ * er nog wordt nabetaald of terugbetaald), en wat de wet nog als moment
+ * geeft. Uit de grammen en hun veldtypen, niet uit veldnamen.
+ */
+const payments = computed(() => {
+  void dataVersion.value;
+  void demo.state.referenceDate;
+  const c = currentCase.value;
+  // Alleen als het blad open is: de momenten vragen de cel om voorbeelden.
+  if (!props.open || !c?.applicationGramId) return null;
+  const grams = demo.gramsOfCase(c).filter((g) => g.id !== c.applicationGramId);
+  if (!grams.length) return null;
+  const executions = grams.filter((g) => g.type === 'executogram');
+  // Lezen, niet vastleggen: een fout van de cel staat hier, niet op de zaak.
+  const received = executions.length ? demo.receivedOf(c) : { rows: [], error: null };
+  const coming = demo.momentViewsOf(c);
+  return {
+    received: received.rows,
+    decisions: grams
+      .filter((g) => g.type !== 'executogram')
+      .map((g) => ({ id: g.id, name: g.name, at: g.effective_at, rows: citizenRows(g, demo.gramFields(g), corpus.value) })),
+    coming: coming.moments,
+    errors: [received.error, coming.error].filter(Boolean),
+  };
+});
 const claimedPrimary = computed(() => {
   const c = currentCase.value;
   if (!c) return null;
@@ -393,6 +440,19 @@ function claimStatus(cl) {
               </nldd-list>
               <nldd-rich-text spacing="tight"><p><small>{{ t('sheet.application.basis.hint') }}</small></p></nldd-rich-text>
 
+              <template v-if="lawApplication">
+                <nldd-title size="5">
+                  <h3>{{ t('sheet.application.law_asks.title') }}</h3>
+                  <span slot="supporting-text">{{ t('sheet.application.law_asks.subtitle') }}</span>
+                </nldd-title>
+                <nldd-list appearance="box-tinted" :accessible-label="t('sheet.application.law_asks.title')">
+                  <nldd-list-item v-for="row in lawApplication" :key="row.name" size="sm">
+                    <nldd-text-cell size="sm" :text="humanize(row.name)" :supporting-text="row.basis"></nldd-text-cell>
+                    <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :color="row.value == null ? 'secondary' : 'content'" :text="row.value == null ? t('sheet.application.law_asks.empty') : fieldText(row.value, row.field, null, corpus)" :supporting-text="row.byCell ? t('sheet.application.law_asks.by_cell') : ''"></nldd-text-cell>
+                  </nldd-list-item>
+                </nldd-list>
+              </template>
+
               <template v-if="requirementsMet && applicable">
                 <nldd-checkbox-field :label="t('sheet.application.declaration')" :checked="declared || undefined" @change="declared = !!($event.detail?.checked ?? $event.target?.checked)"></nldd-checkbox-field>
                 <nldd-form-actions>
@@ -435,6 +495,35 @@ function claimStatus(cl) {
                 <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="formatDateTime(currentCase.submittedAt)"></nldd-text-cell>
               </nldd-list-item>
             </nldd-list>
+            <!-- Wat er betaald is en nog komt, uit de kroniek van de zaak. -->
+            <template v-if="payments">
+              <nldd-title size="5"><h3>{{ t('sheet.application.payments.title') }}</h3></nldd-title>
+              <nldd-banner v-if="payments.errors.length" variant="warning" :text="t('chronicle.read_failed')" :supporting-text="payments.errors.join('; ')"></nldd-banner>
+              <nldd-list v-if="payments.received.length" appearance="box-tinted" :accessible-label="t('sheet.application.payments.received')">
+                <nldd-list-item v-for="r in payments.received" :key="`${r.name}-${r.period}`" size="sm">
+                  <nldd-text-cell size="sm" color="secondary" :text="r.period != null ? t('sheet.application.payments.received_period', { period: r.period }) : t('sheet.application.payments.received')"></nldd-text-cell>
+                  <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="r.text"></nldd-text-cell>
+                </nldd-list-item>
+              </nldd-list>
+              <nldd-list v-for="d in payments.decisions" :key="d.id" appearance="box-tinted" :accessible-label="humanize(d.name)">
+                <nldd-list-item size="sm">
+                  <nldd-text-cell size="sm" :text="humanize(d.name)" :supporting-text="formatDateTime(d.at)"></nldd-text-cell>
+                </nldd-list-item>
+                <nldd-list-item v-for="row in d.rows" :key="row.name" size="sm">
+                  <nldd-text-cell size="sm" color="secondary" :text="humanize(row.name)"></nldd-text-cell>
+                  <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="row.text"></nldd-text-cell>
+                </nldd-list-item>
+              </nldd-list>
+              <template v-if="payments.coming.length">
+                <nldd-title size="6"><h4>{{ t('sheet.application.payments.coming') }}</h4></nldd-title>
+                <nldd-list appearance="box-tinted" :accessible-label="t('sheet.application.payments.coming')">
+                  <nldd-list-item v-for="m in payments.coming" :key="`${m.kind}-${m.name}-${m.date}`" size="sm">
+                    <nldd-text-cell size="sm" :text="m.value ? t('zaak.moments.with_value', { text: m.text, value: m.value }) : m.text" :supporting-text="m.supporting"></nldd-text-cell>
+                    <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="formatValue(m.date, null)"></nldd-text-cell>
+                  </nldd-list-item>
+                </nldd-list>
+              </template>
+            </template>
             <template v-if="caseClaims.length">
               <nldd-title size="5"><h3>{{ t('sheet.application.corrections.title') }}</h3></nldd-title>
               <nldd-list appearance="box-tinted" :accessible-label="t('sheet.application.corrections.title')">

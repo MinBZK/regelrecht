@@ -1,6 +1,6 @@
 ---
 $schema: >-
-  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.8.0/schema/v0.8.0/schema.json
 $id: zorgtoeslagwet
 regulatory_layer: WET
 publication_date: '2025-01-01'
@@ -58,6 +58,19 @@ articles:
         produces:
           legal_character: BESCHIKKING
           decision_type: TOEKENNING
+          # Art. 1 onder e: de zorgtoeslag is een tegemoetkoming. De beschikking
+          # volgt daarom de procedure van de Awir (`tegemoetkoming`): eerst een
+          # voorschot (Awir 16), na het berekeningsjaar de toekenning (Awir 14
+          # lid 1, 19). In de fase VOORSCHOT haakt Awir 16 erop; de Awb haakt
+          # op beide, want beide zijn een besluit.
+          procedure_id: tegemoetkoming
+          # De zorgtoeslag wordt op aanvraag toegekend (Awir art. 14 lid 1): deze
+          # beschikking wordt genomen op de aanvraag van Awir art. 15 (RFC-046).
+          # Elke beschikking in een fase van die procedure is een besluit op
+          # die aanvraag; wat zij vaststelt, zijn de uitkomsten van dit artikel
+          # en van de haken in haar fase.
+          decides_on:
+            - algemene_wet_inkomensafhankelijke_regelingen#15
         parameters:
           - name: bsn
             type: string
@@ -83,15 +96,18 @@ articles:
             temporal:
               type: period
               period_type: month
-          - name: inkomen
+          # Het toetsingsinkomen uit Awir art. 8 (art. 1 onder h: de normpremie
+          # wordt berekend "aan de hand van ... het toetsingsinkomen"). Bij het
+          # voorschot vervangt Awir 16 het door de schatting van de aanvrager.
+          - name: toetsingsinkomen
             type: amount
             type_spec:
               unit: eurocent
               precision: 0
               min: 0
             source:
-              regulation: wet_inkomstenbelasting
-              output: inkomen
+              regulation: algemene_wet_inkomensafhankelijke_regelingen
+              output: toetsingsinkomen
               parameters:
                 bsn: $bsn
             temporal:
@@ -197,6 +213,15 @@ articles:
               unit: eurocent
               precision: 0
               min: 0
+          # Art. 1 onder e: de zorgtoeslag is een tegemoetkoming (Awir art. 2
+          # lid 1 onder h). Onder die naam leest de Awir het bedrag (art. 16:
+          # het voorschot). Zonder aanspraak is er geen tegemoetkoming.
+          - name: tegemoetkoming
+            type: amount
+            type_spec:
+              unit: eurocent
+              precision: 0
+              min: 0
         actions:
           - output: voldoet_aan_voorwaarden
             value:
@@ -286,7 +311,7 @@ articles:
                                   subject:
                                     operation: ADD
                                     values:
-                                      - $inkomen
+                                      - $toetsingsinkomen
                                       - $partner_inkomen
                                   value: $drempelinkomen_toeslagpartner
                                 then: 0
@@ -320,7 +345,7 @@ articles:
                                                     values:
                                                       - operation: ADD
                                                         values:
-                                                          - $inkomen
+                                                          - $toetsingsinkomen
                                                           - $partner_inkomen
                                                       - $drempelinkomen_toeslagpartner
                                               - operation: IF
@@ -330,7 +355,7 @@ articles:
                                                       subject:
                                                         operation: ADD
                                                         values:
-                                                          - $inkomen
+                                                          - $toetsingsinkomen
                                                           - $partner_inkomen
                                                       value: $drempelinkomen_toeslagpartner
                                                     then:
@@ -340,7 +365,7 @@ articles:
                                                           values:
                                                             - operation: ADD
                                                               values:
-                                                                - $inkomen
+                                                                - $toetsingsinkomen
                                                                 - $partner_inkomen
                                                             - $drempelinkomen_toeslagpartner
                                                         - $afbouwpercentage_boven_drempel
@@ -361,7 +386,7 @@ articles:
                                             values:
                                               - operation: ADD
                                                 values:
-                                                  - $inkomen
+                                                  - $toetsingsinkomen
                                                   - $partner_inkomen
                                               - $drempelinkomen_toeslagpartner
                                       - operation: IF
@@ -371,7 +396,7 @@ articles:
                                               subject:
                                                 operation: ADD
                                                 values:
-                                                  - $inkomen
+                                                  - $toetsingsinkomen
                                                   - $partner_inkomen
                                               value: $drempelinkomen_toeslagpartner
                                             then:
@@ -381,7 +406,7 @@ articles:
                                                   values:
                                                     - operation: ADD
                                                       values:
-                                                        - $inkomen
+                                                        - $toetsingsinkomen
                                                         - $partner_inkomen
                                                     - $drempelinkomen_toeslagpartner
                                                 - $afbouwpercentage_boven_drempel
@@ -391,7 +416,7 @@ articles:
                         cases:
                           - when:
                               operation: GREATER_THAN
-                              subject: $inkomen
+                              subject: $toetsingsinkomen
                               value: $drempelinkomen_alleenstaande
                             then: 0
                         default:
@@ -405,20 +430,20 @@ articles:
                                     - $percentage_drempelinkomen_alleenstaand
                                     - operation: MIN
                                       values:
-                                        - $inkomen
+                                        - $toetsingsinkomen
                                         - $drempelinkomen_alleenstaande
                                 - operation: IF
                                   cases:
                                     - when:
                                         operation: GREATER_THAN
-                                        subject: $inkomen
+                                        subject: $toetsingsinkomen
                                         value: $drempelinkomen_alleenstaande
                                       then:
                                         operation: MULTIPLY
                                         values:
                                           - operation: SUBTRACT
                                             values:
-                                              - $inkomen
+                                              - $toetsingsinkomen
                                               - $drempelinkomen_alleenstaande
                                           - $afbouwpercentage_minimum
                                   default: 0
@@ -433,6 +458,18 @@ articles:
               explanation: >-
                 Artikel 2 lid 1 bepaalt dat hoogte zorgtoeslag afhangt van verschil tussen standaardpremie
                 en normpremie, waarbij onderscheid wordt gemaakt tussen alleenstaanden en partners
+          # Zonder aanspraak (voldoet_aan_voorwaarden onwaar) is hoogte_toeslag
+          # afwezig, en de tegemoetkoming nihil.
+          - output: tegemoetkoming
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $hoogte_toeslag
+                    value: null
+                  then: 0
+              default: $hoogte_toeslag
   - number: '4'
     text: >-
       Onze Minister stelt jaarlijks, uiterlijk 22 dagen voorafgaande aan het berekeningsjaar,

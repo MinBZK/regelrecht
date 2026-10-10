@@ -709,6 +709,20 @@ awb/bezwaar:
         value: $zaak.id
     kind: events
     service: JenV
+algemene_wet_inzake_rijksbelastingen:
+  # FICTIEF: wat de inspecteur per kalenderjaar van de belastingplichtige weet
+  # voor de aanslag (art. 11): het verzamelinkomen. Alleen de cel van de
+  # Belastingdienst leest dit, voor de aanslag; geen andere wet.
+  aanslaggegevens:
+    table: aanslagen_inkomstenbelasting
+    fields:
+      - jaar
+      - verzamelinkomen
+    select_on:
+      - name: bsn
+        value: $bsn
+    kind: table
+    service: BELASTINGDIENST
 belastingdienst_vermogen:
   vermogensgegevens:
     table: belastingdienst_vermogen
@@ -888,6 +902,42 @@ faillissementswet_wsnp_bewindvoerder:
         value: $bsn
     kind: table
     service: RECHTSPRAAK
+fictief_beleid_aanslagregeling:
+  # FICTIEF: de planning van de inspecteur, per kalenderjaar de dag waarop hij
+  # de aanslag vaststelt.
+  planning:
+    table: aanslagen_inkomstenbelasting
+    fields:
+      - jaar
+      - datum_vaststelling
+    select_on:
+      - name: bsn
+        value: $bsn
+    kind: table
+    service: BELASTINGDIENST
+fictieve_bankvoorwaarden:
+  # Of de fictieve bank de rekening geblokkeerd heeft. Kent de bank de
+  # rekening niet, dan is er geen rij: null, en de bank weigert als onbekend.
+  rekening_geblokkeerd:
+    table: rekeningen
+    field: geblokkeerd
+    select_on:
+      - name: rekeningnummer
+        value: $rekeningnummer
+    kind: table
+    service: BANK
+    absent: null
+  # Het saldo waarmee de rekening in de demo begint (artikel 2: de incasso).
+  # Kent de bank de rekening niet, dan is er geen rij: null.
+  beginsaldo:
+    table: rekeningen
+    field: beginsaldo
+    select_on:
+      - name: rekeningnummer
+        value: $rekeningnummer
+    kind: table
+    service: BANK
+    absent: null
 handelsregisterwet:
   inschrijvingen:
     table: inschrijvingen

@@ -1,0 +1,239 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.8.0/schema/v0.8.0/schema.json
+$id: algemene_wet_inzake_rijksbelastingen
+regulatory_layer: WET
+publication_date: '2025-12-23'
+valid_from: '2024-01-01'
+name: Algemene wet inzake rijksbelastingen
+bwb_id: BWBR0002320
+url: https://wetten.overheid.nl/BWBR0002320/2024-01-01
+# Alleen wat de demo nodig heeft om de aanslag inkomstenbelasting als besluit
+# van de inspecteur vast te leggen en het inkomensgegeven bij de Dienst
+# Toeslagen te laten aankomen: art. 11 (de inspecteur stelt de aanslag vast),
+# art. 21 (wat het inkomensgegeven is), art. 21c lid 4 (het aanslagbiljet
+# vermeldt het) en art. 21e (de inspecteur verstrekt het aan een afnemer). De
+# tekst is die van 2024 en 2025 (gelijk voor deze artikelen). Het hoofdcorpus
+# heeft een eigen versie met alleen art. 21; dit democorpus staat los
+# daarvan.
+articles:
+  - number: '11'
+    text: |-
+      1 De aanslag wordt vastgesteld door de inspecteur.
+
+      2 De inspecteur kan bij het vaststellen van de aanslag van de aangifte afwijken, zomede de aanslag ambtshalve
+      vaststellen.
+
+      3 De bevoegdheid tot het vaststellen van de aanslag vervalt door verloop van drie jaren na het tijdstip waarop de
+      belastingschuld is ontstaan. Indien voor het doen van aangifte uitstel is verleend, wordt deze termijn met de duur
+      van dit uitstel verlengd. Indien binnen zes maanden voor het einde van de termijn, bedoeld in de eerste zin, een
+      verzoek als bedoeld in [artikel 6, tweede of derde lid][ref1], wordt gedaan of gegevens als bedoeld in
+      [artikel 9, vierde lid][ref2], worden verstrekt, wordt die termijn met zes maanden verlengd.
+
+      4 Voor de toepassing van het derde lid wordt belastingschuld, waarvan de grootte eerst kan worden vastgesteld na
+      afloop van het tijdvak waarover de belasting wordt geheven, geacht te zijn ontstaan op het tijdstip waarop dat
+      tijdvak eindigt.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0002320#Artikel6
+      [ref2]: https://wetten.overheid.nl/BWBR0002320#Artikel9
+    url: https://wetten.overheid.nl/BWBR0002320/2024-01-01#Artikel11
+    references:
+      - id: ref1
+        bwb_id: BWBR0002320
+        artikel: '6'
+      - id: ref2
+        bwb_id: BWBR0002320
+        artikel: '9'
+    machine_readable:
+      # Lid 1: de inspecteur stelt de aanslag vast, een beschikking. Lid 2:
+      # ook ambtshalve; de demo modelleert geen aangifte, dus de aanslag is
+      # hier een besluit op geen aanvraag (geen `decides_on`). Hij volgt de
+      # beschikkingsprocedure van de Awb: in de fase BESLUIT haken Awb 3:46
+      # en 6:7 erop, en zijn dagtekening is de datum die die fase vraagt
+      # (`besluit_datum`; art. 22j: de bezwaartermijn loopt vanaf de dag na
+      # de dagtekening van het aanslagbiljet, niet gemodelleerd).
+      #
+      # Het tijdvak: de inkomstenbelasting wordt geheven over wat de
+      # belastingplichtige in het kalenderjaar genoot (Wet IB 2001 art. 2.3;
+      # art. 2.7 lid 1: de over een kalenderjaar verschuldigde belasting).
+      # Eigen keuze: de aanslag betreft dat kalenderjaar. Art. 11 zelf noemt
+      # geen jaar; lid 4 spreekt alleen voor de vervaltermijn van lid 3 over
+      # het tijdvak waarover de belasting wordt geheven. Het schema kent de
+      # rol TIJDVAK alleen voor een tijdvak dat de aanvrager kiest; voor een
+      # besluit op geen aanvraag noemt de stroom van de cel de parameter die
+      # het jaar geeft (eigen keuze, open punt voor het schema).
+      #
+      # Eigen vereenvoudiging, FICTIEF in de demo: de aanslag rekent het
+      # verzamelinkomen niet zelf uit (art. 2.18 Wet IB 2001 staat niet in
+      # het democorpus). Het verzamelinkomen per jaar is een gegeven van de
+      # inspecteur (`aanslaggegevens`, BELASTINGDIENST in profiles.yaml), en
+      # de aanslag stelt het vast. Het inkomensgegeven is dat
+      # verzamelinkomen (art. 21 onder e, 1°: er is een aanslag), en het
+      # aanslagbiljet vermeldt het afzonderlijk (art. 21c lid 4).
+      # Niet gemodelleerd: de belasting zelf, lid 2 (afwijken van de
+      # aangifte), lid 3 (de vaststellingstermijn), navorderingsaanslagen.
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: AANSLAG
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+            description: De belastingplichtige ten name van wie de aanslag wordt vastgesteld.
+          - name: belastingjaar
+            type: number
+            required: true
+            description: >-
+              Het kalenderjaar waarover de aanslag wordt vastgesteld: het jaar
+              waarover de inkomstenbelasting wordt geheven (Wet IB 2001 art.
+              2.3). Eigen keuze: art. 11 noemt het jaar niet zelf.
+            origin:
+              waarde: DOSSIER
+              # Geen grondslag: Wet IB 2001 art. 2.3 heft de belasting over wat de
+              # belastingplichtige in het kalenderjaar genoot, maar zegt niet wie het jaar van de
+              # aanslag geeft. Eigen keuze: zie boven.
+          - name: besluit_datum
+            type: date
+            required: false
+            description: >-
+              De dag waarop de inspecteur de aanslag vaststelt: de dagtekening
+              van het aanslagbiljet.
+        input:
+          # FICTIEF: wat de inspecteur per jaar van de belastingplichtige weet,
+          # als lijst van rijen (jaar, verzamelinkomen).
+          - name: aanslaggegevens
+            type: array
+            source: {}
+        output:
+          # Hulpuitvoer: het jaar buiten de FOREACH gelezen.
+          - name: jaar_van_de_aanslag
+            type: number
+            description: Het kalenderjaar waarover de aanslag gaat.
+          - name: verzamelinkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: >-
+              Het verzamelinkomen dat de aanslag vaststelt (art. 21 onder c:
+              als bedoeld in art. 2.18 Wet IB 2001).
+          - name: inkomensgegeven
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: >-
+              Het inkomensgegeven over het jaar: het verzamelinkomen, omdat er
+              een aanslag is (art. 21 onder e, 1°). Het aanslagbiljet vermeldt
+              het afzonderlijk (art. 21c lid 4).
+            legal_basis:
+              law: Algemene wet inzake rijksbelastingen
+              article: '21'
+          - name: datum_vaststelling_aanslag
+            type: date
+            description: De dag waarop de aanslag is vastgesteld.
+        actions:
+          - output: jaar_van_de_aanslag
+            value: $belastingjaar
+          - output: verzamelinkomen
+            value:
+              operation: FOREACH
+              collection: $aanslaggegevens
+              as: a
+              filter: {operation: EQUALS, subject: $a.jaar, value: $jaar_van_de_aanslag}
+              body: $a.verzamelinkomen
+              combine: ADD
+          - output: inkomensgegeven
+            value: $verzamelinkomen
+          - output: datum_vaststelling_aanslag
+            value: $besluit_datum
+
+  - number: '21'
+    text: |-
+      In dit hoofdstuk en de daarop berustende bepalingen wordt verstaan onder:
+
+      a. basisregistratie: verzameling gegevens waarvan bij wet is bepaald dat deze authentieke gegevens bevat;
+
+      b. authentiek gegeven: in een basisregistratie opgenomen gegeven dat bij wettelijk voorschrift als authentiek is
+      aangemerkt;
+
+      c. verzamelinkomen: verzamelinkomen als bedoeld in [artikel 2.18 van de Wet inkomstenbelasting 2001][ref1];
+
+      d. belastbaar loon: belastbaar loon als bedoeld in [artikel 9 van de Wet op de loonbelasting 1964][ref2], met
+      uitzondering van loon dat als een eindheffingsbestanddeel in de zin van die wet is belast;
+
+      e. inkomensgegeven:
+
+      1°. indien over een kalenderjaar een aanslag of navorderingsaanslag inkomstenbelasting is of wordt vastgesteld: het
+      na afloop van dat kalenderjaar van betrokkene over dat kalenderjaar laatst bepaalde verzamelinkomen;
+
+      2°. indien over een kalenderjaar geen aanslag of navorderingsaanslag inkomstenbelasting is of wordt vastgesteld:
+      het na afloop van dat kalenderjaar van betrokkene over dat kalenderjaar laatst bepaalde belastbare loon;
+
+      f. afnemer: bestuursorgaan dat op grond van een wettelijk voorschrift bevoegd is tot gebruik van een
+      inkomensgegeven;
+
+      g. betrokkene: degene op wie het inkomensgegeven betrekking heeft;
+
+      h. terugmelding: melding als bedoeld in [artikel 21h, eerste lid][ref3].
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0011353#Artikel2.18
+      [ref2]: https://wetten.overheid.nl/BWBR0002471#Artikel9
+      [ref3]: https://wetten.overheid.nl/BWBR0002320#Artikel21h
+    url: https://wetten.overheid.nl/BWBR0002320/2024-01-01#Artikel21
+    references:
+      - id: ref1
+        bwb_id: BWBR0011353
+        artikel: '2.18'
+      - id: ref2
+        bwb_id: BWBR0002471
+        artikel: '9'
+      - id: ref3
+        bwb_id: BWBR0002320
+        artikel: 21h
+
+  - number: 21c
+    text: |-
+      1 Bij de bepaling van het inkomensgegeven, bedoeld in [artikel 21, onderdeel e, onder 1°][ref1], zijn de regels die
+      gelden bij de heffing van de inkomstenbelasting van overeenkomstige toepassing.
+
+      2 Bij de bepaling van het inkomensgegeven, bedoeld in [artikel 21, onderdeel e, onder 2°][ref2], zijn de regels die
+      gelden bij de heffing van de loonbelasting van overeenkomstige toepassing.
+
+      3 Bij de bepaling van het inkomensgegeven blijft [artikel 65][ref3] buiten toepassing.
+
+      4 Indien in het kader van de heffing van de inkomstenbelasting of de loonbelasting aan betrokkene een aanslagbiljet,
+      een afschrift van de uitspraak op bezwaar of een afschrift van de beschikking ambtshalve vermindering wordt
+      verstrekt, wordt het bijbehorende inkomensgegeven afzonderlijk vermeld.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0002320#Artikel21
+      [ref2]: https://wetten.overheid.nl/BWBR0002320#Artikel21
+      [ref3]: https://wetten.overheid.nl/BWBR0002320#Artikel65
+    url: https://wetten.overheid.nl/BWBR0002320/2024-01-01#Artikel21c
+    references:
+      - id: ref1
+        bwb_id: BWBR0002320
+        artikel: '21'
+      - id: ref2
+        bwb_id: BWBR0002320
+        artikel: '21'
+      - id: ref3
+        bwb_id: BWBR0002320
+        artikel: '65'
+
+  - number: 21e
+    text: |-
+      1 De inspecteur verstrekt aan een afnemer op zijn verzoek een inkomensgegeven met bijbehorende temporele en
+      meta-kenmerken.
+
+      2 Een inkomensgegeven waarbij de aantekening «in onderzoek» is geplaatst, wordt uitsluitend verstrekt onder
+      mededeling van die aantekening.
+
+      3 Met een inkomensgegeven kunnen authentieke gegevens uit andere basisregistraties worden meegeleverd.
+
+      4 De inspecteur deelt, na verwijdering van de aantekening «in onderzoek», op verzoek aan een afnemer die het
+      desbetreffende inkomensgegeven voorafgaand aan de verwijdering van de aantekening verstrekt heeft gekregen mee dat
+      de aantekening is verwijderd en of het gegeven is gewijzigd.
+    url: https://wetten.overheid.nl/BWBR0002320/2024-01-01#Artikel21e

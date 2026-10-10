@@ -346,14 +346,25 @@ fn declaration_fingerprint(law: &ArticleBasedLaw) -> Vec<String> {
         if let Some(hooks) = article.get_hooks() {
             for decl in hooks {
                 parts.push(format!(
-                    "hook\0{}\0{:?}\0{:?}\0{:?}\0{:?}",
+                    "hook\0{}\0{:?}\0{:?}\0{:?}\0{:?}\0{:?}\0{:?}\0{:?}",
                     article.number,
                     decl.hook_point,
                     decl.applies_to.legal_character,
                     decl.applies_to.decision_type,
-                    decl.applies_to.stage
+                    decl.applies_to.stage,
+                    decl.applies_to.submission,
+                    decl.applies_to.decided_by,
+                    decl.applies_to.established_by
                 ));
             }
+        }
+        for target in article
+            .get_produces()
+            .and_then(|p| p.decides_on.as_ref())
+            .into_iter()
+            .flatten()
+        {
+            parts.push(format!("decides_on\0{}\0{target}", article.number));
         }
         if let Some(overrides) = article.get_overrides() {
             for decl in overrides {
@@ -376,10 +387,26 @@ pub(crate) struct LawArticleRef {
 }
 
 /// A hook index entry linking a hook declaration to the law and article that defined it.
-pub(crate) struct HookEntry {
+pub struct HookEntry {
     pub(crate) law_id: String,
     pub(crate) article_number: String,
     filter: HookFilter,
+}
+
+impl HookEntry {
+    /// What the hook applies to.
+    pub fn filter(&self) -> &HookFilter {
+        &self.filter
+    }
+}
+
+/// A decision taken on a submission (RFC-046): the decision article and the
+/// legal character it produces.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct DecisionOn {
+    pub law_id: String,
+    pub article_number: String,
+    pub legal_character: String,
 }
 
 /// Resolves cross-law references and provides law registry functionality.
@@ -420,15 +447,26 @@ pub struct RuleResolver {
     /// Registry of loaded laws by ID, supporting multiple versions per law ID.
     /// Each law ID maps to a list of versions, sorted by valid_from date (newest first).
     law_versions: HashMap<String, Vec<ArticleBasedLaw>>,
-    /// Index: "law_id\0output_name" -> article_number
+    /// Index: "law_id\0output_name" -> the numbers of the articles a
+    /// reference to it can resolve to ([`ArticleBasedLaw::output_producers`]),
+    /// in file order. A single one is the fast path of
+    /// [`Self::resolve_article_by_output`]; none or several go through
+    /// [`unique_output_producer`], which says which error it is.
     /// Note: This index uses the most recent version of each law.
     /// Uses a flat string key (null-separated) to avoid two allocations per lookup.
-    output_index: HashMap<String, String>,
+    output_index: HashMap<String, Vec<String>>,
     /// IoC index: (law_id, article, open_term_id) -> list of implementing articles
     implements_index: HashMap<(String, String, String), Vec<LawArticleRef>>,
     /// Hook index: (hook_point, legal_character) -> list of (law_id, article_number, filter)
     /// Enables O(1) lookup of hooks that should fire for a given lifecycle event.
     hooks_index: HashMap<(HookPoint, String), Vec<HookEntry>>,
+    /// Hooks on a submission (RFC-046): (hook_point, kind) -> entries, such
+    /// as Awb 4:2 on every `AANVRAAG`.
+    submission_hooks_index: HashMap<(HookPoint, String), Vec<HookEntry>>,
+    /// Decisions taken on a submission (RFC-046): `<law>#<article>` of the
+    /// article that establishes the submission -> the decision articles that
+    /// name it in `produces.decides_on`, with their legal character.
+    decides_on_index: HashMap<String, Vec<DecisionOn>>,
     /// Override index: (target_law, target_article, output) -> list of overriding articles
     /// Enables O(1) lookup of lex specialis overrides for a given output.
     overrides_index: HashMap<(String, String, String), Vec<LawArticleRef>>,
@@ -490,6 +528,8 @@ impl RuleResolver {
             output_index: HashMap::new(),
             implements_index: HashMap::new(),
             hooks_index: HashMap::new(),
+            submission_hooks_index: HashMap::new(),
+            decides_on_index: HashMap::new(),
             overrides_index: HashMap::new(),
             procedure_index: HashMap::new(),
             procedure_defaults: HashMap::new(),
@@ -686,10 +726,31 @@ impl RuleResolver {
                 continue;
             };
             for decl in hooks {
-                if decl.applies_to.legal_character.is_none() {
-                    return Err(EngineError::LoadError(format!(
-                        "law '{}' article {}: hook declares no applies_to.legal_character, \
+                let f = &decl.applies_to;
+                let problem = match (&f.legal_character, &f.submission) {
+                    (None, None) => Some(
+                        "hook declares neither applies_to.legal_character nor applies_to.submission, \
                          so it can never fire",
+                    ),
+                    (Some(_), Some(_)) => Some(
+                        "hook declares both applies_to.legal_character and applies_to.submission; \
+                         a hook applies to a decision or to a submission (RFC-046)",
+                    ),
+                    (Some(_), None) if f.decided_by.is_some() || f.established_by.is_some() => {
+                        Some(
+                            "applies_to.decided_by and applies_to.established_by only narrow a hook \
+                             on a submission",
+                        )
+                    }
+                    (None, Some(_)) if f.stage.is_some() || f.decision_type.is_some() => Some(
+                        "a hook on a submission takes no stage or decision_type; decided_by and \
+                         established_by narrow it",
+                    ),
+                    _ => None,
+                };
+                if let Some(problem) = problem {
+                    return Err(EngineError::LoadError(format!(
+                        "law '{}' article {}: {problem}",
                         law.id, article.number
                     )));
                 }
@@ -877,25 +938,57 @@ impl RuleResolver {
     ///
     /// # Returns
     /// Reference to the article if found.
+    ///
+    /// An ambiguous output answers `None` here; execution paths use
+    /// [`Self::resolve_article_by_output`], which says so.
     pub fn get_article_by_output(
         &self,
         law_id: &str,
         output: &str,
         reference_date: Option<NaiveDate>,
     ) -> Option<&Article> {
-        let law = self.get_law_for_date(law_id, reference_date)?;
-        // Try indexed lookup first (O(1)), fall back to linear scan
+        self.resolve_article_by_output(law_id, output, reference_date)
+            .ok()
+    }
+
+    /// The article a reference to `output` of `law_id` resolves to, in the
+    /// version in force on `reference_date`.
+    ///
+    /// A hook or a same-law override that produces the same name is not what
+    /// the reference means (see [`ArticleBasedLaw::output_producers`]). Two
+    /// ordinary articles producing it is [`EngineError::AmbiguousOutput`]:
+    /// picking one would let the order of the articles in the file decide.
+    pub fn resolve_article_by_output(
+        &self,
+        law_id: &str,
+        output: &str,
+        reference_date: Option<NaiveDate>,
+    ) -> Result<&Article> {
+        let not_found = || EngineError::OutputNotFound {
+            law_id: law_id.to_string(),
+            output: output.to_string(),
+        };
+        let law = self
+            .get_law_for_date(law_id, reference_date)
+            .ok_or_else(not_found)?;
+        // Indexed fast path (O(1)) for an output with a single producer. The
+        // index describes the newest version, so it only answers for that one.
+        let indexed_version = self
+            .law_versions
+            .get(law_id)
+            .and_then(|versions| versions.first())
+            .is_some_and(|newest| std::ptr::eq(newest, law));
         let index_key = format!("{}\0{}", law_id, output);
-        if let Some(article_number) = self.output_index.get(&index_key) {
+        if let (true, Some([article_number])) = (
+            indexed_version,
+            self.output_index.get(&index_key).map(Vec::as_slice),
+        ) {
             if let Some(article) = law.find_article_by_number(article_number) {
-                // Verify the article in this version actually has the output
-                if article.has_output(output) {
-                    return Some(article);
-                }
+                return Ok(article);
             }
         }
-        // Fallback: linear scan (handles version-specific differences)
-        law.find_article_by_output(output)
+        // Several producers, or an older version than the indexed one.
+        unique_output_producer(law, output)?.ok_or_else(not_found)
     }
 
     /// Find all implementations of an open term, resolved by priority.
@@ -1308,6 +1401,13 @@ impl RuleResolver {
         self.law_versions.values().flat_map(|v| v.iter())
     }
 
+    /// Every `is` of a stage of a loaded procedure that names no stage of the
+    /// default procedure for its legal character (see
+    /// [`unknown_stage_aliases`]); empty when all are known.
+    pub fn unknown_stage_aliases(&self) -> Vec<String> {
+        unknown_stage_aliases(self.all_law_versions())
+    }
+
     /// Unload all versions of a law from the resolver.
     ///
     /// Removes all versions of the law and all its indexes.
@@ -1353,6 +1453,22 @@ impl RuleResolver {
         }
     }
 
+    /// Remove the entries `law_id` made in the implements, hook, decides_on
+    /// and override indexes.
+    fn forget_entries_of(&mut self, law_id: &str) {
+        fn retain<K, V>(index: &mut HashMap<K, Vec<V>>, keep: impl Fn(&V) -> bool) {
+            for entries in index.values_mut() {
+                entries.retain(&keep);
+            }
+            index.retain(|_, v| !v.is_empty());
+        }
+        retain(&mut self.implements_index, |r| r.law_id != law_id);
+        retain(&mut self.hooks_index, |e| e.law_id != law_id);
+        retain(&mut self.submission_hooks_index, |e| e.law_id != law_id);
+        retain(&mut self.decides_on_index, |d| d.law_id != law_id);
+        retain(&mut self.overrides_index, |r| r.law_id != law_id);
+    }
+
     /// Rebuild output, implements, hook, override, and procedure indexes for a specific law.
     fn rebuild_indexes_for_law(&mut self, law_id: &str) {
         // Record whether the newest version speaks for the older ones here.
@@ -1362,23 +1478,7 @@ impl RuleResolver {
         self.output_index
             .retain(|key, _| key.split_once('\0').is_none_or(|(id, _)| id != law_id));
 
-        // Remove old implements index entries where this law is an implementor
-        for candidates in self.implements_index.values_mut() {
-            candidates.retain(|r| r.law_id != law_id);
-        }
-        self.implements_index.retain(|_, v| !v.is_empty());
-
-        // Remove old hook index entries for this law
-        for entries in self.hooks_index.values_mut() {
-            entries.retain(|entry| entry.law_id != law_id);
-        }
-        self.hooks_index.retain(|_, v| !v.is_empty());
-
-        // Remove old override index entries for this law
-        for entries in self.overrides_index.values_mut() {
-            entries.retain(|r| r.law_id != law_id);
-        }
-        self.overrides_index.retain(|_, v| !v.is_empty());
+        self.forget_entries_of(law_id);
 
         // Remove old procedure index entries defined by this law
         self.procedure_index
@@ -1411,19 +1511,27 @@ impl RuleResolver {
                     }
                 }
 
+                // Output index: per output name, the articles a reference
+                // to it can resolve to, as `output_producers` says, so the
+                // fast path answers what the slow path would.
                 for article in &law.articles {
-                    // Output index
-                    if let Some(exec) = article.get_execution_spec() {
-                        if let Some(outputs) = &exec.output {
-                            for output in outputs {
-                                self.output_index.insert(
-                                    format!("{}\0{}", law_id, output.name),
-                                    article.number.clone(),
-                                );
-                            }
-                        }
+                    for output in article
+                        .get_execution_spec()
+                        .and_then(|exec| exec.output.as_ref())
+                        .into_iter()
+                        .flatten()
+                    {
+                        let key = format!("{}\0{}", law_id, output.name);
+                        self.output_index.entry(key).or_insert_with(|| {
+                            law.output_producers(&output.name)
+                                .iter()
+                                .map(|a| a.number.clone())
+                                .collect()
+                        });
                     }
+                }
 
+                for article in &law.articles {
                     // Implements index (IoC)
                     if let Some(impl_decls) = article.get_implements() {
                         for decl in impl_decls {
@@ -1448,14 +1556,39 @@ impl RuleResolver {
                     // honest key to file it under (see `check_hook_filters`).
                     if let Some(hook_decls) = article.get_hooks() {
                         for decl in hook_decls {
+                            let entry = HookEntry {
+                                law_id: law_id.to_string(),
+                                article_number: article.number.clone(),
+                                filter: decl.applies_to.clone(),
+                            };
                             if let Some(ref legal_char) = decl.applies_to.legal_character {
                                 let key = (decl.hook_point, legal_char.clone());
-                                let entry = HookEntry {
+                                self.hooks_index.entry(key).or_default().push(entry);
+                            } else if let Some(ref kind) = decl.applies_to.submission {
+                                let key = (decl.hook_point, kind.clone());
+                                self.submission_hooks_index
+                                    .entry(key)
+                                    .or_default()
+                                    .push(entry);
+                            }
+                        }
+                    }
+
+                    // Decisions taken on a submission (RFC-046).
+                    if let Some(produces) = article.get_produces() {
+                        if let (Some(targets), Some(lc)) =
+                            (&produces.decides_on, &produces.legal_character)
+                        {
+                            for target in targets {
+                                let entry = DecisionOn {
                                     law_id: law_id.to_string(),
                                     article_number: article.number.clone(),
-                                    filter: decl.applies_to.clone(),
+                                    legal_character: lc.clone(),
                                 };
-                                self.hooks_index.entry(key).or_default().push(entry);
+                                let list = self.decides_on_index.entry(target.clone()).or_default();
+                                if !list.contains(&entry) {
+                                    list.push(entry);
+                                }
                             }
                         }
                     }
@@ -1487,23 +1620,7 @@ impl RuleResolver {
         self.output_index
             .retain(|key, _| key.split_once('\0').is_none_or(|(id, _)| id != law_id));
 
-        // Remove from implements index (this law as implementor)
-        for candidates in self.implements_index.values_mut() {
-            candidates.retain(|r| r.law_id != law_id);
-        }
-        self.implements_index.retain(|_, v| !v.is_empty());
-
-        // Remove hook index entries for this law
-        for entries in self.hooks_index.values_mut() {
-            entries.retain(|entry| entry.law_id != law_id);
-        }
-        self.hooks_index.retain(|_, v| !v.is_empty());
-
-        // Remove override index entries for this law
-        for entries in self.overrides_index.values_mut() {
-            entries.retain(|r| r.law_id != law_id);
-        }
-        self.overrides_index.retain(|_, v| !v.is_empty());
+        self.forget_entries_of(law_id);
 
         // Remove procedure index entries defined by this law
         self.procedure_index
@@ -1590,13 +1707,16 @@ impl RuleResolver {
     /// Find hooks that match a given lifecycle event.
     ///
     /// Returns matching (law_id, article_number, filter) entries.
-    /// Filters by stage: if the hook has a stage, it must match; if not, it defaults to "BESLUIT".
-    pub(crate) fn find_hooks(
+    /// Filters by stage: if the hook has a stage, it must match `stage` or
+    /// what that stage `is` (`stage_is`, see [`Self::stage_is`]); if not, it
+    /// defaults to "BESLUIT".
+    pub fn find_hooks(
         &self,
         hook_point: HookPoint,
         legal_character: &str,
         decision_type: Option<&str>,
         stage: &str,
+        stage_is: Option<&str>,
     ) -> Vec<&HookEntry> {
         let key = (hook_point, legal_character.to_string());
         let Some(entries) = self.hooks_index.get(&key) else {
@@ -1605,8 +1725,93 @@ impl RuleResolver {
 
         entries
             .iter()
-            .filter(|entry| hook_filter_admits(&entry.filter, decision_type, stage))
+            .filter(|entry| hook_filter_admits(&entry.filter, decision_type, stage, stage_is))
             .collect()
+    }
+
+    /// What stage `stage` of the procedure a decision of `legal_character`
+    /// follows (`procedure_id`, or the default) is an instance of: its `is`,
+    /// in the version of the defining law in force on `reference_date` (see
+    /// [`Self::find_procedure_reported_at`]). A stage of a procedure that
+    /// says `is: BESLUIT` is where the hooks on BESLUIT fire too. `None` when
+    /// the procedure or the stage is not found, or the stage says nothing.
+    pub fn stage_is(
+        &self,
+        legal_character: &str,
+        procedure_id: Option<&str>,
+        stage: &str,
+        reference_date: Option<NaiveDate>,
+    ) -> Option<&str> {
+        self.find_procedure_reported_at(legal_character, procedure_id, reference_date)
+            .ok()?
+            .stages
+            .iter()
+            .find(|s| s.name == stage)?
+            .is
+            .as_deref()
+    }
+
+    /// The decisions taken on the submission that `<law_id>#<article>`
+    /// establishes (RFC-046): the articles that name it in
+    /// `produces.decides_on`, with their legal character.
+    pub fn decisions_on(&self, law_id: &str, article_number: &str) -> &[DecisionOn] {
+        self.decides_on_index
+            .get(&format!("{law_id}#{article_number}"))
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+    }
+
+    /// Find the hooks on a submission of `kind` that the article
+    /// `<law_id>#<article>` establishes (RFC-046). A hook with `decided_by`
+    /// fires only if decisions are taken on the submission and all of them
+    /// have that legal character: the engine does not guess which regime of
+    /// the general law applies. A hook with `established_by` fires only on
+    /// the submission of that one article (policy that works out the
+    /// application of one law). Public so that a runtime can ask which
+    /// articles take part in a submission by the same rule the engine fires
+    /// them; [`crate::LawExecutionService::submission`] collects them with
+    /// what they ask.
+    pub fn find_submission_hooks(
+        &self,
+        hook_point: HookPoint,
+        kind: &str,
+        law_id: &str,
+        article_number: &str,
+    ) -> Vec<&HookEntry> {
+        let Some(entries) = self
+            .submission_hooks_index
+            .get(&(hook_point, kind.to_string()))
+        else {
+            return Vec::new();
+        };
+        entries
+            .iter()
+            .filter(|e| self.submission_filter_admits(&e.filter, law_id, article_number))
+            .collect()
+    }
+
+    /// Whether a hook on a submission narrows itself away from the submission
+    /// `law_id#article_number` establishes: `decided_by` (every decision taken
+    /// on it has that legal character) and `established_by` (only this
+    /// establishing article). The kind is matched by the caller.
+    pub(crate) fn submission_filter_admits(
+        &self,
+        filter: &HookFilter,
+        law_id: &str,
+        article_number: &str,
+    ) -> bool {
+        let decided = match filter.decided_by.as_deref() {
+            None => true,
+            Some(lc) => {
+                let decisions = self.decisions_on(law_id, article_number);
+                !decisions.is_empty() && decisions.iter().all(|d| d.legal_character == lc)
+            }
+        };
+        decided
+            && filter
+                .established_by
+                .as_deref()
+                .is_none_or(|r| r == format!("{law_id}#{article_number}"))
     }
 
     /// Find overrides for a specific article output.
@@ -1661,6 +1866,21 @@ impl RuleResolver {
         legal_character: &str,
         procedure_id: Option<&str>,
     ) -> std::result::Result<&ProcedureDefinition, ProcedureMiss> {
+        self.find_procedure_reported_at(legal_character, procedure_id, None)
+    }
+
+    /// Like [`Self::find_procedure_reported`], with the definition taken from
+    /// the version of the defining law in force on `reference_date`: its
+    /// stages and what each `is` are those of that version. Which procedure
+    /// is meant (the default, or one by name) is decided by the index of the
+    /// newest versions; a version in force that does not define it (or no
+    /// date) answers with the newest definition.
+    pub fn find_procedure_reported_at(
+        &self,
+        legal_character: &str,
+        procedure_id: Option<&str>,
+        reference_date: Option<NaiveDate>,
+    ) -> std::result::Result<&ProcedureDefinition, ProcedureMiss> {
         let (proc_id, named) = match procedure_id {
             Some(id) => (id.to_string(), true),
             None => match self.procedure_defaults.get(legal_character) {
@@ -1670,7 +1890,15 @@ impl RuleResolver {
         };
         let key = (legal_character.to_string(), proc_id.clone());
         match self.procedure_index.get(&key) {
-            Some((def, _)) => Ok(def),
+            Some((def, defining_law)) => Ok(reference_date
+                .and_then(|date| self.get_law_for_date(defining_law, Some(date)))
+                .and_then(|law| law.procedure.as_ref())
+                .and_then(|procedures| {
+                    procedures.iter().find(|p| {
+                        p.id == proc_id && p.applies_to.legal_character == legal_character
+                    })
+                })
+                .unwrap_or(def)),
             None if named => Err(ProcedureMiss::NamedNotFound(proc_id)),
             // The default was registered from a procedure definition, so its
             // absence here means the two indexes disagree.
@@ -1721,17 +1949,95 @@ impl RuleResolver {
     }
 }
 
+/// Every `is` of a procedure stage among `laws` that names no stage of the
+/// default procedure for the same legal character, as a sentence per problem.
+///
+/// A stage says what it `is` so the hooks on that stage of the default
+/// procedure fire on it too (`find_hooks`). A misspelled name matches no
+/// hook, and the hooks it was meant for (the motivation, the objection
+/// period) then silently do not fire. Every version of every law counts: the
+/// stages of all default procedures for the legal character, and every
+/// stage that says what it is. A legal character without a default
+/// procedure among `laws` is not judged: a set of files that leaves out the
+/// law defining it (one file passed to the validator) has nothing to check
+/// against.
+pub fn unknown_stage_aliases<'l>(
+    laws: impl IntoIterator<Item = &'l ArticleBasedLaw>,
+) -> Vec<String> {
+    let mut procedures: Vec<(&ArticleBasedLaw, &ProcedureDefinition)> = Vec::new();
+    for law in laws {
+        for procedure in law.procedure.iter().flatten() {
+            procedures.push((law, procedure));
+        }
+    }
+    let mut default_stages: HashMap<&str, BTreeSet<&str>> = HashMap::new();
+    for (_, procedure) in &procedures {
+        if procedure.default.unwrap_or(false) {
+            default_stages
+                .entry(procedure.applies_to.legal_character.as_str())
+                .or_default()
+                .extend(procedure.stages.iter().map(|s| s.name.as_str()));
+        }
+    }
+    let mut problems = Vec::new();
+    for (law, procedure) in &procedures {
+        let lc = procedure.applies_to.legal_character.as_str();
+        let Some(known) = default_stages.get(lc) else {
+            continue;
+        };
+        for stage in &procedure.stages {
+            let Some(alias) = stage.is.as_deref() else {
+                continue;
+            };
+            if !known.contains(alias) {
+                problems.push(format!(
+                    "{} ({}): stage '{}' of procedure '{}' says `is: {alias}`, which is no \
+                     stage of the default procedure for {lc} ({}); no hook on it would fire",
+                    law.id,
+                    law.valid_from.as_deref().unwrap_or("no valid_from"),
+                    stage.name,
+                    procedure.id,
+                    known.iter().copied().collect::<Vec<_>>().join(", "),
+                ));
+            }
+        }
+    }
+    problems
+}
+
+/// The article of `law` a reference to `output` by name resolves to: `None`
+/// when no article produces it, [`EngineError::AmbiguousOutput`] when more
+/// than one could be meant (see [`ArticleBasedLaw::output_producers`]).
+pub fn unique_output_producer<'l>(
+    law: &'l ArticleBasedLaw,
+    output: &str,
+) -> Result<Option<&'l Article>> {
+    match law.output_producers(output).as_slice() {
+        [] => Ok(None),
+        [article] => Ok(Some(article)),
+        several => Err(EngineError::AmbiguousOutput {
+            law_id: law.id.clone(),
+            output: output.to_string(),
+            articles: several.iter().map(|a| a.number.clone()).collect(),
+        }),
+    }
+}
+
 /// Whether a hook filter admits a decision at this stage, apart from its legal
 /// character (which the hooks index is keyed on).
 ///
 /// An absent stage means BESLUIT (backward compatibility per RFC-008); an
-/// absent decision type admits every decision type.
-pub(crate) fn hook_filter_admits(
+/// absent decision type admits every decision type. A stage that says what it
+/// `is` (`stage_is`) is admitted under that name too: a hook on BESLUIT fires
+/// on a stage of a provisional decision that says `is: BESLUIT`.
+pub fn hook_filter_admits(
     filter: &HookFilter,
     decision_type: Option<&str>,
     stage: &str,
+    stage_is: Option<&str>,
 ) -> bool {
-    if filter.stage.as_deref().unwrap_or("BESLUIT") != stage {
+    let hook_stage = filter.stage.as_deref().unwrap_or("BESLUIT");
+    if hook_stage != stage && Some(hook_stage) != stage_is {
         return false;
     }
     match filter.decision_type.as_deref() {
@@ -1865,6 +2171,404 @@ articles:
         assert!(resolver
             .get_article_by_output("nonexistent", "test_output", None)
             .is_none());
+    }
+
+    /// A version of `producers_law` valid from `valid_from`, whose articles
+    /// each produce `bedrag`; `true` makes the article a hook.
+    fn producers_law(valid_from: &str, articles: &[(&str, bool)]) -> String {
+        let mut yaml = format!(
+            "$id: producers_law\nregulatory_layer: WET\npublication_date: '{valid_from}'\n\
+             valid_from: '{valid_from}'\narticles:\n"
+        );
+        for (number, hook) in articles {
+            yaml.push_str(&format!(
+                "  - number: '{number}'\n    text: t\n    machine_readable:\n"
+            ));
+            if *hook {
+                yaml.push_str(
+                    "      hooks:\n        - hook_point: pre_actions\n          \
+                     applies_to: {legal_character: BESCHIKKING, stage: VOORSCHOT}\n",
+                );
+            }
+            yaml.push_str(
+                "      execution:\n        output: [{name: bedrag, type: number}]\n        \
+                 actions: [{output: bedrag, value: 1}]\n",
+            );
+        }
+        yaml
+    }
+
+    fn producer_of(resolver: &RuleResolver, date: NaiveDate) -> Result<String> {
+        resolver
+            .resolve_article_by_output("producers_law", "bedrag", Some(date))
+            .map(|article| article.number.clone())
+    }
+
+    #[test]
+    fn a_hook_producing_an_output_is_not_what_a_reference_means() {
+        let date = NaiveDate::from_ymd_opt(2025, 6, 1).unwrap();
+        for order in [[("8", false), ("16", true)], [("16", true), ("8", false)]] {
+            let mut resolver = RuleResolver::new();
+            resolver
+                .load_from_yaml(&producers_law("2025-01-01", &order))
+                .unwrap();
+            assert_eq!(producer_of(&resolver, date).unwrap(), "8", "{order:?}");
+        }
+    }
+
+    #[test]
+    fn a_hook_is_what_a_reference_means_when_no_article_produces_the_output() {
+        // Awb 6:8 reads the bezwaartermijn that the hook Awb 6:7 produces.
+        let date = NaiveDate::from_ymd_opt(2025, 6, 1).unwrap();
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(&producers_law("2025-01-01", &[("6:7", true)]))
+            .unwrap();
+        assert_eq!(producer_of(&resolver, date).unwrap(), "6:7");
+    }
+
+    #[test]
+    fn two_articles_producing_an_output_are_ambiguous_in_the_version_that_has_them() {
+        // The newest version has one producer (the indexed fast path); the
+        // older one has two, which the index of the newest must not hide.
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(&producers_law("2024-01-01", &[("1", false), ("2", false)]))
+            .unwrap();
+        resolver
+            .load_from_yaml(&producers_law("2025-01-01", &[("2", false)]))
+            .unwrap();
+        let new = NaiveDate::from_ymd_opt(2025, 6, 1).unwrap();
+        let old = NaiveDate::from_ymd_opt(2024, 6, 1).unwrap();
+        assert_eq!(producer_of(&resolver, new).unwrap(), "2");
+        match producer_of(&resolver, old) {
+            Err(EngineError::AmbiguousOutput { articles, .. }) => {
+                assert_eq!(articles, vec!["1".to_string(), "2".to_string()]);
+            }
+            other => panic!("expected AmbiguousOutput, got {other:?}"),
+        }
+        assert!(resolver
+            .get_article_by_output("producers_law", "bedrag", Some(old))
+            .is_none());
+    }
+
+    #[test]
+    fn an_output_no_article_produces_is_not_found() {
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(&producers_law("2025-01-01", &[("1", false)]))
+            .unwrap();
+        let date = NaiveDate::from_ymd_opt(2025, 6, 1).unwrap();
+        assert!(matches!(
+            resolver.resolve_article_by_output("producers_law", "anders", Some(date)),
+            Err(EngineError::OutputNotFound { .. })
+        ));
+        assert!(matches!(
+            resolver.resolve_article_by_output("geen_wet", "bedrag", Some(date)),
+            Err(EngineError::OutputNotFound { .. })
+        ));
+    }
+
+    #[test]
+    fn a_same_law_override_is_not_what_a_reference_means() {
+        let yaml = r#"
+$id: override_here
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '2'
+    text: bijzonder
+    machine_readable:
+      overrides:
+        - law: override_here
+          article: '1'
+          output: bedrag
+      execution:
+        output: [{name: bedrag, type: number}]
+        actions: [{output: bedrag, value: 2}]
+  - number: '1'
+    text: algemeen
+    machine_readable:
+      execution:
+        output: [{name: bedrag, type: number}]
+        actions: [{output: bedrag, value: 1}]
+"#;
+        let mut resolver = RuleResolver::new();
+        resolver.load_from_yaml(yaml).unwrap();
+        let date = NaiveDate::from_ymd_opt(2025, 6, 1).unwrap();
+        let article = resolver
+            .resolve_article_by_output("override_here", "bedrag", Some(date))
+            .unwrap();
+        assert_eq!(article.number, "1");
+    }
+
+    #[test]
+    fn the_index_and_the_producers_agree_on_a_same_law_implementation() {
+        // Article 2 fills the open term of article 1 in its own law and is
+        // the only article with that output. A reference by name does not
+        // mean it (`output_producers`), and the indexed path must not
+        // answer otherwise.
+        let yaml = r#"
+$id: eigen_invulling
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: algemeen
+    machine_readable:
+      open_terms:
+        - id: drempel
+          type: number
+          required: true
+      execution:
+        output: [{name: uitkomst, type: number}]
+        actions: [{output: uitkomst, value: $drempel}]
+  - number: '2'
+    text: invulling
+    machine_readable:
+      implements:
+        - law: eigen_invulling
+          article: '1'
+          open_term: drempel
+      execution:
+        output: [{name: drempel, type: number}]
+        actions: [{output: drempel, value: 3}]
+"#;
+        let mut resolver = RuleResolver::new();
+        resolver.load_from_yaml(yaml).unwrap();
+        let date = NaiveDate::from_ymd_opt(2025, 6, 1).unwrap();
+        let law = resolver.get_law("eigen_invulling").unwrap();
+        assert!(law.output_producers("drempel").is_empty());
+        assert!(matches!(
+            resolver.resolve_article_by_output("eigen_invulling", "drempel", Some(date)),
+            Err(EngineError::OutputNotFound { .. })
+        ));
+        assert!(resolver
+            .get_article_by_output("eigen_invulling", "drempel", Some(date))
+            .is_none());
+        // The output is still listed: the law declares it.
+        assert!(resolver
+            .list_all_outputs()
+            .contains(&("eigen_invulling", "drempel")));
+        assert_eq!(
+            resolver
+                .resolve_article_by_output("eigen_invulling", "uitkomst", Some(date))
+                .unwrap()
+                .number,
+            "1"
+        );
+    }
+
+    /// A law defining a procedure `voorlopig` for BESCHIKKING whose stage
+    /// VOORLOPIG says `is: <alias>`, valid from `valid_from`; with `default`
+    /// also the default procedure with BESLUIT and BEKENDMAKING.
+    fn alias_law(valid_from: &str, alias: Option<&str>, default: bool) -> String {
+        let is = alias.map_or(String::new(), |a| format!("\n        is: {a}"));
+        let default_procedure = if default {
+            "\n  - id: beschikking\n    default: true\n    applies_to: {legal_character: BESCHIKKING}\n    stages:\n      - name: BESLUIT\n      - name: BEKENDMAKING"
+        } else {
+            ""
+        };
+        format!(
+            "$id: alias_law\nregulatory_layer: WET\npublication_date: '{valid_from}'\n\
+             valid_from: '{valid_from}'\nprocedure:\n  - id: voorlopig\n    \
+             applies_to: {{legal_character: BESCHIKKING}}\n    stages:\n      - name: AANVRAAG\n      \
+             - name: VOORLOPIG{is}{default_procedure}\narticles: []\n"
+        )
+    }
+
+    #[test]
+    fn a_stage_alias_must_name_a_stage_of_the_default_procedure() {
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(&alias_law("2025-01-01", Some("BESLUIT"), true))
+            .unwrap();
+        assert_eq!(resolver.unknown_stage_aliases(), Vec::<String>::new());
+
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(&alias_law("2025-01-01", Some("BESLUT"), true))
+            .unwrap();
+        let problems = resolver.unknown_stage_aliases();
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert!(problems[0].contains("'VOORLOPIG'"), "{}", problems[0]);
+        assert!(problems[0].contains("`is: BESLUT`"), "{}", problems[0]);
+        assert!(
+            problems[0].contains("BEKENDMAKING, BESLUIT"),
+            "{}",
+            problems[0]
+        );
+        assert!(
+            problems[0].contains("alias_law (2025-01-01)"),
+            "{}",
+            problems[0]
+        );
+    }
+
+    #[test]
+    fn a_stage_alias_in_an_older_version_is_checked_too() {
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(&alias_law("2024-01-01", Some("BESLUT"), true))
+            .unwrap();
+        resolver
+            .load_from_yaml(&alias_law("2025-01-01", Some("BESLUIT"), true))
+            .unwrap();
+        let problems = resolver.unknown_stage_aliases();
+        assert_eq!(problems.len(), 1, "{problems:?}");
+        assert!(problems[0].contains("2024-01-01"), "{}", problems[0]);
+    }
+
+    #[test]
+    fn without_a_default_procedure_an_alias_is_not_judged() {
+        // One file without the law defining the default procedure: nothing
+        // to check the alias against.
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(&alias_law("2025-01-01", Some("BESLUT"), false))
+            .unwrap();
+        assert_eq!(resolver.unknown_stage_aliases(), Vec::<String>::new());
+        // A stage that says nothing is never a problem.
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(&alias_law("2025-01-01", None, true))
+            .unwrap();
+        assert_eq!(resolver.unknown_stage_aliases(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_stage_is_what_the_version_in_force_says() {
+        // 2024 says VOORLOPIG is a BESLUIT, 2025 says it is a BEKENDMAKING.
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(&alias_law("2024-01-01", Some("BESLUIT"), true))
+            .unwrap();
+        resolver
+            .load_from_yaml(&alias_law("2025-01-01", Some("BEKENDMAKING"), true))
+            .unwrap();
+        let on = |y, m, d| NaiveDate::from_ymd_opt(y, m, d);
+        let is = |date| resolver.stage_is("BESCHIKKING", Some("voorlopig"), "VOORLOPIG", date);
+        assert_eq!(is(on(2024, 6, 1)), Some("BESLUIT"));
+        assert_eq!(is(on(2025, 6, 1)), Some("BEKENDMAKING"));
+        // No date, or a date before every version: the newest.
+        assert_eq!(is(None), Some("BEKENDMAKING"));
+        assert_eq!(is(on(2023, 6, 1)), Some("BEKENDMAKING"));
+    }
+
+    #[test]
+    fn a_version_in_force_without_the_procedure_answers_with_the_newest() {
+        let mut resolver = RuleResolver::new();
+        resolver
+            .load_from_yaml(
+                "$id: alias_law\nregulatory_layer: WET\npublication_date: '2024-01-01'\n\
+                 valid_from: '2024-01-01'\narticles: []\n",
+            )
+            .unwrap();
+        resolver
+            .load_from_yaml(&alias_law("2025-01-01", Some("BESLUIT"), true))
+            .unwrap();
+        let on = NaiveDate::from_ymd_opt(2024, 6, 1);
+        assert_eq!(
+            resolver.stage_is("BESCHIKKING", Some("voorlopig"), "VOORLOPIG", on),
+            Some("BESLUIT")
+        );
+    }
+
+    #[test]
+    fn a_stage_says_what_it_is_in_its_own_procedure_only() {
+        let yaml = r#"
+$id: awir_stages
+regulatory_layer: WET
+publication_date: '2025-01-01'
+procedure:
+  - id: tegemoetkoming
+    applies_to: {legal_character: BESCHIKKING}
+    stages:
+      - name: AANVRAAG
+      - name: VOORSCHOT
+        is: BESLUIT
+  - id: beschikking
+    default: true
+    applies_to: {legal_character: BESCHIKKING}
+    stages:
+      - name: VOORSCHOT
+articles: []
+"#;
+        let mut resolver = RuleResolver::new();
+        resolver.load_from_yaml(yaml).unwrap();
+        let named = Some("tegemoetkoming");
+        assert_eq!(
+            resolver.stage_is("BESCHIKKING", named, "VOORSCHOT", None),
+            Some("BESLUIT")
+        );
+        // A stage that says nothing, a stage the procedure lacks, the default
+        // procedure (whose VOORSCHOT says nothing), a procedure not loaded.
+        assert_eq!(
+            resolver.stage_is("BESCHIKKING", named, "AANVRAAG", None),
+            None
+        );
+        assert_eq!(
+            resolver.stage_is("BESCHIKKING", named, "TOEKENNING", None),
+            None
+        );
+        assert_eq!(
+            resolver.stage_is("BESCHIKKING", None, "VOORSCHOT", None),
+            None
+        );
+        assert_eq!(
+            resolver.stage_is("BESCHIKKING", Some("x"), "VOORSCHOT", None),
+            None
+        );
+    }
+
+    #[test]
+    fn a_hook_filter_admits_a_stage_by_its_name_or_by_what_it_is() {
+        let filter = |stage: Option<&str>| HookFilter {
+            legal_character: Some("BESCHIKKING".to_string()),
+            decision_type: None,
+            stage: stage.map(str::to_string),
+            submission: None,
+            decided_by: None,
+            established_by: None,
+        };
+        let besluit = filter(Some("BESLUIT"));
+        assert!(hook_filter_admits(&besluit, None, "BESLUIT", None));
+        assert!(hook_filter_admits(
+            &besluit,
+            None,
+            "VOORSCHOT",
+            Some("BESLUIT")
+        ));
+        assert!(!hook_filter_admits(&besluit, None, "VOORSCHOT", None));
+        assert!(!hook_filter_admits(
+            &besluit,
+            None,
+            "VOORSCHOT",
+            Some("BEKENDMAKING")
+        ));
+        // No stage on the hook means BESLUIT.
+        assert!(hook_filter_admits(
+            &filter(None),
+            None,
+            "VOORSCHOT",
+            Some("BESLUIT")
+        ));
+        // A hook on the stage's own name still fires.
+        let voorschot = filter(Some("VOORSCHOT"));
+        assert!(hook_filter_admits(
+            &voorschot,
+            None,
+            "VOORSCHOT",
+            Some("BESLUIT")
+        ));
+        assert!(!hook_filter_admits(
+            &voorschot,
+            None,
+            "TOEKENNING",
+            Some("BESLUIT")
+        ));
     }
 
     #[test]
@@ -3956,7 +4660,8 @@ articles:
         assert_eq!(overrides.len(), 1);
         assert_eq!(overrides[0].law_id, "afwijkingswet");
 
-        let hooks = resolver.find_hooks(HookPoint::PostActions, "BESCHIKKING", None, "BESLUIT");
+        let hooks =
+            resolver.find_hooks(HookPoint::PostActions, "BESCHIKKING", None, "BESLUIT", None);
         assert_eq!(hooks.len(), 1);
         assert_eq!(hooks[0].law_id, "hookwet");
 
@@ -4015,7 +4720,8 @@ articles:
         assert_eq!(overrides[0].law_id, "afwijkingswet_b");
 
         // Hooks: only b survives, and it is really b.
-        let hooks = resolver.find_hooks(HookPoint::PostActions, "BESCHIKKING", None, "BESLUIT");
+        let hooks =
+            resolver.find_hooks(HookPoint::PostActions, "BESCHIKKING", None, "BESLUIT", None);
         assert_eq!(hooks.len(), 1);
         assert_eq!(hooks[0].law_id, "hookwet_b");
 
@@ -4463,7 +5169,7 @@ articles:
 
         let find = |dt: Option<&str>| {
             resolver
-                .find_hooks(HookPoint::PostActions, "BESCHIKKING", dt, "BESLUIT")
+                .find_hooks(HookPoint::PostActions, "BESCHIKKING", dt, "BESLUIT", None)
                 .len()
         };
 
@@ -4483,7 +5189,7 @@ articles:
         for dt in [Some("TOEKENNING"), Some("AFWIJZING"), None] {
             assert_eq!(
                 resolver
-                    .find_hooks(HookPoint::PostActions, "BESCHIKKING", dt, "BESLUIT")
+                    .find_hooks(HookPoint::PostActions, "BESCHIKKING", dt, "BESLUIT", None)
                     .len(),
                 1,
                 "unfiltered hook should fire for decision_type {dt:?}"
@@ -4493,7 +5199,13 @@ articles:
         // Stage still filters.
         assert_eq!(
             resolver
-                .find_hooks(HookPoint::PostActions, "BESCHIKKING", None, "BEKENDMAKING")
+                .find_hooks(
+                    HookPoint::PostActions,
+                    "BESCHIKKING",
+                    None,
+                    "BEKENDMAKING",
+                    None
+                )
                 .len(),
             0
         );

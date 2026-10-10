@@ -115,6 +115,7 @@ export const sidebar: Record<string, SidebarGroup[]> = {
         { text: 'Harvester Admin', link: '/components/admin' },
         { text: 'Lawmaking Frontend', link: '/components/lawmaking' },
         { text: 'Demo', link: '/components/demo' },
+        { text: 'Zorgtoeslag as Chronolexography', link: '/components/zorgtoeslag-chronolexography' },
         { text: 'PoC Portal', link: '/components/poc-portal' },
         { text: 'Terminal UI (TUI)', link: '/components/tui' },
         { text: 'Shared Frontend Package', link: '/components/frontend-shared' },

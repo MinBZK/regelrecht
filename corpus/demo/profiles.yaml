@@ -130,7 +130,40 @@ profiles:
             datum_einde: null
             status: ACTIEF
             heeft_handlichting: false
+      # Een fictieve bank (geen bestaande bank) met de rekening waarop Merijn
+      # zijn toeslag ontvangt. `geblokkeerd: true` laat de bank elke
+      # overboeking weigeren (fictieve_bankvoorwaarden art. 1); het voorschot
+      # blijft dan openstaan tot de rekening weer vrij is.
+      BANK:
+        rekeningen:
+          - bsn: '999100001'
+            rekeningnummer: NL00TEST0123456789
+            rekeninghouder: Merijn van der Meer
+            beginsaldo: 42350
+            geblokkeerd: false
       BELASTINGDIENST:
+        # FICTIEF. De aanslag inkomstenbelasting over een jaar, zoals de
+        # inspecteur hem plant en vaststelt: de dag (fictief_beleid_
+        # aanslagregeling) en het verzamelinkomen dat hij vaststelt (AWR art.
+        # 11; het inkomensgegeven, art. 21 onder e). Alleen de cel van de
+        # Belastingdienst leest deze tabel; het inkomen dat de rest van de
+        # demo kent (box1 hieronder) verandert er niet door. Het
+        # verzamelinkomen wijkt bewust af van de schatting in de aanvraag
+        # (22.000 euro): over 2025 lager (een nabetaling), over 2026 hoger
+        # (een terugvordering boven de grens van Awir 26a).
+        aanslagen_inkomstenbelasting:
+          - bsn: '999100001'
+            jaar: 2024
+            datum_vaststelling: '2025-04-15'
+            verzamelinkomen: 2415000
+          - bsn: '999100001'
+            jaar: 2025
+            datum_vaststelling: '2026-04-15'
+            verzamelinkomen: 1600000
+          - bsn: '999100001'
+            jaar: 2026
+            datum_vaststelling: '2027-04-15'
+            verzamelinkomen: 3200000
         box1:
           - bsn: '999100001'
             loon_uit_dienstbetrekking: 0

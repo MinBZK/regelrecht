@@ -43,6 +43,16 @@ const IDENTICAL_BY_DESIGN = new Set([
   // sjabloon zelf. Er valt hier niets te vertalen.
   'wet.tree.law_state',
   'wet.tile.outcome.missing',
+  'zaak.moments.with_value',
+  'lexo.reading.period',
+  'lexo.reader',
+  'lexo.from_gram.text',
+  // Zelfde woord in beide talen: het register dat een beleid van de houder
+  // leest (RFC-045), de term lexostatus uit de chronolexografie, en "in" bij
+  // een eenheid ("bedrag in eurocent").
+  'lexo.register',
+  'lexo.word',
+  'lexo.type.with_unit',
 ]);
 
 /** The `{placeholder}` names in a string, sorted. */

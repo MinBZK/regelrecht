@@ -42,6 +42,39 @@ corrigeren.
 - **`hanneljensbekwaam`** voor handelingsbekwaam: correct gevormd, niet
   geverifieerd tegen juridisch Fries.
 
+- **`zaak.chronicle.*`, `sheet.application.law_asks.*`** (de kroniek en "Wat de
+  wet vraagt") zijn door een taalmodel vertaald. Twijfel bij `fêstige` voor
+  "gevestigd" (een feit dat een artikel in het leven roept, niet een vestiging)
+  en bij `útfierder` voor "uitvoerder" (het bestuursorgaan dat de wet uitvoert).
+  `Kronyk` volgt het Nederlandse "kroniek" als term uit de chronolexografie.
+  Ook de latere sleutels voor de klok, de betalingen en `chronicle.read_failed`
+  ("De kronyk koe dit net lêze") zijn modelvertalingen.
+- **`zaak.moments.*`, `sheet.application.payments.*`, `case.event.decision_due`**
+  (de tijd in de demo: het volgende moment, betalingen) zijn door een
+  taalmodel vertaald. Twijfel bij `momint` voor "moment" in de zin van een
+  rechtens telbaar tijdstip, bij `útfiering` voor de uitvoering van een
+  besluit (een betaalde termijn) en bij `betelling` voor "betaling".
+- **`kroniek.*`, `zaak.board.*`, `zaak.chronicle.stored`** (de kroniek vanaf
+  de achterkant in het zaaksysteem) zijn door een taalmodel vertaald. Twijfel
+  bij `yntsjinning` voor "indiening", `rjochtskarakter` voor "rechtskarakter",
+  `deitekene` voor "gedagtekend" en `Saken` als kop van het bord.
+- **`lexo.*`, `zaak.board.lexostatuses`** (de lexostatussen in het
+  zaaksysteem: hoe de cel haar kroniek terugleest) zijn door een taalmodel
+  vertaald. Twijfel bij `Leksostatussen` voor de term "lexostatussen" (de x als
+  ks, zoals in `tekst`; de term zelf komt uit de chronolexografie en kan ook
+  onvertaald blijven) en `hâlder` voor "houder" (van het beleid). De woorden
+  voor de reductietaal (`werombringt ta` voor "reduceert tot", `Oflieding` voor
+  "afleiding") zijn met die taal verdwenen (oktober 2026).
+  De kaarten per lexostatus (oktober 2026) voegden toe: `Ôflaat út de wet`
+  voor "afgeleid uit de wet", `Fêstlein yn` voor "vastgelegd in", `Foarm` voor
+  "vorm" (van wat een lexostatus geeft), `ynterface` voor "interface", `Barren`
+  voor "gebeurtenis" en `gearstald gegeven` voor "samengesteld gegeven"; ook
+  daar twijfel.
+- **`zaak.chronicle.undelivered`** (een bericht aan een andere partij dat nog
+  niet aankwam, de outbox) is door een taalmodel vertaald. Twijfel bij
+  `oankaam` voor "aangekomen" en bij `biedt ... opnij oan` voor "biedt opnieuw
+  aan" in de zin van opnieuw bezorgen.
+
 ## 3. De banner over de wettekst
 
 `wet.dutch_only.body` staat op:
@@ -159,6 +192,86 @@ anders in de vertaling voor, dus er is ook geen eerdere keuze om op te leunen.
   `ferliene` ("it ferliene terras"). Controleer of beide vormen kloppen.
 - **`profiles.claudia.portal_tab_label`** staat nu op `Myn oerheid`, gelijk
   aan dat van Merijn.
+
+## 8. Een aanvraag voor meer jaren (Awir 15 lid 5), nog niet nagekeken
+
+- **"over {jaar}"** staat op `oer {period}` (`zaak.chronicle.period`,
+  `zaak.moments.decision`, `zaak.moments.execution.period`,
+  `zaak.moments.dossier.period`, `case.event.following_decision`). Het
+  Nederlands bedoelt "met betrekking tot dat jaar"; of `oer` dat in het Fries
+  draagt, of dat `foar` beter is, is niet nagegaan.
+- **`sheet.application.payments.received_period`** staat op
+  `Ûntfongen oer {period}`, naar het bestaande `Oant no ta ûntfongen`.
+- **"dezelfde aanvraag"** staat op `deselde oanfraach`, naar `oanfraach`
+  elders in de demo.
+
+## 9. De lexostatussen in gewone woorden, nog niet nagekeken
+
+- **"Grondslag"** staat op `Grûnslach` (`lexo.col.basis`), naar het bestaande
+  `Gjin grûnslach foar dit momint fêstlein`. Met hoofdletter vooraan; of de
+  hoofdletter op de û goed valt, is niet nagegaan.
+- **"binnenkwam"** staat op `binnenkaam` (`lexo.origin.received`).
+- **Vervallen (oktober 2026)**, met de reductietaal en de oude kaart:
+  `lexo.section.used_by` (`Brûkt by`), `lexo.source.submission` (`de
+  yntsjinning`), `lexo.origin.counts` (`rjochtlik telt`), `lexo.origin.sum`
+  (`opteld oer`) en `lexo.source.per_period` (`foar elk {period}`) bestaan
+  niet meer. `lexo.col.used_as` bestaat nog, maar staat nu op `Frege troch
+  (ynterface)` in plaats van `Brûkt as`.
+- **"Technisch tonen" / "verbergen"** staan op `Technysk sjen litte` en
+  `Technysk ferbergje` (`lexo.technical.*`).
+
+## 10. Het scherm Burger, nog niet nagekeken
+
+- **"Burger"** staat op `Boarger` (`app.tabs.gevolgen`, `gevolgen.title`),
+  en het pad op `/fy/boarger`. Het scherm heette eerst "Gevolgen" (`Gefolgen`);
+  de sleutels houden die naam. Of `Boarger` het gangbare Friese woord is, is
+  niet nagegaan.
+- **"bûten de oerheid"** (`gevolgen.intro`, `gevolgen.none`) volgt
+  `oerheid` elders in de demo.
+
+## 11. Aanslag, nabetaling en terugvordering, nog niet nagekeken
+
+- **"Afgeschreven"** staat op `Ôfskreaun` (`gevolgen.account.debited`), naar
+  `ôfskriuwe`. Of een bank in het Fries zo over een afschrijving praat, is
+  niet nagegaan.
+- **"int"** (geld innen) staat op `ynint` in `gevolgen.account.supporting`
+  (`Wat de oerheid oermakket of ynint, rint fia dit rekken.`). Of `ynine` het
+  gangbare werkwoord is, is niet nagegaan.
+- **"Ambtshalve"** is in `zaak.moments.ex_officio` onvertaald gebleven
+  (`Ambtshalve beslút oer {period}, sûnder oanfraach`): het is een
+  bestuursrechtelijke term, en een Fries equivalent is niet gevonden.
+
+- **Een afgewezen volgend besluit** (`case.event.following_refusal`:
+  `… oer {period}: ôfwiisd.`) en het jaar waarover de wet nog niet kon
+  beslissen (`zaak.chronicle.undecided_period`: `Oer {period} koe de wet noch
+  net beslute, want der ûntbrekke gegevens.`) volgen de bestaande zinnen
+  (`case.event.refused_auto`, `zaak.chronicle.undecided`); of `oer {period}`
+  vooraan de zin natuurlijk Fries is, is niet nagegaan.
+
+- **Een geweigerd eerste besluit** (`zaak.chronicle.refusal`: `De saak
+  einiget mei dizze wegering. … bouwe de folgjende besluten fan de saak
+  fuort …`): of `einiget` en `fuortbouwe` (gescheiden als `bouwe … fuort`)
+  het gangbare Fries zijn, en `besluten` het meervoud van `beslút`, is niet
+  nagegaan.
+
+- **Wat een aanvraag geeft en geen besluit leest** (`lexo.gives.unused.*`:
+  `Dêrneist {n} gegevens dy't gjin beslút hjir lêst.`, `lexo.used_as.none`:
+  `Gjin beslút freget derom`, `lexo.used_as.elsewhere`: `De sel lêst it net
+  hjir, mar út in oare leksostatus`): of `dêrneist` en `derom` hier het
+  gangbare Fries zijn, en of `lêst` bij het meervoud `gegevens` goed
+  vervoegd is, is niet nagegaan.
+
+- **Het gevraagde besluit en een ontbrekende grondslag**
+  (`lexo.origin.fixed`: `folt de sel yn: it beslút dat op de {kind} nommen
+  wurdt`; `lexo.basis.none`: `Gjin: gjin artikel seit it mei safolle
+  wurden`): of `folt … yn` en `mei safolle wurden` (voor "met zoveel
+  woorden") natuurlijk Fries zijn, is niet nagegaan.
+
+- **Naar een moment spoelen** (`zaak.moments.advance_to.label`: `De klok
+  nei {date} sette, mei alles wat der oant dan ûntstiet`): de knop is alleen
+  een icoon, dit is zijn toegankelijke naam; de zichtbare tekst
+  `zaak.moments.advance_to` (`Nei dit momint`) is weg. Of `oant dan` het
+  gangbare Fries is voor "tot dan", is niet nagegaan.
 
 ## Hoe je een correctie doorvoert
 

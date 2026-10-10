@@ -52,6 +52,12 @@ A reader meets these constructs in a rulework or a running service whatever the 
 | RFC-040 | The schema documents itself | [Schema](./schema) |
 | RFC-041 | A void is not scoped like a replacement | [Voiding an output](../concepts/hooks-and-reactive-execution#voiding-an-output) |
 | RFC-044 | Rulework (regelwerk) as the name for a regulation in YAML (partially applied) | [Glossary](./glossary#regelrecht-specific-terms) |
+| RFC-045 | Reading a chronicle back as an article of the holder's policy (partially built: no engine changes) | [Zorgtoeslag as Chronolexography](../components/zorgtoeslag-chronolexography#lexostatuses) |
+| RFC-046 | The application as something the Awb hooks onto (partially built) | [Schema](./schema), [Zorgtoeslag as Chronolexography](../components/zorgtoeslag-chronolexography#where-regelrecht-stops-and-chronolex-begins) |
+| RFC-047 | The law sets what a cell must answer (partially built) | [Zorgtoeslag as Chronolexography](../components/zorgtoeslag-chronolexography#lexostatuses) |
+| RFC-048 | Who supplies a parameter (`origin`; partially built: no runtime checks) | [Schema](./schema), [Zorgtoeslag as Chronolexography](../components/zorgtoeslag-chronolexography#where-regelrecht-stops-and-chronolex-begins) |
+| RFC-049 | No recording vocabulary in the law; the cell derives the record (partially built) | [Zorgtoeslag as Chronolexography](../components/zorgtoeslag-chronolexography#where-regelrecht-stops-and-chronolex-begins) |
+| RFC-050 | A case over time in a cell | [Zorgtoeslag as Chronolexography](../components/zorgtoeslag-chronolexography#time) |
 
 ## Backlog
 

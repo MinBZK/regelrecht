@@ -237,6 +237,20 @@ watch(showTrace, async (open) => {
   traceSheet.value?.show?.();
 });
 
+/**
+ * Wat er op deze zaak tot nu toe is uitbetaald, zoals de cel het uit haar
+ * kroniek leest (`receivedOf`). Leeg zolang er niets is uitgevoerd.
+ */
+const received = computed(() => {
+  void dataVersion.value;
+  void demo.state.referenceDate;
+  const c = currentCase.value;
+  const none = { rows: [], error: null };
+  if (!c?.applicationGramId) return none;
+  if (!demo.gramsOfCase(c).some((g) => g.type === 'executogram')) return none;
+  return demo.receivedOf(c);
+});
+
 const statusTag = computed(() => {
   const c = currentCase.value;
   if (!c) return null;
@@ -313,6 +327,14 @@ const statusTag = computed(() => {
               :text="requirementsMet ? (primary ? formatValue(primary.value, primary.spec) : t('wet.tile.outcome.yes')) : t('wet.tile.outcome.not_applicable')"
               :supporting-text="requirementsMet && primary ? (isUnknown(primary.value) ? t('wet.tile.outcome.missing', { field: humanize(primary.name), missing: formatMissing(primary.value, { ownLaw: law.id, lawName }) }) : humanize(primary.name)) : ''"
             ></nldd-title-cell>
+          </nldd-list-item>
+        </nldd-list>
+
+        <nldd-banner v-if="received.error" variant="warning" :text="t('chronicle.read_failed')" :supporting-text="received.error"></nldd-banner>
+        <nldd-list v-if="received.rows.length" appearance="simple" :accessible-label="t('sheet.application.payments.received')">
+          <nldd-list-item v-for="r in received.rows" :key="`${r.name}-${r.period}`" size="sm">
+            <nldd-text-cell size="sm" color="secondary" min-width="55%" :text="r.period != null ? t('sheet.application.payments.received_period', { period: r.period }) : t('sheet.application.payments.received')"></nldd-text-cell>
+            <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="r.text"></nldd-text-cell>
           </nldd-list-item>
         </nldd-list>
 

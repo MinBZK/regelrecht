@@ -24,6 +24,8 @@ import {
   enumBlocks,
   schemaStats,
   legalBasisFields,
+  originFields,
+  articleReference,
   operandForms,
   articleFields,
   machineReadableSubStructures,
@@ -310,6 +312,28 @@ const others = otherSubStructures();
 </p>
 
 <SchemaFieldTable fields={legalBasisFields()} label="Fields of a legal basis citation" />
+
+<h3 id="origin">Origin</h3>
+
+<p>
+  Who supplies the value of a parameter, and the provision that says so: the
+  applicant, the course of the case, a judgement of the administrative body, a
+  register or the intake channel. The engine does not read it; a process
+  runtime does, to know what an application asks of whom.
+</p>
+
+<SchemaFieldTable fields={originFields()} label="Fields of an origin" />
+
+<h3 id="article-reference">Article reference</h3>
+
+<p set:html={articleReference().description} />
+
+<p>
+  A provision a value rests on (the <code>grondslag</code> of an origin) has the
+  same form and may add <code>lid &lt;n&gt;</code>: <code>algemene_wet_bestuursrecht#4:13 lid 1</code>.
+</p>
+
+<nldd-text size="sm" color="secondary"><code>{articleReference().pattern}</code></nldd-text>
 
 <h2 id="operations">Operations</h2>
 

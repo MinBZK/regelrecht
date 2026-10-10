@@ -4,11 +4,15 @@ import { useRoute } from 'vue-router';
 import CorrectionRows from '../components/CorrectionRows.vue';
 import DataLineage from '../components/DataLineage.vue';
 import EditValueSheet from '../components/EditValueSheet.vue';
-import { fieldSpec, formatDateTime, formatValue, humanize } from '../data/format.js';
+import LexostatusView from '../components/LexostatusView.vue';
+import StoredChronicle from '../components/StoredChronicle.vue';
+import { fieldSpec, formatDate, formatDateTime, formatValue, humanize } from '../data/format.js';
 import { lineageFromTrace } from '../data/lineage.js';
 import { caseReason, eventText, useDemo } from '../store/demoStore.js';
 import { isDelegationProvider, producesBeschikking, subjectOf } from '../data/entrypoints.js';
 import { awbOutcomes, statusOf } from '../data/lifecycle.js';
+import { provisionLabel } from '../data/chronolex.js';
+import { gramRows as rowsOfGram } from '../data/chronicleView.js';
 import { useI18n } from '../i18n/index.js';
 import { useLocalePath } from '../i18n/useLocalePath.js';
 
@@ -52,14 +56,78 @@ const cases = computed(() => state.cases.filter((c) => c.service === service.val
 // bekendgemaakt. Die middelste baan is de reden van deze verandering — een
 // besluit dat genomen is maar nog niet is meegedeeld, is een echt moment in de
 // wet en was hier eerder onzichtbaar.
+// Een zaak waarvan een volgend besluit zijn moment heeft (de toekenning na de
+// aanslag), staat weer bij wat te beoordelen is, ook al is er al eerder
+// besloten (het voorschot).
 const lanes = computed(() => [
-  { key: 'IN_REVIEW', title: t('zaak.lane.in_review'), items: cases.value.filter((c) => statusOf(c) !== 'DECIDED') },
-  { key: 'BESLUIT', title: t('zaak.lane.besluit'), items: cases.value.filter((c) => statusOf(c) === 'DECIDED' && !c.publishedAt) },
-  { key: 'BEKENDMAKING', title: t('zaak.lane.bekendmaking'), items: cases.value.filter((c) => statusOf(c) === 'DECIDED' && c.publishedAt) },
+  { key: 'IN_REVIEW', title: t('zaak.lane.in_review'), items: cases.value.filter((c) => statusOf(c) !== 'DECIDED' || c.dueStage) },
+  { key: 'BESLUIT', title: t('zaak.lane.besluit'), items: cases.value.filter((c) => statusOf(c) === 'DECIDED' && !c.dueStage && !c.publishedAt) },
+  { key: 'BEKENDMAKING', title: t('zaak.lane.bekendmaking'), items: cases.value.filter((c) => statusOf(c) === 'DECIDED' && !c.dueStage && c.publishedAt) },
 ]);
 
 const selected = computed(() => state.cases.find((c) => c.id === route.params.caseId) ?? null);
 watch(selected, (c) => { if (c && c.service !== service.value) service.value = c.service; }, { immediate: true });
+
+// Zaak of kroniek: de kroniek toont de grammen van deze zaak (chronolex,
+// RFC-022), de aanvraag zoals de wet haar vroeg en het besluit erop. Een
+// andere zaak opent weer op de zaak zelf.
+const sheetView = ref('zaak');
+watch(() => selected.value?.id, () => { sheetView.value = 'zaak'; });
+/** De velden van een gram (of van een voorbeeld ervan) zoals een mens ze leest. */
+function gramRows(g) {
+  return rowsOfGram(g, demo.gramFields(g), corpus.value);
+}
+const caseGrams = computed(() => {
+  void dataVersion.value;
+  return demo.gramsOfCase(selected.value).map((g) => {
+    const rows = gramRows(g);
+    return {
+      ...g,
+      rows,
+      // Een uitvoering (een betaalde termijn) leest op één regel; de aanvraag
+      // en de besluiten met hun details.
+      summary: g.type === 'executogram' ? rows.map((r) => r.text).join(' · ') : '',
+      basis: (g.effective_at_legal_basis ?? []).map((ref) => provisionLabel(corpus.value, ref)).join(' · '),
+      establishedBy: g.establishes ? provisionLabel(corpus.value, g.establishes) : '',
+      // De periode waarover het gram gaat: een aanvraag geldt ook voor de
+      // jaren erna, dus een zaak heeft voorschotten en termijnen per jaar.
+      periodText: g.period ? t('zaak.chronicle.period', { period: g.period.value }) : '',
+    };
+  });
+});
+/** De grammen met hun details: de aanvraag en de besluiten, niet elke termijn. */
+const detailedGrams = computed(() => caseGrams.value.filter((g) => !g.summary));
+
+/**
+ * Wat de wet als volgende moment van deze zaak geeft: geen feiten, maar wat
+ * de cel ziet als ze de wet uitvoert zonder vast te leggen (`nextMoments` in
+ * de store). Per moment een zin uit het soort moment en de naam die de wet
+ * eraan geeft.
+ */
+const upcoming = computed(() => {
+  void dataVersion.value;
+  void state.referenceDate;
+  if (sheetView.value !== 'kroniek' || !selected.value) return { moments: [], error: null };
+  return demo.momentViewsOf(selected.value);
+});
+const moments = computed(() => upcoming.value.moments);
+const nextDate = computed(() => moments.value.find((m) => m.date > state.referenceDate)?.date ?? null);
+function advance() {
+  if (selected.value) demo.advanceToNextMoment(selected.value);
+}
+/**
+ * Naar een later moment uit de lijst: de klok loopt erheen zoals bij
+ * "Naar het volgende moment", langs elk moment ertussen, met alles wat er
+ * onderweg ontstaat (uitvoeringen, besluiten, berichten).
+ */
+function advanceToMoment(date) {
+  if (date > state.referenceDate) demo.advanceTo(date);
+}
+/** De plaats van rij `i` van `n` op een tijdlijn. */
+function trackPosition(i, n) {
+  if (n === 1) return 'only';
+  return i === 0 ? 'first' : i === n - 1 ? 'last' : 'between';
+}
 
 // The case opens in a sheet over the board, not in an inspector column beside
 // it. A case carries the banner, both outcomes, the whole data tree and the
@@ -80,6 +148,27 @@ watch(
 
 function open(c) {
   goTo('zaaksysteem', { caseId: c.id });
+}
+
+// Zaken of kroniek: het bord met de zaken, of de kroniek van de cel vanaf de
+// achterkant, elke gram zoals hij is opgeslagen. Vanuit een zaak opent die
+// kroniek op de grammen van die zaak (`chronicleRoot`).
+// Ernaast de lexostatussen: hoe de cel die kroniek terugleest. Een gram
+// waaruit een lexostatus las, opent de kroniek op die gram
+// (`chronicleFocus`).
+const boardView = ref('zaken');
+const chronicleRoot = ref(null);
+const chronicleFocus = ref(null);
+function showGram({ id, root }) {
+  chronicleRoot.value = root;
+  chronicleFocus.value = id;
+  boardView.value = 'kroniek';
+}
+function showStored(c) {
+  chronicleRoot.value = c.applicationGramId;
+  chronicleFocus.value = null;
+  boardView.value = 'kroniek';
+  close();
 }
 function close() {
   goTo('zaaksysteem');
@@ -142,6 +231,29 @@ function outputRows(c) {
 const caseClaims = computed(() => (selected.value ? state.claims.filter((cl) => cl.caseId === selected.value.id || (cl.bsn === (selected.value.claimsBsn ?? selected.value.bsn) && cl.tileLawId === selected.value.lawId)) : []));
 const serviceClaims = computed(() => state.claims.filter((cl) => cl.status === 'PENDING' && (corpus.value?.lawById(cl.tileLawId)?.service === service.value || corpus.value?.lawById(cl.lawId)?.service === service.value)));
 
+/**
+ * Of de behandelaar nu een besluit kan nemen: op een aanvraag die nog wacht,
+ * of op een volgend besluit waarvan het moment er is (de toekenning).
+ */
+const awaitingDecision = computed(() => {
+  const c = selected.value;
+  if (!c) return false;
+  return !!c.dueStage || (c.status !== 'DECIDED' && !c.objection);
+});
+/**
+ * Wat de wet in de fase van het volgende besluit zou besluiten, nog zonder
+ * het vast te leggen: bij de toekenning met de verrekening van wat er op het
+ * voorschot is betaald.
+ */
+const duePreview = computed(() => {
+  void dataVersion.value;
+  const c = selected.value;
+  if (!c?.dueStage) return null;
+  const preview = demo.decisionPreview(c);
+  if (preview?.error) return { error: preview.error, rows: [] };
+  return preview ? { name: preview.event, rows: gramRows(preview.gram) } : null;
+});
+
 const reason = ref('');
 function decide(approved) {
   if (!selected.value) return;
@@ -191,6 +303,7 @@ const driftedIds = computed(() => {
 
 function laneTag(c) {
   if (c.objection?.status === 'PENDING') return { color: 'warning', text: t('zaak.tag.objection') };
+  if (c.dueStage) return { color: 'neutral', text: t('zaak.tag.in_review') };
   if (statusOf(c) === 'DECIDED') return c.approved ? { color: 'success', text: t('zaak.tag.granted') } : { color: 'critical', text: t('zaak.tag.refused') };
   return { color: 'neutral', text: t('zaak.tag.in_review') };
 }
@@ -218,6 +331,23 @@ function claimLawName(cl) {
           </nldd-top-title-bar>
         </nldd-container>
 
+        <!-- Het bord met de zaken, de kroniek van de cel vanaf de achterkant, of hoe de cel die kroniek terugleest. -->
+        <nldd-simple-section width="full" padding-bottom="0">
+          <nldd-container layout="row">
+            <nldd-segmented-control size="sm" width="fit-content" :value="boardView" @change="boardView = $event.detail?.value ?? 'zaken'; chronicleFocus = null">
+              <nldd-segmented-control-item value="zaken" :text="t('zaak.board.cases')"></nldd-segmented-control-item>
+              <nldd-segmented-control-item value="kroniek" :text="t('zaak.board.chronicle')"></nldd-segmented-control-item>
+              <nldd-segmented-control-item value="lexostatussen" :text="t('zaak.board.lexostatuses')"></nldd-segmented-control-item>
+            </nldd-segmented-control>
+          </nldd-container>
+        </nldd-simple-section>
+        <nldd-simple-section v-if="boardView === 'kroniek'" width="full">
+          <StoredChronicle :service="service" :root="chronicleRoot" :focus="chronicleFocus" @clear-root="chronicleRoot = null" />
+        </nldd-simple-section>
+        <nldd-simple-section v-else-if="boardView === 'lexostatussen'" width="full">
+          <LexostatusView :service="service" :root="chronicleRoot" @clear-root="chronicleRoot = null" @show-gram="showGram" />
+        </nldd-simple-section>
+        <template v-else>
         <nldd-simple-section width="full">
           <nldd-container layout="grid" column-count="3" sm-column-count="1" gap="16">
             <nldd-box v-for="lane in lanes" :key="lane.key" background="tinted">
@@ -270,6 +400,7 @@ function claimLawName(cl) {
             </nldd-list>
           </nldd-container>
         </nldd-simple-section>
+        </template>
       </nldd-page>
     </nldd-split-view-pane>
 
@@ -283,10 +414,97 @@ function claimLawName(cl) {
         </nldd-container>
         <nldd-container padding="16" gap="16">
           <nldd-banner
-            :variant="selected.status === 'DECIDED' ? (selected.approved ? 'success' : 'critical') : 'accent'"
-            :text="selected.status === 'DECIDED' ? t(selected.approved ? 'zaak.tag.granted' : 'zaak.tag.refused') : selected.objection?.status === 'PENDING' ? t('zaak.banner.objection') : t('zaak.banner.awaiting')"
+            :variant="selected.status === 'DECIDED' && !selected.dueStage ? (selected.approved ? 'success' : 'critical') : 'accent'"
+            :text="selected.dueStage ? t('zaak.banner.decision_due', { stage: humanize(selected.dueStage) }) : selected.status === 'DECIDED' ? t(selected.approved ? 'zaak.tag.granted' : 'zaak.tag.refused') : selected.objection?.status === 'PENDING' ? t('zaak.banner.objection') : t('zaak.banner.awaiting')"
             :supporting-text="caseReason(selected) ?? eventText(selected.events.at(-1))"
           ></nldd-banner>
+
+          <nldd-segmented-control v-if="selected.applicationGramId" size="sm" width="fit-content" :value="sheetView" @change="sheetView = $event.detail?.value ?? 'zaak'">
+            <nldd-segmented-control-item value="zaak" :text="t('zaak.view.case')"></nldd-segmented-control-item>
+            <nldd-segmented-control-item value="kroniek" :text="t('zaak.view.chronicle')"></nldd-segmented-control-item>
+          </nldd-segmented-control>
+
+          <template v-if="sheetView === 'kroniek'">
+            <nldd-rich-text spacing="tight"><p><small>{{ t('zaak.chronicle.hint') }}</small></p></nldd-rich-text>
+            <nldd-button-group orientation="horizontal">
+              <nldd-button appearance="secondary" size="sm" start-icon="code" :text="t('zaak.chronicle.stored')" @click="showStored(selected)"></nldd-button>
+            </nldd-button-group>
+            <nldd-banner v-if="selected.chronicleError" variant="warning" :text="t('zaak.chronicle.failed')" :supporting-text="selected.chronicleError"></nldd-banner>
+            <nldd-banner v-if="selected.deliveryError" variant="warning" :text="t('zaak.chronicle.undelivered')" :supporting-text="selected.deliveryError"></nldd-banner>
+            <nldd-banner v-if="selected.chronicleNoteKey" variant="neutral" :text="t(selected.chronicleNoteKey)"></nldd-banner>
+            <!-- Per jaar van een volgend besluit dat de wet nog niet kon nemen. -->
+            <nldd-banner v-for="(note, at) in selected.followingNotes ?? {}" :key="at" variant="neutral" :text="t(note.key, note.vars)"></nldd-banner>
+            <!-- De feiten: elke gram van de zaak op het moment dat rechtens
+                 telt, de aanvraag, de besluiten en elke betaalde termijn. -->
+            <nldd-container gap="4">
+              <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">{{ t('zaak.chronicle.facts') }}</nldd-text></nldd-container>
+              <nldd-list appearance="box-tinted" :accessible-label="t('zaak.chronicle.facts')">
+                <nldd-list-item v-for="(g, i) in caseGrams" :key="g.id" size="sm">
+                  <nldd-timeline-track-cell status="past" :position="trackPosition(i, caseGrams.length)"></nldd-timeline-track-cell>
+                  <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                  <nldd-text-cell size="sm" :text="humanize(g.name)" :supporting-text="[formatDate(g.effective_at.slice(0, 10)), g.periodText, g.establishedBy].filter(Boolean).join(' · ')"></nldd-text-cell>
+                  <nldd-text-cell v-if="g.summary" size="sm" width="fit-content" horizontal-alignment="right" :text="g.summary"></nldd-text-cell>
+                </nldd-list-item>
+              </nldd-list>
+            </nldd-container>
+
+            <!-- Wat de wet als volgende moment geeft: geen grammen, maar wat
+                 de cel ziet als ze de wet uitvoert zonder vast te leggen. -->
+            <nldd-container gap="4">
+              <nldd-container padding-inline="12">
+                <nldd-text size="sm" weight="medium" color="secondary">{{ t('zaak.moments.title') }}</nldd-text>
+                <nldd-text size="xs" color="secondary">{{ t('zaak.moments.hint') }}</nldd-text>
+              </nldd-container>
+              <nldd-banner v-if="upcoming.error" variant="warning" :text="t('chronicle.read_failed')" :supporting-text="upcoming.error"></nldd-banner>
+              <nldd-list appearance="box-tinted" :accessible-label="t('zaak.moments.title')">
+                <nldd-list-item size="sm">
+                  <nldd-timeline-track-cell status="current" :position="moments.length ? 'first' : 'only'"></nldd-timeline-track-cell>
+                  <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                  <nldd-text-cell size="sm" :text="t('zaak.moments.today')"></nldd-text-cell>
+                  <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="formatValue(state.referenceDate, null)"></nldd-text-cell>
+                </nldd-list-item>
+                <nldd-list-item v-for="(m, i) in moments" :key="`${m.kind}-${m.name}-${m.date}`" size="sm">
+                  <nldd-timeline-track-cell status="future" :position="i === moments.length - 1 ? 'last' : 'between'"></nldd-timeline-track-cell>
+                  <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                  <nldd-text-cell size="sm" :text="m.value ? t('zaak.moments.with_value', { text: m.text, value: m.value }) : m.text" :supporting-text="m.supporting"></nldd-text-cell>
+                  <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="formatValue(m.date, null)"></nldd-text-cell>
+                  <nldd-cell v-if="m.date > state.referenceDate" width="fit-content" vertical-alignment="center">
+                    <nldd-icon-button
+                      size="sm"
+                      appearance="neutral-tinted"
+                      icon="future"
+                      :accessible-label="t('zaak.moments.advance_to.label', { date: formatValue(m.date, null) })"
+                      @click="advanceToMoment(m.date)"
+                    ></nldd-icon-button>
+                  </nldd-cell>
+                </nldd-list-item>
+              </nldd-list>
+              <nldd-container v-if="!moments.length" padding-inline="12"><nldd-text size="xs" color="secondary">{{ t('zaak.moments.none') }}</nldd-text></nldd-container>
+            </nldd-container>
+            <nldd-button-group v-if="nextDate" orientation="horizontal">
+              <nldd-button appearance="primary" start-icon="future" :text="t('zaak.moments.advance')" @click="advance"></nldd-button>
+            </nldd-button-group>
+            <nldd-rich-text v-if="nextDate" spacing="tight"><p><small>{{ t('zaak.moments.advance.hint', { date: formatValue(nextDate, null) }) }}</small></p></nldd-rich-text>
+
+            <nldd-container v-for="g in detailedGrams" :key="g.id" gap="4">
+              <nldd-title size="5">
+                <h3>{{ humanize(g.name) }}</h3>
+                <span slot="supporting-text">{{ t(g.type === 'decretogram' ? 'zaak.chronicle.decision' : 'zaak.chronicle.application', { law: g.establishedBy }) }}</span>
+              </nldd-title>
+              <nldd-list appearance="box-tinted" :accessible-label="humanize(g.name)">
+                <nldd-list-item size="sm">
+                  <nldd-text-cell size="sm" color="secondary" :text="t('zaak.chronicle.effective_at')" :supporting-text="g.basis"></nldd-text-cell>
+                  <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="formatDateTime(g.effective_at)"></nldd-text-cell>
+                </nldd-list-item>
+                <nldd-list-item v-for="row in g.rows" :key="row.name" size="sm">
+                  <nldd-text-cell size="sm" :text="humanize(row.name)"></nldd-text-cell>
+                  <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="row.text"></nldd-text-cell>
+                </nldd-list-item>
+              </nldd-list>
+            </nldd-container>
+          </template>
+
+          <template v-else>
 
           <nldd-container gap="4">
 
@@ -321,7 +539,22 @@ function claimLawName(cl) {
             <CorrectionRows :claims="caseClaims" />
           </nldd-list>
 
-          <template v-if="selected.status !== 'DECIDED' && !selected.objection">
+          <template v-if="awaitingDecision">
+            <!-- Een volgend besluit (de toekenning): wat de wet in die fase zou
+                 besluiten, met de verrekening, voordat het wordt vastgelegd. -->
+            <nldd-banner v-if="duePreview?.error" variant="warning" :text="t('chronicle.read_failed')" :supporting-text="duePreview.error"></nldd-banner>
+            <nldd-container v-else-if="duePreview" gap="4">
+              <nldd-container padding-inline="12">
+                <nldd-text size="sm" weight="medium" color="secondary">{{ t('zaak.decision_due.title', { decision: humanize(duePreview.name) }) }}</nldd-text>
+                <nldd-text size="xs" color="secondary">{{ t('zaak.decision_due.body') }}</nldd-text>
+              </nldd-container>
+              <nldd-list appearance="box-tinted" :accessible-label="humanize(duePreview.name)">
+                <nldd-list-item v-for="row in duePreview.rows" :key="row.name" size="sm">
+                  <nldd-text-cell size="sm" :text="humanize(row.name)"></nldd-text-cell>
+                  <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="row.text"></nldd-text-cell>
+                </nldd-list-item>
+              </nldd-list>
+            </nldd-container>
             <nldd-form-field :label="t('zaak.motivation')">
               <nldd-multi-line-text-field :value="reason" rows="2" :placeholder="t('zaak.motivation.placeholder')" @input="reason = $event.detail?.value ?? $event.target.value"></nldd-multi-line-text-field>
             </nldd-form-field>
@@ -379,6 +612,7 @@ function claimLawName(cl) {
             </nldd-list>
 
           </nldd-container>
+          </template>
         </nldd-container>
       </nldd-page>
     </nldd-sheet>

@@ -1,0 +1,918 @@
+---
+# Beleid van de Dienst Toeslagen over het teruglezen van haar eigen kroniek:
+# hoe zij een vastgelegd voorschot, de rekening uit de aanvraag, wat er
+# achterstallig is, wat er op het voorschot is uitbetaald en de schatting van
+# het inkomen weer leest als de gegevens die art. 16, 22 en 24 Awir en het
+# beleid over de uitbetaling van het voorschot vragen (art. 1 tot en met 4), en hoe zij het ontvangen inkomensgegeven, de
+# toekenning, de nabetaling, de terugvordering en de incasso weer leest als
+# de gegevens die art. 8, 24, 26, 26a en 28 Awir en het beleid over de
+# toekenning, nabetaling en terugvordering vragen (art. 5 tot en met 8). Elk
+# artikel is een lexostatus van de cel van Toeslagen, onder de naam in
+# `endpoint`. Een
+# aanvraag geldt ook voor de berekeningsjaren erna (art. 15 lid 5
+# Awir), dus een voorschot en wat erop betaald is, lees je per
+# berekeningsjaar: de cel geeft het berekeningsjaar mee (`berekeningsjaar`),
+# het jaar van het besluit dat zij uitvoert. Dit is de reductie van de
+# kroniek zoals RFC-045 die plaatst: een artikel in het beleid van de houder,
+# in het wetsformaat, door de engine uitgevoerd. Welke kroniek de invoer
+# `grams` is, zegt de configuratie van de cel (`registers:` in cell.yaml), niet
+# dit beleid.
+#
+# AANNAME (RFC-045 §4). De Dienst Toeslagen heeft dit beleid niet vastgesteld;
+# het is in deze modellering namens haar geschreven, zodat het niet voor beleid
+# met een eigenaar kan doorgaan. Elke keuze erin die niet uit de wet volgt, is
+# als aanname gemarkeerd.
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.8.0/schema/v0.8.0/schema.json
+$id: fictief_beleid_kroniek_toeslagen
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+# Er is geen bekendgemaakt beleid hierover. De url wijst daarom naar het
+# artikel waarop het voorschot rust, niet naar een bekendmaking.
+url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel16
+name: Teruglezen van de kroniek van Toeslagen (fictief uitvoeringsbeleid, aanname)
+competent_authority:
+  name: Dienst Toeslagen
+# Geen legal_basis: geen artikel machtigt dit fictieve beleid met zoveel
+# woorden. De artikelen van de Awir waarvan het de gegevens terugleest, staan
+# bij de uitvoer van elk artikel.
+articles:
+  - number: '1'
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel16
+    text: >-
+      FICTIEF, aanname namens de Dienst Toeslagen: geen bekendgemaakt beleid.
+      1. Het voorschot op een aanvraag voor een berekeningsjaar is het laatste
+      besluit in de fase VOORSCHOT van de procedure van de Algemene wet
+      inkomensafhankelijke regelingen dat Toeslagen op die aanvraag voor dat
+      berekeningsjaar vastlegde. Het laatste is het besluit dat het laatst
+      rechtens geldt, en bij gelijk moment het besluit dat het laatst is
+      vastgelegd. [Aanname: een herziening vervangt het eerdere voorschot voor
+      hetzelfde berekeningsjaar; het eerdere blijft in de kroniek. Een voorschot
+      voor een ander berekeningsjaar (artikel 15, vijfde lid, van die wet)
+      vervangt het niet.]
+      2. Het voorschotbedrag is het bedrag dat dat besluit verleent (artikel 16,
+      eerste lid, van die wet).
+      3. De dagtekening van het voorschot is de dag waarop dat besluit is
+      genomen (artikel 22, eerste lid, van die wet). [Aanname: de dagtekening
+      is de dag van het besluit.]
+    machine_readable:
+      # De naam waaronder de cel dit artikel als lexostatus kent.
+      endpoint: voorschot
+      execution:
+        parameters:
+          - name: root
+            type: string
+            required: true
+            description: >-
+              Het kenmerk van de aanvraag: het gram waarmee Toeslagen de
+              ontvangst vastlegde.
+          - name: berekeningsjaar
+            type: number
+            required: true
+            description: >-
+              Het berekeningsjaar waarvoor gelezen wordt: een aanvraag geldt
+              ook voor de jaren erna (artikel 15, vijfde lid, van de Algemene
+              wet inkomensafhankelijke regelingen), en elk jaar heeft een eigen
+              voorschot.
+        input:
+          # De kroniek van Toeslagen; de configuratie van de cel bindt haar.
+          - name: grams
+            type: array
+            source: {}
+        output:
+          # Hulpuitvoer: het kenmerk van de aanvraag, buiten de FOREACH
+          # gelezen. Binnen de FOREACH is `$root` het veld `root` van de
+          # gram zelf (een veld van het element schaduwt een parameter met
+          # dezelfde naam, RFC-016), dus zou elke gram bij de aanvraag horen.
+          - name: aanvraag_van_het_voorschot
+            type: string
+            description: Het kenmerk van de aanvraag waarnaar gevraagd wordt.
+          # Hulpuitvoer, om dezelfde reden: het berekeningsjaar buiten de
+          # FOREACH gelezen.
+          - name: jaar_van_het_voorschot
+            type: number
+            description: Het berekeningsjaar waarnaar gevraagd wordt.
+          # Lid 1. Hulpuitvoer: de plaats in de tijd van het voorschot dat
+          # geldt; null als er op deze aanvraag geen voorschot is.
+          - name: laatste_voorschot
+            type: number
+            nullable: true
+            description: De plaats in de kroniek van het laatste voorschot op deze aanvraag; null als er geen is.
+          - name: voorschotbedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+            nullable: true
+            description: Het bedrag van het voorschot.
+            legal_basis:
+              law: Algemene wet inkomensafhankelijke regelingen
+              article: '16'
+              paragraph: '1'
+          - name: dagtekening_voorschot
+            type: date
+            nullable: true
+            description: De dagtekening van de beschikking die het voorschot verleent.
+            legal_basis:
+              law: Algemene wet inkomensafhankelijke regelingen
+              article: '22'
+              paragraph: '2'
+        actions:
+          - output: aanvraag_van_het_voorschot
+            value: $root
+          - output: jaar_van_het_voorschot
+            value: $berekeningsjaar
+          # Lid 1. Het wetsformaat kent geen LAST: het laatste besluit is het
+          # besluit met de hoogste plaats in de tijd.
+          - output: laatste_voorschot
+            value:
+              operation: FOREACH
+              collection: $grams
+              as: g
+              filter:
+                operation: AND
+                conditions:
+                  - {operation: EQUALS, subject: $g.stage, value: VOORSCHOT}
+                  - {operation: EQUALS, subject: $g.root, value: $aanvraag_van_het_voorschot}
+                  - {operation: EQUALS, subject: $g.period, value: $jaar_van_het_voorschot}
+              body: $g.sequence
+              combine: MAX
+          # Lid 2 tot en met 4. Eén besluit: ADD over één waarde geeft die
+          # waarde (ook een datum als tekst).
+          - output: voorschotbedrag
+            value:
+              operation: IF
+              cases:
+                - when: {operation: EQUALS, subject: $laatste_voorschot, value: null}
+                  then: null
+              default:
+                operation: FOREACH
+                collection: $grams
+                as: g
+                filter: {operation: EQUALS, subject: $g.sequence, value: $laatste_voorschot}
+                body: $g.voorschotbedrag
+                combine: ADD
+          - output: dagtekening_voorschot
+            value:
+              operation: IF
+              cases:
+                - when: {operation: EQUALS, subject: $laatste_voorschot, value: null}
+                  then: null
+              default:
+                operation: FOREACH
+                collection: $grams
+                as: g
+                filter: {operation: EQUALS, subject: $g.sequence, value: $laatste_voorschot}
+                body: $g.effective_date
+                combine: ADD
+
+  - number: '2'
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel15
+    text: >-
+      FICTIEF, aanname namens de Dienst Toeslagen: geen bekendgemaakt beleid.
+      De rekening waarop het voorschot op een aanvraag wordt betaald, is de
+      rekening die de aanvrager in die aanvraag opgaf. Gaf hij er geen op, dan
+      is er geen rekening.
+    machine_readable:
+      # De naam waaronder de cel dit artikel als lexostatus kent.
+      endpoint: rekening
+      execution:
+        parameters:
+          - name: root
+            type: string
+            required: true
+            description: Het kenmerk van de aanvraag.
+        input:
+          - name: grams
+            type: array
+            source: {}
+        output:
+          # Hulpuitvoer: het kenmerk van de aanvraag, buiten de FOREACH
+          # gelezen. Binnen de FOREACH is `$root` het veld `root` van de
+          # gram zelf (een veld van het element schaduwt een parameter met
+          # dezelfde naam, RFC-016), dus zou elke gram bij de aanvraag horen.
+          - name: aanvraag_van_de_rekening
+            type: string
+            description: Het kenmerk van de aanvraag waarnaar gevraagd wordt.
+          - name: rekeningnummer
+            type: string
+            nullable: true
+            description: De rekening die de aanvrager in de aanvraag opgaf.
+        actions:
+          - output: aanvraag_van_de_rekening
+            value: $root
+          - output: rekeningnummer
+            value:
+              operation: IF
+              cases:
+                # Geen aanvraag met dit kenmerk.
+                - when:
+                    operation: NOT
+                    value:
+                      operation: FOREACH
+                      collection: $grams
+                      as: g
+                      filter: {operation: EQUALS, subject: $g.id, value: $aanvraag_van_de_rekening}
+                      body: {operation: EQUALS, subject: $g.id, value: $aanvraag_van_de_rekening}
+                      combine: OR
+                  then: null
+                # Een aanvraag zonder rekening. ADD over één null is een
+                # fout (RFC-036), daarom eerst de vraag of het veld leeg is.
+                - when:
+                    operation: FOREACH
+                    collection: $grams
+                    as: g
+                    filter: {operation: EQUALS, subject: $g.id, value: $aanvraag_van_de_rekening}
+                    body: {operation: EQUALS, subject: $g.rekeningnummer, value: null}
+                    combine: OR
+                  then: null
+              default:
+                operation: FOREACH
+                collection: $grams
+                as: g
+                filter: {operation: EQUALS, subject: $g.id, value: $aanvraag_van_de_rekening}
+                body: $g.rekeningnummer
+                combine: ADD
+
+  - number: '3'
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel22
+    text: >-
+      FICTIEF, aanname namens de Dienst Toeslagen: geen bekendgemaakt beleid.
+      Achterstallig op een aanvraag voor een berekeningsjaar is wat de bank van
+      betaalopdrachten op het voorschot voor dat berekeningsjaar niet
+      bijschreef, verminderd met wat Toeslagen daarvan sindsdien opnieuw
+      opdroeg. [Aanname: wat op het voorschot van het ene jaar niet is
+      bijgeschreven, gaat niet mee met de termijnen van een ander jaar.]
+    machine_readable:
+      # De naam waaronder de cel dit artikel als lexostatus kent.
+      endpoint: achterstand
+      execution:
+        parameters:
+          - name: root
+            type: string
+            required: true
+            description: Het kenmerk van de aanvraag.
+          - name: berekeningsjaar
+            type: number
+            required: true
+            description: >-
+              Het berekeningsjaar waarvoor gelezen wordt: een aanvraag geldt
+              ook voor de jaren erna (artikel 15, vijfde lid, van de Algemene
+              wet inkomensafhankelijke regelingen), en elk jaar heeft een eigen
+              voorschot.
+        input:
+          - name: grams
+            type: array
+            source: {}
+        output:
+          # Hulpuitvoer: het kenmerk van de aanvraag, buiten de FOREACH
+          # gelezen. Binnen de FOREACH is `$root` het veld `root` van de
+          # gram zelf (een veld van het element schaduwt een parameter met
+          # dezelfde naam, RFC-016), dus zou elke gram bij de aanvraag horen.
+          - name: aanvraag_van_de_achterstand
+            type: string
+            description: Het kenmerk van de aanvraag waarnaar gevraagd wordt.
+          - name: jaar_van_de_achterstand
+            type: number
+            description: Het berekeningsjaar waarnaar gevraagd wordt.
+          - name: achterstallig_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Wat van eerdere betaalopdrachten niet is bijgeschreven en nog niet opnieuw is opgedragen.
+        actions:
+          - output: aanvraag_van_de_achterstand
+            value: $root
+          - output: jaar_van_de_achterstand
+            value: $berekeningsjaar
+          - output: achterstallig_bedrag
+            value:
+              operation: SUBTRACT
+              values:
+                - operation: FOREACH
+                  collection: $grams
+                  as: g
+                  filter:
+                    operation: AND
+                    conditions:
+                      - {operation: EQUALS, subject: $g.event, value: betaling_mislukt}
+                      - {operation: EQUALS, subject: $g.root, value: $aanvraag_van_de_achterstand}
+                      - {operation: EQUALS, subject: $g.period, value: $jaar_van_de_achterstand}
+                  body: $g.mislukt_bedrag
+                  combine: ADD
+                - operation: FOREACH
+                  collection: $grams
+                  as: g
+                  filter:
+                    operation: AND
+                    conditions:
+                      - {operation: EQUALS, subject: $g.event, value: betaalopdracht_gegeven}
+                      - {operation: EQUALS, subject: $g.root, value: $aanvraag_van_de_achterstand}
+                      - {operation: EQUALS, subject: $g.period, value: $jaar_van_de_achterstand}
+                  body: $g.meegenomen_achterstand
+                  combine: ADD
+
+  - number: 3a
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel24
+    text: >-
+      FICTIEF, aanname namens de Dienst Toeslagen: geen bekendgemaakt beleid.
+      Uitbetaald op het voorschot op een aanvraag voor een berekeningsjaar
+      is de som van wat de bank op de voorschottermijnen van dat
+      voorschot bijschreef, zoals Toeslagen het op het moment van lezen weet.
+      Een betaalopdracht die de bank niet bijschreef, telt niet. Schreef de
+      bank niets bij, dan is er niets uitbetaald. [Aanname: wat op het
+      voorschot voor het ene berekeningsjaar is betaald, telt niet mee voor de
+      toekenning over een ander berekeningsjaar.] [Aanname: dit is wat de
+      Dienst Toeslagen verrekent (artikel 24, tweede lid, van de Algemene wet
+      inkomensafhankelijke regelingen); dat lid spreekt van verleende
+      voorschotten.]
+    machine_readable:
+      # De naam waaronder de cel dit artikel als lexostatus kent.
+      endpoint: uitbetaald
+      execution:
+        parameters:
+          - name: root
+            type: string
+            required: true
+            description: Het kenmerk van de aanvraag.
+          - name: berekeningsjaar
+            type: number
+            required: true
+            description: >-
+              Het berekeningsjaar waarvoor gelezen wordt: een aanvraag geldt
+              ook voor de jaren erna (artikel 15, vijfde lid, van de Algemene
+              wet inkomensafhankelijke regelingen), en de toekenning over een
+              jaar verrekent alleen het voorschot van dat jaar.
+        input:
+          - name: grams
+            type: array
+            source: {}
+        output:
+          # Hulpuitvoer: de aanvraag en het jaar buiten de FOREACH gelezen
+          # (zie artikel 1).
+          - name: aanvraag_van_de_betalingen
+            type: string
+            description: Het kenmerk van de aanvraag waarnaar gevraagd wordt.
+          - name: jaar_van_de_betalingen
+            type: number
+            description: Het berekeningsjaar waarnaar gevraagd wordt.
+          - name: uitbetaalde_voorschotten
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Wat de bank op het voorschot voor het berekeningsjaar bijschreef.
+            # Geen legal_basis: art. 24 lid 2 Awir verrekent de verleende
+            # voorschotten, niet wat is uitbetaald (aanname, zie de tekst).
+        actions:
+          - output: aanvraag_van_de_betalingen
+            value: $root
+          - output: jaar_van_de_betalingen
+            value: $berekeningsjaar
+          # ADD over geen enkele betaling is nul.
+          - output: uitbetaalde_voorschotten
+            value:
+              operation: FOREACH
+              collection: $grams
+              as: g
+              filter:
+                operation: AND
+                conditions:
+                  - {operation: EQUALS, subject: $g.event, value: voorschottermijn_betaald}
+                  - {operation: EQUALS, subject: $g.root, value: $aanvraag_van_de_betalingen}
+                  - {operation: EQUALS, subject: $g.period, value: $jaar_van_de_betalingen}
+              body: $g.betaald_bedrag
+              combine: ADD
+
+  - number: '4'
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel16
+    text: >-
+      FICTIEF, aanname namens de Dienst Toeslagen: geen bekendgemaakt beleid.
+      Het toetsingsinkomen dat de aanvrager over een berekeningsjaar verwacht
+      (artikel 16, eerste lid, van de Algemene wet inkomensafhankelijke
+      regelingen), is de schatting die hij in de aanvraag gaf. Gaf hij er geen,
+      dan is er geen schatting. [Aanname: zonder nieuwe schatting geldt de
+      laatst gegeven schatting ook voor een volgend berekeningsjaar waarvoor
+      de aanvraag geacht wordt mede te zijn gedaan (artikel 15, vijfde lid,
+      van die wet). Een wijziging van de schatting (artikel 17 van die wet)
+      kent dit beleid nog niet, dus de laatste is die uit de aanvraag.]
+    machine_readable:
+      # De naam waaronder de cel dit artikel als lexostatus kent.
+      endpoint: schatting_inkomen
+      execution:
+        parameters:
+          - name: root
+            type: string
+            required: true
+            description: Het kenmerk van de aanvraag.
+        input:
+          - name: grams
+            type: array
+            source: {}
+        output:
+          # Hulpuitvoer: het kenmerk van de aanvraag, buiten de FOREACH
+          # gelezen (zie artikel 2).
+          - name: aanvraag_van_de_schatting
+            type: string
+            description: Het kenmerk van de aanvraag waarnaar gevraagd wordt.
+          - name: vermoedelijk_toetsingsinkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+            nullable: true
+            description: Het toetsingsinkomen dat de aanvrager verwacht.
+            # Geen legal_basis: art. 16 lid 1 Awir noemt het bedrag waarop de
+            # tegemoetkoming vermoedelijk wordt vastgesteld, niet een inkomen
+            # dat de aanvrager verwacht (eigen keuze in de Awir).
+        actions:
+          - output: aanvraag_van_de_schatting
+            value: $root
+          - output: vermoedelijk_toetsingsinkomen
+            value:
+              operation: IF
+              cases:
+                # Geen aanvraag met dit kenmerk.
+                - when:
+                    operation: NOT
+                    value:
+                      operation: FOREACH
+                      collection: $grams
+                      as: g
+                      filter: {operation: EQUALS, subject: $g.id, value: $aanvraag_van_de_schatting}
+                      body: {operation: EQUALS, subject: $g.id, value: $aanvraag_van_de_schatting}
+                      combine: OR
+                  then: null
+                # Een aanvraag zonder schatting. ADD over één null is een
+                # fout (RFC-036), daarom eerst de vraag of het veld leeg is.
+                - when:
+                    operation: FOREACH
+                    collection: $grams
+                    as: g
+                    filter: {operation: EQUALS, subject: $g.id, value: $aanvraag_van_de_schatting}
+                    body: {operation: EQUALS, subject: $g.vermoedelijk_toetsingsinkomen, value: null}
+                    combine: OR
+                  then: null
+              default:
+                operation: FOREACH
+                collection: $grams
+                as: g
+                filter: {operation: EQUALS, subject: $g.id, value: $aanvraag_van_de_schatting}
+                body: $g.vermoedelijk_toetsingsinkomen
+                combine: ADD
+
+  - number: '5'
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel8
+    text: >-
+      FICTIEF, aanname namens de Dienst Toeslagen: geen bekendgemaakt beleid.
+      Het inkomensgegeven over een berekeningsjaar van de aanvrager (artikel 8,
+      eerste lid, van de Algemene wet inkomensafhankelijke regelingen) is het
+      laatste inkomensgegeven over dat kalenderjaar dat Toeslagen van de
+      inspecteur ontving voor de betrokkene met het burgerservicenummer uit de
+      aanvraag, met de dag waarop de aanslag waarop het berust is vastgesteld.
+      Ontving zij er geen, dan is er (nog) geen inkomensgegeven. [Aanname: het
+      laatst ontvangen inkomensgegeven vervangt een eerder over hetzelfde
+      jaar.]
+    machine_readable:
+      # De naam waaronder de cel dit artikel als lexostatus kent.
+      endpoint: inkomensgegeven
+      execution:
+        parameters:
+          - name: root
+            type: string
+            required: true
+            description: Het kenmerk van de aanvraag.
+          - name: berekeningsjaar
+            type: number
+            required: true
+            description: Het berekeningsjaar waarvoor gelezen wordt.
+        input:
+          - name: grams
+            type: array
+            source: {}
+        output:
+          # Hulpuitvoer: de aanvraag en het jaar buiten de FOREACH gelezen
+          # (zie artikel 1).
+          - name: aanvraag_van_het_inkomensgegeven
+            type: string
+            description: Het kenmerk van de aanvraag waarnaar gevraagd wordt.
+          - name: jaar_van_het_inkomensgegeven
+            type: number
+            description: Het berekeningsjaar waarnaar gevraagd wordt.
+          - name: bsn_van_de_aanvraag
+            type: string
+            nullable: true
+            description: Het burgerservicenummer uit de aanvraag.
+          # Hulpuitvoer: de plaats in de tijd van het laatste ontvangen
+          # inkomensgegeven; null als er geen is.
+          - name: laatste_inkomensgegeven
+            type: number
+            nullable: true
+            description: De plaats in de kroniek van het laatste inkomensgegeven over het jaar.
+          - name: inkomensgegeven
+            type: amount
+            type_spec:
+              unit: eurocent
+            nullable: true
+            description: Het inkomensgegeven over het berekeningsjaar.
+            legal_basis:
+              law: Algemene wet inkomensafhankelijke regelingen
+              article: '8'
+              paragraph: '1'
+          - name: datum_vaststelling_aanslag
+            type: date
+            nullable: true
+            description: De dag waarop de aanslag over het berekeningsjaar is vastgesteld.
+            legal_basis:
+              law: Algemene wet inkomensafhankelijke regelingen
+              article: '19'
+              paragraph: '1'
+        actions:
+          - output: aanvraag_van_het_inkomensgegeven
+            value: $root
+          - output: jaar_van_het_inkomensgegeven
+            value: $berekeningsjaar
+          - output: bsn_van_de_aanvraag
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: NOT
+                    value:
+                      operation: FOREACH
+                      collection: $grams
+                      as: g
+                      filter: {operation: EQUALS, subject: $g.id, value: $aanvraag_van_het_inkomensgegeven}
+                      body: {operation: NOT, value: {operation: EQUALS, subject: $g.bsn, value: null}}
+                      combine: OR
+                  then: null
+              default:
+                operation: FOREACH
+                collection: $grams
+                as: g
+                filter: {operation: EQUALS, subject: $g.id, value: $aanvraag_van_het_inkomensgegeven}
+                body: $g.bsn
+                combine: ADD
+          - output: laatste_inkomensgegeven
+            value:
+              operation: FOREACH
+              collection: $grams
+              as: g
+              filter:
+                operation: AND
+                conditions:
+                  - {operation: EQUALS, subject: $g.event, value: inkomensgegeven_ontvangen}
+                  - {operation: EQUALS, subject: $g.bsn, value: $bsn_van_de_aanvraag}
+                  - {operation: EQUALS, subject: $g.kalenderjaar, value: $jaar_van_het_inkomensgegeven}
+              body: $g.sequence
+              combine: MAX
+          - output: inkomensgegeven
+            value:
+              operation: IF
+              cases:
+                - when: {operation: EQUALS, subject: $laatste_inkomensgegeven, value: null}
+                  then: null
+              default:
+                operation: FOREACH
+                collection: $grams
+                as: g
+                filter: {operation: EQUALS, subject: $g.sequence, value: $laatste_inkomensgegeven}
+                body: $g.inkomensgegeven
+                combine: ADD
+          - output: datum_vaststelling_aanslag
+            value:
+              operation: IF
+              cases:
+                - when: {operation: EQUALS, subject: $laatste_inkomensgegeven, value: null}
+                  then: null
+              default:
+                operation: FOREACH
+                collection: $grams
+                as: g
+                filter: {operation: EQUALS, subject: $g.sequence, value: $laatste_inkomensgegeven}
+                body: $g.datum_vaststelling_aanslag
+                combine: ADD
+
+  - number: '6'
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel24
+    text: >-
+      FICTIEF, aanname namens de Dienst Toeslagen: geen bekendgemaakt beleid.
+      De toekenning op een aanvraag voor een berekeningsjaar is het laatste
+      besluit in de fase TOEKENNING van de procedure van de Algemene wet
+      inkomensafhankelijke regelingen dat Toeslagen op die aanvraag voor dat
+      berekeningsjaar vastlegde. Wat er na de verrekening nog uit te betalen
+      is (artikel 24, eerste en tweede lid, van die wet) en wat er terug te
+      vorderen is (artikel 24, derde lid, en artikel 26a van die wet), zijn de
+      bedragen die dat besluit vaststelt; de dagtekening is de dag van dat
+      besluit. [Aanname: de dagtekening is de dag van het besluit.]
+    machine_readable:
+      # De naam waaronder de cel dit artikel als lexostatus kent.
+      endpoint: toekenning
+      execution:
+        parameters:
+          - name: root
+            type: string
+            required: true
+            description: Het kenmerk van de aanvraag.
+          - name: berekeningsjaar
+            type: number
+            required: true
+            description: Het berekeningsjaar waarvoor gelezen wordt.
+        input:
+          - name: grams
+            type: array
+            source: {}
+        output:
+          - name: aanvraag_van_de_toekenning
+            type: string
+            description: Het kenmerk van de aanvraag waarnaar gevraagd wordt.
+          - name: jaar_van_de_toekenning
+            type: number
+            description: Het berekeningsjaar waarnaar gevraagd wordt.
+          - name: laatste_toekenning
+            type: number
+            nullable: true
+            description: De plaats in de kroniek van de laatste toekenning over het jaar.
+          - name: nog_uit_te_betalen
+            type: amount
+            type_spec:
+              unit: eurocent
+            nullable: true
+            description: Wat er na de verrekening nog uit te betalen is.
+            legal_basis:
+              law: Algemene wet inkomensafhankelijke regelingen
+              article: '24'
+              paragraph: '1'
+          - name: terug_te_vorderen
+            type: amount
+            type_spec:
+              unit: eurocent
+            nullable: true
+            description: Wat er na de verrekening en art. 26a terug te vorderen is.
+            legal_basis:
+              law: Algemene wet inkomensafhankelijke regelingen
+              article: 26a
+              paragraph: '1'
+          - name: dagtekening_toekenning
+            type: date
+            nullable: true
+            description: De dagtekening van de beschikking tot toekenning.
+            legal_basis:
+              law: Algemene wet inkomensafhankelijke regelingen
+              article: '24'
+              paragraph: '1'
+        actions:
+          - output: aanvraag_van_de_toekenning
+            value: $root
+          - output: jaar_van_de_toekenning
+            value: $berekeningsjaar
+          - output: laatste_toekenning
+            value:
+              operation: FOREACH
+              collection: $grams
+              as: g
+              filter:
+                operation: AND
+                conditions:
+                  - {operation: EQUALS, subject: $g.stage, value: TOEKENNING}
+                  - {operation: EQUALS, subject: $g.root, value: $aanvraag_van_de_toekenning}
+                  - {operation: EQUALS, subject: $g.period, value: $jaar_van_de_toekenning}
+              body: $g.sequence
+              combine: MAX
+          - output: nog_uit_te_betalen
+            value:
+              operation: IF
+              cases:
+                - when: {operation: EQUALS, subject: $laatste_toekenning, value: null}
+                  then: null
+              default:
+                operation: FOREACH
+                collection: $grams
+                as: g
+                filter: {operation: EQUALS, subject: $g.sequence, value: $laatste_toekenning}
+                body: $g.nog_uit_te_betalen
+                combine: ADD
+          - output: terug_te_vorderen
+            value:
+              operation: IF
+              cases:
+                - when: {operation: EQUALS, subject: $laatste_toekenning, value: null}
+                  then: null
+              default:
+                operation: FOREACH
+                collection: $grams
+                as: g
+                filter: {operation: EQUALS, subject: $g.sequence, value: $laatste_toekenning}
+                body: $g.terug_te_vorderen
+                combine: ADD
+          - output: dagtekening_toekenning
+            value:
+              operation: IF
+              cases:
+                - when: {operation: EQUALS, subject: $laatste_toekenning, value: null}
+                  then: null
+              default:
+                operation: FOREACH
+                collection: $grams
+                as: g
+                filter: {operation: EQUALS, subject: $g.sequence, value: $laatste_toekenning}
+                body: $g.effective_date
+                combine: ADD
+
+  - number: '7'
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel24
+    text: >-
+      FICTIEF, aanname namens de Dienst Toeslagen: geen bekendgemaakt beleid.
+      Van de nabetaling op een aanvraag voor een berekeningsjaar is opgedragen
+      wat Toeslagen de bank opdroeg over te maken, verminderd met wat de bank
+      daarvan weigerde.
+    machine_readable:
+      # De naam waaronder de cel dit artikel als lexostatus kent.
+      endpoint: nabetaling
+      execution:
+        parameters:
+          - name: root
+            type: string
+            required: true
+            description: Het kenmerk van de aanvraag.
+          - name: berekeningsjaar
+            type: number
+            required: true
+            description: Het berekeningsjaar waarvoor gelezen wordt.
+        input:
+          - name: grams
+            type: array
+            source: {}
+        output:
+          - name: aanvraag_van_de_nabetaling
+            type: string
+            description: Het kenmerk van de aanvraag waarnaar gevraagd wordt.
+          - name: jaar_van_de_nabetaling
+            type: number
+            description: Het berekeningsjaar waarnaar gevraagd wordt.
+          - name: opgedragen_nabetaling
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Wat van de nabetaling is opgedragen en niet geweigerd.
+        actions:
+          - output: aanvraag_van_de_nabetaling
+            value: $root
+          - output: jaar_van_de_nabetaling
+            value: $berekeningsjaar
+          - output: opgedragen_nabetaling
+            value:
+              operation: SUBTRACT
+              values:
+                - operation: FOREACH
+                  collection: $grams
+                  as: g
+                  filter:
+                    operation: AND
+                    conditions:
+                      - {operation: EQUALS, subject: $g.event, value: nabetaling_opgedragen}
+                      - {operation: EQUALS, subject: $g.root, value: $aanvraag_van_de_nabetaling}
+                      - {operation: EQUALS, subject: $g.period, value: $jaar_van_de_nabetaling}
+                  body: $g.bedrag
+                  combine: ADD
+                - operation: FOREACH
+                  collection: $grams
+                  as: g
+                  filter:
+                    operation: AND
+                    conditions:
+                      - {operation: EQUALS, subject: $g.event, value: nabetaling_mislukt}
+                      - {operation: EQUALS, subject: $g.root, value: $aanvraag_van_de_nabetaling}
+                      - {operation: EQUALS, subject: $g.period, value: $jaar_van_de_nabetaling}
+                  body: $g.niet_nabetaald_bedrag
+                  combine: ADD
+
+  - number: '8'
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel26
+    text: >-
+      FICTIEF, aanname namens de Dienst Toeslagen: geen bekendgemaakt beleid.
+      De terugvordering op een aanvraag voor een berekeningsjaar is de laatste
+      beschikking tot terugvordering (artikel 26 van de Algemene wet
+      inkomensafhankelijke regelingen) die Toeslagen op die aanvraag voor dat
+      berekeningsjaar vastlegde, met het bedrag dat zij terugvordert en haar
+      dagtekening. Ingevorderd is wat Toeslagen de bank opdroeg af te
+      schrijven, verminderd met wat de bank daarvan weigerde. [Aanname: de
+      dagtekening is de dag van het besluit.]
+    machine_readable:
+      # De naam waaronder de cel dit artikel als lexostatus kent.
+      endpoint: terugvordering
+      execution:
+        parameters:
+          - name: root
+            type: string
+            required: true
+            description: Het kenmerk van de aanvraag.
+          - name: berekeningsjaar
+            type: number
+            required: true
+            description: Het berekeningsjaar waarvoor gelezen wordt.
+        input:
+          - name: grams
+            type: array
+            source: {}
+        output:
+          - name: aanvraag_van_de_terugvordering
+            type: string
+            description: Het kenmerk van de aanvraag waarnaar gevraagd wordt.
+          - name: jaar_van_de_terugvordering
+            type: number
+            description: Het berekeningsjaar waarnaar gevraagd wordt.
+          - name: laatste_terugvordering
+            type: number
+            nullable: true
+            description: De plaats in de kroniek van de laatste terugvordering over het jaar.
+          - name: terugvorderingsbedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+            nullable: true
+            description: Het bedrag dat de beschikking tot terugvordering terugvordert.
+            legal_basis:
+              law: Algemene wet inkomensafhankelijke regelingen
+              article: '26'
+              paragraph: '2'
+          - name: dagtekening_terugvordering
+            type: date
+            nullable: true
+            description: De dagtekening van de beschikking tot terugvordering.
+            legal_basis:
+              law: Algemene wet inkomensafhankelijke regelingen
+              article: '28'
+              paragraph: '1'
+          - name: ingevorderd_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Wat van de terugvordering is opgedragen af te schrijven en niet geweigerd.
+        actions:
+          - output: aanvraag_van_de_terugvordering
+            value: $root
+          - output: jaar_van_de_terugvordering
+            value: $berekeningsjaar
+          - output: laatste_terugvordering
+            value:
+              operation: FOREACH
+              collection: $grams
+              as: g
+              filter:
+                operation: AND
+                conditions:
+                  - {operation: EQUALS, subject: $g.stage, value: TERUGVORDERING}
+                  - {operation: EQUALS, subject: $g.root, value: $aanvraag_van_de_terugvordering}
+                  - {operation: EQUALS, subject: $g.period, value: $jaar_van_de_terugvordering}
+              body: $g.sequence
+              combine: MAX
+          - output: terugvorderingsbedrag
+            value:
+              operation: IF
+              cases:
+                - when: {operation: EQUALS, subject: $laatste_terugvordering, value: null}
+                  then: null
+              default:
+                operation: FOREACH
+                collection: $grams
+                as: g
+                filter: {operation: EQUALS, subject: $g.sequence, value: $laatste_terugvordering}
+                body: $g.terugvorderingsbedrag
+                combine: ADD
+          - output: dagtekening_terugvordering
+            value:
+              operation: IF
+              cases:
+                - when: {operation: EQUALS, subject: $laatste_terugvordering, value: null}
+                  then: null
+              default:
+                operation: FOREACH
+                collection: $grams
+                as: g
+                filter: {operation: EQUALS, subject: $g.sequence, value: $laatste_terugvordering}
+                body: $g.effective_date
+                combine: ADD
+          - output: ingevorderd_bedrag
+            value:
+              operation: SUBTRACT
+              values:
+                - operation: FOREACH
+                  collection: $grams
+                  as: g
+                  filter:
+                    operation: AND
+                    conditions:
+                      - {operation: EQUALS, subject: $g.event, value: incasso_opgedragen}
+                      - {operation: EQUALS, subject: $g.root, value: $aanvraag_van_de_terugvordering}
+                      - {operation: EQUALS, subject: $g.period, value: $jaar_van_de_terugvordering}
+                  body: $g.incassobedrag
+                  combine: ADD
+                - operation: FOREACH
+                  collection: $grams
+                  as: g
+                  filter:
+                    operation: AND
+                    conditions:
+                      - {operation: EQUALS, subject: $g.event, value: incasso_mislukt}
+                      - {operation: EQUALS, subject: $g.root, value: $aanvraag_van_de_terugvordering}
+                      - {operation: EQUALS, subject: $g.period, value: $jaar_van_de_terugvordering}
+                  body: $g.niet_geind_bedrag
+                  combine: ADD

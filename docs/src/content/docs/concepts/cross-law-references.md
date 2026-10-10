@@ -87,6 +87,15 @@ input:
       output: standaardpremie
 ```
 
+## Which article an output name means
+
+A reference names an output, not an article, so the engine has to find the article that produces it. Some articles produce a name without being what a reference to it means, and the engine passes over them:
+
+- A hook ([RFC-007](/rfcs/rfc-007)) delivers its outputs by firing on a decision. Awir 8 (the toetsingsinkomen) and Awir 16 (the estimated toetsingsinkomen, a hook on the voorschot) both produce `toetsingsinkomen`; a reference to it means article 8. A hook counts only when no ordinary article produces the name, which is how Awb 6:8 reads the bezwaartermijn that the hook Awb 6:7 sets.
+- An override or an implementation within the same law replaces or fills that output of another article. The reference means that other article, and the override or implementation applies to it.
+
+When two ordinary articles of one version produce the same name, a reference to it is refused with both article numbers, rather than resolved by the order of the articles in the file. Loading such a law is not refused: the Wlz has articles that each name their own `bevoegd_gezag`, and nothing refers to that name from outside.
+
 ## Circular reference detection
 
 The engine detects circular references (law A needs law B which needs law A) and raises an error. A `MAX_CROSS_LAW_DEPTH` limit of 20 prevents runaway chains.

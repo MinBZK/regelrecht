@@ -94,6 +94,12 @@ for (const name of ['bindings.yaml', 'profiles.yaml', 'demo-config.yaml', 'servi
   if (existsSync(src)) cpSync(src, join(destDir, name));
 }
 
+// The cells (chronolex, RFC-022): per cell its configuration, which the page
+// hands to WasmCell as text. Which cells there are goes into the index.
+const cellsDir = join(corpusDir, 'cells');
+const cells = existsSync(cellsDir) ? readdirSync(cellsDir).filter((n) => statSync(join(cellsDir, n)).isDirectory()).sort() : [];
+if (cells.length) cpSync(cellsDir, join(destDir, 'cells'), { recursive: true });
+
 // De woordenlijst voor veldnamen wordt een JS-module en geen asset:
 // `format.js` leest hem synchroon en wordt zelf door zijn eigen tests
 // geimporteerd, dus een fetch erin zou die tests van een netwerkaanroep
@@ -213,7 +219,7 @@ writeGeneratedModule('glossary.generated.js', 'corpus/demo/i18n/glossary.<taal>.
 
 laws.sort((a, b) => a.id.localeCompare(b.id) || a.valid_from.localeCompare(b.valid_from));
 scenarios.sort((a, b) => a.path.localeCompare(b.path));
-writeFileSync(join(destDir, 'index.json'), JSON.stringify({ laws, scenarios }, null, 2));
+writeFileSync(join(destDir, 'index.json'), JSON.stringify({ laws, scenarios, cells }, null, 2));
 // Per taal geteld: een lege ingang valt zo op, en dat is precies het geval dat
 // stil terugvalt op het Nederlands in plaats van te falen.
 const perLocale = translatedLocales

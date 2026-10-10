@@ -1,0 +1,53 @@
+---
+# Tier C: who supplies a parameter (`origin`, RFC-048), and a namespaced
+# integration block on `produces` (`extensions`, RFC-022 §3.2), with the keys
+# of the `chronolex` namespace.
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.8.0/schema/v0.8.0/schema.json
+$id: test_conformance_origin
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2025-01-01'
+url: https://example.invalid/origin
+competent_authority:
+  name: Een instantie
+articles:
+  - number: '1'
+    url: https://example.invalid/origin/1
+    text: De aanvraag noemt het tijdvak en de naam; de instantie leest de inschrijving zelf.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: TOETS
+          extensions:
+            chronolex:
+              establishes:
+                - event: aanvraag_ingediend
+                  type: submission
+              reads:
+                filter: {event: aanvraag_ingediend}
+            een_andere_runtime:
+              sleutel: waarde
+        parameters:
+          - name: tijdvak
+            type: string
+            origin:
+              waarde: BELANGHEBBENDE
+              grondslag: algemene_wet_bestuursrecht#4:2 lid 1
+              rol: TIJDVAK
+          - name: naam
+            type: string
+            origin: {waarde: BELANGHEBBENDE, grondslag: test_conformance_origin#1}
+          - name: inschrijving
+            type: boolean
+            origin:
+              waarde: REGISTER
+              register: een_registerwet
+              grondslag: kieswet#G 1
+          - name: besluit
+            type: string
+            origin: {waarde: DOSSIER, grondslag: test_conformance_origin#1, rol: BESLUIT}
+        output:
+          - name: volledig
+            type: boolean
+        actions:
+          - output: volledig
+            value: true

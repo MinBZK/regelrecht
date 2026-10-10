@@ -3964,6 +3964,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "regelrecht-cel"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "js-sys",
+ "regelrecht-engine",
+ "regelrecht-law-model",
+ "serde",
+ "serde-wasm-bindgen",
+ "serde_json",
+ "serde_yaml_ng",
+ "tempfile",
+ "thiserror 2.0.21",
+ "uuid",
+ "walkdir",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "regelrecht-corpus"
 version = "0.1.0"
 dependencies = [

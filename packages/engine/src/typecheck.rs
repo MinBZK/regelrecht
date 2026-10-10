@@ -539,7 +539,11 @@ impl<'l, 'f> ArticleChecker<'l, 'f> {
                 (None, None) => continue,
             };
             self.location = format!("input '{}'", input.name);
-            let Some(target_article) = target_law.find_article_by_output(output_name) else {
+            // The article the reference resolves to, as the engine resolves
+            // it; an ambiguous output fails at execution, not here.
+            let Ok(Some(target_article)) =
+                crate::resolver::unique_output_producer(target_law, output_name)
+            else {
                 continue;
             };
             if target_article

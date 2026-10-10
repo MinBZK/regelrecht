@@ -67,6 +67,9 @@ export function loadCorpus() {
         return { ...entry, text, doc: yaml.load(text) };
       }),
     );
+    // De cellen (chronolex, RFC-022): per cel de teksten die WasmCell leest,
+    // en per gebeurtenis het artikel dat haar vestigt.
+    const cells = await Promise.all((index.cells ?? []).map(loadCell));
     // Latest version per law id, for the UI (the engine keeps every version and
     // picks by calculation date itself).
     const latestById = new Map();
@@ -83,6 +86,13 @@ export function loadCorpus() {
       laws,
       latestById,
       lawById: (id) => latestById.get(id) ?? null,
+      /**
+       * The version of law `id` in force on `date` (YYYY-MM-DD): the one with
+       * the latest `valid_from` on or before it. Before the first version, the
+       * latest one, as `lawById` gives it.
+       */
+      lawOn: (id, date) =>
+        laws.filter((l) => l.id === id && l.valid_from <= date).sort((a, b) => b.valid_from.localeCompare(a.valid_from))[0] ?? latestById.get(id) ?? null,
       /** Resolve the POC-style (law_path, service) address to the latest law entry. */
       lawByPath: (lawPath, service) => {
         const candidates = laws.filter(
@@ -92,6 +102,7 @@ export function loadCorpus() {
         return candidates[0] ?? null;
       },
       scenarios: index.scenarios,
+      cells,
       bindings,
       profiles,
       services: services.services ?? {},
@@ -127,6 +138,24 @@ export function loadCorpus() {
     };
   })();
   return corpusPromise;
+}
+
+/**
+ * Eén cel: `cell.yaml` met de stromen die het noemt, als
+ * tekst voor WasmCell, plus haar gebeurtenissen.
+ */
+async function loadCell(id) {
+  const base = `/data/cells/${id}`;
+  const cellYaml = await fetchText(`${base}/cell.yaml`);
+  const cell = yaml.load(cellYaml);
+  const streams = await Promise.all((cell.streams ?? []).map((p) => fetchText(`${base}/${p}`)));
+  // Per gebeurtenis ook de stroom waarin de cel haar registreert (`$id` en
+  // bestand): de achterkant van de kroniek laat zien waar een gram vandaan komt.
+  const events = streams.flatMap((text, i) => {
+    const stream = yaml.load(text);
+    return (stream.events ?? []).map((e) => ({ ...e, chronicle: stream.chronicle, stream: stream.$id ?? null, streamFile: cell.streams[i] }));
+  });
+  return { id, recordingActor: cell.recording_actor ?? null, cellYaml, streams, events };
 }
 
 /** Organisation display data for a service code. */

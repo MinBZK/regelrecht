@@ -60,7 +60,7 @@ use wasm_bindgen::prelude::*;
 
 use crate::annotation::{self, law_id_from_source, TextQuoteSelector};
 use crate::config;
-use crate::engine::OutputProvenance;
+use crate::engine::{ArticleResult, OutputProvenance};
 use crate::error::EngineError;
 use crate::service::{ExecutionOutcome, LawExecutionService, StageState};
 use crate::trace::{TraceBuilder, TraceDocument};
@@ -206,6 +206,23 @@ struct WasmExecuteResult {
     regulation_valid_from: Option<String>,
 }
 
+impl From<ArticleResult> for WasmExecuteResult {
+    fn from(result: ArticleResult) -> Self {
+        Self {
+            outputs: result.outputs,
+            output_provenance: result.output_provenance,
+            resolved_inputs: result.resolved_inputs,
+            article_number: result.article_number,
+            law_id: result.law_id,
+            law_uuid: result.law_uuid,
+            engine_version: result.engine_version,
+            schema_version: result.schema_version,
+            regulation_hash: result.regulation_hash,
+            regulation_valid_from: result.regulation_valid_from,
+        }
+    }
+}
+
 /// Serializable result for executeStage().
 ///
 /// Two shapes in one object, told apart by `complete`. A finished lifecycle
@@ -278,6 +295,20 @@ pub struct WasmEngine {
     service: LawExecutionService,
 }
 
+/// For Rust code compiled into the same WASM module (the chronolex cell),
+/// which executes the law with the engine the page loaded. Not exported to
+/// JavaScript.
+impl WasmEngine {
+    pub fn service(&self) -> &LawExecutionService {
+        &self.service
+    }
+
+    /// The service to register a data source with (a register of the cell).
+    pub fn service_mut(&mut self) -> &mut LawExecutionService {
+        &mut self.service
+    }
+}
+
 #[wasm_bindgen]
 impl WasmEngine {
     /// Create a new empty engine instance.
@@ -341,18 +372,7 @@ impl WasmEngine {
             .evaluate_law_output(law_id, output_name, params, calculation_date)
             .map_err(engine_error_to_wasm)?;
 
-        let wasm_result = WasmExecuteResult {
-            outputs: result.outputs,
-            output_provenance: result.output_provenance,
-            resolved_inputs: result.resolved_inputs,
-            article_number: result.article_number,
-            law_id: result.law_id,
-            law_uuid: result.law_uuid,
-            engine_version: result.engine_version,
-            schema_version: result.schema_version,
-            regulation_hash: result.regulation_hash,
-            regulation_valid_from: result.regulation_valid_from,
-        };
+        let wasm_result = WasmExecuteResult::from(result);
 
         wasm_result.serialize(&js_serializer()).map_err(|e| {
             wasm_error(&format!(
@@ -418,6 +438,7 @@ impl WasmEngine {
                 state,
                 outputs,
                 pending_inputs,
+                ..
             } => WasmStageResult {
                 complete: false,
                 outputs,
@@ -546,18 +567,7 @@ impl WasmEngine {
             .evaluate_law(law_id, &name_refs, params, calculation_date)
             .map_err(engine_error_to_wasm)?;
 
-        let wasm_result = WasmExecuteResult {
-            outputs: result.outputs,
-            output_provenance: result.output_provenance,
-            resolved_inputs: result.resolved_inputs,
-            article_number: result.article_number,
-            law_id: result.law_id,
-            law_uuid: result.law_uuid,
-            engine_version: result.engine_version,
-            schema_version: result.schema_version,
-            regulation_hash: result.regulation_hash,
-            regulation_valid_from: result.regulation_valid_from,
-        };
+        let wasm_result = WasmExecuteResult::from(result);
 
         wasm_result.serialize(&js_serializer()).map_err(|e| {
             wasm_error(&format!(
@@ -981,6 +991,29 @@ articles:
         assert_eq!(engine.law_count(), 1);
         assert!(engine.has_law("test_law"));
         assert_eq!(engine.list_laws(), vec!["test_law".to_string()]);
+    }
+
+    /// Wat in dezelfde module meedraait (de chronolex-cel) voert de wet uit met
+    /// de service van deze engine: die moet de wetten zien die de pagina laadde,
+    /// niet een lege.
+    #[test]
+    fn test_wasm_engine_service_is_the_loaded_service() {
+        let mut engine = WasmEngine::new();
+        load_law(&mut engine, MINIMAL_LAW_YAML);
+
+        assert!(engine.service().resolver().get_law("test_law").is_some());
+    }
+
+    /// Wat de cel via `service_mut` registreert (haar kroniek als bron),
+    /// moet in dezelfde service landen die de pagina gebruikt, niet in een
+    /// losse kopie.
+    #[test]
+    fn test_wasm_engine_service_mut_changes_the_loaded_service() {
+        let mut engine = WasmEngine::new();
+        load_law(&mut engine, MINIMAL_LAW_YAML);
+
+        assert!(engine.service_mut().unload_law("test_law"));
+        assert!(engine.service().resolver().get_law("test_law").is_none());
     }
 
     /// `loadLaw()` is de enige weg waarlangs JavaScript een wet de engine in
