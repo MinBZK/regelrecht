@@ -1,0 +1,144 @@
+---
+# De opgenomen rondleiding door de demo.
+#
+# Dit bestand bepaalt wat de kijker ziet en hoort: welke opnames (takes) de
+# rondleiding vormen, wat eruit geknipt is, welke tekst er op de dia's staat en
+# welke veelgestelde vragen er bij welk moment verschijnen. `just walkthrough
+# build` maakt er de video's, de ondertitels en timeline.json van. Een
+# correctie is dus een wijziging hier en een nieuwe build, geen nieuwe opname.
+#
+# Tijden zijn seconden in de opname zelf (take-tijd), niet in het eindresultaat:
+# zo blijft een knip op zijn plek staan als er eerder in de rondleiding iets
+# bijkomt of afgaat. Zie docs/src/content/docs/components/demo.md.
+
+presenter:
+  name: Anne Schuth
+  role: staff engineer
+
+# De GitHub-release waar de video's als assets in staan. Zonder release haalt
+# de Docker-build niets op, en een timeline.json zonder release komt niet door
+# de tests (frontend-demo/src/walkthrough/corpus.test.js).
+release: walkthrough-2026-10-03
+
+# Woorden die de transcriptie goed moet spellen.
+glossary:
+  - RegelRecht
+  - regelrecht
+  - zorgtoeslag
+  - Awb
+  - Merijn
+  - Claudia
+  - machine-leesbaar
+
+# De hoofdlijn: stukken uit opnames, achter elkaar. Een hoofdstuk opnieuw
+# opgenomen? Laat het segment van de oude opname eerder stoppen en zet de
+# nieuwe opname erachter.
+#
+#   segments:
+#     - take: 2026-10-02T10-00-00
+#       to: 512.3
+#     - take: 2026-10-02T11-30-00
+main:
+  segments:
+    # Opening tot en met de introductie.
+    - take: 2026-10-03T19-38-01
+      to: 149.6
+    # De wet, opnieuw opgenomen: het scrollen door de YAML staat erin.
+    - take: 2026-10-03T21-10-06
+      from: 2.3
+      to: 141.6
+    # Vanaf de graaf weer de eerste opname, tot en met de simulatie.
+    - take: 2026-10-03T19-38-01
+      from: 314.05
+      to: 745.4
+
+# Per opname wat eruit gaat. `just walkthrough prepare` zet een voorstel in
+# .walkthrough/takes/<take>/cuts.suggested.yaml.
+#
+#   2026-10-02T10-00-00:
+#     cuts:
+#       - {from: 12.3, to: 15.8, reason: dubbele zin}
+takes:
+  2026-10-03T21-10-06:
+    cuts:
+      - {from: 4.02, to: 4.6, reason: stilte van 1.4s}
+      - {from: 6.59, to: 7.12, reason: stilte van 1.3s}
+      - {from: 89.02, to: 89.52, reason: stilte van 1.3s}
+      - {from: 113.14, to: 114.54, reason: stilte van 2.2s}
+      - {from: 134.77, to: 135.36, reason: stilte van 1.4s}
+  2026-10-03T19-38-01:
+    cuts:
+      - {from: 7.41, to: 8.02, reason: stilte van 1.4s}
+      - {from: 70.65, to: 71.13, reason: stilte van 1.3s}
+      - {from: 87.63, to: 88.08, reason: stilte van 1.3s}
+      - {from: 208.53, to: 209.08, reason: stilte van 1.4s}
+      - {from: 251.5, to: 253.4, reason: 'verspreking: zorgverzekerden, sorry'}
+      - {from: 379.12, to: 379.81, reason: stilte van 1.5s}
+      - {from: 557.78, to: 558.45, reason: stilte van 1.5s}
+      - {from: 568.77, to: 569.78, reason: stilte van 1.8s}
+      - {from: 691.43, to: 691.94, reason: stilte van 1.3s}
+      - {from: 695.06, to: 695.59, reason: stilte van 1.3s}
+      - {from: 699.25, to: 707.1, reason: zoeken in het smalle scherm}
+      - {from: 743.24, to: 743.83, reason: stilte van 1.4s}
+
+# Tekst op een dia aanpassen zonder nieuwe opname, op dia-index.
+#
+#   5:
+#     title: De wet, machine-leesbaar
+#     lead: Elk artikel staat er twee keer in, als tekst en als regels.
+slides:
+  # Wat in de opname van 3 oktober gezegd wordt, kort.
+  1:
+    lines:
+      - Iedere uitvoeringsorganisatie
+      - heeft een **eigen interpretatie** van de wet
+      - die al decennia landt in **eigen software**
+  5:
+    lead: Per artikel de wettekst, en daaronder hoe hij werkt.
+    bullets:
+      - '**Parameter**: voor wie, een BSN.'
+      - '**Actions**: de voorwaarden en de berekening.'
+      - '**Input** uit andere wetten: verzekerd (Zvw), gedetineerd (Pbw).'
+  6:
+    lead: Zorgtoeslag hangt af van verzekerd zijn, en dat van detentie.
+    bullets:
+      - Volg de lijn van wet naar wet.
+      - Alle wetten samen vormen een kluwen rond de inkomstenbelasting.
+  7:
+    lead: Voorbeelden uit de memorie van toelichting, uitgevoerd.
+    bullets:
+      - '**Testbaar**: werkt de wet zoals bedoeld?'
+      - '**Navolgbaar**: welke gegevens, welke wetten.'
+      - Onder de 18 stopt het vroeg, zonder naar detentie te kijken.
+  8:
+    title: Wat doet een wijziging met iedereen?
+    lead: Alle wetten tegelijk op een populatie.
+    bullets:
+      - Besteedbaar inkomen, met alle wisselwerking tussen wetten.
+      - 'Wijziging doorrekenen: de standaardpremie omhoog.'
+      - Vergelijk voor en na, vóór er gestemd wordt.
+
+# Veelgestelde vragen, en het moment in de hoofdlijn waarop de vraag
+# verschijnt (in take-tijd, of als hoofdstuk plus seconden:
+# `offer: {chapter: 5, after: 20}`). Twee soorten antwoord:
+#
+# - een oordeel: de presentator in beeld, opgenomen op een dia zonder
+#   tabblad; het gezicht staat dan groot naast de vraag;
+#
+#   - id: open-normen
+#     question: Hoe gaan jullie om met open normen?
+#     segments:
+#       - take: 2026-10-02T11-00-00
+#     offer: {chapter: 5, after: 20}
+#
+# - laat-maar-zien: een script met de gegenereerde stem en de demo die
+#   meeklikt, eventueel met een opgenomen eerste zin.
+#
+#   - id: eigen-wet
+#     question: Kan ik zelf een wet toevoegen?
+#     segments:
+#       - take: 2026-10-02T11-10-00
+#         to: 4.5
+#       - script: faq-eigen-wet
+#     offer: {chapter: 7, after: 10}
+faq: []

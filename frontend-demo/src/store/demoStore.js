@@ -81,9 +81,19 @@ function loadState() {
 }
 
 const state = reactive(loadState());
+/**
+ * Whether changes are written to localStorage. Off while a recorded
+ * walkthrough plays: it drives this same state through the presenter's
+ * session, and that must not overwrite what the viewer had built up.
+ */
+let persisting = true;
+export function setPersistence(on) {
+  persisting = !!on;
+}
 watch(
   state,
   (s) => {
+    if (!persisting) return;
     try {
       window.localStorage?.setItem(STORAGE_KEY, JSON.stringify(s));
     } catch {

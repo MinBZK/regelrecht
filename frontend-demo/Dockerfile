@@ -69,6 +69,9 @@ COPY packages/frontend-shared/ packages/frontend-shared/
 COPY frontend-demo/ frontend-demo/
 COPY corpus/demo/ corpus/demo/
 COPY --from=wasm-builder /wasm-pkg/ frontend-demo/public/wasm/pkg/
+# The recorded walkthrough's videos: release assets named and checksummed in
+# corpus/demo/walkthrough/timeline.json. Without a timeline this does nothing.
+RUN node frontend-demo/scripts/fetch-walkthrough-media.mjs
 RUN npm run build -w frontend-demo
 
 # Stage 2: Production (unprivileged nginx for Kubernetes/OpenShift)

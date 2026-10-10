@@ -46,6 +46,11 @@ const PAGES = [
   { name: 'simulatie', paths: { nl: '/simulatie', en: '/en/simulation', fy: '/fy/simulaasje' }, component: () => import('./views/SimulatieView.vue') },
   { name: 'portaal', paths: { nl: '/portaal', en: '/en/portal', fy: '/fy/portaal' }, component: () => import('./views/PortaalView.vue') },
   { name: 'zaaksysteem', paths: { nl: '/zaaksysteem/:caseId?', en: '/en/cases/:caseId?', fy: '/fy/saaksysteem/:caseId?' }, component: () => import('./views/ZaaksysteemView.vue') },
+  // The recorded walkthrough: this page starts it, and from there it drives
+  // the deck and the tabs like a presenter. `:faqId` opens one answer, so a
+  // single question can be shared. The Frisian slug drops the circumflex of
+  // "rûnlieding" (a path must not need percent-encoding); see REVIEW-fy.md.
+  { name: 'rondleiding', paths: { nl: '/rondleiding/:faqId?', en: '/en/tour/:faqId?', fy: '/fy/runlieding/:faqId?' }, component: () => import('./walkthrough/WalkthroughView.vue') },
 ];
 
 // Elke taal uit de tabel moet elke pagina hebben. Een ontbrekend pad zou hier

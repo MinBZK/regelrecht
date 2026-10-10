@@ -3,6 +3,9 @@ import { computed, onActivated, onMounted, watch } from 'vue';
 import { deckFor, usePresentation } from '../presentation/usePresentation.js';
 import { useDemo } from '../store/demoStore.js';
 import { useI18n } from '../i18n/index.js';
+import { useRouter } from 'vue-router';
+import { localeRouteName } from '../router.js';
+import { useWalkthrough } from '../walkthrough/useWalkthrough.js';
 
 // The Presentatie tab starts the deck. The deck itself is an overlay
 // (PresentationDeck.vue, mounted by App.vue) that covers the screen for the
@@ -10,7 +13,12 @@ import { useI18n } from '../i18n/index.js';
 // what remains when the deck is closed on this route: a way to start again.
 
 const p = usePresentation();
-const { t } = useI18n();
+const { t, locale } = useI18n();
+const router = useRouter();
+const { timeline: walkthrough } = useWalkthrough();
+function openWalkthrough() {
+  router.push(router.resolve({ name: localeRouteName('rondleiding', locale.value) }).path);
+}
 const { ready, corpus, state, profileKey } = useDemo();
 // Het dek van wie er gekozen is; dat is ook wat `start` straks speelt.
 // Loopt het dek al, dan is dat de lijst: een dia kan intussen van persona
@@ -59,28 +67,55 @@ function kindLabel(s) {
              container ertussen, want die krijgt in `.title__end` geen breedte. -->
         <nldd-button slot="end" appearance="primary" start-icon="play" :text="t('home.presentation.start')" :disabled="!ready || undefined" @click="p.start(0)"></nldd-button>
       </nldd-title>
-      <nldd-rich-text spacing="tight">
-        <p v-html="keyHelp"></p>
-      </nldd-rich-text>
-      <!-- De modus bepaalt of de dia's náást de demo blijven staan. In de zaal
-           vertelt de presentator zelf en is het scherm van de demo; zelfstandig
-           is er niemand die het verhaal erbij vertelt, dus blijft het staan.
-           `nldd-segmented-control` zoals in WettenView; de uitleg eronder in
-           dezelfde rich-text als de toetsenregel hierboven. -->
-      <nldd-container padding="0" gap="8">
-        <nldd-segmented-control
-          width="fit-content"
-          :accessible-label="t('home.presentation.mode.label')"
-          :value="state.presentationMode"
-          @change="state.presentationMode = $event.detail?.value ?? state.presentationMode"
-        >
-          <nldd-segmented-control-item value="zaal" :text="t('home.presentation.mode.zaal')"></nldd-segmented-control-item>
-          <nldd-segmented-control-item value="zelfstandig" :text="t('home.presentation.mode.zelfstandig')"></nldd-segmented-control-item>
-        </nldd-segmented-control>
-        <nldd-rich-text spacing="tight">
-          <p v-html="modeHelp"></p>
-        </nldd-rich-text>
-      </nldd-container>
+      <!-- Twee blokken met elk één vraag: hoe presenteer je (de modus en de
+           toetsen, alleen van belang voor wie zelf presenteert), of kijk je
+           zonder presentator (de opgenomen rondleiding). Los op een rij
+           stonden ze door elkaar, en "Zelfstandig" naast "rondleiding" las als
+           hetzelfde. -->
+      <nldd-collection layout="grid" item-width="300px">
+        <nldd-card>
+          <nldd-container padding="16" gap="12">
+            <nldd-title size="5">
+              <h2>{{ t('home.presentation.how.title') }}</h2>
+            </nldd-title>
+            <!-- De modus bepaalt of de dia's náást de demo blijven staan. In de
+                 zaal vertelt de presentator zelf en is het scherm van de demo;
+                 zelfstandig is er niemand die het verhaal erbij vertelt, dus
+                 blijft het staan. -->
+            <nldd-segmented-control
+              width="full"
+              :accessible-label="t('home.presentation.mode.label')"
+              :value="state.presentationMode"
+              @change="state.presentationMode = $event.detail?.value ?? state.presentationMode"
+            >
+              <nldd-segmented-control-item value="zaal" :text="t('home.presentation.mode.zaal')"></nldd-segmented-control-item>
+              <nldd-segmented-control-item value="zelfstandig" :text="t('home.presentation.mode.zelfstandig')"></nldd-segmented-control-item>
+            </nldd-segmented-control>
+            <nldd-rich-text size="sm" spacing="tight">
+              <p v-html="modeHelp"></p>
+              <p v-html="keyHelp"></p>
+            </nldd-rich-text>
+          </nldd-container>
+        </nldd-card>
+        <!-- Wie de presentatie zonder presentator wil zien: de opgenomen
+             versie, met stem. Alleen als deze build er een heeft. -->
+        <nldd-card v-if="walkthrough">
+          <nldd-container padding="16" gap="12">
+            <nldd-title size="5">
+              <h2>{{ t('home.presentation.watch.title') }}</h2>
+            </nldd-title>
+            <nldd-rich-text size="sm" spacing="tight">
+              <p>{{ t('home.presentation.watch.text') }}</p>
+            </nldd-rich-text>
+            <nldd-button appearance="secondary" start-icon="video-camera" :text="t('home.presentation.walkthrough')" @click="openWalkthrough"></nldd-button>
+          </nldd-container>
+        </nldd-card>
+      </nldd-collection>
+      <nldd-spacer size="16"></nldd-spacer>
+      <nldd-title size="4">
+        <h2>{{ t('home.presentation.slides.label') }}</h2>
+        <span slot="supporting-text">{{ t('home.presentation.slides.hint') }}</span>
+      </nldd-title>
       <nldd-list appearance="box-base" :accessible-label="t('home.presentation.slides.label')">
         <nldd-list-item v-for="(s, i) in slides" :key="i" size="sm" button @click="p.start(i)">
           <nldd-text-cell size="sm" color="secondary" width="fit-content" min-width="32px" :text="String(i + 1)"></nldd-text-cell>

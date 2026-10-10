@@ -94,6 +94,18 @@ for (const name of ['bindings.yaml', 'profiles.yaml', 'demo-config.yaml', 'servi
   if (existsSync(src)) cpSync(src, join(destDir, name));
 }
 
+// De opgenomen rondleiding: de tijdlijn en de ondertitels staan in git, de
+// video's niet (die haalt de Docker-build uit een release, zie
+// scripts/fetch-walkthrough-media.mjs). Zonder timeline.json is er geen
+// rondleiding en toont de demo er ook geen knop voor.
+const walkthroughDir = join(corpusDir, 'walkthrough');
+if (existsSync(join(walkthroughDir, 'timeline.json'))) {
+  mkdirSync(join(destDir, 'walkthrough'), { recursive: true });
+  for (const name of readdirSync(walkthroughDir)) {
+    if (name === 'timeline.json' || name.endsWith('.vtt')) cpSync(join(walkthroughDir, name), join(destDir, 'walkthrough', name));
+  }
+}
+
 // De woordenlijst voor veldnamen wordt een JS-module en geen asset:
 // `format.js` leest hem synchroon en wordt zelf door zijn eigen tests
 // geimporteerd, dus een fetch erin zou die tests van een netwerkaanroep

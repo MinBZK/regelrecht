@@ -18,6 +18,11 @@ corpus/regulation
 corpus/annotations
 frontend-demo/public/data
 frontend-demo/public/wasm/pkg
+# The walkthrough videos come from their release, checksummed
+# (scripts/fetch-walkthrough-media.mjs), never from a laptop; the raw takes
+# never leave it.
+frontend-demo/public/walkthrough
+.walkthrough
 # Other frontends: only their manifests are needed for the workspace `npm ci`.
 frontend
 !frontend/package.json

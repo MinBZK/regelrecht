@@ -1,0 +1,418 @@
+---
+# Ondertitels: wat er gezegd is, en wat er in beeld komt.
+# `just walkthrough subtitles` vult nieuwe aan; corrigeer gerust met de hand.
+# Een rebuild (`just walkthrough build`) zet ze in beeld.
+- gezegd: RegelRecht, van wet naar digitale werking.
+  ondertitel: RegelRecht, van wet naar digitale werking.
+- gezegd: De huidige situatie waar wij vanuit gaan, die ziet er zo uit.
+  ondertitel: De huidige situatie ziet er zo uit.
+- gezegd: Iedere organisatie, uitvoeringsorganisatie, heeft een eigen interpretatie van wet en
+  ondertitel: Iedere uitvoeringsorganisatie heeft een eigen interpretatie van wet en
+- gezegd: regelgeving.
+  ondertitel: regelgeving.
+- gezegd: En veel van die interpretatie landt uiteindelijk in software.
+  ondertitel: Veel van die interpretatie landt in software.
+- gezegd: En dit gebeurt al jaren, decennia.
+  ondertitel: Dat gebeurt al jaren, decennia.
+- gezegd: Dus wat er ontstaan is, is een kluwen aan software waar wet en regelgeving
+  ondertitel: Er is een kluwen aan software ontstaan waar wet en regelgeving
+- gezegd: ingeland is.
+  ondertitel: is geland.
+- gezegd: Wetswijziging naar wetswijziging, wetsvoorstel naar wetsvoorstel.
+  ondertitel: Wetswijziging naar wetswijziging, wetsvoorstel naar wetsvoorstel.
+- gezegd: En het resultaat is software die een relatie heeft met wet- en regelgeving.
+  ondertitel: 'Het resultaat: software met een relatie tot wet- en regelgeving.'
+- gezegd: Maar die relatie is niet zo
+  ondertitel: Maar die relatie is niet zo
+- gezegd: duidelijk meer.
+  ondertitel: duidelijk meer.
+- gezegd: Het is onoverzichtelijk.
+  ondertitel: Het is onoverzichtelijk.
+- gezegd: Hoe software zich verhaalt tot wet- en regelgeving.
+  ondertitel: Hoe software zich verhaalt tot wet- en regelgeving.
+- gezegd: En die software wordt hierdoor onvoorspelbaar.
+  ondertitel: Die software wordt onvoorspelbaar.
+- gezegd: Niet alleen maar voor burgers en ondernemers die te maken hebben met het resultaat
+  ondertitel: Niet alleen voor burgers en ondernemers die te maken hebben met het resultaat
+- gezegd: van die software.
+  ondertitel: van die software.
+- gezegd: Maar ook voor ambtenaren die moeten werken met die software.
+  ondertitel: Maar ook voor ambtenaren die met die software werken.
+- gezegd: En zelfs voor...
+  ondertitel: En zelfs voor...
+- gezegd: Software engineers of IT'ers die software bouwen.
+  ondertitel: Software engineers of IT'ers die software bouwen.
+- gezegd: En het wordt zelfs onbeheersbaar.
+  ondertitel: Het wordt zelfs onbeheersbaar.
+- gezegd: Er zijn best veel voorbeelden van systemen die we niet meer aan durven te raken.
+  ondertitel: Veel systemen durven we niet meer aan te raken.
+- gezegd: Omdat we niet goed begrijpen hoe ze werken.
+  ondertitel: Omdat we niet goed begrijpen hoe ze werken.
+- gezegd: RegelRecht, wat we hier gaan zien, deze demo...
+  ondertitel: RegelRecht, wat we in deze demo zien...
+- gezegd: Het gaat uit van deze gedachte dat we beginnen met de wet
+  ondertitel: Het gaat uit van de gedachte dat we beginnen met de wet
+- gezegd: en regelgeving, dat we die machine-uitvoerbaar maken en belangrijk dat we die
+  ondertitel: en regelgeving, die machine-uitvoerbaar maken en, belangrijk, die
+- gezegd: openbaar publiceren.
+  ondertitel: openbaar publiceren.
+- gezegd: Wat volgt is een demo van RegelRecht of wat we RegelRecht noemen.
+  ondertitel: Wat volgt is een demo van RegelRecht.
+- gezegd: Het idee is dat dit een compleet verhaal is, maar niet een eindproduct.
+  ondertitel: Een compleet verhaal, maar geen eindproduct.
+- gezegd: Dus je ziet werkende software.
+  ondertitel: Je ziet werkende software.
+- gezegd: Je kan zelfs spelen met deze software.
+  ondertitel: Je kan er zelfs mee spelen.
+- gezegd: Je kan er zelf doorheen klikken, interactie mee hebben, dingen
+  ondertitel: Je kan er zelf doorheen klikken, dingen
+- gezegd: wijzigen.
+  ondertitel: wijzigen.
+- gezegd: Dus het is werkende software, maar het is niet bedoeld als eindproduct.
+  ondertitel: Werkende software, maar niet bedoeld als eindproduct.
+- gezegd: Niet als iets om in productie te zetten.
+  ondertitel: Niet als iets om in productie te zetten.
+- gezegd: Dat zijn we nu aan het maken.
+  ondertitel: Dat zijn we nu aan het maken.
+- gezegd: En we doen dit vanuit een beleidsdirectie.
+  ondertitel: We doen dit vanuit een beleidsdirectie.
+- gezegd: Maar dat ziet er misschien iets anders uit dan je gewend bent van beleidsdirecties.
+  ondertitel: Misschien anders dan je gewend bent van beleidsdirecties.
+- gezegd: We maken namelijk dus software.
+  ondertitel: We maken namelijk software.
+- gezegd: We maken beleid door te doen, door software te maken.
+  ondertitel: We maken beleid door te doen, door software te maken.
+- gezegd: Ik ben Anne Schuth, ik ben staff engineer bij RegelRecht en ik leid jullie door deze
+  ondertitel: Ik ben Anne Schuth, staff engineer bij RegelRecht, en ik leid jullie door deze
+- gezegd: demo heen.
+  ondertitel: demo.
+- gezegd: We beginnen aan de achterkant met de Wet op de zorgtoeslag.
+  ondertitel: We beginnen aan de achterkant met de Wet op de zorgtoeslag.
+- gezegd: En niet met de hele wet, maar met artikelen 2 en 4.
+  ondertitel: Niet met de hele wet, maar met artikelen 2 en 4.
+- gezegd: Bijvoorbeeld artikel 2 zien we hier.
+  ondertitel: Artikel 2 zien we hier.
+- gezegd: Het begint met de tekst, met de hele tekst.
+  ondertitel: Het begint met de hele tekst.
+- gezegd: En dan zien we hieronder het machine-readable stuk.
+  ondertitel: Daaronder het machine-readable stuk.
+- gezegd: En daarin de parameter, of parameters eigenlijk.
+  ondertitel: En daarin de parameters.
+- gezegd: En in dit geval is het er maar eentje, namelijk BSN.
+  ondertitel: 'Hier is het er maar één: BSN.'
+- gezegd: Dus wat we hier doen is
+  ondertitel: Wat we hier doen is
+- gezegd: recht op en hoogte van zorgtoeslag berekenen voor een persoon die we identificeren
+  ondertitel: recht op en hoogte van zorgtoeslag berekenen voor een persoon die we identificeren
+- gezegd: met een BSN-nummer en dat noemen we een parameter.
+  ondertitel: met een BSN-nummer. Dat noemen we een parameter.
+- gezegd: Hier zien we dan actions, acties,
+  ondertitel: Hier zien we actions, acties,
+- gezegd: bijvoorbeeld voldoet aan voorwaarden.
+  ondertitel: bijvoorbeeld voldoet aan voorwaarden.
+- gezegd: Nou, iemand voldoet aan de voorwaarden als de geboortedatum groter of gelijk
+  ondertitel: Iemand voldoet aan de voorwaarden als de geboortedatum groter of gelijk
+- gezegd: is aan de minimumleeftijd.
+  ondertitel: is aan de minimumleeftijd.
+- gezegd: En iemand moet verzekerde zijn.
+  ondertitel: En iemand moet verzekerde zijn.
+- gezegd: En als dat zo is, dan kunnen we de hoogte van de zorgtoeslag berekenen.
+  ondertitel: Dan kunnen we de hoogte van de zorgtoeslag berekenen.
+- gezegd: En dat zien we hier.
+  ondertitel: Dat zien we hier.
+- gezegd: Hier zien we bijvoorbeeld Operation Add.
+  ondertitel: Hier zien we bijvoorbeeld Operation Add.
+- gezegd: Dus het optellen van inkomen met partnerinkomen.
+  ondertitel: Het optellen van inkomen met partnerinkomen.
+- gezegd: Om dat te vergelijken met het drempelinkomen.
+  ondertitel: Om dat te vergelijken met het drempelinkomen.
+- gezegd: En dit is eigenlijk gewoon een berekening van de hoogte van de zorgtoeslag.
+  ondertitel: Dit is een berekening van de hoogte van de zorgtoeslag.
+- gezegd: En die herken je als je de wettekst leest.
+  ondertitel: Die herken je als je de wettekst leest.
+- gezegd: Die is redelijk mechanisch en daar staat gewoon zo'n soort berekening in.
+  ondertitel: 'Die is redelijk mechanisch: er staat zo''n berekening in.'
+- gezegd: Wat ik net oversloeg is iets wat we
+  ondertitel: Wat ik oversloeg is iets wat we
+- gezegd: Inputs noemen.
+  ondertitel: Inputs noemen.
+- gezegd: Hier staat bijvoorbeeld een input
+  ondertitel: Hier staat bijvoorbeeld een input
+- gezegd: vanuit de Zorgverzekeringswet.
+  ondertitel: vanuit de Zorgverzekeringswet.
+- gezegd: Want in de Wet op de zorgtoeslag staat verzekerde zoals bedoeld in de
+  ondertitel: In de Wet op de zorgtoeslag staat verzekerde zoals bedoeld in de
+- gezegd: Zorgverzekeringswet.
+  ondertitel: Zorgverzekeringswet.
+- gezegd: En dan kunnen we doorklikken, dus dan zien we wat het betekent om een verzekerde te
+  ondertitel: We klikken door en zien wat het betekent om een verzekerde te
+- gezegd: zijn.
+  ondertitel: zijn.
+- gezegd: Namelijk je moet een verzekering hebben of een verdragsverzekering.
+  ondertitel: Je moet een verzekering of een verdragsverzekering hebben.
+- gezegd: Dat is een verzekering in een land waar we een verdrag mee hebben.
+  ondertitel: Dat is een verzekering in een land waar we een verdrag mee hebben.
+- gezegd: En je moet niet gedetineerd zijn.
+  ondertitel: En je moet niet gedetineerd zijn.
+- gezegd: En dat gedetineerd zijn, dat is eigenlijk weer een input, namelijk uit de
+  ondertitel: Gedetineerd zijn is weer een input, namelijk uit de
+- gezegd: Penitentiaire beginselenwet.
+  ondertitel: Penitentiaire beginselenwet.
+- gezegd: je bent gedetineerd als je in een penitentiaire inrichting zit of in een huis van
+  ondertitel: Je bent gedetineerd als je in een penitentiaire inrichting zit of in een huis van
+- gezegd: bewaring en ingesloten of tijdelijk afwezig bent.
+  ondertitel: bewaring en ingesloten of tijdelijk afwezig bent.
+- gezegd: En zo zie je dus, om tot de hoogte van de zorgtoeslag te komen, heb je eigenlijk een
+  ondertitel: Om tot de hoogte van de zorgtoeslag te komen, heb je een
+- gezegd: hele reeks aan wet- en regelgeving nodig.
+  ondertitel: hele reeks wet- en regelgeving nodig.
+- gezegd: Dat is eigenlijk een graaf die je ook kan visualiseren.
+  ondertitel: Dat is een graaf die je kan visualiseren.
+- gezegd: Maar dit is de graaf voor de zorgtoeslagwet.
+  ondertitel: Dit is de graaf voor de zorgtoeslagwet.
+- gezegd: Dus hier zien we die zorgtoeslagwet.
+  ondertitel: Hier zien we de zorgtoeslagwet.
+- gezegd: Dan zien we die is verzekerde.
+  ondertitel: Dan zien we is verzekerde.
+- gezegd: Dan kunnen we dat lijntje volgen.
+  ondertitel: We volgen dat lijntje.
+- gezegd: Dan komen we hier bij de verzekeringsstatus.
+  ondertitel: Dan komen we bij de verzekeringsstatus.
+- gezegd: Dan zien we is gedetineerd.
+  ondertitel: Dan zien we is gedetineerd.
+- gezegd: Dan kunnen we dat lijntje volgen.
+  ondertitel: We volgen dat lijntje.
+- gezegd: Dan moeten we helemaal hier links.
+  ondertitel: Dan helemaal hier links.
+- gezegd: En dan zien we het bepalen van de detentiestatus.
+  ondertitel: Dan zien we het bepalen van de detentiestatus.
+- gezegd: En dit is dus het relevante stukje uit de penitentiaire beginselenwet.
+  ondertitel: Dit is het relevante stukje uit de penitentiaire beginselenwet.
+- gezegd: Dit geheel is dus wat we nodig hebben om te komen tot de hoogte van de zorgtoeslag.
+  ondertitel: Dit geheel hebben we nodig voor de hoogte van de zorgtoeslag.
+- gezegd: We kunnen ook alle wet- en regelgeving die we tot nu toe in deze demo hebben zitten
+  ondertitel: We kunnen ook alle wet- en regelgeving in deze demo
+- gezegd: bekijken.
+  ondertitel: bekijken.
+- gezegd: En dan zien we dat dat best wel een kluwen is.
+  ondertitel: Dan zien we dat dat een kluwen is.
+- gezegd: Die zich bijvoorbeeld centreert rondom inkomstenbelastingwet.
+  ondertitel: Die zich bijvoorbeeld centreert rond de inkomstenbelastingwet.
+- gezegd: Dit grote ding hier.
+  ondertitel: Dit grote ding hier.
+- gezegd: Dan zien we dat er heel
+  ondertitel: Dan zien we dat er heel
+- gezegd: erg veel lijnen in en uit bijvoorbeeld de definities van inkomen en vermogen
+  ondertitel: erg veel lijnen in en uit bijvoorbeeld de definities van inkomen en vermogen
+- gezegd: gaan.
+  ondertitel: gaan.
+- gezegd: Er zijn dus andere wetten die eigenlijk verwijzen naar de definities van inkomen en
+  ondertitel: Andere wetten verwijzen naar de definities van inkomen en
+- gezegd: vermogen uit de inkomstenbelastingwet.
+  ondertitel: vermogen uit de inkomstenbelastingwet.
+- gezegd: Dus dit is iets wat je kan doen als je wetten eenmaal machine-uitvoerbaar gemaakt
+  ondertitel: Dat kan als je wetten machine-uitvoerbaar gemaakt
+- gezegd: hebt.
+  ondertitel: hebt.
+- gezegd: Wat je ook kan doen is ze daadwerkelijk uitvoeren.
+  ondertitel: Je kan ze ook daadwerkelijk uitvoeren.
+- gezegd: En wat je eigenlijk hier ziet, is iets wat we scenario's noemen.
+  ondertitel: Wat je hier ziet noemen we scenario's.
+- gezegd: Dat zijn casussen of scenario's die bijvoorbeeld in de memorie van toelichting
+  ondertitel: Dat zijn casussen of scenario's die bijvoorbeeld in de memorie van toelichting
+- gezegd: staan.
+  ondertitel: staan.
+- gezegd: Die meegaat naar de Kamer als een wet wordt voorgelegd aan de
+  ondertitel: Die meegaat naar de Kamer als een wet wordt voorgelegd aan de
+- gezegd: Kamer.
+  ondertitel: Kamer.
+- gezegd: En wat staat er in zo'n memorie van toelichting?
+  ondertitel: Wat staat er in zo'n memorie van toelichting?
+- gezegd: Er staat soms zelfs een hele lijst als bijlage met een aantal voorbeelden van
+  ondertitel: Soms een hele lijst als bijlage met voorbeelden van
+- gezegd: personen of huishoudens met eigenschappen en wat dan de verwachte werking van die
+  ondertitel: personen of huishoudens met eigenschappen en de verwachte werking van die
+- gezegd: wet zou zijn.
+  ondertitel: wet.
+- gezegd: Zo zien we hier dus bijvoorbeeld een persoon boven de 18 die zou recht moeten hebben
+  ondertitel: Hier zien we een persoon boven de 18 die recht zou moeten hebben
+- gezegd: op zorgtoeslag.
+  ondertitel: op zorgtoeslag.
+- gezegd: Dat is een fictief BSN-nummer en met fictief dus loon.
+  ondertitel: Een fictief BSN-nummer en een fictief loon.
+- gezegd: En als de zorgtoeslagwet dan wordt uitgevoerd, dan zou de hoogte van de zorgtoeslag
+  ondertitel: Als de zorgtoeslagwet wordt uitgevoerd, zou de hoogte van de zorgtoeslag
+- gezegd: dit bedrag moeten zijn in eurocenten per jaar.
+  ondertitel: dit bedrag moeten zijn in eurocenten per jaar.
+- gezegd: Dat kunnen we dan dus uitvoeren.
+  ondertitel: Dat kunnen we uitvoeren.
+- gezegd: En dan zien we hier wat wij noemen een trace, een pad van hoe
+  ondertitel: Hier zien we een trace, een pad van hoe
+- gezegd: die wet dan uitgevoerd is.
+  ondertitel: die wet is uitgevoerd.
+- gezegd: Dus hier zien we dat de zorgtoeslagwet wordt uitgevoerd om te bepalen dat de hoogte
+  ondertitel: De zorgtoeslagwet wordt uitgevoerd om te bepalen dat de hoogte
+- gezegd: van de zorgtoeslag is voor dit BSN-nummer.
+  ondertitel: van de zorgtoeslag is voor dit BSN-nummer.
+- gezegd: En als we dan nog iets naar beneden gaan, dan zien we hier bijvoorbeeld de
+  ondertitel: Iets verder naar beneden zien we bijvoorbeeld de
+- gezegd: zorgverzekeringswet wordt uitgevoerd om te bepalen of iemand wel een verzekerde is.
+  ondertitel: zorgverzekeringswet wordt uitgevoerd om te bepalen of iemand verzekerde is.
+- gezegd: En als we nog iets verder naar beneden gaan, dan zien we dat de penitentiaire
+  ondertitel: Nog iets verder naar beneden de penitentiaire
+- gezegd: beginselenwet wordt uitgevoerd om te bepalen of iemand in detentie zit.
+  ondertitel: beginselenwet wordt uitgevoerd om te bepalen of iemand in detentie zit.
+- gezegd: En dan helemaal naar beneden zien we uiteindelijk die berekening van de hoogte van
+  ondertitel: Helemaal beneden zien we de berekening van de hoogte van
+- gezegd: de zorgtoeslag en dan het aantal eurocenten per jaar voor dit hele
+  ondertitel: de zorgtoeslag en het aantal eurocenten per jaar voor dit hele
+- gezegd: specifieke geval.
+  ondertitel: specifieke geval.
+- gezegd: En wat je hiermee gedaan hebt,
+  ondertitel: Wat je hiermee gedaan hebt,
+- gezegd: is een paar dingen eigenlijk.
+  ondertitel: is een paar dingen.
+- gezegd: De wet zoals die bedoeld is, is testbaar geworden.
+  ondertitel: De wet zoals die bedoeld is, is testbaar geworden.
+- gezegd: Dus je kan nu zien of de wet werkt zoals die bedoeld was.
+  ondertitel: Je kan nu zien of de wet werkt zoals bedoeld.
+- gezegd: Zoals die bedoeld was in bijvoorbeeld de memorie van toelichting.
+  ondertitel: Zoals bedoeld in bijvoorbeeld de memorie van toelichting.
+- gezegd: Maar wat we ook hebben, is dat het helemaal traceerbaar is hoe die wet dan werkt.
+  ondertitel: Ook is helemaal traceerbaar hoe die wet werkt.
+- gezegd: Dus het is navolgbaar welke gegevens gebruikt zijn, welke andere wetten nodig waren
+  ondertitel: Het is navolgbaar welke gegevens gebruikt zijn, welke andere wetten nodig waren
+- gezegd: en hoe die andere wetten hun werking hadden.
+  ondertitel: en hoe die andere wetten hun werking hadden.
+- gezegd: En daarmee is het navolgbaar geworden hoe een overheid werkt.
+  ondertitel: Daarmee is navolgbaar hoe een overheid werkt.
+- gezegd: Dit levert transparantie op.
+  ondertitel: Dit levert transparantie op.
+- gezegd: Een persoon onder de 18 zou geen recht moeten hebben op zorgtoeslag.
+  ondertitel: Een persoon onder de 18 zou geen recht moeten hebben op zorgtoeslag.
+- gezegd: Dat is een vergelijkbaar voorbeeld, maar met een andere geboortedatum, namelijk 2008
+  ondertitel: Een vergelijkbaar voorbeeld, maar met geboortedatum 2008
+- gezegd: in dit geval, en we runnen dit in 2025.
+  ondertitel: en we runnen dit in 2025.
+- gezegd: En als we dit dan uitvoeren, dan zien we dat die trace heel kort is geworden, omdat
+  ondertitel: Uitgevoerd zien we dat de trace heel kort is, omdat
+- gezegd: we erachter komen dat deze persoon 17 is, en dus geen recht heeft
+  ondertitel: deze persoon 17 is en dus geen recht heeft
+- gezegd: op zorgtoeslag, simpelweg omdat als je nog geen 18 bent, je ook geen zorgpremie
+  ondertitel: op zorgtoeslag, omdat je onder de 18 ook geen zorgpremie
+- gezegd: hoeft te betalen.
+  ondertitel: hoeft te betalen.
+- gezegd: Maar we komen er dus achter dat deze persoon 17 is.
+  ondertitel: Deze persoon blijkt 17 te zijn.
+- gezegd: En dan hoeven we niet verder te kijken.
+  ondertitel: Dan hoeven we niet verder te kijken.
+- gezegd: Want er gaat geen situatie zijn waarin deze persoon zorgtoeslag gaat
+  ondertitel: Want er is geen situatie waarin deze persoon zorgtoeslag gaat
+- gezegd: krijgen.
+  ondertitel: krijgen.
+- gezegd: En we hoeven dus ook niet naar de meer gevoelige datapunten te kijken.
+  ondertitel: We hoeven ook niet naar de meer gevoelige datapunten te kijken.
+- gezegd: Zoals het wel of niet in detentie zitten.
+  ondertitel: Zoals het wel of niet in detentie zitten.
+- gezegd: En dat is een prettige eigenschap om te hebben.
+  ondertitel: Dat is een prettige eigenschap.
+- gezegd: Dit is een punt trouwens dat mensen best wel vaak vragen.
+  ondertitel: Dit vragen mensen vaak.
+- gezegd: Of het uitmaakt in welke volgorde je de
+  ondertitel: Of het uitmaakt in welke volgorde je de
+- gezegd: artikelen
+  ondertitel: artikelen
+- gezegd: dan uitvoert om te komen tot dataminimalisatie.
+  ondertitel: uitvoert om tot dataminimalisatie te komen.
+- gezegd: En het antwoord is ja, dat maakt uit.
+  ondertitel: Het antwoord is ja, dat maakt uit.
+- gezegd: Als je er meer over wil weten, dan kan je hieronder klikken.
+  ondertitel: Meer weten? Klik hieronder.
+- gezegd: Hier zien we, eigenlijk als je wet en
+  ondertitel: Als je wet en
+- gezegd: regelgeving eenmaal op een individu kan toepassen, dan kan je dat natuurlijk ook op
+  ondertitel: regelgeving op een individu kan toepassen, kan je dat ook op
+- gezegd: een hele populatie doen.
+  ondertitel: een hele populatie doen.
+- gezegd: En dat zien we hier.
+  ondertitel: Dat zien we hier.
+- gezegd: We noemen dat een simulatie.
+  ondertitel: We noemen dat een simulatie.
+- gezegd: Hier zien we bijvoorbeeld een populatie van 50 personen.
+  ondertitel: Hier zien we bijvoorbeeld een populatie van 50 personen.
+- gezegd: En als we dan een simulatie runnen, dus we runnen nu alle wet- en regelgeving die we
+  ondertitel: We runnen nu alle wet- en regelgeving die we
+- gezegd: hebben op die 50 personen.
+  ondertitel: hebben op die 50 personen.
+- gezegd: Dat gaat dus bijvoorbeeld om bijstand, inkomstenbelasting, kiesrecht, zorgtoeslag,
+  ondertitel: Bijvoorbeeld bijstand, inkomstenbelasting, kiesrecht, zorgtoeslag,
+- gezegd: AOW, huurtoeslag, etc.
+  ondertitel: AOW, huurtoeslag, etc.
+- gezegd: Bij die zorgtoeslag zit er bijvoorbeeld ook die penitentiaire beginselenwet.
+  ondertitel: Bij de zorgtoeslag zit ook de penitentiaire beginselenwet.
+- gezegd: Wat zien we dan op deze populatie?
+  ondertitel: Wat zien we dan op deze populatie?
+- gezegd: Dat zijn 50 personen, gemiddeld 54 jaar, 36% heeft een partner, 40% is
+  ondertitel: 50 personen, gemiddeld 54 jaar, 36% heeft een partner, 40% is
+- gezegd: huurder, 18% heeft kinderen, 4% is student.
+  ondertitel: huurder, 18% heeft kinderen, 4% is student.
+- gezegd: Dit is het inkomen.
+  ondertitel: Dit is het inkomen.
+- gezegd: En wat het besteedbaar inkomen is, dat is dus eigenlijk het inkomen minus de
+  ondertitel: Het besteedbaar inkomen is het inkomen minus de
+- gezegd: belastingen plus de toeslagen.
+  ondertitel: belastingen plus de toeslagen.
+- gezegd: Dat is
+  ondertitel: Dat is
+- gezegd: hier weer gegeven, dus het gemiddelde besteedbaar inkomen na de woonkosten.
+  ondertitel: hier weer het gemiddelde besteedbaar inkomen na de woonkosten.
+- gezegd: De gedachte is dat hierin eigenlijk alle wisselwerkingen, alle interactie tussen wet
+  ondertitel: De gedachte is dat hierin alle wisselwerkingen tussen wet
+- gezegd: en regelgeving, verdisconteerd is.
+  ondertitel: en regelgeving verdisconteerd zijn.
+- gezegd: Met andere woorden, als je ergens iets meer krijgt en ergens anders iets minder,
+  ondertitel: Als je ergens iets meer krijgt en ergens anders iets minder,
+- gezegd: omdat je ergens iets meer krijgt, dan zou je dat hierin terug moeten zien.
+  ondertitel: omdat je ergens iets meer krijgt, dan zou je dat hierin terug moeten zien.
+- gezegd: En dat zorgt er dus voor dat eventuele effecten tussen wetten vererfd worden, of
+  ondertitel: Zo worden effecten tussen wetten vererfd, of
+- gezegd: in ieder geval hun werking gaan hebben.
+  ondertitel: in ieder geval hun werking gaan hebben.
+- gezegd: En een van de dingen die je dus kan doen is bijvoorbeeld wetswijzigingen
+  ondertitel: Je kan bijvoorbeeld wetswijzigingen
+- gezegd: doorrekenen.
+  ondertitel: doorrekenen.
+- gezegd: Dus wat nou als de standaardpremie van de zorgtoeslag aanzienlijk omhoog gaat en we
+  ondertitel: Wat als de standaardpremie van de zorgtoeslag aanzienlijk omhoog gaat en we
+- gezegd: een nieuwe simulatie draaien.
+  ondertitel: een nieuwe simulatie draaien.
+- gezegd: Dan hebben we dus straks twee simulaties naast elkaar.
+  ondertitel: Dan hebben we twee simulaties naast elkaar.
+- gezegd: En dan kunnen we die met elkaar vergelijken.
+  ondertitel: Die kunnen we vergelijken.
+- gezegd: Kijk, hier zijn ze.
+  ondertitel: Hier zijn ze.
+- gezegd: Hier hebben we de vergelijking.
+  ondertitel: Hier hebben we de vergelijking.
+- gezegd: En dan zien we dus de standaard situatie en de situatie met de
+  ondertitel: Dan zien we de standaardsituatie en de situatie met de
+- gezegd: wijziging van de standaardpremie.
+  ondertitel: wijziging van de standaardpremie.
+- gezegd: En dan zien we dus dat bijvoorbeeld na aftrek van woonkosten van 3.800 euro en
+  ondertitel: Bijvoorbeeld na aftrek van woonkosten van 3.800 euro en
+- gezegd: '3'
+  ondertitel: '3'
+- gezegd: naar 3.858 euro gingen.
+  ondertitel: naar 3.858 euro gingen.
+- gezegd: Dus dat is omhoog gegaan.
+  ondertitel: Dat is omhoog gegaan.
+- gezegd: En dit is natuurlijk...
+  ondertitel: En dit is natuurlijk...
+- gezegd: Voor bijvoorbeeld iemand die in de Tweede Kamer moet stemmen over zeg een amendement
+  ondertitel: Voor iemand die in de Tweede Kamer moet stemmen over een amendement
+- gezegd: over in dit geval dus die standaardpremie.
+  ondertitel: over in dit geval de standaardpremie.
+- gezegd: Prettig om te hebben.
+  ondertitel: Prettig om te hebben.
+- gezegd: Wat
+  ondertitel: Wat

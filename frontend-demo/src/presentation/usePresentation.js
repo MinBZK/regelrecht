@@ -21,7 +21,7 @@ import { localeRouteName, pageForConfigPath, splitConfigPath } from '../router.j
  * It is read back to its page here and resolved against the active locale, so
  * a deck presented in English opens the English tabs.
  */
-function slideTarget(path) {
+export function slideTarget(path) {
   if (!path || !router) return null;
   const parts = splitConfigPath(path);
   if (!parts) return path;
@@ -296,7 +296,11 @@ function onKey(e) {
   }
 }
 
-function start(i = 0) {
+/**
+ * Start the deck at slide `i`. `keys: false` leaves the keyboard alone: the
+ * recorded walkthrough drives the deck itself and has its own keys.
+ */
+function start(i = 0, { keys = true } = {}) {
   // Het dek ligt vast zodra de presentatie loopt: een dia die van persona
   // wisselt (Merijns dek eindigt bij Claudia) gooit het niet halverwege om.
   if (!active.value) {
@@ -306,7 +310,7 @@ function start(i = 0) {
   if (!total.value) return;
   active.value = true;
   document.documentElement.classList.add('rr-presenting');
-  if (!listening) {
+  if (keys && !listening) {
     window.addEventListener('keydown', onKey);
     listening = true;
   }
