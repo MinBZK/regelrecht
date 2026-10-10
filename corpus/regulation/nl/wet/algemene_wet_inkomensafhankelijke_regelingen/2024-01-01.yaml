@@ -3,9 +3,9 @@ $schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0
 $id: algemene_wet_inkomensafhankelijke_regelingen
 regulatory_layer: WET
 publication_date: '2022-12-27'
-valid_from: '2025-01-01'
+valid_from: '2024-01-01'
 bwb_id: BWBR0018472
-url: https://wetten.overheid.nl/BWBR0018472/2025-01-01
+url: https://wetten.overheid.nl/BWBR0018472/2024-01-01
 preamble:
   text: >-
     Wij Beatrix, bij de gratie Gods, Koningin der Nederlanden, Prinses van Oranje-Nassau, enz. enz. enz.
@@ -22,7 +22,7 @@ preamble:
 
     Zo is het, dat Wij, de Raad van State gehoord, en met gemeen overleg der Staten-Generaal, hebben goedgevonden en
     verstaan, gelijk Wij goedvinden en verstaan bij deze:
-  url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#ArtikelAanhef
+  url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#ArtikelAanhef
 name: '#wet_naam'
 articles:
   - number: '1'
@@ -37,7 +37,7 @@ articles:
       3 Onder inkomensafhankelijke regelingen worden verstaan bij of krachtens wet vastgestelde regelingen die
       natuurlijke personen aanspraak geven op een financiële bijdrage van het Rijk in kosten of bijdrageverplichtingen,
       waarbij de hoogte van de bijdrage in die regelingen afhankelijk is gesteld van draagkracht.
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel1
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel1
   - number: '2'
     text: |-
       1 In deze wet en de daarop berustende bepalingen, alsmede in inkomensafhankelijke regelingen, wordt verstaan onder:
@@ -116,7 +116,7 @@ articles:
       [ref11]: https://wetten.overheid.nl/BWBR0002320#Artikel21
       [ref12]: https://wetten.overheid.nl/BWBR0022428#Artikel1
       [ref13]: https://wetten.overheid.nl/BWBR0003738#Artikel14
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel2
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel2
     references:
       - id: ref1
         bwb_id: BWBR0002471
@@ -218,12 +218,14 @@ articles:
       5 In afwijking van [artikel 5a van de Algemene wet inzake rijksbelastingen][ref3] en het tweede lid wordt niet als
       partner aangemerkt:
 
-      a. een bloed- of aanverwant in de eerste graad van de belanghebbende;
+      a. een bloed- of aanverwant in de eerste graad van de belanghebbende, tenzij beiden bij de aanvang van het
+      kalenderjaar de leeftijd van 27 jaar hebben bereikt;
 
-      b. een persoon voor wie de belanghebbende in enig jaar een pleegvergoeding heeft ontvangen op grond van de
-      [Wet op de jeugdzorg][ref4] of de [Jeugdwet][ref5], dan wel voor wie de belanghebbende in enig jaar kinderbijslag
-      heeft ontvangen op grond van de [Algemene Kinderbijslagwet][ref6], indien de belanghebbende en deze persoon in enig
-      jaar een gezamenlijk verzoek hebben ingediend bij de Dienst Toeslagen om niet als partners te worden aangemerkt.
+      b. een persoon die de leeftijd van 27 jaar nog niet heeft bereikt en voor wie de belanghebbende in enig jaar een
+      pleegvergoeding heeft ontvangen op grond van de [Wet op de jeugdzorg][ref4] of de [Jeugdwet][ref5], dan wel voor
+      wie de belanghebbende in enig jaar kinderbijslag heeft ontvangen op grond van de [Algemene Kinderbijslagwet][ref6],
+      indien de belanghebbende en deze persoon in enig jaar een gezamenlijk verzoek hebben ingediend bij de Dienst
+      Toeslagen om niet als partners te worden aangemerkt.
 
       6 Personen die partners waren op grond van het tweede lid, blijven als partners aangemerkt nadat de in dat
       onderdeel bedoelde inschrijving op hetzelfde woonadres niet langer mogelijk is als gevolg van opname in een
@@ -249,6 +251,10 @@ articles:
       aangemerkt ingeval de belanghebbende en de aanverwant in enig jaar een gezamenlijk verzoek bij de Dienst Toeslagen
       hebben ingediend om niet als partners te worden aangemerkt.
 
+      10 Een persoon die op basis van een verzoek als bedoeld in het tweede lid, onderdeel e, het vijfde lid, onderdeel
+      b, of het negende lid niet als partner van de belanghebbende wordt aangemerkt, wordt eveneens niet als partner van
+      de belanghebbende aangemerkt voor de toepassing van de [Wet inkomensbelasting 2001][ref9].
+
 
       [ref1]: https://wetten.overheid.nl/BWBR0002320#Artikel5a
       [ref2]: https://wetten.overheid.nl/BWBR0002320#Artikel2
@@ -258,7 +264,8 @@ articles:
       [ref6]: https://wetten.overheid.nl/BWBR0002368
       [ref7]: https://wetten.overheid.nl/BWBR0035362#Artikel1.1.1
       [ref8]: https://wetten.overheid.nl/BWBR0035362#Artikel2.3.5
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel3
+      [ref9]: https://wetten.overheid.nl/BWBR0011353
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel3
     references:
       - id: ref1
         bwb_id: BWBR0002320
@@ -281,6 +288,8 @@ articles:
       - id: ref8
         bwb_id: BWBR0035362
         artikel: 2.3.5
+      - id: ref9
+        bwb_id: BWBR0011353
     machine_readable:
       # Art 3 lid 1 definieert partner via meerdere categorieën (a, b.1°-7°, c)
       # Lid 1a: huwelijk/geregistreerd partnerschap (niet duurzaam gescheiden)
@@ -366,7 +375,7 @@ articles:
       [ref3]: https://wetten.overheid.nl/BWBR0035362#Artikel1.1.1
       [ref4]: https://wetten.overheid.nl/BWBR0035362#Artikel2.3.3
       [ref5]: https://wetten.overheid.nl/BWBR0035362#Artikel2.3.5
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel3a
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel3a
     references:
       - id: ref1
         bwb_id: BWBR0018472
@@ -402,7 +411,7 @@ articles:
       [ref1]: https://wetten.overheid.nl/BWBR0018472#Artikel2
       [ref2]: https://wetten.overheid.nl/BWBR0018472#Artikel3
       [ref3]: https://wetten.overheid.nl/BWBR0011823#Artikel1
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel3b
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel3b
     references:
       - id: ref1
         bwb_id: BWBR0018472
@@ -438,7 +447,7 @@ articles:
 
 
       [ref1]: https://wetten.overheid.nl/BWBR0011353#Artikel1.5
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel4
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel4
     references:
       - id: ref1
         bwb_id: BWBR0011353
@@ -449,7 +458,7 @@ articles:
       inkomensafhankelijke regelingen, wordt een wijziging in de omstandigheden en van de leeftijd van de belanghebbende,
       de partner of een medebewoner die zich voordoet na de eerste dag van de maand, in aanmerking genomen vanaf de
       eerste dag van de daaropvolgende maand.
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel5
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel5
   - number: '6'
     text: >-
       1 Voor de toepassing van deze wet en de daarop berustende bepalingen wordt met de basisregistratie personen
@@ -468,7 +477,7 @@ articles:
 
 
       4 Voor de toepassing van het tweede en derde lid wordt naar de omstandigheden beoordeeld waar iemand woont.
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel6
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel6
   - number: '7'
     text: |-
       1 Ter bepaling van de draagkracht voor de toepassing van een inkomensafhankelijke regeling wordt het
@@ -482,17 +491,17 @@ articles:
       3 Indien in een inkomensafhankelijke regeling de aanspraak op een tegemoetkoming mede afhankelijk is gesteld
       van het vermogen, bestaat geen aanspraak op een tegemoetkoming, indien de rendementsgrondslag, bedoeld
       in [artikel 5.3 van de Wet inkomstenbelasting 2001][ref2], van de belanghebbende aan het begin van het
-      berekeningsjaar meer bedraagt dan € 37.395, dan wel meer zou bedragen dan dit bedrag indien geen rekening
+      berekeningsjaar meer bedraagt dan € 36.952, dan wel meer zou bedragen dan dit bedrag indien geen rekening
       wordt gehouden met de vrijstelling, bedoeld in [artikel 5.13 van de Wet inkomstenbelasting 2001][ref3].
       Indien de belanghebbende het gehele berekeningsjaar dezelfde partner heeft, bestaat geen aanspraak op een
       tegemoetkoming indien de belanghebbende en zijn partner aan het begin van het berekeningsjaar een gezamenlijke
-      rendementsgrondslag als bedoeld in artikel 5.3 van de Wet inkomstenbelasting 2001 hebben van meer dan € 74.790.
+      rendementsgrondslag als bedoeld in artikel 5.3 van de Wet inkomstenbelasting 2001 hebben van meer dan € 73.904.
       [Artikel 10.1, eerste lid, van de Wet inkomstenbelasting 2001][ref4] is van overeenkomstige toepassing op de
       bedragen, genoemd in dit lid.
 
       4 Indien in een inkomensafhankelijke regeling de aanspraak op een tegemoetkoming mede afhankelijk is
       gesteld van het vermogen van medebewoners, bestaat tevens geen aanspraak op een tegemoetkoming indien de
-      rendementsgrondslag van een medebewoner aan het begin van het berekeningsjaar meer bedraagt dan € 37.395,
+      rendementsgrondslag van een medebewoner aan het begin van het berekeningsjaar meer bedraagt dan € 36.952,
       dan wel meer zou bedragen dan dit bedrag indien geen rekening wordt gehouden met de vrijstelling, bedoeld
       in [artikel 5.13 van de Wet inkomstenbelasting 2001][ref5]. Het bepaalde in de eerste en tweede volzin
       geldt alleen ten aanzien van degenen van wie het medebewonerschap het gehele berekeningsjaar heeft geduurd.
@@ -507,7 +516,7 @@ articles:
       6 Het toetsingsinkomen van een medebewoner die een eerstegraads bloed- of aanverwant in de neergaande lijn of
       een pleegkind is van de belanghebbende, van zijn partner, of van een medebewoner, en die bij de aanvang van het
       berekeningsjaar de leeftijd van 23 jaar niet heeft bereikt, wordt voor de toepassing van het tweede lid slechts in
-      aanmerking genomen voor zover het meer bedraagt dan € 6.042.
+      aanmerking genomen voor zover het meer bedraagt dan € 5.970.
 
       7 Met betrekking tot het bedrag vermeld in het zesde lid zijn de [artikelen 10.1][ref8] en
       [10.2 van de Wet inkomstenbelasting 2001][ref9] van overeenkomstige toepassing.
@@ -522,7 +531,7 @@ articles:
       [ref7]: https://wetten.overheid.nl/BWBR0011353#Artikel5.3
       [ref8]: https://wetten.overheid.nl/BWBR0011353#Artikel10.1
       [ref9]: https://wetten.overheid.nl/BWBR0011353#Artikel10.2
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel7
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel7
     references:
       - id: ref1
         bwb_id: BWBR0018472
@@ -554,58 +563,47 @@ articles:
         bwb_id: BWBR0011353
         artikel: '10.2'
   - number: '8'
-    text: |-
+    text: >-
       1 Toetsingsinkomen is: het op het berekeningsjaar betrekking hebbende inkomensgegeven.
+
 
       2 Niet in Nederland belastbaar inkomen, zoals dat bij beschikking is vastgesteld, wordt in aanvulling op het eerste
       lid mede als toetsingsinkomen in aanmerking genomen.
 
+
       3 Indien zulks leidt tot een ten minste 10 percent lager toetsingsinkomen, wordt bij beëindiging van het
       partnerschap in het berekeningsjaar, in afwijking in zoverre van het eerste en tweede lid, op verzoek van de
-      belanghebbende bij de berekening van het toetsingsinkomen van de partner:
+      belanghebbende bij de berekening van het toetsinkomen van de partner:
+
 
       a. geen rekening gehouden met:
 
+
       1°. belastbaar loon dat is genoten na de beëindiging van het partnerschap;
+
 
       2°. winst uit een onderneming die na de beëindiging van het partnerschap is gestart; en
 
+
       3°. belastbaar resultaat uit overige werkzaamheden die na beëindiging van het partnerschap zijn gestart;
+
 
       b. het belastbare loon dat in de periode van partnerschap is genoten tijdsevenredig herleid naar een jaarloon.
 
+
       4 Bij beëindiging van het medebewonerschap in het berekeningsjaar is het derde lid van overeenkomstige toepassing
       met betrekking tot het toetsingsinkomen van de medebewoner.
+
 
       5 Bij overlijden van de belanghebbende wordt, indien hij geen partner heeft en er geen sprake is van een
       medebewoner, in afwijking in zoverre van het eerste en tweede lid het toetsingsinkomen berekend door het op grond
       van die leden bepaalde toetsingsinkomen tijdsevenredig te herleiden naar een jaarinkomen.
 
+
       6 In de omstandigheden, bedoeld in het vijfde lid, wordt in afwijking van het in dat lid bepaalde op verzoek
       van een of meer van de erfgenamen het toetsingsinkomen dat betrekking heeft op het jaar voorafgaand aan het
       berekeningsjaar als toetsingsinkomen in aanmerking genomen.
-
-      7 Op verzoek van de belanghebbende wordt het toetsingsinkomen verminderd met het bedrag aan voordelen
-      verkregen door het prijsgeven van niet voor verwezenlijking vatbare rechten door schuldeisers als bedoeld in
-      [artikel 3.13, eerste lid, onderdeel a, van de Wet inkomstenbelasting 2001][ref1], voor zover:
-
-      a. deze voordelen de som van het verlies uit werk en woning dat overigens mocht zijn geleden overtreffen; en
-
-      b. deze voordelen ingevolge [artikel 3.13, eerste lid, onderdeel a, van die wet][ref2] niet zijn vrijgesteld van
-      de belastbare winst uit onderneming als gevolg van de volgens afdeling 3.13 van die wet te verrekenen verliezen uit
-      het verleden.
-
-
-      [ref1]: https://wetten.overheid.nl/BWBR0011353#Artikel3.13
-      [ref2]: https://wetten.overheid.nl/BWBR0011353#Artikel3.13
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel8
-    references:
-      - id: ref1
-        bwb_id: BWBR0011353
-        artikel: '3.13'
-      - id: ref2
-        bwb_id: BWBR0011353
-        artikel: '3.13'
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel8
     machine_readable:
       # Lid 1: het toetsingsinkomen is het inkomensgegeven (artikel 2, eerste
       # lid, onderdeel o: artikel 21, onderdeel e, AWR) dat op het
@@ -702,7 +700,7 @@ articles:
       [ref7]: https://wetten.overheid.nl/BWBR0002320#HoofdstukVA
       [ref8]: https://wetten.overheid.nl/BWBR0002320#HoofdstukVIIIA
       [ref9]: https://wetten.overheid.nl/BWBR0002320#HoofdstukV
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel8a
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel8a
     references:
       - id: ref1
         bwb_id: BWBR0005537
@@ -749,7 +747,7 @@ articles:
       [ref2]: https://wetten.overheid.nl/BWBR0011823#Artikel8
       [ref3]: https://wetten.overheid.nl/BWBR0011823#Artikel8
       [ref4]: https://wetten.overheid.nl/BWBR0011823#Artikel8
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel9
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel9
     references:
       - id: ref1
         bwb_id: BWBR0011823
@@ -774,7 +772,7 @@ articles:
 
 
       [ref1]: https://wetten.overheid.nl/BWBR0018472#Artikel2
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel9a
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel9a
     references:
       - id: ref1
         bwb_id: BWBR0018472
@@ -792,7 +790,7 @@ articles:
       2 Indien op grond van een inkomensafhankelijke regeling alleen meerderjarigen aanspraak op een tegemoetkoming
       hebben, wordt voor die regeling mede als meerderjarige aangemerkt de minderjarige met een kind of de minderjarige
       van wie beide ouders zijn overleden.
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel10
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel10
   - number: '11'
     text: >-
       1 De bepalingen van dit hoofdstuk gelden voor de inkomensafhankelijke regelingen waarvan de uitvoering bij die
@@ -801,7 +799,7 @@ articles:
 
       2 Onder Dienst Toeslagen wordt verstaan: het organisatieonderdeel van de rijksbelastingdienst dat is belast met het
       toekennen, uitbetalen en terugvorderen van tegemoetkomingen.
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel11
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel11
   - number: '12'
     text: |-
       1 Voor de toepassing van dit hoofdstuk blijven [titel 4.2][ref1] en
@@ -840,7 +838,7 @@ articles:
       [ref7]: https://wetten.overheid.nl/BWBR0018472#Artikel30
       [ref8]: https://wetten.overheid.nl/BWBR0005537#Paragraaf4.1.3.2
       [ref9]: https://wetten.overheid.nl/BWBR0005537#Paragraaf4.1.3.2
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel12
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel12
     references:
       - id: ref1
         bwb_id: BWBR0005537
@@ -883,7 +881,7 @@ articles:
 
 
       [ref1]: https://wetten.overheid.nl/BWBR0005537#Artikel214
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel13
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel13
     references:
       - id: ref1
         bwb_id: BWBR0005537
@@ -903,7 +901,7 @@ articles:
 
       [ref1]: https://wetten.overheid.nl/BWBR0005537#Artikel27
       [ref2]: https://wetten.overheid.nl/BWBR0018472#Artikel38
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel13a
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel13a
     references:
       - id: ref1
         bwb_id: BWBR0005537
@@ -922,7 +920,7 @@ articles:
 
       2 De voor een belanghebbende nadelige gevolgen van een beschikking als bedoeld in het eerste lid mogen niet
       onevenredig zijn in verhouding tot de met die beschikking te dienen doelen.
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel13b
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel13b
   - number: '14'
     text: |-
       1 Een tegemoetkoming wordt op aanvraag toegekend door de Dienst Toeslagen.
@@ -956,7 +954,7 @@ articles:
 
       [ref1]: https://wetten.overheid.nl/BWBR0002320#Artikel21a
       [ref2]: https://wetten.overheid.nl/BWBR0002320#HoofdstukV
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel14
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel14
     references:
       - id: ref1
         bwb_id: BWBR0002320
@@ -1023,7 +1021,7 @@ articles:
       [ref1]: https://wetten.overheid.nl/BWBR0002320
       [ref2]: https://wetten.overheid.nl/BWBR0002320#HoofdstukVIIIA
       [ref3]: https://wetten.overheid.nl/BWBR0002320#Artikel6
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel15
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel15
     references:
       - id: ref1
         bwb_id: BWBR0002320
@@ -1080,7 +1078,7 @@ articles:
       [ref1]: https://wetten.overheid.nl/BWBR0018472#Artikel15
       [ref2]: https://wetten.overheid.nl/BWBR0002320#Artikel13
       [ref3]: https://wetten.overheid.nl/BWBR0002320#Artikel13
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel16
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel16
     references:
       - id: ref1
         bwb_id: BWBR0018472
@@ -1108,7 +1106,7 @@ articles:
 
 
       4 Indien de melding betrekking heeft op een medebewoner, kan de melding ook worden gedaan door de medebewoner.
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel17
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel17
   - number: '18'
     text: |-
       1 Een belanghebbende, een partner en een medebewoner verstrekken de Dienst Toeslagen desgevraagd alle gegevens en
@@ -1153,7 +1151,7 @@ articles:
       [ref1]: https://wetten.overheid.nl/BWBR0018472#Artikel16
       [ref2]: https://wetten.overheid.nl/BWBR0018472#Artikel16
       [ref3]: https://wetten.overheid.nl/BWBR0018472#Artikel26b
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel18
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel18
     references:
       - id: ref1
         bwb_id: BWBR0018472
@@ -1197,7 +1195,7 @@ articles:
 
       [ref1]: https://wetten.overheid.nl/BWBR0018472#Artikel18
       [ref2]: https://wetten.overheid.nl/BWBR0018472#Artikel38
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel19
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel19
     references:
       - id: ref1
         bwb_id: BWBR0018472
@@ -1229,7 +1227,7 @@ articles:
 
       [ref1]: https://wetten.overheid.nl/BWBR0018472#Artikel7
       [ref2]: https://wetten.overheid.nl/BWBR0018472#Artikel7
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel20
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel20
     references:
       - id: ref1
         bwb_id: BWBR0018472
@@ -1259,12 +1257,12 @@ articles:
 
 
       3 Een herziening op grond van dit artikel kan leiden tot een terug te vorderen bedrag.
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel21
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel21
   - number: 21a
     text: >-
       In bij ministeriële regeling aan te wijzen gevallen herziet de Dienst Toeslagen een toegekende of herziene
       tegemoetkoming die onherroepelijk is geworden in het voordeel van de belanghebbende.
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel21a
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel21a
   - number: '22'
     text: >-
       1 Een voorschot dat wordt verleend vóór de aanvang van het berekeningsjaar waarop het voorschot betrekking
@@ -1309,7 +1307,7 @@ articles:
 
 
       b. de schuld waarvoor beslag is gelegd niet geheel is voldaan.
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel22
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel22
   - number: '23'
     text: >-
       1 De Dienst Toeslagen kan de uitbetaling van een voorschot geheel of gedeeltelijk opschorten indien:
@@ -1326,7 +1324,7 @@ articles:
 
       2 In het geval, bedoeld in het eerste lid, onderdeel a, wordt de belanghebbende van de opschorting schriftelijk in
       kennis gesteld.
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel23
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel23
   - number: '24'
     text: >-
       1 Een tegemoetkoming wordt uitbetaald binnen vier weken na dagtekening van de beschikking.
@@ -1336,7 +1334,7 @@ articles:
 
 
       3 De in het tweede lid bedoelde verrekening kan leiden tot een terug te vorderen bedrag.
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel24
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel24
   - number: 24a
     text: >-
       De Dienst Toeslagen kan afzien van het uitbetalen van een tegemoetkoming:
@@ -1357,7 +1355,7 @@ articles:
 
 
       c. indien de belanghebbende als uitreiziger is aangemerkt.
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel24a
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel24a
   - number: '25'
     text: |-
       1 In afwijking van [artikel 4:89, eerste lid, van de Algemene wet bestuursrecht][ref1] vindt uitbetaling aan de
@@ -1378,7 +1376,7 @@ articles:
 
       [ref1]: https://wetten.overheid.nl/BWBR0005537#Artikel489
       [ref2]: https://wetten.overheid.nl/BWBR0004770#Artikel7a
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel25
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel25
     references:
       - id: ref1
         bwb_id: BWBR0005537
@@ -1402,17 +1400,17 @@ articles:
 
       3 In bij ministeriële regeling aan te wijzen gevallen herziet de Dienst Toeslagen de onherroepelijk geworden
       beschikking tot terugvordering in het voordeel van de belanghebbende.
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel26
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel26
   - number: 26a
     text: |-
       1 Indien een herziening van een toegekende tegemoetkoming of een verrekening van een voorschot met een
       tegemoetkoming leidt tot een terug te vorderen bedrag, wordt dit bedrag niet teruggevorderd indien dat niet
-      meer bedraagt dan € 118. Bij de vaststelling van de beschikking tot toekenning van de tegemoetkoming of de
+      meer bedraagt dan € 116. Bij de vaststelling van de beschikking tot toekenning van de tegemoetkoming of de
       beschikking tot herziening van de tegemoetkoming, bedoeld in de eerste zin, wordt de beschikking tot terugvordering
       vastgesteld op nihil. De eerste en tweede zin zijn van overeenkomstige toepassing indien na de vaststelling van
       de beschikking tot toekenning van de tegemoetkoming of de herziening, bedoeld in de eerste zin, het terug te
       vorderen bedrag bij het vaststellen of het herzien van de beschikking tot terugvordering is verminderd ingevolge
-      [artikel 26, tweede lid][ref1], en dat bedrag na die vermindering niet meer bedraagt dan € 118.
+      [artikel 26, tweede lid][ref1], en dat bedrag na die vermindering niet meer bedraagt dan € 116.
 
       2 Met betrekking tot het bedrag, vermeld in het eerste lid, zijn de [artikelen 10.1][ref2] en
       [10.2 van de Wet inkomstenbelasting 2001][ref3] van overeenkomstige toepassing.
@@ -1421,7 +1419,7 @@ articles:
       [ref1]: https://wetten.overheid.nl/BWBR0018472#Artikel26
       [ref2]: https://wetten.overheid.nl/BWBR0011353#Artikel10.1
       [ref3]: https://wetten.overheid.nl/BWBR0011353#Artikel10.2
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel26a
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel26a
     references:
       - id: ref1
         bwb_id: BWBR0018472
@@ -1461,7 +1459,7 @@ articles:
 
       [ref1]: https://wetten.overheid.nl/BWBR0018472#Artikel14
       [ref2]: https://wetten.overheid.nl/BWBR0018472#Artikel21
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel26b
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel26b
     references:
       - id: ref1
         bwb_id: BWBR0018472
@@ -1486,7 +1484,7 @@ articles:
 
       3 Het percentage van de rente bedraagt een bij algemene maatregel van bestuur vast te stellen percentage, dat voor
       de in rekening te brengen en voor de te vergoeden rente verschillend kan worden vastgesteld.
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel27
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel27
   - number: '28'
     text: |-
       1 De belanghebbende heeft de verplichting om het bedrag van een terugvordering alsmede de op de voet van
@@ -1500,7 +1498,7 @@ articles:
 
 
       [ref1]: https://wetten.overheid.nl/BWBR0018472#Artikel27
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel28
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel28
     references:
       - id: ref1
         bwb_id: BWBR0018472
@@ -1517,7 +1515,7 @@ articles:
       [ref1]: https://wetten.overheid.nl/BWBR0018472#Artikel28
       [ref2]: https://wetten.overheid.nl/BWBR0004770#Artikel28
       [ref3]: https://wetten.overheid.nl/BWBR0004770#Artikel29
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel29
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel29
     references:
       - id: ref1
         bwb_id: BWBR0018472
@@ -1554,7 +1552,7 @@ articles:
       [ref3]: https://wetten.overheid.nl/BWBR0018472#Artikel29
       [ref4]: https://wetten.overheid.nl/BWBR0018472#Artikel31
       [ref5]: https://wetten.overheid.nl/BWBR0018472#Artikel49i
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel29a
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel29a
     references:
       - id: ref1
         bwb_id: BWBR0018472
@@ -1600,7 +1598,7 @@ articles:
       [ref2]: https://wetten.overheid.nl/BWBR0018472#Artikel28
       [ref3]: https://wetten.overheid.nl/BWBR0018472#Artikel27
       [ref4]: https://wetten.overheid.nl/BWBR0018472#Artikel29
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel30
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel30
     references:
       - id: ref1
         bwb_id: BWBR0004770
@@ -1622,7 +1620,7 @@ articles:
         paragraaf: '3'
   - number: '31'
     text: Bij ministeriële regeling worden regels gesteld met betrekking tot het verlenen van uitstel van betaling.
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel31
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel31
   - number: 31bis
     text: |-
       De Dienst Toeslagen kan het bedrag van een terugvordering, de met die terugvordering samenhangende rente, bedoeld
@@ -1632,7 +1630,7 @@ articles:
 
       [ref1]: https://wetten.overheid.nl/BWBR0018472#Artikel27
       [ref2]: https://wetten.overheid.nl/BWBR0018472#Artikel29
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel31bis
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel31bis
     references:
       - id: ref1
         bwb_id: BWBR0018472
@@ -1675,7 +1673,7 @@ articles:
       [ref1]: https://wetten.overheid.nl/BWBR0018472#Artikel28
       [ref2]: https://wetten.overheid.nl/BWBR0018472#Artikel27
       [ref3]: https://wetten.overheid.nl/BWBR0018472#Artikel32
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel31a
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel31a
     references:
       - id: ref1
         bwb_id: BWBR0018472
@@ -1734,7 +1732,7 @@ articles:
       [ref10]: https://wetten.overheid.nl/BWBR0020368#Artikel11
       [ref11]: https://wetten.overheid.nl/BWBR0004770#Artikel19
       [ref12]: https://wetten.overheid.nl/BWBR0004770#Artikel27
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel32
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel32
     references:
       - id: ref1
         bwb_id: BWBR0018472
@@ -1817,7 +1815,7 @@ articles:
       [ref7]: https://wetten.overheid.nl/BWBR0018472#Artikel31
       [ref8]: https://wetten.overheid.nl/BWBR0018472#Artikel32
       [ref9]: https://wetten.overheid.nl/BWBR0005537#Artikel4100
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel33
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel33
     references:
       - id: ref1
         bwb_id: BWBR0018472
@@ -1884,7 +1882,7 @@ articles:
       [ref1]: https://wetten.overheid.nl/BWBR0004770#Artikel2
       [ref2]: https://wetten.overheid.nl/BWBR0005537#Artikel492
       [ref3]: https://wetten.overheid.nl/BWBR0018472#Artikel27
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel34
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel34
     references:
       - id: ref1
         bwb_id: BWBR0004770
@@ -1905,7 +1903,7 @@ articles:
 
 
       [ref1]: https://wetten.overheid.nl/BWBR0005537#Artikel68
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel35
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel35
     references:
       - id: ref1
         bwb_id: BWBR0005537
@@ -1918,7 +1916,7 @@ articles:
 
 
       [ref1]: https://wetten.overheid.nl/BWBR0005537#Artikel68
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel36
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel36
     references:
       - id: ref1
         bwb_id: BWBR0005537
@@ -1926,43 +1924,35 @@ articles:
   - number: '37'
     text: |-
       1 Een bezwaar tegen de toekenning of herziening van een tegemoetkoming wordt, tenzij uit het bezwaarschrift het
-      tegendeel blijkt, geacht mede te zijn gericht tegen de beschikking tot terugvordering die in hetzelfde geschrift is
-      vervat en die samenhangt met die beschikking tot toekenning of herziening van een tegemoetkoming.
-
-      2 Een bezwaar tegen de beschikking tot terugvordering wordt, tenzij uit het bezwaarschrift het tegendeel blijkt,
-      geacht mede te zijn gericht tegen de toekenning of herziening van een tegemoetkoming die in hetzelfde geschrift is
-      vervat en die samenhangt met die beschikking tot terugvordering.
-
-      3 Een bezwaar tegen de toekenning of herziening van een tegemoetkoming wordt, tenzij uit het bezwaarschrift het
       tegendeel blijkt, geacht mede te zijn gericht tegen de toekenning of herziening van andere tegemoetkomingen over
       hetzelfde berekeningsjaar die bij hetzelfde geschrift zijn toegekend of herzien, alsmede tegen de in verband
       daarmee berekende rente.
 
-      4 Indien een tegemoetkoming is herzien en naar aanleiding daarvan een bestuurlijke boete is opgelegd die is vervat
+      2 Indien een tegemoetkoming is herzien en naar aanleiding daarvan een bestuurlijke boete is opgelegd die is vervat
       in hetzelfde geschrift als de herziening, wordt een bezwaarschrift tegen de herziening geacht mede te zijn gericht
       tegen de boete.
 
-      5 Een bezwaar tegen de toekenning van een tegemoetkoming wordt, tenzij uit het bezwaarschrift het tegendeel blijkt,
+      3 Een bezwaar tegen de toekenning van een tegemoetkoming wordt, tenzij uit het bezwaarschrift het tegendeel blijkt,
       geacht mede te zijn gericht tegen de voor bezwaar vatbare beschikking, bedoeld in [artikel 14, derde lid][ref1],
       die is vervat in hetzelfde geschrift.
 
-      6 Een bezwaar tegen de voor bezwaar vatbare beschikking, bedoeld in [artikel 14, derde lid][ref2], wordt, tenzij
+      4 Een bezwaar tegen de voor bezwaar vatbare beschikking, bedoeld in [artikel 14, derde lid][ref2], wordt, tenzij
       uit het bezwaarschrift het tegendeel blijkt, geacht mede te zijn gericht tegen de toekenning van een tegemoetkoming
       die is vervat in hetzelfde geschrift.
 
-      7 Indien de Dienst Toeslagen besluit tot openbaarmaking van een besluit tot oplegging van een bestuurlijke boete
+      5 Indien de Dienst Toeslagen besluit tot openbaarmaking van een besluit tot oplegging van een bestuurlijke boete
       als bedoeld in [artikel 42a][ref3] en beide besluiten in één geschrift zijn vervat, wordt een bezwaarschrift tegen
       de boete geacht mede te zijn gericht tegen de openbaarmaking ervan, tenzij uit het bezwaarschrift het tegendeel
       blijkt.
 
-      8 De Dienst Toeslagen kan uitspraken op bezwaar in de in het eerste tot en met zevende lid bedoelde gevallen
-      vervatten in één geschrift.
+      6 De Dienst Toeslagen kan uitspraken op bezwaar in de in het eerste, tweede, derde, vierde en vijfde lid bedoelde
+      gevallen vervatten in één geschrift.
 
 
       [ref1]: https://wetten.overheid.nl/BWBR0018472#Artikel14
       [ref2]: https://wetten.overheid.nl/BWBR0018472#Artikel14
       [ref3]: https://wetten.overheid.nl/BWBR0018472#Artikel42a
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel37
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel37
     references:
       - id: ref1
         bwb_id: BWBR0018472
@@ -1985,7 +1975,7 @@ articles:
       voor het instellen van hoger beroep is verstreken of, indien hoger beroep is ingesteld, op het hoger beroep
       onherroepelijk is beslist. De eerste volzin geldt niet indien de uitspraak een beroep tegen het niet tijdig nemen
       van een besluit betreft.
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel37a
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel37a
   - number: '38'
     text: |-
       1 Openbare lichamen met uitzondering van de openbare lichamen Bonaire, Sint Eustatius en Saba en rechtspersonen die
@@ -2091,7 +2081,7 @@ articles:
       [ref15]: https://wetten.overheid.nl/BWBR0017017#Artikel1.1
       [ref16]: https://wetten.overheid.nl/BWBR0020368
       [ref17]: https://wetten.overheid.nl/BWBR0018472#Artikel25
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel38
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel38
     references:
       - id: ref1
         bwb_id: BWBR0002320
@@ -2167,7 +2157,7 @@ articles:
       3 De Dienst Toeslagen verstrekt aan de inspectie belastingen, toeslagen en douane gegevens die noodzakelijk zijn
       voor de uitvoering van de taken van die inspectie. Het is deze inspectie niet toegestaan verkregen gegevens die van
       vertrouwelijke aard zijn aan derden te verstrekken.
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel38a
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel38a
   - number: '39'
     text: |-
       1 De Dienst Toeslagen en de inspecteur en de ontvanger wisselen de gegevens en inlichtingen uit die nodig zijn
@@ -2194,7 +2184,7 @@ articles:
       [ref3]: https://wetten.overheid.nl/BWBR0018472#Artikel23
       [ref4]: https://wetten.overheid.nl/BWBR0018472#Artikel24a
       [ref5]: https://wetten.overheid.nl/BWBR0013409#Artikel60
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel39
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel39
     references:
       - id: ref1
         bwb_id: BWBR0018472
@@ -2236,7 +2226,7 @@ articles:
       [ref5]: https://wetten.overheid.nl/BWBR0040940#Paragraaf3.1
       [ref6]: https://wetten.overheid.nl/BWBR0040940#Paragraaf3.2
       [ref7]: https://wetten.overheid.nl/BWBR0018472#Artikel2
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel39a
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel39a
     references:
       - id: ref1
         bwb_id: BWBR0018472
@@ -2273,7 +2263,7 @@ articles:
     text: |-
       1 Degene die op grond van deze wet en de daarop berustende bepalingen gehouden is tot het verstrekken van gegevens
       of inlichtingen en deze niet, dan wel niet binnen de daartoe gestelde termijn, heeft verstrekt, begaat een verzuim
-      ter zake waarvan de Dienst Toeslagen hem een bestuurlijke boete van ten hoogste € 6.709 kan opleggen.
+      ter zake waarvan de Dienst Toeslagen hem een bestuurlijke boete van ten hoogste € 5.514 kan opleggen.
 
       2 De bestuurlijke boete, bedoeld in het eerste lid, kan door de Dienst Toeslagen ter zake van een verzuim ten
       aanzien van een verplichting als bedoeld in [artikel 18, eerste lid][ref1], slechts worden opgelegd indien de
@@ -2306,7 +2296,7 @@ articles:
       [ref6]: https://wetten.overheid.nl/BWBR0002320#Artikel67pa
       [ref7]: https://wetten.overheid.nl/BWBR0005537#Artikel553
       [ref8]: https://wetten.overheid.nl/BWBR0005537#Artikel545
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel40
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel40
     references:
       - id: ref1
         bwb_id: BWBR0018472
@@ -2387,7 +2377,7 @@ articles:
       [ref5]: https://wetten.overheid.nl/BWBR0018472#Artikel38
       [ref6]: https://wetten.overheid.nl/BWBR0001854#Artikel23
       [ref7]: https://wetten.overheid.nl/BWBR0005537#Artikel545
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel41
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel41
     references:
       - id: ref1
         bwb_id: BWBR0002320
@@ -2433,7 +2423,7 @@ articles:
       [ref1]: https://wetten.overheid.nl/BWBR0005537#Artikel51
       [ref2]: https://wetten.overheid.nl/BWBR0018472#Artikel40
       [ref3]: https://wetten.overheid.nl/BWBR0018472#Artikel41
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel41bis
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel41bis
     references:
       - id: ref1
         bwb_id: BWBR0005537
@@ -2463,7 +2453,7 @@ articles:
       [ref1]: https://wetten.overheid.nl/BWBR0018472#Artikel40
       [ref2]: https://wetten.overheid.nl/BWBR0011353#Artikel10.1
       [ref3]: https://wetten.overheid.nl/BWBR0011353#Artikel10.2
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel41a
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel41a
     references:
       - id: ref1
         bwb_id: BWBR0018472
@@ -2493,7 +2483,7 @@ articles:
       [ref2]: https://wetten.overheid.nl/BWBR0018472#Artikel41
       [ref3]: https://wetten.overheid.nl/BWBR0011353#Artikel4.12
       [ref4]: https://wetten.overheid.nl/BWBR0011353#Artikel5.1
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel42
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel42
     references:
       - id: ref1
         bwb_id: BWBR0018472
@@ -2556,7 +2546,7 @@ articles:
 
       [ref1]: https://wetten.overheid.nl/BWBR0005537#Artikel51
       [ref2]: https://wetten.overheid.nl/BWBR0018472#Artikel41
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel42a
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel42a
     references:
       - id: ref1
         bwb_id: BWBR0005537
@@ -2579,7 +2569,7 @@ articles:
 
       [ref1]: https://wetten.overheid.nl/BWBR0005537#Artikel518
       [ref2]: https://wetten.overheid.nl/BWBR0005537#Artikel519
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel43
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel43
     references:
       - id: ref1
         bwb_id: BWBR0005537
@@ -2605,7 +2595,7 @@ articles:
       [ref4]: https://wetten.overheid.nl/BWBR0001854#Artikel141
       [ref5]: https://wetten.overheid.nl/BWBR0001854#Artikel179
       [ref6]: https://wetten.overheid.nl/BWBR0001854#Artikel184
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel44
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel44
     references:
       - id: ref1
         bwb_id: BWBR0001854
@@ -2633,7 +2623,7 @@ articles:
 
 
       [ref1]: https://wetten.overheid.nl/BWBR0018472#Artikel44
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel44a
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel44a
     references:
       - id: ref1
         bwb_id: BWBR0018472
@@ -2661,7 +2651,7 @@ articles:
 
       [ref1]: https://wetten.overheid.nl/BWBR0022751
       [ref2]: https://wetten.overheid.nl/BWBR0001827#Artikel475c
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel45
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel45
     references:
       - id: ref1
         bwb_id: BWBR0022751
@@ -2672,7 +2662,7 @@ articles:
     text: >-
       Bij of krachtens algemene maatregel van bestuur kunnen regels worden gesteld over de samenloop van tegemoetkomingen
       met tegemoetkomingen op grond van een buitenlandse regeling of een regeling van een volkenrechtelijke organisatie.
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel46
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel46
   - number: '47'
     text: |-
       1 Onze Minister is bevoegd in overeenstemming met Onze Ministers die het aangaat voor bepaalde gevallen of groepen
@@ -2682,7 +2672,7 @@ articles:
       2 Onze Minister is bevoegd in overeenstemming met Onze Ministers die het aangaat bij
       ministeriële regeling voor groepen van gevallen tegemoet te komen aan onbillijkheden van
       overwegende aard, die zich bij de toepassing van [artikel 7, derde of vierde lid][ref1],
-      of bij de toepassing van [artikel 3, eerste lid, van de Wet op de zorgtoeslag][ref2] of
+      of bij de toepassing van [artikel 2a, eerste lid, van de Wet op de zorgtoeslag][ref2] of
       [artikel 1, vierde lid, van de Wet op het kindgebonden budget][ref3] mochten voordoen.
 
       3 Het ontwerp van een krachtens het tweede lid vast te stellen ministeriële regeling wordt aan beide Kamers der
@@ -2694,9 +2684,9 @@ articles:
 
 
       [ref1]: https://wetten.overheid.nl/BWBR0018472#Artikel7
-      [ref2]: https://wetten.overheid.nl/BWBR0018451#Artikel3
+      [ref2]: https://wetten.overheid.nl/BWBR0018451#Artikel2a
       [ref3]: https://wetten.overheid.nl/BWBR0022751#Artikel1
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel47
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel47
     references:
       - id: ref1
         bwb_id: BWBR0018472
@@ -2705,7 +2695,7 @@ articles:
         paragraaf: '3'
       - id: ref2
         bwb_id: BWBR0018451
-        artikel: '3'
+        artikel: 2a
       - id: ref3
         bwb_id: BWBR0022751
         artikel: '1'
@@ -2714,21 +2704,21 @@ articles:
       Onze Minister is bevoegd in overeenstemming met Onze Ministers die het aangaat bij ministeriële regeling regels
       te stellen ter ondersteuning van een belanghebbende bij het verwezenlijken van rechten of het nakomen van
       verplichtingen die uit deze wet, de daarop berustende bepalingen of een inkomensafhankelijke regeling voortvloeien.
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel47a
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel47a
   - number: '48'
     text: >-
       Onze Minister zendt, in overeenstemming met Onze Ministers wie het mede aangaat, binnen drie jaar na de
       inwerkingtreding van deze wet, en vervolgens vijfjaarlijks, aan de Staten-Generaal een verslag over de
       doeltreffendheid en de effecten van deze wet in de praktijk.
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel48
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel48
   - number: '50'
     text: >-
       Deze wet treedt in werking op 1 september 2005 en geldt voor berekeningsjaren die aanvangen op of na 1 januari
       2006.
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel50
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel50
   - number: '51'
     text: 'Deze wet wordt aangehaald als: Algemene wet inkomensafhankelijke regelingen.'
-    url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel51
+    url: https://wetten.overheid.nl/BWBR0018472/2024-01-01#Artikel51
     machine_readable:
       execution:
         output:
