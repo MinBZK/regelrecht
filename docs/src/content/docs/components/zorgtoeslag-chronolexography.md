@@ -429,6 +429,7 @@ From the design note and the code comments:
 - Schema v0.8.0 has no way for the law to name the period of a decision ex officio; the stream names it for now.
 - Without an aanslag no toekenning is taken. Policy article 3 is marked as an *aanname* for this: it only knows the toekenning after an aanslag. Awir 19 lid 2 (at the latest 31 December of the following year) and the inkomensgegeven without an aanslag (the belastbare loon, AWR 21 onder e, 2°) are not modeled; the Belastingdienst cell records only aanslagen.
 - The first aanslag the demo records about a person is over the year before the reference date it starts following that person; for Merijn that includes 2024, which no case reads.
+- An application is assumed to carry the data needed to decide on it, such as the estimated income and the BSN. No article names those fields, so they have no grondslag; Awir 15 lid 2 obliges the applicant to give "de voor de beslissing op de aanvraag benodigde informatie" without saying which. See [RFC-046](/rfcs/rfc-046), open question 4.
 - Deferred on purpose: ending lid 5 (Awir 15 lid 6), entitlement per calendar month, revision of the voorschot after a change (Awir 16 lid 5, 17) and of the toekenning (20, 21, 21a), interest and collection (27 to 29), setting off across regulations (30), the *zienswijze* before recovery (26b), and channels outside the demo.
 
 ## Running it
