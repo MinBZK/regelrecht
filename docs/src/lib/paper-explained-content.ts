@@ -170,6 +170,8 @@ export interface Content {
     columns: [string, string, string];
     /** What each column of the comparison means, with the paper's own term. */
     columnHelp: [string, string, string];
+    /** Under the table: why only this paper has three yeses. */
+    tableNote: string;
     p3: string;
     more: string[];
     reasons: string[];
@@ -447,6 +449,8 @@ const nl: Content = {
       'Iedereen kan de regels lezen (published).',
       'Het is gegarandeerd dat de gepubliceerde regels ook de regels zijn die het besluit nemen (bound to execution). Dit is waar het paper om vraagt.',
     ],
+    tableNote:
+      'Dat alleen dit paper drie keer ja heeft, is geen toeval. De laatste kolom is precies waar het paper over gaat, en de reden dat het geschreven is. De andere aanpakken zijn gebouwd om regels te schrijven en uit te voeren, en zijn daar goed in. Dit voorstel gaat over wie de regels achteraf wil lezen en controleren.',
     p3:
       'Een voorbeeld dichter bij huis is de Omgevingswet. Daar staan regels machineleesbaar online, en ze sturen de vergunningcheck in het Omgevingsloket. Toch zijn de wet, de regels in het loket en de software van de gemeente drie losse dingen, die mensen met de hand gelijk houden. Het voorstel maakt er één ding van.',
     more: [
@@ -733,6 +737,8 @@ const en: Content = {
       'Anyone can read the rules (published).',
       'It is guaranteed that the published rules are the rules that make the decision (bound to execution). This is what the paper asks for.',
     ],
+    tableNote:
+      'That only this paper has three yeses is no coincidence. The last column is exactly what the paper is about, and the reason it was written. The other approaches were built to write rules and run them, and they are good at that. This proposal is about whoever wants to read and check the rules afterwards.',
     p3:
       'An example closer to home is the Dutch Environment and Planning Act (Omgevingswet). There, rules are online in machine-readable form, and they drive the permit check in the national portal. Still, the law, the rules in the portal and the municipality’s software are three separate things that people keep in line by hand. The proposal makes them one.',
     more: ['The paper does not choose a controlled natural language like RegelSpraak, and gives three reasons:'],

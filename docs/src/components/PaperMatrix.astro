@@ -16,6 +16,8 @@ import type { Cell } from '~/lib/paper-explained-content';
 interface Row {
   label: string;
   cells: Cell[];
+  /** Marks the row (the paper's own proposal in step 7). */
+  highlight?: boolean;
 }
 
 interface Props {
@@ -55,8 +57,8 @@ const smTracks = fit === 'fit' ? `minmax(0, 1fr) repeat(${columns.length}, auto)
     ))}
   </nldd-table-row>
   {rows.map((row) => (
-    <nldd-table-row>
-      <nldd-cell width="full" vertical-alignment="top"><nldd-text size="sm">{row.label}</nldd-text></nldd-cell>
+    <nldd-table-row selected={row.highlight || undefined}>
+      <nldd-cell width="full" vertical-alignment="top"><nldd-text size="sm" weight={row.highlight ? 'bold' : undefined}>{row.label}</nldd-text></nldd-cell>
       {row.cells.map((c) => (
         <nldd-cell width="full" vertical-alignment="top">
           <nldd-container gap="4">

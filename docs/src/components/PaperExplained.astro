@@ -410,10 +410,13 @@ const padding = { 'sm-padding-block': '32', 'md-padding-block': '48', 'lg-paddin
     rows={table.rows.map((r) => ({
       label: r.isProposal ? t.thisPaper : r.approach,
       cells: [{ v: r.exec }, { v: r.publ }, { v: r.bound }],
+      highlight: r.isProposal,
     }))}
     words={words}
     tracks="fit"
   />
+  <nldd-spacer size="12" />
+  <nldd-rich-text><p>{t.veterans.tableNote}</p></nldd-rich-text>
   <nldd-spacer size="8" />
   <nldd-link href={table.href} size="sm" text={t.tableLink} />
   <nldd-spacer size="24" />
