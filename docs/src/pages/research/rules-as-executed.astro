@@ -69,14 +69,6 @@ const discussionUrl =
           rel="noopener"
           appearance="secondary"
         ></nldd-button>
-        <nldd-button
-          href={discussionUrl}
-          text="Discussion on GitHub"
-          start-icon="comment"
-          target="_blank"
-          rel="noopener"
-          appearance="secondary"
-        ></nldd-button>
         {/* The plain-language companion explains this paper as published; it
             is the site's text, not the authors'. */}
         <nldd-button
@@ -89,6 +81,15 @@ const discussionUrl =
           href="/research/rules-as-executed/uitgelegd"
           text="Uitleg in het Nederlands"
           lang="nl"
+          appearance="secondary"
+        ></nldd-button>
+        {/* Last, so the hint below about selecting a passage sits under it. */}
+        <nldd-button
+          href={discussionUrl}
+          text="Discussion on GitHub"
+          start-icon="comment"
+          target="_blank"
+          rel="noopener"
           appearance="secondary"
         ></nldd-button>
       </nldd-button-group>
