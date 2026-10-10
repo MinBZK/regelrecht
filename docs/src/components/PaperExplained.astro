@@ -368,7 +368,14 @@ const padding = { 'sm-padding-block': '32', 'md-padding-block': '48', 'lg-paddin
   <nldd-spacer size="4" />
   <nldd-title size="2"><h2>{t.limits.title}</h2></nldd-title>
   <nldd-spacer size="16" />
-  <nldd-rich-text>{t.limits.intro.map((p) => <p>{p}</p>)}<p>{t.limits.p2}</p></nldd-rich-text>
+  <nldd-rich-text>
+    {t.limits.intro.map((p) => <p>{p}</p>)}
+    <dl>
+      {t.limits.explicit.map(([k, v]) => <><dt>{k}</dt><dd>{v}</dd></>)}
+    </dl>
+    <p>{t.limits.explicitNote}</p>
+    <p>{t.limits.p2}</p>
+  </nldd-rich-text>
   <nldd-spacer size="24" />
   <nldd-title size="4"><h3>{t.limits.openLabel}</h3></nldd-title>
   <nldd-spacer size="8" />

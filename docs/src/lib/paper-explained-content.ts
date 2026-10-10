@@ -150,6 +150,9 @@ export interface Content {
   limits: {
     title: string;
     intro: string[];
+    /** What the proposal writes out: where there is room, where not, and that it was used. */
+    explicit: [string, string][];
+    explicitNote: string;
     p2: string;
     openLabel: string;
     open: string[];
@@ -393,8 +396,20 @@ const nl: Content = {
     intro: [
       'Zolang mensen de wet uitvoerden, was er speelruimte die nergens op papier stond. Een ambtenaar hielp iemand verder terwijl geen regel dat toestond, en niemand keek ernaar. Een controle bleef liggen omdat er geen tijd voor was. Strikt genomen hoorde dat niet, maar voor de mensen om wie het ging pakte het vaak goed uit.',
       'Software heeft die speelruimte niet. Ze doet wat is vastgelegd en verder niets. Dat geldt nu al voor de systemen die de overheid gebruikt, en het heeft niets met publiceren te maken: een regelwerk dat niemand kan inzien, is even streng.',
-      'Het voorstel brengt die ongeschreven ruimte niet terug, en dat kan ook niet, want een uitzondering die je opschrijft is gewoon weer een regel. Wel mag een mens met een goede reden van de uitkomst afwijken, waar de wet dat toestaat (stap 5). En omdat de regels openbaar zijn, zie je waar ze streng zijn en kun je bespreken of dat zo moet.',
+      'Het voorstel brengt die ongeschreven ruimte niet terug, en dat kan ook niet, want een uitzondering die je opschrijft is gewoon weer een regel. Wat het wel doet, is opschrijven wat nu onzichtbaar in de software zit:',
     ],
+    explicit: [
+      [
+        'Waar ruimte is',
+        'Geeft de wet een ambtenaar ruimte om af te wijken, dan staat dat in het gepubliceerde regelwerk. Ook de gronden die de Algemene wet bestuursrecht daarvoor geeft, staan erin.',
+      ],
+      ['Waar geen ruimte is', 'Geeft de wet die ruimte niet, dan biedt het regelwerk ook niets om mee af te wijken.'],
+      [
+        'Dat er is afgeweken',
+        'Elke afwijking staat op het bonnetje: wat de regels uitrekenden, wat het werd, op welke grond en wie het deed. Ook als een programma het deed en geen mens (stap 5).',
+      ],
+    ],
+    explicitNote: 'Zo zie je hoe streng de regels zijn, en wie welke keuze maakte.',
     p2: 'Het paper noemt zijn aanpak onvolmaakt, en een aantal vragen laat het open.',
     openLabel: 'Open vragen',
     open: [
@@ -661,8 +676,20 @@ const en: Content = {
     intro: [
       'As long as people carried out the law, there was room to move that was written down nowhere. An official helped someone along although no rule allowed it, and nobody looked. A check was left undone because there was no time for it. Strictly speaking that was not how it should go, but it often worked out well for the people concerned.',
       'Software has no such room. It does what has been recorded and nothing else. That is already true of the systems the government uses today, and it has nothing to do with publishing: a rulework nobody can see is just as strict.',
-      'The proposal does not bring that unwritten room back, and it cannot, because an exception you write down is simply another rule. What it does allow is for a person to depart from the outcome for a good reason, where the law permits it (step 5). And because the rules are public, you can see where they are strict and discuss whether they should be.',
+      'The proposal does not bring that unwritten room back, and it cannot, because an exception you write down is simply another rule. What it does is write down what now sits invisibly in the software:',
     ],
+    explicit: [
+      [
+        'Where there is room',
+        'If the law gives an official room to depart, that is in the published rulework. So are the grounds the General Administrative Law Act gives for it.',
+      ],
+      ['Where there is none', 'If the law gives no such room, the rulework offers nothing to depart with either.'],
+      [
+        'That a departure happened',
+        'Every departure is on the receipt: what the rules computed, what it became, on what ground and who did it. Also when a program did it rather than a person (step 5).',
+      ],
+    ],
+    explicitNote: 'That way you can see how strict the rules are, and who made which choice.',
     p2: 'The paper calls its approach imperfect, and it leaves a number of questions open.',
     openLabel: 'Open questions',
     open: [
