@@ -1179,7 +1179,7 @@ fn untouched_repo() -> (String, String, String, String) {
 }
 
 #[tokio::test]
-async fn move_repo_is_refused_for_contributors_and_outsiders() {
+async fn move_repo_is_refused_without_the_admin_role() {
     let db = TestDb::new().await;
     let state = empty_state(db.pool.clone());
     let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
@@ -1196,7 +1196,8 @@ async fn move_repo_is_refused_for_contributors_and_outsiders() {
     .await
     .unwrap();
 
-    for who in [bob, carol] {
+    // The owner included: which repo a traject writes to is an admin call.
+    for who in [alice, bob, carol] {
         let err = trajects::move_repo(
             State(state.clone()),
             Extension(who),
@@ -1258,7 +1259,7 @@ async fn move_repo_refuses_the_central_corpus() {
     let err = trajects::move_repo(
         State(state.clone()),
         Extension(alice),
-        anonymous_session(),
+        admin_session().await,
         axum::http::HeaderMap::new(),
         Path(traject_id),
         Json(move_req("other-org", "regelrecht-corpus-example")),
@@ -1290,7 +1291,7 @@ async fn move_repo_refuses_to_point_a_traject_at_the_central_repo() {
         let err = trajects::move_repo(
             State(state.clone()),
             Extension(alice.clone()),
-            anonymous_session(),
+            admin_session().await,
             axum::http::HeaderMap::new(),
             Path(traject_id),
             Json(move_req(owner, repo)),
@@ -1324,7 +1325,7 @@ async fn move_repo_without_a_token_for_the_new_repo_changes_nothing() {
     let err = trajects::move_repo(
         State(state.clone()),
         Extension(alice),
-        anonymous_session(),
+        admin_session().await,
         axum::http::HeaderMap::new(),
         Path(traject_id),
         Json(move_req("other-org", "regelrecht-corpus-example")),
@@ -1411,7 +1412,7 @@ async fn move_repo_points_the_own_source_at_the_new_repo() {
     let status = trajects::move_repo(
         State(state.clone()),
         Extension(alice),
-        anonymous_session(),
+        admin_session().await,
         headers,
         Path(traject_id),
         Json(move_req(" other-org ", "regelrecht-corpus-example")),

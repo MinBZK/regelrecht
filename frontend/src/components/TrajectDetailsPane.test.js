@@ -216,7 +216,8 @@ function typeInto(field, value) {
 }
 
 describe('TrajectDetailsPane repo', () => {
-  it('geeft de eigenaar een veld met de huidige repo', async () => {
+  it('geeft een editor-admin een veld met de huidige repo', async () => {
+    roles.add('editor-admin');
     const w = await mountPane(detail());
     expect(repoField(w).attributes('value')).toBe('example-org/regelrecht-corpus-example');
     expect(repoButton(w)).toBeTruthy();
@@ -228,10 +229,13 @@ describe('TrajectDetailsPane repo', () => {
     expect(repoField(w).exists()).toBe(true);
   });
 
-  it('toont een bijdrager zonder admin-rol alleen de link', async () => {
-    const w = await mountPane(detail({ role: 'contributor' }));
-    expect(repoField(w).exists()).toBe(false);
-    expect(repoButton(w)).toBeUndefined();
+  it('toont eigenaar en bijdrager zonder admin-rol alleen de link', async () => {
+    for (const role of ['owner', 'contributor']) {
+      const w = await mountPane(detail({ role }));
+      expect(repoField(w).exists()).toBe(false);
+      expect(repoButton(w)).toBeUndefined();
+      w.unmount();
+    }
   });
 
   it('laat de repo van het centrale corpus met rust, ook voor een admin', async () => {
@@ -249,6 +253,7 @@ describe('TrajectDetailsPane repo', () => {
   });
 
   it('stuurt bij Repo wijzigen een PUT met eigenaar en naam en herlaadt', async () => {
+    roles.add('editor-admin');
     const w = await mountPane(detail());
     typeInto(repoField(w), ' other-org/regelrecht-corpus-example ');
     await w.vm.$nextTick();
@@ -269,6 +274,7 @@ describe('TrajectDetailsPane repo', () => {
   });
 
   it('weigert een waarde zonder eigenaar/naam zonder de backend te bellen', async () => {
+    roles.add('editor-admin');
     const w = await mountPane(detail());
     typeInto(repoField(w), 'alleen-een-naam');
     await w.vm.$nextTick();
@@ -282,6 +288,7 @@ describe('TrajectDetailsPane repo', () => {
   });
 
   it('laat een geweigerde wijziging bij het veld zien', async () => {
+    roles.add('editor-admin');
     const w = await mountPane(detail());
     typeInto(repoField(w), 'other-org/regelrecht-corpus-example');
     await w.vm.$nextTick();

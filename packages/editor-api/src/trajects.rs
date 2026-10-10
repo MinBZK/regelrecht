@@ -602,27 +602,26 @@ async fn require_owner(
     }
 }
 
-/// The realm role that may manage any traject, member or not.
+/// The realm role that may move any traject's repo, member or not.
 const TRAJECT_ADMIN_ROLE: &str = "editor-admin";
 
-/// Allow the traject's owner, or anyone holding [`TRAJECT_ADMIN_ROLE`].
+/// Allow only a session holding [`TRAJECT_ADMIN_ROLE`]; being the traject's
+/// owner is not enough.
 ///
-/// The admin path reads the role from the session, so it only opens for a
-/// logged-in session that carries it; with auth disabled nobody is admin and
-/// only the owner gets through. An admin still gets a 404 for a traject that
-/// does not exist, the same answer a member gets.
-async fn require_owner_or_admin(
+/// The role is read from the session, so this only opens for a logged-in
+/// session that carries it; with auth disabled nobody is admin. An admin
+/// gets a 404 for a traject that does not exist.
+async fn require_admin(
     pool: &PgPool,
     session: &Session,
     traject_id: Uuid,
-    account_id: Uuid,
 ) -> Result<(), StatusCode> {
     let is_admin = matches!(
         regelrecht_auth::check_session_role(session, TRAJECT_ADMIN_ROLE).await,
         regelrecht_auth::RoleCheck::Allowed
     );
     if !is_admin {
-        return require_owner(pool, traject_id, account_id).await;
+        return Err(StatusCode::FORBIDDEN);
     }
     let exists: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM trajects WHERE id = $1)")
         .bind(traject_id)
@@ -1504,7 +1503,9 @@ struct OwnGithubSource {
 /// PUT /api/trajects/:id/repo — point the traject's own source at another
 /// GitHub repository, typically after the repository moved to a new owner.
 ///
-/// Allowed for the traject owner and for an `editor-admin`. The new repo
+/// Only an `editor-admin` may do this, also without being a member: which
+/// repo a traject writes to decides where the platform's tokens go, so it
+/// is not a traject owner's call. The new repo
 /// gets the same preflight as `create`: its token (named after the new
 /// `auth_ref`) must be configured, must have push access, the base branch
 /// must exist, and the traject branch is minted there when it is missing.
@@ -1519,9 +1520,7 @@ pub async fn move_repo(
     Json(req): Json<MoveRepoRequest>,
 ) -> Result<StatusCode, (StatusCode, String)> {
     let pool = get_pool_msg(&state)?;
-    require_owner_or_admin(pool, &session, id, account.id)
-        .await
-        .map_err(bare)?;
+    require_admin(pool, &session, id).await.map_err(bare)?;
 
     let owner = req.repo_owner.trim();
     let repo = req.repo_name.trim();

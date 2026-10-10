@@ -110,14 +110,16 @@ async function saveSubpath() {
   }
 }
 
-// --- Repo wijzigen (owner of editor-admin, traject met eigen repo) ---
+// --- Repo wijzigen (alleen editor-admin, traject met eigen repo) ---
 //
 // Voor als de repo verhuist, bijvoorbeeld naar een andere GitHub-organisatie.
-// Branch, base branch en subpath blijven staan; de backend controleert eerst of
-// de editor op de nieuwe repo kan werken en weigert anders met een uitleg.
+// Naar welke repo een traject schrijft bepaalt waar de tokens van het platform
+// heen gaan, dus dat is aan een beheerder en niet aan de eigenaar. Branch, base
+// branch en subpath blijven staan; de backend controleert eerst of de editor op
+// de nieuwe repo kan werken en weigert anders met een uitleg.
 const canEditRepo = computed(
   () =>
-    (detail.value?.role === 'owner' || hasRole('editor-admin')) &&
+    hasRole('editor-admin') &&
     !!source.value &&
     source.value.source_type === 'github' &&
     !isCentralSource(source.value),

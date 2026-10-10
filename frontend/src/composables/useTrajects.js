@@ -92,7 +92,7 @@ export async function updateTraject(trajectId, patch) {
 }
 
 // Point the traject's own source at another GitHub repo, e.g. after the repo
-// moved to a new owner (backend: PUT /api/trajects/:id/repo → 204). Owner or
+// moved to a new owner (backend: PUT /api/trajects/:id/repo → 204).
 // editor-admin only. The backend first proves the new repo works (token, push
 // access, base branch, traject branch) and answers a refusal with a Dutch
 // explanation in the body, which is the message the caller shows.
