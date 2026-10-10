@@ -31,6 +31,7 @@ export interface ActorRow {
 export interface OverrideVariant {
   id: string;
   label: string;
+  short: string;
   rows: [string, string][];
   note: string;
 }
@@ -51,6 +52,9 @@ export interface Content {
     discuss: string;
   };
   readInPaper: string;
+  more: string;
+  close: string;
+  none: string;
   step: string;
   thisPaper: string;
   tableLink: string;
@@ -67,9 +71,8 @@ export interface Content {
     p1: string;
     caseIntro: string;
     caseLabel: string;
-    options: { id: string; label: string; outcome: string; tag: string; tone: 'success' | 'critical' }[];
+    options: { id: string; label: string; short: string; outcome: string; tag: string; tone: 'success' | 'critical' }[];
     caseNote: string;
-    layers: { label: string; tag: string; text: string; hidden: boolean }[];
     p2: string;
     demandLabel: string;
     demand: string;
@@ -216,6 +219,9 @@ const nl: Content = {
     discuss: 'Bespreek het paper',
   },
   readInPaper: 'Lees dit in het paper',
+  more: 'Meer uit het paper',
+  close: 'Sluiten',
+  none: 'niets hiervan',
   step: 'Stap',
   thisPaper: 'Dit paper',
   tableLink: 'Tabel 1 in het paper, met het volledige onderschrift',
@@ -237,6 +243,7 @@ const nl: Content = {
       {
         id: 'jan',
         label: 'Registratie op 1 januari',
+        short: 'Op 1 januari',
         outcome: 'Geen partner. Sam krijgt zorgtoeslag op het eigen inkomen.',
         tag: 'toeslag',
         tone: 'success',
@@ -244,6 +251,7 @@ const nl: Content = {
       {
         id: 'aanvraag',
         label: 'Registratie op de dag van de aanvraag',
+        short: 'Op de aanvraagdag',
         outcome: 'Wel een partner. Het inkomen samen ligt boven de grens: geen zorgtoeslag.',
         tag: 'geen toeslag',
         tone: 'critical',
@@ -251,16 +259,6 @@ const nl: Content = {
     ],
     caseNote:
       'Beide keuzes zijn verzonnen. Ze laten zien waar zo’n keuze zit, niet hoe de Dienst Toeslagen het werkelijk doet. Dat kun je van buitenaf ook niet nagaan, en daar gaat het paper over.',
-    layers: [
-      { label: 'De wet', tag: 'Gepubliceerd', text: 'Het inkomen van een partner telt mee.', hidden: false },
-      {
-        label: 'De uitvoering',
-        tag: 'Niet gepubliceerd',
-        text: 'Welke registratie, welke peildatum, wat bij een verhuizing.',
-        hidden: true,
-      },
-      { label: 'Het besluit', tag: 'Bij Sam thuis', text: 'Een bedrag, of nul.', hidden: false },
-    ],
     p2:
       'Vaak overziet zelfs de organisatie die het systeem draait niet meer wat het doet: logica die over jaren is opgestapeld, soms in software van een leverancier wiens broncode de overheid niet mag inzien.',
     demandLabel: 'De vierde eis',
@@ -383,6 +381,7 @@ const nl: Content = {
       {
         id: 'lex',
         label: 'De wetgever',
+        short: 'Wetgever',
         rows: [
           ['Uitkomst', 'bezwaartermijn'],
           ['Volgens de algemene regel', '6 weken (art. 6:7 Awb)'],
@@ -396,6 +395,7 @@ const nl: Content = {
       {
         id: 'orgaan',
         label: 'Het bestuursorgaan',
+        short: 'Bestuursorgaan',
         rows: [
           ['Uitkomst', 'duur van de sluiting'],
           ['Volgens de regel', '6 maanden'],
@@ -411,6 +411,7 @@ const nl: Content = {
       {
         id: 'batch',
         label: 'Een correctie in bulk',
+        short: 'In bulk',
         rows: [
           ['Uitkomst', 'zoals de regel die uitrekende'],
           ['Vervangen door', 'wat de uitspraak voorschrijft'],
@@ -545,6 +546,9 @@ const en: Content = {
     discuss: 'Discuss the paper',
   },
   readInPaper: 'Read this in the paper',
+  more: 'More from the paper',
+  close: 'Close',
+  none: 'none of these',
   step: 'Step',
   thisPaper: 'This paper',
   tableLink: 'Table 1 in the paper, with its full caption',
@@ -566,6 +570,7 @@ const en: Content = {
       {
         id: 'jan',
         label: 'Register on 1 January',
+        short: 'On 1 January',
         outcome: 'No partner. Sam receives the allowance on their own income.',
         tag: 'allowance',
         tone: 'success',
@@ -573,6 +578,7 @@ const en: Content = {
       {
         id: 'aanvraag',
         label: 'Register on the day of application',
+        short: 'On the day of application',
         outcome: 'A partner. Their combined income is above the limit: no allowance.',
         tag: 'no allowance',
         tone: 'critical',
@@ -580,16 +586,6 @@ const en: Content = {
     ],
     caseNote:
       'Both choices are made up. They show where such a choice sits, not how the Dutch benefits agency actually does it. From the outside you cannot check that either, and that is what the paper is about.',
-    layers: [
-      { label: 'The law', tag: 'Published', text: 'A partner’s income counts.', hidden: false },
-      {
-        label: 'The execution',
-        tag: 'Not published',
-        text: 'Which register, which reference date, what happens on a move.',
-        hidden: true,
-      },
-      { label: 'The decision', tag: 'In Sam’s letterbox', text: 'An amount, or zero.', hidden: false },
-    ],
     p2:
       'Often even the organization running the system no longer has an overview of what it does: logic layered up over years, sometimes in software from a supplier whose source code the government may not inspect.',
     demandLabel: 'The fourth demand',
@@ -712,6 +708,7 @@ const en: Content = {
       {
         id: 'lex',
         label: 'The legislature',
+        short: 'Legislature',
         rows: [
           ['Outcome', 'objection period'],
           ['Under the general rule', '6 weeks (Art. 6:7 Awb)'],
@@ -725,6 +722,7 @@ const en: Content = {
       {
         id: 'orgaan',
         label: 'The competent authority',
+        short: 'Authority',
         rows: [
           ['Outcome', 'closure duration'],
           ['Under the rule', '6 months'],
@@ -740,6 +738,7 @@ const en: Content = {
       {
         id: 'batch',
         label: 'A correction in bulk',
+        short: 'In bulk',
         rows: [
           ['Outcome', 'as the rule computed it'],
           ['Replaced by', 'what the ruling requires'],

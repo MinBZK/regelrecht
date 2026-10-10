@@ -6,37 +6,55 @@
  * them into one segmented control showing one alternative at a time. The
  * receipt panel only exists with JavaScript, because its decisions are computed
  * here, in the visitor's browser.
+ *
+ * The page is built from NLDD components only, so this file defines no
+ * elements of its own: it finds its parts by data attributes on the
+ * components (`data-px-switch`, `data-px-more`, `data-px-receipts`).
  */
 import { runReceipts, recompute, type Receipts } from './paper-explained-run';
 
 /** One segmented control, several panels; shows the panel the control selects. */
-class Switch extends HTMLElement {
-  private wired = false;
+function initSwitch(root: HTMLElement) {
+  const control = root.querySelector<HTMLElement & { value?: string }>('[data-control]');
+  const panels = Array.from(root.querySelectorAll<HTMLElement>('[data-panel]'));
+  if (!control || panels.length === 0) return;
 
-  connectedCallback() {
-    if (this.wired) return;
-    this.wired = true;
-    const control = this.querySelector<HTMLElement & { value?: string }>('[data-control]');
-    const panels = Array.from(this.querySelectorAll<HTMLElement>('[data-panel]'));
-    if (!control || panels.length === 0) return;
+  // The labels above each panel are for the stacked no-JS view; the control
+  // names the visible panel once there is a control.
+  root.querySelectorAll<HTMLElement>('[data-panel-label]').forEach((l) => (l.hidden = true));
 
-    // The labels above each panel are for the stacked no-JS view; the control
-    // names the visible panel once there is a control.
-    this.querySelectorAll<HTMLElement>('.rr-px-panel__label').forEach((l) => (l.hidden = true));
+  const show = (value: string) => {
+    for (const p of panels) p.hidden = p.dataset.panel !== value;
+  };
+  const initial = root.dataset.pxSwitch || panels[0].dataset.panel || '';
+  control.setAttribute('value', initial);
+  control.hidden = false;
+  show(initial);
 
-    const show = (value: string) => {
-      for (const p of panels) p.hidden = p.dataset.panel !== value;
-    };
-    const initial = this.dataset.default ?? panels[0].dataset.panel ?? '';
-    control.setAttribute('value', initial);
-    control.hidden = false;
-    show(initial);
+  control.addEventListener('change', (e) => {
+    const value = (e as CustomEvent<{ value: string }>).detail?.value ?? control.value;
+    if (value) show(value);
+  });
+}
 
-    control.addEventListener('change', (e) => {
-      const value = (e as CustomEvent<{ value: string }>).detail?.value ?? control.value;
-      if (value) show(value);
-    });
-  }
+/**
+ * "Meer uit het paper": a button and the nldd-sheet it opens.
+ *
+ * The sheet is a <dialog> and the design system asks for it at the document
+ * root, so it moves there the first time it opens and stays (the scenario
+ * runner on /concepts/scenarios does the same). The sheet closes itself on
+ * Escape, the backdrop and the dismiss button of its title bar.
+ */
+function initMore(root: HTMLElement) {
+  const button = root.querySelector<HTMLElement>('[data-px-more-open]');
+  const sheet = root.querySelector<HTMLElement & { show?: () => void }>('[data-px-more-sheet]');
+  if (!button || !sheet) return;
+  button.addEventListener('click', async () => {
+    if (sheet.parentElement !== document.body) document.body.appendChild(sheet);
+    await customElements.whenDefined('nldd-sheet');
+    if (typeof sheet.show === 'function') sheet.show();
+    else sheet.setAttribute('open', '');
+  });
 }
 
 const money = (cents: number, lang: string) =>
@@ -85,13 +103,14 @@ interface Strings {
   no: string;
 }
 
-class ReceiptsPanel extends HTMLElement {
+class ReceiptsPanel {
   private observer?: IntersectionObserver;
   private receipts: Receipts | null = null;
 
-  connectedCallback() {
-    if (this.observer) return;
-    const status = this.querySelector<HTMLElement>('[data-status]');
+  constructor(private el: HTMLElement) {}
+
+  start() {
+    const status = this.el.querySelector<HTMLElement>('[data-status]');
     if (status) status.hidden = false;
     // Fetch and compute once the panel is within a screen or so: a visitor
     // who never scrolls this far downloads neither the engine nor the laws.
@@ -103,41 +122,48 @@ class ReceiptsPanel extends HTMLElement {
       },
       { rootMargin: '1200px 0px' },
     );
-    this.observer.observe(this);
-  }
-
-  disconnectedCallback() {
-    this.observer?.disconnect();
+    this.observer.observe(this.el);
   }
 
   private strings(): Strings {
-    return JSON.parse(this.dataset.t ?? '{}');
+    return JSON.parse(this.el.dataset.t ?? '{}');
   }
 
   private async compute(status: HTMLElement | null) {
-    const lang = this.dataset.lang === 'en' ? 'en' : 'nl';
+    const lang = this.el.dataset.lang === 'en' ? 'en' : 'nl';
     const t = this.strings();
     try {
       const r = await runReceipts('/');
       this.receipts = r;
-      const summary = t.inputs.replace('{n}', String(r.facts.length));
+      const fill = (scope: Element, f: string, v: string) => {
+        const el = scope.querySelector<HTMLElement>(`[data-f="${f}"]`);
+        if (el) el.textContent = v;
+      };
+
+      // What both decisions share is shown once, above them. Both record the
+      // same version and calculation date; only the digest and the amount
+      // differ, and those are what each card shows.
+      const shared = this.el.querySelector('[data-shared]');
+      if (shared) {
+        fill(shared, 'version', versionOf(r.a.version, lang, t.inForce));
+        fill(shared, 'date', longDate(r.calculationDate, lang));
+        fill(shared, 'inputs', t.inputs.replace('{n}', String(r.facts.length)));
+      }
+
       for (const id of ['a', 'b'] as const) {
-        const card = this.querySelector<HTMLElement>(`[data-receipt="${id}"]`);
+        const card = this.el.querySelector<HTMLElement>(`[data-receipt="${id}"]`);
         if (!card) continue;
         const d = r[id];
-        const set = (f: string, v: string) => {
-          const el = card.querySelector<HTMLElement>(`[data-f="${f}"]`);
-          if (el) el.textContent = v;
-        };
-        set('version', versionOf(d.version, lang, t.inForce));
-        set('digest', d.digest);
-        set('date', longDate(r.calculationDate, lang));
-        set('inputs', summary);
-        set('amount', money(d.amount, lang));
+        fill(card, 'amount', money(d.amount, lang));
+        // Shortened on screen: 64 hex characters wrap over three lines on a
+        // phone and say nothing more to a reader than their two ends. The full
+        // digest stays in the title for whoever wants to compare it.
+        fill(card, 'digest', `${d.digest.slice(0, 8)}…${d.digest.slice(-8)}`);
+        card.querySelector<HTMLElement>('[data-f="digest"]')?.setAttribute('title', d.digest);
         card.querySelector('[data-check-button]')?.addEventListener('click', () => void this.check(id, card));
       }
 
-      const list = this.querySelector<HTMLElement>('[data-facts-list]');
+      const list = document.querySelector<HTMLElement>('[data-facts-list]');
       if (list) {
         list.replaceChildren(
           ...r.facts.map((f) => {
@@ -149,8 +175,8 @@ class ReceiptsPanel extends HTMLElement {
           }),
         );
       }
-      this.querySelector<HTMLElement>('[data-facts]')?.removeAttribute('hidden');
-      this.querySelector<HTMLElement>('[data-receipts]')?.removeAttribute('hidden');
+      document.querySelector<HTMLElement>('[data-facts]')?.removeAttribute('hidden');
+      this.el.querySelector<HTMLElement>('[data-receipts]')?.removeAttribute('hidden');
       if (status) status.hidden = true;
     } catch (err) {
       console.error('paper-explained:', err);
@@ -161,7 +187,7 @@ class ReceiptsPanel extends HTMLElement {
   private async check(id: 'a' | 'b', card: HTMLElement) {
     const r = this.receipts;
     if (!r) return;
-    const lang = this.dataset.lang === 'en' ? 'en' : 'nl';
+    const lang = this.el.dataset.lang === 'en' ? 'en' : 'nl';
     const t = this.strings();
     const button = card.querySelector<HTMLElement>('[data-check-button]');
     button?.setAttribute('loading', '');
@@ -185,7 +211,7 @@ class ReceiptsPanel extends HTMLElement {
         reveal.textContent =
           id === 'a'
             ? t.revealA
-            : (this.dataset.revealB ?? '')
+            : (this.el.dataset.revealB ?? '')
                 .replace('{published}', percent(r.change.published, lang))
                 .replace('{local}', percent(r.change.local, lang))
                 .replace('{diff}', money(Math.abs(d.amount - verified.amount), lang));
@@ -207,5 +233,6 @@ class ReceiptsPanel extends HTMLElement {
   }
 }
 
-if (!customElements.get('rr-px-switch')) customElements.define('rr-px-switch', Switch);
-if (!customElements.get('rr-px-receipts')) customElements.define('rr-px-receipts', ReceiptsPanel);
+document.querySelectorAll<HTMLElement>('[data-px-switch]').forEach(initSwitch);
+document.querySelectorAll<HTMLElement>('[data-px-more]').forEach(initMore);
+document.querySelectorAll<HTMLElement>('[data-px-receipts]').forEach((el) => new ReceiptsPanel(el).start());
