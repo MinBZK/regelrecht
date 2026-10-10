@@ -1,0 +1,97 @@
+import { formatValue } from './format.js';
+
+/**
+ * De aanvraag als feit in een kroniek (chronolex, RFC-022), zoals de demo die
+ * toont.
+ *
+ * Wat een aanvraag bevat, zegt de wet: de cel (WasmCell) voert het artikel uit
+ * dat de aanvraag vestigt en geeft de velden terug, elk met het artikel dat
+ * erom vraagt. Dit bestand is de kant van de demo: welke cel bij een wet hoort,
+ * wat de persona invult, en welke grammen bij een zaak horen.
+ */
+
+/**
+ * De gebeurtenissen van een wet in de cellen van het corpus: het besluit (een
+ * gebeurtenis die een artikel van deze wet vestigt) en de aanvraag waarop dat
+ * besluit wordt genomen (`produces.decides_on` van dat artikel). `null` als de
+ * wet geen besluit in een kroniek legt.
+ */
+export function eventsForLaw(cells, lawDoc) {
+  if (!lawDoc) return null;
+  for (const cell of cells ?? []) {
+    for (const decision of cell.events) {
+      const [lawId, number] = decision.establishes.split('#');
+      if (lawId !== lawDoc.$id) continue;
+      const article = (lawDoc.articles ?? []).find((a) => String(a.number) === number);
+      const on = article?.machine_readable?.execution?.produces?.decides_on ?? [];
+      const application = cell.events.find((e) => on.includes(e.establishes));
+      if (application) return { cell, decision, application };
+    }
+  }
+  return null;
+}
+
+/**
+ * Wat de persona op de aanvraag invult, per veld dat de wet vraagt. Welke
+ * waarde bij welk veld hoort, staat in de configuratie van het profiel
+ * (`application` in demo-config.yaml); een waarde `$<naam>` vult de demo in
+ * uit `tokens` (`$bsn`, `$reference_date`, `$reference_year`). Een veld zonder
+ * waarde blijft weg (een onvolledige aanvraag is nog steeds een aanvraag, Awb
+ * 4:5). Wat de cel zelf invult (een veld met `fixed`) vult de persona niet in.
+ */
+export function applicationValues(shape, configured, tokens = {}) {
+  const resolve = (v) => (typeof v === 'string' && v.startsWith('$') ? tokens[v.slice(1)] : v);
+  const values = {};
+  for (const field of shape?.fields ?? []) {
+    if (field.fixed != null) continue;
+    const value = resolve(configured?.[field.name]);
+    if (value !== undefined && value !== null && value !== '') values[field.name] = value;
+  }
+  return values;
+}
+
+/**
+ * Het moment van nu op de datum `date` (JJJJ-MM-DD), in de tijdzone van de
+ * browser, als RFC 3339. De cel leest daar de dag van ontvangst uit; een
+ * moment in UTC zou een aanvraag kort na middernacht een dag eerder leggen.
+ */
+export function momentOn(date, now = new Date()) {
+  const pad = (n) => String(Math.abs(n)).padStart(2, '0');
+  const offset = -now.getTimezoneOffset();
+  const sign = offset >= 0 ? '+' : '-';
+  const time = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  return `${date}T${time}${sign}${pad(Math.trunc(offset / 60))}:${pad(offset % 60)}`;
+}
+
+/** De grammen van één zaak: de aanvraag en alles wat ernaar verwijst. */
+export function gramsOfCase(grams, applicationId) {
+  if (!applicationId) return [];
+  return (grams ?? []).filter(
+    (g) => g.id === applicationId || Object.values(g.refers_to ?? {}).includes(applicationId),
+  );
+}
+
+/**
+ * Een bepaling (`<regelwerk>#<artikel>[ lid n]`) zoals een mens haar leest:
+ * de naam van de wet uit het corpus en het artikel. Een wet die het corpus
+ * niet kent, houdt haar id.
+ */
+export function provisionLabel(corpus, reference) {
+  const [lawId, rest = ''] = String(reference).split('#');
+  const name = corpus?.lawById?.(lawId)?.name ?? lawId;
+  return rest ? `${name}, art. ${rest}` : name;
+}
+
+/**
+ * De waarde van een veld van een gram zoals een mens haar leest, naar wat de
+ * wet over het veld zegt. `field` is het veld uit de vorm van de gebeurtenis
+ * (WasmCell.shape: `type`, `fixed`), `spec` de declaratie in de wet die het
+ * besluit neemt. Een veld dat de cel vastzet (de gevraagde beschikking) is
+ * een bepaling: bij naam. Een geheel getal zonder eenheid blijft een getal
+ * zonder groepering ("2026", niet "2.026").
+ */
+export function fieldText(value, field = null, spec = null, corpus = null) {
+  if (field?.fixed != null) return provisionLabel(corpus, value);
+  if (field?.type === 'number' && !spec?.type_spec?.unit && Number.isInteger(value)) return String(value);
+  return formatValue(value, spec);
+}

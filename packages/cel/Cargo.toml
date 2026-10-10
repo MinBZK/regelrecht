@@ -1,0 +1,37 @@
+[package]
+name = "regelrecht-cel"
+version = "0.1.0"
+edition = "2021"
+authors = ["MinBZK <noreply@minbzk.nl>"]
+description = "Een cel die feiten uit de wet vastlegt in een kroniek (chronolex, RFC-022): de aanvraag en het besluit erop"
+license = "EUPL-1.2"
+repository = "https://github.com/MinBZK/regelrecht"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+regelrecht-engine = { path = "../engine" }
+regelrecht-law-model = { path = "../law-model" }
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml_ng.workspace = true
+thiserror.workspace = true
+uuid = { workspace = true, features = ["v7"] }
+walkdir.workspace = true
+
+wasm-bindgen = { version = "0.2", optional = true }
+serde-wasm-bindgen = { version = "0.6", optional = true }
+
+[features]
+# The cell in the browser, next to the engine it executes the law with: one
+# WASM module that exports both WasmEngine and WasmCell.
+wasm = ["regelrecht-engine/wasm", "dep:wasm-bindgen", "dep:serde-wasm-bindgen", "uuid/js"]
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

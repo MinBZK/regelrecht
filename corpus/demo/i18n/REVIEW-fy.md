@@ -42,6 +42,12 @@ corrigeren.
 - **`hanneljensbekwaam`** voor handelingsbekwaam: correct gevormd, niet
   geverifieerd tegen juridisch Fries.
 
+- **`zaak.chronicle.*`, `sheet.application.law_asks.*`** (de kroniek en "Wat de
+  wet vraagt") zijn door een taalmodel vertaald. Twijfel bij `fêstige` voor
+  "gevestigd" (een feit dat een artikel in het leven roept, niet een vestiging)
+  en bij `útfierder` voor "uitvoerder" (het bestuursorgaan dat de wet uitvoert).
+  `Kronyk` volgt het Nederlandse "kroniek" als term uit de chronolexografie.
+
 ## 3. De banner over de wettekst
 
 `wet.dutch_only.body` staat op:

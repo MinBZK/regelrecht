@@ -171,6 +171,130 @@ pub struct Parameter {
     pub temporal: Option<Temporal>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub legal_basis: Option<ProvisionReference>,
+    /// Who supplies this parameter, per the law, with the provision that says
+    /// so (RFC-043). Metadata for a process runtime and an editor; the engine
+    /// does not read it. An `origin` that is not valid does not stop the law
+    /// from loading: it is kept as written, and a runtime that reads it
+    /// reports it with the file and the parameter.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<Declared<Origin>>,
+}
+
+/// A field a law declares for a process runtime and not for the engine
+/// (RFC-043): valid, or kept as written. The engine never fails to load a law
+/// because such a field is wrong; whoever reads it asks [`Declared::valid`]
+/// and reports the reason.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Declared<T> {
+    Valid(T),
+    Invalid(serde_json::Value),
+}
+
+impl<T: serde::de::DeserializeOwned> Declared<T> {
+    /// The value, or why it is not valid.
+    pub fn valid(&self) -> Result<&T, String> {
+        match self {
+            Declared::Valid(v) => Ok(v),
+            Declared::Invalid(raw) => Err(match serde_json::from_value::<T>(raw.clone()) {
+                Err(e) => e.to_string(),
+                // Unreachable: the untagged enum tried the same thing first.
+                Ok(_) => "not valid".to_string(),
+            }),
+        }
+    }
+
+    /// The value if it is valid.
+    pub fn as_valid(&self) -> Option<&T> {
+        self.valid().ok()
+    }
+}
+
+/// Who supplies a parameter, per the law (RFC-043). Always with a
+/// `grondslag`: `<regulation>#<article>`, optionally followed by ` lid <n>`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Origin {
+    pub waarde: OriginValue,
+    /// With `REGISTER`: the regulation by or under which the register is
+    /// kept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub register: Option<String>,
+    pub grondslag: String,
+    /// What the parameter is within the decision requested, when that matters
+    /// to a process beyond who supplies it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rol: Option<OriginRole>,
+}
+
+/// The role of a parameter within the decision requested (RFC-043).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum OriginRole {
+    /// The period the decision covers, chosen by the applicant as part of
+    /// the decision requested (Awb 4:2, first paragraph). Known before the
+    /// application is filled in.
+    Tijdvak,
+    /// The decision requested (Awb 4:2, first paragraph, under c): fixed by
+    /// the decision the application asks for, as the portal offers it, not
+    /// typed in by the applicant.
+    GevraagdBesluit,
+    /// The decision the parameter is about (RFC-047): the runtime gives the
+    /// id of the decision gram the action acts on, such as the
+    /// subsidievaststelling a payment executes (UB 15). A fact from the
+    /// course of the case (`DOSSIER`), with a role a process can find.
+    Besluit,
+}
+
+impl OriginRole {
+    /// The value as it is written in a law.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            OriginRole::Tijdvak => "TIJDVAK",
+            OriginRole::GevraagdBesluit => "GEVRAAGD_BESLUIT",
+            OriginRole::Besluit => "BESLUIT",
+        }
+    }
+}
+
+/// The five origins of a parameter (RFC-043).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum OriginValue {
+    /// What the applicant supplies or chooses: the content of the
+    /// application, the decision requested, the period.
+    Belanghebbende,
+    /// A fact from the course of the case at the administrative body.
+    Dossier,
+    /// A judgement the administrative body gives when it decides.
+    Oordeel,
+    /// A fact from a register kept by or under a regulation.
+    Register,
+    /// What the intake channel says: who logs in, and on whose behalf.
+    Kanaal,
+}
+
+impl OriginValue {
+    /// The value as it is written in a law.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            OriginValue::Belanghebbende => "BELANGHEBBENDE",
+            OriginValue::Dossier => "DOSSIER",
+            OriginValue::Oordeel => "OORDEEL",
+            OriginValue::Register => "REGISTER",
+            OriginValue::Kanaal => "KANAAL",
+        }
+    }
+}
+
+/// An implementing policy overriding the origin that a law gives one of its
+/// parameters, with the provision of the policy as `grondslag` (RFC-043).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OriginOverride {
+    pub regulation: String,
+    pub parameter: String,
+    pub origin: Origin,
 }
 
 impl Parameter {
@@ -259,6 +383,33 @@ pub struct Produces {
     /// When absent, the default procedure for the legal_character is used.
     #[serde(default)]
     pub procedure_id: Option<String>,
+    /// Namespaced integration blocks (RFC-022 §3.2): each integration owns
+    /// one key and the shape inside it. The engine does not read them; a
+    /// runtime that knows the namespace does (for instance `chronolex`: which
+    /// facts this article establishes and how it reads them back from a
+    /// chronicle). Kept as written, so a namespace this crate does not know
+    /// is not silently dropped.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extensions: Option<serde_json::Value>,
+    /// The article establishes something a belanghebbende submits, such as
+    /// an application (Awb 1:3 lid 3), that the general law can hook onto
+    /// (RFC-046). Next to the legal character of the article's own outputs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub submission: Option<Submission>,
+    /// The articles that establish the submission this decision is taken on
+    /// (RFC-046), as `<regulation>#<article>`: Wpp 107 "besluit op de
+    /// aanvraag" names Wpp 102.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decides_on: Option<Vec<String>>,
+}
+
+/// What an article establishes that a belanghebbende submits (RFC-046).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Submission {
+    /// The kind of submission, as the law names it: `AANVRAAG` (Awb 1:3 lid
+    /// 3). The general law hooks onto it with `applies_to.submission`.
+    pub kind: String,
 }
 
 /// A single case in an IF operation (cases/default syntax)
@@ -847,6 +998,26 @@ pub struct HookFilter {
     /// When absent, defaults to BESLUIT for backward compatibility.
     #[serde(default)]
     pub stage: Option<String>,
+    /// Match articles that establish a submission of this kind (RFC-046),
+    /// such as `AANVRAAG`: Awb 4:2 applies to every application. A hook names
+    /// either this or `legal_character`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub submission: Option<String>,
+    /// With `submission`: only a submission on which decisions of this legal
+    /// character are taken (`decides_on` in the decision article), such as
+    /// `BESCHIKKING` for afdeling 4.1.1 of the Awb.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decided_by: Option<String>,
+    /// With `submission`: only the submission that this article establishes
+    /// (`<regulation>#<article>`, without a paragraph), such as the policy of
+    /// one authority that works out the application of one specific law. A
+    /// hook without it applies to every submission of the kind.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "optional_article_reference"
+    )]
+    pub established_by: Option<String>,
 }
 
 /// Declaration that an article fires as a hook on matching lifecycle events (RFC-007)
@@ -1157,6 +1328,46 @@ pub struct UntranslatableEntry {
     pub accepted: bool,
 }
 
+/// Whether `s` is an article reference of the schema (`articleReference`):
+/// `<regulation>#<article>`, without a paragraph. The regulation is
+/// `[a-z][a-z0-9_]*`; the article starts and ends with a letter or digit and
+/// holds only letters, digits and `:._-` in between, so no space and no
+/// ` lid <n>`.
+pub fn is_article_reference(s: &str) -> bool {
+    let Some((regulation, article)) = s.split_once('#') else {
+        return false;
+    };
+    let mut reg = regulation.chars();
+    let reg_ok = reg.next().is_some_and(|c| c.is_ascii_lowercase())
+        && reg.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_');
+    let edge = |c: Option<char>| c.is_some_and(|c| c.is_ascii_alphanumeric());
+    let art_ok = edge(article.chars().next())
+        && edge(article.chars().last())
+        && article
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, ':' | '.' | '_' | '-'));
+    reg_ok && art_ok
+}
+
+/// Deserialize an optional string that, when present, must be an
+/// [`is_article_reference`].
+fn optional_article_reference<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<String>::deserialize(deserializer)?
+        .map(|s| {
+            if is_article_reference(&s) {
+                Ok(s)
+            } else {
+                Err(serde::de::Error::custom(format!(
+                    "'{s}' is not <regulation>#<article> without a paragraph"
+                )))
+            }
+        })
+        .transpose()
+}
+
 /// Machine-readable section of an article
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct MachineReadable {
@@ -1194,6 +1405,11 @@ pub struct MachineReadable {
     /// Document properties this article establishes (schema v0.7.0)
     #[serde(default)]
     pub declares: Option<Vec<Declaration>>,
+    /// Origins this article (of an implementing policy) gives parameters of
+    /// another regulation, overriding what that regulation says (RFC-043).
+    /// Each entry is kept as written when it is not valid; see [`Declared`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origins: Option<Vec<Declared<OriginOverride>>>,
 }
 
 /// Represents a single article in a law

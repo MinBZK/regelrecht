@@ -67,6 +67,9 @@ export function loadCorpus() {
         return { ...entry, text, doc: yaml.load(text) };
       }),
     );
+    // De cellen (chronolex, RFC-022): per cel de teksten die WasmCell leest,
+    // en per gebeurtenis het artikel dat haar vestigt.
+    const cells = await Promise.all((index.cells ?? []).map(loadCell));
     // Latest version per law id, for the UI (the engine keeps every version and
     // picks by calculation date itself).
     const latestById = new Map();
@@ -92,6 +95,7 @@ export function loadCorpus() {
         return candidates[0] ?? null;
       },
       scenarios: index.scenarios,
+      cells,
       bindings,
       profiles,
       services: services.services ?? {},
@@ -127,6 +131,23 @@ export function loadCorpus() {
     };
   })();
   return corpusPromise;
+}
+
+/**
+ * Eén cel: `cell.yaml` met de stromen en de lexostatussen die het noemt, als
+ * tekst voor WasmCell, plus haar gebeurtenissen.
+ */
+async function loadCell(id) {
+  const base = `/data/cells/${id}`;
+  const cellYaml = await fetchText(`${base}/cell.yaml`);
+  const cell = yaml.load(cellYaml);
+  const streams = await Promise.all((cell.streams ?? []).map((p) => fetchText(`${base}/${p}`)));
+  const lexostatuses = cell.lexostatuses ? await fetchText(`${base}/${cell.lexostatuses}`) : null;
+  const events = streams.flatMap((text) => {
+    const stream = yaml.load(text);
+    return (stream.events ?? []).map((e) => ({ ...e, chronicle: stream.chronicle }));
+  });
+  return { id, cellYaml, streams, lexostatuses, events };
 }
 
 /** Organisation display data for a service code. */

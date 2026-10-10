@@ -9,6 +9,7 @@ import { lineageFromTrace } from '../data/lineage.js';
 import { caseReason, eventText, useDemo } from '../store/demoStore.js';
 import { isDelegationProvider, producesBeschikking, subjectOf } from '../data/entrypoints.js';
 import { awbOutcomes, statusOf } from '../data/lifecycle.js';
+import { fieldText, provisionLabel } from '../data/chronolex.js';
 import { useI18n } from '../i18n/index.js';
 import { useLocalePath } from '../i18n/useLocalePath.js';
 
@@ -60,6 +61,30 @@ const lanes = computed(() => [
 
 const selected = computed(() => state.cases.find((c) => c.id === route.params.caseId) ?? null);
 watch(selected, (c) => { if (c && c.service !== service.value) service.value = c.service; }, { immediate: true });
+
+// Zaak of kroniek: de kroniek toont de grammen van deze zaak (chronolex,
+// RFC-022), de aanvraag zoals de wet haar vroeg en het besluit erop. Een
+// andere zaak opent weer op de zaak zelf.
+const sheetView = ref('zaak');
+watch(() => selected.value?.id, () => { sheetView.value = 'zaak'; });
+const caseGrams = computed(() => {
+  void dataVersion.value;
+  return demo.gramsOfCase(selected.value).map((g) => {
+    // Hoe een waarde te lezen, zegt de wet: het veld uit de vorm van de
+    // gebeurtenis, en voor een besluit de declaratie in het besluitartikel.
+    const fields = demo.gramFields(g);
+    const decisionDoc = g.regulation ? corpus.value.lawById(g.regulation)?.doc : null;
+    return {
+      ...g,
+      rows: Object.entries(g.fields ?? {}).map(([name, value]) => ({
+        name,
+        text: fieldText(value, fields[name], decisionDoc ? fieldSpec(decisionDoc, name) : null, corpus.value),
+      })),
+      basis: (g.effective_at_legal_basis ?? []).map((ref) => provisionLabel(corpus.value, ref)).join(' · '),
+      establishedBy: g.establishes ? provisionLabel(corpus.value, g.establishes) : '',
+    };
+  });
+});
 
 // The case opens in a sheet over the board, not in an inspector column beside
 // it. A case carries the banner, both outcomes, the whole data tree and the
@@ -288,6 +313,35 @@ function claimLawName(cl) {
             :supporting-text="caseReason(selected) ?? eventText(selected.events.at(-1))"
           ></nldd-banner>
 
+          <nldd-segmented-control v-if="selected.applicationGramId" size="sm" width="fit-content" :value="sheetView" @change="sheetView = $event.detail?.value ?? 'zaak'">
+            <nldd-segmented-control-item value="zaak" :text="t('zaak.view.case')"></nldd-segmented-control-item>
+            <nldd-segmented-control-item value="kroniek" :text="t('zaak.view.chronicle')"></nldd-segmented-control-item>
+          </nldd-segmented-control>
+
+          <template v-if="sheetView === 'kroniek'">
+            <nldd-rich-text spacing="tight"><p><small>{{ t('zaak.chronicle.hint') }}</small></p></nldd-rich-text>
+            <nldd-banner v-if="selected.chronicleError" variant="warning" :text="t('zaak.chronicle.failed')" :supporting-text="selected.chronicleError"></nldd-banner>
+            <nldd-banner v-if="selected.chronicleNoteKey" variant="neutral" :text="t(selected.chronicleNoteKey)"></nldd-banner>
+            <nldd-container v-for="g in caseGrams" :key="g.id" gap="4">
+              <nldd-title size="5">
+                <h3>{{ humanize(g.name) }}</h3>
+                <span slot="supporting-text">{{ t(g.type === 'decretogram' ? 'zaak.chronicle.decision' : 'zaak.chronicle.application', { law: g.establishedBy }) }}</span>
+              </nldd-title>
+              <nldd-list appearance="box-tinted" :accessible-label="humanize(g.name)">
+                <nldd-list-item size="sm">
+                  <nldd-text-cell size="sm" color="secondary" :text="t('zaak.chronicle.effective_at')" :supporting-text="g.basis"></nldd-text-cell>
+                  <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="formatDateTime(g.effective_at)"></nldd-text-cell>
+                </nldd-list-item>
+                <nldd-list-item v-for="row in g.rows" :key="row.name" size="sm">
+                  <nldd-text-cell size="sm" :text="humanize(row.name)"></nldd-text-cell>
+                  <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :text="row.text"></nldd-text-cell>
+                </nldd-list-item>
+              </nldd-list>
+            </nldd-container>
+          </template>
+
+          <template v-else>
+
           <nldd-container gap="4">
 
             <nldd-container padding-inline="12"><nldd-text size="sm" weight="medium" color="secondary">{{ t('zaak.outcome') }}</nldd-text><nldd-text size="xs" color="secondary">{{ verified?.ok ? t('zaak.outcome.recomputed') : t('zaak.outcome.claimed') }}</nldd-text></nldd-container>
@@ -379,6 +433,7 @@ function claimLawName(cl) {
             </nldd-list>
 
           </nldd-container>
+          </template>
         </nldd-container>
       </nldd-page>
     </nldd-sheet>

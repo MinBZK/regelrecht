@@ -2,7 +2,8 @@
  * De Awb staat in twee corpora en moet daar hetzelfde zeggen.
  *
  * Het hoofdcorpus en het democorpus dragen allebei de beschikkingsprocedure en
- * de drie artikelen die eraan haken (3:46, 6:7, 6:8). Ze zijn met de hand
+ * de artikelen die eraan haken (3:46, 6:7, 6:8), en de twee die op de aanvraag
+ * haken (4:2, 4:13). Ze zijn met de hand
  * overgezet, en juist daar ging het twee keer mis: één keer viel de laatste
  * regel van artikel 6:8 weg (`weeks: $bezwaartermijn_weken`), waardoor de
  * einddatum van de bezwaartermijn gelijk werd aan de bekendmakingsdatum, en één
@@ -53,7 +54,7 @@ test('de beschikkingsprocedure is in beide corpora gelijk', () => {
   assert.equal(procedureBlock(demo), procedureBlock(hoofd));
 });
 
-for (const number of ['3:46', '6:7', '6:8']) {
+for (const number of ['3:46', '4:2', '4:13', '6:7', '6:8']) {
   test(`artikel ${number} is in beide corpora gelijk`, () => {
     assert.equal(article(demo, number), article(hoofd, number));
   });

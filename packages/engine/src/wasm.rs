@@ -229,6 +229,11 @@ struct WasmStageResult {
     /// Where the decision is now, e.g. "BEKENDMAKING". Absent when complete.
     #[serde(skip_serializing_if = "Option::is_none")]
     current_stage: Option<String>,
+    /// For an article that establishes a submission (RFC-046): the articles
+    /// that take part and what each asks, with per input whether it was
+    /// supplied. What an application form is made of.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    submission: Option<Box<crate::Submission>>,
 }
 
 /// Serializable result for executeWithTrace()
@@ -276,6 +281,15 @@ struct WasmLawInfo {
 #[wasm_bindgen]
 pub struct WasmEngine {
     service: LawExecutionService,
+}
+
+/// For Rust code compiled into the same WASM module (the chronolex cell),
+/// which executes the law with the engine the page loaded. Not exported to
+/// JavaScript.
+impl WasmEngine {
+    pub fn service(&self) -> &LawExecutionService {
+        &self.service
+    }
 }
 
 #[wasm_bindgen]
@@ -378,7 +392,7 @@ impl WasmEngine {
     /// layer owns the decision record.
     ///
     /// # Returns
-    /// * `Ok(JsValue)` — `{complete, outputs, state?, pending_inputs?, current_stage?}`
+    /// * `Ok(JsValue)` — `{complete, outputs, state?, pending_inputs?, current_stage?, submission?}`
     /// * `Err(JsValue)` — error message if execution fails
     #[wasm_bindgen(js_name = executeStage)]
     pub fn execute_stage(
@@ -413,11 +427,13 @@ impl WasmEngine {
                 state: None,
                 pending_inputs: Vec::new(),
                 current_stage: None,
+                submission: result.submission,
             },
             ExecutionOutcome::Yielded {
                 state,
                 outputs,
                 pending_inputs,
+                submission,
             } => WasmStageResult {
                 complete: false,
                 outputs,
@@ -425,6 +441,7 @@ impl WasmEngine {
                 current_stage: Some(state.current_stage.clone()),
                 state: Some(state),
                 pending_inputs,
+                submission,
             },
         };
 
@@ -981,6 +998,17 @@ articles:
         assert_eq!(engine.law_count(), 1);
         assert!(engine.has_law("test_law"));
         assert_eq!(engine.list_laws(), vec!["test_law".to_string()]);
+    }
+
+    /// Wat in dezelfde module meedraait (de chronolex-cel) voert de wet uit met
+    /// de service van deze engine: die moet de wetten zien die de pagina laadde,
+    /// niet een lege.
+    #[test]
+    fn test_wasm_engine_service_is_the_loaded_service() {
+        let mut engine = WasmEngine::new();
+        load_law(&mut engine, MINIMAL_LAW_YAML);
+
+        assert!(engine.service().resolver().get_law("test_law").is_some());
     }
 
     /// `loadLaw()` is de enige weg waarlangs JavaScript een wet de engine in

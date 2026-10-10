@@ -81,6 +81,7 @@ fn run_lifecycle(
                 state: next,
                 outputs,
                 pending_inputs,
+                ..
             } => {
                 // Alleen aanleveren wat de aanroeper ook echt heeft; wat hij
                 // niet heeft, is waar de levensloop op wacht.

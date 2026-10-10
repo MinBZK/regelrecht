@@ -8,6 +8,7 @@ import { caseReason, eventText, useDemo } from '../store/demoStore.js';
 import { t } from '../i18n/index.js';
 import { awbOutcomes, canBeApplied, objectionOpen, statusOf } from '../data/lifecycle.js';
 import { driftRows, driftSentence } from '../data/caseDrift.js';
+import { fieldText, provisionLabel } from '../data/chronolex.js';
 
 // The citizen's side of an application, inside the portal. The flow the POC
 // generated per regeling: first the questions only the citizen can answer
@@ -51,6 +52,23 @@ const currentCase = computed(() => {
   return props.law ? findCase(props.law) : null;
 });
 const doc = computed(() => props.law?.doc);
+// De aanvraag zoals de wet haar vraagt (chronolex): per veld het artikel dat
+// erom vraagt en wat de persona invult. Alleen voor een wet waarvan een cel
+// het besluit in haar kroniek legt.
+const lawApplication = computed(() => {
+  void dataVersion.value;
+  if (!props.law || !demo.ready.value) return null;
+  const shape = demo.applicationShape(props.law);
+  if (!shape) return null;
+  const values = demo.applicationValuesFor(props.law, shape);
+  return shape.fields.map((f) => ({
+    name: f.name,
+    field: f,
+    value: f.fixed ?? values[f.name],
+    byCell: f.fixed != null,
+    basis: f.legal_basis.map((ref) => provisionLabel(corpus.value, ref)).join(' · '),
+  }));
+});
 
 // true/false when the law decided, 'unknown' when it could not for lack of
 // facts (RFC-036): then there is nothing to submit yet. A law without a
@@ -392,6 +410,19 @@ function claimStatus(cl) {
                 <DataLineage :nodes="lineage" @edit="emit('edit-value', { node: $event, law })" />
               </nldd-list>
               <nldd-rich-text spacing="tight"><p><small>{{ t('sheet.application.basis.hint') }}</small></p></nldd-rich-text>
+
+              <template v-if="lawApplication">
+                <nldd-title size="5">
+                  <h3>{{ t('sheet.application.law_asks.title') }}</h3>
+                  <span slot="supporting-text">{{ t('sheet.application.law_asks.subtitle') }}</span>
+                </nldd-title>
+                <nldd-list appearance="box-tinted" :accessible-label="t('sheet.application.law_asks.title')">
+                  <nldd-list-item v-for="row in lawApplication" :key="row.name" size="sm">
+                    <nldd-text-cell size="sm" :text="humanize(row.name)" :supporting-text="row.basis"></nldd-text-cell>
+                    <nldd-text-cell size="sm" width="fit-content" horizontal-alignment="right" :color="row.value == null ? 'secondary' : 'content'" :text="row.value == null ? t('sheet.application.law_asks.empty') : fieldText(row.value, row.field, null, corpus)" :supporting-text="row.byCell ? t('sheet.application.law_asks.by_cell') : ''"></nldd-text-cell>
+                  </nldd-list-item>
+                </nldd-list>
+              </template>
 
               <template v-if="requirementsMet && applicable">
                 <nldd-checkbox-field :label="t('sheet.application.declaration')" :checked="declared || undefined" @change="declared = !!($event.detail?.checked ?? $event.target?.checked)"></nldd-checkbox-field>

@@ -1,0 +1,11 @@
+---
+# De toekenning van de zorgtoeslag op de aanvraag: een decretogram met de
+# uitkomsten van Zorgtoeslagwet art. 2. De parameters van dat artikel leest
+# de cel uit haar eigen kroniek: de lexostatus `aanvraag`.
+$id: zorgtoeslag_besluiten
+recording_actor: belastingdienst_toeslagen
+chronicle: toeslagen
+events:
+  - name: zorgtoeslag_toegekend
+    establishes: zorgtoeslagwet#2
+    reads: aanvraag

@@ -1,5 +1,5 @@
 ---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.8/schema/v0.5.8/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.8.0/schema/v0.8.0/schema.json
 $id: wet_op_de_zorgtoeslag
 regulatory_layer: WET
 publication_date: '2024-12-20'
@@ -130,6 +130,23 @@ articles:
         produces:
           legal_character: BESCHIKKING
           decision_type: TOEKENNING
+          # De zorgtoeslag wordt op aanvraag toegekend (Awir art. 14 lid 1): deze
+          # beschikking wordt genomen op de aanvraag van Awir art. 15 (RFC-046).
+          # Het besluit is een decretogram (RFC-022 par. 1.2): zijn velden zijn
+          # de uitkomsten van dit artikel en het verwijst naar de aanvraag.
+          decides_on:
+            - algemene_wet_inkomensafhankelijke_regelingen#15
+          extensions:
+            chronolex:
+              establishes:
+                - event: zorgtoeslag_toegekend
+                  type: decretogram
+                  stage: BESLUIT
+                  refers_to:
+                    on_application:
+                      to: algemene_wet_inkomensafhankelijke_regelingen#15
+                      required: true
+                  fields: outputs
         parameters:
           - name: bsn
             type: string
