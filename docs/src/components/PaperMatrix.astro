@@ -1,15 +1,15 @@
 ---
 /*
- * A yes/partly/no matrix for the plain-language paper page, as a list: who can
- * do what (step 2) and Table 1 (step 8).
+ * A yes/partly/no table for the plain-language paper page: who can do what
+ * (step 2) and the earlier approaches compared (step 7).
  *
- * One row per actor or approach, with a tag for each column that applies ("ja",
- * or the column with "deels" behind it) and the `none` text when nothing does.
- * A "nee" is the absence of a tag. That reads the same on a phone and on a wide
- * screen, so there is one rendering and no table that has to scroll sideways or
- * be swapped for another layout below a breakpoint.
+ * An nldd-table with a header row, so the columns are visible as columns: the
+ * first names the actor or approach, the others carry one tag each ("ja",
+ * "deels", "nee"). Every value is written out, "nee" included, because a
+ * missing tag reads as "not filled in". A note on a cell sits under its tag.
  *
- * Only NLDD components: nldd-list, nldd-list-item, nldd-text-cell, nldd-tag.
+ * Only NLDD components: nldd-table, nldd-table-row, nldd-cell, nldd-tag,
+ * nldd-text.
  */
 import type { Cell } from '~/lib/paper-explained-content';
 
@@ -20,43 +20,48 @@ interface Row {
 
 interface Props {
   label: string;
+  /** The first column's heading ("Wie", "Aanpak"). */
+  rowHeader: string;
   columns: string[];
   rows: Row[];
   words: { yes: string; part: string; no: string };
-  /** Shown for a row where no column applies. */
-  none: string;
-  appearance?: 'simple' | 'box-tinted' | 'box-base';
+  background?: 'base' | 'tinted';
+  /**
+   * 'equal' shares the width over the value columns (long, wrapping headers,
+   * step 2); 'fit' sizes them to their one-word header so the first column
+   * gets the rest (step 7, where it holds the longer names).
+   */
+  tracks?: 'equal' | 'fit';
 }
 
-const { label, columns, rows, words, none, appearance = 'box-base' } = Astro.props;
+const { label, rowHeader, columns, rows, words, background = 'base', tracks: fit = 'equal' } = Astro.props;
 
 const color = (v: Cell['v']) => (v === 'yes' ? 'success' : v === 'part' ? 'warning' : 'neutral');
+const word = (v: Cell['v']) => (v === 'yes' ? words.yes : v === 'part' ? words.part : words.no);
+const tracks =
+  fit === 'fit'
+    ? `minmax(0, 1fr) repeat(${columns.length}, auto)`
+    : `minmax(min-content, 1.2fr) repeat(${columns.length}, minmax(min-content, 1fr))`;
 ---
 
-<nldd-list accessible-label={label} appearance={appearance}>
-  {
-    rows.map((row) => {
-      const applies = row.cells
-        .map((c, i) => ({ ...c, column: columns[i] }))
-        .filter((c) => c.v !== 'no');
-      const notes = row.cells.filter((c) => c.note).map((c) => c.note);
-      return (
-        <nldd-list-item>
-          <nldd-text-cell text={row.label} vertical-alignment="top">
-            <nldd-container slot="supporting-text" layout="wrap" gap="4">
-              {applies.length === 0 && <nldd-text size="sm" color="secondary">{none}</nldd-text>}
-              {applies.map((c) => (
-                <nldd-tag
-                  size="sm"
-                  color={color(c.v)}
-                  text={c.v === 'part' ? `${c.column} (${words.part})` : c.column}
-                />
-              ))}
-              {notes.length > 0 && <nldd-text size="sm" color="secondary">{notes.join('; ')}</nldd-text>}
-            </nldd-container>
-          </nldd-text-cell>
-        </nldd-list-item>
-      );
-    })
-  }
-</nldd-list>
+<nldd-table accessible-label={label} background={background} columns={tracks}>
+  <nldd-table-row slot="header">
+    <nldd-cell width="full" vertical-alignment="bottom"><nldd-text size="sm" weight="bold">{rowHeader}</nldd-text></nldd-cell>
+    {columns.map((c) => (
+      <nldd-cell width="full" vertical-alignment="bottom"><nldd-text size="sm" weight="bold">{c}</nldd-text></nldd-cell>
+    ))}
+  </nldd-table-row>
+  {rows.map((row) => (
+    <nldd-table-row>
+      <nldd-cell width="full" vertical-alignment="top"><nldd-text size="sm">{row.label}</nldd-text></nldd-cell>
+      {row.cells.map((c) => (
+        <nldd-cell width="full" vertical-alignment="top">
+          <nldd-container gap="4">
+            <nldd-container layout="wrap"><nldd-tag size="sm" color={color(c.v)} text={word(c.v)} /></nldd-container>
+            {c.note && <nldd-text size="sm" color="secondary">{c.note}</nldd-text>}
+          </nldd-container>
+        </nldd-cell>
+      ))}
+    </nldd-table-row>
+  ))}
+</nldd-table>
