@@ -5271,9 +5271,9 @@ articles:
         assert_eq!(result.outputs.get("vandaag"), Some(&Value::Int(6)));
     }
 
-    /// An overridden output assigned twice is replaced after its last
-    /// assignment: an action between the two reads the first assignment, an
-    /// action after them reads the replaced value.
+    /// An overridden output assigned twice is replaced once, after its last
+    /// assignment, and every reader reads that value: also an action declared
+    /// between the two assignments, because readers run after all of them.
     #[test]
     fn an_output_assigned_twice_is_replaced_after_its_last_assignment() {
         let wet = r#"
@@ -5344,7 +5344,7 @@ articles:
         let mut service = LawExecutionService::new();
         service.load_law(wet).unwrap();
         service.load_law(&beleid).unwrap();
-        // tussenstand 1 (before the last assignment), plakjes_kaas 4.
+        // tussenstand and plakjes_kaas both read the replaced value (4).
         let result = service
             .evaluate_law_output(
                 "beleid_boterhammen",
@@ -5353,7 +5353,130 @@ articles:
                 "2025-01-01",
             )
             .unwrap();
-        assert_eq!(result.outputs.get("gelezen"), Some(&Value::Int(104)));
+        assert_eq!(result.outputs.get("gelezen"), Some(&Value::Int(404)));
+    }
+
+    /// The order of the actions in the file never changes a value: the same
+    /// article with its actions in any order gives the same outputs, also
+    /// when an action reads an output declared after it.
+    #[test]
+    fn the_order_of_actions_in_the_file_does_not_change_a_value() {
+        let wet = |actions: &str| {
+            format!(
+                r#"
+$id: wet_a
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: A, B en C.
+    machine_readable:
+      execution:
+        output:
+          - name: a
+            type: number
+          - name: b
+            type: number
+          - name: c
+            type: number
+        actions:
+{actions}"#
+            )
+        };
+        let a = "          - output: a\n            value: 2\n";
+        let b = "          - output: b\n            value:\n              operation: ADD\n              values: [$a, $c]\n";
+        let c = "          - output: c\n            value: 10\n";
+        for order in [
+            [a, b, c],
+            [a, c, b],
+            [b, a, c],
+            [b, c, a],
+            [c, a, b],
+            [c, b, a],
+        ] {
+            let actions = order.concat();
+            let mut service = LawExecutionService::new();
+            service.load_law(&wet(&actions)).unwrap();
+            let result = service
+                .evaluate_law_output("wet_a", "b", BTreeMap::new(), "2025-01-01")
+                .unwrap_or_else(|e| panic!("{actions}: {e}"));
+            assert_eq!(result.outputs.get("b"), Some(&Value::Int(12)), "{actions}");
+        }
+    }
+
+    /// Outputs of one article that read each other are a cycle, reported as
+    /// one, not a variable that happens to be missing in file order.
+    #[test]
+    fn outputs_reading_each_other_are_a_cycle() {
+        let law = r#"
+$id: wet_cyclus
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: A is B, B is A.
+    machine_readable:
+      execution:
+        output:
+          - name: a
+            type: number
+          - name: b
+            type: number
+        actions:
+          - output: a
+            value: $b
+          - output: b
+            value: $a
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+        match service.evaluate_law_output("wet_cyclus", "a", BTreeMap::new(), "2025-01-01") {
+            Err(EngineError::CircularReference(msg)) => {
+                assert!(msg.contains("depends on itself"), "{msg}");
+            }
+            other => panic!("expected CircularReference, got {other:?}"),
+        }
+    }
+
+    /// A cycle among outputs nobody asked for does not fail the request: only
+    /// the actions the requested output depends on are ordered and run
+    /// (RFC-043).
+    #[test]
+    fn a_cycle_outside_the_requested_outputs_does_not_fail_the_request() {
+        let law = r#"
+$id: wet_cyclus_ernaast
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: A is B, B is A, en C is drie.
+    machine_readable:
+      execution:
+        output:
+          - name: a
+            type: number
+          - name: b
+            type: number
+          - name: c
+            type: number
+        actions:
+          - output: a
+            value: $b
+          - output: b
+            value: $a
+          - output: c
+            value: 3
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+        let result = service
+            .evaluate_law_output("wet_cyclus_ernaast", "c", BTreeMap::new(), "2025-01-01")
+            .unwrap();
+        assert_eq!(result.outputs.get("c"), Some(&Value::Int(3)));
+        assert!(matches!(
+            service.evaluate_law_output("wet_cyclus_ernaast", "a", BTreeMap::new(), "2025-01-01"),
+            Err(EngineError::CircularReference(_))
+        ));
     }
 
     /// An article that both fills in an open term of a law and overrides an
