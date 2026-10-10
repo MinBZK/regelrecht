@@ -6790,6 +6790,27 @@ mod tests {
         }
 
         #[test]
+        fn a_decided_result_gets_the_dispatchers_message() {
+            // The counterpart of the test below: the handler's message survives
+            // only for an unknown result. AND writes one of its own when every
+            // condition holds, and for a decided result the reader still gets
+            // the uniform "Compute OP(...) = value".
+            let mut context = RuleContext::new(BTreeMap::new(), "2025-01-01").unwrap();
+            let trace = std::rc::Rc::new(std::cell::RefCell::new(
+                crate::trace::TraceBuilder::new_untimed(),
+            ));
+            context.set_trace(std::rc::Rc::clone(&trace));
+            trace.borrow_mut().push("root", PathNodeType::Action);
+            let op = ActionOperation::And {
+                conditions: vec![lit(true), lit(true)],
+            };
+            execute_operation(&op, &context, 0).unwrap();
+            let root = trace.borrow_mut().pop().unwrap();
+            let node = root.children.into_iter().next().unwrap();
+            assert_eq!(node.message.as_deref(), Some("Compute AND(...) = True"));
+        }
+
+        #[test]
         fn the_trace_says_why_a_result_is_unknown() {
             // The dispatcher normally overwrites a handler's message with
             // "Compute OP(...) = value"; for an unknown result the handler's
