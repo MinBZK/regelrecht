@@ -46,14 +46,17 @@
 //! common single-instance path.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use async_trait::async_trait;
 use tokio::sync::Mutex;
 
 use regelrecht_github::{Committer, GithubClient, GithubError};
 
-use crate::backend::{FileEntry, PersistOutcome, RecursiveFileEntry, RepoBackend, WriteContext};
+use crate::backend::{
+    normalized_subpath, validate_relative_path, FileEntry, PersistOutcome, RecursiveFileEntry,
+    RepoBackend, WriteContext,
+};
 use crate::error::{CorpusError, Result};
 use crate::models::GitHubSource;
 use crate::timing;
@@ -78,6 +81,10 @@ struct PendingWrite {
 enum PendingOp {
     Upsert(String),
     Delete,
+    /// No write: refuse the persist if the path turned up on a branch this
+    /// persist created, after a read here saw it absent (see
+    /// [`RepoBackend::expect_still_absent`]).
+    AssertAbsent,
 }
 
 /// Mutable state guarded by the backend's mutex. The shared `GithubClient`
@@ -86,19 +93,28 @@ enum PendingOp {
 /// mutability (all its methods take `&self`).
 struct Inner {
     client: GithubClient,
-    /// Map from source-relative path → most recently observed blob SHA.
+    /// Map from in-repo path (the path the Contents API addresses, with
+    /// any `sub_path` prefix) → most recently observed blob SHA. Keyed by
+    /// in-repo path rather than source-relative path so source-relative
+    /// and repository-root-relative access share one cache and one
+    /// pending buffer without colliding.
     /// Populated by `read_file`. On persist: entries for paths that were
     /// written are refreshed with the post-commit SHA; entries for paths
     /// that were deleted are removed. Stale entries for paths neither
     /// written nor deleted may linger — the next write's 409/retry path
     /// covers that, so it stays correct.
-    sha_cache: HashMap<PathBuf, String>,
+    sha_cache: HashMap<String, String>,
     /// Paths whose most recent read in this backend answered "not there".
     /// Feeds [`PendingWrite::read_saw_absence`]; a read that does find the
-    /// file removes its entry again.
-    absent_reads: std::collections::HashSet<PathBuf>,
-    /// Buffered writes/deletes, in insertion order.
-    pending: Vec<(PathBuf, PendingWrite)>,
+    /// file removes its entry again. Keyed by in-repo path, like
+    /// `sha_cache`.
+    absent_reads: std::collections::HashSet<String>,
+    /// Buffered writes/deletes by in-repo path, in insertion order.
+    ///
+    /// All three collections are keyed by strings built only by
+    /// `repo_path_str` / `api_path`, so a key is always a validated,
+    /// forward-slash path inside the repository.
+    pending: Vec<(String, PendingWrite)>,
     /// Whether the target branch is known to exist. Set by a successful
     /// `ensure_ready` (rest-token bootstrap) or by the lazy bootstrap in
     /// `persist`. A token-less backend skips branch creation at
@@ -173,16 +189,10 @@ impl GitHubApiBackend {
     /// expects (with `sub_path` prefix). Forward slashes always — GitHub
     /// is OS-agnostic.
     fn api_path(&self, relative: &Path) -> Result<String> {
-        validate_relative(relative)?;
-        let rel = relative
-            .to_str()
-            .ok_or_else(|| {
-                CorpusError::Config(format!("path is not valid UTF-8: {}", relative.display()))
-            })?
-            .replace('\\', "/");
-        Ok(match &self.sub_path {
-            Some(sub) if !sub.is_empty() => format!("{}/{}", sub.trim_end_matches('/'), rel),
-            _ => rel,
+        let rel = repo_path_str(relative)?;
+        Ok(match normalized_subpath(self.sub_path.as_deref()) {
+            Some(sub) => format!("{sub}/{rel}"),
+            None => rel,
         })
     }
 
@@ -192,13 +202,64 @@ impl GitHubApiBackend {
     /// aren't part of this source's corpus subtree — e.g. repo-root config
     /// when the corpus lives under `regulation/nl`).
     fn to_source_relative(&self, in_repo_path: &str) -> Option<String> {
-        match &self.sub_path {
-            Some(sub) if !sub.is_empty() => {
-                let prefix = format!("{}/", sub.trim_end_matches('/'));
-                in_repo_path.strip_prefix(&prefix).map(str::to_string)
-            }
-            _ => Some(in_repo_path.to_string()),
+        match normalized_subpath(self.sub_path.as_deref()) {
+            Some(sub) => in_repo_path
+                .strip_prefix(&format!("{sub}/"))
+                .map(str::to_string),
+            None => Some(in_repo_path.to_string()),
         }
+    }
+
+    /// One Contents API GET of an in-repo path, recording the blob SHA (or
+    /// the absence) for a later write of the same path.
+    async fn read_in_repo(
+        &self,
+        api_path: String,
+        token_override: Option<&str>,
+    ) -> Result<Option<String>> {
+        let mut inner = self.inner.lock().await;
+        // One Contents API GET — the If-Match precondition read on the save
+        // path lands here, so it feeds the `gh_get` Server-Timing phase.
+        let outcome = timing::measure(
+            "gh_get",
+            inner.client.fetch_file_with_sha(
+                &self.full_repo(),
+                &self.branch,
+                &api_path,
+                token_override.or(self.token.as_deref()),
+            ),
+        )
+        .await?;
+        match outcome {
+            Some((content, sha)) => {
+                inner.absent_reads.remove(&api_path);
+                inner.sha_cache.insert(api_path, sha);
+                Ok(Some(content))
+            }
+            None => {
+                // Remove any stale SHA from a previous existence — a
+                // later write will (correctly) be treated as a create.
+                inner.sha_cache.remove(&api_path);
+                inner.absent_reads.insert(api_path);
+                Ok(None)
+            }
+        }
+    }
+
+    /// Buffer an operation on an in-repo path for the next `persist`,
+    /// carrying what this backend's last read of that path observed.
+    async fn stage(&self, api_path: String, op: PendingOp) {
+        let mut inner = self.inner.lock().await;
+        let base_sha = inner.sha_cache.get(&api_path).cloned();
+        let read_saw_absence = inner.absent_reads.contains(&api_path);
+        inner.pending.push((
+            api_path,
+            PendingWrite {
+                op,
+                base_sha,
+                read_saw_absence,
+            },
+        ));
     }
 
     /// Fetch the current SHA for a path on the target branch. Used by
@@ -408,22 +469,14 @@ impl GitHubApiBackend {
     }
 }
 
-fn validate_relative(path: &Path) -> Result<()> {
-    if path.is_absolute() {
-        return Err(CorpusError::Config(format!(
-            "path must be relative: {}",
-            path.display()
-        )));
-    }
-    for component in path.components() {
-        if matches!(component, std::path::Component::ParentDir) {
-            return Err(CorpusError::Config(format!(
-                "path must not contain '..': {}",
-                path.display()
-            )));
-        }
-    }
-    Ok(())
+/// Validate a relative path (no absolute paths, no `..`) and render it the
+/// way the Contents API wants it: UTF-8, forward slashes.
+fn repo_path_str(path: &Path) -> Result<String> {
+    validate_relative_path(path)?;
+    Ok(path
+        .to_str()
+        .ok_or_else(|| CorpusError::Config(format!("path is not valid UTF-8: {}", path.display())))?
+        .replace('\\', "/"))
 }
 
 #[async_trait]
@@ -444,34 +497,40 @@ impl RepoBackend for GitHubApiBackend {
         relative_path: &Path,
         token_override: Option<&str>,
     ) -> Result<Option<String>> {
-        let api_path = self.api_path(relative_path)?;
-        let mut inner = self.inner.lock().await;
-        // One Contents API GET — the If-Match precondition read on the save
-        // path lands here, so it feeds the `gh_get` Server-Timing phase.
-        let outcome = timing::measure(
-            "gh_get",
-            inner.client.fetch_file_with_sha(
-                &self.full_repo(),
-                &self.branch,
-                &api_path,
-                token_override.or(self.token.as_deref()),
-            ),
+        self.read_in_repo(self.api_path(relative_path)?, token_override)
+            .await
+    }
+
+    fn repo_subpath(&self) -> Option<&str> {
+        normalized_subpath(self.sub_path.as_deref())
+    }
+
+    // Same Contents API GET, addressed from the repository root: the path
+    // is not prefixed with `sub_path`.
+    async fn read_repo_file_with_token(
+        &self,
+        repo_path: &Path,
+        token_override: Option<&str>,
+    ) -> Result<Option<String>> {
+        self.read_in_repo(repo_path_str(repo_path)?, token_override)
+            .await
+    }
+
+    // Buffered in the same pending list as source-relative writes, so the
+    // next `persist` commits it to the same branch.
+    async fn write_repo_file(&self, repo_path: &Path, content: &str) -> Result<()> {
+        self.stage(
+            repo_path_str(repo_path)?,
+            PendingOp::Upsert(content.to_string()),
         )
-        .await?;
-        match outcome {
-            Some((content, sha)) => {
-                inner.sha_cache.insert(relative_path.to_path_buf(), sha);
-                inner.absent_reads.remove(relative_path);
-                Ok(Some(content))
-            }
-            None => {
-                // Remove any stale SHA from a previous existence — a
-                // later write will (correctly) be treated as a create.
-                inner.sha_cache.remove(relative_path);
-                inner.absent_reads.insert(relative_path.to_path_buf());
-                Ok(None)
-            }
-        }
+        .await;
+        Ok(())
+    }
+
+    async fn expect_still_absent(&self, relative_path: &Path) -> Result<()> {
+        self.stage(self.api_path(relative_path)?, PendingOp::AssertAbsent)
+            .await;
+        Ok(())
     }
 
     /// The corpus-wide implements map, from the precomputed index at the
@@ -539,34 +598,18 @@ impl RepoBackend for GitHubApiBackend {
     // and the override only becomes visible at `persist`. Buffer now;
     // `persist` refuses with `ReadOnly` when neither token is present.
     async fn write_file(&self, relative_path: &Path, content: &str) -> Result<()> {
-        validate_relative(relative_path)?;
-        let mut inner = self.inner.lock().await;
-        let base_sha = inner.sha_cache.get(relative_path).cloned();
-        let read_saw_absence = inner.absent_reads.contains(relative_path);
-        inner.pending.push((
-            relative_path.to_path_buf(),
-            PendingWrite {
-                op: PendingOp::Upsert(content.to_string()),
-                base_sha,
-                read_saw_absence,
-            },
-        ));
+        self.stage(
+            self.api_path(relative_path)?,
+            PendingOp::Upsert(content.to_string()),
+        )
+        .await;
         Ok(())
     }
 
     // Same stance as `write_file`: token enforcement lives in `persist`.
     async fn delete_file(&self, relative_path: &Path) -> Result<()> {
-        validate_relative(relative_path)?;
-        let mut inner = self.inner.lock().await;
-        let base_sha = inner.sha_cache.get(relative_path).cloned();
-        inner.pending.push((
-            relative_path.to_path_buf(),
-            PendingWrite {
-                op: PendingOp::Delete,
-                base_sha,
-                read_saw_absence: false,
-            },
-        ));
+        self.stage(self.api_path(relative_path)?, PendingOp::Delete)
+            .await;
         Ok(())
     }
 
@@ -710,7 +753,7 @@ impl RepoBackend for GitHubApiBackend {
 
     #[tracing::instrument(name = "gh_persist", skip_all)]
     async fn persist(&self, ctx: &WriteContext) -> Result<PersistOutcome> {
-        let pending: Vec<(PathBuf, PendingWrite)> = {
+        let pending: Vec<(String, PendingWrite)> = {
             let mut inner = self.inner.lock().await;
             std::mem::take(&mut inner.pending)
         };
@@ -766,7 +809,7 @@ impl RepoBackend for GitHubApiBackend {
             })
         };
         let repo = self.full_repo();
-        let mut new_shas: HashMap<PathBuf, String> = HashMap::new();
+        let mut new_shas: HashMap<String, String> = HashMap::new();
 
         // Take one lock guard for the whole loop so the shared-client calls
         // inside don't pay re-acquire cost per-write. The pending
@@ -808,8 +851,8 @@ impl RepoBackend for GitHubApiBackend {
             inner.branch_ready = true;
         }
 
-        for (path, pw) in pending {
-            let api_path = self.api_path(&path)?;
+        // Pending keys are already in-repo paths (see `Inner::sha_cache`).
+        for (api_path, pw) in pending {
             match pw.op {
                 PendingOp::Upsert(content) => {
                     let new_sha = try_put(
@@ -825,7 +868,37 @@ impl RepoBackend for GitHubApiBackend {
                         !(branch_just_created && pw.read_saw_absence),
                     )
                     .await?;
-                    new_shas.insert(path, new_sha);
+                    new_shas.insert(api_path, new_sha);
+                }
+                PendingOp::AssertAbsent => {
+                    // Same window as the create-only upsert above, for a
+                    // path the write was derived from rather than the one
+                    // it writes. Nothing to check unless this persist
+                    // minted the branch after our read saw absence.
+                    if branch_just_created
+                        && pw.read_saw_absence
+                        && Self::fetch_sha(
+                            &inner.client,
+                            &repo,
+                            &self.branch,
+                            &api_path,
+                            Some(token),
+                        )
+                        .await?
+                        .is_some()
+                    {
+                        tracing::warn!(
+                            repo = %repo,
+                            path = %api_path,
+                            "refusing a write built on a read that missed base content \
+                             on a freshly created branch"
+                        );
+                        return Err(CorpusError::Conflict(format!(
+                            "'{api_path}' already exists on the branch that was just created \
+                             from base; the write was prepared against a branch that did not \
+                             exist yet"
+                        )));
+                    }
                 }
                 PendingOp::Delete => {
                     let sha_for_delete = match &pw.base_sha {
@@ -860,7 +933,7 @@ impl RepoBackend for GitHubApiBackend {
                     .await?;
                     // Drop the cached SHA so a next read sees the file as
                     // gone (or rebuilt) without holding a stale value.
-                    inner.sha_cache.remove(&path);
+                    inner.sha_cache.remove(&api_path);
                 }
             }
         }

@@ -92,8 +92,10 @@ In the editor:
 1. Choose **"Nieuw traject…"** in the traject menu.
 2. Fill in **Naam** (name) and, optionally, **Beschrijving** (description).
 3. Turn on the switch **"Eigen GitHub-repo (i.p.v. standaard MinBZK-repo)"**.
-4. Fill in **Repo owner**, **Repo** and **Base branch** (prefilled with `main`). Set **Subpath** if the YAML files live in a subdirectory; leave it empty for the repository root.
+4. Fill in **Repo owner**, **Repo** and **Base branch** (prefilled with `main`). Set **Subpath** if the YAML files live in a subdirectory; leave it empty for the repository root. The subpath applies to rulework versions and scenarios. Notes do not follow it: RFC-018 keeps them at the repository root, in `annotations/{law_id}/annotations.yaml` outside the subpath, and that is where the editor reads and saves them.
 5. Click **"Maak traject aan"**.
+
+Older editor versions saved notes under the subpath instead, in `{subpath}/annotations/{law_id}/annotations.yaml`. When a traject repository has no notes file at the root for a law but does have one at that old location, the editor shows the old file. The next save of a note on that law appends to it and writes the result to the repository root. The old file stays where it is; remove it by hand once the root file exists.
 
 Before anything is stored, the editor runs a **preflight check** against the GitHub API:
 

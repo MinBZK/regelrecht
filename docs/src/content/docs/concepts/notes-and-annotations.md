@@ -48,7 +48,7 @@ The fourth, **tagging** (classification), is available but not yet used in the c
 
 ## Storage, federation, and authority
 
-Notes live in sidecar YAML keyed by the law's `$id`, not its file path (`corpus/annotations/{law_id}/annotations.yaml`). They follow the same [federated](./federated-corpus) model as the corpus: any organization can keep notes on a law in its own repository, and the editor's write path is append-only so parallel edits do not clobber each other.
+Notes live in sidecar YAML keyed by the law's `$id`, not its file path (`corpus/annotations/{law_id}/annotations.yaml`). In a source repository the sidecar sits at the repository root, in `annotations/{law_id}/annotations.yaml`, even when the source's regulations live in a subdirectory such as `regulation/nl` ([RFC-018](/rfcs/rfc-018)). They follow the same [federated](./federated-corpus) model as the corpus: any organization can keep notes on a law in its own repository, and the editor's write path is append-only so parallel edits do not clobber each other.
 
 A note's **authority is derived at display time**, not declared. The resolver compares the note's `creator` against the article's [competent authority](./competent-authority):
 
