@@ -35,6 +35,14 @@ pub fn load_all_regulations(service: &mut LawExecutionService) -> Result<usize, 
                 EngineError::LoadError(format!("Failed to read {}: {}", path.display(), e))
             })?;
 
+            let content = if crate::reverse_actions::enabled() {
+                crate::reverse_actions::reversed_actions(&content).map_err(|e| {
+                    EngineError::LoadError(format!("Failed to reverse {}: {}", path.display(), e))
+                })?
+            } else {
+                content
+            };
+
             match service.load_law(&content) {
                 Ok(law_id) => {
                     tracing::debug!(law_id = %law_id, path = %path.display(), "Loaded law");

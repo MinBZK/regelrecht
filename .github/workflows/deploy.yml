@@ -142,7 +142,7 @@ jobs:
       packages: write
     uses: ./.github/workflows/build-image.yml
     with:
-      image-name: minbzk/regelrecht-editor
+      image-name: regelrecht-editor
       dockerfile: frontend/Dockerfile
       cache-scope: editor
     # Only GITHUB_TOKEN is needed; it is automatically available to called workflows
@@ -155,7 +155,7 @@ jobs:
       packages: write
     uses: ./.github/workflows/build-image.yml
     with:
-      image-name: minbzk/regelrecht-admin
+      image-name: regelrecht-admin
       dockerfile: packages/admin/Dockerfile
       cache-scope: admin
     # Only GITHUB_TOKEN is needed; it is automatically available to called workflows
@@ -168,7 +168,7 @@ jobs:
       packages: write
     uses: ./.github/workflows/build-image.yml
     with:
-      image-name: minbzk/regelrecht-harvester-worker
+      image-name: regelrecht-harvester-worker
       dockerfile: packages/pipeline/Dockerfile
       target: harvester-worker
       build-args: BIN=regelrecht-harvest-worker
@@ -188,7 +188,7 @@ jobs:
       packages: write
     uses: ./.github/workflows/build-image.yml
     with:
-      image-name: minbzk/regelrecht-enrich-worker
+      image-name: regelrecht-enrich-worker
       dockerfile: packages/pipeline/Dockerfile
       target: enrich-worker
       build-args: BIN=regelrecht-enrich-worker
@@ -203,7 +203,7 @@ jobs:
       packages: write
     uses: ./.github/workflows/build-image.yml
     with:
-      image-name: minbzk/regelrecht-pipeline-api
+      image-name: regelrecht-pipeline-api
       dockerfile: packages/pipeline/Dockerfile
       target: pipeline-api
       build-args: BIN=regelrecht-pipeline-api
@@ -219,7 +219,7 @@ jobs:
       packages: write
     uses: ./.github/workflows/build-image.yml
     with:
-      image-name: minbzk/regelrecht-grafana
+      image-name: regelrecht-grafana
       dockerfile: packages/grafana/Dockerfile
       context: ./packages/grafana
       cache-scope: grafana
@@ -233,7 +233,7 @@ jobs:
       packages: write
     uses: ./.github/workflows/build-image.yml
     with:
-      image-name: minbzk/regelrecht-lawmaking
+      image-name: regelrecht-lawmaking
       dockerfile: frontend-lawmaking/Dockerfile
       cache-scope: lawmaking
     # Only GITHUB_TOKEN is needed; it is automatically available to called workflows
@@ -246,7 +246,7 @@ jobs:
       packages: write
     uses: ./.github/workflows/build-image.yml
     with:
-      image-name: minbzk/regelrecht-poc-napp
+      image-name: regelrecht-poc-napp
       dockerfile: packages/poc-napp/Dockerfile
       cache-scope: poc-napp
 
@@ -258,7 +258,7 @@ jobs:
       packages: write
     uses: ./.github/workflows/build-image.yml
     with:
-      image-name: minbzk/regelrecht-poc
+      image-name: regelrecht-poc
       dockerfile: packages/poc-portal/Dockerfile
       cache-scope: poc
 
@@ -270,7 +270,7 @@ jobs:
       packages: write
     uses: ./.github/workflows/build-image.yml
     with:
-      image-name: minbzk/regelrecht-docs
+      image-name: regelrecht-docs
       dockerfile: docs/Dockerfile
       cache-scope: docs
     # Only GITHUB_TOKEN is needed; it is automatically available to called workflows
@@ -285,7 +285,7 @@ jobs:
       packages: write
     uses: ./.github/workflows/build-image.yml
     with:
-      image-name: minbzk/regelrecht-demo
+      image-name: regelrecht-demo
       dockerfile: frontend-demo/Dockerfile
       cache-scope: demo
     # Only GITHUB_TOKEN is needed; it is automatically available to called workflows
@@ -344,7 +344,7 @@ jobs:
           set -euo pipefail
           COMPONENTS='[]'
           add() {
-            COMPONENTS=$(jq -c --arg name "$1" --arg image "${REGISTRY}/minbzk/$2:sha-${SHA}" \
+            COMPONENTS=$(jq -c --arg name "$1" --arg image "${REGISTRY}/${GITHUB_REPOSITORY_OWNER,,}/$2:sha-${SHA}" \
               '. + [{name: $name, image: $image}]' <<<"$COMPONENTS")
           }
 
@@ -511,7 +511,7 @@ jobs:
           set -euo pipefail
           COMPONENTS='[]'
           add() {
-            COMPONENTS=$(jq -c --arg name "$1" --arg image "${REGISTRY}/minbzk/$2:sha-${SHA}" \
+            COMPONENTS=$(jq -c --arg name "$1" --arg image "${REGISTRY}/${GITHUB_REPOSITORY_OWNER,,}/$2:sha-${SHA}" \
               '. + [{name: $name, image: $image}]' <<<"$COMPONENTS")
           }
 

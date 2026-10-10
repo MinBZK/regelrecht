@@ -600,6 +600,16 @@ jobs:
           RUSTFLAGS: -Dwarnings -C link-arg=-fuse-ld=mold
         run: cargo test --test bdd -- --nocapture
 
+      # Dezelfde scenario's met de acties van elk artikel in omgekeerde
+      # volgorde: de volgorde in het bestand mag geen uitkomst veranderen.
+      - name: Run conformance bucket with reversed actions
+        working-directory: packages/engine
+        env:
+          BDD_BUCKET: conformance
+          BDD_REVERSE_ACTIONS: "1"
+          RUSTFLAGS: -Dwarnings -C link-arg=-fuse-ld=mold
+        run: cargo test --test bdd -- --nocapture
+
   # Bucket A over het demo-corpus: de 80 gemigreerde POC-wetten onder
   # corpus/demo met hun scenario's en persona-data (REGULATION_PATH wijst wetten
   # én scenario's daarheen). Anders dan bucket A over corpus/regulation hangt
@@ -655,6 +665,15 @@ jobs:
         working-directory: packages/engine
         env:
           BDD_BUCKET: corpus
+          REGULATION_PATH: ${{ github.workspace }}/corpus/demo/regulation
+          RUSTFLAGS: -Dwarnings -C link-arg=-fuse-ld=mold
+        run: cargo test --test bdd -- --nocapture
+
+      - name: Run demo bucket with reversed actions
+        working-directory: packages/engine
+        env:
+          BDD_BUCKET: corpus
+          BDD_REVERSE_ACTIONS: "1"
           REGULATION_PATH: ${{ github.workspace }}/corpus/demo/regulation
           RUSTFLAGS: -Dwarnings -C link-arg=-fuse-ld=mold
         run: cargo test --test bdd -- --nocapture
@@ -927,6 +946,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Zelfde namespace als build-image.yml: de eigenaar van de repo, in
+      # kleine letters.
+      - name: Resolve registry namespace
+        if: needs.changes.outputs.rust-image == 'true'
+        id: ns
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+
       # Dezelfde inputs als build-pipeline-api in deploy.yml, op push na. Lopen
       # die twee uiteen, dan bewijst deze baan iets anders dan er gedeployd
       # wordt; script/dockerfile-consistency.test.mjs bewaakt de namen.
@@ -942,7 +968,7 @@ jobs:
           # om het artefact. Ook geen cache-to, want alleen main schrijft cache.
           push: false
           load: false
-          cache-from: type=registry,ref=ghcr.io/minbzk/regelrecht-buildcache:pipeline-api
+          cache-from: type=registry,ref=ghcr.io/${{ steps.ns.outputs.owner }}/regelrecht-buildcache:pipeline-api
 
       - name: Skip (no relevant changes)
         if: needs.changes.outputs.rust-image != 'true'

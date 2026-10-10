@@ -40,6 +40,8 @@ mod common;
 mod discovery;
 mod dispatch;
 mod helpers;
+#[path = "../common/reverse_actions.rs"]
+mod reverse_actions;
 mod world;
 
 /// Code-generated cucumber step bindings from `bdd/grammar.yaml`.

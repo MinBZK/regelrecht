@@ -71,6 +71,96 @@ pub(crate) fn required_outputs_with(
     required
 }
 
+/// The order to run `actions` in: every action after the actions producing
+/// what it reads. Where nothing orders two actions, declaration order does,
+/// so the order of the actions in the file never changes a value, except
+/// among the assignments of an output assigned more than once: those run
+/// together, in declaration order, and a reader of that output runs after
+/// all of them.
+///
+/// A name that is both an input and an output of the article is the output
+/// to every action but its first assignment: a reader runs after the output
+/// is set, and an output wins over an input when a name is resolved. The
+/// first assignment reads the input (the pass-through idiom `x: $x`); later
+/// assignments and every other action read the output. So the input of that
+/// name only ever reaches the first assignment, whatever the file's order.
+///
+/// With `outputs` (the closure of [`required_outputs`]), only the actions
+/// producing those outputs are ordered, so a cycle among outputs nobody asked
+/// for cannot fail the request (RFC-043). An action without `output` keeps
+/// its place at the front, where the loop rejects it. `Err` names an output
+/// that depends on itself through other outputs of the article.
+pub(crate) fn execution_order(
+    actions: &[Action],
+    outputs: Option<&BTreeSet<String>>,
+) -> Result<Vec<usize>, String> {
+    let mut order: Vec<usize> = Vec::with_capacity(actions.len());
+    let mut names: Vec<&str> = Vec::new();
+    let mut writes: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
+    for (index, action) in actions.iter().enumerate() {
+        match action.output.as_deref() {
+            None => order.push(index),
+            Some(name) => {
+                let entry = writes.entry(name).or_default();
+                if entry.is_empty() {
+                    names.push(name);
+                }
+                entry.push(index);
+            }
+        }
+    }
+    let depends_on = |name: &str| -> Vec<&str> {
+        let reads: BTreeSet<String> = writes[name]
+            .iter()
+            .flat_map(|&index| referenced_names(&actions[index]))
+            .collect();
+        // In declaration order, so the order among independent outputs is
+        // the file's.
+        names
+            .iter()
+            .copied()
+            .filter(|other| *other != name && reads.contains(*other))
+            .collect()
+    };
+
+    #[derive(Clone, Copy, PartialEq)]
+    enum Mark {
+        Visiting,
+        Done,
+    }
+    fn visit<'a>(
+        name: &'a str,
+        depends_on: &dyn Fn(&str) -> Vec<&'a str>,
+        marks: &mut BTreeMap<&'a str, Mark>,
+        sorted: &mut Vec<&'a str>,
+    ) -> Result<(), String> {
+        match marks.get(name) {
+            Some(Mark::Done) => return Ok(()),
+            Some(Mark::Visiting) => return Err(name.to_string()),
+            None => {}
+        }
+        marks.insert(name, Mark::Visiting);
+        for dependency in depends_on(name) {
+            visit(dependency, depends_on, marks, sorted)?;
+        }
+        marks.insert(name, Mark::Done);
+        sorted.push(name);
+        Ok(())
+    }
+    let mut marks = BTreeMap::new();
+    let mut sorted = Vec::with_capacity(names.len());
+    // The closure is transitive, so the walk from a requested output stays
+    // inside it.
+    for &name in names
+        .iter()
+        .filter(|name| outputs.is_none_or(|outputs| outputs.contains(**name)))
+    {
+        visit(name, &depends_on, &mut marks, &mut sorted)?;
+    }
+    order.extend(sorted.iter().flat_map(|name| writes[name].iter().copied()));
+    Ok(order)
+}
+
 /// The name a `$reference` reads, by its base (`$a.b` gives `a`); `None` for
 /// a string that is not a reference.
 pub(crate) fn reference_base(reference: &str) -> Option<&str> {
@@ -80,7 +170,10 @@ pub(crate) fn reference_base(reference: &str) -> Option<&str> {
 
 /// Every `$name` an action refers to, by its base name. A name a FOREACH
 /// binds (`as`) is its element inside `body` and `filter`, not a reference to
-/// an output or input of that name.
+/// an output or input of that name. The fields of an object element, which a
+/// FOREACH also exposes as bare names, are not known here and still count:
+/// that over-includes, which is safe for the closure, but a field named like
+/// an output that reads the FOREACH's own output is reported as a cycle.
 pub(crate) fn referenced_names(action: &Action) -> BTreeSet<String> {
     let mut names = BTreeSet::new();
     action
@@ -139,6 +232,31 @@ mod tests {
 
     fn actions(yaml: &str) -> Vec<Action> {
         serde_yaml_ng::from_str(yaml).unwrap()
+    }
+
+    /// The known limit of the scan: a field of an object element, which a
+    /// FOREACH exposes as a bare name, still counts as a reference to the
+    /// output of that name. Where that output reads the FOREACH's own output,
+    /// the order reports a cycle the file order did not have. Pinned here so
+    /// a change to this behaviour is a deliberate one.
+    #[test]
+    fn a_field_of_a_foreach_element_named_like_an_output_counts_as_a_reference() {
+        let acts = actions(
+            r#"
+- output: totaal
+  value:
+    operation: FOREACH
+    collection: $posten
+    body: $bedrag
+    combine: ADD
+- output: bedrag
+  value:
+    operation: MULTIPLY
+    values: [$totaal, 2]
+"#,
+        );
+        assert!(referenced_names(&acts[0]).contains("bedrag"));
+        assert_eq!(execution_order(&acts, None), Err("totaal".to_string()));
     }
 
     #[test]

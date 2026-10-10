@@ -53,10 +53,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Resolve registry namespace
+        id: ns
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+
       - name: Scan
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
-          image-ref: ghcr.io/minbzk/${{ matrix.image }}:latest
+          image-ref: ghcr.io/${{ steps.ns.outputs.owner }}/${{ matrix.image }}:latest
           format: sarif
           output: trivy.sarif
           severity: ${{ inputs.severity || 'CRITICAL,HIGH' }}
