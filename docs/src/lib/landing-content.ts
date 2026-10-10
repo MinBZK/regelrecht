@@ -88,6 +88,8 @@ export interface LandingContent {
       text: string
       href: string
       linkLabel: string
+      /** A second button on the card, in the page's own language. */
+      also?: { href: string; linkLabel: string }
     }[]
   }
   references: {
@@ -413,6 +415,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           text: 'Het paper betoogt dat de overheid haar wetsuitvoering moet publiceren als machine-uitvoerbare specificatie, waarbij elk besluit vastlegt met welke versie het is genomen. Wie een besluit ontvangt, kan het narekenen, en het parlement kan de regel zelf analyseren.',
           href: '/research/rules-as-executed',
           linkLabel: 'position paper (Engels)',
+          also: { href: '/research/rules-as-executed/uitgelegd', linkLabel: 'uitleg in gewone taal' },
         },
         {
           title: 'Rules as Executed: When machine-executable laws are published',
@@ -912,6 +915,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           text: 'The paper argues that government should publish its law execution as machine-executable specifications, with every decision recording the version that produced it. The recipient of a decision can then recompute it, and Parliament can analyze the rule itself.',
           href: '/research/rules-as-executed',
           linkLabel: 'position paper',
+          also: { href: '/research/rules-as-executed/explained', linkLabel: 'plain-language explainer' },
         },
         {
           title: 'Rules as Executed: When machine-executable laws are published',
