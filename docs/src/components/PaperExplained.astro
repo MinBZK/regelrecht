@@ -240,7 +240,7 @@ const padding = { 'sm-padding-block': '32', 'md-padding-block': '48', 'lg-paddin
       </dl>
       <p>{t.binding.exampleNote}</p>
     </nldd-rich-text>
-    <nldd-code-viewer language="yaml" variant="simple" wrap set:html={figureOne.codeHtml} />
+    <nldd-code-viewer language="yaml" appearance="simple" wrap set:html={figureOne.codeHtml} />
     <nldd-link href={figureOne.href} size="sm" text={t.figureLink} />
     <nldd-rich-text><p>{t.binding.p3}</p><p>{t.binding.p4}</p></nldd-rich-text>
   </PaperMore>
@@ -309,7 +309,7 @@ const padding = { 'sm-padding-block': '32', 'md-padding-block': '48', 'lg-paddin
                 </nldd-list>
                 <nldd-text size="sm" data-reveal tabindex="-1" hidden></nldd-text>
               </nldd-container>
-              <nldd-button variant="primary" size="sm" text={t.receipt.check} data-check-button />
+              <nldd-button appearance="primary" size="sm" text={t.receipt.check} data-check-button />
             </nldd-container>
           </nldd-card>
         ))}
@@ -503,9 +503,9 @@ const padding = { 'sm-padding-block': '32', 'md-padding-block': '48', 'lg-paddin
   </PaperMore>
   <nldd-spacer size="32" />
   <nldd-button-group orientation="horizontal">
-    <nldd-button variant="primary" href="/research/rules-as-executed" text={t.header.paper} />
-    <nldd-button variant="secondary" href={doiUrl} text={t.header.pdf} />
-    <nldd-button variant="secondary" href={discussionUrl} text={t.header.discuss} />
+    <nldd-button appearance="primary" href="/research/rules-as-executed" text={t.header.paper} />
+    <nldd-button appearance="secondary" href={doiUrl} text={t.header.pdf} />
+    <nldd-button appearance="secondary" href={discussionUrl} text={t.header.discuss} />
   </nldd-button-group>
 </nldd-simple-section>
 

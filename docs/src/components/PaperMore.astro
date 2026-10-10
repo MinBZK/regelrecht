@@ -31,7 +31,7 @@ const { title, label, close, refsLabel, refs } = Astro.props;
 ---
 
 <nldd-container data-px-more>
-  <nldd-button variant="secondary" size="md" end-icon="chevron-right" text={label} data-px-more-open />
+  <nldd-button appearance="secondary" size="md" end-icon="chevron-right" text={label} data-px-more-open />
   <nldd-sheet placement="right" width="40rem" data-px-more-sheet>
     <nldd-page>
       <nldd-top-title-bar slot="header" text={title} supporting-text={label} heading-level="2" dismiss-text={close} />
