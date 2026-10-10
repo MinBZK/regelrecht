@@ -16,6 +16,7 @@ use regelrecht_corpus::annotation_schema::{
     append_notes_to_sidecar, first_note_not_targeting_law, parse_and_validate_annotation_yaml,
     validate_annotation_doc, AppendOutcome,
 };
+use regelrecht_corpus::annotation_sidecar::{self, LegacyFallback};
 use regelrecht_corpus::backend::{EditorUser, PersistOutcome, RepoBackend, WriteContext};
 use regelrecht_corpus::dto::{build_source_summaries, PaginationParams, SourceSummary};
 use regelrecht_corpus::source_map::{
@@ -1553,16 +1554,19 @@ async fn read_annotations_in_scope(
         ReadScope::Global(_) => None,
     };
 
-    // RFC-018 §1: keyed by law id at the source root, regardless of where
-    // the law file lives. Same path the `save_annotations` write uses.
-    let relative_path = PathBuf::from("annotations")
-        .join(law_id)
-        .join("annotations.yaml");
-
+    // RFC-018: keyed by law id at the repository root, regardless of where
+    // the law file lives. Traject repos fall back to the legacy location
+    // under the source subpath, where earlier editor versions saved notes
+    // (same lookup the `save_annotations` append base uses); the global
+    // corpus was never written by the editor, so it skips that second
+    // request.
+    let fallback = match scope {
+        ReadScope::Traject(_) => LegacyFallback::Read,
+        ReadScope::Global(_) => LegacyFallback::Skip,
+    };
     let content = {
         let backend = backend.lock().await;
-        backend
-            .read_file_with_token(&relative_path, own_read_token.as_deref())
+        annotation_sidecar::read_sidecar(&**backend, law_id, own_read_token.as_deref(), fallback)
             .await
             .map_err(|e| {
                 tracing::warn!(law_id = %law_id, error = %e, "get_annotations backend read failed");
@@ -1627,7 +1631,7 @@ fn law_relative_dir(law: &LoadedLaw) -> Result<PathBuf, (StatusCode, String)> {
 ///
 /// The write path goes through the per-traject corpus
 /// ([`require_traject_corpus`]) and returns its own resolved target shape
-/// ([`EditorWriteTarget`]), so this struct doesn't need a writability flag.
+/// ([`TrajectLawWrite`]), so this struct doesn't need a writability flag.
 struct ResolvedBackend {
     law: LoadedLaw,
     backend: Arc<Mutex<Box<dyn RepoBackend>>>,
@@ -1859,17 +1863,6 @@ pub(crate) async fn require_editor_user(
                 .to_string(),
         )
     })
-}
-
-/// Resolved write target for editor saves: a backend lock + the file
-/// path. PR info comes back via `PersistOutcome.pr` from the actual
-/// `persist` call, so we don't need to flag the backend here.
-struct EditorWriteTarget {
-    relative_path: PathBuf,
-    /// Whether the write-target source is writable at rest — see
-    /// [`TrajectLawWrite::write_source_writable`].
-    writable: bool,
-    backend: tokio::sync::OwnedMutexGuard<Box<dyn RepoBackend>>,
 }
 
 /// Resolve the per-traject corpus from the URL ref, re-checking the
@@ -2258,28 +2251,6 @@ async fn read_traject_scenario_cached(
     Ok(content)
 }
 
-/// Resolve the write target for a law's stand-off notes sidecar.
-///
-/// The path is `annotations/{law_id}/annotations.yaml` at the source root,
-/// NOT under the law's own `regulation/...` directory: RFC-018 §1 keys the
-/// sidecar by law id, independent of where the law file lives. Routing
-/// and writability come from `resolve_traject_law_write` (same backend
-/// the law/scenario writes use), so notes land in the same traject
-/// branch as the rest of the edits in the session.
-async fn resolve_traject_annotation_target(
-    traject: &Arc<TrajectCorpus>,
-    law_id: &str,
-) -> Result<EditorWriteTarget, (StatusCode, String)> {
-    let write = resolve_traject_law_write(traject, law_id).await?;
-    Ok(EditorWriteTarget {
-        relative_path: PathBuf::from("annotations")
-            .join(law_id)
-            .join("annotations.yaml"),
-        writable: write.write_source_writable,
-        backend: write.backend,
-    })
-}
-
 /// Build a [`SaveResponse`] for a traject write. Traject backends commit
 /// straight to the configured branch without opening a PR for now, so the
 /// outcome typically carries `pr: None` and the response is just `{ pr:
@@ -2533,12 +2504,16 @@ pub async fn save_annotations(
         }));
     }
     let new_notes = public_notes;
-    let target = resolve_traject_annotation_target(&traject, &law_id).await?;
-    let EditorWriteTarget {
-        relative_path,
-        writable,
+    // Routing and writability come from `resolve_traject_law_write` (same
+    // backend the law/scenario writes use), so notes land in the same
+    // traject branch as the rest of the edits in the session. The sidecar
+    // path itself is NOT under the law's directory: RFC-018 keys it by law
+    // id at the repository root (see `annotation_sidecar`).
+    let TrajectLawWrite {
+        write_source_writable: writable,
         backend,
-    } = target;
+        ..
+    } = resolve_traject_law_write(&traject, &law_id).await?;
     // Resolved here — after the all-personal early return and against the
     // resolved backend — so enforcement only fires for notes that actually
     // commit to GitHub: personal notes go to the database, and a local
@@ -2549,15 +2524,21 @@ pub async fn save_annotations(
         .await?;
 
     // Read the current sidecar from the traject backend (the traject
-    // branch — read-your-writes within the traject).
+    // branch — read-your-writes within the traject): the repository-root
+    // file, or the legacy one under the source subpath when only that
+    // exists, so notes saved there before carry over into the append base.
     // Absent file = first notes for this law. Uses the write's token: on a
     // token-less writable-own backend this read would otherwise 404 on a
     // private repo and silently drop the existing notes from the append
     // base.
-    let base_text: Option<String> = backend
-        .read_file_with_token(&relative_path, auth.read_token())
-        .await
-        .map_err(corpus_write_error("annotations"))?;
+    let base_text: Option<String> = annotation_sidecar::read_sidecar(
+        &**backend,
+        &law_id,
+        auth.read_token(),
+        LegacyFallback::Read,
+    )
+    .await
+    .map_err(corpus_write_error("annotations"))?;
 
     // Validate the EXISTING file first, before merging in the new notes.
     // The post-merge validation below cannot tell "your note is invalid"
@@ -2659,8 +2640,10 @@ pub async fn save_annotations(
         ));
     }
 
-    backend
-        .write_file(&relative_path, &new_text)
+    // Always written at the repository root. A legacy file under the
+    // subpath that served as the base is left behind untouched; reads
+    // prefer the root file from now on.
+    annotation_sidecar::write_sidecar(&**backend, &law_id, &new_text)
         .await
         .map_err(corpus_write_error("annotations"))?;
 

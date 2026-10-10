@@ -107,8 +107,10 @@ pub struct PersistOutcome {
 
 /// Abstraction over different corpus storage backends.
 ///
-/// All paths are relative to the source root directory. The backend resolves
-/// them to absolute paths internally.
+/// All paths are relative to the source root directory, except for the
+/// `*_repo_file*` methods, which take paths relative to the repository root
+/// (see [`RepoBackend::repo_subpath`]). The backend resolves them to
+/// absolute paths internally.
 #[async_trait]
 pub trait RepoBackend: Send + Sync {
     /// Read a file's contents. Returns `None` if the file does not exist.
@@ -145,6 +147,70 @@ pub trait RepoBackend: Send + Sync {
 
     /// Delete a file. Returns `Ok(())` even if the file did not exist.
     async fn delete_file(&self, relative_path: &Path) -> Result<()>;
+
+    /// Where the source root sits inside its repository (e.g.
+    /// `regulation/nl`), or `None` when the source root *is* the
+    /// repository root. Backends without a repository notion (a plain
+    /// local directory) keep the default `None`.
+    ///
+    /// A backend that returns `Some` here must also override
+    /// [`read_repo_file_with_token`] and [`write_repo_file`]: their
+    /// defaults treat the source root as the repository root.
+    ///
+    /// [`read_repo_file_with_token`]: RepoBackend::read_repo_file_with_token
+    /// [`write_repo_file`]: RepoBackend::write_repo_file
+    fn repo_subpath(&self) -> Option<&str> {
+        None
+    }
+
+    /// [`read_file_with_token`] for a path relative to the **repository
+    /// root** instead of the source root, for the few files a source
+    /// repository keeps outside its regulation subtree (RFC-018's
+    /// `annotations/` sidecars). The same sandbox applies: absolute paths
+    /// and `..` components are rejected.
+    ///
+    /// [`read_file_with_token`]: RepoBackend::read_file_with_token
+    async fn read_repo_file_with_token(
+        &self,
+        repo_path: &Path,
+        token_override: Option<&str>,
+    ) -> Result<Option<String>> {
+        self.read_file_with_token(repo_path, token_override).await
+    }
+
+    /// [`write_file`] for a repository-root-relative path (see
+    /// [`read_repo_file_with_token`]). The write is staged exactly like a
+    /// source-relative one, so the next [`persist`] commits it together
+    /// with the other pending writes, on the same branch.
+    ///
+    /// [`write_file`]: RepoBackend::write_file
+    /// [`read_repo_file_with_token`]: RepoBackend::read_repo_file_with_token
+    /// [`persist`]: RepoBackend::persist
+    async fn write_repo_file(&self, repo_path: &Path, content: &str) -> Result<()> {
+        self.write_file(repo_path, content).await
+    }
+
+    /// Stage a check, run by the next [`persist`] before the writes staged
+    /// after it, that a source-relative path an earlier read in this
+    /// backend found absent is still absent.
+    ///
+    /// For a write whose content was derived from a read of a *different*
+    /// path than the one it writes: the notes sidecar is written at the
+    /// repository root but may have been built on the legacy copy under the
+    /// subpath. When `persist` has to create the branch from base, a read
+    /// made before that could not see base content, so a legacy file that
+    /// appears with the branch means the write was prepared against the
+    /// wrong base; `persist` then refuses with [`CorpusError::Conflict`],
+    /// the same answer it gives for the written path itself.
+    ///
+    /// The default is a no-op: only a backend that creates its branch
+    /// lazily at persist (the GitHub API backend) has this window.
+    ///
+    /// [`persist`]: RepoBackend::persist
+    async fn expect_still_absent(&self, relative_path: &Path) -> Result<()> {
+        let _ = relative_path;
+        Ok(())
+    }
 
     /// List files in a directory, optionally filtered by extension (without dot).
     async fn list_files(&self, dir: &Path, extension: Option<&str>) -> Result<Vec<FileEntry>>;
@@ -480,7 +546,7 @@ async fn walk_local_tree(
 }
 
 /// Reject paths that are absolute or contain `..` components.
-fn validate_relative_path(path: &Path) -> Result<()> {
+pub(crate) fn validate_relative_path(path: &Path) -> Result<()> {
     if path.is_absolute() {
         return Err(CorpusError::Config(format!(
             "path must be relative: {}",
@@ -498,15 +564,47 @@ fn validate_relative_path(path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// A configured repository subpath with trailing slashes trimmed, or
+/// `None` when it is absent or empty (the source root is the repo root).
+pub(crate) fn normalized_subpath(sub: Option<&str>) -> Option<&str> {
+    sub.map(|s| s.trim_end_matches('/'))
+        .filter(|s| !s.is_empty())
+}
+
+/// Resolve a path inside a git checkout: `relative` joined under
+/// `subpath` (the source root) when given, under the checkout root
+/// otherwise. Shared by the clone-based backends, for both their
+/// source-relative and their repository-root-relative file access.
+fn checkout_path(repo_root: &Path, subpath: Option<&str>, relative: &Path) -> Result<PathBuf> {
+    validate_relative_path(relative)?;
+    Ok(match normalized_subpath(subpath) {
+        Some(sub) => repo_root.join(sub).join(relative),
+        None => repo_root.join(relative),
+    })
+}
+
+/// Read a file off disk, mapping "not found" to `Ok(None)`.
+async fn read_optional(abs: &Path) -> Result<Option<String>> {
+    match tokio::fs::read_to_string(abs).await {
+        Ok(content) => Ok(Some(content)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Write a file to disk, creating its parent directories first.
+async fn write_creating_parents(abs: &Path, content: &str) -> Result<()> {
+    if let Some(parent) = abs.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+    tokio::fs::write(abs, content).await?;
+    Ok(())
+}
+
 #[async_trait]
 impl RepoBackend for LocalBackend {
     async fn read_file(&self, relative_path: &Path) -> Result<Option<String>> {
-        let abs = self.resolve(relative_path)?;
-        match tokio::fs::read_to_string(&abs).await {
-            Ok(content) => Ok(Some(content)),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(e.into()),
-        }
+        read_optional(&self.resolve(relative_path)?).await
     }
 
     async fn write_file(&self, relative_path: &Path, content: &str) -> Result<()> {
@@ -515,12 +613,7 @@ impl RepoBackend for LocalBackend {
                 "local source is read-only".to_string(),
             ));
         }
-        let abs = self.resolve(relative_path)?;
-        if let Some(parent) = abs.parent() {
-            tokio::fs::create_dir_all(parent).await?;
-        }
-        tokio::fs::write(&abs, content).await?;
-        Ok(())
+        write_creating_parents(&self.resolve(relative_path)?, content).await
     }
 
     async fn delete_file(&self, relative_path: &Path) -> Result<()> {
@@ -724,35 +817,53 @@ impl GitBackend {
 
     /// Resolve a source-relative path to an absolute path in the checkout.
     fn resolve(&self, relative: &Path) -> Result<PathBuf> {
-        validate_relative_path(relative)?;
-        let base = match &self.repo_subpath {
-            Some(sub) => self.client.repo_path().join(sub),
-            None => self.client.repo_path().to_path_buf(),
-        };
-        Ok(base.join(relative))
+        checkout_path(
+            self.client.repo_path(),
+            self.repo_subpath.as_deref(),
+            relative,
+        )
+    }
+
+    /// Write to an absolute checkout path and mark it for the next persist.
+    async fn write_dirty(&self, abs: PathBuf, content: &str) -> Result<()> {
+        write_creating_parents(&abs, content).await?;
+        self.dirty_files.lock().await.push(abs);
+        Ok(())
     }
 }
 
 #[async_trait]
 impl RepoBackend for GitBackend {
     async fn read_file(&self, relative_path: &Path) -> Result<Option<String>> {
-        let abs = self.resolve(relative_path)?;
-        match tokio::fs::read_to_string(&abs).await {
-            Ok(content) => Ok(Some(content)),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(e.into()),
-        }
+        read_optional(&self.resolve(relative_path)?).await
     }
 
     async fn write_file(&self, relative_path: &Path, content: &str) -> Result<()> {
-        let abs = self.resolve(relative_path)?;
-        if let Some(parent) = abs.parent() {
-            tokio::fs::create_dir_all(parent).await?;
-        }
-        tokio::fs::write(&abs, content).await?;
+        self.write_dirty(self.resolve(relative_path)?, content)
+            .await
+    }
 
-        self.dirty_files.lock().await.push(abs);
-        Ok(())
+    fn repo_subpath(&self) -> Option<&str> {
+        normalized_subpath(self.repo_subpath.as_deref())
+    }
+
+    // The checkout is the whole repository, so a repo-root path is just
+    // resolved without the subpath. `dirty_files` holds absolute paths, so
+    // `persist` commits it alongside the source-relative writes.
+    async fn read_repo_file_with_token(
+        &self,
+        repo_path: &Path,
+        _token_override: Option<&str>,
+    ) -> Result<Option<String>> {
+        read_optional(&checkout_path(self.client.repo_path(), None, repo_path)?).await
+    }
+
+    async fn write_repo_file(&self, repo_path: &Path, content: &str) -> Result<()> {
+        self.write_dirty(
+            checkout_path(self.client.repo_path(), None, repo_path)?,
+            content,
+        )
+        .await
     }
 
     async fn delete_file(&self, relative_path: &Path) -> Result<()> {
@@ -1073,12 +1184,18 @@ impl SessionGitBackend {
     }
 
     fn resolve(&self, relative: &Path) -> Result<PathBuf> {
-        validate_relative_path(relative)?;
-        let base = match &self.repo_subpath {
-            Some(sub) => self.client.repo_path().join(sub),
-            None => self.client.repo_path().to_path_buf(),
-        };
-        Ok(base.join(relative))
+        checkout_path(
+            self.client.repo_path(),
+            self.repo_subpath.as_deref(),
+            relative,
+        )
+    }
+
+    /// Write to an absolute checkout path and mark it for the next persist.
+    async fn write_dirty(&self, abs: PathBuf, content: &str) -> Result<()> {
+        write_creating_parents(&abs, content).await?;
+        self.dirty_files.lock().await.push(abs);
+        Ok(())
     }
 
     /// Build the PR title and body. Recomputed on every persist so a
@@ -1151,22 +1268,33 @@ fn sanitize_pr_body_value(s: &str) -> String {
 #[async_trait]
 impl RepoBackend for SessionGitBackend {
     async fn read_file(&self, relative_path: &Path) -> Result<Option<String>> {
-        let abs = self.resolve(relative_path)?;
-        match tokio::fs::read_to_string(&abs).await {
-            Ok(content) => Ok(Some(content)),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(e.into()),
-        }
+        read_optional(&self.resolve(relative_path)?).await
     }
 
     async fn write_file(&self, relative_path: &Path, content: &str) -> Result<()> {
-        let abs = self.resolve(relative_path)?;
-        if let Some(parent) = abs.parent() {
-            tokio::fs::create_dir_all(parent).await?;
-        }
-        tokio::fs::write(&abs, content).await?;
-        self.dirty_files.lock().await.push(abs);
-        Ok(())
+        self.write_dirty(self.resolve(relative_path)?, content)
+            .await
+    }
+
+    fn repo_subpath(&self) -> Option<&str> {
+        normalized_subpath(self.repo_subpath.as_deref())
+    }
+
+    // Same as `GitBackend`: the checkout is the whole repository.
+    async fn read_repo_file_with_token(
+        &self,
+        repo_path: &Path,
+        _token_override: Option<&str>,
+    ) -> Result<Option<String>> {
+        read_optional(&checkout_path(self.client.repo_path(), None, repo_path)?).await
+    }
+
+    async fn write_repo_file(&self, repo_path: &Path, content: &str) -> Result<()> {
+        self.write_dirty(
+            checkout_path(self.client.repo_path(), None, repo_path)?,
+            content,
+        )
+        .await
     }
 
     async fn delete_file(&self, relative_path: &Path) -> Result<()> {
@@ -1686,6 +1814,77 @@ mod tests {
         }
         let client = CorpusClient::new(config);
         GitBackend::new(client, Some("regulation/nl".to_string()))
+    }
+
+    /// A sidecar staged at the repository root lands in the same commit as
+    /// a source-relative write, and reads fall back to the legacy copy
+    /// under the subpath until the root file exists.
+    #[tokio::test]
+    async fn git_sidecar_lives_at_the_repo_root_with_legacy_fallback() {
+        use crate::annotation_sidecar::{read_sidecar, write_sidecar, LegacyFallback};
+
+        let dir = TempDir::new().unwrap();
+        setup_corpus_checkout(dir.path()).await;
+        let legacy = dir
+            .path()
+            .join("regulation/nl/annotations/wet_a/annotations.yaml");
+        std::fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+        std::fs::write(&legacy, "old notes\n").unwrap();
+        git_commit_all(dir.path(), "legacy sidecar").await;
+
+        let backend = git_backend_on(dir.path(), false);
+        assert_eq!(backend.repo_subpath(), Some("regulation/nl"));
+        assert_eq!(
+            read_sidecar(&backend, "wet_a", None, LegacyFallback::Read)
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("old notes\n")
+        );
+
+        write_sidecar(&backend, "wet_a", "old notes\nnew note\n")
+            .await
+            .unwrap();
+        backend
+            .write_file(Path::new("wet/wet_a/2025-01-01.yaml"), "$id: wet_a\n")
+            .await
+            .unwrap();
+        backend
+            .persist(&WriteContext::new("save".to_string(), None))
+            .await
+            .unwrap();
+
+        let out = tokio::process::Command::new("git")
+            .args(["show", "--name-only", "--format=", "HEAD"])
+            .current_dir(dir.path())
+            .output()
+            .await
+            .unwrap();
+        let mut files: Vec<String> = String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .map(str::to_string)
+            .collect();
+        files.sort();
+        assert_eq!(
+            files,
+            vec![
+                "annotations/wet_a/annotations.yaml".to_string(),
+                "regulation/nl/wet/wet_a/2025-01-01.yaml".to_string(),
+            ]
+        );
+        // Root file now wins; the legacy copy is left as it was.
+        assert_eq!(
+            read_sidecar(&backend, "wet_a", None, LegacyFallback::Read)
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("old notes\nnew note\n")
+        );
+        assert_eq!(std::fs::read_to_string(&legacy).unwrap(), "old notes\n");
+        assert!(backend
+            .write_repo_file(Path::new("../escape.yaml"), "x")
+            .await
+            .is_err());
     }
 
     #[tokio::test]

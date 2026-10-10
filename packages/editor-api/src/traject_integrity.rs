@@ -69,11 +69,14 @@ use crate::traject_corpus::TrajectCorpus;
 /// low seconds while staying well inside GitHub's concurrency guidance.
 const READ_CONCURRENCY: usize = 8;
 
-/// Reserved subtree in a traject's own repo that holds note sidecars, not
-/// laws. Its `annotations/{law_id}/annotations.yaml` shape collides with the
-/// law convention `{layer}/{law_id}/{date}.yaml`, so the index skips it
-/// (see `github::group_best_versions`) and so must this scan — otherwise
-/// every annotated law would be reported as a law without an `$id`.
+/// Reserved subtree that holds note sidecars, not laws. RFC-018 puts it at
+/// the repository root, which is the source root only for a source without
+/// a subpath; a source with a subpath can still carry the legacy copy
+/// under it (see `regelrecht_corpus::annotation_sidecar`). Either way its
+/// `annotations/{law_id}/annotations.yaml` shape collides with the law
+/// convention `{layer}/{law_id}/{date}.yaml`, so the index skips it (see
+/// `github::group_best_versions`) and so must this scan — otherwise every
+/// annotated law would be reported as a law without an `$id`.
 const ANNOTATIONS_DIR: &str = "annotations";
 
 // ---------------------------------------------------------------------------

@@ -227,8 +227,10 @@ fn group_best_versions(
         }
 
         // Annotations are persisted at the reserved
-        // `annotations/{law_id}/annotations.yaml` path in a traject's own repo.
-        // That shape collides with the law-file convention
+        // `annotations/{law_id}/annotations.yaml` path at the repository root
+        // (RFC-018), which falls inside this source only when it has no
+        // subpath; a source with a subpath may still hold the legacy copy
+        // under it. That shape collides with the law-file convention
         // `{layer}/{law_id}/{date}.yaml`, so without this guard the annotation
         // file is indexed as a phantom law whose body is the annotation YAML —
         // the law then opens to an empty editor ("Geen items"). Skip the
