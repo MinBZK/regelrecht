@@ -61,6 +61,7 @@ onderzoeksvragen:
       Hoe controleren we wetten die door taalmodellen (LLM's) zijn vertaald naar
       code, en hoeveel menselijke inspanning is er per artikel nodig om deze
       vertaling juridisch verantwoord te kunnen adopteren?
+    id: controle-llm-vertaling-attestatie
     paper: sec:translation
   - vraag: >-
       Hoe kunnen we technisch bewijzen dat 'geheime' risicomodellen of

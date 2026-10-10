@@ -1,0 +1,76 @@
+---
+/*
+ * /roadmap/bord — dezelfde werkpakketten als de matrix, als brede rijen
+ * onder elkaar, elk uit te klappen tot de onderzoeksvragen die erin staan.
+ *
+ * Waar de matrix laat zien wát er te doen is (per fase en discipline), laat
+ * het bord per werkpakket zien hoe ver de vragen erin zijn. Druk op een rij
+ * en de vragen schuiven eronder uit, elk met zijn stand: vrij, opgepakt of
+ * klaar, uit de eigen status van de vraag of anders uit de belegging van het
+ * werkpakket (vraagLane() in lib/roadmap.ts).
+ *
+ * Geen lanes, met opzet: de belegging is hier een filter naast categorie,
+ * net als op de matrix, en de rij houdt zijn volle breedte zodat de vragen
+ * eronder leesbaar zijn. Geen afhankelijkhedenschakelaar: die ordent kaarten
+ * binnen een cel van de matrix, en hier is geen cel.
+ *
+ * Per werkpakket een eigen nldd-list van het type `tree`
+ * (RoadmapWerkpakketRij.astro), als losse kaart; het ontwerpsysteem regelt de pijltoetsen, aria-expanded en het
+ * tonen van de kinderen op `expanded`. Wat het niet doet is `expanded`
+ * omzetten bij een klik op de rij: dat doet RoadmapUitklap.astro, gedeeld
+ * met de vragenpagina. Geen eigen CSS.
+ */
+import { getCollection } from 'astro:content';
+import Base from '~/layouts/Base.astro';
+import RoadmapSectie from '~/components/RoadmapSectie.astro';
+import RoadmapKop from '~/components/RoadmapKop.astro';
+import RoadmapWerkpakketRij from '~/components/RoadmapWerkpakketRij.astro';
+import RoadmapUitklap from '~/components/RoadmapUitklap.astro';
+import RoadmapWerkpakketPaneel from '~/components/RoadmapWerkpakketPaneel.astro';
+import {
+  werkpakketVolgorde,
+  assertReferencesResolve,
+  assertBelegging,
+  assertFilterRules,
+} from '~/lib/roadmap';
+import '~/styles/roadmap.css';
+// De tekst van de stylesheet, voor assertFilterRules(); zie index.astro.
+import roadmapCss from '~/styles/roadmap.css?raw';
+
+const werkpakketten = await getCollection('werkpakketten');
+assertReferencesResolve(werkpakketten);
+assertBelegging(werkpakketten);
+assertFilterRules(roadmapCss);
+
+// In de leesvolgorde van de matrix, zodat wie van de ene weergave naar de
+// andere gaat de werkpakketten op dezelfde plek terugvindt.
+const rijen = [...werkpakketten].sort((a, b) => werkpakketVolgorde(a.data, b.data));
+
+const pathname = '/roadmap/bord';
+---
+
+<Base
+  lang="nl"
+  kind="docs"
+  pathname={pathname}
+  noSearchIndex
+  title="Bord · Roadmap · RegelRecht"
+  description="Werkpakketten van RegelRecht met per werkpakket de stand van zijn onderzoeksvragen."
+>
+  <RoadmapSectie>
+    <RoadmapKop
+      huidig="bord"
+      ondertitel="Werkpakketten onder elkaar. Druk op een werkpakket en zijn onderzoeksvragen schuiven eruit, op een bordje met drie lanes: vrij, opgepakt en klaar."
+      zoek={{ placeholder: 'Zoek in werkpakketten', noun: 'werkpakketten' }}
+      filters={['categorie', 'belegging']}
+    />
+
+    {/* Elke rij is een eigen kaart met ruimte ertussen, zoals op de
+        vragenpagina; de omlijsting komt uit RoadmapWerkpakketRij. */}
+    <nldd-container gap="8">
+      {rijen.map((wp) => <RoadmapWerkpakketRij wp={wp} />)}
+    </nldd-container>
+  </RoadmapSectie>
+  <RoadmapUitklap />
+  <RoadmapWerkpakketPaneel werkpakketten={werkpakketten} />
+</Base>

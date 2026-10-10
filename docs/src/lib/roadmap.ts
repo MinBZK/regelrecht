@@ -12,7 +12,7 @@
  * render, so a value can never render as a tag the schema would have rejected.
  */
 import { z } from 'astro:content';
-import { normaliseerZoekterm } from '~/lib/roadmap-zoek';
+import { normaliseerZoekterm, GEEN_TREFFER } from '~/lib/roadmap-zoek';
 import configJson from '~/data/roadmap-config.json';
 import paperHeadings from '~/research/rules-as-executed.headings.json';
 import { getRfcs } from '~/lib/rfcs';
@@ -43,6 +43,25 @@ export interface Swimlane {
   disciplineIds: string[];
 }
 
+/**
+ * De velden van een onderzoeksvraag in objectvorm, zoals het zod-schema in
+ * content.config.ts ze oplevert; de betekenis staat daar bij `vraagVelden`.
+ */
+export interface VraagVelden {
+  vraag: string;
+  id?: string;
+  paper?: string;
+  status: string;
+  doel: string;
+  verwant: string[];
+}
+
+/** Een deelvraag: een string of de objectvorm, zonder eigen deelvragen. */
+export type DeelvraagData = string | VraagVelden;
+
+/** Een onderzoeksvraag zoals hij in de frontmatter staat. */
+export type VraagData = string | (VraagVelden & { deelvragen: DeelvraagData[] });
+
 /** A werkpakket's frontmatter, mirroring the zod schema in content.config.ts. */
 export interface WerkpakketData {
   id: string;
@@ -56,7 +75,7 @@ export interface WerkpakketData {
   capaciteit: string;
   toelichting: string;
   volgorde: number;
-  onderzoeksvragen: (string | { vraag: string; paper: string })[];
+  onderzoeksvragen: VraagData[];
   samenhangIds: string[];
   afhankelijkVan: string[];
   onderzoek: string;
@@ -190,6 +209,17 @@ type NonEmpty = [string, ...string[]];
 export const GEEN_CATEGORIE = 'geen';
 
 /**
+ * De waarde van `data-status` op een onderzoeksvraag, met een leeg veld als
+ * 'geen' — dezelfde afbeelding als GEEN_CATEGORIE maakt voor een kaart
+ * zonder categorie, en om dezelfde reden: het statusfilter op het overzicht
+ * heeft een vakje "Niet bepaald" nodig om die vragen terug te halen, en dat
+ * vakje moet een waarde hebben om op te matchen.
+ */
+export const GEEN_STATUS = 'geen';
+export const vraagStatusWaarde = (status: string) => status || GEEN_STATUS;
+
+
+/**
  * De beleggingsstand zoals hij op `data-belegging` komt te staan, met een leeg
  * veld als 'vrij' — dezelfde afbeelding die getBelegging() maakt.
  *
@@ -220,6 +250,101 @@ export const FILTER_OPTIES = [
 ];
 
 /**
+ * Een filtergroep in de kopbalk: de knop, de vinkjes erachter, en hoe het
+ * filter werkt.
+ *
+ * Twee soorten. Een CSS-filter (geen `attribuut`) werkt via de
+ * `:has(#rr-<id>-<optie>[checked])`-regels in roadmap.css en heeft geen
+ * script nodig. Een JS-filter vergelijkt `data-<attribuut>` op elk item met de
+ * aangevinkte opties en zet `verbergKlasse` op wat niet matcht; roadmap.css
+ * verbergt die klasse. Waarom het tweede filter niet óók CSS kon zijn staat
+ * bij de verbergregel in roadmap.css.
+ *
+ * RoadmapKop.astro rendert de groep en zet de velden als data-attributen op de
+ * DOM, zodat het script niets van belegging of status hoeft te weten: de
+ * pagina zegt wat er staat.
+ */
+export interface FilterGroep {
+  /** Het korte id in de element-ids: `rr-<id>-knop`, `rr-<id>-<optie>`. */
+  id: string;
+  knop: string;
+  titel: string;
+  /** De klasse op elk vinkje; het script telt en leest erop. */
+  optieKlasse: string;
+  opties: { id: string; label: string }[];
+  /**
+   * De dataset-sleutel op het item die het script vergelijkt: `belegging` voor
+   * `data-belegging`. Eén woord, want het script leest `item.dataset[attribuut]`
+   * en een naam met een koppelteken zou daar als camelCase moeten staan.
+   * Afwezig bij een CSS-filter.
+   */
+  attribuut?: string;
+  /** De klasse die het script zet op een item dat niet matcht. Afwezig bij een CSS-filter. */
+  verbergKlasse?: string;
+}
+
+export type FilterGroepId = 'categorie' | 'belegging' | 'stand';
+
+export const FILTERGROEPEN: Record<FilterGroepId, FilterGroep> = {
+  categorie: {
+    id: 'cat',
+    knop: 'Categorie',
+    titel: 'Filter op categorie',
+    optieKlasse: 'rr-filter__option',
+    opties: FILTER_OPTIES,
+  },
+  belegging: {
+    id: 'bel',
+    knop: 'Belegging',
+    titel: 'Filter op belegging',
+    optieKlasse: 'rr-filter__belegging-option',
+    opties: BELEGGING_FILTER_OPTIES,
+    attribuut: 'belegging',
+    verbergKlasse: 'rr-geen-belegging',
+  },
+  /*
+   * De stand van een onderzoeksvraag: vrij, opgepakt of klaar, zoals
+   * vraagLane() hem bepaalt. Dezelfde drie vinkjes als het beleggingsfilter,
+   * want een vraag staat naast zijn werkpakket; de kaart draagt de uitkomst
+   * op `data-lane`.
+   */
+  stand: {
+    id: 'stand',
+    knop: 'Stand',
+    titel: 'Filter op stand van de vraag',
+    optieKlasse: 'rr-filter__stand-option',
+    opties: BELEGGING_FILTER_OPTIES,
+    attribuut: 'lane',
+    verbergKlasse: 'rr-vraag--geen-stand',
+  },
+};
+
+/*
+ * De verbergklasse van het zoekfilter staat in lib/roadmap-zoek.ts, omdat het
+ * script dat hem zet alleen die module kan importeren; hier opnieuw
+ * geëxporteerd zodat de pagina's en assertFilterRules() één bron hebben.
+ */
+export { GEEN_TREFFER };
+
+/**
+ * De weergaven van de roadmap, in de volgorde van de tab-bar in de kop. Elke
+ * weergave is een eigen route met dezelfde kop (RoadmapKop.astro); de
+ * tab-bar verschijnt pas zodra er meer dan één is, want één weergave is geen
+ * keuze.
+ */
+export const WEERGAVEN = [
+  { id: 'matrix', label: 'Matrix', href: '/roadmap' },
+  { id: 'bord', label: 'Bord', href: '/roadmap/bord' },
+  {
+    id: 'onderzoeksvragen',
+    label: 'Onderzoeksvragen',
+    href: '/roadmap/onderzoeksvragen',
+  },
+] as const;
+
+export type WeergaveId = (typeof WEERGAVEN)[number]['id'];
+
+/**
  * Fail the build when the filter's stylesheet has no show-rule for an option
  * the page renders.
  *
@@ -239,23 +364,32 @@ export function assertFilterRules(css: string): void {
       `roadmap.css mist een toon-regel voor filteroptie(s) ${missing
         .map((id) => `"${id}"`)
         .join(', ')}. Voeg een ` +
-        `\`.rr-roadmap:has(#rr-cat-<id>[checked]) .rr-wp-card[data-categorie='<id>']\`-regel toe, ` +
+        `\`.rr-roadmap:has(#rr-cat-<id>[checked]) [data-categorie='<id>']\`-regel toe, ` +
         'anders blijven die kaarten verborgen zodra er gefilterd wordt.',
     );
   }
 
   /*
-   * The belegging filter hides through the script, so it needs one rule
-   * rather than one per option — but its absence fails the same silent way:
-   * every checkbox would toggle a class that styles nothing, and the filter
-   * would look wired up while changing nothing on screen.
+   * Het zoekfilter en elke JS-filtergroep verbergen via een klasse die het
+   * script zet, dus elk heeft één regel nodig in plaats van één per optie.
+   * Ontbreekt die, dan faalt het even stil: de vinkjes toggelen een klasse
+   * die niets opmaakt, en het filter lijkt aangesloten terwijl er niets op
+   * het scherm verandert.
    */
-  if (!css.includes('.rr-wp-card--geen-belegging')) {
-    throw new Error(
-      'roadmap.css mist de verberg-regel voor het beleggingsfilter. Voeg ' +
-        '`.rr-wp-card--geen-belegging` toe aan de `display: none !important`-' +
-        'regel naast `.rr-wp-card--geen-treffer`, anders doen die vinkjes niets.',
-    );
+  const verbergKlassen = [
+    GEEN_TREFFER,
+    ...Object.values(FILTERGROEPEN).flatMap((g) =>
+      g.verbergKlasse ? [g.verbergKlasse] : [],
+    ),
+  ];
+  for (const klasse of verbergKlassen) {
+    if (!css.includes(`.${klasse}`)) {
+      throw new Error(
+        `roadmap.css mist de verberg-regel \`.${klasse}\`. Voeg hem toe aan de ` +
+          '`display: none !important`-regel naast `.rr-geen-treffer`, anders ' +
+          'doet het filter dat deze klasse zet niets.',
+      );
+    }
   }
 
   /*
@@ -417,6 +551,103 @@ export function werkpakkettenInCel<T extends { data: WerkpakketData }>(
     .sort((a, b) => a.data.volgorde - b.data.volgorde);
 }
 
+/*
+ * De rang van elke discipline op de matrix: swimlane voor swimlane, en
+ * daarbinnen de volgorde van `disciplineIds`. Dezelfde volgorde als
+ * `matrixRijen` in pages/roadmap/index.astro, hier als getal zodat een
+ * sortering erop kan.
+ */
+const rijRang = new Map(
+  swimlanes.flatMap((lane) => lane.disciplineIds).map((id, i) => [id, i]),
+);
+
+/**
+ * De volgorde van werkpakketten buiten de matrix: eerst de fase (de kolom),
+ * dan de rij zoals de matrix hem tekent, dan `volgorde` binnen de cel, en als
+ * laatste het id zodat de uitkomst stabiel is.
+ *
+ * Dat is de leesvolgorde van de matrix, links naar rechts en van boven naar
+ * beneden. Het bord toont zo dezelfde werkpakketten in dezelfde volgorde als
+ * een rondgang over de matrix, en wie van de ene weergave naar de andere gaat
+ * hoeft niet opnieuw te zoeken.
+ *
+ * Een onbekende fase of discipline sorteert achteraan; assertReferencesResolve
+ * heeft die bij de build al gemeld, dus dit is alleen de val als die controle
+ * er een keer niet voor stond.
+ */
+export function werkpakketVolgorde(a: WerkpakketData, b: WerkpakketData): number {
+  const fase =
+    (getFase(a.faseId)?.volgnummer ?? Infinity) -
+    (getFase(b.faseId)?.volgnummer ?? Infinity);
+  if (fase) return fase;
+  const rij =
+    (rijRang.get(a.disciplineId) ?? Infinity) -
+    (rijRang.get(b.disciplineId) ?? Infinity);
+  if (rij) return rij;
+  return a.volgorde - b.volgorde || a.id.localeCompare(b.id);
+}
+
+/** Een tag op een kaart, zoals nldd-tag hem rendert. */
+export interface KaartTag {
+  color: string;
+  text: string;
+  /** De toegankelijke naam; de zichtbare tekst is soms een afkorting. */
+  label: string;
+  icon?: string;
+}
+
+/**
+ * De tags van een werkpakket op een kaart: prioriteit, omvang, categorie en
+ * capability, in die volgorde, alleen de velden die ingevuld zijn. De
+ * belegging zit er niet bij: de werkpakketkaart zet die vooraan, de
+ * vraagtegel zegt er iets anders over (zie RoadmapVraagRij.astro).
+ *
+ * Eén helper voor beide kaarten, zodat een vraag dezelfde tags draagt als
+ * het werkpakket waar hij in staat, met dezelfde kleuren en dezelfde
+ * afkortingen.
+ */
+export function werkpakketTags(data: WerkpakketData): KaartTag[] {
+  const prioriteit = getPrioriteit(data.prioriteit);
+  const categorie = getCategorie(data.categorie);
+  const capability = getCapability(data.capability);
+  return [
+    prioriteit
+      ? { color: prioriteit.tagColor, text: prioriteit.label, label: prioriteit.label }
+      : undefined,
+    data.omvang
+      ? { color: 'neutral', text: data.omvang, label: `Omvang ${data.omvang}` }
+      : undefined,
+    categorie
+      ? { color: 'neutral', text: categorie.label, label: categorie.label }
+      : undefined,
+    capability
+      ? {
+          color: 'accent',
+          text: capability.label.split(' ')[0],
+          label: capability.label,
+        }
+      : undefined,
+  ].filter((tag): tag is KaartTag => tag !== undefined);
+}
+
+/** "13 RFC's", of undefined zonder RFC's; de stille telling naast de tags. */
+export function rfcTekst(data: WerkpakketData): string | undefined {
+  return data.rfcs.length
+    ? `${data.rfcs.length} RFC${data.rfcs.length > 1 ? "'s" : ''}`
+    : undefined;
+}
+
+/**
+ * "Fase I · Techniek & Architectuur": de cel van de matrix, in woorden, voor
+ * een weergave waar die cel niet te zien is.
+ */
+export function kaartOndertitel(data: WerkpakketData): string {
+  return [getFase(data.faseId)?.naam, getDiscipline(data.disciplineId)?.naam]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+
 /**
  * Everything of a werkpakket that the zoekfilter on /roadmap matches against,
  * as one lowercased string.
@@ -437,9 +668,9 @@ export function werkpakkettenInCel<T extends { data: WerkpakketData }>(
  * for "verifieren" matches the capability "Verifiëren en simuleren".
  */
 export function zoektekst(data: WerkpakketData): string {
-  const vragen = data.onderzoeksvragen.map((v) =>
-    typeof v === 'string' ? v : v.vraag,
-  );
+  // De vraag, zijn doel en zijn deelvragen: alles wat op de detailpagina bij
+  // de vraag staat, zodat een woord uit een deelvraag het werkpakket vindt.
+  const vragen = onderzoeksvraagLijst(data.onderzoeksvragen).flatMap(vraagTekst);
 
   return normaliseerZoekterm(
     [
@@ -474,14 +705,58 @@ export function zoektekst(data: WerkpakketData): string {
 }
 
 /**
- * A research question as the pages render it: the text, plus the paper section
- * it belongs to when there is one.
+ * A research question as the pages render it: the text, the paper section it
+ * belongs to when there is one, and the structure around it (status, doel,
+ * verwant, deelvragen) as the frontmatter wrote it.
  */
 export interface Onderzoeksvraag {
   vraag: string;
+  /** The slug from the frontmatter; absent on a question nothing points at. */
+  id?: string;
+  /** `vraag-<id>`: het anker op de pagina's. Alleen met een id. */
+  anker?: string;
   /** The paper section, resolved from its anchor. Absent when unlinked. */
   paper?: PaperSectie;
+  /** open, loopt, beantwoord, of '' voor niet bepaald; zie ONDERZOEK_STANDEN. */
+  status: string;
+  doel: string;
+  /** De ids uit de frontmatter, één kant op; verwantIndex() leest beide. */
+  verwant: string[];
+  deelvragen: Onderzoeksvraag[];
 }
+
+/** Het anker van een vraag op de werkpakketpagina en het overzicht. */
+export const vraagAnker = (id: string) => `vraag-${id}`;
+
+/** De tekst van een vraag met zijn doel en deelvragen, voor het zoeken. */
+function vraagTekst(v: Onderzoeksvraag): string[] {
+  return [v.vraag, v.doel, ...v.deelvragen.flatMap(vraagTekst)];
+}
+
+/**
+ * Wat het zoekfilter op /roadmap/onderzoeksvragen over een vraag doorzoekt:
+ * de vraag met zijn doel en deelvragen, de titel van het werkpakket (wie op
+ * een werkpakket zoekt vindt zijn vragen), de status zoals de tag hem
+ * schrijft, en de papersectie op nummer en titel. Genormaliseerd zoals
+ * zoektekst() voor de kaarten.
+ */
+export function vraagZoektekst(
+  vraag: Onderzoeksvraag,
+  werkpakket: WerkpakketData,
+): string {
+  return normaliseerZoekterm(
+    [
+      ...vraagTekst(vraag),
+      werkpakket.titel,
+      getOnderzoek(vraag.status)?.label,
+      vraag.paper && `§ ${vraag.paper.nummer}`,
+      vraag.paper?.titel,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+}
+
 
 /** A section of the position paper, addressable by its anchor. */
 export interface PaperSectie {
@@ -505,35 +780,377 @@ export const PAPER_PAD = '/research/rules-as-executed';
  * words. The heading text is "4.5 The Recipient's Check", number and title in
  * one string, which is why they are split here.
  */
-const paperSecties = new Map<string, PaperSectie>(
-  (paperHeadings as { slug: string; text: string }[]).map((h) => {
-    const m = /^([\d.]+)\s+(.*)$/.exec(h.text);
-    return [
-      h.slug,
-      {
-        slug: h.slug,
-        nummer: m ? m[1] : '',
-        titel: m ? m[2] : h.text,
-        href: `${PAPER_PAD}#${h.slug}`,
-      },
-    ];
-  }),
-);
+export const paperSectieLijst: PaperSectie[] = (
+  paperHeadings as { slug: string; text: string }[]
+).map((h) => {
+  const m = /^([\d.]+)\s+(.*)$/.exec(h.text);
+  return {
+    slug: h.slug,
+    nummer: m ? m[1] : '',
+    titel: m ? m[2] : h.text,
+    href: `${PAPER_PAD}#${h.slug}`,
+  };
+});
+
+const paperSecties = new Map(paperSectieLijst.map((s) => [s.slug, s]));
 
 export const getPaperSectie = (slug: string) => paperSecties.get(slug);
 
+function normaliseerVraag(v: VraagData | DeelvraagData): Onderzoeksvraag {
+  if (typeof v === 'string') {
+    return { vraag: v, status: '', doel: '', verwant: [], deelvragen: [] };
+  }
+  return {
+    vraag: v.vraag,
+    id: v.id,
+    anker: v.id ? vraagAnker(v.id) : undefined,
+    paper: v.paper ? getPaperSectie(v.paper) : undefined,
+    status: v.status,
+    doel: v.doel,
+    verwant: v.verwant,
+    deelvragen: ('deelvragen' in v ? v.deelvragen : []).map(normaliseerVraag),
+  };
+}
+
 /**
- * One shape for the page: both the plain-string and the linked form of a
- * research question come out as an Onderzoeksvraag.
+ * One shape for the page: both the plain-string and the object form of a
+ * research question come out as an Onderzoeksvraag, deelvragen included.
  */
 export function onderzoeksvraagLijst(
   vragen: WerkpakketData['onderzoeksvragen'],
 ): Onderzoeksvraag[] {
-  return vragen.map((v) =>
-    typeof v === 'string'
-      ? { vraag: v }
-      : { vraag: v.vraag, paper: getPaperSectie(v.paper) },
+  return vragen.map(normaliseerVraag);
+}
+
+/** Een (deel)vraag met het werkpakket waar hij in staat. */
+export interface VraagInWerkpakket {
+  vraag: Onderzoeksvraag;
+  /** De bovenliggende vraag, bij een deelvraag. */
+  ouder?: Onderzoeksvraag;
+  werkpakket: WerkpakketData;
+  /** "vraag 3" of "vraag 3, deelvraag 2": de plek in het bestand, voor meldingen. */
+  plek: string;
+}
+
+/**
+ * Alle onderzoeksvragen van de roadmap op één rij, deelvragen achter hun
+ * ouder, elk met zijn werkpakket. De bron voor het overzicht, voor
+ * verwantIndex() en voor assertOnderzoeksvragen().
+ */
+export function alleOnderzoeksvragen(
+  werkpakketten: { data: WerkpakketData }[],
+): VraagInWerkpakket[] {
+  const uit: VraagInWerkpakket[] = [];
+  for (const { data } of werkpakketten) {
+    onderzoeksvraagLijst(data.onderzoeksvragen).forEach((vraag, i) => {
+      uit.push({ vraag, werkpakket: data, plek: `vraag ${i + 1}` });
+      vraag.deelvragen.forEach((deel, j) => {
+        uit.push({
+          vraag: deel,
+          ouder: vraag,
+          werkpakket: data,
+          plek: `vraag ${i + 1}, deelvraag ${j + 1}`,
+        });
+      });
+    });
+  }
+  return uit;
+}
+
+/** Een verwante vraag zoals de pagina hem linkt. */
+export interface VraagVerwijzing {
+  id: string;
+  vraag: string;
+  werkpakketTitel: string;
+  /** De werkpakketpagina, op het anker van de vraag. */
+  href: string;
+}
+
+/**
+ * Per vraag-id de verwante vragen, beide kanten gelezen.
+ *
+ * `verwant` staat in de frontmatter aan één kant, zoals afhankelijkVan: wie A
+ * aan B koppelt hoeft B niet ook aan A te koppelen, en mag dat ook niet, want
+ * dan staat dezelfde relatie twee keer en raakt hij bij een wijziging aan één
+ * kant uit de pas. Deze index leest de geschreven kant en leidt de andere af,
+ * ontdubbeld, in de volgorde waarin de collectie de werkpakketten aanlevert.
+ *
+ * Een verwijzing naar een id dat niet bestaat valt hier stil weg;
+ * assertOnderzoeksvragen() heeft hem bij de build al gemeld.
+ */
+export function verwantIndex(
+  werkpakketten: { data: WerkpakketData }[],
+): Map<string, VraagVerwijzing[]> {
+  const alle = alleOnderzoeksvragen(werkpakketten);
+  const opId = new Map(
+    alle.filter((v) => v.vraag.id).map((v) => [v.vraag.id!, v]),
   );
+  const verwijzing = (v: VraagInWerkpakket): VraagVerwijzing => ({
+    id: v.vraag.id!,
+    vraag: v.vraag.vraag,
+    werkpakketTitel: v.werkpakket.titel,
+    href: `/roadmap/werkpakket/${v.werkpakket.id}#${v.vraag.anker}`,
+  });
+  const index = new Map<string, VraagVerwijzing[]>();
+  const voeg = (van: string, naar: VraagInWerkpakket) => {
+    const lijst = index.get(van) ?? [];
+    if (!lijst.some((x) => x.id === naar.vraag.id)) lijst.push(verwijzing(naar));
+    index.set(van, lijst);
+  };
+  for (const v of alle) {
+    if (!v.vraag.id) continue;
+    for (const doel of v.vraag.verwant) {
+      const ander = opId.get(doel);
+      if (!ander || doel === v.vraag.id) continue;
+      voeg(v.vraag.id, ander);
+      voeg(doel, v);
+    }
+  }
+  return index;
+}
+
+/** Hoeveel deelvragen beantwoord zijn, voor "2 van 3 deelvragen beantwoord". */
+export function telDeelvragen(vraag: Onderzoeksvraag): {
+  beantwoord: number;
+  totaal: number;
+} {
+  return {
+    beantwoord: vraag.deelvragen.filter((d) => d.status === 'beantwoord').length,
+    totaal: vraag.deelvragen.length,
+  };
+}
+
+/** Een bovenliggende vraag met het werkpakket waar hij in staat. */
+export interface VraagMetWerkpakket {
+  vraag: Onderzoeksvraag;
+  werkpakket: WerkpakketData;
+}
+
+/**
+ * In welke lane van het vragenbord een vraag staat: vrij, opgepakt of klaar.
+ *
+ * De eigen status van de vraag gaat voor: open is vrij, loopt is opgepakt,
+ * beantwoord is klaar. Zonder eigen status volgt de vraag de belegging van
+ * zijn werkpakket: wie een werkpakket oppakt, pakt de vragen erin op, tot er
+ * per vraag iets anders over gezegd is. De kaart laat zien welke van de twee
+ * het was (`eigen`), zodat een vraag die alleen via zijn werkpakket op
+ * Opgepakt staat niet leest als een vraag waar iemand aan werkt.
+ */
+export const LANE_VAN_STATUS: Record<string, string> = {
+  open: 'vrij',
+  loopt: 'opgepakt',
+  beantwoord: 'klaar',
+};
+
+export function vraagLane(
+  vraag: Onderzoeksvraag,
+  werkpakket: WerkpakketData,
+): { lane: string; eigen: boolean } {
+  const eigen = LANE_VAN_STATUS[vraag.status];
+  if (eigen) return { lane: eigen, eigen: true };
+  return { lane: beleggingStand(werkpakket.belegging.stand), eigen: false };
+}
+
+/**
+ * Dezelfde afleiding één laag dieper: een deelvraag staat in de lane van zijn
+ * eigen status, en zonder eigen status in die van zijn ouder. Wie aan een
+ * vraag werkt, werkt aan de deelvragen erin, tot er per deelvraag iets anders
+ * over gezegd is.
+ */
+export function deelvraagLane(
+  deelvraag: Onderzoeksvraag,
+  ouderLane: string,
+): { lane: string; eigen: boolean } {
+  const eigen = LANE_VAN_STATUS[deelvraag.status];
+  if (eigen) return { lane: eigen, eigen: true };
+  return { lane: ouderLane, eigen: false };
+}
+
+/**
+ * De onderzoeksvragen van een werkpakket als tickets voor het mini-bord: de
+ * stand uit de eigen status, of uit de belegging van het werkpakket. Gedeeld
+ * door het bord en het werkpakketpaneel, zodat beide hetzelfde laten zien.
+ */
+export function werkpakketTickets(data: WerkpakketData): MiniTicket[] {
+  return onderzoeksvraagLijst(data.onderzoeksvragen).map((vraag) => {
+    const { lane, eigen } = vraagLane(vraag, data);
+    return {
+      tekst: vraag.vraag,
+      lane,
+      eigen,
+      bron: 'werkpakket',
+      status: vraag.status,
+      onder:
+        [
+          vraag.paper && `§ ${vraag.paper.nummer}`,
+          vraag.deelvragen.length > 0 &&
+            `${vraag.deelvragen.length} ${vraag.deelvragen.length === 1 ? 'deelvraag' : 'deelvragen'}`,
+        ]
+          .filter(Boolean)
+          .join(' · ') || undefined,
+    };
+  });
+}
+
+/** Eén klein ticket op een mini-bord onder een uitgeklapte rij. */
+export interface MiniTicket {
+  tekst: string;
+  /** vrij, opgepakt of klaar; zie vraagLane() en deelvraagLane(). */
+  lane: string;
+  /** Of de lane uit de eigen status komt (true) of overgenomen is. */
+  eigen: boolean;
+  /** Waarvan overgenomen, voor het bijschrift: "werkpakket" of "vraag". */
+  bron: string;
+  /** De eigen status, als die er is; wordt een tag. */
+  status: string;
+  /** Een stille regel, bijvoorbeeld het §-nummer of het aantal deelvragen. */
+  onder?: string;
+}
+
+/**
+ * Alle bovenliggende onderzoeksvragen in de volgorde van het position paper:
+ * eerst op sectie (§ 4.1, § 4.2, … zoals het paper ze nummert), daarbinnen
+ * in de leesvolgorde van de matrix en dan de volgorde van het bestand. Vragen
+ * zonder sectie komen achteraan, want het paper is de agenda en die lijst is
+ * wat er nog niet aan hangt. Deelvragen staan in de tegel van hun ouder,
+ * niet los in de lijst.
+ */
+export function vragenOpVolgorde(
+  werkpakketten: { data: WerkpakketData }[],
+): VraagMetWerkpakket[] {
+  const sectieRang = new Map(paperSectieLijst.map((s, i) => [s.slug, i]));
+  const uit: (VraagMetWerkpakket & { rang: number[] })[] = [];
+  const gesorteerd = [...werkpakketten].sort((a, b) =>
+    werkpakketVolgorde(a.data, b.data),
+  );
+  gesorteerd.forEach(({ data }, w) => {
+    onderzoeksvraagLijst(data.onderzoeksvragen).forEach((vraag, i) => {
+      uit.push({
+        vraag,
+        werkpakket: data,
+        rang: [vraag.paper ? (sectieRang.get(vraag.paper.slug) ?? Infinity) : Infinity, w, i],
+      });
+    });
+  });
+  // Stabiel en op drie sleutels: een gelijke sectie valt terug op de
+  // werkpakketvolgorde, en die op de plek in het bestand.
+  uit.sort((a, b) => {
+    for (let k = 0; k < 3; k++) {
+      const d = a.rang[k] - b.rang[k];
+      if (d) return d;
+    }
+    return 0;
+  });
+  return uit.map(({ rang: _rang, ...rest }) => rest);
+}
+
+/**
+ * De tellingen boven het overzicht: hoeveel vragen er zijn en hoeveel er per
+ * eigen status staan, hoeveel deelvragen daaronder hangen en hoeveel daarvan
+ * beantwoord zijn, en daarnaast hoeveel werkpakketten er per `onderzoek`-stand
+ * staan. Twee regels en niet één, omdat het twee dingen zijn: een vraag zonder
+ * eigen status telt als "niet bepaald", ook als zijn werkpakket op "loopt"
+ * staat.
+ *
+ * `perStatus` telt alleen de bovenliggende vragen, want dat is wat het
+ * statusfilter op de pagina filtert: een deelvraag gaat met zijn ouder mee en
+ * is niet los te tonen. Telden de deelvragen hier mee, dan zei de samenvatting
+ * "3 beantwoord" terwijl het filter er nul liet zien.
+ */
+export function telStatussen(werkpakketten: { data: WerkpakketData }[]): {
+  vragen: { totaal: number; perStatus: Record<string, number> };
+  deelvragen: { totaal: number; beantwoord: number };
+  werkpakketten: { totaal: number; perStatus: Record<string, number> };
+} {
+  const alle = alleOnderzoeksvragen(werkpakketten);
+  const hoofd = alle.filter((v) => !v.ouder);
+  const deel = alle.filter((v) => v.ouder);
+  const tel = (waarden: string[]) => {
+    const per: Record<string, number> = {};
+    for (const w of waarden) per[w] = (per[w] ?? 0) + 1;
+    return per;
+  };
+  return {
+    vragen: {
+      totaal: hoofd.length,
+      perStatus: tel(hoofd.map((v) => vraagStatusWaarde(v.vraag.status))),
+    },
+    deelvragen: {
+      totaal: deel.length,
+      beantwoord: deel.filter((v) => v.vraag.status === 'beantwoord').length,
+    },
+    werkpakketten: {
+      totaal: werkpakketten.length,
+      // Hetzelfde vocabulaire als een vraagstatus, dus dezelfde afbeelding
+      // van '' naar 'geen'; geschreven zonder de vraag-helper, want dit is
+      // de stand van een werkpakket.
+      perStatus: tel(werkpakketten.map((w) => w.data.onderzoek || GEEN_STATUS)),
+    },
+  };
+}
+
+/**
+ * Fail the build on an onderzoeksvraag whose structure points nowhere.
+ *
+ * Three things, all about ids, because an id is the one thing another vraag
+ * can hold on to: a duplicate id (the anchor `vraag-<id>` would then be two
+ * elements on the overzicht, and a verwant would silently land on one of
+ * them), a verwant to an id no (deel)vraag has, and a verwant on a vraag
+ * without an id of its own (the other side could never point back, so the
+ * relation would render one way round and read as if it were written that
+ * way).
+ *
+ * Not checked, on purpose: an empty status, a missing doel, a vraag without
+ * an id. That is the state of the work, not a defect; see the skill.
+ */
+export function assertOnderzoeksvragen(
+  werkpakketten: { data: WerkpakketData }[],
+): void {
+  const alle = alleOnderzoeksvragen(werkpakketten);
+  const problems: string[] = [];
+  const waar = (v: VraagInWerkpakket) =>
+    `werkpakket ${v.werkpakket.id} (${v.werkpakket.titel}): ${v.plek}`;
+  const kort = (v: VraagInWerkpakket) => `"${v.vraag.vraag.slice(0, 60)}…"`;
+
+  const gezien = new Map<string, VraagInWerkpakket>();
+  for (const v of alle) {
+    const id = v.vraag.id;
+    if (!id) {
+      if (v.vraag.verwant.length) {
+        problems.push(
+          `${waar(v)} ${kort(v)} heeft verwant maar geen eigen id; zonder id ` +
+            'kan de andere kant niet terugwijzen',
+        );
+      }
+      continue;
+    }
+    const eerder = gezien.get(id);
+    if (eerder) {
+      problems.push(
+        `${waar(v)} heeft id "${id}", maar ${waar(eerder)} ook; een id moet ` +
+          'uniek zijn over de hele roadmap, deelvragen meegerekend',
+      );
+    } else {
+      gezien.set(id, v);
+    }
+  }
+
+  for (const v of alle) {
+    for (const doel of v.vraag.verwant) {
+      if (doel === v.vraag.id) {
+        problems.push(`${waar(v)} ${kort(v)} noemt zichzelf in verwant`);
+      } else if (!gezien.has(doel)) {
+        problems.push(
+          `${waar(v)} ${kort(v)} verwijst via verwant naar "${doel}", maar ` +
+            'geen enkele (deel)vraag heeft dat id',
+        );
+      }
+    }
+  }
+
+  if (problems.length) {
+    throw new Error(`Onderzoeksvragen kloppen niet:\n  ${problems.join('\n  ')}`);
+  }
 }
 
 /** An RFC a werkpakket points at, with the RFC's own implementation state. */
@@ -727,10 +1344,12 @@ export function ongekoppeldeRfcs(
  * not exist.
  *
  * check-links.mjs does catch a dead anchor once the link is in the HTML, but
- * it reports the route and the anchor, not which werkpakket wrote it — with 53
- * questions that is a search. This names the file and the question instead,
- * and it is what keeps the mapping honest when the paper is revised: drop a
- * section and the build says which werkpakket pointed at it.
+ * it reports the route and the anchor, not which werkpakket wrote it — with
+ * some 150 questions that is a search. This names the file and the question
+ * instead, and it is what keeps the mapping honest when the paper is revised:
+ * drop a section and the build says which werkpakket pointed at it.
+ *
+ * Deelvragen count too: a deelvraag may carry its own `paper`.
  */
 export function assertPaperSections(
   werkpakketten: { data: WerkpakketData; id?: string }[],
@@ -738,14 +1357,26 @@ export function assertPaperSections(
   const problems: string[] = [];
 
   for (const { data } of werkpakketten) {
-    for (const vraag of data.onderzoeksvragen) {
-      if (typeof vraag === 'string') continue;
-      if (paperSecties.has(vraag.paper)) continue;
-      problems.push(
-        `werkpakket ${data.id} (${data.titel}): onbekende papersectie ` +
-          `"${vraag.paper}" bij de vraag "${vraag.vraag.slice(0, 60)}…"`,
-      );
-    }
+    data.onderzoeksvragen.forEach((vraag, i) => {
+      const items: { v: DeelvraagData; plek: string }[] = [
+        { v: vraag, plek: `vraag ${i + 1}` },
+        ...(typeof vraag === 'string'
+          ? []
+          : vraag.deelvragen.map((d, j) => ({
+              v: d,
+              plek: `vraag ${i + 1}, deelvraag ${j + 1}`,
+            }))),
+      ];
+      for (const { v, plek } of items) {
+        if (typeof v === 'string' || !v.paper || paperSecties.has(v.paper)) {
+          continue;
+        }
+        problems.push(
+          `werkpakket ${data.id} (${data.titel}): onbekende papersectie ` +
+            `"${v.paper}" bij ${plek} "${v.vraag.slice(0, 60)}…"`,
+        );
+      }
+    });
   }
 
   if (problems.length) {

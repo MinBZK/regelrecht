@@ -1,12 +1,14 @@
 /*
- * Roadmap pages (/roadmap/…). Imported by the matrix page only.
+ * Roadmap pages (/roadmap/…). Imported by the three weergaven: the matrix,
+ * the bord and the vragenoverzicht; the werkpakket page does not use it.
  *
  * Almost everything the roadmap renders is a design-system component:
  * nldd-sidebar-section for the werkpakket layout, nldd-container for spacing
  * and nldd-text for every run of text. Those bring their own responsive
- * behaviour, so this file holds exactly one media query — on the filter bar,
- * where a group has to stop being pushed to the right once the bar wraps.
- * Its reason is written out at the rule.
+ * behaviour, so this file holds only a few media queries: on the filter bar,
+ * where a group has to stop being pushed to the right once the bar wraps, and
+ * on the two fixed fields of a vraagtegel. Each reason is written out at the
+ * rule.
  *
  * What is left are the things the design system has no component for:
  *
@@ -218,26 +220,30 @@
  * DO NOT rewrite `#rr-cat-bar` as an attribute or class selector. The show
  * rules only beat the hide rule above because :has() takes the specificity
  * of its most specific argument, and an id makes these (1,3,0) against
- * (0,3,0). Level them and the rules tie, source order lets the hide rule
+ * (0,4,0). Level them and the rules tie, source order lets the hide rule
  * win, and every card disappears the moment any box is checked.
+ *
+ * `[data-categorie]` and not `.rr-wp-card`: on the matrix the item is a card,
+ * on the bord a list row. The attribute is what both carry, and what the
+ * filter is about.
  */
-.rr-roadmap:has(.rr-filter__option[checked]) .rr-wp-card {
+.rr-roadmap:has(.rr-filter__option[checked]) [data-categorie] {
   display: none;
 }
-.rr-roadmap:has(#rr-cat-bar[checked]) .rr-wp-card[data-categorie='bar'],
-.rr-roadmap:has(#rr-cat-pivot[checked]) .rr-wp-card[data-categorie='pivot'],
-.rr-roadmap:has(#rr-cat-bet[checked]) .rr-wp-card[data-categorie='bet'],
-.rr-roadmap:has(#rr-cat-geen[checked]) .rr-wp-card[data-categorie='geen'] {
+.rr-roadmap:has(#rr-cat-bar[checked]) [data-categorie='bar'],
+.rr-roadmap:has(#rr-cat-pivot[checked]) [data-categorie='pivot'],
+.rr-roadmap:has(#rr-cat-bet[checked]) [data-categorie='bet'],
+.rr-roadmap:has(#rr-cat-geen[checked]) [data-categorie='geen'] {
   display: block;
 }
 
 /* --- Zoekfilter --------------------------------------------------------- */
 
 /*
- * The zoekfilter's own hide-rule, and the one place on this page where
+ * The zoekfilter's own hide-rule, and the one place on these pages where
  * !important is the right tool rather than a shortcut.
  *
- * The two filters have to compose: a card shows only when the categorie filter
+ * The filters have to compose: a card shows only when the categorie filter
  * allows it *and* the search matches. The show-rules above are (1,3,0) — the
  * id inside :has() is what lifts them, deliberately, so they beat the blanket
  * hide-rule. A class selector cannot outrank that, and matching their
@@ -248,15 +254,22 @@
  * The alternative is a script that writes element.style, and that is worse: it
  * would beat the categorie filter too, stranding cards visible that the
  * checkboxes had hidden.
+ *
+ * `rr-geen-treffer` zit niet aan de kaart vast: op het vragenoverzicht staat
+ * hij op een lijstregel. De klasse is GEEN_TREFFER in lib/roadmap-zoek.ts, en
+ * assertFilterRules() (lib/roadmap.ts) leest dit bestand om te controleren
+ * dat hij hier staat.
  */
-.rr-roadmap .rr-wp-card--geen-treffer,
-.rr-roadmap .rr-wp-card--geen-belegging {
+.rr-roadmap .rr-geen-treffer,
+.rr-roadmap .rr-geen-belegging,
+.rr-roadmap .rr-vraag--geen-stand {
   display: none !important;
 }
 
 /*
- * Het beleggingsfilter deelt de bovenstaande regel, en dat is de hele reden
- * dat het in JavaScript zit en niet in CSS.
+ * Elke JS-filtergroep (het beleggingsfilter voorop) deelt de bovenstaande
+ * regel, en dat is de hele reden dat zo'n groep in JavaScript zit en niet in
+ * CSS.
  *
  * Het categoriefilter verbergt alles en toont daarna terug met een
  * `:has(#id)`-regel die op specificiteit wint. Een tweede groep kan die truc
@@ -266,9 +279,11 @@
  * binnen een groep — met 'bar' en 'pivot' allebei aangevinkt verbergt elke
  * regel wat de andere toont en blijft er niets over.
  *
- * Door hier dezelfde `!important`-regel te delen als het zoekfilter staan
- * beide buiten de specificiteitswedstrijd, en overleeft een kaart alleen als
- * geen van de drie filters hem verbergt.
+ * Door hier dezelfde `!important`-regel te delen als het zoekfilter staan ze
+ * allemaal buiten de specificiteitswedstrijd, en overleeft een item alleen als
+ * geen van de filters het verbergt. Komt er een JS-groep bij (FILTERGROEPEN in
+ * lib/roadmap.ts), dan hoort zijn verbergklasse in de regel hierboven;
+ * assertFilterRules() valt de build als hij ontbreekt.
  */
 
 /*
@@ -592,4 +607,50 @@
   .rr-roadmap .rr-matrix-canvas--accent .rr-wp-card {
     transition: none;
   }
+}
+
+/* --- Vragenpagina ------------------------------------------------------- */
+
+/*
+ * De twee vaste velden vooraan op een vraagkaart (position paper,
+ * werkpakket). Eigen CSS bovenop het ontwerpsysteem, gemeld in de PR.
+ *
+ * Vanaf `md` (641px) krijgen ze een vaste breedte en krimpen ze niet mee met
+ * de vraag ernaast, zodat het vraagdeel op elke kaart op dezelfde plek
+ * begint. nldd-list-item-segment kent alleen `width="fit-content" | "full"`
+ * en krimpt als flexitem zodra de vraag lang is.
+ *
+ * Daaronder kan dat niet: de rij is intern een flexbox zonder terugloop, en
+ * twee vaste velden lieten de vraag op een telefoon een paar woorden breed.
+ * Daar krijgt elk veld hooguit ruim een kwart en loopt zijn tekst terug.
+ */
+@media (min-width: 641px) {
+  .rr-roadmap .rr-vraag__veld {
+    flex-shrink: 0;
+  }
+  .rr-roadmap .rr-vraag__veld--paper nldd-text-cell {
+    width: 11rem;
+  }
+  .rr-roadmap .rr-vraag__veld--werkpakket nldd-text-cell {
+    width: 16rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .rr-roadmap .rr-vraag__veld {
+    max-width: 27%;
+  }
+}
+
+/*
+ * Een groep waarvan het zoeken of het standfilter alle kaarten heeft
+ * weggehaald verdwijnt mee, tegel en al. Anders bleven bij een smal filter
+ * tientallen lege paragraaftegels staan. Alleen de vraagkaarten tellen (die
+ * dragen `data-zoek`); de deelvragen zitten in de kaart van hun vraag.
+ */
+.rr-roadmap
+  .rr-vragen__groep:not(
+    :has([data-zoek]:not(.rr-geen-treffer, .rr-vraag--geen-stand))
+  ) {
+  display: none;
 }

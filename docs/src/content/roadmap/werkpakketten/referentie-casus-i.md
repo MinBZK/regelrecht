@@ -45,28 +45,33 @@ toelichting: |-
   casus.
 volgorde: 2000
 onderzoeksvragen:
-  - >-
-    Technisch: In het corpus worden de rekenregels uit de regelgeving
-    gemodelleerd, volgens het schema. Welke technische constructen daarbuiten
-    ontbreken nog om daarop in de praktijk een aanvraagsysteem te bouwen?
-    Daarbij hoort het koppelen van data of representatieve overgangsdata, en
-    optioneel raakvlakken met andere systemen.
-  - >-
-    Frontend: Kan een herbruikbare frontend worden vormgegeven op basis van
-    regelwerken, en welke generieke componenten
-    zijn daarvoor nodig?
-  - >-
-    Methode: Wat zijn patronen en tooling in het analyseren en valideren van de
-    regelwerken die herbruikbaar zijn voor volgende casussen, en waar
-    houdt gereedschap op en begint menselijk oordeel?
-  - >-
-    Generiek: Welke verbeteringen aan bestaande onderdelen van het ecosysteem,
-    zoals het schema en de editor, komen uit deze casus naar boven, en hoe
-    leggen we ze vast zodat een volgende casus ze niet opnieuw hoeft te
-    ontdekken?
-  - >-
-    Generiek: Welke elementen van de referentiecasus zijn herbruikbaar en
-    abstraheerbaar voor "Referentie casus II"?
+  - vraag: >-
+      Technisch: In het corpus worden de rekenregels uit de regelgeving
+      gemodelleerd, volgens het schema. Welke technische constructen daarbuiten
+      ontbreken nog om daarop in de praktijk een aanvraagsysteem te bouwen?
+      Daarbij hoort het koppelen van data of representatieve overgangsdata, en
+      optioneel raakvlakken met andere systemen.
+    id: rc1-technische-constructen
+  - vraag: >-
+      Frontend: Kan een herbruikbare frontend worden vormgegeven op basis van
+      regelwerken, en welke generieke componenten
+      zijn daarvoor nodig?
+    id: rc1-herbruikbare-frontend
+  - vraag: >-
+      Methode: Wat zijn patronen en tooling in het analyseren en valideren van de
+      regelwerken die herbruikbaar zijn voor volgende casussen, en waar
+      houdt gereedschap op en begint menselijk oordeel?
+    id: rc1-patronen-en-tooling
+  - vraag: >-
+      Generiek: Welke verbeteringen aan bestaande onderdelen van het ecosysteem,
+      zoals het schema en de editor, komen uit deze casus naar boven, en hoe
+      leggen we ze vast zodat een volgende casus ze niet opnieuw hoeft te
+      ontdekken?
+    id: rc1-verbeteringen-ecosysteem
+  - vraag: >-
+      Generiek: Welke elementen van de referentiecasus zijn herbruikbaar en
+      abstraheerbaar voor "Referentie casus II"?
+    id: rc1-herbruikbaar-voor-ii
 bouw: deels
 belegging:
   stand: opgepakt

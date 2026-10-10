@@ -1,0 +1,129 @@
+---
+/*
+ * Eén onderzoeksvraag als lijstregel op de werkpakketpagina. Voor de
+ * deelvragen roept hij zichzelf aan (Astro.self), één niveau diep, want
+ * dieper gaat het schema niet. De vragenpagina gebruikt hem niet: die heeft
+ * zijn eigen tegels (RoadmapVraagRij.astro).
+ *
+ * Wat er bij de vraag staat, en waarom in deze volgorde:
+ *
+ * - De vraag zelf, als lopende tekst in het <li>; de rest is er een
+ *   bijschrift bij en staat eronder, zodat de vraag de regel blijft.
+ * - Een metaregel met de eigen status van de vraag, de papersectie, en
+ *   hoeveel deelvragen beantwoord zijn. Het werkpakket zelf staat niet in de
+ *   regel: dit is zijn eigen pagina, met de standen in de zijbalk.
+ * - Het doel, als stille regel.
+ * - De verwante vragen, beide kanten gelezen (verwantIndex in lib/roadmap.ts).
+ * - De deelvragen, als geneste lijst.
+ *
+ * De metaregel is een nldd-container met layout="wrap": een nldd-tag in een
+ * <li> is inline en breekt anders midden in de regel. Het enige eigen CSS
+ * hier is de papersectielink, overgenomen uit de werkpakketpagina waar hij
+ * eerst stond; de reden staat erbij.
+ */
+import {
+  getOnderzoek,
+  telDeelvragen,
+  type Onderzoeksvraag,
+  type VraagVerwijzing,
+} from '~/lib/roadmap';
+
+interface Props {
+  vraag: Onderzoeksvraag;
+  /** Per vraag-id de verwante vragen, uit verwantIndex(); geldt ook voor de deelvragen. */
+  verwanten?: Map<string, VraagVerwijzing[]>;
+  /** Regelbereik in het bronbestand, voor de bewerkknop; alleen op een bovenliggende vraag. */
+  regels?: [number, number];
+  /** 1 voor een vraag, 2 voor een deelvraag. */
+  niveau: 1 | 2;
+}
+
+const { vraag, verwanten, regels, niveau } = Astro.props;
+
+const status = getOnderzoek(vraag.status);
+const verwant = vraag.id ? (verwanten?.get(vraag.id) ?? []) : [];
+const deel = telDeelvragen(vraag);
+// Alleen een metaregel als er iets in komt: een lege container krijgt van
+// rich-text toch zijn ritme-marge, en dan hangt het doel eronder in de lucht.
+const heeftMeta = status || vraag.paper || deel.totaal > 0;
+---
+
+<li id={vraag.anker} data-line={regels?.[0]} data-line-end={regels?.[1]}>
+  {vraag.vraag}
+  {
+    heeftMeta && (
+      <nldd-container layout="wrap" gap="8" vertical-alignment="center">
+        {status && (
+          <nldd-tag size="sm" color={status.tagColor} text={status.label} />
+        )}
+        {vraag.paper && (
+          <a class="rr-papersectie" href={vraag.paper.href}>
+            Rules as Executed §&nbsp;{vraag.paper.nummer}
+          </a>
+        )}
+        {deel.totaal > 0 && (
+          <nldd-text size="xs" color="secondary">
+            {deel.beantwoord} van {deel.totaal}{' '}
+            {deel.totaal === 1 ? 'deelvraag' : 'deelvragen'} beantwoord
+          </nldd-text>
+        )}
+      </nldd-container>
+    )
+  }
+  {
+    vraag.doel && (
+      <nldd-text size="sm" color="secondary">
+        Doel: {vraag.doel}
+      </nldd-text>
+    )
+  }
+  {
+    verwant.length > 0 && (
+      <nldd-text size="sm" color="secondary">
+        Verwant:{' '}
+        {verwant.map((v, i) => (
+          <>
+            {i > 0 && '; '}
+            <nldd-link size="inherit" href={v.href} text={v.vraag} />
+            {` (${v.werkpakketTitel})`}
+          </>
+        ))}
+      </nldd-text>
+    )
+  }
+  {
+    vraag.deelvragen.length > 0 && (
+      <ol>
+        {vraag.deelvragen.map((d) => (
+          <Astro.self
+            vraag={d}
+            verwanten={verwanten}
+            niveau={2}
+          />
+        ))}
+      </ol>
+    )
+  }
+</li>
+
+<style>
+  /*
+   * De papersectielink onder een vraag. Eigen CSS, omdat het ontwerpsysteem
+   * geen stille verwijzing in een lijstregel kent: nldd-link is een gewone
+   * link in de accentkleur, en die zou van elke vraag een blauwe tweede regel
+   * maken. Dit is een wijzer, visueel rustiger dan de vraag; bij hover en
+   * focus komt de accentkleur alsnog.
+   */
+  .rr-papersectie {
+    width: fit-content;
+    font: var(--primitives-font-body-xs-regular-snug, inherit);
+    color: var(--semantics-content-secondary-color);
+    text-decoration-color: var(--semantics-surfaces-tinted-border-color);
+  }
+
+  .rr-papersectie:hover,
+  .rr-papersectie:focus-visible {
+    color: var(--semantics-content-accent-color);
+    text-decoration-color: currentColor;
+  }
+</style>

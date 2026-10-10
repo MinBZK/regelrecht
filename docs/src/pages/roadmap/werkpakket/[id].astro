@@ -26,6 +26,7 @@
 import { getCollection } from 'astro:content';
 import Base from '~/layouts/Base.astro';
 import EditLink from '~/components/EditLink.astro';
+import RoadmapVraag from '~/components/RoadmapVraag.astro';
 import {
   getFase,
   getDiscipline,
@@ -35,7 +36,9 @@ import {
   assertReferencesResolve,
   assertPaperSections,
   assertRfcReferences,
+  assertOnderzoeksvragen,
   onderzoeksvraagLijst,
+  verwantIndex,
   rfcVerwijzingen,
   getOnderzoek,
   getBouw,
@@ -55,18 +58,23 @@ export async function getStaticPaths() {
   assertReferencesResolve(werkpakketten);
   // Fails the build on a question pointing at a paper section that is gone.
   assertPaperSections(werkpakketten);
+  // Fails the build on a duplicate vraag-id or a verwant that goes nowhere.
+  assertOnderzoeksvragen(werkpakketten);
   // Fails the build on a werkpakket pointing at an RFC that does not exist.
   assertRfcReferences(werkpakketten);
   // Fails the build on a belegging that contradicts onderzoek/bouw, or that
   // claims a date in the future.
   assertBelegging(werkpakketten);
+  // De verwante vragen, beide kanten gelezen, één keer voor alle pagina's:
+  // de index loopt over alle werkpakketten en is per pagina dezelfde.
+  const verwanten = verwantIndex(werkpakketten);
   return werkpakketten.map((entry) => ({
     params: { id: entry.data.id },
-    props: { entry, all: werkpakketten },
+    props: { entry, all: werkpakketten, verwanten },
   }));
 }
 
-const { entry, all } = Astro.props;
+const { entry, all, verwanten } = Astro.props;
 const wp = entry.data;
 
 const fase = getFase(wp.faseId);
@@ -96,8 +104,8 @@ const sourcePath = entry.filePath
   ? `${process.cwd()}/${entry.filePath}`
   : undefined;
 
-// Both forms of a research question — plain text, or text plus a paper
-// section — come out of this as one shape.
+// Both forms of a research question — plain text, or the object with id,
+// status, doel, verwant and deelvragen — come out of this as one shape.
 const vragen = onderzoeksvraagLijst(wp.onderzoeksvragen);
 
 const toelichting = renderMarkdown(
@@ -281,24 +289,19 @@ const kerngegevens = [
         {
           vragen.length ? (
             <nldd-rich-text>
+              {/* Elke vraag met id draagt een anker (vraag-<id>), waar de
+                  verwant-links van andere werkpakketten op landen. Het
+                  regelbereik komt van yamlSequenceItemLines hierboven en
+                  dekt de vraag met zijn deelvragen, dus de bewerkknop werkt
+                  ook op een selectie in een deelvraag. */}
               <ol>
                 {vragen.map((v, i) => (
-                  <li
-                    data-line={vraagRegels[i]?.[0]}
-                    data-line-end={vraagRegels[i]?.[1]}
-                  >
-                    {v.vraag}
-                    {/* On its own line, and short: the reference is a pointer,
-                        not part of the sentence. The section title would be a
-                        second English clause after every Dutch question, and
-                        the paper's own name repeated per item drowned out the
-                        questions. The full title is on the link's target. */}
-                    {v.paper && (
-                      <a class="rr-papersectie" href={v.paper.href}>
-                        Rules as Executed §&nbsp;{v.paper.nummer}
-                      </a>
-                    )}
-                  </li>
+                  <RoadmapVraag
+                    vraag={v}
+                    verwanten={verwanten}
+                    regels={vraagRegels[i]}
+                    niveau={1}
+                  />
                 ))}
               </ol>
             </nldd-rich-text>
@@ -308,6 +311,13 @@ const kerngegevens = [
             </nldd-text>
           )
         }
+        {/* Naar het overzicht van alle vragen, waar deze tussen de vragen van
+            de andere werkpakketten staan, per sectie van het paper. */}
+        <nldd-link
+          size="sm"
+          href="/roadmap/onderzoeksvragen"
+          text="Alle onderzoeksvragen van de roadmap"
+        />
       </nldd-container>
 
       <nldd-container gap="12">
@@ -451,29 +461,3 @@ const kerngegevens = [
     </nldd-container>
   </nldd-sidebar-section>
 </Base>
-
-<style>
-  /*
-   * The paper reference under a research question. Scoped to this page rather
-   * than living in roadmap.css: that stylesheet is imported by the matrix page
-   * and scopes everything under .rr-roadmap, which this page does not have.
-   *
-   * On its own line and visually quieter than the question. Running it on
-   * after the question mark made every item wrap into a second line of blue
-   * and buried the question itself; it is a pointer, not part of the sentence.
-   */
-  .rr-papersectie {
-    display: block;
-    width: fit-content;
-    margin-top: var(--primitives-space-4, 0.25rem);
-    font: var(--primitives-font-body-xs-regular-snug, inherit);
-    color: var(--semantics-content-secondary-color);
-    text-decoration-color: var(--semantics-surfaces-tinted-border-color);
-  }
-
-  .rr-papersectie:hover,
-  .rr-papersectie:focus-visible {
-    color: var(--semantics-content-accent-color);
-    text-decoration-color: currentColor;
-  }
-</style>

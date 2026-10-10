@@ -8,7 +8,7 @@
  * imports from there fails the build with "The astro:content module is only
  * available server-side". Keeping the shared function here lets the build-time
  * haystack (zoektekst(), lib/roadmap.ts) and the typed query (the script in
- * pages/roadmap/index.astro) call the very same code.
+ * components/RoadmapKop.astro) call the very same code.
  *
  * That they are the same code is the point. A search compares two normalised
  * strings, and a normalisation applied to only one side stops matching without
@@ -37,3 +37,14 @@ export function normaliseerZoekterm(tekst: string): string {
     .replace(/\s+/g, ' ')
     .trim();
 }
+
+/**
+ * De klasse waarmee het zoekfilter een item verbergt dat niet matcht.
+ *
+ * Hier en niet in lib/roadmap.ts, omdat het script dat de klasse zet
+ * (RoadmapKop.astro) deze module wél kan importeren en die andere niet.
+ * assertFilterRules() in lib/roadmap.ts leest dezelfde constante om te
+ * controleren dat roadmap.css de klasse kent; zo kan de naam niet aan één
+ * kant veranderen terwijl de andere kant stil niets meer verbergt.
+ */
+export const GEEN_TREFFER = 'rr-geen-treffer';

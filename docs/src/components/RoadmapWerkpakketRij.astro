@@ -1,0 +1,115 @@
+---
+/*
+ * Eén werkpakket als rij op het bord, met zijn onderzoeksvragen eronder.
+ *
+ * Elk werkpakket is zijn eigen omlijste nldd-list van het type `tree` met
+ * één tak: de rij is de knop (`button`), `expanded` is de stand, en de vragen
+ * staan in de `children`-slot als rijen van die tak. Zo staat elk werkpakket
+ * als losse kaart met ruimte eromheen, net als de vragen op de vragenpagina,
+ * terwijl het ontwerpsysteem het uitklappen, de pijltoetsen en aria-expanded
+ * regelt; de chevron draait mee op `disclosure`.
+ *
+ * De data-attributen voor zoeken en filteren staan op de lijst, niet op de
+ * rij: de filters verbergen het element dat ze dragen, en een verborgen rij
+ * in een zichtbare lijst zou een leeg kader achterlaten. De tags zijn
+ * dezelfde als op de matrixkaart (werkpakketTags), zodat een werkpakket er
+ * hier hetzelfde uitziet als daar.
+ *
+ * Onder de rij staat een mini-kanbanbord (RoadmapMiniBord) met de vragen in
+ * de lanes vrij, opgepakt en klaar, zoals vraagLane() ze afleidt. Een druk op
+ * een vraagticket opent het werkpakket in een paneel over de helft van het
+ * scherm (RoadmapWerkpakketPaneel), zonder van pagina te wisselen. Op de
+ * vragenpagina zijn dezelfde vragen te filteren en uit te klappen tot hun
+ * deelvragen; hier zie je ze per werkpakket.
+ */
+import RoadmapMiniBord from '~/components/RoadmapMiniBord.astro';
+import {
+  GEEN_CATEGORIE,
+  beleggingStand,
+  getBelegging,
+  werkpakketTags,
+  rfcTekst,
+  kaartOndertitel,
+  sindsTekst,
+  zoektekst,
+  onderzoeksvraagLijst,
+  werkpakketTickets,
+  type WerkpakketData,
+} from '~/lib/roadmap';
+
+interface Props {
+  wp: { data: WerkpakketData };
+}
+
+const { wp } = Astro.props;
+const data = wp.data;
+const belegging = getBelegging(data.belegging.stand);
+const tags = werkpakketTags(data);
+const rfcs = rfcTekst(data);
+const vragen = onderzoeksvraagLijst(data.onderzoeksvragen);
+
+// De vragen als tickets voor het mini-bord; zie werkpakketTickets().
+const tickets = werkpakketTickets(data);
+
+const supporting = [
+  kaartOndertitel(data),
+  data.belegging.sinds ? `sinds ${sindsTekst(data.belegging.sinds)}` : undefined,
+  `${vragen.length} ${vragen.length === 1 ? 'onderzoeksvraag' : 'onderzoeksvragen'}`,
+]
+  .filter(Boolean)
+  .join(' · ');
+---
+
+<nldd-list
+  type="tree"
+  appearance="box-tinted"
+  accessible-label={data.titel}
+  data-categorie={data.categorie || GEEN_CATEGORIE}
+  data-belegging={beleggingStand(data.belegging.stand)}
+  data-zoek={zoektekst(data)}
+>
+<nldd-list-item button data-uitklap data-wp-id={data.id}>
+  {/* `supporting-text` als attribuut én als slot: de slot wint zodra hij
+      inhoud heeft (de tekst plus de tags), het attribuut is de terugval voor
+      een werkpakket zonder tags. */}
+  <nldd-text-cell text={data.titel} supporting-text={supporting} width="full">
+    {(belegging?.id !== 'vrij' || tags.length > 0 || rfcs) && (
+      <nldd-container slot="supporting-text" gap="4">
+        <nldd-text size="xs" color="secondary">{supporting}</nldd-text>
+        <nldd-container layout="wrap" gap="4" vertical-alignment="center">
+          {/* Alleen opgepakt en klaar, net als op de matrixkaart. */}
+          {belegging && belegging.id !== 'vrij' && (
+            <nldd-tag
+              size="sm"
+              color={belegging.tagColor}
+              text={belegging.label}
+              icon={belegging.id === 'klaar' ? 'done' : 'user'}
+            />
+          )}
+          {tags.map((tag) => (
+            <nldd-tag
+              size="sm"
+              color={tag.color}
+              text={tag.text}
+              icon={tag.icon}
+              accessible-label={tag.label}
+            />
+          ))}
+          {rfcs && <nldd-text size="xs" color="secondary">{rfcs}</nldd-text>}
+        </nldd-container>
+      </nldd-container>
+    )}
+  </nldd-text-cell>
+  <nldd-spacer-cell />
+  <nldd-icon-cell size="20" icon="chevron-right" disclosure />
+
+  {/* Eén kindrij met het mini-bord erin: de vragen van dit werkpakket in
+      drie lanes, zodat je ziet aan welke gewerkt wordt. */}
+  <nldd-list-item slot="children">
+    <nldd-spacer-cell />
+    <nldd-cell width="full" vertical-alignment="top">
+      <RoadmapMiniBord tickets={tickets} werkpakketId={data.id} />
+    </nldd-cell>
+  </nldd-list-item>
+</nldd-list-item>
+</nldd-list>

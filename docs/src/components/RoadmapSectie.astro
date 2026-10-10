@@ -1,0 +1,32 @@
+---
+/*
+ * De sectie waar elke roadmapweergave in staat.
+ *
+ * Eén component en geen losse markup per pagina, om één reden: de klasse
+ * `rr-roadmap` op de container. Alles in roadmap.css hangt eraan, de
+ * verbergregels van de filters voorop, en assertFilterRules() leest de
+ * stylesheet, niet de pagina — een weergave die de wrapper vergeet krijgt dus
+ * filters die niets doen, zonder fout. Hier kan dat niet.
+ *
+ * `vol` is voor de matrix: `width="full"` laat de sectie de hele breedte
+ * nemen, want zeven kolommen passen niet in een leesbreedte. De kop zet die
+ * leesbreedte voor zichzelf terug (`.rr-roadmap__kop` in roadmap.css). De
+ * andere weergaven houden de gewone docs-maat, zoals elke andere pagina.
+ */
+interface Props {
+  vol?: boolean;
+}
+
+const { vol = false } = Astro.props;
+---
+
+<nldd-simple-section
+  width={vol ? 'full' : undefined}
+  sm-padding-bottom="32"
+  md-padding-bottom="64"
+  lg-padding-bottom="96"
+>
+  <nldd-container class="rr-roadmap" gap="24">
+    <slot />
+  </nldd-container>
+</nldd-simple-section>

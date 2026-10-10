@@ -1,0 +1,73 @@
+---
+/*
+ * Het script dat een rij op het bord en op de vragenpagina uitklapt.
+ *
+ * Een nldd-list van het type `tree` toont de kinderen van een rij op
+ * `expanded` en regelt aria-expanded en de pijltoetsen, maar zet `expanded`
+ * niet zelf om bij een klik op de rij: die stand is van de pagina. Dit is
+ * dat ene stukje, één keer, voor elke rij met `data-uitklap`.
+ *
+ * Alleen de rij zelf: een klik in het uitgeklapte deel bubbelt naar de rij
+ * en zou hem anders weer dichtklappen. Gebonden op astro:page-load, om
+ * dezelfde reden als het zoekscript in RoadmapKop.astro.
+ */
+---
+
+<script>
+  function wireUitklappen() {
+    // Een rij die zelf de knop is (het bord) klapt om bij een klik op de rij;
+    // een gesegmenteerde rij (de vragen) bij een klik op haar
+    // disclosure-segment, zodat de link-segmenten ernaast gewoon navigeren.
+    for (const rij of document.querySelectorAll<HTMLElement>(
+      '.rr-roadmap nldd-list-item[data-uitklap]',
+    )) {
+      const segment = rij.querySelector<HTMLElement>(
+        ':scope > nldd-list-item-segment[disclosure]',
+      );
+      const doel = segment ?? rij;
+      doel.addEventListener('click', (event) => {
+        const bron = (event.target as HTMLElement).closest(
+          'nldd-list-item, nldd-list-item-segment',
+        );
+        if (bron !== doel) return;
+        rij.toggleAttribute('expanded');
+      });
+    }
+  }
+
+  /*
+   * Een boomlijst in een boomlijst: op de vragenpagina staat elke vraagtegel
+   * (een eigen nldd-list type="tree") in de kindrij van een paragraaftegel.
+   * De lijst luistert op `keydown` op zichzelf, in de bubbelfase, en stopt de
+   * toets niet; een ArrowLeft of Space in de binnenste lijst bereikte dus ook
+   * de buitenste, die de paragraaf dichtklapte of het omklappen weer ongedaan
+   * maakte. Hier stopt de toets aan de rand van de binnenste lijst, alleen
+   * voor de toetsen die een tree afhandelt, zodat Tab en Escape gewoon
+   * doorlopen.
+   */
+  const TREE_TOETSEN = new Set([
+    'ArrowUp',
+    'ArrowDown',
+    'ArrowLeft',
+    'ArrowRight',
+    'Home',
+    'End',
+    'Enter',
+    ' ',
+  ]);
+
+  function wireGenesteTrees() {
+    for (const lijst of document.querySelectorAll<HTMLElement>(
+      '.rr-roadmap nldd-list[type="tree"] nldd-list[type="tree"]',
+    )) {
+      lijst.addEventListener('keydown', (event) => {
+        if (TREE_TOETSEN.has(event.key)) event.stopPropagation();
+      });
+    }
+  }
+
+  document.addEventListener('astro:page-load', () => {
+    wireUitklappen();
+    wireGenesteTrees();
+  });
+</script>

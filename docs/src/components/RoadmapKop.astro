@@ -1,0 +1,598 @@
+---
+/*
+ * De kop van elke roadmapweergave: de titel, de keuze tussen de weergaven,
+ * en één balk met zoeken en filters.
+ *
+ * Eén component voor drie pagina's, zodat de balk op elke weergave hetzelfde
+ * werkt en het script eronder maar één keer bestaat. De pagina zegt wat er
+ * staat: welke filtergroepen (uit FILTERGROEPEN in lib/roadmap.ts), welk
+ * woord de zoekteller gebruikt, en of de afhankelijkhedenschakelaar erbij
+ * hoort (alleen op de matrix: die ordent kaarten in een raster dat de andere
+ * weergaven niet hebben).
+ *
+ * De weergaven zelf zijn routes, geen toestand in de browser. Een tab-bar met
+ * `navigation` is daarvoor het component van het ontwerpsysteem: een
+ * nav-landmark met links, en `current` op de pagina waar je bent. Zo is een
+ * weergave te delen als adres en werkt de terugknop van de browser.
+ *
+ * Eén balk, in de volgorde waarin iemand de bediening pakt: eerst zoeken, dan
+ * filteren, dan een andere lezing van dezelfde matrix. De vinkjes staan in een
+ * popover achter de knop van hun groep, want een filtergroep die niemand
+ * openklapt kost zo één knop in plaats van een rij.
+ *
+ * De scheiding in twee groepen is niet cosmetisch. Zoeken en de filters
+ * beperken welke items er staan; "Afhankelijkheden" doet dat niet, die
+ * verandert hoe dezelfde kaarten geordend worden. Vandaar een scheidslijn en
+ * een toggle-knop in plaats van een vinkje: een ingedrukte knop leest als een
+ * stand, een vinkje als een keuze uit een lijst.
+ */
+import {
+  FILTERGROEPEN,
+  WEERGAVEN,
+  type FilterGroepId,
+  type WeergaveId,
+} from '~/lib/roadmap';
+
+interface Props {
+  /** De weergave waar deze pagina van is; krijgt `current` in de tab-bar. */
+  huidig: WeergaveId;
+  /** De ondersteunende tekst onder de h1. */
+  ondertitel: string;
+  /** De placeholder van het zoekveld en het woord in de teller ("werkpakketten", "vragen"). */
+  zoek: { placeholder: string; noun: string };
+  /** Welke filtergroepen de balk toont, in deze volgorde. */
+  filters: FilterGroepId[];
+  /**
+   * Weergaveschakelaars rechts van de filters: knoppen die niets wegnemen
+   * maar dezelfde items anders tonen (afhankelijkheden op de matrix,
+   * paragraafkoppen op de vragen). `aan` zet de knop bij het laden aan.
+   */
+  weergaven?: {
+    id: string;
+    text: string;
+    icon: string;
+    accessibleLabel: string;
+    aan?: boolean;
+  }[];
+}
+
+const { huidig, ondertitel, zoek, filters, weergaven = [] } = Astro.props;
+const groepen = filters.map((id) => FILTERGROEPEN[id]);
+---
+
+<nldd-container class="rr-roadmap__kop" gap="24">
+  <nldd-title size="1">
+    <h1>Roadmap</h1>
+    <p slot="supporting-text">{ondertitel}</p>
+  </nldd-title>
+
+  {
+    /*
+     * `current` is `undefined` en niet `false` op de andere tabs: Astro
+     * schrijft false uit als current="false", en voor een webcomponent is
+     * een aanwezig attribuut waar, welke tekst er ook in staat. Dan stond
+     * elke tab op "huidig".
+     */
+    WEERGAVEN.length > 1 && (
+      <nldd-tab-bar navigation accessible-label="Weergave van de roadmap">
+        {WEERGAVEN.map((w) => (
+          <nldd-tab-bar-item
+            href={w.href}
+            text={w.label}
+            current={w.id === huidig ? true : undefined}
+          />
+        ))}
+      </nldd-tab-bar>
+    )
+  }
+
+  <div class="rr-controls">
+    {/*
+      De zoek- en filtergroep. Staat vooraan omdat zoeken het meest gebruikte
+      en het minst verkennende is: wie de naam van een werkpakket weet, typt
+      hem.
+    */}
+    <div class="rr-controls__groep rr-controls__groep--filters">
+      {/*
+        De zoekfilter. Die kan niet in CSS: een getypte tekst met de tekst van
+        een item vergelijken doet geen selector. Het is een script, en daarom
+        progressief — zonder JavaScript verschijnt het veld nooit (het script
+        haalt `hidden` eraf), zodat er geen dood invoerveld staat.
+
+        `rr-zoek-count` is de melding die zegt hoeveel er over is; zonder die
+        regel leest een leeggefilterde pagina als een stukke pagina. Hij staat
+        onder het veld, zodat een oplopend getal het veld niet opzij duwt
+        terwijl iemand erin typt. `data-noun` is het woord dat de teller
+        gebruikt; het script leest het hier, zodat het niets van de pagina
+        hoeft te weten.
+      */}
+      <nldd-container class="rr-zoek" gap="4" hidden>
+        <nldd-search-field
+          id="rr-zoek-veld"
+          placeholder={zoek.placeholder}
+          accessible-label={zoek.placeholder}
+          no-spellcheck
+        ></nldd-search-field>
+        <nldd-text
+          id="rr-zoek-count"
+          class="rr-zoek__count"
+          size="sm"
+          color="secondary"
+          role="status"
+          aria-live="polite"
+          data-noun={zoek.noun}
+        ></nldd-text>
+      </nldd-container>
+
+      {
+        /*
+         * De filtergroepen, elk achter een eigen knop.
+         *
+         * De vinkjes staan in de popover maar blijven in het document — een
+         * popover slot zijn inhoud in de light DOM en verhuist hem bij openen
+         * naar de toplaag, niet in de DOM-boom. De `:has([checked])`-regels in
+         * roadmap.css lezen dus hetzelfde, open of dicht. Was dat niet zo, dan
+         * zou het categoriefilter stoppen zodra de popover dichtging.
+         *
+         * De groepen delen deze lus maar niet hun werking: een CSS-filter
+         * (zonder `attribuut`) is puur CSS, een JS-filter loopt via het script
+         * hieronder. Waarom dat verschil moet bestaan staat bij FilterGroep in
+         * lib/roadmap.ts en bij de verbergregel in roadmap.css; hier is alleen
+         * de omlijsting gedeeld. De data-attributen op de groep zijn wat het
+         * script leest; de velden zelf staan in FILTERGROEPEN.
+         */
+        groepen.map((groep) => (
+          <div
+            class="rr-filtergroep"
+            data-groep={groep.id}
+            data-optie-klasse={groep.optieKlasse}
+            data-attribuut={groep.attribuut}
+            data-verberg-klasse={groep.verbergKlasse}
+          >
+            {/* `data-attribuut` is de dataset-sleutel (één woord) waarop het
+                script `item.dataset[...]` leest; zie FilterGroep in
+                lib/roadmap.ts. */}
+            {/*
+              De popover zit in de `popup`-slot van de knop, niet aan een
+              `popovertarget` met een id. Dat is niet één van twee smaken:
+              `popovertarget` wordt doorgegeven aan de <button> ín de shadow
+              root van nldd-button, en die zoekt het id op in zijn eigen boom.
+              De popover staat daarbuiten, dus de browser vindt hem nooit en
+              er gebeurt bij een klik niets — geen fout, geen spoor, alleen
+              een knop die niet opengaat. Dat was de eerste versie hiervan.
+
+              Geslot regelt de knop het anker en de toggle zelf, en spiegelt
+              `expanded` en `aria-haspopup` terug. Daarmee vervalt ook
+              `popup-type`: de knop zet het zelf.
+            */}
+            <nldd-button
+              id={`rr-${groep.id}-knop`}
+              class="rr-filtergroep__knop"
+              appearance="neutral-tinted"
+              size="sm"
+              start-icon="filter"
+              expandable
+              text={groep.knop}
+              accessible-label={groep.titel}
+            >
+              <nldd-popover
+                slot="popup"
+                id={`rr-${groep.id}-popover`}
+                accessible-label={groep.titel}
+                placement="bottom-start"
+                width="260px"
+              >
+                <nldd-container padding="16" gap="12">
+                  <nldd-text size="sm" weight="medium" color="secondary">
+                    {groep.titel}
+                  </nldd-text>
+                  {/*
+                    Nog steeds een fieldset: het blijft een groep vinkjes die
+                    bij elkaar horen, en daar heeft het ontwerpsysteem geen
+                    component voor. De legend is visueel verborgen omdat de
+                    regel erboven hem al uitschrijft, maar hij blijft staan
+                    zodat de groep een naam houdt voor wie hem niet ziet.
+                  */}
+                  <fieldset class="rr-filter">
+                    <legend class="rr-sr-only">{groep.titel}</legend>
+                    {groep.opties.map((optie) => (
+                      <nldd-checkbox-field
+                        class={groep.optieKlasse}
+                        id={`rr-${groep.id}-${optie.id}`}
+                        label={optie.label}
+                      />
+                    ))}
+                  </fieldset>
+                </nldd-container>
+              </nldd-popover>
+            </nldd-button>
+            {/*
+              Hoeveel er in deze groep aanstaat, naast de knop en niet erin:
+              `text` op nldd-button is één tekst, en een getal dat in die
+              tekst meegroeit laat de knop bij elk vinkje van breedte
+              veranderen. Het script vult hem; met alles uit blijft hij leeg,
+              want een badge die "0" zegt is een badge die niets zegt.
+            */}
+            <nldd-badge
+              id={`rr-${groep.id}-telling`}
+              class="rr-filtergroep__telling"
+              color="accent"
+              size="sm"
+              hidden
+            />
+          </div>
+        ))
+      }
+
+      {/*
+        Alles weer aan. Staat er alleen als er iets uit staat — een knop die
+        niets te wissen heeft is een knop die je leert negeren. Het script zet
+        hem aan en uit, dus zonder JavaScript is hij er niet; dat mag, want dan
+        zijn de vinkjesgroepen zelf nog wél te bedienen.
+      */}
+      <nldd-button
+        id="rr-wis"
+        class="rr-controls__wissen"
+        appearance="neutral-transparent"
+        size="sm"
+        start-icon="close"
+        text="Wissen"
+        accessible-label="Alle filters wissen"
+        hidden
+      />
+    </div>
+
+    {
+      /*
+       * De weergaveschakelaars, achter een scheidslijn: die filteren niets,
+       * ze leggen een andere lezing over dezelfde items. Op de matrix de
+       * afhankelijkheden (uit, want die lezing kost een bredere kolom), op de
+       * vragenpagina de paragraafkoppen (aan, want de lijst staat toch al in
+       * die volgorde).
+       *
+       * Een nldd-toggle-button en geen vinkje: een ingedrukte knop leest als
+       * een stand waar je in staat, en dat is wat dit is. De knop
+       * reflecteert `selected`, geen `checked`; de :has()-regels in
+       * roadmap.css lezen dat attribuut, en assertFilterRules() bewaakt het
+       * voor de afhankelijkheden.
+       */
+      weergaven.length > 0 && (
+        <div class="rr-controls__groep rr-controls__groep--weergave">
+          {weergaven.map((w) => (
+            <nldd-toggle-button
+              id={`rr-${w.id}`}
+              class="rr-weergave__option"
+              type="button"
+              size="sm"
+              icon={w.icon}
+              text={w.text}
+              variant="icon-and-text"
+              accessible-label={w.accessibleLabel}
+              selected={w.aan ? true : undefined}
+            />
+          ))}
+        </div>
+      )
+    }
+  </div>
+</nldd-container>
+
+{/*
+  Het zoek- en filterscript.
+
+  Een module script, zodat het gebundeld wordt en `normaliseerZoekterm` de
+  functie is die de build gebruikte om elke `data-zoek` te schrijven — beide
+  kanten van een zoekopdracht moeten identiek normaliseren, en importeren is
+  de enige manier om dat waar te houden zonder een tweede kopie die
+  wegdrijft. Het komt uit lib/roadmap-zoek.ts en niet uit lib/roadmap.ts, om
+  een harde reden: die laatste importeert astro:content en node:fs, en dat kan
+  een clientbundel niet hebben.
+
+  Het script kent de pagina niet. Het leest alles wat het nodig heeft uit de
+  DOM: de items zijn `[data-zoek]` binnen `.rr-roadmap`, het woord in de
+  teller staat op `data-noun`, en elke filtergroep zegt op zijn data-attributen
+  of hij CSS is of JS, en zo ja op welk attribuut hij vergelijkt en met welke
+  klasse hij verbergt. Daardoor werkt dezelfde module op de matrix (kaarten),
+  het bord (kaarten) en het vragenoverzicht (lijstregels).
+
+  Het zoeken matcht op alle termen, in elke volgorde: "garantie toezicht"
+  vindt een item dat beide woorden ergens in zijn tekst heeft, niet de zin.
+  Dat is wat iemand die twee woorden typt bedoelt.
+
+  Verbergen is een klasse op het item, niet `display` inline: het
+  categoriefilter bezit `display` al via zijn :has()-regels, en een script dat
+  element.style schrijft zou die verslaan en een kaart zichtbaar laten die het
+  categoriefilter verborgen had. Als klasse stapelen de filters — een item
+  staat er alleen als geen van de filters het verbergt, wat een lezer van
+  bedieningen naast elkaar verwacht.
+*/}
+<script>
+  import { normaliseerZoekterm, GEEN_TREFFER } from '~/lib/roadmap-zoek';
+
+  /** Een filtergroep zoals de kop hem op zijn data-attributen zet. */
+  interface Groep {
+    id: string;
+    optieKlasse: string;
+    /** Alleen bij een JS-filter: de dataset-sleutel op het item (één woord). */
+    attribuut?: string;
+    /** Alleen bij een JS-filter: de klasse die een niet-match verbergt. */
+    verbergKlasse?: string;
+  }
+
+  function wireZoek() {
+    const field = document.getElementById('rr-zoek-veld');
+    const count = document.getElementById('rr-zoek-count');
+    const items = Array.from(
+      document.querySelectorAll<HTMLElement>('.rr-roadmap [data-zoek]'),
+    );
+    if (!field || !count || !items.length) return;
+
+    // Het woord in de teller; de kop zet het altijd, zie `zoek.noun`.
+    const noun = count.dataset.noun;
+
+    // The field is hidden in the markup so it never shows without this script
+    // behind it. `hidden` sits on the wrapper, which also holds the counter.
+    field.closest<HTMLElement>('.rr-zoek')?.removeAttribute('hidden');
+
+    const groepen: Groep[] = Array.from(
+      document.querySelectorAll<HTMLElement>('.rr-filtergroep[data-groep]'),
+    ).map((el) => ({
+      id: el.dataset.groep!,
+      optieKlasse: `.${el.dataset.optieKlasse}`,
+      attribuut: el.dataset.attribuut,
+      verbergKlasse: el.dataset.verbergKlasse,
+    }));
+    const jsGroepen = groepen.filter((g) => g.attribuut && g.verbergKlasse);
+    const alleOpties = groepen.map((g) => g.optieKlasse).join(', ');
+
+    /*
+     * Say how much is left, counting what is actually on screen rather than
+     * what the search matched.
+     *
+     * The categorie filter hides cards through its own CSS, which this script
+     * knows nothing about, so counting search matches would state a number the
+     * reader cannot see — with a categorie checked it could announce "1 van de
+     * 49 gevonden" over an empty matrix. Asking the browser for the rendered
+     * height settles it against every filter at once and cannot drift from the
+     * CSS the way a second copy of the categorie logic in JS would.
+     *
+     * Always call this through `hertelStraks`, never directly: the computed
+     * style is only meaningful once the DOM change that prompted it has been
+     * styled.
+     */
+    const hertel = (raw: string) => {
+      const heeftQuery = normaliseerZoekterm(raw).length > 0;
+      // De eigen display van het item, niet zijn gerenderde hoogte: op de
+      // vragenpagina zit een vraag in een ingeklapte paragraaf en heeft dan
+      // hoogte nul terwijl hij wél gevonden is. Elk filter dat een item
+      // wegneemt zet display:none op het item zelf (de klassen hieronder,
+      // of de :has()-regels van het categoriefilter), en dat is wat hier
+      // gemeten wordt; een dichtgeklapte ouder raakt het niet.
+      const zichtbaar = items.filter(
+        (item) => getComputedStyle(item).display !== 'none',
+      ).length;
+
+      // Silent while the field is empty: with nothing typed the count would
+      // state the obvious on every page load and read as a result.
+      if (!heeftQuery) {
+        count.textContent = '';
+      } else if (zichtbaar === 0) {
+        count.textContent = `Geen ${noun} gevonden.`;
+      } else {
+        // Het zelfstandig naamwoord blijft meervoud wat de telling ook is: het
+        // hoort bij het totaal, niet bij de treffers. "1 van de 49 werkpakket"
+        // is wat meebuigen met de treffers oplevert.
+        count.textContent = `${zichtbaar} van de ${items.length} ${noun} gevonden.`;
+      }
+    };
+
+    /*
+     * Recount on the next frame, after style and layout have caught up.
+     *
+     * nldd-checkbox-field dispatches `change` while `checked` is still only a
+     * property: Lit reflects it to the attribute one microtask later, and the
+     * attribute is what the categorie filter's :has() rules read. Counting
+     * straight from the handler therefore measures the layout from *before*
+     * the click — the counter lagged a full toggle behind, and unchecking the
+     * last categorie announced "Geen werkpakketten gevonden" over thirty
+     * visible cards. rAF runs after the style recalc, so the measurement sees
+     * the toggle that caused it.
+     */
+    let gepland = 0;
+    const hertelStraks = (raw: string) => {
+      cancelAnimationFrame(gepland);
+      gepland = requestAnimationFrame(() => hertel(raw));
+    };
+
+    /*
+     * Which options of a group are checked. Nothing checked is no filter, the
+     * same reading the categorie group has: a filter nobody set narrows
+     * nothing.
+     *
+     * Read from the attribute, not the property. nldd-checkbox-field reflects
+     * `checked` to the attribute one microtask after dispatching `change`, and
+     * the categorie filter's :has() rules already depend on that reflection;
+     * reading the same source here keeps every group measuring one truth. The
+     * callers run inside rAF, by which point the reflection has happened.
+     */
+    const gekozen = (groep: Groep) =>
+      new Set(
+        Array.from(
+          document.querySelectorAll(`${groep.optieKlasse}[checked]`),
+        ).map((el) => el.id.replace(`rr-${groep.id}-`, '')),
+      );
+
+    const filterJs = () => {
+      for (const groep of jsGroepen) {
+        const keuze = gekozen(groep);
+        for (const item of items) {
+          const waarde = item.dataset[groep.attribuut!] ?? '';
+          const match = keuze.size === 0 || keuze.has(waarde);
+          item.classList.toggle(groep.verbergKlasse!, !match);
+        }
+      }
+    };
+
+    const filter = (raw: string) => {
+      const terms = normaliseerZoekterm(raw).split(' ').filter(Boolean);
+
+      for (const item of items) {
+        const haystack = item.dataset.zoek ?? '';
+        const match = terms.every((term) => haystack.includes(term));
+        item.classList.toggle(GEEN_TREFFER, !match);
+      }
+
+      hertelStraks(raw);
+    };
+
+    /*
+     * `input` covers typing and the component's own clear button; `search`
+     * fires on Enter, where the value is already the same, so re-running is
+     * harmless and keeps the two paths from needing different code.
+     *
+     * The query is read from the field's `.value`, never from `event.detail`.
+     * Base.astro records why, from a bug this repo already had on this same
+     * component and these same two events: detail's `.value` is not reliably
+     * a plain string, and it broke `query.trim()` there. Here it would reach
+     * normaliseerZoekterm(), which calls .normalize() on it. `.value` is also
+     * what the inner input's own native `input` event leaves correct — that
+     * one bubbles (composed) carrying no detail at all, where a
+     * `detail?.value ?? ''` would silently wipe the query.
+     */
+    for (const event of ['input', 'search']) {
+      field.addEventListener(event, () => filter(fieldValue(field)));
+    }
+
+    /*
+     * Een vinkje verandert wat er op het scherm staat zonder dat de zoekterm
+     * verandert. Bij een CSS-groep hoeft alleen de teller opnieuw; bij een
+     * JS-groep eerst de eigen doorloop en dan de teller. Beide een frame
+     * later: bij `change` is `checked` nog alleen een property, en gekozen()
+     * leest het gespiegelde attribuut.
+     */
+    for (const groep of groepen) {
+      for (const optie of document.querySelectorAll(groep.optieKlasse)) {
+        optie.addEventListener('change', () => {
+          requestAnimationFrame(() => {
+            if (groep.attribuut) filterJs();
+            hertelStraks(fieldValue(field));
+          });
+        });
+      }
+    }
+
+    /*
+     * Wat er aanstaat, op de knop van de groep.
+     *
+     * De vinkjes zitten in een popover, dus met de popover dicht is er geen
+     * enkel spoor van een filter dat wél werkt — precies de val die een
+     * ingeklapte filtergroep heeft. Het getal naast de knop is dat spoor.
+     *
+     * Leeg is niet nul. Een badge die "0" toont zegt dat er iets is om te
+     * zien; `hidden` zegt dat er niets aan de hand is. Dat scheelt de lezer
+     * het verschil tussen "geen filter" en "een filter dat niets doorlaat",
+     * dat op de pagina zelf niet te zien is.
+     */
+    const tellingen = () => {
+      let totaal = 0;
+      for (const groep of groepen) {
+        const aantal = document.querySelectorAll(
+          `${groep.optieKlasse}[checked]`,
+        ).length;
+        totaal += aantal;
+        const badge = document.getElementById(`rr-${groep.id}-telling`);
+        if (!badge) continue;
+        badge.toggleAttribute('hidden', aantal === 0);
+        // `number` en niet `text`: nldd-badge kort een getal zelf in boven
+        // `max`, en een tekst zou dat omzeilen.
+        badge.setAttribute('number', String(aantal));
+      }
+      return totaal;
+    };
+
+    /*
+     * De wisknop, en waarom hij meetelt wat hij meetelt.
+     *
+     * Hij wist de dingen die items wegnemen: de zoekterm en de
+     * vinkjesgroepen. Níet de afhankelijkhedenweergave — die verbergt niets,
+     * en meewissen zou een stand omgooien waar de lezer niet om vroeg. Dat is
+     * dezelfde scheiding die de balk zelf al toont.
+     */
+    const wis = document.getElementById('rr-wis');
+
+    const herzieBalk = () => {
+      const aantal = tellingen();
+      const heeftQuery = normaliseerZoekterm(fieldValue(field)).length > 0;
+      wis?.toggleAttribute('hidden', aantal === 0 && !heeftQuery);
+    };
+
+    wis?.addEventListener('click', () => {
+      for (const groep of groepen) {
+        for (const optie of document.querySelectorAll(
+          `${groep.optieKlasse}[checked]`,
+        )) {
+          // De property, niet het attribuut: nldd-checkbox-field spiegelt zelf
+          // terug naar het attribuut, en alleen dat pad houdt zijn interne
+          // <input> in de pas. Het attribuut weghalen laat het vinkje staan.
+          (optie as HTMLElement & { checked?: boolean }).checked = false;
+        }
+      }
+      (field as HTMLElement & { value?: string }).value = '';
+      requestAnimationFrame(() => {
+        filterJs();
+        filter('');
+        herzieBalk();
+      });
+    });
+
+    /*
+     * De balk bijwerken bij elke verandering aan een filter. Eén listener over
+     * alle groepen plus het veld, in de bubbelfase: de knoppen dragen geen
+     * eigen toestand, ze lezen die van de vinkjes terug.
+     *
+     * Een frame later, om dezelfde reden als overal in dit script: bij
+     * `change` is `checked` nog alleen een property en is het attribuut dat
+     * hier geteld wordt nog niet gespiegeld.
+     */
+    if (alleOpties) {
+      for (const optie of document.querySelectorAll(alleOpties)) {
+        optie.addEventListener('change', () =>
+          requestAnimationFrame(herzieBalk),
+        );
+      }
+    }
+    for (const event of ['input', 'search']) {
+      field.addEventListener(event, herzieBalk);
+    }
+
+    herzieBalk();
+  }
+
+  /**
+   * The field's current text, via the property the component reflects — the
+   * single place the query is read, so the `event.detail` trap documented in
+   * Base.astro has no second entrance here.
+   *
+   * The typeof guard is the same defence one level down: everything
+   * downstream calls string methods on this, so a value that is not a string
+   * becomes an empty query (showing everything) rather than a thrown handler
+   * that leaves the page frozen on the previous result.
+   */
+  function fieldValue(field: HTMLElement): string {
+    const value = (field as HTMLElement & { value?: unknown }).value;
+    return typeof value === 'string' ? value : '';
+  }
+
+  /*
+   * Bound on astro:page-load, not at top level. Base.astro renders
+   * <ClientRouter />, and a module script runs once per document: on a
+   * ClientRouter navigation back to a roadmap page the DOM is swapped in
+   * fresh — `hidden` back on the wrapper, no listeners — and a top-level
+   * binding would never run again, leaving no search field at all until a
+   * hard reload. Since every card links to a detail page, that return trip is
+   * the normal path through these pages. astro:page-load also fires on the
+   * initial load, so this covers both. Same pattern as wireSearch() in
+   * Base.astro.
+   */
+  document.addEventListener('astro:page-load', wireZoek);
+</script>

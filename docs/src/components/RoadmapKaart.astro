@@ -1,0 +1,111 @@
+---
+/*
+ * Eén werkpakket als kaart op de matrix.
+ *
+ * Elke kaart draagt attributen die alleen de scripts van de roadmappagina's
+ * lezen: `data-categorie` voor het categoriefilter (puur CSS), `data-zoek`
+ * voor het zoekfilter — de volledige tekst van het werkpakket, bij de build
+ * samengesteld zodat het script niet meer doet dan een indexOf per kaart; daar
+ * zit ook tekst in die alleen op de detailpagina staat (toelichting,
+ * onderzoeksvragen), zie zoektekst() in lib/roadmap.ts — `data-belegging`
+ * voor het beleggingsfilter, en `data-wp-id`, `data-afhankelijk-van` en
+ * `data-fase` voor de afhankelijkhedenweergave.
+ *
+ * Waar de kaart staat bepaalt de kaart niet: de afhankelijkhedenweergave
+ * plaatst hem in de browser, over de kaarten die op dat moment op het scherm
+ * staan (zie het script in pages/roadmap/index.astro). Het bord gebruikt geen
+ * kaart maar een rij (RoadmapWerkpakketRij.astro), met dezelfde tags uit
+ * werkpakketTags().
+ */
+import {
+  GEEN_CATEGORIE,
+  beleggingStand,
+  getBelegging,
+  werkpakketTags,
+  rfcTekst,
+  zoektekst,
+  type KaartTag,
+  type WerkpakketData,
+} from '~/lib/roadmap';
+
+interface Props {
+  wp: { data: WerkpakketData };
+}
+
+const { wp } = Astro.props;
+
+const belegging = getBelegging(wp.data.belegging.stand);
+
+const tags: KaartTag[] = [
+  /* Alleen 'opgepakt' en 'klaar' krijgen een tag, 'vrij' niet. Vrij is de
+     stilzwijgende meerderheid — een leeg veld telt daarin mee, zie
+     getBelegging() — en zesenveertig kaarten met een tag die zegt dat er
+     niets aan de hand is, is ruis.
+
+     Dit maakt van vier tags er vijf op de kaarten die alle vier de andere
+     velden ingevuld hebben — vandaag precies één
+     (`aansluiten-op-bronnen-chronolexografie`). Dat is bewust: het plafond
+     waar de RFC-teller hieronder over spreekt gaat over metadata die met de
+     titel concurreert, en deze tag staat vóór de andere omdat hij zegt of er
+     iemand op zit. Loopt dit op, dan is de vraag welke van de vijf weg mag,
+     niet deze. */
+  ...(belegging && belegging.id !== 'vrij'
+    ? [
+        {
+          color: belegging.tagColor,
+          text: belegging.label,
+          icon: belegging.id === 'klaar' ? 'done' : 'user',
+          label: belegging.label,
+        },
+      ]
+    : []),
+  ...werkpakketTags(wp.data),
+];
+
+const rfcs = rfcTekst(wp.data);
+
+const accessibleLabel = [wp.data.titel, ...tags.map((t) => t.label), rfcs]
+  .filter(Boolean)
+  .join(', ');
+---
+
+<nldd-card
+  class="rr-wp-card"
+  href={`/roadmap/werkpakket/${wp.data.id}`}
+  background={belegging?.id === 'opgepakt' ? 'tinted' : undefined}
+  accessible-label={accessibleLabel}
+  data-categorie={wp.data.categorie || GEEN_CATEGORIE}
+  data-belegging={beleggingStand(wp.data.belegging.stand)}
+  data-zoek={zoektekst(wp.data)}
+  data-wp-id={wp.data.id}
+  data-fase={wp.data.faseId}
+  data-afhankelijk-van={wp.data.afhankelijkVan.join(' ') || undefined}
+>
+  {/* nldd-card leaves padding to a nested container by design;
+      without one the content sits flush against the border. */}
+  <nldd-container padding="12" gap="8">
+    <nldd-text size="sm" weight="medium">
+      {wp.data.titel}
+    </nldd-text>
+    {(tags.length > 0 || rfcs) && (
+      <nldd-container layout="wrap" gap="4" vertical-alignment="center">
+        {tags.map((tag) => (
+          <nldd-tag
+            color={tag.color}
+            text={tag.text}
+            icon={tag.icon}
+            accessible-label={tag.label}
+            size="sm"
+          />
+        ))}
+        {/* Not a tag: the card already carries up to five, and one more
+            would make the title compete with its own metadata. This is a
+            quiet count of the design behind the werkpakket — the detail
+            page names them. */}
+        {rfcs && (
+          <nldd-text size="xs" color="secondary">{rfcs}</nldd-text>
+        )}
+      </nldd-container>
+    )}
+  </nldd-container>
+</nldd-card>

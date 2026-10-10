@@ -53,7 +53,10 @@ onderzoeksvragen:
       Hoe controleren we wetten die door taalmodellen zijn vertaald naar code, en
       hoeveel menselijke inspanning is er per artikel nodig om deze vertaling
       juridisch verantwoord te kunnen adopteren?
+    id: controle-llm-vertaling-enrichment
     paper: sec:translation
+    verwant:
+      - controle-llm-vertaling-attestatie
 onderzoek: loopt
 bouw: wel
 rfcs:

@@ -24,7 +24,10 @@ onderzoeksvragen:
       Heeft een burger recht op de technische logbestanden (de 'execution trace')
       van hoe een besluit tot stand is gekomen, en vallen deze onder de
       motiveringsplicht (Awb) of het recht op dataportabiliteit/inzage (AVG)?
+    id: recht-op-trace
     paper: sec:traceaccess
+    verwant:
+      - trace-bij-ontvangst
   - vraag: >-
       Wat is de bewijswaarde van een gecertificeerde execution trace, en zorgt dit
       ervoor dat de bewijslast onredelijk wordt verschoven naar de burger (die dan

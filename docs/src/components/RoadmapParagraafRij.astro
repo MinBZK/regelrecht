@@ -1,0 +1,115 @@
+---
+/*
+ * Eén paragraaf van het position paper als tegel op de vragenpagina, uit te
+ * klappen tot de vragen die eronder hangen. Elke vraag is daar weer een
+ * eigen tegel (RoadmapVraagRij) die uitklapt tot zijn deelvragen.
+ *
+ * Dezelfde opbouw als de vraag- en werkpakkettegels: een eigen omlijste
+ * nldd-list van het type `tree` met één tak. Eerst een link-segment naar de
+ * paragraaf in het paper, dan de paragraaf met zijn tellingen als het segment
+ * dat uitklapt. De tellingen per stand (vrij, opgepakt, klaar) staan op de
+ * tegel, zodat je per paragraaf ziet waar het werk staat zonder uit te
+ * klappen; de stand van een vraag is die van vraagLane().
+ *
+ * De vragen zonder paragraaf krijgen dezelfde tegel, zonder link.
+ */
+import RoadmapVraagRij from '~/components/RoadmapVraagRij.astro';
+import {
+  BELEGGING_STANDEN,
+  vraagLane,
+  type PaperSectie,
+  type VraagMetWerkpakket,
+  type VraagVerwijzing,
+} from '~/lib/roadmap';
+
+interface Props {
+  sectie?: PaperSectie;
+  items: VraagMetWerkpakket[];
+  verwanten: Map<string, VraagVerwijzing[]>;
+}
+
+const { sectie, items, verwanten } = Astro.props;
+// De sleutel waarmee een vraagtegel zijn paragraaf terugvindt als de
+// schakelaar "Per paragraaf" weer aangaat; zie het script op de pagina.
+const sleutel = sectie?.slug ?? 'geen';
+
+const kop = sectie ? `§ ${sectie.nummer}` : 'Zonder sectie in het paper';
+const deelvragen = items.reduce((n, { vraag }) => n + vraag.deelvragen.length, 0);
+const meervoud = (n: number, een: string, meer: string) => `${n} ${n === 1 ? een : meer}`;
+const telling = [
+  meervoud(items.length, 'vraag', 'vragen'),
+  deelvragen > 0 && meervoud(deelvragen, 'deelvraag', 'deelvragen'),
+]
+  .filter(Boolean)
+  .join(', ');
+
+const perStand = BELEGGING_STANDEN.map((stand) => ({
+  ...stand,
+  aantal: items.filter(({ vraag, werkpakket }) => vraagLane(vraag, werkpakket).lane === stand.id).length,
+}));
+
+const naam = sectie ? `${kop} ${sectie.titel}` : kop;
+---
+
+<nldd-list
+  type="tree"
+  appearance="box-tinted"
+  class="rr-vragen__groep"
+  accessible-label={naam}
+>
+<nldd-list-item data-uitklap>
+  {
+    sectie && (
+      <nldd-list-item-segment
+        class="rr-vraag__veld rr-vraag__veld--paper"
+        href={sectie.href}
+        accessible-label={`Position paper, Rules as Executed paragraaf ${sectie.nummer}`}
+      >
+        <nldd-text-cell overline="Position paper" text={`Rules as Executed ${kop}`} />
+      </nldd-list-item-segment>
+    )
+  }
+  <nldd-list-item-segment button disclosure width="full" accessible-label={`${naam}, vragen tonen`}>
+    <nldd-text-cell overline={telling} width="full">
+      {/* De titel is Engels op een Nederlandse pagina; `lang` laat een
+          schermlezer de juiste stem kiezen. */}
+      <span>
+        {kop}
+        {sectie && (
+          <>
+            {' '}
+            <span lang="en">{sectie.titel}</span>
+          </>
+        )}
+      </span>
+      <nldd-container slot="supporting-text" layout="wrap" gap="4" vertical-alignment="center">
+        {perStand.map((stand) => (
+          <nldd-tag
+            size="sm"
+            color={stand.aantal > 0 ? stand.tagColor : 'neutral'}
+            text={`${stand.label} ${stand.aantal}`}
+            icon={stand.id === 'klaar' ? 'done' : stand.id === 'opgepakt' ? 'user' : undefined}
+          />
+        ))}
+      </nldd-container>
+    </nldd-text-cell>
+    <nldd-icon-cell size="20" icon="chevron-right" disclosure />
+  </nldd-list-item-segment>
+
+  <nldd-list-item slot="children">
+    <nldd-spacer-cell />
+    <nldd-cell width="full" vertical-alignment="top">
+      <nldd-container gap="8" data-paragraaf-vragen={sleutel}>
+        {items.map(({ vraag, werkpakket }) => (
+          <RoadmapVraagRij
+            vraag={vraag}
+            werkpakket={werkpakket}
+            verwanten={verwanten}
+            paragraaf={sleutel}
+          />
+        ))}
+      </nldd-container>
+    </nldd-cell>
+  </nldd-list-item>
+</nldd-list-item>
+</nldd-list>

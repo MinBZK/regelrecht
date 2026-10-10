@@ -58,39 +58,47 @@ onderzoeksvragen:
       Wat moet een uitvoeringsorganisatie vastleggen opdat een besluit achteraf
       reproduceerbaar is: welk feit, door wie vastgesteld, op welke grondslag, op
       welk moment en via welk kanaal binnengekomen?
+    id: reproduceerbaar-vastleggen
     paper: sec:versionedartifact
   - vraag: >-
       Welke feiten hoort een organisatie te registreren als procesrelatieve
       vaststelling in plaats van als actuele toestand, en wat kost het om een
       bestaand systeem die kant op te bewegen?
+    id: procesrelatieve-vaststelling
     paper: sec:versioning
   - vraag: >-
       Hoe leidt een engine de rechtsmiddel-route af uit de procedure die een
       besluit heeft voortgebracht, wanneer die route per wet verschilt en niet
       altijd Awb-bezwaar is?
+    id: rechtsmiddel-route-afleiden
     paper: sec:lifecycle
   - vraag: >-
       Wat moet er in een antwoord aan een burger meereizen opdat hij de
       onderbouwing van een vordering zelf kan nagaan: grondslag, invoer, trace,
       en de werkelijke einddatum van zijn rechtsmiddel?
+    id: meereizen-in-antwoord
     paper: sec:traceaccess
   - vraag: >-
       Waar hoort het bezwaar juridisch thuis bij een vordering die de ene
       organisatie int namens de andere, waar komt het feitelijk terecht, en
       kunnen beide kloppen in één antwoord?
+    id: bezwaar-bij-inning-namens-ander
     paper: sec:relying
   - vraag: >-
       Wat is de juiste eenheid van autonomie bij het vastleggen van feiten, en
       wat hoort daar juist niet aan vast te zitten: bevoegd gezag, sleutels,
       transportkeuze?
+    id: eenheid-van-autonomie
     paper: sec:crossorg
   - vraag: >-
       Blijft de decentrale opzet houdbaar wanneer er meer organisaties
       aansluiten, of ontstaat er alsnog een punt waar het totaalbeeld samenkomt?
+    id: decentraal-houdbaar
     paper: sec:pathoptimization
-  - >-
-    Wat is er nodig om twee bronnen voor dezelfde vordering naast elkaar te laten
-    draaien zonder dat de burger die vordering dubbel ziet?
+  - vraag: >-
+      Wat is er nodig om twee bronnen voor dezelfde vordering naast elkaar te
+      laten draaien zonder dat de burger die vordering dubbel ziet?
+    id: twee-bronnen-naast-elkaar
 onderzoek: loopt
 bouw: niet
 belegging:

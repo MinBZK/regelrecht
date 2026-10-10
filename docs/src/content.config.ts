@@ -176,6 +176,46 @@ const slug = () =>
     .string()
     .regex(SLUG, 'moet een slug zijn: kleine letters, cijfers en koppeltekens');
 
+/*
+ * De velden van een onderzoeksvraag in objectvorm.
+ *
+ * `id` is een slug, uniek over de hele roadmap, deelvragen meegerekend
+ * (assertOnderzoeksvragen() in lib/roadmap.ts). Hij is waar `verwant` naar
+ * wijst en wat het anker op de pagina's is, dus hij verandert niet meer als
+ * de vraag geherformuleerd wordt; dezelfde reden als bij het id van een
+ * werkpakket. Optioneel: een vraag zonder verwijzingen heeft hem niet nodig.
+ *
+ * `paper` is een sectie-anker uit het position paper, zonder '#';
+ * assertPaperSections() controleert dat hij bestaat.
+ *
+ * `status` deelt het vocabulaire met `onderzoek` op het werkpakket: open,
+ * loopt, beantwoord, of '' voor "niet bepaald". Hij wordt niet afgeleid uit
+ * de deelvragen. Een vraag kan beantwoord zijn terwijl een deelvraag nog
+ * open staat (het antwoord maakte hem onbelangrijk), en andersom; of de
+ * hoofdvraag af is, is een oordeel over het geheel, zoals `klaar` bij de
+ * belegging.
+ *
+ * `doel` zegt wat beantwoorden moet opleveren: een notitie, een prototype,
+ * een besluit. Vrije tekst, mag leeg.
+ *
+ * `verwant` schrijf je één kant op; de pagina's lezen beide kanten, zoals
+ * bij afhankelijkVan. Een vraag met `verwant` heeft een eigen `id` nodig,
+ * anders kan de andere kant niet terugwijzen; assertOnderzoeksvragen() valt
+ * daarop.
+ *
+ * `.strict()` op de objecten die deze velden gebruiken: een verschreven
+ * sleutel (`deelvraag:`, `papersectie:`) zou anders stil verdwijnen, en dat
+ * is precies de fout die niemand terugvindt.
+ */
+const vraagVelden = {
+  vraag: z.string().min(1),
+  id: slug().optional(),
+  paper: z.string().min(1).optional(),
+  status: z.enum(ONDERZOEK_IDS).or(z.literal('')).default(''),
+  doel: z.string().default(''),
+  verwant: z.array(slug()).default([]),
+};
+
 const werkpakketten = defineCollection({
   loader: glob({
     pattern: '*.md',
@@ -196,20 +236,29 @@ const werkpakketten = defineCollection({
     // matrix cell, and a default of 0 would silently sort a file that forgot
     // it to the front rather than say so.
     volgorde: z.number(),
-    // A question is either plain text or text with a pointer into the
-    // position paper. The union keeps every question that has no counterpart
-    // in the paper exactly as it was, so only the files that gain a reference
-    // change. Normalised for rendering by onderzoeksvraagLijst().
+    /*
+     * Een onderzoeksvraag is een gewone string, of een object met de velden
+     * van `vraagVelden` hierboven. De stringvorm blijft: een vraag waar niets
+     * over te zeggen valt dan de vraag zelf hoort geen vijf lege velden te
+     * dragen, en zo veranderen alleen de bestanden die iets toevoegen.
+     * Genormaliseerd voor de pagina's door onderzoeksvraagLijst().
+     *
+     * `deelvragen` gaat één niveau diep: een deelvraag heeft dezelfde velden
+     * maar geen deelvragen van zichzelf. Dieper is een boom, en wie die nodig
+     * heeft, heeft eerder een nieuw werkpakket nodig dan een derde laag.
+     */
     onderzoeksvragen: z
       .array(
         z.union([
           z.string(),
-          z.object({
-            vraag: z.string(),
-            // A section anchor from the paper, without the '#'.
-            // assertPaperSections() checks it exists.
-            paper: z.string().min(1),
-          }),
+          z
+            .object({
+              ...vraagVelden,
+              deelvragen: z
+                .array(z.union([z.string(), z.object(vraagVelden).strict()]))
+                .default([]),
+            })
+            .strict(),
         ]),
       )
       .default([]),

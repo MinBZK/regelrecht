@@ -76,6 +76,7 @@ onderzoeksvragen:
       Heeft de burger recht op de trace bij ontvangst van het besluit, wat is de
       bewijsstatus van een verstrekkingsfeit, en wat krijgt hij te zien wanneer die
       trace ook waarden over een ander bevat?
+    id: trace-bij-ontvangst
     paper: sec:traceaccess
 samenhangIds:
   - informatiepositie-burgers-ondernemers
