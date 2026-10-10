@@ -149,7 +149,7 @@ export interface Content {
   /** Step 6: what this does not fix. */
   limits: {
     title: string;
-    p1: string;
+    intro: string[];
     p2: string;
     openLabel: string;
     open: string[];
@@ -390,8 +390,11 @@ const nl: Content = {
 
   limits: {
     title: 'Wat dit niet oplost',
-    p1:
-      'Een ambtenaar kon vroeger soms iets regelen waar geen regel voor was. Een computer kan dat niet: hij doet alleen wat is opgeschreven. Dat gebeurt nu al, ook zonder dit voorstel, en publiceren verandert daar niets aan. Het paper zegt zelf dat het bij die ontwikkeling hoort. Wat het voorstel teruggeeft, is de ruimte om met een goede reden af te wijken, zoals in stap 5.',
+    intro: [
+      'Zolang mensen de wet uitvoerden, was er speelruimte die nergens op papier stond. Een ambtenaar hielp iemand verder terwijl geen regel dat toestond, en niemand keek ernaar. Een controle bleef liggen omdat er geen tijd voor was. Strikt genomen hoorde dat niet, maar voor de mensen om wie het ging pakte het vaak goed uit.',
+      'Software heeft die speelruimte niet. Ze doet wat is vastgelegd en verder niets. Dat geldt nu al voor de systemen die de overheid gebruikt, en het heeft niets met publiceren te maken: een regelwerk dat niemand kan inzien, is even streng.',
+      'Het voorstel brengt die ongeschreven ruimte niet terug, en dat kan ook niet, want een uitzondering die je opschrijft is gewoon weer een regel. Wel mag een mens met een goede reden van de uitkomst afwijken, waar de wet dat toestaat (stap 5). En omdat de regels openbaar zijn, zie je waar ze streng zijn en kun je bespreken of dat zo moet.',
+    ],
     p2: 'Het paper noemt zijn aanpak onvolmaakt, en een aantal vragen laat het open.',
     openLabel: 'Open vragen',
     open: [
@@ -655,8 +658,11 @@ const en: Content = {
 
   limits: {
     title: 'What this does not fix',
-    p1:
-      'An official could sometimes sort something out that no rule covered. A computer cannot: it only does what has been written down. That is already happening, without this proposal too, and publishing changes nothing about it. The paper says itself that it is part of that development. What the proposal gives back is the room to depart for a good reason, as in step 5.',
+    intro: [
+      'As long as people carried out the law, there was room to move that was written down nowhere. An official helped someone along although no rule allowed it, and nobody looked. A check was left undone because there was no time for it. Strictly speaking that was not how it should go, but it often worked out well for the people concerned.',
+      'Software has no such room. It does what has been recorded and nothing else. That is already true of the systems the government uses today, and it has nothing to do with publishing: a rulework nobody can see is just as strict.',
+      'The proposal does not bring that unwritten room back, and it cannot, because an exception you write down is simply another rule. What it does allow is for a person to depart from the outcome for a good reason, where the law permits it (step 5). And because the rules are public, you can see where they are strict and discuss whether they should be.',
+    ],
     p2: 'The paper calls its approach imperfect, and it leaves a number of questions open.',
     openLabel: 'Open questions',
     open: [
